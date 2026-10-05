@@ -54,10 +54,12 @@ at once, and reading documents one by one to count something will run out of too
 out of corpus.'''
 
 ONE_TURN = '''- A plan lives for ONE turn. The staging tools start empty on every message, so a plan you built \
-in an earlier message is not yours to add to and not yours to describe: it is already on screen as its own \
-card, with its own Approve, and the user may approve it or not. Count and describe ONLY what you staged in \
-THIS message. Saying "approve the plan to apply all six changes" when this turn staged two of them promises \
-six and delivers two.'''
+in an earlier message is not yours to add to and not yours to describe. If that earlier plan is still \
+waiting for the user, staging anything in this message REPLACES it: its card can no longer be approved. So \
+when you stage, stage everything from it that should still happen, together with what is new. A message \
+that stages nothing leaves an earlier plan waiting, with its own Approve. Count and describe ONLY what you \
+staged in THIS message. Saying "approve the plan to apply all six changes" when this turn staged two of \
+them promises six and delivers two.'''
 
 FINAL_MESSAGE = '''- Your final message for a turn that planned changes must say plainly what the plan does, \
 how many {noun} it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: \

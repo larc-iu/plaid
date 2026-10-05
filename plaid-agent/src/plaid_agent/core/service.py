@@ -79,7 +79,7 @@ from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, partial_note, partial_tally, proposed_changes, prune, record_budget,
-                           settle_plan)
+                           replace_undecided, settle_plan)
 from .opkind import ROW
 from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, drawable,
                    forget_held, held_from, holding, outcome_unknown)
@@ -595,7 +595,11 @@ class BaseAssistantService(BaseService):
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
         if reach is not None and reach.unavailable:
             item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
-        done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
+        # A new plan replaces any still waiting: the model restates what still
+        # applies in the plan it stages, so the older card is not left
+        # approvable beside it.
+        earlier = replace_undecided(conv['display']) if item.get('plan') else conv['display']
+        done = prune({'messages': transcript + turn.messages, 'display': earlier + [item]},
                      record_budget(client), self.transcript_budget(model, overhead))
         try:
             self._write(store, conv_id, done,
@@ -688,6 +692,10 @@ class BaseAssistantService(BaseService):
             settled()
             response_helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'duplicate': True,
                                       'message': 'This plan was already applied. Nothing was written again.'})
+            return
+        if item.get('status') == 'replaced':
+            settled()
+            response_helper.error('A newer plan replaced this one. Approve the newer plan.')
             return
         if item.get('status') == 'discarded':
             settled()

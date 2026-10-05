@@ -277,3 +277,24 @@ describe('an applied plan with notes and rows that wrote nothing', () => {
     await view.unmount();
   });
 });
+
+// Luke's ruling (2026-10-05): a turn that stages a plan replaces any still
+// waiting, since the model restates in the new plan what still applies.
+describe('a plan a later one replaced', () => {
+  it('reads "Replaced" and offers nothing to press', async () => {
+    const view = await mount(plan([{ label: 'a' }]), { status: 'replaced' });
+    expect(byText(view.container, 'span, div', 'Replaced')).not.toBeNull();
+    expect(all(view.container, 'button')).toEqual([]);
+    await view.unmount();
+  });
+
+  it('is exported as replaced', () => {
+    const conv = {
+      display: [
+        { kind: 'assistant', text: 'Planned.', plan: plan([{ label: 'a' }]), status: 'replaced' },
+      ],
+    };
+    const md = conversationToMarkdown(conv, { title: 'T' }, { adapter: { ...adapter } });
+    expect(md).toContain('(Replaced by a later plan.)');
+  });
+});

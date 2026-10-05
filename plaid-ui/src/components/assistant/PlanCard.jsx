@@ -65,6 +65,8 @@ export const PlanCard = ({
   // Refused because what it changes has changed since: approving again would
   // only be refused again.
   const stale = status === 'stale';
+  // A later turn staged a plan of its own, which restates what still applies.
+  const superseded = status === 'replaced';
   // The record says the plan was approved but the request that applied it is
   // gone, so whether the changes landed is unknown. The same buttons as an
   // undecided plan: applying again is safe, since the service refuses to
@@ -85,7 +87,7 @@ export const PlanCard = ({
         undecided && 'border-primary/40 bg-primary/5',
         status === 'applied' && 'border-success/40 bg-success/5',
         partial && 'border-warning/40 bg-warning/10',
-        (status === 'discarded' || stale) && 'opacity-60',
+        (status === 'discarded' || stale || superseded) && 'opacity-60',
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -104,6 +106,11 @@ export const PlanCard = ({
         {stale && (
           <Badge variant="outline" className="ml-auto">
             Out of date
+          </Badge>
+        )}
+        {superseded && (
+          <Badge variant="outline" className="ml-auto">
+            Replaced
           </Badge>
         )}
         {partial && (

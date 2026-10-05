@@ -346,6 +346,22 @@ def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: O
     return {'messages': messages, 'display': display}
 
 
+def replace_undecided(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every plan still waiting for a decision, marked replaced: the turn
+    staging a new plan calls this before adding its own. The model starts
+    each turn with an empty plan and restates what still applies, so an older
+    card left approvable offered a second, overlapping set of changes beside
+    the newer one (Luke's ruling, 2026-10-05). A plan whose approval was
+    interrupted is left alone: its changes may have been written."""
+    stamp = now_iso()
+    return [
+        compact_plan({**d, 'status': 'replaced', 'settled_at': stamp})
+        if isinstance(d, dict) and d.get('plan') and d.get('status') is None and not d.get('interrupted')
+        else d
+        for d in display
+    ]
+
+
 def partial_tally(written_n: int, total: int, partly_n: int = 0, were: bool = False) -> str:
     """How much of a plan that stopped partway was written, in one clause:
     "400 of 600 changes written". ``written_n`` counts each change of a folded

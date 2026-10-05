@@ -222,7 +222,8 @@ def test_a_stale_plan_is_refused_and_settled_as_out_of_date():
 
 @pytest.mark.parametrize('status, expected', [
     ('discarded', 'The plan was discarded'),
-    ('stale', 'The plan is out of date. Ask the assistant to plan again.')])
+    ('stale', 'The plan is out of date. Ask the assistant to plan again.'),
+    ('replaced', 'A newer plan replaced this one. Approve the newer plan.')])
 def test_a_settled_plan_is_not_applied(status, expected):
     client = FakeClient()
     _seed_plan(client, status=status)
@@ -311,3 +312,42 @@ def test_a_turn_with_nothing_attached_is_not_told_about_files(monkeypatch):
     _service().process_request(_request(client), Helper())
     assert seen['stamp'] == 'Which words are unglossed?'
     assert 'read_file' not in seen['offered']
+
+
+def _turn_after_plan(monkeypatch, stages):
+    """A plan waiting on the card, then a new message whose turn stages a plan
+    of its own or not."""
+    client = FakeClient()
+    store = _seed_plan(client)
+    conv, meta = store.load('c1')
+    conv['messages'].append({'role': 'user', 'content': 'and the other one too'})
+    conv['display'].append(user_item('and the other one too'))
+    store.save('c1', conv, build_meta(meta, 'c1', conv, 'igt:assist:fake', 'fake/model',
+                                       pending={'kind': 'turn', 'request_id': 'r1'}))
+    real = AssistantService.make_workspace
+
+    def make_workspace(self, c, project, on_progress):
+        ws = real(self, c, project, on_progress)
+        if stages:
+            ws.plan_payload = lambda: {'id': 'p2', 'summary': '2 field values', 'labels': ['a', 'b'],
+                                       'ops': [{'kind': 'x'}, {'kind': 'y'}], 'changes': [], 'documents': []}
+        return ws
+
+    monkeypatch.setattr(AssistantService, 'make_workspace', make_workspace)
+    monkeypatch.setattr(service_mod, 'run_turn', lambda *a, **k: TurnResult(
+        'Done.', [{'role': 'assistant', 'content': 'Done.'}], []))
+    helper = Helper()
+    _service().process_request(_request(client), helper)
+    assert not helper.errors, helper.errors
+    return store.load('c1')[0]['display']
+
+
+def test_a_turn_that_stages_a_plan_replaces_the_one_waiting(monkeypatch):
+    display = _turn_after_plan(monkeypatch, stages=True)
+    assert display[1]['status'] == 'replaced' and 'ops' not in display[1]['plan']
+    assert display[-1]['plan']['id'] == 'p2' and display[-1]['status'] is None
+
+
+def test_a_turn_that_stages_nothing_leaves_the_plan_waiting(monkeypatch):
+    display = _turn_after_plan(monkeypatch, stages=False)
+    assert display[1]['status'] is None and display[1]['plan']['ops']
