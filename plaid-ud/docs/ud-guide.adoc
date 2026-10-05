@@ -285,6 +285,7 @@ Tokenizing and annotating are one job done in two places, so each hands over to 
 From **Annotate**: **Edit text** under a sentence, or **Alt+click** any word in it, opens the Text Editor scrolled to that sentence.
 
 From the **Text Editor**: **Alt+click** any token opens Annotate at that token's sentence. A plain click still toggles the sentence boundary.
+In a document you can only read, **Alt+click** is the one thing a token takes.
 
 Either way the sentence you arrived at is briefly outlined, so you can see where you landed.
 
@@ -346,6 +347,7 @@ A document with no sentences to show until then says `The document could not be 
 
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
 Each sentence's `# text` is its text as it stands, spaces included, and a multi-word token's row gives its text as it stands. A token followed by no space is marked `SpaceAfter=No` in the MISC column, the one value written there.
+Each sentence ends with a blank line, the last one too, so exported files can be joined end to end.
 
 To export a whole project, use its **Import and export** tab, which packages every document into one ZIP of `.conllu` files.
 
@@ -517,7 +519,7 @@ It does not run a search of its own: it writes the Grew pattern and hands it to 
 
 A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the feature's value, where `^` and `$` mark its start and end.
 
-In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it. A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
+In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. In a pattern, `re"..."` takes the regular expression exactly as written, so `re"\w"` and `re"\p{IsArabic}"` work as typed and `re"\."` is a full stop. Write `\"` for a quote inside it. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it. A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
 A token another app added is not searched until someone with Writer access opens its document.
 
 === Counting instead of reading
@@ -802,5 +804,5 @@ The editor carries a short version of this under **Gestures and marks**, above t
 
 | **Enter** (word box) | Write the pattern for what you typed and run it.
 | **Ctrl/Cmd+Enter** (pattern box) | Run the pattern.
-| **Tab** (pattern box) | Indent, rather than leaving the box.
+| **Tab** (pattern box) | Indent. **Shift+Tab**, or **Escape** then **Tab**, leaves the box.
 |===
