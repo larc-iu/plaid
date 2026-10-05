@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { TASKS, serviceSource } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { transcribeNotice } from './transcribeNotice.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import {
   notifySuccess,
@@ -701,6 +702,7 @@ export const useMediaOperations = () => {
             },
             {
               successMessage: 'Transcription complete',
+              notice: transcribeNotice,
               errorTitle: 'Failed to transcribe',
               stoppedTitle: 'Transcribe',
               // Written down before submitting, so a reload can still find it.

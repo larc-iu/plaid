@@ -149,6 +149,7 @@ def test_a_transcription_lands_stamped_machine_made_and_never_confirmed(monkeypa
     assert result['document_id'] == DOC
     assert result['segments_transcribed'] == 2
     assert result['tokens_created'] == 2
+    assert (result['segments_added'], result['segments_skipped']) == (2, 0)
     assert 'stopped' not in result
 
     # The text gained both segments, and each got an alignment token stamped
@@ -214,6 +215,21 @@ def _with_word_layer(doc, tokenize=None):
     doc['text_layers'][0]['token_layers'].append(
         {'id': 'word-layer', 'name': 'Words', 'config': config, 'tokens': []})
     return doc
+
+
+def test_a_second_run_over_the_same_times_adds_nothing_and_says_so(monkeypatch):
+    """REV-N5-APPS R6: the app said "Transcription complete" for a run that
+    wrote nothing. The result counts the segments added and skipped."""
+    _media(monkeypatch)
+    module, _ = load_whisper()
+    doc = _document(body='evler geliyor kedi uyuyor', sentences=[(0, 25)],
+                    align=[(0, 13, 0.0, 2.5), (14, 25, 2.5, 5.0)])
+    service = _service(module, documents=[doc])
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    [result] = helper.results
+    assert (result['segments_added'], result['segments_skipped']) == (0, 2)
+    assert service.client.payloads('texts.update') == []
 
 
 @pytest.mark.parametrize('tokenize, words', [(None, ['evler', 'geliyor', 'kedi', 'uyuyor']), (False, [])])

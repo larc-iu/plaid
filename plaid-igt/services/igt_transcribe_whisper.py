@@ -287,7 +287,12 @@ class WhisperASRService(BaseService):
                     "document_id": document_id,
                     "status": "success",
                     "tokens_created": tokens_created,
-                    "segments_transcribed": len(alignments)
+                    "segments_transcribed": len(alignments),
+                    # What the app counts for the person: the segments put
+                    # into the transcript, and the ones heard but skipped
+                    # because a segment already here holds their time.
+                    "segments_added": tokens_created,
+                    "segments_skipped": max(0, len(alignments) - tokens_created)
                 })
             
         finally:
