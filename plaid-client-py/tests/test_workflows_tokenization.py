@@ -714,3 +714,27 @@ def test_an_edge_no_rule_keeps_in_one_sentence_is_not_counted():
     client = _reset(doc)
     assert any(c[0] == 'bulk_delete' for c in client.calls)
 
+
+
+# REV-D7-FAKES R2: a document with no sentences (one just typed, or one whose
+# tokens were cleared) took the word-only path, and the server refused every
+# word for lying in no sentence. It gets its sentences, which delete nothing,
+# though their breaks can still cut an edge kept inside one sentence.
+def test_a_document_with_no_sentences_gets_them():
+    client = _reset(_document('Hello there.', sentences=[], words=[]))
+    created = [c[1] for c in client.calls if c[0] == 'bulk_create']
+    assert [(op['begin'], op['end']) for op in created[0]] == [(0, 6), (6, 12)]
+    assert not any(c[0] == 'bulk_delete' for c in client.calls)
+
+
+def test_new_sentences_refuse_to_cut_a_human_edge_without_overwrite():
+    doc = _with_graph(_document('Hello there.', sentences=[], words=[]), {})
+    with pytest.raises(ValueError) as caught:
+        _reset(doc)
+    assert 'Re-tokenizing would delete 1 human-made' in str(caught.value)
+    client = _FakeClient(doc)
+    counts = TokenProcessor().process_tokens(
+        client, 'd1', _two_sentences(), [TokenSpan(text='Hello', start=0, end=5)],
+        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
+        overwrite=True)
+    assert counts['sentences_created'] == 2

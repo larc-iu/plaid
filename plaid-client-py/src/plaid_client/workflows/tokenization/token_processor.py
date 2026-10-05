@@ -409,8 +409,13 @@ class TokenProcessor:
         }
 
     def _should_tokenize_sentences(self, existing_sentences: List[Dict]) -> bool:
-        """Check if we should tokenize sentences based on existing sentence count"""
-        return len(existing_sentences) == 1
+        """Whether this run makes the sentences: a document with none gets
+        them, and one whose single sentence covers the text has it reset.
+        A document with no sentences cannot take words on the word-only
+        path, since a word must lie inside a sentence of the layer it is
+        nested under. More than one sentence is a partition someone made,
+        and is left as it is."""
+        return len(existing_sentences) <= 1
 
     def _delete_loss(self, text_layer: Dict, layer: Dict,
                      ids_to_delete: List[str]) -> Dict[str, int]:
