@@ -2990,8 +2990,11 @@ class PlaidClient {
        * @param {string} tokenId - The token ID
        * @param {number} position - Code-point offset to split at (strictly between begin and end)
        * @param {string} [auditMessage] - Audit message for this write
-       * @param {{id?: string}} [options] - `id`: the right half's id, a UUIDv7 this
-       *   client minted. A relation layer whose relations must stay inside one token
+       * @param {{id?: string, keep?: "left"|"right"}} [options] - `id`: the new
+       *   token's id, a UUIDv7 this client minted. `keep`: the half the original token
+       *   (its id, spans, vocab-links, comments and metadata) stays on, `"left"` by
+       *   default. With `"right"` the new token, whose id is answered, is the left
+       *   half. A relation layer whose relations must stay inside one token
        *   of this layer declares a same-ancestor constraint, and the server deletes
        *   the relations the split leaves crossing in the same transaction.
        */
@@ -2999,11 +3002,11 @@ class PlaidClient {
         tokenId,
         position,
         auditMessage,
-        { id } = {},
+        { id, keep } = {},
       ) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/split`, {
           auditMessage,
-          body: bodyOf({ id, position }),
+          body: bodyOf({ id, keep, position }),
         }),
       /**
        * Merge two tokens. The left token (smaller begin) survives with the combined

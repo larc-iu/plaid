@@ -1465,7 +1465,7 @@ interface TokensBundle {
     tokenId: string,
     position: number,
     auditMessage?: string,
-    options?: { id?: string },
+    options?: { id?: string; keep?: "left" | "right" },
   ): Promise<any>;
   merge(
     tokenId: string,

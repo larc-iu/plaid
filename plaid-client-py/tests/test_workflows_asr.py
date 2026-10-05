@@ -133,8 +133,8 @@ class _FakeClient:
         def bulk_delete(self, ids):
             self._client._record(('bulk_delete', list(ids)))
 
-        def split(self, token_id, position, audit_message=None, *, id=None):
-            self._client._record(('split', token_id, position, id))
+        def split(self, token_id, position, audit_message=None, *, id=None, keep=None):
+            self._client._record(('split', token_id, position, id, keep))
 
     class _Texts:
         def __init__(self, client):

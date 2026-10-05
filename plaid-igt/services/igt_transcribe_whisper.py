@@ -31,10 +31,9 @@ transcribes it, and writes time-aligned segments.
   memory. The operator's launch `--model` sets the default and the first model
   loaded; choosing a different size per request loads/caches it on demand.
 - **Language**: leave blank to auto-detect, or force an ISO code (e.g. `en`).
-- **Overwrite human-edited annotations**: each pass resets the sentence
-  partition, which deletes sentence-level annotations. Machine-made,
-  unverified ones are always fair game; if any are human-made or
-  human-verified, the run refuses unless this is enabled.
+
+Each new segment's text gets a sentence of its own. The words, sentences and
+annotations already in the document stay as they are.
 
 Tokens this service creates carry provenance metadata (`prov`/`provSource`).
 """

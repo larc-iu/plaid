@@ -1310,6 +1310,9 @@ Instead, you build and edit the partition with four operations:
 
 These editing operations are available on `any` and `non-overlapping` layers too, where they serve as convenient shortcuts.
 In every case, dependent spans and vocab-links are preserved: a split keeps them on the original (left) token, and a merge reparents the right token's spans and vocab-links onto the surviving left token.
+A split that sends `keep: "right"` keeps the original token, with its id, spans, vocab-links, comments and metadata, on the right half instead, and the new token, whose id it answers (and which `id` names), is the left half.
+That is for new text put in front of a token's own, such as a transcription inserted before a sentence, so the sentence's translation stays on the text it translates.
+Descendants the split cuts keep theirs on the left either way.
 
 [,python]
 ----

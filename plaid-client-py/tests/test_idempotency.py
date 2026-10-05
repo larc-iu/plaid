@@ -404,6 +404,15 @@ def test_a_create_sends_the_id_it_is_given(name, call):
     assert 'id' not in requests[1]['body']
 
 
+def test_a_split_sends_keep_only_when_it_is_given():
+    client = PlaidClient('http://x', 'tok', **FAST)
+    requests = _stub_server(client, lambda r, n: _Resp(201, {'id': 'l'}))
+    client.tokens.split('t', 3, keep='right')
+    client.tokens.split('t', 3)
+    assert requests[0]['body'] == {'keep': 'right', 'position': 3}
+    assert requests[1]['body'] == {'position': 3}
+
+
 def test_a_bulk_create_passes_the_ids_in_its_items_through():
     client = PlaidClient('http://x', 'tok', **FAST)
     ids = [uuid7(), uuid7()]

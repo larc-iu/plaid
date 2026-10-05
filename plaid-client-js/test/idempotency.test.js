@@ -334,6 +334,19 @@ for (const [name, call] of creates) {
   });
 }
 
+test("tokens.split sends keep only when it is given", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer(() => response(201, { id: "l" }));
+  try {
+    await client.tokens.split("t", 3, undefined, { keep: "right" });
+    await client.tokens.split("t", 3);
+  } finally {
+    restore();
+  }
+  assert.deepEqual(requests[0].body, { keep: "right", position: 3 });
+  assert.deepEqual(requests[1].body, { position: 3 });
+});
+
 // REV-idempotency F1: an edit queued inside a longer operation (igt's autoPass
 // link phase, a transcribe run, the repair on open) brought its seed to a
 // nested begin, which dropped it, so its resend got fresh keys.

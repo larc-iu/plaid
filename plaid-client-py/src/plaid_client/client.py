@@ -3291,7 +3291,7 @@ class TokensResource(_Resource):
         return self._request('PATCH', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
     def split(self, token_id: str, position: int, audit_message=None,
-              *, id: str | None = None) -> Any:
+              *, id: str | None = None, keep: str | None = None) -> Any:
         """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
@@ -3304,13 +3304,18 @@ class TokensResource(_Resource):
         Args:
             token_id: The token ID
             position: Code-point offset to split at (strictly between begin and end)
-            id: Optional. The id to create the right half under, a UUIDv7 this client
+            id: Optional. The id to create the new token under, a UUIDv7 this client
                 minted (``plaid_client.uuid7()``), so a create sent again after
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
+            keep: Optional. The half the original token (its id, spans,
+                vocab-links, comments and metadata) stays on, ``'left'`` by
+                default. With ``'right'`` the new token, whose id is answered,
+                is the left half.
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/split',
-                             body=_body_of(id=_UNSET if id is None else id, position=position),
+                             body=_body_of(id=_UNSET if id is None else id,
+                                           keep=_UNSET if keep is None else keep, position=position),
                              audit_message=audit_message)
 
     def merge(self, token_id: str, other_token_id: str, audit_message=None) -> Any:

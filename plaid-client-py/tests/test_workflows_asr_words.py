@@ -201,11 +201,17 @@ def _replay(doc, calls):
                 for sl in layer.get('span_layers', []):
                     sl['spans'] = [sp for sp in sl['spans'] if not set(sp['tokens']) & gone]
         elif kind == 'split':
-            _, tid, pos, new_id = call
+            # The original keeps its id, and so its spans and comments, on the
+            # left half, or on the right with keep='right', as the core does.
+            _, tid, pos, new_id, keep = call
             [t] = [t for t in layers[SENTENCE_LAYER]['tokens'] if t['id'] == tid]
             assert t['begin'] < pos < t['end'], (t, pos)
-            layers[SENTENCE_LAYER]['tokens'].append({'id': new_id, 'begin': pos, 'end': t['end']})
-            t['end'] = pos
+            if keep == 'right':
+                layers[SENTENCE_LAYER]['tokens'].append({'id': new_id, 'begin': t['begin'], 'end': pos})
+                t['begin'] = pos
+            else:
+                layers[SENTENCE_LAYER]['tokens'].append({'id': new_id, 'begin': pos, 'end': t['end']})
+                t['end'] = pos
     tl['text']['body'] = body
     return doc
 
@@ -259,4 +265,78 @@ def test_a_segment_put_between_two_gets_a_sentence_of_its_own():
     assert [body[t['begin']:t['end']] for t in sentences] == ['one', ' two\n', 'three']
     assert [body[t['begin']:t['end']] for t in sorted(layers[WORD_LAYER]['tokens'], key=lambda t: t['begin'])] == [
         'one', 'two', 'three']
+
+
+def _sentences_of(after):
+    tl = after['text_layers'][0]
+    body = tl['text']['body']
+    layers = {layer['id']: layer for layer in tl['token_layers']}
+    return [(t['id'], body[t['begin']:t['end']])
+            for t in sorted(layers[SENTENCE_LAYER]['tokens'], key=lambda t: t['begin'])]
+
+
+def _translated(body, sentences, align=()):
+    doc = _with_words(_document(body, sentences=sentences, align=align),
+                      words=[(m.start(), m.end()) for m in __import__('re').finditer(r'\w+', body)])
+    sent_layer = doc['text_layers'][0]['token_layers'][1]
+    sent_layer['span_layers'] = [{'id': 'tr', 'name': 'Translation', 'spans': [
+        {'id': f'tr{i}', 'tokens': [f's{i}'], 'value': f'TR {body[b:e].strip()}', 'metadata': {}}
+        for i, (b, e) in enumerate(sentences)]}]
+    return doc
+
+
+def test_text_put_before_a_sentence_leaves_its_translation_on_its_own_text():
+    # REV-ASR R1: the new text took the old sentence's id, and with it its
+    # translation, notes and comments.
+    doc = _translated('Good morning, friend.', [(0, 21)], align=[(0, 21, 5.0, 7.0)])
+    client = _FakeClient([doc])
+    _run(client, [Alignment(text='Hello there', start=1.0, end=2.5)])
+    sentences = _sentences_of(_replay(doc, client.calls))
+    assert [text for _, text in sentences] == ['Hello there', ' Good morning, friend.']
+    assert sentences[1][0] == 's0'
+    assert [c[4] for c in client.calls if c[0] == 'split'] == ['right']
+
+
+def test_text_put_after_a_sentences_leading_space_leaves_it_its_id():
+    doc = _translated('one. two.', [(0, 4), (4, 9)], align=[(0, 5, 0.0, 1.0), (5, 9, 4.0, 5.0)])
+    client = _FakeClient([doc])
+    _run(client, [Alignment(text='mid', start=2.0, end=3.0)])
+    after = _replay(doc, client.calls)
+    sentences = _sentences_of(after)
+    assert after['text_layers'][0]['text']['body'] == 'one. mid two.'
+    assert ('s1', ' two.') in sentences
+    assert ('s0', 'one.') in sentences
+
+
+def test_every_new_segment_gets_a_sentence_of_its_own():
+    # REV-ASR R2: with no segment before it in the text, the first new one
+    # joined the sentence before it, under that sentence's translation.
+    doc = _translated('Good morning, friend.', [(0, 21)])
+    client = _FakeClient([doc])
+    _run(client, [Alignment(text='Hello there', start=1.0, end=2.5), Alignment(text='Bye', start=3.0, end=3.5)])
+    sentences = _sentences_of(_replay(doc, client.calls))
+    assert [text for _, text in sentences] == ['Good morning, friend.', ' Hello there', ' Bye']
+    assert sentences[0][0] == 's0'
+
+
+def test_a_segment_ending_inside_a_word_puts_the_new_text_after_the_word():
+    # REV-ASR R3: the text went inside the word, under its gloss.
+    doc = _with_words(_document('onetwo three', sentences=[(0, 12)],
+                                align=[(0, 3, 0.0, 1.0), (7, 12, 5.0, 6.0)]), words=[(0, 6), (7, 12)])
+    client = _FakeClient([doc])
+    _run(client, [Alignment(text='x', start=2.0, end=3.0)])
+    after = _replay(doc, client.calls)
+    tl = after['text_layers'][0]
+    body = tl['text']['body']
+    assert body == 'onetwo x three'
+    words = {t['id']: body[t['begin']:t['end']] for t in tl['token_layers'][2]['tokens']}
+    assert words['w0'] == 'onetwo'
+
+
+def test_a_document_with_no_text_yet_gets_one():
+    doc = _with_words(_document(''))
+    doc['text_layers'][0]['text'] = None
+    client = _FakeClient([doc])
+    assert _run(client, [Alignment(text='hello', start=0.0, end=1.0)]) == 1
+    assert ('text_create', '') in client.calls
 

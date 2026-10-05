@@ -869,9 +869,15 @@
   `config.plaid.preserveOnSplit`, besides its place: the text, the layer,
   the document and the precedence, which orders it among the tokens that
   share its begin. `new-id` names the right half's id, else the server
-  mints one. Returns the new (right-half) token id."
-  [tx t position & [new-id]]
-  (let [{:keys [id text_id token_layer_id document_id begin end_ precedence]} t]
+  mints one. Returns the new (right-half) token id.
+
+  With `keep` `:right` the sides swap: the original row becomes the right
+  half and keeps everything it had, and the new row is the left half, whose
+  id is returned. For a split whose left piece is new text put in front of
+  the token's own (a transcription inserted before a sentence)."
+  [tx t position & [new-id keep]]
+  (let [{:keys [id text_id token_layer_id document_id begin end_ precedence]} t
+        right? (= keep :right)]
     (when-not (and (int? position) (> position begin) (< position end_))
       (throw (ex-info "Split position must be strictly between token begin and end"
                       {:code 400 :position position :begin begin :end end_})))
@@ -879,14 +885,14 @@
           keep-keys (preserved-on-split tx token_layer_id)
           inherited (when (seq keep-keys)
                       (select-keys (metadata/get-metadata tx "token" id) keep-keys))]
-      (crud/update-by-id! tx :tokens id {:end_ position})
+      (crud/update-by-id! tx :tokens id (if right? {:begin position} {:end_ position}))
       (crud/insert! tx :tokens
                     {:id new-id
                      :text_id text_id
                      :token_layer_id token_layer_id
                      :document_id document_id
-                     :begin position
-                     :end_ end_
+                     :begin (if right? begin position)
+                     :end_ (if right? position end_)
                      :precedence precedence})
       (when (seq inherited)
         (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))
@@ -912,10 +918,14 @@
 
   `:id` in `opts` names the id of the token the split makes (a client's
   UUIDv7), else the server mints one. Tokens a cascade splits below it
-  always get server ids."
+  always get server ids.
+
+  `:keep` `:right` keeps the original token (its id, spans, vocab links,
+  comments and metadata) on the right half and makes the left half the new
+  token. Descendants a cascade splits keep theirs on the left as always."
   ([db eid position user-id]
    (split db eid position user-id nil))
-  ([db eid position user-id {:keys [id]}]
+  ([db eid position user-id {:keys [id keep]}]
    (let [pre (psc/fetch-by-id db :tokens eid)]
      (submit-operation!
       [tx db {:type :token/split
@@ -930,7 +940,7 @@
             dlids (tc/descendant-layer-ids tx layer)
             straddlers (tc/straddling-descendant-tokens-in tx dlids doc-id begin end position)
             _ (psc/claim-ids! tx :tokens "token" [id])
-            new-right-id (split-one! tx t-row position id)]
+            new-right-id (split-one! tx t-row position id keep)]
         (split-straddlers! tx straddlers position)
         (tc/enforce! tx :split
                      {:layer layer :doc-id doc-id

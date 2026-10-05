@@ -203,8 +203,9 @@ class AlignmentProcessor:
         )
         
         # Get current text content
-        current_text = text_layer.get("text", {}).get("body", "")
-        text_id = text_layer.get("text", {}).get("id")
+        # A document made through the API may hold no text yet (null).
+        current_text = (text_layer.get("text") or {}).get("body") or ""
+        text_id = (text_layer.get("text") or {}).get("id")
         
         if not text_id:
             # Create initial text if none exists
@@ -249,6 +250,8 @@ class AlignmentProcessor:
             
             # Find insertion point in text based on time
             insertion_pos = self._find_text_insertion_position(current_text, existing_alignment_tokens, trans['start'])
+            insertion_pos = self._past_words(insertion_pos, text_layer, existing_alignment_tokens,
+                                             {alignment_token_layer_id, sentence_token_layer_id}, trans['start'])
             
             # The spaces that keep it apart from its neighbours are added once
             # the inserts are in text order (`_pad`).
@@ -483,6 +486,26 @@ class AlignmentProcessor:
         return last_token["end"]
     
     @staticmethod
+    def _past_words(pos: int, text_layer: Dict, segments: List[Dict], skip: set, start: float) -> int:
+        """``pos`` moved to the end of the word it falls inside, if any (a
+        segment that ends inside a word), so new text never goes into a word
+        and under its gloss (REV-ASR R3). Refused when that end lies inside a
+        segment: nothing is written."""
+        tokens = [t for tl in text_layer.get("token_layers", []) if tl.get("id") not in skip
+                  for t in tl.get("tokens") or []]
+        moved = pos
+        while True:
+            inside = [t["end"] for t in tokens if t["begin"] < moved < t["end"]]
+            if not inside:
+                break
+            moved = max(inside)
+        if moved != pos and any(a["begin"] < moved < a["end"] for a in segments):
+            raise ValueError(
+                f"The new segment at {start:g} s has no place in the text: the segment before it ends "
+                f"inside a word that runs into the next segment. Nothing was written.")
+        return moved
+
+    @staticmethod
     def _shifted(tokens: List[Dict], text_modifications: List[Dict]) -> List[Dict]:
         """``tokens`` at their places once ``text_modifications`` are inserted
         (an insert at a token's begin goes before it)."""
@@ -542,20 +565,22 @@ class AlignmentProcessor:
         Give each new segment a sentence of its own, on the batch it is handed.
 
         A sentence runs from the end of the segment before it in the text to
-        the end of its own segment. A layer with no sentences gets a whole
-        partition so (bulk create). Otherwise no sentence is deleted: the
+        the end of its own segment, and starts no earlier than its own text. A
+        layer with no sentences gets a whole partition so (bulk create). Otherwise no sentence is deleted: the
         sentences as the inserts leave them are split at the new segments'
         boundaries (``tokens.split``), so every word nested in them, and every
         annotation on a sentence or a word, stays (REV-R4-TOK F1: a full reset
         deleted every sentence, and the core took the nested words and their
         glosses with them). A boundary that already is one, or that lies
         inside a word, or that would leave a sentence of whitespace alone, is
-        left alone.
+        left alone. A cut whose left piece is new text alone keeps the old
+        sentence on the right (``keep='right'``), so its annotations stay on
+        its own text.
         """
         sentence_token_layer = None
         text_layer = None
         for tl in document["text_layers"]:
-            if tl.get("text", {}).get("id") == text_id:
+            if (tl.get("text") or {}).get("id") == text_id:
                 text_layer = tl
                 for token_layer in tl.get("token_layers", []):
                     if token_layer["id"] == sentence_token_layer_id:
@@ -609,8 +634,25 @@ class AlignmentProcessor:
         def blank(a: int, z: int) -> bool:
             return all(is_js_space(c) for c in updated_text[a:z])
 
+        # Where each insert stands in the new text, and which characters are
+        # new.
+        typed = [False] * text_length
+        starts = []
+        offset = 0
+        for m in text_modifications:
+            a = m['position'] + offset
+            starts.append(a)
+            for x in range(a, a + len(m['new_text'])):
+                typed[x] = True
+            offset += len(m['new_text'])
+
+        def only_new(a: int, z: int) -> bool:
+            return all(typed[x] or is_js_space(updated_text[x]) for x in range(a, z))
+
+        # Each new segment is cut at its own insertion point and at its end
+        # (REV-ASR R2), and at the end of the segment before it in the text.
         new_ids = {id(t) for t in new_alignment_tokens}
-        boundaries = set()
+        boundaries = set(starts)
         for k, token in enumerate(all_alignment_tokens):
             if id(token) in new_ids:
                 boundaries.add(token["end"])
@@ -626,10 +668,19 @@ class AlignmentProcessor:
             # there past a line break stands for this one.
             if blank(hit[0], b) or blank(b, hit[1]):
                 continue
-            right = uuid7()
-            batch.tokens.split(hit[2], b, id=right)
-            sentences.append([b, hit[1], right])
-            hit[1] = b
+            made = uuid7()
+            if only_new(hit[0], b):
+                # The left piece is new text alone (a transcription put in
+                # front of a sentence's own text): the sentence keeps its id,
+                # translation, notes and comments on its own text, the right
+                # half (REV-ASR R1).
+                batch.tokens.split(hit[2], b, id=made, keep='right')
+                sentences.append([hit[0], b, made])
+                hit[0] = b
+            else:
+                batch.tokens.split(hit[2], b, id=made)
+                sentences.append([b, hit[1], made])
+                hit[1] = b
             sentences.sort()
 
     def _create_sentences_from_alignment_tokens(self, alignment_tokens: List[Dict], text_id: str, 

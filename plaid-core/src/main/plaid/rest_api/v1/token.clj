@@ -261,17 +261,22 @@
                            "transaction, the relations the split leaves crossing. <body>id</body>, optional, is the "
                            "new right token's id, a "
                            "UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 "
-                           "and <body>id-taken</body>.")
+                           "and <body>id-taken</body>. <body>keep</body>, optional, <body>\"left\"</body> (the default) or "
+                           "<body>\"right\"</body>: with <body>\"right\"</body> the original token (its id, spans, "
+                           "vocab-links, comments and metadata) becomes the right half, and the new token, whose id is "
+                           "returned and named by <body>id</body>, is the left half. Descendants split by the cascade "
+                           "keep theirs on the left.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
              :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map
                                  [:id {:optional true} :uuid]
+                                 [:keep {:optional true} [:enum "left" "right"]]
                                  [:position int?]]}
-             :handler (fn [{{{:keys [token-id]} :path {:keys [id position]} :body} :parameters db :db user-id :user/id :as request}]
+             :handler (fn [{{{:keys [token-id]} :path {:keys [id keep position]} :body} :parameters db :db user-id :user/id :as request}]
                         (let [doc-id (get-document-id request)
                               {:keys [success code extra] :as result}
-                              (tok/split db token-id position user-id {:id id})]
+                              (tok/split db token-id position user-id {:id id :keep (some-> keep keyword)})]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 201 :body {:id extra}}
