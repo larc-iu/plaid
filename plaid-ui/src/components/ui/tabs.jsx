@@ -194,7 +194,7 @@ TabsList.displayName = TabsPrimitive.List.displayName;
 const triggerClasses = (className) =>
   cn(
     'inline-flex items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-3 py-1.5 text-sm font-medium transition-colors',
-    'hover:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
+    'hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
     'data-[state=active]:border-primary data-[state=active]:text-foreground',
     'no-underline',
     className,

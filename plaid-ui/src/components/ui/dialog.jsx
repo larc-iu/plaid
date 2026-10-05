@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { useFocusReturn } from '../../lib/focusReturn.js';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -20,33 +21,43 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-const DialogContent = React.forwardRef(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg',
-        // A centered `fixed` box taller than the viewport overflows off BOTH
-        // ends at once, and page scroll cannot reach either — the footer
-        // buttons simply become unclickable. Cap the height and let the
-        // dialog scroll itself. A dialog that wants a pinned header/footer
-        // overrides with `overflow-y-hidden` + grid rows and scrolls its own
-        // body instead (see AutoAnalyzeDialog).
-        'max-h-[calc(100dvh-2rem)] overflow-y-auto',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+const DialogContent = React.forwardRef(
+  ({ className, children, onCloseAutoFocus, ...props }, ref) => {
+    // Most dialogs have no Trigger to go back to (focusReturn.js).
+    const back = useFocusReturn(ref);
+    return (
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Content
+          ref={back.ref}
+          className={cn(
+            'fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg',
+            // A centered `fixed` box taller than the viewport overflows off BOTH
+            // ends at once, and page scroll cannot reach either — the footer
+            // buttons simply become unclickable. Cap the height and let the
+            // dialog scroll itself. A dialog that wants a pinned header/footer
+            // overrides with `overflow-y-hidden` + grid rows and scrolls its own
+            // body instead (see AutoAnalyzeDialog).
+            'max-h-[calc(100dvh-2rem)] overflow-y-auto',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            className,
+          )}
+          onCloseAutoFocus={(event) => {
+            onCloseAutoFocus?.(event);
+            if (!event.defaultPrevented) back.onClose(event);
+          }}
+          {...props}
+        >
+          {children}
+          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    );
+  },
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }) => (
