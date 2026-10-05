@@ -38,6 +38,35 @@ const Late = ({ title }) => {
   return ready ? <h1>{title}</h1> : <p>Loading</p>;
 };
 
+// A page whose tab strip is its own, drawn afresh on every tab (ud, umr).
+const Strip = ({ on }) => (
+  <>
+    <h1>Project</h1>
+    <div role="tablist">
+      {['t1', 't2'].map((t) => (
+        <button key={t} role="tab" aria-selected={t === on} data-tab={t}>
+          {t}
+        </button>
+      ))}
+    </div>
+  </>
+);
+
+// A page that holds focus for a moment, then lets it go.
+const Flicker = () => {
+  const [held, setHeld] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setHeld(false), 20);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <>
+      <h1>Flicker</h1>
+      {held && <input aria-label="Brief" autoFocus />}
+    </>
+  );
+};
+
 const mount = () =>
   renderComponent(
     <StrictMode>
@@ -55,6 +84,9 @@ const mount = () =>
                 </>
               }
             />
+            <Route path="/t1" element={<Strip key="t1" on="t1" />} />
+            <Route path="/t2" element={<Strip key="t2" on="t2" />} />
+            <Route path="/flicker" element={<Flicker />} />
           </Routes>
         </Shell>
       </MemoryRouter>
@@ -101,6 +133,25 @@ describe('useRouteFocus', () => {
     const view = await mount();
     focusMain(view.container.querySelector('main'));
     expect(document.activeElement.textContent).toBe('Page A');
+    await view.unmount();
+  });
+
+  it("puts focus on the new page's selected tab when a tab of the old strip had it", async () => {
+    const view = await mount();
+    await act(async () => go('/t1'));
+    await settle();
+    await act(async () => view.container.querySelector('[data-tab=t1]').focus());
+    await act(async () => go('/t2'));
+    await settle();
+    expect(document.activeElement.getAttribute('data-tab')).toBe('t2');
+    await view.unmount();
+  });
+
+  it('counts focus the page held and lost as lost, and goes to the heading', async () => {
+    const view = await mount();
+    await act(async () => go('/flicker'));
+    await settle(80);
+    expect(document.activeElement.textContent).toBe('Flicker');
     await view.unmount();
   });
 });

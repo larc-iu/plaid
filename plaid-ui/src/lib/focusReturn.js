@@ -55,6 +55,15 @@ function listen() {
 
 listen();
 
+/**
+ * The element that had focus last, even one since removed (a tab of a strip
+ * that a route change drew afresh), or null.
+ */
+export function lastFocusedElement() {
+  for (let i = recent.length - 1; i >= 0; i -= 1) if (recent[i]) return recent[i].el;
+  return null;
+}
+
 /** What had focus, newest last, as the dialog opens. */
 const focusSnapshot = () => recent.slice();
 

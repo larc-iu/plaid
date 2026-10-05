@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { lastFocusedElement } from '../lib/focusReturn.js';
 
 // Where focus goes when the page changes.
 //
@@ -8,8 +9,19 @@ import { useEffect, useRef } from 'react';
 // once it is drawn, unless something on the new page already took focus (a
 // text box opened for typing, a settings menu that stayed). Only the path
 // counts: a tab or a filter kept in the query string is the same page.
+//
+// Where a tab strip is a set of paths (ud and umr), every tab is a new page
+// that draws its own strip, so the tab that had focus is gone. Focus then goes
+// to the new page's selected tab, and the arrows go on walking the strip.
+//
+// A slow page is waited for, and focus that the old page held and lost on the
+// way counts as lost. A click or a key from the reader ends the wait.
 
-const WAIT_MS = 3000;
+const WAIT_MS = 10000;
+
+/** The selected tab of the page's tab strip. */
+const selectedTab = (main) =>
+  main?.querySelector('[role=tablist] [role=tab][aria-selected=true]') ?? null;
 
 /** The page's main heading, or the main region itself when it has none. */
 const mainTarget = (main) => main?.querySelector('h1') ?? null;
@@ -41,34 +53,48 @@ export function useRouteFocus(pathname, mainRef) {
     seen.current = pathname;
     const main = mainRef.current;
     if (!main) return undefined;
+    // A tab of a strip that this change took away had focus.
+    const was = lastFocusedElement();
+    const fromTab = !!was && !was.isConnected && was.getAttribute?.('role') === 'tab';
     let done = false;
     let observer = null;
     let timer = null;
+    const doc = main.ownerDocument;
     const stop = () => {
       done = true;
       observer?.disconnect();
       clearTimeout(timer);
+      doc.removeEventListener('pointerdown', stop, true);
+      doc.removeEventListener('keydown', stop, true);
     };
     let start = null;
-    const attempt = () => {
+    const attempt = (last = false) => {
       if (done) return;
-      if (placed(main)) return stop();
+      // The new page put focus somewhere: wait, in case the old page's element
+      // it really was goes away.
+      if (placed(main)) return;
       // The reader moved on (into the header, say) while the page loaded.
       const at = document.activeElement;
       if (at && at !== start && at !== document.body) return stop();
-      const heading = mainTarget(main);
-      if (!heading) return;
+      let target = fromTab ? selectedTab(main) : null;
+      if (!target && (!fromTab || last)) target = mainTarget(main);
+      if (!target) return;
       stop();
-      focusQuietly(heading);
+      focusQuietly(target);
     };
     // After this render's own effects (a field's autoFocus) have run.
     const frame = requestAnimationFrame(() => {
       start = document.activeElement;
       attempt();
       if (done) return;
-      observer = new MutationObserver(attempt);
+      observer = new MutationObserver(() => attempt());
       observer.observe(main, { childList: true, subtree: true });
-      timer = setTimeout(stop, WAIT_MS);
+      doc.addEventListener('pointerdown', stop, true);
+      doc.addEventListener('keydown', stop, true);
+      timer = setTimeout(() => {
+        attempt(true);
+        stop();
+      }, WAIT_MS);
     });
     return () => {
       cancelAnimationFrame(frame);
