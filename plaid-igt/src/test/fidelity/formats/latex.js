@@ -1,9 +1,12 @@
 // The LaTeX book (src/export/latexBook.js), checked as an export only. The preset is judged with
-// everything on: every orthography and field selected and the document metadata included.
+// everything on: every orthography and field selected, the document metadata included, and the
+// vocabulary chapter with every vocabulary and every entry field ticked (Status and Morph Type
+// start off and are ticked here), listing the entries the texts use, which is the default.
 // "Carried" means the information appears in the compiled book. The export is one numbered
-// ExPex example per sentence and one chapter per document, so most of what a project holds has
-// no place in it. The fidelity validator (e2e/fidelity/validators.mjs) compiles the bundle with
-// LuaLaTeX when one is installed.
+// ExPex example per sentence and one chapter per document, then one vocabulary chapter per
+// vocabulary, so most of what a project holds has no place in it. A linked word or morpheme in
+// the examples is an invisible PDF link to its entry in the chapter. The fidelity validator
+// (e2e/fidelity/validators.mjs) compiles the bundle with LuaLaTeX when one is installed.
 
 const inherent = (why) => ({ carried: false, kind: 'inherent', why });
 const foreign = (why) => ({ carried: false, kind: 'foreign', why });
@@ -13,8 +16,8 @@ const undecided = (why) => ({ carried: false, kind: 'undecided', why });
 const PROJECT_CONFIG = inherent(
   'The book is the texts. Project configuration is not written, except the project name as its title.',
 );
-const VOCABULARY = inherent(
-  'The book is the texts. A vocabulary has no chapter, and the export reads none.',
+const VOCAB_CONFIG = inherent(
+  'The vocabulary chapter prints entries and their values. How a vocabulary is set up is not written.',
 );
 const PROVENANCE = inherent(
   'Values are printed without any mark of who or what made them. A printed book has no place for provenance.',
@@ -27,8 +30,9 @@ const GUIDELINES = ruled(
   'Guidelines go into the native archive only.',
   'runExport.js: "The project\'s annotation manual, on the same terms as comments: the native archive only." plaid_guidelines.md, 2026-09-15.',
 );
-const ENTRY_TIER = undecided(
-  'No line names the entry a word or morpheme is linked to, and nothing marks a multi-word expression. The Analyze tab shows both, and an example line could too.',
+const UNDECLARED = ruled(
+  'Entry metadata no field declares is not printed.',
+  'user, 2026-09-17: metadata no field declares is exported by no format except the native archive (plaid_fidelity_campaign.md).',
 );
 
 export default {
@@ -53,7 +57,10 @@ export default {
       how: 'A description of a value the texts use in small caps is its meaning in the abbreviations chapter. A value no text uses is not listed.',
     },
     'project.tagsetOrdered': PROJECT_CONFIG,
-    'project.languageObject': PROJECT_CONFIG,
+    'project.languageObject': {
+      carried: 'changed',
+      how: "Not written. The language's tag (else its ISO 639-3 code) sets the order of the entries in the vocabulary chapter, and a tag the collator cannot read gives the root order.",
+    },
     'project.languageMeta': PROJECT_CONFIG,
     'project.languageCoordinates': PROJECT_CONFIG,
     'project.speakers': PROJECT_CONFIG,
@@ -115,50 +122,158 @@ export default {
     ),
 
     // Vocabularies: their schema
-    'vocab.linked': VOCABULARY,
-    'vocab.second': VOCABULARY,
-    'vocab.customField': VOCABULARY,
-    'vocab.fieldNotInline': VOCABULARY,
-    'vocab.fieldTagset': VOCABULARY,
-    'vocab.fieldLang': VOCABULARY,
-    'vocab.fieldMultilingual': VOCABULARY,
-    'vocab.fieldItemRef': VOCABULARY,
-    'vocab.fieldItemRefMany': VOCABULARY,
-    'vocab.fieldEntryScope': VOCABULARY,
-    'vocab.customTagset': VOCABULARY,
+    'vocab.linked': {
+      carried: 'changed',
+      how: 'A chapter at the end of the book, after the texts, headed "Vocabulary", listing the entries the texts link to (a headword with all its senses when any of them is linked), or every entry when the preset\'s Entries is All. The chapter can be switched off, and a vocabulary with nothing to list is left out.',
+    },
+    'vocab.second': {
+      carried: 'changed',
+      how: 'Each vocabulary is a chapter of its own, headed by the vocabulary\'s name. A vocabulary with nothing to list is left out, and when only one is left its chapter is headed "Vocabulary".',
+    },
+    'vocab.customField': {
+      carried: 'changed',
+      how: 'A value prints after the gloss under the field\'s name ("Register: colloquial."), in the vocabulary\'s field order. The field itself is not written.',
+    },
+    'vocab.fieldNotInline': inherent(
+      'A display setting. Every chosen field prints the same way in the chapter.',
+    ),
+    'vocab.fieldTagset': inherent(
+      'The tagset is not written. A value of the field prints as is, like any other.',
+    ),
+    'vocab.fieldLang': {
+      carried: 'changed',
+      how: 'The writing system shows only as the suffix on the field\'s name ("Source (en): ..."). A value whose letters read right to left is set in its own direction.',
+    },
+    'vocab.fieldMultilingual': {
+      carried: 'changed',
+      how: 'The field prints as a field of its own under its name with the suffix ("Gloss (fr): chien."), in the vocabulary\'s field order, not beside the field it translates.',
+    },
+    'vocab.fieldItemRef': {
+      carried: 'changed',
+      how: "The value prints under the field's name as the target entry's form with its number (kai₁). It is text, not a link, and the target is not listed for it.",
+    },
+    'vocab.fieldItemRefMany': {
+      carried: 'changed',
+      how: "The targets print under the field's name as their forms with their numbers, joined with commas. They are text, not links.",
+    },
+    'vocab.fieldEntryScope': {
+      carried: 'changed',
+      how: 'The field prints on the headword, and on a sense only when the sense holds a value in it. The scope itself is not written.',
+    },
+    'vocab.customTagset': VOCAB_CONFIG,
     'vocab.foreignConfig': foreign("plaid-dict's publication record on a vocabulary."),
-    'vocab.duplicateName': VOCABULARY,
-    'vocab.fieldAliasName': VOCABULARY,
+    'vocab.duplicateName': {
+      carried: 'changed',
+      how: 'Each vocabulary with entries to list is a chapter of its own, and both chapters carry the same heading, so nothing on the page tells them apart.',
+    },
+    'vocab.fieldAliasName': {
+      carried: true,
+      where: 'the vocabulary chapter, the value under the field\'s own name ("Number: sg.")',
+    },
 
     // Vocabularies: entries
-    'item.gloss': VOCABULARY,
-    'item.pos': VOCABULARY,
-    'item.morphType': VOCABULARY,
-    'item.definition': VOCABULARY,
-    'item.status': VOCABULARY,
-    'item.lexemeForm': VOCABULARY,
-    'item.customFieldValue': VOCABULARY,
-    'item.multilingualValue': VOCABULARY,
-    'item.itemRefValue': VOCABULARY,
-    'item.itemRefManyValue': VOCABULARY,
-    'item.sense': VOCABULARY,
-    'item.subsense': VOCABULARY,
-    'item.senseOrder': VOCABULARY,
-    'item.homonyms': VOCABULARY,
-    'item.homographNumber': VOCABULARY,
-    'item.exampleCorpus': VOCABULARY,
-    'item.exampleText': VOCABULARY,
-    'item.flexIdentity': VOCABULARY,
-    'item.provenance': VOCABULARY,
-    'item.zeroMorph': VOCABULARY,
-    'item.unlinked': VOCABULARY,
-    'item.extraMetadata': VOCABULARY,
-    'item.markupChars': VOCABULARY,
-    'item.surroundingWhitespace': VOCABULARY,
-    'item.offTagset': VOCABULARY,
-    'item.formNormalization': VOCABULARY,
-    'item.containerHeadword': VOCABULARY,
-    'item.exampleStale': VOCABULARY,
+    'item.gloss': {
+      carried: true,
+      where:
+        'the vocabulary chapter, in quotes right after the form, its capitalized parts in small caps by the rule the glosses of the texts follow',
+    },
+    'item.pos': {
+      carried: true,
+      where: 'the vocabulary chapter, under "POS"',
+    },
+    'item.morphType': {
+      carried: 'changed',
+      how: 'Off by default. When the preset ticks Morph Type, it prints under "Morph Type" by its name on screen, and a stem or root prints nothing. Whether the entry is an affix also decides how its gloss is set in small caps, and its morph type sets the joints of the morpheme line in the texts (link.entryMorphType).',
+    },
+    'item.definition': {
+      carried: true,
+      where: 'the vocabulary chapter, under "Definition"',
+    },
+    'item.status': {
+      carried: true,
+      where:
+        'the vocabulary chapter, under "Status", when the preset ticks it. It starts off, as a status says how far editing has got rather than anything about the word.',
+    },
+    'item.lexemeForm': {
+      carried: true,
+      where: 'the vocabulary chapter, under "Lexeme Form"',
+    },
+    'item.customFieldValue': {
+      carried: true,
+      where: "the vocabulary chapter, under the field's name",
+    },
+    'item.multilingualValue': {
+      carried: true,
+      where: 'the vocabulary chapter, under the field\'s name with its suffix ("Gloss (fr)")',
+    },
+    'item.itemRefValue': {
+      carried: 'changed',
+      how: 'The target prints as its form with its number, as text. Which entry it is shows only through that name, and the target is listed only when the texts use it (or under All).',
+    },
+    'item.itemRefManyValue': {
+      carried: 'changed',
+      how: 'The targets print as their forms with their numbers, joined with commas, as text.',
+    },
+    'item.sense': {
+      carried: 'changed',
+      how: 'A sense prints under its headword by its whole number (1.1), with its own form only when it is spelled unlike the headword, then its fields and examples.',
+    },
+    'item.subsense': {
+      carried: 'changed',
+      how: 'A sense of a sense prints after its parent, in the same run, by its whole number (1.2.1). Its depth shows only in the number.',
+    },
+    'item.senseOrder': {
+      carried: 'changed',
+      how: 'The senses print in their order, and the order shows only in their numbers. The stored order value is not written.',
+    },
+    'item.homonyms': {
+      carried: 'changed',
+      how: 'Each headword spelled the same prints with its number as a subscript (perro₁), in the order of their numbers, and a link from the texts goes to the right one.',
+    },
+    'item.homographNumber': {
+      carried: 'changed',
+      how: 'The stored number orders the headwords spelled the same, and each prints with its place in that order as a subscript, the number the app shows, which can differ from the stored one (a headword stored as 2 beside one with no number prints as 1, the other as 2). A headword alone prints no number, or 1 when it has senses.',
+    },
+    'item.exampleCorpus': {
+      carried: 'changed',
+      how: 'A promoted example prints as the number of its example in the book, chapter and example in parentheses after the fields of the entry ("(4.1)"), a link to it in the PDF. One whose sentence, word or morpheme is not in the book is left out.',
+    },
+    'item.exampleText': undecided(
+      "An example stored as text and translation (a FLEx import's) is not printed: the chapter lists only examples the book holds. It could print the text and its translation.",
+    ),
+    'item.flexIdentity': inherent("FLEx's own guids name nothing a reader of the book can use."),
+    'item.provenance': PROVENANCE,
+    'item.zeroMorph': {
+      carried: true,
+      where: 'the vocabulary chapter, ∅ as the headword form',
+    },
+    'item.unlinked': {
+      carried: 'changed',
+      how: "Listed only when the preset's Entries is All. By default the chapter lists the entries the texts link to, so an entry no text uses is left out.",
+    },
+    'item.extraMetadata': UNDECLARED,
+    'item.markupChars': {
+      carried: 'changed',
+      how: 'A tab or line break prints as a space, a leading double quote prints as is, and each LaTeX special character is escaped so it prints as itself (domain/tex.js texLine and texEscape).',
+    },
+    'item.surroundingWhitespace': inherent(
+      'Space at the edge of a form or value is not printed, and a run of spaces inside one prints as one.',
+    ),
+    'item.offTagset': {
+      carried: true,
+      where: 'the vocabulary chapter, printed as is, like any other value',
+    },
+    'item.formNormalization': {
+      carried: 'changed',
+      how: 'Both headwords are listed, each as stored, and they print alike. They get no homograph numbers, since the app numbers only forms with the same code points, so nothing on the page tells them apart.',
+    },
+    'item.containerHeadword': {
+      carried: true,
+      where: 'the vocabulary chapter, the headword with no values of its own, then its senses',
+    },
+    'item.exampleStale': inherent(
+      'A promoted example whose token is gone has no example in the book to point at, so it is left out.',
+    ),
 
     // Documents
     'document.metadataConfigured': {
@@ -401,14 +516,36 @@ export default {
     ),
 
     // Vocabulary links
-    'link.word': ENTRY_TIER,
-    'link.morpheme': ENTRY_TIER,
-    'link.mwe': ENTRY_TIER,
-    'link.mweDiscontinuous': ENTRY_TIER,
-    'link.mweAcrossSentences': ENTRY_TIER,
-    'link.onSentence': ENTRY_TIER,
-    'link.toSense': ENTRY_TIER,
-    'link.secondVocabulary': ENTRY_TIER,
+    'link.word': {
+      carried: 'changed',
+      how: "The word on the word line is a PDF link to its entry in the vocabulary chapter. Nothing marks the link on the page, and it is there only when the chapter is on and lists the entry's vocabulary.",
+    },
+    'link.morpheme': {
+      carried: 'changed',
+      how: "The morpheme on the morpheme line is a PDF link to its entry in the vocabulary chapter, whatever its spelling. Nothing marks the link on the page. In a sentence whose morpheme line is left out, a word that is its one morpheme links to that morpheme's entry from the word line. Only when the chapter is on and lists the entry's vocabulary.",
+    },
+    'link.mwe': {
+      carried: 'changed',
+      how: "Each word of the expression links in the PDF to the expression's entry, unless the word has a listed entry of its own. Nothing on the page marks the expression or the links.",
+    },
+    'link.mweDiscontinuous': {
+      carried: 'changed',
+      how: "The expression's own words link to its entry, the word between them does not. Nothing on the page marks the expression or the links.",
+    },
+    'link.mweAcrossSentences': inherent(
+      'The entry is listed in the vocabulary chapter, but no word links to it. The book is laid out by sentence, and like the Analyze tab it places an expression only in a sentence that holds two of its words.',
+    ),
+    'link.onSentence': undecided(
+      'The entry is listed in the vocabulary chapter as used, but nothing in the example links to it or names it. The example number could link to it.',
+    ),
+    'link.toSense': {
+      carried: 'changed',
+      how: 'The word or morpheme links in the PDF to the sense, which the vocabulary chapter lists under its headword by its number (1.1). Nothing marks the link on the page.',
+    },
+    'link.secondVocabulary': {
+      carried: 'changed',
+      how: "Each link goes to its entry in its own vocabulary's chapter. Nothing on the page says which vocabulary a word or morpheme is linked into.",
+    },
     'link.provHuman': PROVENANCE,
     'link.provMachine': PROVENANCE,
     'link.provContributed': PROVENANCE,
@@ -417,11 +554,11 @@ export default {
     'link.provProb': PROVENANCE,
     'link.provDetail': PROVENANCE,
     'link.onSegment': inherent(
-      'A segment has no lines of its own in a book laid out by sentence, so nothing could name the entry linked to it.',
+      'The entry is listed in the vocabulary chapter as used, but a segment has no lines of its own in a book laid out by sentence, so nothing links to it.',
     ),
     'link.entryMorphType': {
       carried: 'changed',
-      how: "The entry's morph type shows only through the joint beside the morpheme: = when it is a clitic, - otherwise. The export reads no vocabulary, so the joint follows the morph type the document GET's embedded link carries, else the morpheme's own.",
+      how: "The entry's morph type shows in the texts only through the joint beside the morpheme: = when it is a clitic, - otherwise. The joint follows the morph type the document GET's embedded link carries, else the morpheme's own. The vocabulary chapter prints it only when the preset ticks Morph Type (item.morphType).",
     },
 
     // Relations (plaid-ud)
