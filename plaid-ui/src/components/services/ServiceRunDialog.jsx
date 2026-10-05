@@ -47,6 +47,8 @@ export function ServiceRunDialog({
           on screen no matter how many options the chosen method declares. */}
       <DialogContent
         className={`${className} grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-hidden`}
+        // The footer has a Close of its own, so the corner one says what it closes.
+        closeLabel={typeof title === 'string' ? `Close ${title}` : 'Close dialog'}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

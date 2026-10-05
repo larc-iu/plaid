@@ -932,7 +932,11 @@ export const BulkAddDialog = ({
       }}
     >
       {/* The review step carries a column per field and earns the extra width. */}
-      <DialogContent className={step === 'review' ? 'max-w-4xl' : 'max-w-2xl'}>
+      <DialogContent
+        className={step === 'review' ? 'max-w-4xl' : 'max-w-2xl'}
+        // A stopped import has a Close in its footer too.
+        closeLabel="Close import"
+      >
         <DialogHeader>
           <DialogTitle>
             {step === 'running' ? (failure ? 'Import stopped' : 'Importing') : STEPS[step].title}
