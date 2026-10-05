@@ -29,10 +29,12 @@ vi.mock('@ui/hooks/useServiceSpot.js', () => ({
   }),
 }));
 const cut = vi.hoisted(() => ({ annotations: 0, links: 0 }));
+const underWords = vi.hoisted(() => ({ annotations: 0, links: 0 }));
+const splitWord = vi.hoisted(() => ({ annotations: 0, links: 0 }));
 vi.mock('../../../domain/annotationLoss.js', () => ({
   countAnnotationLossForWord: () => 0,
-  countSubWordAnnotationLoss: () => 0,
-  countSplitWordLoss: () => 0,
+  countSubWordAnnotationLoss: () => underWords,
+  countSplitWordLoss: () => splitWord,
   countReTokenizeLoss: () => ({ annotations: 0, links: 0 }),
   countReTokenizeCut: () => cut,
 }));
@@ -50,7 +52,7 @@ const mount = async () => {
     project: { id: 'p1' },
     layerInfo: {
       primaryTextLayer: { id: 'tl' },
-      primaryTokenLayer: { id: 'wl' },
+      primaryTokenLayer: { id: 'wl', tokens: [{ id: 'w1', begin: 0, end: 7 }] },
       sentenceTokenLayer: { id: 'sl' },
     },
     sentences: [],
@@ -58,6 +60,8 @@ const mount = async () => {
     _reload: vi.fn(async () => {}),
     sentenceSplitLoss: vi.fn(() => ({ annotations: 0, links: 0 })),
     splitSentence: vi.fn(async () => true),
+    splitToken: vi.fn(async () => true),
+    body: 'quickly',
     subscribe: () => () => {},
     getSnapshot: () => 0,
   };
@@ -101,10 +105,11 @@ describe('a Tokenize run that failed', () => {
 
 // REV-N5-CORE F3: a tokenizer service resplitting the one sentence can cut
 // relations a layer keeps inside one sentence. It asks first, with the most
-// the new breaks can take, and runs without leave to overwrite when the reset
-// itself deletes nothing.
+// the new breaks can take, and runs on the answer with leave to overwrite:
+// the service refuses to cut a person's relation without it (D7-FAKES), so
+// a run asked only about the cut was refused after the person said yes.
 describe('a Tokenize run whose new breaks can cut relations', () => {
-  it('asks first, and runs on the answer', async () => {
+  it('asks first, and runs on the answer with leave to cut', async () => {
     requestService.mockReset();
     requestService.mockResolvedValue({});
     cut.annotations = 3;
@@ -114,7 +119,7 @@ describe('a Tokenize run whose new breaks can cut relations', () => {
     expect(ops().pendingTokenize).toMatchObject({ cut: 3, annotations: 0, links: 0 });
     await view.step(() => ops().confirmPendingTokenize());
     expect(requestService).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(requestService.mock.calls[0])).not.toContain('overwrite');
+    expect(JSON.stringify(requestService.mock.calls[0])).toContain('"overwrite":true');
     cut.annotations = 0;
     await view.unmount();
   });
@@ -149,6 +154,36 @@ describe('a sentence split', () => {
     await view.step(() => ops().confirmPendingStructural());
     expect(doc.splitSentence).toHaveBeenCalledWith(8);
     expect(ops().pendingStructural).toBe(null);
+    await view.unmount();
+  });
+});
+
+// A word split deletes the word's morphemes and what is on them. Another
+// layer's token under the word is split with it and kept, so the question
+// counts what the split deletes, not what a merge of the word would.
+describe('a word split', () => {
+  it('asks with what the split deletes', async () => {
+    underWords.annotations = 5;
+    splitWord.annotations = 2;
+    splitWord.links = 1;
+    const { doc, view, ops } = await mount();
+    await view.step(() => ops().splitToken('w1', 2));
+    expect(doc.splitToken).not.toHaveBeenCalled();
+    expect(ops().pendingStructural).toMatchObject({ kind: 'split', annotations: 2, links: 1 });
+    await view.step(() => ops().confirmPendingStructural());
+    expect(doc.splitToken).toHaveBeenCalledWith('w1', 2);
+    Object.assign(underWords, { annotations: 0 });
+    Object.assign(splitWord, { annotations: 0, links: 0 });
+    await view.unmount();
+  });
+
+  it('splits at once when the split deletes nothing', async () => {
+    underWords.annotations = 5;
+    const { doc, view, ops } = await mount();
+    await view.step(() => ops().splitToken('w1', 2));
+    expect(doc.splitToken).toHaveBeenCalledWith('w1', 2);
+    expect(ops().pendingStructural).toBe(null);
+    underWords.annotations = 0;
     await view.unmount();
   });
 });

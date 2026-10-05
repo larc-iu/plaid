@@ -321,11 +321,12 @@ export const useTokenOperations = () => {
   };
   const confirmPendingTokenize = async () => {
     if (!pendingTokenize) return;
-    const { serviceId, annotations, links } = pendingTokenize;
+    const { serviceId, annotations, links, cut } = pendingTokenize;
     setPendingTokenize(null);
-    // Overwrite is the service's leave to delete what is on the old tokens.
-    // Relations the new breaks cut go by the layer's own rule either way.
-    return runServiceTokenize(serviceId, { overwrite: annotations + links > 0 });
+    // Overwrite is the service's leave to delete a person's work: what is on
+    // the old tokens, and the relations the new breaks cut, which the service
+    // refuses to cut without it. The question counted both.
+    return runServiceTokenize(serviceId, { overwrite: annotations + links + (cut || 0) > 0 });
   };
   const cancelPendingTokenize = () => setPendingTokenize(null);
 
