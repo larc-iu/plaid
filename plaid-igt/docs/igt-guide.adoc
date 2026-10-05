@@ -1237,6 +1237,7 @@ Each entry is one action as you performed it, such as "Merge morphemes" or "Toke
 An edit made in a cell names the field, the word or morpheme, the sentence and the value, such as `Gloss of "dogs" in sentence 3: DOG`.
 Selecting an entry shows the document as it was right after that action.
 An entry made of several changes has an arrow you can expand to see, and select, each individual change.
+An entry of more than 100 changes lists its first 100, and **Show later actions** above them lists the next 100.
 
 Actions performed by a service, such as a transcription, show up the same way, under the service's name and naming the person who ran it: `LLM translation (12 sentences), requested by Ana`.
 A change made through an API token names the token too, so a script's work is told apart from yours.

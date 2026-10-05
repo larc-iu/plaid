@@ -593,7 +593,7 @@ Every change is recorded.
 **Escape** closes it, and focus goes back to **History**.
 Each entry is one action as you performed it (for example "Update upos", "Create relation", or a parser run), even when it was made up of several underlying changes.
 A parser run is listed under the service's name and names the person who ran it: `Stanza UD parse (en), requested by Ana`.
-Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
+Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change. An entry of more than 100 changes lists its first 100, and **Show later actions** above them lists the next 100.
 Historical views are **read-only**, on every tab that can show them: Annotate, Export and Details.
 The Text Editor and Comments are not shown at a past state.
 **Return to current** goes back to the live document.
