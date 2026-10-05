@@ -119,8 +119,10 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     ];
   }, [targets]);
 
+  const results = usePreviewFocus([find, matchType, repl, targetId].join('\u0000'));
   const preview = async () => {
     if (!find || error || !target) return;
+    results.begin();
     const plan = await r.run(
       'Preview',
       (onProgress) => planField(client, project, target, { find, matchType, apply }, onProgress),
@@ -145,7 +147,6 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
-  const results = usePreviewFocus();
   // What an Apply sends: the selected rows a stopped Apply has not already
   // sent or skipped (`applied`), so the count and the confirm say what is left.
   const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];

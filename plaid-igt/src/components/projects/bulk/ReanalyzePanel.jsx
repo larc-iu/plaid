@@ -29,9 +29,11 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
     return (scope, field) => by.get(`${scope}:${field}`) ?? null;
   }, [layerInfo, project?.config]);
 
+  const results = usePreviewFocus(form);
   const preview = async () => {
     if (!form.trim()) return;
     setTargetSig(null);
+    results.begin();
     const plan = await r.run(
       'Preview',
       (onProgress) => planReanalyze(client, project, layerInfo, form.trim(), onProgress),
@@ -47,7 +49,6 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
-  const results = usePreviewFocus();
   const target = plan?.candidates.find((c) => c.signature === targetSig) ?? null;
   const targetBad = target ? analysisViolations(target.analysis, tagsetFor) : [];
   const targetName = target

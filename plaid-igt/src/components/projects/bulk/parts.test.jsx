@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
@@ -177,23 +178,55 @@ describe('the run line', () => {
 });
 
 describe('a Preview', () => {
-  it('puts focus on the bar over what it found', async () => {
-    let results;
-    const Panel = () => {
-      results = usePreviewFocus();
-      return (
+  // A panel with a Find box: `inputs` is what the search is made of.
+  let results;
+  let setFind;
+  const Panel = () => {
+    const [find, set] = useState('dog');
+    setFind = set;
+    results = usePreviewFocus(find);
+    return (
+      <div>
+        <input aria-label="Find" value={find} onChange={(e) => set(e.target.value)} />
+        <button type="button">Preview</button>
         <ApplyBar count={2} busy={false} summary="" onApply={() => {}} focusRef={results.ref}>
           <span>2 matches</span>
         </ApplyBar>
-      );
-    };
+      </div>
+    );
+  };
+  const find = (c) => c.querySelector('input[aria-label=Find]');
+
+  it('puts focus on the bar over what it found', async () => {
     const view = await renderComponent(<Panel />);
-    expect(document.activeElement).toBe(document.body);
+    find(view.container).focus();
+    results.begin();
     await view.step(() => results.shown());
     const bar = document.activeElement;
     expect(bar.getAttribute('role')).toBe('group');
     expect(bar.getAttribute('aria-label')).toBe('Preview');
     expect(bar.textContent).toContain('2 matches');
+    await view.unmount();
+  });
+
+  it('leaves focus in the Find box when what it holds changed meanwhile', async () => {
+    const view = await renderComponent(<Panel />);
+    find(view.container).focus();
+    results.begin();
+    await view.step(() => setFind('doggy'));
+    await view.step(() => results.shown());
+    expect(document.activeElement).toBe(find(view.container));
+    await view.unmount();
+  });
+
+  it('leaves focus where the person went meanwhile', async () => {
+    const view = await renderComponent(<Panel />);
+    const button = view.container.querySelector('button');
+    button.focus();
+    results.begin();
+    find(view.container).focus();
+    await view.step(() => results.shown());
+    expect(document.activeElement).toBe(find(view.container));
     await view.unmount();
   });
 });

@@ -166,8 +166,10 @@ export const MergePanel = ({ project, client }) => {
 
   const losers = [...chosen].filter((id) => id !== survivor);
 
+  const results = usePreviewFocus([...chosen, survivor].join(' '));
   const preview = async () => {
     if (!canMerge || !survivor || losers.length === 0) return;
+    results.begin();
     const plan = await r.run('Preview', () => planMerge(client, vocabId, losers, survivor), {
       reset: true,
     });
@@ -178,7 +180,6 @@ export const MergePanel = ({ project, client }) => {
   };
 
   const plan = r.plan;
-  const results = usePreviewFocus();
   // The at-a-glance line for an unticked entry: its inline fields (the ones
   // the vocabulary table shows as columns), values only.
   const inlineLine = (it) =>

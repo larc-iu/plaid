@@ -67,8 +67,10 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     [find, matchType, repl],
   );
 
+  const results = usePreviewFocus([find, matchType, repl].join('\u0000'));
   const preview = async () => {
     if (!find || error) return;
+    results.begin();
     const plan = await r.run(
       'Preview',
       (onProgress) =>
@@ -96,7 +98,6 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
-  const results = usePreviewFocus();
   // A row that would empty a word, a form or an entry, or an entry of a
   // vocabulary this person does not maintain, cannot be ticked.
   const selectableRow = (x) =>
