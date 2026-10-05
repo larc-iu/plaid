@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 
 from ..core.args import whole
+from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
 from .project import Sentence, Word, project_new_words, resolve, split_sentences, word_ref
@@ -74,6 +75,18 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
                     'value': joined if joined != keep.value and not refused else None,
                     'delete_ids': [sp.id for sp in spans if sp is not keep]})
     return out
+
+
+def _other_layers(ws: Workspace, doc) -> Dict[str, Any]:
+    """The whole document, every app's layers, for what a reshape takes from
+    the layers this assistant does not read (``core/loss.py``)."""
+    return ws.client.documents.get(doc.id, include_body=True)
+
+
+def _own_layers(ws: Workspace) -> tuple:
+    """The layers this assistant counts on a card itself."""
+    p = ws.project
+    return tuple(i for i in (p.sentence_layer_id, p.word_layer_id, p.morpheme_layer_id) if i)
 
 
 def _blank(value: str) -> bool:
@@ -193,6 +206,11 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     if collapsed:
         note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in collapsed) \
             + ' is dropped: its words become one)'
+    # A layer that keeps its tokens coextensive with the words loses the
+    # merged words' tokens, and what is on them, in the merge's own
+    # transaction.
+    note += loss_note(**count_delete_loss(_other_layers(ws, doc), [w.id for w in words], under=True,
+                                          skip=_own_layers(ws)))
     s = next(s for s in doc.sentences if s.id in sents)
     ws.add_op({'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
                'morpheme_ids': morphs, 'spans': spans, 'links': links,
@@ -210,6 +228,9 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
     words = [(ref, _need(resolve(doc, ref), Word, ref)) for ref in _refs(refs)]
     going = {w.id for _, w in words}
     gone_mwes = set()
+    full = _other_layers(ws, doc) if words else None
+    deleted: List[Word] = []
+    before = {'annotations': 0, 'links': 0}
     for ref, w in words:
         _guard(ws, w, ref)
         had = bool(w.fields or w.link or len(w.morphemes) > 1 or any(m.fields or m.link for m in w.morphemes))
@@ -227,6 +248,14 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
             note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in dropped) + ' goes with it)'
         elif w.mwes:
             note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in w.mwes) + ' is left with its other words)'
+        # Everything nested under the word on the layers this assistant does
+        # not read goes with it, as core cascades the delete. Each row counts
+        # what this word adds to the rows before it, so a relation between
+        # two deleted words is counted once.
+        upto = count_delete_loss(full, [x.id for x in deleted + [w]], skip=_own_layers(ws))
+        note += loss_note(upto['annotations'] - before['annotations'], upto['links'] - before['links'])
+        deleted.append(w)
+        before = upto
         staged.append({'kind': 'delete_word', 'word_id': w.id, 'morpheme_ids': [m.id for m in w.morphemes],
                        'link_ids': [l.id for l in dropped],
                        'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": delete the word token{note}'})
@@ -250,6 +279,10 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     left = doc.body[s.begin:w.begin].strip()
     right = doc.body[w.begin:s.end].strip()
     note = ' (sentence values such as the translation stay with the first part)' if s.fields else ''
+    # A relation a layer keeps inside one sentence goes when the cut leaves
+    # its ends on two sides, in the split's own transaction.
+    note += loss_note(len(other_layers_crossing(_other_layers(ws, doc), ws.project.sentence_layer_id,
+                                                s.id, w.begin)))
     ws.add_op({'kind': 'split_sentence', 'sentence_id': s.id, 'position': w.begin,
                'label': f'{ws.doc_label(doc.id)} {ref}: split before w{n} "{w.surface}" → "{left[:40]}" | "{right[:40]}"{note}'})
     return ws.planned_note(1)
