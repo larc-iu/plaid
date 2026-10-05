@@ -145,15 +145,15 @@ def test_a_stored_edge_role_is_kept_on_that_edge_only():
 
 def test_a_renamed_variable_keeps_what_its_node_and_edges_hold():
     """Text mode reads one variable typed over as the same node
-    (``UmrDocument._renameIn``) and keeps its stored unknown relations. The
-    assistant plans the rename as a delete and a create, and those carry the
-    old node's and edges' own relations, or the assistant refused what the
-    canvas takes."""
+    (``UmrDocument._renameIn``) and keeps its stored unknown relations. So
+    does the assistant: the rename is one ``rename_node``, and the node's
+    attributes and edges stay where they are, so nothing they hold is judged
+    again, or the assistant refused what the canvas takes."""
     w = _with_stored_unknown()
     text = ('(s1b / bark-01\n    :ARG0 (s1e / dog\n        :refer-number singular\n'
             '        :legacy 1)\n    :aspect performance)')
     out = run(w, 'apply_penman', document='Story', sentence=1, text=text)
-    assert any(op['kind'] == 'create_node' and op['var'] == 's1e' for op in w.ops), out
+    assert [(op['kind'], op['var']) for op in w.ops] == [('rename_node', 's1e')], out
     # Kept on the renamed node only: s1b taking it too is still refused.
     w = _with_stored_unknown()
     out = run(w, 'apply_penman', document='Story', sentence=1,
@@ -170,8 +170,7 @@ def test_a_renamed_variable_keeps_what_its_node_and_edges_hold():
     for renamed in (stored.replace('s1d', 's1e'), stored.replace('s1b', 's1c')):
         w = _with_stored_unknown_edge()
         out = run(w, 'apply_penman', document='Story', sentence=1, text=renamed)
-        assert any(op['kind'] == 'create_edge' and op['role'] == ':legacy-arg'
-                   for op in w.ops), (renamed, out)
+        assert [op['kind'] for op in w.ops] == ['rename_node'], (renamed, out)
     # The edge's role, not the node's: a second edge under it is refused.
     w = _with_stored_unknown_edge()
     out = run(w, 'apply_penman', document='Story', sentence=1, text=stored.replace(

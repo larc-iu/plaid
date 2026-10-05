@@ -2,18 +2,18 @@
 
 The rule is plaid-umr's own (``UmrDocument.planPenman``), and it is a rule
 rather than a merge: **nodes are matched by variable and edges by role and
-target**, so renaming a variable is a new node and the old one goes, and
-changing an edge's role is a new edge and the old one goes. Anything else
-would have to guess which of two edits a rewritten graph meant.
+target**, so a variable that goes is a node deleted and one that arrives is a
+node made, and changing an edge's role is a new edge and the old one goes.
+Anything else would have to guess which of two edits a rewritten graph meant.
 
 The text is the ROOT's graph, so only what the root reaches is the text's to
 delete: a second fragment the text never showed stays where it is.
 
-One variable typed over, where text mode would read a rename
-(``UmrDocument._renameIn``), is still planned as a delete and a create here,
-but the create and the edges it re-creates carry what they stand for
-(``renamed_from``, ``renamed_edge``), so the relations the old node and its
-edges already hold are kept as text mode keeps them.
+One variable typed over, where it is plainly the same node (the app's
+``UmrDocument._renameIn``, ported as ``_rename_in``), is a rename, as Text
+mode reads it: one ``rename_node`` op writes the new variable on the node, and
+the rest of the plan reads the node by its new name. The node keeps its
+anchor and words, its edges and its document-level relations.
 
 The ops this returns are the plan's own, one per change, so the card the user
 approves names each of them.
@@ -182,11 +182,25 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         return GraphDiff([], ['The text has no graph.'])
 
     did = doc.id
-    old_by_var = {n.var: n for n in sentence.nodes}
+    renamed, renamed_to = _rename_in(doc, sentence, parsed, reachable_from_root(doc, sentence))
+
+    def name_of(node) -> str:
+        """A node's variable as the text has it: the renamed node answers to
+        its new name everywhere below, so the rest of the plan reads as
+        though it had always been called that (the app's `nameOf`)."""
+        return renamed_to if renamed is not None and node.id == renamed.id else node.var
+
+    old_by_var = {name_of(n): n for n in sentence.nodes}
     new_vars = set(parsed.nodes)
 
     creates: List[Dict[str, Any]] = []
     updates: List[Dict[str, Any]] = []
+    if renamed is not None:
+        updates.append({
+            'kind': 'rename_node', 'document_id': did, 'ref': f's{sentence.index}.{renamed_to}',
+            'span_id': renamed.id, 'var': renamed_to, 'from_var': renamed.var,
+            'umr_set': {'var': renamed_to},
+            'label': f'rename {renamed.var} to {renamed_to}'})
     edges_add: List[Dict[str, Any]] = []
     edges_delete: List[Dict[str, Any]] = []
     orders: List[Dict[str, Any]] = []
@@ -213,7 +227,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                     'label': f'{var} {e["role"]} {e["target"]}'})
             continue
 
-        old_edges = [(e, f'{e.role} {doc.nodes_by_id[e.target].var}')
+        old_edges = [(e, f'{e.role} {name_of(doc.nodes_by_id[e.target])}')
                      for e in old.out
                      if doc.nodes_by_id.get(e.target) is not None
                      and doc.nodes_by_id[e.target].sentence == sentence.index]
@@ -223,7 +237,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         freed: Dict[str, List[int]] = {}
         for edge, key in old_edges:
             if key not in next_by_key:
-                freed.setdefault(doc.nodes_by_id[edge.target].var, []).append(edge.order or 0)
+                freed.setdefault(name_of(doc.nodes_by_id[edge.target]), []).append(edge.order or 0)
         if reorder:
             changed_attrs = _attr_key(old.attrs) != _attr_key(attrs) or \
                 _placed_key(old.attrs) != _placed_key(attrs)
@@ -270,23 +284,6 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                     'source_span_id': old.id,
                     'label': f'{var} {e["role"]} {e["target"]}'})
 
-    renamed, renamed_to = _rename_in(doc, sentence, parsed, reachable_from_root(doc, sentence))
-    if renamed is not None:
-        name_of = {n.id: (renamed_to if n.id == renamed.id else n.var) for n in sentence.nodes}
-        for op in creates:
-            if op['var'] == renamed_to:
-                op['renamed_from'] = renamed.id
-        stored_edges = {(name_of.get(e.source), e.role, name_of.get(e.target)): e
-                        for n in sentence.nodes for e in n.out}
-        for op in edges_add:
-            was = stored_edges.get((op['source_var'], op['role'], op['target_var']))
-            if was is not None:
-                op['renamed_edge'] = was.id
-                # The same relation re-made for the rename: from a node that
-                # stays, it keeps its place rather than going after the rest.
-                if not reorder and op['source_var'] in old_by_var:
-                    op['order'] = was.order
-
     # The ends of a new edge, where both are nodes that already exist. A var
     # the plan is creating is left to the executor, which knows the span id
     # only once the batch that mints it has landed.
@@ -300,7 +297,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     deletes: List[Dict[str, Any]] = []
     gone_ids = set()
     for node in sentence.nodes:
-        if node.id in written and node.var not in new_vars:
+        if node.id in written and name_of(node) not in new_vars:
             gone_ids.add(node.id)
             # The server's cascade: deleting the anchor tokens takes the
             # concept span, every edge on it and every document-level triple
@@ -326,15 +323,15 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                     if op['source'] not in gone_ids and op['target'] not in gone_ids]
 
     root_ops: List[Dict[str, Any]] = []
-    old_root = sentence.roots[0].var if sentence.roots else None
+    old_root = name_of(sentence.roots[0]) if sentence.roots else None
     if parsed.root != old_root:
         for node in sentence.nodes:
-            if node.root and node.var != parsed.root and node.id not in gone_ids:
+            if node.root and name_of(node) != parsed.root and node.id not in gone_ids:
                 root_ops.append({
                     'kind': 'unset_root', 'document_id': did,
-                    'ref': f's{sentence.index}.{node.var}', 'span_id': node.id,
+                    'ref': f's{sentence.index}.{name_of(node)}', 'span_id': node.id,
                     'umr_unset': ('root',),
-                    'label': f'{node.var} is no longer the root'})
+                    'label': f'{name_of(node)} is no longer the root'})
         new_root = old_by_var.get(parsed.root)
         if new_root is None:
             for op in creates:
@@ -354,7 +351,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     closing = set(cycle_edges(parsed))
     for op in edges_add:
         edge = (op['source_var'], op['role'], op['target_var'])
-        if edge in closing and op.get('renamed_edge') is None:
+        if edge in closing:
             return GraphDiff([], [], refused=f'{edge[1]} from {edge[0]} to {edge[2]} would '
                                              f'close a cycle.')
 

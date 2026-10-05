@@ -132,13 +132,18 @@ class Workspace(BaseWorkspace):
         node = None
         if kind == 'set_attrs' and doc is not None:
             node = doc.nodes_by_id.get(op.get('span_id'))
-        elif kind == 'create_node' and doc is not None and op.get('renamed_from'):
-            node = doc.nodes_by_id.get(op.get('renamed_from'))
         stored = {(a.get('rel'), a.get('value')) for a in (node.attrs if node else [])}
         problems = []
         if kind == 'create_node':
             problems += [variable_form_problem(op.get('var')), concept_problem(op.get('concept'))]
             if not op.get('constant') and doc is not None:
+                problems.append(new_variable_problem(op.get('var'), op.get('sentence'),
+                                                     self._taken_variables(doc, replacing)))
+        if kind == 'rename_node':
+            # A new name for a stored node, held to what the app asks of one
+            # (Text mode asks a rename `_newVariableProblem` too).
+            problems.append(variable_form_problem(op.get('var')))
+            if doc is not None:
                 problems.append(new_variable_problem(op.get('var'), op.get('sentence'),
                                                      self._taken_variables(doc, replacing)))
         if kind == 'set_concept':
@@ -167,11 +172,7 @@ class Workspace(BaseWorkspace):
         """Why the node a new edge points at cannot stand under its role, as
         Text mode refuses it (``node_under_attribute_problem``), or None. The
         source's concept is the one the plan gives it (a node it creates or a
-        concept it sets) before the one stored. An edge re-made for a rename
-        keeps what the stored edge held."""
-        was = _stored_edge(doc, op.get('renamed_edge'))
-        if was is not None and was.role == op.get('role'):
-            return None
+        concept it sets) before the one stored."""
         source = op.get('source_var')
         concept = None
         for i, o in enumerate(self.ops + [op]):
@@ -217,13 +218,14 @@ class Workspace(BaseWorkspace):
     def _taken_variables(self, doc: UmrDoc, replacing: Optional[int] = None) -> set:
         """Every variable the document holds once this plan is applied, as far
         as a new name is concerned: what is stored, less what the plan deletes
-        (the batch deletes first), plus what the plan already creates. The op
-        ``replacing`` names is not part of the plan any more."""
+        (the batch deletes first), plus what the plan already creates or
+        renames a node to. The op ``replacing`` names is not part of the plan
+        any more."""
         taken = {n.var for n in doc.nodes_by_id.values() if n.var}
         ops = [o for i, o in enumerate(self.ops)
                if i != replacing and o.get('document_id') == doc.id]
         taken -= {o.get('var') for o in ops if o.get('kind') == 'delete_node'}
-        taken |= {o.get('var') for o in ops if o.get('kind') == 'create_node'}
+        taken |= {o.get('var') for o in ops if o.get('kind') in ('create_node', 'rename_node')}
         return taken
 
     def refuse_unknown_relation(self, op: Dict[str, Any]) -> None:
@@ -236,9 +238,8 @@ class Workspace(BaseWorkspace):
         a relation already stored among that node's attributes is kept (an
         imported file may carry one UMR does not have), and one stored only on
         another node or edge is not. A new edge and a new node hold nothing
-        yet, so everything they bring is judged, unless ``plan_penman`` marks
-        them as a renamed node or an edge re-created for one, which keep what
-        the old node or edge holds, as text mode keeps it through a rename.
+        yet, so everything they bring is judged. A renamed node keeps its
+        edges and attributes where they are, so a rename writes no relation.
         """
         kind = op.get('kind')
         if kind == 'create_triple':
@@ -248,12 +249,9 @@ class Workspace(BaseWorkspace):
             return
         doc = self._docs.get(op.get('document_id'))
         if kind == 'create_edge':
-            was = _stored_edge(doc, op.get('renamed_edge'))
-            written = [(op.get('role'), {was.role} if was is not None else set())]
+            written = [(op.get('role'), set())]
         elif kind == 'create_node':
-            was = doc.nodes_by_id.get(op.get('renamed_from')) if doc is not None else None
-            kept = {a.get('rel') for a in was.attrs} if was is not None else set()
-            written = [(a.get('rel'), kept) for a in op.get('attrs') or []]
+            written = [(a.get('rel'), set()) for a in op.get('attrs') or []]
         elif kind == 'set_attrs':
             node = doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
             kept = {a.get('rel') for a in node.attrs} if node is not None else set()
@@ -386,13 +384,6 @@ def _node(doc: UmrDoc, sentence: Sentence, var: str) -> GNode:
 
 
 # --- planning ------------------------------------------------------------------
-
-def _stored_edge(doc: Optional[UmrDoc], relation_id: Optional[str]):
-    """The stored edge with that id, or None."""
-    if doc is None or not relation_id:
-        return None
-    return next((e for n in doc.nodes_by_id.values() for e in n.out if e.id == relation_id), None)
-
 
 def _staged(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """One tool call's ops, tagged with the call that made them, so a second
@@ -688,6 +679,8 @@ def _replaced_by_scope(ws: Workspace, op: Dict[str, Any]) -> List[str]:
 _NONE = None
 REPLACES = {
     'set_concept': lambda ws, op: [op.get('span_id')],
+    # A new name over the one a person gave the node.
+    'rename_node': lambda ws, op: [op.get('span_id')],
     'unset_root': lambda ws, op: [op.get('span_id')],
     'delete_node': lambda ws, op: [op.get('span_id')] + list(op.get('relation_ids') or []),
     'set_attrs': _replaced_attrs,

@@ -355,6 +355,14 @@ KIND = ok.registry([
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),
            compact_each=('span_id', 'var', 'attrs', 'umr_set', 'ref', 'label'),
            compact_label=_kind_label('set attributes on', ('node', 'nodes'))),
+    # A variable typed over in a graph text and read as a rename: the new name
+    # written on the node itself, as Text mode writes it, so the node keeps its
+    # anchor, its edges and its document-level relations.
+    OpKind('rename_node', ('renamed node', 'renamed nodes'), required=('span_id', 'var'),
+           apply=_apply_span_meta,
+           target=lambda op: ('var', op.get('span_id')), token_keys=('span_id',),
+           compact_each=('span_id', 'var', 'from_var', 'umr_set', 'ref', 'label'),
+           compact_label=_kind_label('rename', _NODE, drop='rename ')),
     OpKind('set_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('root-on', op.get('span_id')), token_keys=('span_id',)),
     OpKind('unset_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
@@ -398,8 +406,8 @@ EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 #: Kinds a graph replacement stages. Everything one ``apply_penman`` call
 #: stages carries ``graph_of``, and the tools refuse a second call over the
 #: same sentence.
-GRAPH_KINDS = ('delete_node', 'delete_edge', 'set_concept', 'set_attrs', 'set_root',
-               'unset_root', 'set_edge_order', 'create_node', 'create_edge')
+GRAPH_KINDS = ('delete_node', 'delete_edge', 'rename_node', 'set_concept', 'set_attrs',
+               'set_root', 'unset_root', 'set_edge_order', 'create_node', 'create_edge')
 
 
 def graphs_of_op(op: Dict[str, Any]) -> set:

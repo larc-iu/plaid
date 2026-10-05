@@ -46,7 +46,11 @@ def test_a_rename_is_judged_as_a_new_name(ws):
     assert "document graph" in out, out
     w = umr_ws(umr_client())
     out = apply(w, '(s2r / run-01\n    :ARG0 (s2x / thing))')
-    assert any(op.get('renamed_from') for op in w.ops), out
+    assert [(op['kind'], op['var']) for op in w.ops] == [('rename_node', 's2x')], out
+    # A rename to a name another node holds is refused as a new node's is.
+    w = umr_ws(umr_client())
+    out = apply(w, '(s2r / run-01\n    :ARG0 (s1d / thing))')
+    assert w.ops == [], out
 
 
 def test_a_stored_name_off_the_convention_is_kept(ws):

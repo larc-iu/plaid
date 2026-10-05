@@ -189,6 +189,39 @@ def test_an_attribute_change_sets_the_attributes_alone(client, ws):
     assert landed(client, ws, 'mc-d')['umr'] == {'var': 's1d', 'attrs': attrs}
 
 
+def _with_self_loop():
+    """The fixture with a `:quote` edge from s2t to itself."""
+    from umr_fixtures import document_raw
+    raw = document_raw()
+    layer = raw['text_layers'][0]['token_layers'][2]['span_layers'][0]
+    layer['relation_layers'][0]['relations'].append(
+        {'id': 'mr-3', 'source': 'mc-t', 'target': 'mc-t', 'value': ':quote',
+         'metadata': {'umr': {'order': 1}}})
+    return umr_client(documents={'umr1': raw})
+
+
+@pytest.mark.parametrize('loop', [False, True])
+def test_a_variable_typed_over_is_renamed_in_place(loop):
+    """One variable typed over, plainly the same node, is a rename as Text mode
+    reads it (``_rename_in``): the new name written on the node itself. Its
+    anchor over "It", its edges (the one to itself too) and its coreference
+    triple all stay. It was a delete and a create: the anchor went, the new
+    node stood over the whole sentence and the triple was lost."""
+    client = _with_self_loop() if loop else umr_client()
+    ws = umr_ws(client)
+    text = ('(s2r / run-01\n    :ARG0 (s2x / thing\n        :quote s2x))' if loop
+            else '(s2r / run-01\n    :ARG0 (s2x / thing))')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 2, 'text': text})
+    assert [(op['kind'], op['span_id'], op['var']) for op in ws.ops] == [
+        ('rename_node', 'mc-t', 's2x')]
+    # One write: the new name on the node, with the approval stamp. No token,
+    # span or relation is deleted or made.
+    [(name, [update])] = applied(client, ws)
+    assert name == 'spans.bulk_update' and update['id'] == 'mc-t'
+    assert {'op': 'set', 'path': ['umr', 'var'], 'value': 's2x'} in update['metadata']
+    assert landed(client, ws, 'mc-t')['umr'] == {'var': 's2x', 'attrs': []}
+
+
 def test_a_dropped_node_is_written_as_deleting_its_anchor_tokens(client, ws):
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
                                    'text': '(s1b / bark-01\n    :aspect performance)'})
