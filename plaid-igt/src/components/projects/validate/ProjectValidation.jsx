@@ -491,7 +491,7 @@ const FieldCount = ({ bad }) => {
   const unlisted = bad.length - flagged;
   if (!bad.length)
     return (
-      <span className="ml-auto flex items-center gap-1.5 text-sm text-success">
+      <span className="ml-auto flex items-center gap-1.5 text-sm text-success-foreground">
         <Check className="h-4 w-4" /> All in the tagset
       </span>
     );

@@ -93,7 +93,7 @@ const actionLabel = (d) => {
 const actionTone = (d) => {
   if (d.action === 'skip') return 'text-muted-foreground';
   if (d.action === 'update' && d.kind === 'conflict') return 'text-warning-foreground';
-  return 'text-success';
+  return 'text-success-foreground';
 };
 
 // Short labels for the per-row choice. The bucket dropdowns say the same thing
@@ -189,7 +189,7 @@ const ValueCell = ({ value, clash, add }) => (
     <span
       className={cn(
         clash && 'font-semibold text-warning-foreground',
-        add && 'font-semibold text-success',
+        add && 'font-semibold text-success-foreground',
       )}
     >
       {value || ''}
@@ -878,7 +878,7 @@ export const BulkAddDialog = ({
                 <span
                   className={cn(
                     'min-w-[4.5rem] text-right text-sm font-semibold tabular-nums',
-                    tone === 'good' && 'text-success',
+                    tone === 'good' && 'text-success-foreground',
                     tone === 'warn' && 'text-warning-foreground',
                     tone === 'muted' && 'text-muted-foreground',
                   )}

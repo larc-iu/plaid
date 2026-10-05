@@ -124,7 +124,7 @@ export const ProjectConfiguration = () => {
   const ambiguousText = !findByRole(textLayers, ROLES.BASELINE) && textLayers.length > 1;
 
   const statusLine = info.isConfigured ? (
-    <p className="text-sm text-success">Every Universal Dependencies layer is set up.</p>
+    <p className="text-sm text-success-foreground">Every Universal Dependencies layer is set up.</p>
   ) : (
     missingLabels && <p className="text-sm text-warning-foreground">Missing: {missingLabels}</p>
   );

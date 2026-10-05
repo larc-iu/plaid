@@ -103,7 +103,7 @@ export const ProjectConfiguration = () => {
   const missingLabels = missingUmrLayerLabels(info.missingLayers).join(', ');
 
   const statusLine = info.isConfigured ? (
-    <p className="text-sm text-success">Every UMR layer is set up.</p>
+    <p className="text-sm text-success-foreground">Every UMR layer is set up.</p>
   ) : (
     missingLabels && <p className="text-sm text-warning-foreground">Missing: {missingLabels}</p>
   );
