@@ -662,7 +662,8 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     Streams the service's progress + result back over a single server-mediated
     response (no broadcast). ``timeout`` is in seconds and measures SILENCE:
     how long the service may say nothing. Every event it sends starts the clock
-    again, so this does not cap a long run. Raises ``RuntimeError`` if no
+    again, so this does not cap a long run. None, 0 or a negative number is no
+    limit, as for every other timeout. Raises ``RuntimeError`` if no
     service is currently connected (503) or the service reports an error;
     ``TimeoutError`` on timeout.
     ``on_progress``, if given, is called with each progress payload
@@ -753,8 +754,8 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
     when the request is unknown or expired (the server keeps a finished
     request's result for a while, not forever), ``RuntimeError`` if the
     service reported an error, ``TimeoutError`` on timeout. As with
-    :func:`request_service`, ``timeout`` is how long the service may be silent,
-    and an error carrying ``pending = True`` means the request is still there
+    :func:`request_service`, ``timeout`` is how long the service may be silent
+    (None, 0 or a negative number: no limit), and an error carrying ``pending = True`` means the request is still there
     to rejoin again."""
     url = (f'{client.base_url}/api/v1/projects/{project_id}/service-requests/'
            f'{urllib.parse.quote(str(request_id), safe="")}')
@@ -919,8 +920,15 @@ def _await_stream(resp, timeout, on_progress, on_accepted):
     # is not a deadline on the run: a service that is reporting its progress is
     # not hung. As a cap on the whole run this killed working transcriptions and
     # handed the document back as editable while the service went on writing.
+    # None, 0 or a negative number is no limit, as for every other timeout.
+    unlimited = not (isinstance(timeout, (int, float)) and not isinstance(timeout, bool)
+                     and timeout > 0)
     finished = False
-    while True:
+    while unlimited:
+        if done.wait(timeout=1.0):
+            finished = True
+            break
+    while not finished:
         remaining = timeout - (time.monotonic() - last_word['at'])
         if remaining <= 0:
             break

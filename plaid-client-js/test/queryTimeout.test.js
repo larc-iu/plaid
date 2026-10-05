@@ -62,3 +62,25 @@ test('a longer client timeout stands, and a disabled one stays disabled', async 
     assert.deepStrictEqual(await sentTimeouts(off, (c) => c.query({ where: [] })), []);
   }
 });
+
+// REV-R4-UD R1: core answers a query 503 when its queue of large queries stays
+// full until the query's deadline. Asking again at once only joins the same
+// queue, so the 503 goes straight to the caller, which says the server is busy.
+test('a query refused 503 is not retried', async () => {
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: 'The server is busy with other large queries.' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const client = new PlaidClient('http://localhost:0', 't');
+    await assert.rejects(client.query({ where: [] }), (e) => e.status === 503);
+    assert.strictEqual(calls, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

@@ -88,9 +88,11 @@ DEFAULT_QUERY_TIMEOUT_S = 35.0
 def query_timeout(client):
     """The timeout for a query: the client's own, raised to
     :data:`DEFAULT_QUERY_TIMEOUT_S` when it is shorter. A disabled timeout
-    (None, 0) stays disabled."""
+    (None, 0) stays disabled, and anything that is not a number (a
+    ``(connect, read)`` tuple for ``requests``) goes through as it is, as
+    in :func:`wire_timeout`."""
     t = getattr(client, 'timeout', DEFAULT_TIMEOUT_S)
-    if not t or t <= 0:
+    if not isinstance(t, (int, float)) or isinstance(t, bool) or t <= 0:
         return t
     return max(t, DEFAULT_QUERY_TIMEOUT_S)
 
@@ -899,7 +901,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                  no_operation=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None, versioned=True,
-                 _learning_omitted_version=False):
+                 no_busy_retry=False, _learning_omitted_version=False):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -929,6 +931,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
+        no_busy_retry: If True, a 503 is not retried. For a query: core
+            answers 503 when its queue of large queries stays full until the
+            query's deadline, and asking again at once only joins the same
+            queue.
         on_upload_progress: For a multipart upload, called with
             ``{'loaded': bytes_sent, 'total': body_bytes}`` as the body goes
             up (the JS client's ``on_upload_progress``). The body is then
@@ -1005,9 +1011,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
 
     try:
         on_retry = getattr(client, '_note_retry', None)
-        response = (retry_unknown(lambda: retry_while_busy(attempt, on_retry=on_retry),
+        busy = {'on_retry': on_retry, **({'retries': 0} if no_busy_retry else {})}
+        response = (retry_unknown(lambda: retry_while_busy(attempt, **busy),
                                   getattr(client, 'retry_delays', None), on_retry=on_retry)
-                    if keyed else retry_while_busy(attempt, on_retry=on_retry))
+                    if keyed else retry_while_busy(attempt, **busy))
     except PlaidAPIError as e:
         data = e.response_data if isinstance(e.response_data, dict) else {}
         # Answered as made only for a single create, the one whose answer is

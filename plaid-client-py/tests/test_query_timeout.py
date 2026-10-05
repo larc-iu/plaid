@@ -11,7 +11,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
-from plaid_client.http import DEFAULT_QUERY_TIMEOUT_S, DEFAULT_TIMEOUT_S, query_timeout
+from plaid_client.http import (
+    DEFAULT_QUERY_TIMEOUT_S, DEFAULT_TIMEOUT_S, PlaidAPIError, query_timeout,
+)
 
 
 class _Resp:
@@ -60,3 +62,37 @@ def test_a_disabled_timeout_stays_disabled(timeout):
     client = PlaidClient('http://x', 't', timeout=timeout)
     assert query_timeout(client) == timeout
     assert _sent_timeouts(client, lambda c: c.query({'where': []})) == [None]
+
+
+def test_a_timeout_that_is_not_a_number_goes_through():
+    # REV-R4-UD R3: a (connect, read) tuple, as requests takes it.
+    client = PlaidClient('http://x', 't', timeout=(5, 60))
+    assert query_timeout(client) == (5, 60)
+    assert _sent_timeouts(client, lambda c: c.query({'where': []})) == [(5, 60)]
+
+
+def test_a_query_refused_503_is_not_retried():
+    # REV-R4-UD R1: core's full queue of large queries. Asking again at once
+    # only joins the same queue.
+    client = PlaidClient('http://x', 't')
+    calls = []
+
+    class _Busy(_Resp):
+        ok = False
+        status_code = 503
+        reason = 'Service Unavailable'
+        text = '{"error": "busy"}'
+
+        def json(self):
+            return {'error': 'The server is busy with other large queries.'}
+
+    class _Session:
+        def request(self, **kw):
+            calls.append(kw['url'])
+            return _Busy()
+
+    client.session = _Session()
+    with pytest.raises(PlaidAPIError) as e:
+        client.query({'where': []})
+    assert e.value.status == 503
+    assert len(calls) == 1

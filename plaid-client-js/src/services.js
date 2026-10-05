@@ -444,7 +444,8 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * @param {string} serviceId - Service ID to request
  * @param {any} data - Request payload
  * @param {number} [timeout=10000] - How long the service may say NOTHING, in ms.
- *   Every event it sends starts the clock again, so this does not cap a long run
+ *   Every event it sends starts the clock again, so this does not cap a long run.
+ *   0, a negative number or null: no limit (wait until `signal` stops it)
  * @param {function} [onProgress] - Called with each progress payload {percent, message}
  * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
  * @param {Object} [opts]
@@ -526,6 +527,7 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
  * @param {string} projectId - Project UUID
  * @param {string} requestId - The request id (from `onAccepted` or your own)
  * @param {number} [timeout=10000] - How long the service may say NOTHING, in ms
+ *   (0, a negative number or null: no limit)
  * @param {function} [onProgress] - Called with each progress payload {percent, message}
  * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
  * @returns {Promise<any>} The service's result
@@ -702,9 +704,11 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
     // deadline on the whole run it killed working transcriptions at the
     // five-minute default and left their writes to land on a document the page
     // had already handed back to the user as editable.
+    // 0, a negative number or null is no limit, as for every other timeout.
     let timer;
     const waitAgain = () => {
       clearTimeout(timer);
+      if (!(timeout > 0)) return;
       timer = setTimeout(
         () =>
           finish(reject, stillRunning(new Error(`${what} timed out after ${timeout}ms of silence`))),

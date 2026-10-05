@@ -115,3 +115,19 @@ test('no live service is the end of it too', async () => {
     );
   });
 });
+
+// REV-R4-UD R4: 0, a negative number or null is no idle limit, as for every
+// other timeout. Before, each rejected at once ("timed out after nullms").
+// The twin is plaid-client-py/tests/test_service_idle_timeout.py.
+for (const timeout of [0, -1, null]) {
+  test(`an idle timeout of ${timeout} waits for the result however long the silence`, async () => {
+    const client = fakeClient([
+      { after: 10, chunk: sse('progress', { progress: { percent: 10 } }) },
+      { after: 300, chunk: sse('result', { data: { ok: true } }) },
+    ]);
+    await withFetch(client, async () => {
+      const result = await requestService(client, 'p1', 's1', {}, timeout, undefined);
+      assert.deepEqual(result, { ok: true });
+    });
+  });
+}

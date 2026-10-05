@@ -3901,9 +3901,10 @@ class PlaidClient:
         # out_of_band: a query is a read that travels as a POST (see the note
         # at the top of http.py). Made on a batch it goes over the wire like
         # any read, and it never joins a logical operation. It waits past
-        # core's own query limit, so a query too broad answers with core's 408.
+        # core's own query limit, so a query too broad answers with core's 408,
+        # and a 503 from core's full queue of large queries is not retried.
         return self._request('POST', '/api/v1/query', body=body, out_of_band=True,
-                             timeout=query_timeout(self))
+                             timeout=query_timeout(self), no_busy_retry=True)
 
     def _request(self, method, path, **kwargs):
         return make_request(self, method, path, **kwargs)

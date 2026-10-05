@@ -755,6 +755,10 @@ export async function queueRequest(batch, method, path, options = {}) {
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text
+ *   noBusyRetry     - If true, a 503 is not retried. For a query: core
+ *                     answers 503 when its queue of large queries stays full
+ *                     until the query's deadline, and asking again at once
+ *                     only joins the same queue.
  *   timeout         - Per-request timeout in ms overriding client.timeout
  *                     for this call (0/null disables). Used for known-long
  *                     ops like project delete.
@@ -773,6 +777,7 @@ export async function makeRequest(client, method, path, options = {}) {
     timeout,
     onUploadProgress,
     learningOmittedVersion,
+    noBusyRetry,
   } = options;
   if (method !== "GET" && omittedStrictDocument(client)) {
     await learnOmittedVersion(client);
@@ -842,12 +847,13 @@ export async function makeRequest(client, method, path, options = {}) {
 
   try {
     const onRetry = (info) => client._noteRetry?.(info);
+    const busy = noBusyRetry ? { onRetry, retries: 0 } : { onRetry };
     const response = keyed
-      ? await retryUnknown(() => retryWhileBusy(attempt, { onRetry }), {
+      ? await retryUnknown(() => retryWhileBusy(attempt, busy), {
           delaysMs: client.retryDelaysMs,
           onRetry,
         })
-      : await retryWhileBusy(attempt, { onRetry });
+      : await retryWhileBusy(attempt, busy);
     noteServerClock(client, response.headers);
 
     if (!response.ok) {
