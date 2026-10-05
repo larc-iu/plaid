@@ -311,6 +311,21 @@ describe('an attach onto a document with a triple between constants', () => {
     assert.deepEqual(plan.sentences[0].triples, [tripleId]);
   });
 
+  // REV-N5-APPS R4: a file that moves the triple to another sentence's block
+  // had it listed in both records, and every export wrote it twice.
+  test('the file moving it to another sentence lists it there only', () => {
+    const raw = rawFromPlan(planImport(parseUmrFile(file(MODAL, {})).sentences, []));
+    const doc = new UmrDocument({ raw });
+    const [tripleId] = doc.graph.records[0].record.triples;
+    const plan = planImport(parseUmrFile(file({}, MODAL)).sentences, [], {
+      existing: doc.graph,
+    });
+    assert.deepEqual(
+      plan.sentences.map((s) => s.triples),
+      [[], [tripleId]],
+    );
+  });
+
   test('the export still writes it after the record is replaced', () => {
     const { raw, doc } = holder();
     const plan = planImport(parseUmrFile(file({})).sentences, [], { existing: doc.graph });

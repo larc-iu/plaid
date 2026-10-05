@@ -619,9 +619,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   // and a triple between two constants is shown only where a record lists it.
   // One the record lists and the file leaves out stays listed: the document
   // has it, and dropping it from the list would leave it stored and shown
-  // nowhere, exports included.
+  // nowhere, exports included. One the file lists in another sentence has
+  // been moved there, and is listed only where the file puts it.
   if (existing) {
-    const live = new Set(existingConstantTriples.values());
+    const fileLists = new Set(sentences.flatMap((s) => s.triples));
+    const live = new Set([...existingConstantTriples.values()].filter((id) => !fileLists.has(id)));
     (existing.records || []).forEach(({ sentence, own, record }) => {
       const list = own ? sentences[sentence - 1]?.triples : null;
       if (!list || !Array.isArray(record?.triples)) return;
