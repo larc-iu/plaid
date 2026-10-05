@@ -135,7 +135,7 @@ test('global flags and metadata', () => {
     line: 1,
   });
   assert.equal(parse('global { is_not_cyclic }').blocks[0].items[0].name, 'is_not_cyclic');
-  const meta = parse('global { text = re"\\baux\\b" }').blocks[0].items[0];
+  const meta = parse(String.raw`global { text = re"\baux\b" }`).blocks[0].items[0];
   assert.equal(meta.kind, 'globalmeta');
   assert.equal(meta.key, 'text');
 });

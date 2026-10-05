@@ -13,7 +13,7 @@
 //   upos is "NOUN"        ->  pattern { W [upos="NOUN"] }
 //   feats regex "Number"  ->  pattern { W [Number=re"..."] }
 
-import { BARE_LABEL, exactRegex, literalRegex, quote } from './literals.js';
+import { BARE_LABEL, exactRegex, literalRegex, quote, regexLiteral } from './literals.js';
 
 /** The fields a quick search can look in, in the order the picker shows them. */
 export const QUICK_FIELDS = Object.freeze([
@@ -49,7 +49,7 @@ export function quickPattern(field, match, text) {
   const value =
     match === 'exact'
       ? quote(needle)
-      : `re${quote(match === 'regex' ? needle : literalRegex(needle))}`;
+      : regexLiteral(match === 'regex' ? needle : literalRegex(needle));
 
   if (field === 'deprel') {
     // A relation is between two words, and the one being looked for is the

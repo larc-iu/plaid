@@ -8,6 +8,9 @@ import { GrewParseError } from '../src/grew/errors.js';
 import { graphFromSentence } from '../src/grew/rewrite/graph.js';
 import { findMatches } from '../src/grew/rewrite/match.js';
 import { serverRegExp } from './helpers/serverRegex.js';
+import { lex, TT } from '../src/grew/lexer.js';
+import { regexLiteral } from '../src/grew/literals.js';
+import { quickPattern } from '../src/grew/quickSearch.js';
 
 // H35-CORE-1: a Grew rewrite decides its matches locally, after the server
 // search found the documents. Both read a person's regex through one
@@ -77,29 +80,29 @@ const agree = (pattern, expected) => {
 };
 
 test('a rewrite matches the words the search finds, regex for regex', () => {
-  agree(String.raw`pattern { X [lemma=re"^\\p{L}+$"] }`, ['حضرت', 'къа', 'Дом']);
+  agree(String.raw`pattern { X [lemma=re"^\p{L}+$"] }`, ['حضرت', 'къа', 'Дом']);
   agree(String.raw`pattern { X [lemma=/^\p{L}+$/] }`, ['حضرت', 'къа', 'Дом']);
-  agree(String.raw`pattern { X [upos=PROPN] } without { X [lemma=re"^\\p{L}+$"] }`, []);
-  agree(String.raw`pattern { X [] } without { X [lemma=re"^\\p{L}+$"] }`, ['13', 'a_b', 'x-y']);
+  agree(String.raw`pattern { X [upos=PROPN] } without { X [lemma=re"^\p{L}+$"] }`, []);
+  agree(String.raw`pattern { X [] } without { X [lemma=re"^\p{L}+$"] }`, ['13', 'a_b', 'x-y']);
   // \w and \d read any script, as every Plaid regex box reads them.
-  agree(String.raw`pattern { X [lemma=re"^\\w+$"] }`, ['حضرت', '13', 'къа', 'Дом', 'a_b']);
-  agree(String.raw`pattern { X [lemma=re"\\W"] }`, ['x-y']);
-  agree(String.raw`pattern { X [lemma=re"^\\d+$"] }`, ['13']);
-  agree(String.raw`pattern { X [lemma=re"\\by"] }`, ['x-y']);
-  agree(String.raw`pattern { X [lemma=re"\\bъ"] }`, []);
+  agree(String.raw`pattern { X [lemma=re"^\w+$"] }`, ['حضرت', '13', 'къа', 'Дом', 'a_b']);
+  agree(String.raw`pattern { X [lemma=re"\W"] }`, ['x-y']);
+  agree(String.raw`pattern { X [lemma=re"^\d+$"] }`, ['13']);
+  agree(String.raw`pattern { X [lemma=re"\by"] }`, ['x-y']);
+  agree(String.raw`pattern { X [lemma=re"\bъ"] }`, []);
   // The `i` flag and (?i) fold case in any script.
   agree('pattern { X [lemma=/^дом$/i] }', ['Дом']);
   agree('pattern { X [lemma=re"(?i)^КЪ"] }', ['къа']);
   agree('pattern { X [lemma=re"^КЪ"] }', []);
   // A script reads the same on both sides, by any name Java takes.
-  agree(String.raw`pattern { X [lemma=re"^\\p{IsArabic}+$"] }`, ['حضرت']);
-  agree(String.raw`pattern { X [lemma=re"\\p{sc=Cyrillic}"] }`, ['къа', 'Дом']);
-  agree(String.raw`pattern { X [lemma=re"^\\P{IsCyrl}+$"] }`, ['حضرت', '13', 'a_b', 'x-y']);
+  agree(String.raw`pattern { X [lemma=re"^\p{IsArabic}+$"] }`, ['حضرت']);
+  agree(String.raw`pattern { X [lemma=re"\p{sc=Cyrillic}"] }`, ['къа', 'Дом']);
+  agree(String.raw`pattern { X [lemma=re"^\P{IsCyrl}+$"] }`, ['حضرت', '13', 'a_b', 'x-y']);
 });
 
 test('a regex the two engines would read apart is refused where it is written', () => {
   for (const text of [
-    String.raw`pattern { X [lemma=re"\\p{InArabic}"] }`,
+    String.raw`pattern { X [lemma=re"\p{InArabic}"] }`,
     'pattern { X [lemma=re"a++"] }',
     'pattern { X [lemma=re".*{.*"] }',
   ]) {
@@ -138,4 +141,72 @@ test('an edge label regex is read after its E: prefix where it is written', () =
   parse('pattern { X -[re"^E:nsubj"]-> Y }');
   parse('pattern { X -[re"^nsubj:*"]-> Y }');
   parse('pattern { X -[re"E:obl:.*"]-> Y }');
+});
+
+// L3-UD-LIVE-1: a `re"…"` regex is raw, so the spellings the guide gives mean
+// what it says when typed as they are. Before, the lexer read `\w` as a string
+// escape and kept `w`: `re"\w"` looked for the letter w, `re"\."` for any
+// character, and `re"\p{IsArabic}"` was refused.
+test('re"…" keeps its backslashes as typed and reads like /…/', () => {
+  agree(String.raw`pattern { X [lemma=re"^\w+$"] }`, ['حضرت', '13', 'къа', 'Дом', 'a_b']);
+  agree(String.raw`pattern { X [lemma=re"\d"] }`, ['13']);
+  agree(String.raw`pattern { X [lemma=re"^\p{IsArabic}+$"] }`, ['حضرت']);
+  agree(String.raw`pattern { X [lemma=re"\-"] }`, ['x-y']);
+  agree(String.raw`pattern { X [lemma=re"^\S+\s*$"] }`, ['حضرت', '13', 'къа', 'Дом', 'a_b', 'x-y']);
+  for (const [re, slash] of [
+    [String.raw`re"^\w+$"`, String.raw`/^\w+$/`],
+    [String.raw`re"\."`, String.raw`/\./`],
+    [String.raw`re"\p{IsArabic}"`, String.raw`/\p{IsArabic}/`],
+    [String.raw`re"a\\"`, String.raw`/a\\/`],
+    [String.raw`re"\b\d{2}\b"`, String.raw`/\b\d{2}\b/`],
+  ]) {
+    const a = searchFinds(`pattern { X [lemma=${re}] }`);
+    const b = searchFinds(`pattern { X [lemma=${slash}] }`);
+    assert.deepEqual(a, b, `${re} and ${slash} differ`);
+    assert.deepEqual(
+      parseAndCompile(`pattern { X [lemma=${re}] }`, LI).query.where,
+      parseAndCompile(`pattern { X [lemma=${slash}] }`, LI).query.where,
+      `${re} and ${slash} compile apart`,
+    );
+  }
+  // `\.` is a full stop and nothing else, so a rule for full stops cannot
+  // retag every one-letter word.
+  agree(String.raw`pattern { X [lemma=re"^\.$"] }`, []);
+  // `\"` is a quote inside the regex.
+  assert.equal(lex(String.raw`re"say \"hi\""`)[0].value.pattern, 'say "hi"');
+});
+
+// The regex as the lexer gives it back: an escaped quote reads as the quote
+// and a newline as `\n`, both of which the regex reader takes the same way.
+const quoteRead = (r) =>
+  r.replace(/\\(.)|\n/gs, (m, c) => (c === '"' ? c : m === '\n' ? '\\n' : m));
+
+test('every writer of re"…" writes a regex the lexer reads back as the same regex', () => {
+  const regexes = [
+    String.raw`^\w+$`,
+    String.raw`\p{IsArabic}`,
+    String.raw`a\.b`,
+    'say "hi"',
+    String.raw`say \"hi\"`,
+    String.raw`a\\`,
+    String.raw`a\\"`,
+    'two\nlines',
+    'tab\there',
+    String.raw`[\]"]`,
+    '',
+  ];
+  for (const r of regexes) {
+    const src = regexLiteral(r);
+    const back = lex(src)[0].value.pattern;
+    assert.equal(back, quoteRead(r), `${JSON.stringify(r)} wrote ${src}`);
+  }
+  // A lone backslash at the end becomes the regex for a backslash.
+  assert.equal(lex(regexLiteral('a\\'))[0].value.pattern, String.raw`a\\`);
+  // The quick lookup's `matches` and `contains` go through it.
+  for (const r of regexes.filter(Boolean)) {
+    const p = quickPattern('lemma', 'regex', r);
+    const read = lex(p).find((t) => t.type === TT.REGEX).value.pattern;
+    assert.equal(read, quoteRead(r.trim()), p);
+    assert.doesNotThrow(() => parse(p), p);
+  }
 });

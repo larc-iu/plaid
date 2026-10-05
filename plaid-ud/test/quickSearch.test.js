@@ -52,7 +52,10 @@ test('every field and match type compiles', () => {
 
 test('contains is a LITERAL substring, not a regex the user did not write', () => {
   // Someone typing `dog.` wants a full stop, not "dog followed by anything".
-  assert.equal(quickPattern('lemma', 'contains', 'a.b'), 'pattern { W [lemma=re"a\\\\.b"] }');
+  assert.equal(
+    quickPattern('lemma', 'contains', 'a.b'),
+    String.raw`pattern { W [lemma=re"a\.b"] }`,
+  );
   // `matches` passes the regex through untouched.
   assert.equal(quickPattern('lemma', 'regex', 'a.b'), 'pattern { W [lemma=re"a.b"] }');
   assert.equal(quickPattern('lemma', 'exact', 'a.b'), 'pattern { W [lemma="a.b"] }');

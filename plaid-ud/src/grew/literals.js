@@ -21,13 +21,36 @@ export const quote = (text) =>
     .replace(/\n/g, '\\n')
     .replace(/\t/g, '\\t')}"`;
 
+/** A regex as a Grew regex literal, `re"…"`, which is raw: the lexer keeps
+ * every backslash as written and reads only `\"`. So the regex goes in as it
+ * is, an escape pair stays a pair, a bare quote becomes `\"` and a newline
+ * `\n` (a raw one ends the literal). A lone backslash at the end has nothing
+ * to escape and no raw spelling, so it is written as the regex for a
+ * backslash. */
+export const regexLiteral = (regex) => {
+  const s = String(regex);
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') {
+      const e = s[i + 1];
+      if (e === undefined) out += '\\\\';
+      else out += e === '\n' ? '\\n' : `\\${e}`;
+      i++;
+    } else if (c === '"') out += '\\"';
+    else if (c === '\n') out += '\\n';
+    else out += c;
+  }
+  return `re"${out}"`;
+};
+
 /** The text as a regex that matches it literally: someone looking for `dog.`
  * wants a full stop. */
 export const literalRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 /** That regex, anchored, as a Grew regex literal. An exact match written the
  * long way, for the positions where a bare word will not go. */
-export const exactRegex = (text) => `re${quote(`^${literalRegex(text)}$`)}`;
+export const exactRegex = (text) => regexLiteral(`^${literalRegex(text)}$`);
 
 /** An arc label may be written bare: `-[nsubj]->`, `-[obl:tmod]->`. */
 export const BARE_LABEL = /^[A-Za-z_][A-Za-z0-9_:]*$/u;

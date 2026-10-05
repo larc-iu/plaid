@@ -13,9 +13,15 @@
 //   ==>  (shift)       =[  ]=>  (filtered shift)   :<  :>  (add_node side)
 // A leading '-' is also the sign of a negative number in `delta(X,Y) = -3`.
 //
-// Value literals come in three flavors: "double-quoted strings", OCaml-style
-// `re"…"` regexes, and PCRE `/…/flags` regexes. Comments start with `%` (Grew
+// Value literals come in three flavors: "double-quoted strings", `re"…"`
+// regexes, and PCRE `/…/flags` regexes. Comments start with `%` (Grew
 // convention) and run to end of line.
+//
+// A `re"…"` regex is raw: every backslash stays as written, so `re"\w"`,
+// `re"\p{IsArabic}"` and `re"\."` reach the regex reader as typed. `\"` is the
+// one escape it reads (a quote inside the regex), and a pair `\\` is kept
+// whole, so `re"a\\"` ends at its last quote. A plain string reads `\n`, `\t`,
+// `\"` and `\\` as escapes.
 
 import { GrewParseError } from './errors.js';
 
@@ -265,7 +271,7 @@ export function lex(src) {
         advance();
       }
       if (id === 're' && src[i] === '"') {
-        const strTok = lexString(sl, sc);
+        const strTok = lexString(sl, sc, true);
         push(TT.REGEX, { pattern: strTok.value, flavor: 're', flags: '' }, sl, sc);
         continue;
       }
@@ -319,7 +325,7 @@ export function lex(src) {
   return tokens;
 
   // --- helpers that need lexer state ---
-  function lexString(sl, sc) {
+  function lexString(sl, sc, raw = false) {
     advance(); // opening quote
     let val = '';
     while (i < src.length && src[i] !== '"') {
@@ -327,7 +333,8 @@ export function lex(src) {
         advance();
         const e = src[i];
         if (e === undefined) fail('Unterminated string');
-        val += e === 'n' ? '\n' : e === 't' ? '\t' : e;
+        if (raw) val += e === '"' ? e : `\\${e}`;
+        else val += e === 'n' ? '\n' : e === 't' ? '\t' : e;
         advance();
         continue;
       }
