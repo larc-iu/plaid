@@ -187,7 +187,7 @@ test('the built-in tokenizer says it leaves sentence boundaries alone', async ({
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=tokenize`);
   // The fact belongs to the method, so it lives with it in the run dialog.
-  await page.getByRole('button', { name: 'Tokenize' }).click();
+  await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Built-in (rule-based punctuation)');
   await expect(

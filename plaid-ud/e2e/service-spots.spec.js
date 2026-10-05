@@ -39,7 +39,9 @@ test.afterAll(async () => {
 const openEditor = async (page) => {
   await seedAuth(page);
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/edit`);
-  await expect(page.getByRole('button', { name: 'Tokenize' })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'Tokenize', exact: true })).toBeVisible({
+    timeout: 15000,
+  });
 };
 
 const counts = (page) => page.getByText(/\d+ tokens?, \d+ sentences?/);
@@ -48,22 +50,22 @@ test('Tokenize is a run: the button opens a dialog naming its method', async ({ 
   await openEditor(page);
   await expect(counts(page)).toHaveText('0 tokens, 0 sentences');
 
-  await page.getByRole('button', { name: 'Tokenize' }).click();
+  await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   // One method is stated rather than offered, and it is the built-in, so a
   // project with no service connected can still tokenize.
   await expect(dialog.getByText('Method')).toBeVisible();
   await expect(dialog.getByText(/Unicode segmentation/)).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Tokenize' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Tokenize', exact: true })).toBeEnabled();
 });
 
 test('running it tokenizes the document, and the dialog then refuses to run again', async ({
   page,
 }) => {
   await openEditor(page);
-  await page.getByRole('button', { name: 'Tokenize' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Tokenize' }).click();
+  await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Tokenize', exact: true }).click();
 
   // The run ends in a reload, so poll rather than reading once. The count is
   // pinned rather than merely "more than none": this IS the built-in's output
@@ -74,15 +76,15 @@ test('running it tokenizes the document, and the dialog then refuses to run agai
 
   // Re-tokenizing would replace what is there, so the dialog says why it will
   // not, rather than offering a button that does nothing.
-  await page.getByRole('button', { name: 'Tokenize' }).click();
+  await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Clear tokens before re-tokenizing.')).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Tokenize' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Tokenize', exact: true })).toBeDisabled();
 });
 
 test('Parse is a run too, on the same dialog', async ({ page }) => {
   await openEditor(page);
-  await page.getByRole('button', { name: 'Parse' }).click();
+  await page.getByRole('button', { name: 'Parse', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('heading', { name: 'Parse' })).toBeVisible();

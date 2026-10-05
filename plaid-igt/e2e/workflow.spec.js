@@ -77,8 +77,8 @@ test('C3 first save creates the sentence partition; C4-01 the built-in tokenizer
   await expect.poll(async () => (await layerOf(ROLES.SENTENCE)).tokens.length).toBe(1);
   await openTab(page, 'tokenize');
   // The Tokens header opens the run dialog; the run itself is its Tokenize button.
-  await page.getByRole('button', { name: 'Tokenize' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Tokenize' }).click();
+  await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Tokenize', exact: true }).click();
   await expect
     .poll(async () => (await wordContents()).length, { timeout: 15_000 })
     .toBeGreaterThan(3);
