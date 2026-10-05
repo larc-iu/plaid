@@ -449,13 +449,8 @@
 (defn- delete-links!
   "Delete vocab links by id, audited per row, and sweep their metadata."
   [tx link-ids]
-  (when (seq link-ids)
-    (doseq [chunk (partition-all 4000 link-ids)]
-      (crud/delete-where! tx :vocab_links [:in :id (vec chunk)])
-      (psc/execute! tx {:delete-from :entity_metadata
-                        :where [:and
-                                [:= :entity_type "vocab-link"]
-                                [:in :entity_id (vec chunk)]]}))))
+  (crud/delete-ids! tx :vocab_links link-ids)
+  (crud/delete-entity-metadata! tx "vocab-link" link-ids))
 
 (defn merge-into
   "Merge the entries `loser-ids` into the entry `survivor-id`, in ONE
@@ -496,6 +491,7 @@
                            (when-let [other (first (remove #(= layer (:vocab_layer_id %)) losers))]
                              (throw (ex-info (str "Vocab item " (:id other) " is in another vocabulary")
                                              {:code 400 :id (:id other)})))
+                           (cascade-stats/prepare! tx)
                            (let [existing-ids (mapv :id losers)
                                  survivor-links (psc/q tx {:select [:id]
                                                            :from :vocab_links
@@ -522,12 +518,8 @@
                                (crud/bulk-update-by-id! tx :vocab_links
                                                         (mapv (fn [id] [id {:vocab_item_id survivor-id}]) moved)))
                              (delete-links! tx dups)
-                             (when (seq existing-ids)
-                               (psc/execute! tx {:delete-from :entity_metadata
-                                                 :where [:and
-                                                         [:= :entity_type "vocab-item"]
-                                                         [:in :entity_id existing-ids]]})
-                               (crud/delete-where! tx :vocab_items [:in :id existing-ids]))
+                             (crud/delete-entity-metadata! tx "vocab-item" existing-ids)
+                             (crud/delete-ids! tx :vocab_items existing-ids)
                              (op/touch-vocab-layer! tx layer)
                              (op/bump-document-versions! tx (mapv :document_id loser-links))
                              {:moved (count moved)

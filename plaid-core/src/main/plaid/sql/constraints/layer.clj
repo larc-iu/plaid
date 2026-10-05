@@ -39,6 +39,7 @@
   values already stored."
   (:require [clojure.string :as str]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.constraints.token :as tc]
             [plaid.sql.crud :as crud]
@@ -1199,28 +1200,29 @@
 ;; ============================================================
 
 (defn- sweep-metadata! [tx entity-type ids]
-  (when (seq ids)
-    (doseq [ch (partition-all 4000 ids)]
-      (psc/execute! tx {:delete-from :entity_metadata
-                        :where [:and [:= :entity_type entity-type] [:in :entity_id (vec ch)]]}))))
+  (crud/delete-entity-metadata! tx entity-type ids))
 
 (defn- delete-relations! [tx ids]
   (when (seq ids)
-    (let [gone (mapcat (fn [ch] (crud/delete-where! tx :relations [:in :id (vec ch)]))
-                       (partition-all 4000 (distinct ids)))]
+    (let [gone (crud/delete-ids! tx :relations ids)]
       (sweep-metadata! tx "relation" (map :id gone))
       (count gone))))
 
 (defn- delete-spans!
-  "Delete spans with the relations on them first, as a span delete does."
+  "Delete spans with the relations on them first, as a span delete does.
+  Each span's delete cascades, so the statistics are made safe for that
+  first (`cascade-stats/prepare!`), and the relations are read end by end,
+  each by its own index."
   [tx ids]
   (when (seq ids)
+    (cascade-stats/prepare! tx)
     (let [ids (vec (distinct ids))
-          rels (map :id (q-chunks tx (fn [ch] {:select-distinct [:id] :from :relations
-                                               :where [:or [:in :source_span_id ch] [:in :target_span_id ch]]})
-                                  ids))]
+          rels (->> (concat (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" ids)
+                            (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" ids))
+                    (map :id)
+                    distinct)]
       (delete-relations! tx rels)
-      (let [gone (mapcat (fn [ch] (crud/delete-where! tx :spans [:in :id (vec ch)])) (partition-all 4000 ids))]
+      (let [gone (crud/delete-ids! tx :spans ids)]
         (sweep-metadata! tx "span" (map :id gone))
         (count gone)))))
 
@@ -1315,8 +1317,8 @@
                        (first (sort-by str ids))
                        (or (first (sort-by str untouched)) (first (sort-by str ids))))
                 others (remove #(= % keep) ids)
-                gone (mapcat (fn [ch] (crud/delete-where! tx :vocab_links [:in :id (vec ch)]))
-                             (partition-all 4000 others))]
+                _ (cascade-stats/prepare! tx)
+                gone (crud/delete-ids! tx :vocab_links others)]
             (sweep-metadata! tx "vocab-link" (map :id gone))
             (vswap! deleted into others)
             (swap! counts update ["single-link" :vocabulary-links "deleted" (:name layer)] (fnil + 0) (count gone))))))))
@@ -1499,6 +1501,9 @@
   another holds the lock on is left as it is and named under `:locked`.
   Returns {:repaired [...] :locked [...] :remaining [violations]}."
   [tx user layer ns constraints & {:keys [document]}]
+  ;; Remedies delete spans and vocabulary links, whose cascades plan on the
+  ;; statistics: a repair right after a large import is when those are stale.
+  (cascade-stats/prepare! tx)
   (let [cs (layer-instances layer ns constraints)
         fixable (filter #(remediable (:type %)) cs)
         scope (cond-> {:tx tx :mode :all} document (assoc :only-doc (u document)))

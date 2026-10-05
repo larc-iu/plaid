@@ -55,10 +55,12 @@
 (defn- placeholders [n]
   (apply str (interpose ", " (repeat n "?"))))
 
-(defn- pk-index
-  "The index SQLite made for `table`'s TEXT PRIMARY KEY."
-  [table]
-  (str "sqlite_autoindex_" (name table) "_1"))
+(defn pk-index
+  "The name of the index SQLite made for `table`'s primary key, read from the
+  schema (`origin` pk), not built from SQLite's naming habit."
+  [db table]
+  (or (:name (psc/q1 db ["SELECT name FROM pragma_index_list(?) WHERE origin = 'pk'" (name table)]))
+      (throw (ex-info (str "Table " (name table) " has no primary key index") {:table table}))))
 
 (defn- in-chunks
   "`(f chunk)` over `xs` (distinct) in chunks of `psc/bulk-chunk-size`,
@@ -80,7 +82,7 @@
   "Map of id to row for the rows of `table` whose id is one of `ids`, read
   by the primary key's index."
   [db table ids]
-  (into {} (map (juxt :id identity)) (select-in db table "*" :id (pk-index table) ids)))
+  (into {} (map (juxt :id identity)) (select-in db table "*" :id (pk-index db table) ids)))
 
 (defn junction-token-ids-of
   "Map of row id to its token ids in order, for rows `ids` of `table`
@@ -88,7 +90,7 @@
   key. A row with no tokens is absent."
   [db table ids]
   (let [[jtable jcol] (junction table)
-        rows (select-in db jtable (str (name jcol) ", token_id, order_idx") jcol (pk-index jtable) ids)]
+        rows (select-in db jtable (str (name jcol) ", token_id, order_idx") jcol (pk-index db jtable) ids)]
     (->> rows
          (group-by jcol)
          (into {} (map (fn [[id rs]] [id (mapv :token_id (sort-by :order_idx rs))]))))))
@@ -99,7 +101,7 @@
   [tx entity-type ids]
   (in-chunks (fn [chunk]
                (psc/execute! tx (into [(str "DELETE FROM entity_metadata INDEXED BY "
-                                            (pk-index :entity_metadata)
+                                            (pk-index tx :entity_metadata)
                                             " WHERE entity_type = ? AND entity_id IN ("
                                             (placeholders (count chunk)) ")")
                                        entity-type]
@@ -357,15 +359,16 @@
   Returns the deleted pre-images. An id with no row is skipped."
   [tx table ids]
   (psaw/ensure-op-bound!)
-  (in-chunks (fn [chunk]
-               (let [pres (psc/execute-returning!
-                           tx (into [(str "DELETE FROM " (name table) " INDEXED BY " (pk-index table)
-                                          " WHERE id IN (" (placeholders (count chunk)) ") RETURNING *")]
-                                    (map str chunk)))]
-                 (psaw/record-audit-writes! tx table :delete
-                                            (map (fn [pre] [(:id pre) pre nil]) pres))
-                 pres))
-             ids))
+  (let [index (when (seq ids) (pk-index tx table))]
+    (in-chunks (fn [chunk]
+                 (let [pres (psc/execute-returning!
+                             tx (into [(str "DELETE FROM " (name table) " INDEXED BY " index
+                                            " WHERE id IN (" (placeholders (count chunk)) ") RETURNING *")]
+                                      (map str chunk)))]
+                   (psaw/record-audit-writes! tx table :delete
+                                              (map (fn [pre] [(:id pre) pre nil]) pres))
+                   pres))
+               ids)))
 
 ;; ============================================================
 ;; Join-table write helpers (unaudited; the parent entity audits cover them)

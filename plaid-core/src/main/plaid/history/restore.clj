@@ -33,6 +33,7 @@
   would change without opening an operation."
   (:require [plaid.history.read :as hread]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.constraints.token :as tc]
@@ -179,11 +180,16 @@
 ;; Applying it
 ;; ============================================================
 
-(defn- delete-rows! [tx table rows]
+(defn- delete-rows!
+  "Delete `rows` of `table`, audited, by the primary key in chunks, and their
+  metadata. Each delete cascades (a span into its relations and junction
+  rows), so the statistics are made safe for that first."
+  [tx table rows]
   (when (seq rows)
+    (cascade-stats/prepare! tx)
     (let [ids (mapv :id rows)]
+      (crud/delete-ids! tx table ids)
       (doseq [chunk (partition-all drows/chunk-size ids)]
-        (crud/delete-where! tx table [:in :id (vec chunk)])
         (metadata/sweep-metadata! tx (get drows/entity-type table) (vec chunk))))))
 
 (defn- update-rows! [tx table updates]

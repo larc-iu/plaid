@@ -132,3 +132,31 @@
           (is (pos? (stat-rows ds "relations")))
           (finally (.close ds))))
       (finally (cleanup! db-path)))))
+
+(deftest statistics-a-refresh-wrote-since-are-kept
+  (let [db-path (temp-db-path)]
+    (try
+      (build! db-path)
+      (let [ds (psd/build-datasource db-path {:max-pool-size 2})]
+        (try
+          (with-open [p (jdbc/get-connection ds)
+                      r (jdbc/get-connection ds)]
+            ;; `p` loaded the statistics of one row.
+            (psc/q p ["SELECT count(*) FROM relations"])
+            ;; `r` runs the refresh's statement for the table.
+            (jdbc/execute! r ["PRAGMA analysis_limit=400"])
+            (jdbc/execute! r ["ANALYZE \"main\".\"relations\""])
+            (let [fresh (:stat (psc/q1 r ["SELECT stat FROM sqlite_stat1 WHERE idx = 'idx_relations_source'"]))]
+              (is (not= "1 1" fresh))
+              (jdbc/execute! p ["BEGIN IMMEDIATE"])
+              (try
+                (testing "p reloads, finds the table fresh and drops nothing"
+                  (is (= [] (cascade-stats/prepare! p)))
+                  (is (= fresh (:stat (psc/q1 p ["SELECT stat FROM sqlite_stat1 WHERE idx = 'idx_relations_source'"])))))
+                (testing "and its cascade seeks by the fresh statistics"
+                  (let [t (System/nanoTime)]
+                    (psc/execute! p ["DELETE FROM spans WHERE id <> 'seed'"])
+                    (is (< (/ (- (System/nanoTime) t) 1e6) 1000))))
+                (finally (jdbc/execute! p ["ROLLBACK"])))))
+          (finally (.close ds))))
+      (finally (cleanup! db-path)))))

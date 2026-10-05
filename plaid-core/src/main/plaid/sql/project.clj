@@ -1134,30 +1134,27 @@
                      ;; carry :document nil, so the post-body
                      ;; bump-document-version! hook doesn't fire on
                      ;; those docs.
-                     (let [vl-rows (psc/q tx
-                                          {:select [:vl.id :vl.document_id]
-                                           :from [[:vocab_links :vl]]
-                                           :join [[:vocab_items :vi]
-                                                  [:= :vi.id :vl.vocab_item_id]
-                                                  [:documents :d]
-                                                  [:= :d.id :vl.document_id]]
-                                           :where [:and
-                                                   [:= :vi.vocab_layer_id vocab-id]
-                                                   [:= :d.project_id project-id]]})
+                     ;; Each set is read by its index (the vocab's
+                     ;; entries, their links, the project's documents),
+                     ;; and the links go in chunks by id: a vocab can have
+                     ;; a hundred thousand links in one project.
+                     (cascade-stats/prepare! tx)
+                     (let [item-ids (map :id (crud/select-in tx :vocab_items "id" :vocab_layer_id
+                                                             "idx_vocab_items_layer" [vocab-id]))
+                           doc-ids (set (map :id (crud/select-in tx :documents "id" :project_id
+                                                                 "idx_documents_project" [project-id])))
+                           vl-rows (->> (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
+                                                        "idx_vocab_links_item" item-ids)
+                                        (filterv #(contains? doc-ids (:document_id %))))
                            vl-ids (mapv :id vl-rows)
                            affected-doc-ids (mapv :document_id vl-rows)]
-                       (when (seq vl-ids)
-                         (crud/delete-where! tx :vocab_links [:in :id vl-ids])
-                         ;; Sweep orphan entity_metadata rows for those
-                         ;; vocab_links — matches `vocab_layer.clj/delete`
-                         ;; (#66). Intentionally NOT audited:
-                         ;; parent-owned metadata is part of the parent's
-                         ;; audit row.
-                         (psc/execute! tx
-                                       {:delete-from :entity_metadata
-                                        :where [:and
-                                                [:= :entity_type "vocab-link"]
-                                                [:in :entity_id vl-ids]]}))
+                       (crud/delete-ids! tx :vocab_links vl-ids)
+                       ;; Sweep orphan entity_metadata rows for those
+                       ;; vocab_links — matches `vocab_layer.clj/delete`
+                       ;; (#66). Intentionally NOT audited:
+                       ;; parent-owned metadata is part of the parent's
+                       ;; audit row.
+                       (crud/delete-entity-metadata! tx "vocab-link" vl-ids)
                        ;; Bump per-doc versions for OCC parity (task #72).
                        (op/bump-document-versions! tx affected-doc-ids))
                      ;; Snapshot AFTER vocab_links cleanup but BEFORE the

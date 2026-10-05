@@ -264,6 +264,7 @@
      (let [rel-ids (get-relation-ids tx eid)]
        (doseq [rid rel-ids]
          (crud/delete-by-id! tx :relations rid))
+       (crud/delete-entity-metadata! tx "relation" rel-ids)
        (crud/delete-by-id! tx :spans eid)
        ;; Clean up entity_metadata rows (no FK; doesn't auto-cascade).
        (psc/execute! tx
@@ -471,7 +472,8 @@
                             distinct
                             vec)]
            (doseq [rid rel-ids]
-             (crud/delete-by-id! tx :relations rid)))
+             (crud/delete-by-id! tx :relations rid))
+           (crud/delete-entity-metadata! tx "relation" rel-ids))
          ;; Spans themselves. FK CASCADE on span_tokens sweeps the join rows.
          (doseq [sid existing-ids]
            (crud/delete-by-id! tx :spans sid))
