@@ -373,6 +373,13 @@
             (create-relation admin-request deps (first lemmas) l (if (zero? i) "root" (pick r (rest deprels))))
             (when (chance r 0.3) (create-relation admin-request enh (first lemmas) l "e")))
           (vreset! cursor (inc end)))))
+    ;; A zero-width sentence at the begin of every sentence after the first,
+    ;; made after it: the lookup of an end's sentence must not take it for
+    ;; the sentence it ties with, which would hide a crossing.
+    (doseq [b (rest (map :begin (psc/q db {:select [:begin] :from :tokens
+                                           :where [:and [:= :token_layer_id sl] [:= :document_id doc]]
+                                           :order-by [:begin]})))]
+      (create-token admin-request sl txt b b))
     (let [cfg {:proj proj :doc doc :txt txt :sl sl :wl wl :swl swl :ml ml :gloss gloss :lemma lemma
                :mgloss mgloss :deps deps :enh enh :items items}
           put (fn [kind layer ns cs]

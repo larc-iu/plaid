@@ -3297,8 +3297,9 @@ class TokensResource(_Resource):
         """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
-        vocab-links); a new token is created for the right half and its ID is
-        returned. ``position`` must be strictly between the token's begin and end.
+        vocab-links), or the right half with ``keep='right'``; a new token is
+        created for the other half and its ID is returned. ``position`` must
+        be strictly between the token's begin and end.
         A relation layer whose relations must stay inside one token of this
         layer declares a same-ancestor constraint, and the server deletes the
         relations the split leaves crossing in the same transaction.

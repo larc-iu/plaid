@@ -753,7 +753,12 @@
   in the document by their index, each end's place (the smallest begin of
   its span's tokens) by an index seek, then the nearest ancestor token
   starting at or before each place by an index seek, and whether it reaches
-  past the place. Both steps are materialized once and every lookup is a
+  past the place. A zero-width ancestor is passed over: it holds no place,
+  and at the begin of a real one (a non-overlapping layer allows both) it
+  would hide it, so a crossing read as an end in no token. Passing over
+  only zero-width tokens keeps the seek to the one row before them, where
+  asking for `end_ > place` would walk back over every earlier token when
+  the place is in a gap. Both steps are materialized once and every lookup is a
   correlated seek from one relation, so no plan joins two whole sets.
   Joining a materialized set of spans let SQLite, with statistics from a
   tiny document, scan 50,000 spans per relation: 100 s on the nightly
@@ -762,6 +767,7 @@
                              " WHERE st.span_id = r." end ")"))
         anc (fn [p] (str "(SELECT CASE WHEN a.end_ > e." p " THEN a.id END FROM tokens a"
                          " WHERE a.token_layer_id = ? AND a.document_id = ? AND a.begin <= e." p
+                         " AND a.end_ > a.begin"
                          " ORDER BY a.begin DESC LIMIT 1)"))]
     (str "WITH e AS MATERIALIZED ("
          " SELECT r.id AS id, " (place "source_span_id") " AS sp, " (place "target_span_id") " AS tp"
@@ -817,7 +823,9 @@
                                     (when (some? place)
                                       (psc/q1 tx {:select [:begin :end_] :from :tokens
                                                   :where [:and [:= :token_layer_id al] [:= :document_id doc]
-                                                          [:<= :begin place]]
+                                                          [:<= :begin place]
+                                                          ;; As in crossing-sql.
+                                                          [:> :end_ :begin]]
                                                   :order-by [[:begin :desc]]
                                                   :limit 1})))
                          anc (fn [place]

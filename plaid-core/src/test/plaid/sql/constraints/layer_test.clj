@@ -589,6 +589,24 @@
       (is (not (exists? :relations cat-dogs)) "now crossing, so deleted")
       (is (exists? :relations ran-dogs) "inside the new sentence, so kept"))))
 
+(deftest a-zero-width-sentence-at-a-sentences-begin-hides-no-crossing
+  ;; A non-overlapping layer may hold a zero-width token at the begin of a
+  ;; real one. Made after it, it must not be read as the sentence an end at
+  ;; or after that begin lies in.
+  (let [{:keys [sl txt sentence] :as s} (setup!)
+        {:keys [node edge!] :as g} (node-graph! s {:cat [4 7] :dogs [13 17] :ogs [14 17] :ran [18 21]})]
+    (assert-status 201 (call :post (str "/api/v1/tokens/" sentence "/split") {:position 13}))
+    (assert-status 201 (create-token admin-request sl txt 13 13))
+    (testing "on write"
+      (assert-status 200 ((:declare! g)))
+      (assert-status 422 (edge! (node :cat) (node :dogs)))
+      (assert-status 422 (edge! (node :cat) (node :ogs)))
+      (assert-status 201 (edge! (node :ran) (node :dogs))))
+    (testing "on a declaration over stored relations"
+      (call :delete (str "/api/v1/relation-layers/" (:edges g) "/constraints/umr"))
+      (assert-status 201 (edge! (node :cat) (node :dogs)))
+      (assert-status 422 ((:declare! g))))))
+
 (deftest deleting-every-sentence-keeps-the-relations-of-a-layer-outside-them
   (let [{:keys [sl txt sentence doc] :as s} (setup!)
         {:keys [nl node edge!] :as g} (node-graph! s {:the [0 3] :cat [4 7] :dogs [13 17]

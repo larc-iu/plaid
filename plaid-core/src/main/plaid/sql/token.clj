@@ -911,7 +911,8 @@
 
 (defn split
   "Split `eid` at `position`. Cascades to descendant tokens that
-  straddle position. Returns {:success true :extra <new-right-id>}.
+  straddle position. Returns {:success true :extra <new-id>}: the new
+  token is the right half, or the left half with `:keep` `:right`.
 
   A relation layer that must stay inside one token of this layer (a
   dependency tree inside its sentence) declares it as a same-ancestor layer
