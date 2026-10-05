@@ -28,7 +28,7 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="max-h-[280px] overflow-auto rounded-md border bg-background">
+      <div className="max-h-[280px] overflow-auto rounded-md border bg-background focus-within:ring-1 focus-within:ring-ring">
         <CodeEditor
           value={value}
           onValueChange={onChange}
@@ -36,6 +36,7 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
           onKeyDown={onKeyDown}
           padding={10}
           textareaId="grew-query"
+          label="Grew pattern"
           placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'}
           spellCheck={false}
           style={EDITOR_STYLE}

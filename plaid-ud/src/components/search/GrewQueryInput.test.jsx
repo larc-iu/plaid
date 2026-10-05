@@ -65,3 +65,31 @@ describe('the Grew query box’s error notice', () => {
     await view.unmount();
   });
 });
+
+describe('the Grew pattern box and the keyboard', () => {
+  const box = (view) => view.container.querySelector('textarea');
+  const key = (el, init) => {
+    const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+    el.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  it('is named, and its frame shows focus', async () => {
+    const view = await mount(null);
+    expect(box(view).getAttribute('aria-label')).toBe('Grew pattern');
+    expect(box(view).parentElement.parentElement.className).toContain('focus-within:ring-1');
+    await view.unmount();
+  });
+
+  it('keeps Tab for indenting, and lets Shift+Tab and Escape then Tab leave', async () => {
+    const view = await mount(null);
+    const el = box(view);
+    expect(key(el, { key: 'Tab' })).toBe(true);
+    expect(key(el, { key: 'Tab', shiftKey: true })).toBe(false);
+    key(el, { key: 'Escape' });
+    expect(key(el, { key: 'Tab' })).toBe(false);
+    // Only the next key: indenting comes back after it.
+    expect(key(el, { key: 'Tab' })).toBe(true);
+    await view.unmount();
+  });
+});

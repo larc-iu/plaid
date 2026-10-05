@@ -19,6 +19,8 @@ import { useRef } from 'react';
 //   - Tab is inserted with `execCommand('insertText')`, not by assigning
 //     `value`. An assignment wipes the browser's undo stack; this keeps it, so
 //     Ctrl/Cmd+Z still works and no history of our own is needed.
+//   - Tab indents, so the keyboard needs another way out of the box:
+//     Shift+Tab leaves it, and so does a Tab right after Escape.
 
 const SHARED = {
   margin: 0,
@@ -39,16 +41,25 @@ export const CodeEditor = ({
   onKeyDown,
   padding = 0,
   textareaId,
+  label,
   placeholder,
   spellCheck = false,
   style,
 }) => {
   const textareaRef = useRef(null);
+  // Escape lets the next Tab leave the box. Any other key takes that back.
+  const leaving = useRef(false);
 
   const handleKeyDown = (e) => {
     onKeyDown?.(e);
     if (e.defaultPrevented) return;
-    if (e.key === 'Tab') {
+    if (e.key === 'Escape') {
+      leaving.current = true;
+      return;
+    }
+    const leave = leaving.current;
+    leaving.current = false;
+    if (e.key === 'Tab' && !e.shiftKey && !leave) {
       e.preventDefault();
       document.execCommand('insertText', false, '\t');
     }
@@ -68,6 +79,7 @@ export const CodeEditor = ({
       <textarea
         ref={textareaRef}
         id={textareaId}
+        aria-label={label}
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         onKeyDown={handleKeyDown}
