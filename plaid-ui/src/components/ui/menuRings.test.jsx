@@ -1,6 +1,6 @@
-// A menu item, a Select option and a picker's active option show where the
-// keyboard is with a ring, not only with the accent fill, which is about
-// 1.2:1 against the white menu.
+// A menu item and a Select option reached with the keyboard show a ring, not
+// only the accent fill, which is about 1.2:1 against the white menu. A pointer
+// hovering one (Radix focuses it) gets the fill alone.
 import { describe, it, expect } from 'vitest';
 import { renderComponent } from '../../test/renderComponent.jsx';
 import {
@@ -22,8 +22,10 @@ describe('menu focus rings', () => {
       </DropdownMenu>,
     );
     const item = document.body.querySelector('[role=menuitem]');
-    expect(item.className).toContain('focus:ring-1');
-    expect(item.className).toContain('focus:ring-inset');
+    expect(item.className).toContain('focus-visible:ring-1');
+    expect(item.className).toContain('focus-visible:ring-inset');
+    // Not on a pointer's hover, which Radix also turns into focus.
+    expect(item.className).not.toMatch(/(^|\s)focus:ring/);
     await view.unmount();
   });
 
@@ -39,7 +41,7 @@ describe('menu focus rings', () => {
       </Select>,
     );
     const option = document.body.querySelector('[role=option]');
-    expect(option.className).toContain('focus:ring-1');
+    expect(option.className).toContain('focus-visible:ring-1');
     await view.unmount();
   });
 });
