@@ -122,6 +122,7 @@ export const EnhancedArcs = forwardRef(
           relation={relation}
           at={shape.label}
           color={color}
+          ends={{ dependent: dependent.form, head: root ? null : head.form }}
           editing={editingId === relation.id}
           focused={focusedId === relation.id}
           onOpen={open}

@@ -33,7 +33,14 @@ import {
  *   onDelete   withheld where there is nothing to delete, and the editor's
  *              bin goes with it
  *   labelRef   the caller's Map of id to element, for moving focus about
+ *   ends       `{ dependent, head }`, the two words' forms, for the name a
+ *              screen reader reads ("nsubj, dog to sleeps"); a root has no head
  */
+const arcName = (label, ends) => {
+  if (!ends?.dependent) return label;
+  return ends.head ? `${label}, ${ends.dependent} to ${ends.head}` : `${label}, ${ends.dependent}`;
+};
+
 export const ArcLabel = ({
   relation,
   at,
@@ -56,6 +63,7 @@ export const ArcLabel = ({
   onDelete,
   onTab,
   labelRef,
+  ends,
 }) => {
   if (editing) {
     return (
@@ -92,6 +100,8 @@ export const ArcLabel = ({
       fill={color}
       className={`tree-deprel-text ${focused ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}${className}`}
       tabIndex="-1"
+      role="button"
+      aria-label={arcName(relation.value || 'dep', ends)}
       onMouseEnter={() => onHover?.(true)}
       onMouseLeave={() => onHover?.(false)}
       // Focusing SELECTS the label (highlight + keyboard target); it does not

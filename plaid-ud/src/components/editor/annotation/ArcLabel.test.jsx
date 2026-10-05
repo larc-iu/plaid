@@ -143,3 +143,21 @@ describe('the rules that go with a label', () => {
     expect(afterDeleting([{ id: 'a' }], 'a')).toBe(null);
   });
 });
+
+describe("the arc label's name", () => {
+  it('says the relation and the two words it joins', async () => {
+    const view = await mount({ ends: { dependent: 'dog', head: 'sleeps' } });
+    expect(label(view.container).getAttribute('role')).toBe('button');
+    expect(label(view.container).getAttribute('aria-label')).toBe('nsubj, dog to sleeps');
+    await view.unmount();
+  });
+
+  it('says the one word for a root', async () => {
+    const view = await mount({
+      relation: { id: 'r3', value: 'root', metadata: {} },
+      ends: { dependent: 'sleeps', head: null },
+    });
+    expect(label(view.container).getAttribute('aria-label')).toBe('root, sleeps');
+    await view.unmount();
+  });
+});

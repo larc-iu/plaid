@@ -708,6 +708,7 @@ export const DependencyTree = forwardRef(
           relation={relation}
           at={shape.label}
           color={color}
+          ends={{ dependent: targetPos.form, head: isToRoot ? null : sourcePos.form }}
           editing={editingRelation?.id === relation.id}
           focused={isFocused}
           // A basic relation the enhanced graph leaves out is faded, arc and
