@@ -257,3 +257,28 @@ describe('removeTokensLocally', () => {
     expect(vocabs.v.vocabLinks).toEqual([{ id: 'mwe', tokens: ['w3'] }]);
   });
 });
+
+describe('applyTextEditsLocally on a long text', () => {
+  // More deleted tokens than a spread's argument limit (about 120,000 in V8).
+  it('deleting the whole of a 200,000-word text deletes every word', () => {
+    const n = 200000;
+    const raw = {
+      textLayers: [
+        {
+          text: { id: 't', body: 'ka '.repeat(n) },
+          tokenLayers: [
+            {
+              id: 'word',
+              overlapMode: 'non-overlapping',
+              tokens: Array.from({ length: n }, (_, i) => tok(`w${i}`, i * 3, i * 3 + 2)),
+            },
+          ],
+        },
+      ],
+    };
+    const deleted = applyTextEditsLocally(raw, 't', [{ type: 'delete', index: 0, value: n * 3 }]);
+    expect(deleted).toHaveLength(n);
+    expect(raw.textLayers[0].tokenLayers[0].tokens).toEqual([]);
+    expect(raw.textLayers[0].text.body).toBe('');
+  });
+});

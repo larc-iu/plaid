@@ -1145,7 +1145,7 @@ export function TranscriptList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentFocusRequest]);
 
-  const prevEnd = segments.length ? Math.max(...segments.map(timeEndOf)) : 0;
+  const prevEnd = segments.reduce((max, t) => Math.max(max, timeEndOf(t)), 0);
 
   return (
     <div className="rounded-lg border bg-card p-4" ref={containerRef}>

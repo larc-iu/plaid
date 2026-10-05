@@ -222,7 +222,7 @@ async function unchangedEntries(client, lexiconRows) {
   for (const [vocabId, vocabRows] of byVocab) {
     const vocab = await readVocabulary(client, vocabId);
     const formOf = new Map((vocab?.items || []).map((it) => [it.id, it.form]));
-    kept.push(...vocabRows.filter((r) => formOf.get(r.id) === r.old));
+    for (const r of vocabRows) if (formOf.get(r.id) === r.old) kept.push(r);
   }
   return kept;
 }

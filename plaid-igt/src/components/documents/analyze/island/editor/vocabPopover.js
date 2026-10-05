@@ -250,7 +250,9 @@ export const vocabPopover = {
         : (it) => it.metadata?.morphType;
       const phrases = items.filter((it) => isMweType(typeOf(it)));
       const others = items.filter((it) => !isMweType(typeOf(it)));
-      items.splice(0, items.length, ...phrases, ...others);
+      items.length = 0;
+      for (const it of phrases) items.push(it);
+      for (const it of others) items.push(it);
     }
     if (currentItem) {
       const i = items.findIndex((it) => it.id === currentItem.id);

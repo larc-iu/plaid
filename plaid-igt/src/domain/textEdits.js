@@ -124,7 +124,7 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
       } else {
         const result = applyDeleteToTokens(tokens, op.index, op.value);
         layer.tokens = result.tokens;
-        deletedIds.push(...result.deletedIds);
+        for (const id of result.deletedIds) deletedIds.push(id);
       }
     }
   }
