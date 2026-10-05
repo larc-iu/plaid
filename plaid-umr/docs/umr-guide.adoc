@@ -527,6 +527,23 @@ A turn the model does not finish ends with the reason and **Retry**.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 
+== Files and PDFs
+
+The paperclip in the message box attaches files to a question, up to five at a time.
+Dropping a file on the message box or pasting one into it does the same.
+The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.umr` files, and PDFs.
+A file can hold up to 4 MB of text.
+A `.umr` file is read as text. To bring it into the project, import it.
+Files are kept with the conversation and deleted with it.
+
+A PDF must have text in it, so a scan is refused.
+The assistant reads a PDF by section and by page: ask about "§9" or "page 41" and it reads that part.
+Examples set in columns keep their columns.
+Text taken from a PDF can come out wrong where the PDF's fonts are old, so check a form against the PDF before relying on it.
+
+Where the assistant can look things up on the web, it also reads a PDF from a link or a DOI pasted into a question.
+The PDF is kept with the conversation and shown under the reply, linked to where it came from.
+
 == The panel
 
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
