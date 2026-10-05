@@ -8,16 +8,12 @@
 // `split` are partition- and nesting-preserving and are the only boundary
 // edits used here; `clearSentences` is a merge of everything into the first.
 
-import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { chunk } from '../bulk.js';
-
-// plaid-core's max-batch-ops. A batch past it is split into several requests,
-// which do not land together, so a reset that needs more is refused instead.
-const MAX_BATCH_OPS = 1000;
 
 // The sentence spans a reset deletes: every value on one of `sentenceIds`.
 const sentenceSpanIds = (info, sentenceIds) =>
@@ -30,7 +26,9 @@ const sentenceSpanIds = (info, sentenceIds) =>
 /**
  * Can Reset to single sentence go out as ONE batch for this layer info? It is
  * one bulk delete per chunk of sentence spans and one merge per sentence after
- * the first. A longer document cannot, and is told to be split instead.
+ * the first. A longer document cannot, and is told to be split instead: a batch
+ * past MAX_BATCH_OPS (plaid-core's max-batch-ops) goes as several requests,
+ * which do not land together.
  */
 export const clearSentencesFits = (info) => {
   const tokens = info?.sentenceTokenLayer?.tokens || [];
