@@ -56,7 +56,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
           id={`${prefix}-tag`}
           label="Writing system tag"
           value={lang.tag}
-          placeholder="lez"
+          placeholder="e.g. lez"
           hint="A tag is letters and hyphens, like lez or qaa-x-lezgi."
           invalid={lang.tag !== '' && !isLangTag(lang.tag)}
           onChange={(v) => set({ tag: v.trim() })}
@@ -65,7 +65,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
           id={`${prefix}-glottocode`}
           label="Glottocode"
           value={lang.glottocode}
-          placeholder="lezg1247"
+          placeholder="e.g. lezg1247"
           hint="Glottocodes look like lezg1247 (four letters, four digits)."
           invalid={lang.glottocode !== '' && !GLOTTOCODE_RE.test(lang.glottocode)}
           onChange={(v) => set({ glottocode: v.trim() })}
@@ -74,7 +74,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
           id={`${prefix}-iso`}
           label="ISO 639-3"
           value={lang.iso639P3}
-          placeholder="lez"
+          placeholder="e.g. lez"
           hint="ISO 639-3 codes are three letters."
           invalid={lang.iso639P3 !== '' && !ISO_RE.test(lang.iso639P3)}
           onChange={(v) => set({ iso639P3: v.trim() })}
@@ -86,14 +86,14 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
             id={`${prefix}-lat`}
             label="Latitude"
             value={lang.latitude ?? ''}
-            placeholder="41.5"
+            placeholder="e.g. 41.5"
             onChange={(v) => set({ latitude: v })}
           />
           <Field
             id={`${prefix}-lon`}
             label="Longitude"
             value={lang.longitude ?? ''}
-            placeholder="48.0"
+            placeholder="e.g. 48.0"
             onChange={(v) => set({ longitude: v })}
           />
         </div>

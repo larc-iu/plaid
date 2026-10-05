@@ -27,6 +27,12 @@ describe('LanguagesSettings', () => {
     }));
     expect(groups.map((g) => g.name)).toEqual(['Object language', 'Meta language']);
     for (const g of groups) expect(g.inputs).toBeGreaterThan(0);
+    // An example in an empty field reads as an example, not a value.
+    const examples = [...view.container.querySelectorAll('input[placeholder]')].map((i) =>
+      i.getAttribute('placeholder'),
+    );
+    expect(examples.length).toBeGreaterThan(0);
+    for (const e of examples) expect(e).toMatch(/^e\.g\. /);
     await view.unmount();
   });
 });
