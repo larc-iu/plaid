@@ -43,6 +43,8 @@ export const cells = {
       if (this._gridExitOff === off) this._gridExitOff = null;
     };
     const onKey = (e) => {
+      // Shift, on its way to Shift+Tab, is not another key.
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
       off();
       if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
       const target = this._pastGrid(e.shiftKey);
@@ -57,12 +59,13 @@ export const cells = {
   },
 
   // The first Tab stop after the grid's sentences, or the last one before them.
+  // With nothing on that side the page wraps round, as the browser's Tab does.
   _pastGrid(back) {
     const sentences = this.container.querySelectorAll('.igt-sentence');
     if (!sentences.length) return null;
     const edge = back ? sentences[0] : sentences[sentences.length - 1];
     const doc = this.container.ownerDocument;
-    const stops = [
+    const all = [
       ...doc.querySelectorAll(
         'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]',
       ),
@@ -71,11 +74,12 @@ export const cells = {
         el.tabIndex >= 0 &&
         !el.closest('.igt-sentence') &&
         !el.closest('[hidden], [aria-hidden="true"]') &&
-        el.getClientRects().length > 0 &&
-        edge.compareDocumentPosition(el) &
-          (back ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING),
+        el.getClientRects().length > 0,
     );
-    return (back ? stops[stops.length - 1] : stops[0]) ?? null;
+    const side = back ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
+    const stops = all.filter((el) => edge.compareDocumentPosition(el) & side);
+    const list = stops.length ? stops : all;
+    return (back ? list[list.length - 1] : list[0]) ?? null;
   },
 
   _onFieldFocus(e) {

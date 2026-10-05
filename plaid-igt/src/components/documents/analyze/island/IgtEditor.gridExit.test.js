@@ -76,6 +76,7 @@ describe('leaving the Analyze grid', () => {
     const el = cell();
     el.focus();
     key(el, { key: 'Escape' });
+    key(document.body, { key: 'Shift', shiftKey: true });
     key(document.body, { key: 'Tab', shiftKey: true });
     const at = document.activeElement;
     expect(at.closest('.igt-sentence')).toBe(null);
@@ -97,5 +98,14 @@ describe('leaving the Analyze grid', () => {
     key(el, { key: 'Escape' });
     key(document.body, { key: 'x' });
     expect(key(document.body, { key: 'Tab' }).defaultPrevented).toBe(false);
+  });
+
+  it('wraps round to the top of the page when nothing follows the grid', () => {
+    page.querySelector('#after').remove();
+    const el = cell();
+    el.focus();
+    key(el, { key: 'Escape' });
+    key(document.body, { key: 'Tab' });
+    expect(document.activeElement.id).toBe('before');
   });
 });
