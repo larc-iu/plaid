@@ -23,7 +23,8 @@ import { GrewRuntimeError } from '../errors.js';
 import { isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 import { SUPPRESS_KEY } from '../../domain/enhancedGraph.js';
 import { notSetUp } from '../../../../plaid-ui/src/domain/setupGuard.js';
-import { countDeleteLoss, lossPhrase } from '../../../../plaid-ui/src/domain/annotationLoss.js';
+import { lossPhrase } from '../../../../plaid-ui/src/domain/annotationLoss.js';
+import { otherDeleteLoss } from '../../domain/otherLoss.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -109,7 +110,11 @@ export function diffGraphs(before, after, layerInfo) {
   // multi-word token going leaves the token, and its other words, alone.
   // The token takes with it what the text's other layers hold on it, whoever
   // made them, and the word's line says how much (N1-CASCADE-3).
-  const loss = { annotations: 0, links: 0 };
+  // The row's loss is counted once over every token it deletes, so a link
+  // over two deleted words is one link (REV-N5-APPS R7). Each word's line
+  // names what its own token adds to the count, and the last such line what
+  // the row only shortens.
+  let loss = { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
   {
     const wordCounts = new Map();
     for (const id of before.order) {
@@ -122,25 +127,50 @@ export function diffGraphs(before, after, layerInfo) {
       const wordId = before.nodes.get(id)?.wordId;
       if (wordId) goneCounts.set(wordId, (goneCounts.get(wordId) || 0) + 1);
     }
-    const tokenLayers = layerInfo.textLayer?.tokenLayers || [];
-    const own = layerInfo.morphemeTokenLayer ? [layerInfo.morphemeTokenLayer.id] : [];
+    let last = null; // { at, form, phrase } of the last line that names a loss
     for (const id of deleted) {
       const b = before.nodes.get(id);
       const wholeWord = b.wordId && goneCounts.get(b.wordId) === wordCounts.get(b.wordId);
       if (wholeWord && writes.tokens.some((w) => w.id === b.wordId)) continue;
       const tokenId = wholeWord ? b.wordId : id;
       writes.tokens.push({ op: 'deleteToken', id: tokenId });
-      const lost = countDeleteLoss(tokenLayers, [tokenId], { skip: own });
-      const phrase = lossPhrase(lost);
+      const now = otherDeleteLoss(
+        layerInfo,
+        writes.tokens.map((w) => w.id),
+      );
+      const phrase = lossPhrase({
+        annotations: now.annotations - loss.annotations,
+        links: now.links - loss.links,
+      });
+      loss = now;
       if (!phrase) continue;
-      loss.annotations += lost.annotations;
-      loss.links += lost.links;
       const at = changes.findIndex((c) => c.kind === 'node' && c.node === id);
       changes[at] = {
         kind: 'node',
         node: id,
         loss: true,
         ...line`${b.form}: word deleted, with ${phrase}`,
+      };
+      last = { at, form: b.form, phrase };
+    }
+    const cut = lossPhrase(loss.shortened);
+    if (cut) {
+      if (!last) {
+        const node = [...deleted].at(-1);
+        last = {
+          at: changes.findIndex((c) => c.kind === 'node' && c.node === node),
+          form: before.nodes.get(node)?.form,
+          phrase: '',
+        };
+      }
+      const { at, form, phrase } = last;
+      changes[at] = {
+        kind: 'node',
+        node: changes[at].node,
+        loss: true,
+        ...(phrase
+          ? line`${form}: word deleted, with ${phrase}, and shortens ${cut}`
+          : line`${form}: word deleted, and shortens ${cut}`),
       };
     }
   }

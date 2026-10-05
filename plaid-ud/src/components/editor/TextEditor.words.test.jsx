@@ -190,6 +190,44 @@ describe('the Text Editor asking before words go', () => {
   });
 });
 
+// REV-N5-APPS R8: a link this token shares with a token that stays is only
+// shortened, and the question says so apart.
+describe('the Text Editor naming what a delete only shortens', () => {
+  it('names a shortened link apart, and asks for it alone', async () => {
+    setup(
+      { annotations: 1, relations: 0, forms: 0 },
+      {
+        other: { annotations: 0, links: 1, shortened: { annotations: 0, links: 1 } },
+      },
+    );
+    let view = await mount();
+    let done;
+    await act(async () => {
+      done = visualized.props.onWordDelete('w1');
+    });
+    expect(dialog().textContent).toContain(
+      'Deletes 1 annotation and 1 vocabulary link on “home”, and shortens 1 vocabulary link.',
+    );
+    await press('Cancel');
+    await act(async () => done);
+    await view.unmount();
+
+    const doc = setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { other: { annotations: 0, links: 0, shortened: { annotations: 0, links: 1 } } },
+    );
+    view = await mount();
+    await act(async () => {
+      done = visualized.props.onWordDelete('w1');
+    });
+    expect(dialog().textContent).toContain('Shortens 1 vocabulary link on “home”.');
+    await press('Delete');
+    await act(async () => done);
+    expect(doc.deleteWord).toHaveBeenCalledWith('w1');
+    await view.unmount();
+  });
+});
+
 describe('the Text Editor asking before the sentences go', () => {
   const clearButton = () =>
     [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Clear tokens');

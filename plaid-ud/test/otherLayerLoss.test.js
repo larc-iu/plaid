@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
+import { withOps } from './helpers/stubClient.js';
 
 const INPUT = [
   '# text = she came home',
@@ -72,9 +73,17 @@ const open = () => {
 test("deleting a token counts what the other layers hold on it, and none of UD's own", () => {
   const { doc, came, word } = open();
   // The word gloss, two morpheme glosses and the relation on one, two links.
-  assert.deepEqual(doc.otherLossForWord(came), { annotations: 4, links: 2 });
+  assert.deepEqual(doc.otherLossForWord(came), {
+    annotations: 4,
+    links: 2,
+    shortened: { annotations: 0, links: 0 },
+  });
   // "home" has UD annotations only, which annotationLossForWord counts.
-  assert.deepEqual(doc.otherLossForWord(word('home')), { annotations: 0, links: 0 });
+  assert.deepEqual(doc.otherLossForWord(word('home')), {
+    annotations: 0,
+    links: 0,
+    shortened: { annotations: 0, links: 0 },
+  });
   assert.ok(doc.annotationLossForWord(word('home')).annotations > 0);
 });
 
@@ -123,4 +132,43 @@ test('Parse counts only when it makes the sentences', () => {
   doc.layerInfo.sentenceTokenLayer.tokens = [];
   doc.layerInfo.wordTokenLayer.tokens = [];
   assert.deepEqual(doc.parseLoss(), { annotations: 1, links: 0 });
+});
+
+// REV-N5-APPS R5: a segmentation with nothing on it is someone's work, counted
+// as Clear tokens counts it. R8: a link that keeps another token is shortened,
+// not deleted. A multiword token's own form is this editor's, not counted here.
+test('Delete token counts a bare segmentation, and names a shortened link apart', () => {
+  const { doc, came, she } = open();
+  const layers = doc.layerInfo.textLayer.tokenLayers;
+  const other = layers.find((tl) => tl.id === 'other-morphs');
+  other.spanLayers[0].spans = [];
+  other.spanLayers[0].relationLayers[0].relations = [];
+  other.vocabs[0].vocabLinks = [{ id: 'mwe', tokens: [she.id, came.id] }];
+  doc.layerInfo.wordTokenLayer.spanLayers = [];
+  other.tokens[0].metadata = { form: 'ca', boundaries: '-' };
+  other.tokens[1].metadata = { form: 'me' };
+  came.metadata = { form: 'came' };
+  assert.deepEqual(doc.otherLossForWord(came), {
+    annotations: 2,
+    links: 0,
+    shortened: { annotations: 0, links: 1 },
+  });
+});
+
+// REV-N5-APPS R3: the relations the server's rule deletes in the split's own
+// transaction leave this copy with it, so splitting there again, after a merge
+// back, counts nothing.
+test('a split drops the relations it cuts on other layers, and counts none the second time', async () => {
+  const { doc, came } = open();
+  doc._client = withOps({
+    tokens: { split: async () => ({ id: 'right' }), merge: async () => ({}) },
+  });
+  assert.equal(doc.otherLossForSentenceSplit(came.begin).annotations, 1);
+  await doc.toggleSentenceBoundary(came.begin);
+  const rel = doc.layerInfo.textLayer.tokenLayers.find((tl) => tl.id === 'other-morphs')
+    .spanLayers[0].relationLayers[0].relations;
+  assert.deepEqual(rel, []);
+  await doc.toggleSentenceBoundary(came.begin);
+  assert.equal(doc.layerInfo.sentenceTokenLayer.tokens.length, 1);
+  assert.equal(doc.otherLossForSentenceSplit(came.begin).annotations, 0);
 });

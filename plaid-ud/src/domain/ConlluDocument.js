@@ -41,7 +41,9 @@ import {
   countDeleteLoss,
   countPartitionLoss,
   countSplitLoss,
+  dropRelations,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
+import { otherDeleteLoss } from './otherLoss.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
 import {
@@ -457,6 +459,13 @@ export class ConlluDocument extends DocumentModel {
         }))
       : [];
     this._applyRawPatch((next, infoNext) => {
+      // Relations another layer keeps inside one sentence that the new
+      // sentences cut go in the same transaction (REV-N5-APPS R3).
+      const layers = infoNext.textLayer?.tokenLayers || [];
+      dropRelations(
+        layers,
+        countPartitionLoss(layers, infoNext.sentenceTokenLayer.id, sentenceRanges).relationIds,
+      );
       infoNext.sentenceTokenLayer.tokens = sentences.map((t) => ({ ...t }));
       infoNext.wordTokenLayer.tokens = words.map((t) => ({ ...t }));
       infoNext.morphemeTokenLayer.tokens = morphemes.map((t) => ({ ...t }));
@@ -542,12 +551,10 @@ export class ConlluDocument extends DocumentModel {
   }
 
   // What deleting a token takes on the text's other layers, beyond what
-  // `annotationLossForWord` counts: `{ annotations, links }`.
+  // `annotationLossForWord` counts: `{ annotations, links, shortened }`
+  // (domain/otherLoss.js).
   otherLossForWord(word) {
-    const loss = countDeleteLoss(this.layerInfo.textLayer?.tokenLayers || [], [word.id], {
-      skip: this._ownLossLayers(),
-    });
-    return { annotations: loss.annotations, links: loss.links };
+    return otherDeleteLoss(this.layerInfo, [word.id]);
   }
 
   // What splitting the sentence at `charPos` takes on the text's other layers:
@@ -682,6 +689,11 @@ export class ConlluDocument extends DocumentModel {
     const rightId = pendingId();
 
     this._applyRawPatch((next, info) => {
+      // The other layers' relations the server's rule deletes in the split's
+      // transaction leave this copy with it, so a later count does not find
+      // them (REV-N5-APPS R3).
+      const layers = info.textLayer?.tokenLayers || [];
+      dropRelations(layers, countSplitLoss(layers, containing.id, charPos).relationIds);
       if (info.sentenceTokenLayer?.tokens) {
         const s = info.sentenceTokenLayer.tokens.find((t) => t.id === containing.id);
         if (s) s.end = charPos;

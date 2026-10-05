@@ -248,9 +248,13 @@ export const TextEditor = () => {
       relations > 0 && `${relations} ${plural(relations, 'relation')}`,
       other.links > 0 && `${other.links} ${plural(other.links, 'vocabulary link')}`,
     ]);
-    if (!parts) return null;
+    // A link or annotation that also covers a token that stays is only cut
+    // down, and named apart (REV-N5-APPS R8).
+    const cut = lossPhrase(other.shortened || {});
+    if (!parts && !cut) return null;
     const surface = cpSlice(serverText, word.begin, word.end);
-    return `Deletes ${parts} on “${surface}”.`;
+    if (!parts) return `Shortens ${cut} on “${surface}”.`;
+    return `Deletes ${parts} on “${surface}”${cut ? `, and shortens ${cut}` : ''}.`;
   };
 
   // A token that carries annotations, on any layer, asks before it goes. The

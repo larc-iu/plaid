@@ -180,13 +180,63 @@ test('del_node says what the deleted token takes on the other layers', () => {
     ['perro: word deleted, with 1 annotation and 1 vocabulary link'],
   );
   assert.equal(r.changes[0].loss, true);
-  assert.deepEqual(r.loss, { annotations: 1, links: 1 });
+  assert.deepEqual(r.loss, { annotations: 1, links: 1, shortened: { annotations: 0, links: 0 } });
   r = diff('pattern { X [form="el"] } commands { del_node X }');
   assert.deepEqual(
     r.changes.map((c) => c.text),
     ['el: word deleted'],
   );
-  assert.deepEqual(r.loss, { annotations: 0, links: 0 });
+  assert.deepEqual(r.loss, { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } });
+});
+
+// REV-N5-APPS R7: a link over two deleted words is one link, in the row's count
+// and on the lines. R5: a bare segmentation counts. R8: a link that keeps a
+// word the rule leaves is shortened, and said apart.
+test('del_node over two words counts what they share once', () => {
+  const raw = rawDocFromConllu(CONLLU);
+  const layers = raw.textLayers[0].tokenLayers;
+  const [sentences, words, synWords] = layers;
+  words.parentTokenLayer = sentences.id;
+  synWords.parentTokenLayer = words.id;
+  const body = raw.textLayers[0].text.body;
+  const word = (form) => words.tokens.find((t) => body.slice(t.begin, t.end) === form);
+  const perro = word('perro');
+  const vio = word('vio');
+  const del = word('del');
+  layers.push({
+    id: 'other',
+    parentTokenLayer: words.id,
+    tokens: [{ id: 'o1', begin: perro.begin, end: perro.end, metadata: { form: 'perro' } }],
+    spanLayers: [],
+    vocabs: [
+      {
+        id: 'v',
+        vocabLinks: [
+          { id: 'both', tokens: [perro.id, vio.id] },
+          { id: 'cut', tokens: [del.id, perro.id] },
+        ],
+      },
+    ],
+  });
+  const doc = new ConlluDocument({ raw });
+  const before = graphFromSentence(doc.sentences[0]);
+  const { graph: after } = rewriteSentence(
+    parseGrs('pattern { N [form="perro"]; V [form="vio"] } commands { del_node N; del_node V }'),
+    before,
+  );
+  const r = diffGraphs(before, after, doc.layerInfo);
+  assert.deepEqual(r.loss, {
+    annotations: 1,
+    links: 1,
+    shortened: { annotations: 0, links: 1 },
+  });
+  assert.deepEqual(
+    r.changes.filter((c) => c.kind === 'node').map((c) => c.text),
+    [
+      'perro: word deleted, with 1 annotation',
+      'vio: word deleted, with 1 vocabulary link, and shortens 1 vocabulary link',
+    ],
+  );
 });
 
 // The project's rules allow one head a word and no cycle, so a sentence the

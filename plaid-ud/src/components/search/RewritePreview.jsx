@@ -63,25 +63,28 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
     onSelect(next);
   };
 
-  // What the chosen rows' deleted words take on the text's other layers.
-  const lost = lossPhrase(
+  // What the chosen rows' deleted words take on the text's other layers, and
+  // what they only cut down. Each row counts its own once.
+  const sum = (pick) =>
     chosen.reduce(
-      (sum, r) => ({
-        annotations: sum.annotations + (r.loss?.annotations || 0),
-        links: sum.links + (r.loss?.links || 0),
+      (acc, r) => ({
+        annotations: acc.annotations + (pick(r)?.annotations || 0),
+        links: acc.links + (pick(r)?.links || 0),
       }),
       { annotations: 0, links: 0 },
-    ),
-  );
+    );
+  const lost = lossPhrase(sum((r) => r.loss));
+  const cut = lossPhrase(sum((r) => r.loss?.shortened));
 
   const confirmApply = async () => {
     const ok = await confirm({
       title: 'Apply changes?',
       description:
         `${plural(chosen.length, 'sentence')} in ${plural(chosenDocs.size, 'document')}.` +
-        (lost ? ` Deletes ${lost} with the deleted words.` : ''),
+        (lost ? ` Deletes ${lost} with the deleted words.` : '') +
+        (cut ? ` Shortens ${cut}.` : ''),
       confirmLabel: 'Apply',
-      destructive: Boolean(lost),
+      destructive: Boolean(lost || cut),
     });
     if (ok) onApply();
   };
