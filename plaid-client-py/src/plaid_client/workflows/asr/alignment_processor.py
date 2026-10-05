@@ -241,7 +241,7 @@ class AlignmentProcessor:
         # We'll need to track text changes to update positions correctly
         text_modifications = []  # List of (position, old_length, new_text) tuples
         
-        for i, trans in enumerate(non_colliding_transcriptions):
+        for trans in non_colliding_transcriptions:
             segment_text = trans['text'].strip()
             if not segment_text:
                 continue
@@ -249,19 +249,16 @@ class AlignmentProcessor:
             # Find insertion point in text based on time
             insertion_pos = self._find_text_insertion_position(current_text, existing_alignment_tokens, trans['start'])
             
-            # Add space at the end of all segments except the final one
-            is_final_segment = (i == len(non_colliding_transcriptions) - 1)
-            if is_final_segment:
-                new_segment_text = segment_text
-            else:
-                new_segment_text = segment_text + " "
-            
+            # The spaces that keep it apart from its neighbours are added once
+            # the inserts are in text order (`_pad`).
+            new_segment_text = segment_text
+
             # Track this modification
             text_modifications.append({
                 'position': insertion_pos,
                 'old_length': 0,
                 'new_text': new_segment_text,
-                'segment_start_offset': 0,  # Segment always starts at insertion point
+                'segment_start_offset': 0,  # past the space `_pad` puts before it
                 'segment_length': len(segment_text),  # Token length is just the segment text
                 'time_start': trans['start'],
                 'time_end': trans['end'],
@@ -274,6 +271,7 @@ class AlignmentProcessor:
             
             # Sort modifications by position (forward order for sequential application)
             text_modifications.sort(key=lambda m: m['position'])
+            self._pad(current_text, text_modifications)
             
             # Apply modifications sequentially and track cumulative offset
             new_text = current_text
@@ -330,6 +328,28 @@ class AlignmentProcessor:
                             sentence_token_layer_id, response_helper, overwrite)
 
         return len(new_alignment_tokens)
+
+    @staticmethod
+    def _pad(current_text: str, text_modifications: List[Dict]) -> None:
+        """Give each insert (in text order) a space before it when the
+        character before it is not whitespace, and one after it when the text
+        after it does not start with whitespace, so a segment's text never runs
+        into the text beside it: "one" and "two three" make "one two three".
+        Inserts at one place stand in the order given, each apart from the one
+        before it."""
+        for i, mod in enumerate(text_modifications):
+            pos = mod['position']
+            prev = text_modifications[i - 1] if i > 0 else None
+            if prev is not None and prev['position'] == pos:
+                before = prev['new_text'][-1:]
+            else:
+                before = current_text[pos - 1:pos]
+            nxt = text_modifications[i + 1] if i + 1 < len(text_modifications) else None
+            after = '' if nxt is not None and nxt['position'] == pos else current_text[pos:pos + 1]
+            lead = ' ' if before and not before.isspace() else ''
+            trail = ' ' if after and not after.isspace() else ''
+            mod['new_text'] = lead + mod['new_text'] + trail
+            mod['segment_start_offset'] = len(lead)
 
     @staticmethod
     def _words_overlap(e: PlaidAPIError) -> bool:

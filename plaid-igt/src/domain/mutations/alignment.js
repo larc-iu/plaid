@@ -207,32 +207,18 @@ const planCreate = (info, trimmed, timeBegin) => {
     insertPosition = insertAfterToken.end;
   }
 
-  let insertedText;
-  let insertBegin;
-  let tokenBegin;
-  let tokenEnd;
-  if (insertPosition === 0) {
-    const spaceAfter = existingText ? ' ' : '';
-    insertedText = trimmed + spaceAfter;
-    insertBegin = 0;
-    tokenBegin = 0;
-    tokenEnd = cpLength(trimmed);
-  } else if (insertPosition >= cpLength(existingText)) {
-    const spaceBefore = existingText ? ' ' : '';
-    insertedText = spaceBefore + trimmed;
-    insertBegin = cpLength(existingText);
-    tokenBegin = cpLength(existingText) + (spaceBefore ? 1 : 0);
-    tokenEnd = tokenBegin + cpLength(trimmed);
-  } else {
-    const before = cpSlice(existingText, 0, insertPosition);
-    const after = cpSlice(existingText, insertPosition);
-    const spaceBefore = before.endsWith(' ') ? '' : ' ';
-    const spaceAfter = after.startsWith(' ') ? '' : ' ';
-    insertedText = spaceBefore + trimmed + spaceAfter;
-    insertBegin = insertPosition;
-    tokenBegin = insertPosition + (spaceBefore ? 1 : 0);
-    tokenEnd = tokenBegin + cpLength(trimmed);
-  }
+  // A space on each side the new text would touch other text, and none
+  // where whitespace is there already (a line break included), as the ASR
+  // transcription pads its segments.
+  const at = Math.min(insertPosition, cpLength(existingText));
+  const before = cpSlice(existingText, 0, at);
+  const after = cpSlice(existingText, at);
+  const spaceBefore = before && !/\s$/u.test(before) ? ' ' : '';
+  const spaceAfter = after && !/^\s/u.test(after) ? ' ' : '';
+  const insertedText = spaceBefore + trimmed + spaceAfter;
+  const insertBegin = at;
+  const tokenBegin = at + (spaceBefore ? 1 : 0);
+  const tokenEnd = tokenBegin + cpLength(trimmed);
 
   if (temporalInversion) {
     return {

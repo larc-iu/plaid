@@ -155,7 +155,7 @@ def test_a_transcription_lands_stamped_machine_made_and_never_confirmed(monkeypa
     # machine-made with the model's own scores in provDetail.
     [(text_id, edits)] = service.client.payloads('texts.update')
     assert text_id == 'text-1'
-    assert [op['value'] for op in edits] == ['evler geliyor ', 'kedi uyuyor']
+    assert [op['value'] for op in edits] == ['evler geliyor', ' kedi uyuyor']
 
     [ops] = [ops for ops in service.client.payloads('tokens.bulk_create')
              if ops[0]['token_layer_id'] == ALIGN_LAYER]

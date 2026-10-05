@@ -1,4 +1,4 @@
-"""The ASR transcription's text gets the words of igt's "Tokenize new text",
+"""The ASR transcription's text stands apart from the text beside it, and gets the words of igt's "Tokenize new text",
 read off the word layer it is handed, as typed text gets them: in the batch
 that writes the text, none when the layer has the setting off, none in a
 script written without spaces. The rule is checked against the app's in
@@ -67,9 +67,38 @@ def test_words_already_there_are_kept_and_text_against_them_is_left_to_them():
                                       words=[(0, 3)])])
     _run(client, [Alignment(text='two three', start=1.0, end=2.0)])
     body = _body_after(client, 'one')
-    # Inserted at the segment's end with no space, as the run always has.
-    assert body == 'onetwo three'
-    assert [body[r['begin']:r['end']] for r in _word_rows(client)] == ['three']
+    assert body == 'one two three'
+    assert [body[r['begin']:r['end']] for r in _word_rows(client)] == ['two', 'three']
+
+
+def _segments(client):
+    return [op for c in client.calls if c[0] == 'bulk_create' for op in c[1]
+            if op['token_layer_id'] == ALIGN_LAYER]
+
+
+def test_a_segments_text_never_runs_into_the_text_beside_it():
+    # Before the first segment, between two, and after the last: a space on
+    # each side that touches text, none where there is whitespace already.
+    doc = _document('one\nthree', sentences=[(0, 9)], align=[(0, 3, 1.0, 2.0), (4, 9, 5.0, 6.0)])
+    client = _FakeClient([doc])
+    AlignmentProcessor().process_alignments(
+        client, 'd1', [Alignment(text='zero', start=0.0, end=0.5),
+                       Alignment(text='two', start=3.0, end=4.0),
+                       Alignment(text='two more', start=4.0, end=4.5),
+                       Alignment(text='four', start=7.0, end=8.0)],
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+    body = _body_after(client, 'one\nthree')
+    assert body == 'zero one two two more\nthree four'
+    # Each segment covers its own text and no space.
+    assert [body[t['begin']:t['end']] for t in _segments(client)] == ['zero', 'two', 'two more', 'four']
+
+
+def test_the_first_text_of_an_empty_document_gets_no_space():
+    client = _FakeClient([_document('')])
+    AlignmentProcessor().process_alignments(
+        client, 'd1', [Alignment(text='a b', start=0.0, end=1.0), Alignment(text='c', start=1.0, end=2.0)],
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+    assert _body_after(client, '') == 'a b c'
 
 
 def test_no_words_when_the_project_has_the_setting_off():
