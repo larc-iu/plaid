@@ -926,6 +926,23 @@ The tab opens on a new conversation. The list on the left holds the earlier ones
 **All projects** widens that list past the project you are in.
 A conversation belongs to the project it was started in, so a row from another project opens that project's own tab.
 
+== Files and PDFs
+
+The paperclip in the message box attaches files to a question, up to five at a time.
+Dropping a file on the message box or pasting one into it does the same.
+The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.flextext`, `.eaf` and `.lift` files, and PDFs.
+A file can hold up to 4 MB of text.
+A `.flextext`, `.eaf` or `.lift` file is read as text. To bring it into the project, import it.
+Files are kept with the conversation and deleted with it.
+
+A PDF must have text in it, so a scan is refused.
+The assistant reads a PDF by section and by page: ask about "§9" or "page 41" and it reads that part.
+Examples set in columns keep their columns.
+Text taken from a PDF can come out wrong where the PDF's fonts are old, so check a form against the PDF before relying on it.
+
+Where the assistant can look things up on the web, it also reads a PDF from a link or a DOI pasted into a question.
+The PDF is kept with the conversation and shown under the reply, linked to where it came from.
+
 == The panel
 
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
@@ -1098,6 +1115,8 @@ Exports are driven by **presets**.
 A preset fixes a format and which orthographies, fields, and options it includes, so the same export can be run again later, or by someone else, without choosing everything afresh.
 Maintainers create presets on the project's **Export** tab.
 Anyone can run one from there or from a document's Export tab, choosing a scope: this document, selected documents, or the whole project.
+A preset runs with its saved settings, so save it before running it.
+Comments left on a document (the Comments tab) are not exported. A sentence field named "Note" or "Comment" is an ordinary field and is exported like any other.
 
 Six formats are supported:
 

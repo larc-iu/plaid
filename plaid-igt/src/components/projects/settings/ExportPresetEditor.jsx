@@ -21,6 +21,9 @@ import { LatexOptions } from '@/components/export/LatexOptions.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
+// Formats that handle the project's vocabularies themselves.
+const OWN_VOCABULARY_FORMATS = new Set(['plaid-igt-json', 'cldf', 'elan', 'latex', 'flextext']);
+
 // The project's Export tab → one preset (/projects/:projectId/export/:presetId).
 // Rendered in place of the preset list inside the Settings section, so the
 // project's tab structure stays put. Name and options are edited here; the
@@ -212,62 +215,25 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
             onChange={(options) => update({ options })}
           />
         )}
-        {draft.format === 'plaid-igt-json' ? (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            This format always produces a .zip archive including all vocabularies and the project
-            configuration.
-          </p>
-        ) : draft.format === 'cldf' ? (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            This format always produces a .zip dataset: one CSV per CLDF component table, described
-            by a cldf-metadata.json.
-          </p>
-        ) : draft.format === 'elan' ? (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            One .eaf per document. A document with media is bundled into a .zip alongside it, so the
-            file ELAN opens finds its recording.
-          </p>
-        ) : draft.format === 'latex' ? (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            A .zip of LaTeX source: main.tex with a table of contents, a list of abbreviations, one
-            chapter per document, and a vocabulary chapter. It compiles with LuaLaTeX.
-          </p>
-        ) : draft.format === 'flextext' ? (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            One .flextext holding every document in the run. With the lexicon included it becomes a
-            .zip: the .flextext, the .lift and its .lift-ranges.
-          </p>
-        ) : (
-          hasVocabularies && (
-            <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
-              <span>
-                <span className="font-medium">Include vocabularies as TSV files</span>
-                <span className="block text-xs text-muted-foreground">
-                  Added to the .zip that a project-wide or multi-document export produces.
-                </span>
+        {!OWN_VOCABULARY_FORMATS.has(draft.format) && hasVocabularies && (
+          <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
+            <span>
+              <span className="font-medium">Include vocabularies as TSV files</span>
+              <span className="block text-xs text-muted-foreground">
+                Added to the .zip that a project-wide or multi-document export produces.
               </span>
-              <Switch
-                checked={!!draft.includeVocabularies}
-                onCheckedChange={(v) => update({ includeVocabularies: v })}
-              />
-            </label>
-          )
-        )}
-        {draft.format !== 'plaid-igt-json' && (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            Comments left on a document (the Comments tab) are not exported. A sentence field of
-            your own named “Note” or “Comment” is a different thing and is exported like any other
-            field.
-          </p>
+            </span>
+            <Switch
+              checked={!!draft.includeVocabularies}
+              onCheckedChange={(v) => update({ includeVocabularies: v })}
+            />
+          </label>
         )}
       </div>
 
       <div className="rounded-md border bg-muted/20 p-4">
         {dirty ? (
-          <p className="text-sm text-muted-foreground">
-            Save this preset to run it. An export always uses the saved settings, not the unsaved
-            ones on screen.
-          </p>
+          <p className="text-sm text-muted-foreground">Save to run this preset.</p>
         ) : (
           <ExportRunner
             client={client}
