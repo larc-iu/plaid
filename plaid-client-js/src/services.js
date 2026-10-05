@@ -495,8 +495,15 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
       url: `${client.baseUrl}/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs}`,
       method: 'POST',
       body: JSON.stringify(payload === undefined ? null : transformRequest(payload)),
+      // `notLive` (with `serviceId`) lets an app say it in the service's own
+      // name rather than its id.
       onStatus: (response) =>
-        response.status === 503 ? new Error(`No live service '${serviceId}' on this project`) : null,
+        response.status === 503
+          ? Object.assign(new Error(`No live service '${serviceId}' on this project`), {
+              notLive: true,
+              serviceId,
+            })
+          : null,
       what: 'Service request',
     },
     timeout,

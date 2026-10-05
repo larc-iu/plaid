@@ -6,7 +6,6 @@ import {
   fakeWriteLock,
 } from '@/test/mountDocumentHook.jsx';
 import { fakeRaf } from '@/test/fakeRaf.js';
-import { all } from '@ui/test/renderComponent.jsx';
 import { notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useMediaOperations } from './useMediaOperations.js';
 
@@ -330,7 +329,7 @@ const SERVICES = [
 ];
 
 describe('useMediaOperations: transcribing', () => {
-  it('refuses while another service run is in flight, before the transcript is cleared', async () => {
+  it('refuses while another service run is in flight', async () => {
     const client = fakeClient({
       messages: {
         discoverServices: vi.fn(async () => SERVICES),
@@ -361,8 +360,6 @@ describe('useMediaOperations: transcribing', () => {
     });
 
     expect(settled).toBe(true);
-    // Not even asked: the answer to "Replace existing transcript?" would have
-    // been acted on by a run that could not start.
     expect(h.container.querySelector('[role="alertdialog"]')).toBeNull();
     expect(doc.saveBaselineText).not.toHaveBeenCalled();
     expect(h.locks.acquire).not.toHaveBeenCalled();
@@ -371,9 +368,8 @@ describe('useMediaOperations: transcribing', () => {
   });
 });
 
-// A study reads the audit log: a transcription, the clearing of the old
-// transcript and every write the service makes, is one service run naming
-// the service.
+// A study reads the audit log: a transcription, every write the service
+// makes, is one service run naming the service.
 describe('useMediaOperations: transcribing in the audit log', () => {
   it('is one service-run operation naming the service', async () => {
     const opts = [];
@@ -397,9 +393,8 @@ describe('useMediaOperations: transcribing in the audit log', () => {
   });
 
   // The client holds one open operation, and an edit still saving holds one.
-  // Opened then, the run's operation joined the edit's, and the clearing of
-  // the old transcript and every write the service made were recorded as that
-  // edit. The run waits for the edits made before it, then opens its own and
+  // Opened then, the run's operation joined the edit's, and every write the
+  // service made was recorded as that edit. The run waits for the edits made before it, then opens its own and
   // hands it to the service.
   it('waits for the edits made before it, so its operation is its own', async () => {
     const saved = deferred();
@@ -563,9 +558,9 @@ describe('useMediaOperations: playing before the recording has loaded', () => {
 });
 
 // Stop is offered from the moment the run starts (the dialog and the banner),
-// and the first phases have no request for Stop to cancel: the wait for the
-// edits made before the run, and the clearing of the old transcript. A Stop
-// pressed there used to do nothing, and the run went on to ask the service.
+// and its first phase has no request for Stop to cancel: the wait for the
+// edits made before the run. A Stop pressed there used to do nothing, and the
+// run went on to ask the service.
 describe('useMediaOperations: stopping a transcription before the service is asked', () => {
   const STOPS = [
     ['the banner', (h) => h.locks.state.held.options.onCancel()],
@@ -624,55 +619,27 @@ describe('useMediaOperations: stopping a transcription before the service is ask
     },
   );
 
-  it.each(STOPS)(
-    'from %s while the old transcript is cleared, it does not ask the service',
-    async (_where, stop) => {
-      const cleared = deferred();
-      const client = fakeClient({
-        messages: { discoverServices: vi.fn(async () => SERVICES) },
-      });
-      const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
-        body: 'an existing transcript',
-        saveBaselineText: vi.fn(() => cleared.promise),
-      });
-      const h = await mountMedia({ doc, client });
-      let settled = false;
-      await h.step(async () => {
-        h.api.handleTranscribe().then(() => {
-          settled = true;
-        });
-        await settle();
-      });
-      const replace = all(document.body, 'button').find((b) => b.textContent === 'Replace');
-      await h.step(async () => {
-        replace.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        await settle();
-        await settle();
-      });
-      expect(doc.saveBaselineText).toHaveBeenCalledWith('');
-
-      await h.step(async () => {
-        await stop(h);
-        await settle();
-      });
-      // The clearing is one write already on its way: the run waits for it.
-      expect(settled).toBe(false);
-      await h.step(async () => {
-        cleared.resolve(true);
-        await settle();
-        await settle();
-      });
-      expect(settled).toBe(true);
-      expect(client.messages.requestService).not.toHaveBeenCalled();
-      expect(h.locks.state.held).toBeNull();
-      expect(h.api.transcribeRun.running).toBe(false);
-      expect(notifyInfo).toHaveBeenCalledWith(
-        'Stopped. The previous transcript was cleared and nothing was transcribed.',
-        'Transcribe',
-      );
-      await h.unmount();
-    },
-  );
+  // N2-SERVICES-1: the run used to ask "Replace existing transcript?" and
+  // clear the whole text before asking the service, so every word, gloss
+  // and translation went, and a failed run left the document empty.
+  it('on a document with text, asks nothing and clears nothing: the service writes into it', async () => {
+    const client = fakeClient({
+      messages: { discoverServices: vi.fn(async () => SERVICES) },
+    });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
+      body: 'an existing transcript',
+      saveBaselineText: vi.fn(async () => true),
+    });
+    const h = await mountMedia({ doc, client });
+    await h.step(async () => {
+      await h.api.handleTranscribe();
+      await settle();
+    });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(doc.saveBaselineText).not.toHaveBeenCalled();
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    await h.unmount();
+  });
 });
 
 // Someone else deletes or replaces the recording while this page plays it.

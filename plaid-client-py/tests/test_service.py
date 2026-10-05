@@ -686,6 +686,27 @@ def test_project_ids_ride_the_url(monkeypatch):
     ]
 
 
+def test_a_service_that_is_not_running_says_so_with_its_id(monkeypatch):
+    # The JS client's twin is `notLive` and `serviceId` (serviceRequestTimeout.test.js).
+    from plaid_client import services as svc_mod
+
+    class Busy:
+        status_code = 503
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(svc_mod.requests, 'post', lambda url, **kw: Busy())
+
+    class Client:
+        base_url = 'http://plaid.test'
+        token = 't'
+
+    with pytest.raises(RuntimeError) as caught:
+        svc_mod.request_service(Client(), 'p1', 's1', {}, timeout=5)
+    assert caught.value.not_live is True and caught.value.service_id == 's1'
+
+
 def test_request_id_rides_the_url_and_accepted_reaches_the_caller(monkeypatch):
     from plaid_client import services as svc_mod
 

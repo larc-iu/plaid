@@ -726,7 +726,11 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
 
         if resp.status_code == 503:
             resp.close()
-            raise RuntimeError(f"No live service '{service_id}' on this project")
+            # ``not_live`` (with ``service_id``) lets a caller say it in the
+            # service's own name, as the JS client's ``notLive`` does.
+            err = RuntimeError(f"No live service '{service_id}' on this project")
+            err.not_live, err.service_id = True, service_id
+            raise err
         if not resp.ok:
             detail = _response_text(resp)
             status = resp.status_code

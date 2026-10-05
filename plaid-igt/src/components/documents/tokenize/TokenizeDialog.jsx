@@ -41,7 +41,11 @@ export function TokenizeDialog({ ops, blockedHint = null }) {
         onOpenChange={setOpen}
         title="Tokenize"
         icon={Scissors}
-        description="Existing tokens are not overwritten."
+        description={
+          spot.service
+            ? "Where the service splits a sentence differently, that sentence's words are made again."
+            : 'Existing words are kept.'
+        }
         progress={tokenizeRun}
         notice={blockedHint ?? held}
         runLabel="Tokenize"

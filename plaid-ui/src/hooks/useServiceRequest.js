@@ -10,6 +10,9 @@ import { humanizeError } from '../lib/errors.js';
 // provider), and a package that picked one would only work in that app.
 export const useServiceRequest = (client) => {
   const [availableServices, setAvailableServices] = useState([]);
+  // The services last discovered, for the name of one a request names.
+  const servicesSeen = useRef([]);
+  servicesSeen.current = availableServices;
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   // null until the service says otherwise: "we don't know yet" is not 0%, and
@@ -108,7 +111,11 @@ export const useServiceRequest = (client) => {
       notifyWarning(copy.lostMessage, copy.stoppedTitle);
       return;
     }
-    const said = humanizeError(error, copy.errorMessage);
+    // A service that is not running is named as the person knows it, never
+    // by its id (N2-SERVICES-4).
+    const said = error?.notLive
+      ? `${copy.serviceName || 'The service'} is not running on this project.`
+      : humanizeError(error, copy.errorMessage);
     setProgressMessage(said);
     notifyError(said, copy.errorTitle);
   }, []);
@@ -171,7 +178,10 @@ export const useServiceRequest = (client) => {
         return result;
       } catch (error) {
         console.error('Failed to request service:', error);
-        fail(error, { errorMessage, errorTitle, stoppedTitle, lostMessage });
+        const serviceName = servicesSeen.current.find(
+          (s) => s.serviceId === serviceId,
+        )?.serviceName;
+        fail(error, { errorMessage, errorTitle, stoppedTitle, lostMessage, serviceName });
         // Said out loud already, so a caller's own catch does not say it again.
         if (error && typeof error === 'object') error.reported = true;
         throw error;

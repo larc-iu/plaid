@@ -316,3 +316,42 @@ describe('what the hook hands back', () => {
     await r.unmount();
   });
 });
+
+// N2-SERVICES-4: the toast named the service by its id ("No live service
+// 'asr:whisper-asr' on this project").
+describe('useServiceRequest: a service that is not running', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const notLive = () =>
+    Object.assign(new Error("No live service 'svc' on this project"), {
+      notLive: true,
+      serviceId: 'svc',
+    });
+
+  it('is named as the person knows it', async () => {
+    const client = fakeClient(notLive);
+    client.messages.discoverServices = vi.fn(async () => [
+      { serviceId: 'svc', serviceName: 'Whisper ASR' },
+    ]);
+    const r = await mount(client);
+    await r.step(async () => {
+      await r.hook().discoverServices('p1');
+    });
+    await run(r);
+    expect(notify.notifyError).toHaveBeenCalledWith(
+      'Whisper ASR is not running on this project.',
+      COPY.errorTitle,
+    );
+    await r.unmount();
+  });
+
+  it('is "the service" when it was never discovered', async () => {
+    const r = await mount(fakeClient(notLive));
+    await run(r);
+    expect(notify.notifyError).toHaveBeenCalledWith(
+      'The service is not running on this project.',
+      COPY.errorTitle,
+    );
+    await r.unmount();
+  });
+});

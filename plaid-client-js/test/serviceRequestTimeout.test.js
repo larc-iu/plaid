@@ -111,7 +111,11 @@ test('no live service is the end of it too', async () => {
   await withFetch(client, async () => {
     await assert.rejects(
       requestService(client, 'p1', 'nope', {}, 60000, undefined),
-      (e) => /No live service/.test(e.message) && e.pending === undefined,
+      (e) =>
+        /No live service/.test(e.message) &&
+        e.pending === undefined &&
+        e.notLive === true &&
+        e.serviceId === "nope",
     );
   });
 });

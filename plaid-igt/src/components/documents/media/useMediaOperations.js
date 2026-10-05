@@ -635,39 +635,23 @@ export const useMediaOperations = () => {
       return;
     }
 
-    // Re-transcribe is destructive: the ASR workflow APPENDS to existing text
-    // rather than replacing it, and interleaved ASR is not supported — so a
-    // re-run must start from a clean slate. If the document already has a
-    // transcript, confirm, then wipe the baseline before transcribing fresh.
-    const hasExistingTranscript = !!(doc.body && doc.body.trim());
-    if (
-      hasExistingTranscript &&
-      !(await confirm({
-        title: 'Replace existing transcript?',
-        description:
-          'This document already has a transcript. Transcribing again will REPLACE it, ' +
-          'discarding the existing text, tokens, segments, and any annotations on them.',
-        confirmLabel: 'Replace',
-        destructive: true,
-      }))
-    ) {
-      return;
-    }
+    // The request goes on the document as it is: the service puts each new
+    // segment into the text in time order, skips a segment whose times
+    // another already holds, and deletes nothing (N2-SERVICES-1). A fresh
+    // transcript is the person's to make, by clearing the text first.
 
     // Find text, alignment token, and sentence token layers
     const primaryTextLayer = doc.layerInfo.primaryTextLayer;
     const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
     const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
 
-    // Held for the whole run: this wipes the baseline and rebuilds the
-    // document from what the service returns.
+    // Held for the whole run: the service writes into the document.
     const lock = acquireWriteLock('Transcribe', { onCancel: stopTranscribe });
     if (!lock) return;
     lockRef.current = lock;
     let stillOut = false; // the request survived our giving up on it
     let stopped = false;
     let asked = false; // the service was asked, so its answer ends the run
-    let cleared = false; // the previous transcript is gone
     let onStop;
     const stopping = new Promise((resolve) => {
       onStop = resolve;
@@ -679,9 +663,9 @@ export const useMediaOperations = () => {
       onStop();
     };
     try {
-      // The whole re-transcribe (our wipe of the previous transcript + every
-      // write the ASR service makes) is ONE logical operation in the audit
-      // log: the open operation propagates to the service via the request.
+      // Every write the ASR service makes is ONE logical operation in the
+      // audit log: the open operation propagates to the service via the
+      // request.
       // It is a service run naming the service, which the service's writes
       // keep when they join it.
       const label = `Transcribe audio (${service.serviceName || serviceId})`;
@@ -698,13 +682,6 @@ export const useMediaOperations = () => {
       await doc.client.withOperation(
         label,
         async () => {
-          // Start from a clean slate: setting the body to '' cascade-deletes its
-          // tokens, sentences, alignments, and every annotation on them, so ASR
-          // builds a fresh document instead of appending a second transcript.
-          if (hasExistingTranscript) {
-            transcribeRun.report({ message: 'Clearing the previous transcript…' });
-            cleared = (await doc.saveBaselineText('')) !== false;
-          }
           if (stopped) return;
           transcribeRun.report({ message: 'Starting the service…' });
           asked = true;
@@ -742,12 +719,7 @@ export const useMediaOperations = () => {
         { kind: 'service-run', ref: serviceSource(serviceId) },
       );
       if (!asked) {
-        notifyInfo(
-          cleared
-            ? 'Stopped. The previous transcript was cleared and nothing was transcribed.'
-            : 'Stopped. The transcript is unchanged.',
-          'Transcribe',
-        );
+        notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
         return;
       }
 
@@ -760,8 +732,8 @@ export const useMediaOperations = () => {
     } catch (error) {
       console.error('Transcription failed:', error);
       // `pending` means the request is still out there. The client stopped
-      // waiting, the service did not stop working, and the baseline was already
-      // wiped to make room for it, so keep the record for a reload to rejoin.
+      // waiting and the service did not stop working, so keep the record for
+      // a reload to rejoin.
       stillOut = error?.pending === true;
     } finally {
       if (!stillOut) clearRunRecord(documentId);
@@ -777,7 +749,6 @@ export const useMediaOperations = () => {
     isProcessing,
     transcribeSpot,
     transcribeRun,
-    confirm,
     acquireWriteLock,
     stopTranscribe,
   ]);
