@@ -1,7 +1,7 @@
 // A new page puts focus on its heading, unless the page already put it
 // somewhere, and a change to the query string alone is not a new page.
 import { describe, it, expect } from 'vitest';
-import { act, useEffect, useRef, useState } from 'react';
+import { StrictMode, act, useEffect, useRef, useState } from 'react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent } from '../test/renderComponent.jsx';
 import { focusMain, useRouteFocus } from './useRouteFocus.js';
@@ -36,27 +36,29 @@ const Late = ({ title }) => {
 
 const mount = () =>
   renderComponent(
-    <MemoryRouter initialEntries={['/a']}>
-      <Shell>
-        <Routes>
-          <Route path="/a" element={<h1>Page A</h1>} />
-          <Route path="/b" element={<Late title="Page B" />} />
-          <Route
-            path="/typing"
-            element={
-              <>
-                <h1>New</h1>
-                <textarea aria-label="Text" autoFocus />
-              </>
-            }
-          />
-        </Routes>
-      </Shell>
-    </MemoryRouter>,
+    <StrictMode>
+      <MemoryRouter initialEntries={['/a']}>
+        <Shell>
+          <Routes>
+            <Route path="/a" element={<h1>Page A</h1>} />
+            <Route path="/b" element={<Late title="Page B" />} />
+            <Route
+              path="/typing"
+              element={
+                <>
+                  <h1>New</h1>
+                  <textarea aria-label="Text" autoFocus />
+                </>
+              }
+            />
+          </Routes>
+        </Shell>
+      </MemoryRouter>
+    </StrictMode>,
   );
 
 describe('useRouteFocus', () => {
-  it('leaves focus alone on the first page', async () => {
+  it('leaves focus alone on the first page, under StrictMode too', async () => {
     const view = await mount();
     await settle();
     expect(document.activeElement).toBe(document.body);

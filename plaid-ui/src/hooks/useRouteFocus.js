@@ -33,12 +33,12 @@ const placed = (main) => {
 };
 
 export function useRouteFocus(pathname, mainRef) {
-  const first = useRef(true);
+  // The path last seen, not a first-render flag: StrictMode runs a mount's
+  // effect twice, and a flag would take the second run for a new page.
+  const seen = useRef(pathname);
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return undefined;
-    }
+    if (seen.current === pathname) return undefined;
+    seen.current = pathname;
     const main = mainRef.current;
     if (!main) return undefined;
     let done = false;
