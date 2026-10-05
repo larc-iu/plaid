@@ -13,6 +13,7 @@ import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenRes
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { countSplitLoss } from '@ui/domain/annotationLoss.js';
 import { chunk } from '../bulk.js';
 
 // The sentence spans a reset deletes: every value on one of `sentenceIds`.
@@ -84,6 +85,39 @@ export const sentenceMutations = {
 
   async splitSentence(charPos) {
     return this.splitSentencesAt([charPos], { quiet: false });
+  },
+
+  // What splitting sentences at `positions` deletes, counted on every layer:
+  // the relations a layer rule keeps inside one sentence whose ends a split
+  // puts in different sentences. Positions are taken as splitSentencesAt
+  // takes them, each split seen by the next, so a relation two splits cut is
+  // counted once. A position that splits nothing counts nothing.
+  // {annotations, links}.
+  sentenceSplitLoss(positions) {
+    const info = this.layerInfo;
+    const sentenceLayer = info.sentenceTokenLayer;
+    const total = { annotations: 0, links: 0 };
+    if (!sentenceLayer?.id) return total;
+    const layers = info.primaryTextLayer?.tokenLayers || [];
+    const words = info.primaryTokenLayer?.tokens || [];
+    let sentences = [...(sentenceLayer.tokens || [])];
+    for (const charPos of [...new Set(positions)].sort((a, b) => a - b)) {
+      const containing = sentences.find((s) => s.begin < charPos && charPos < s.end);
+      if (!containing || words.some((w) => w.begin < charPos && charPos < w.end)) continue;
+      const view = layers.map((tl) =>
+        tl.id === sentenceLayer.id ? { ...tl, tokens: sentences } : tl,
+      );
+      const loss = countSplitLoss(view, containing.id, charPos);
+      total.annotations += loss.annotations;
+      total.links += loss.links;
+      sentences = sentences
+        .filter((s) => s !== containing)
+        .concat(
+          { ...containing, end: charPos },
+          { id: `${containing.id}@${charPos}`, begin: charPos, end: containing.end },
+        );
+    }
+    return total;
   },
 
   // Split sentences at several positions in ONE operation, each split seen

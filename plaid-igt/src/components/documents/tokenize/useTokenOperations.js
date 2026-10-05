@@ -112,7 +112,7 @@ export const useTokenOperations = () => {
   // reparents), so only sub-word loss is counted. pendingStructural drives a
   // confirm dialog in DocumentTokenize; null means the op already ran (nothing
   // to lose).
-  const [pendingStructural, setPendingStructural] = useState(null); // {kind, payload, label, annotations, links}
+  const [pendingStructural, setPendingStructural] = useState(null); // {kind: 'split'|'merge'|'sentence-split', payload, label, annotations, links}
   const splitToken = async (tokenId, splitOffset) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, word ? [word] : []);
@@ -145,12 +145,22 @@ export const useTokenOperations = () => {
     return run(() =>
       p.kind === 'split'
         ? doc.splitToken(p.payload.tokenId, p.payload.splitOffset)
-        : doc.mergeTokens(p.payload.ids),
+        : p.kind === 'sentence-split'
+          ? doc.splitSentence(p.payload.charPos)
+          : doc.mergeTokens(p.payload.ids),
     );
   };
   const cancelPendingStructural = () => setPendingStructural(null);
   const mergeSentence = (sentenceId) => run(() => doc.mergeSentence(sentenceId));
-  const splitSentence = (charPos) => run(() => doc.splitSentence(charPos));
+  // A sentence split deletes the relations a layer rule keeps inside one
+  // sentence that the new break cuts, whichever app made them. It asks
+  // first when there are any, and runs at once otherwise.
+  const splitSentence = async (charPos) => {
+    const loss = doc.sentenceSplitLoss([charPos]);
+    if (loss.annotations + loss.links === 0) return run(() => doc.splitSentence(charPos));
+    setPendingStructural({ kind: 'sentence-split', payload: { charPos }, ...loss });
+    return false; // nothing changed yet, the dialog decides
+  };
   const splitSentencesAt = (positions) => run(() => doc.splitSentencesAt(positions));
 
   // Create a token from a DOM text selection inside an untokenized `piece`.

@@ -930,6 +930,65 @@ describe('sentence boundary ops', () => {
     expect(await doc.splitSentencesAt([5])).toBe(false);
   });
 
+  // A split deletes the relations a layer rule keeps inside one sentence
+  // that the new break cuts, on any app's layer. The count reads every layer
+  // the document holds, and a relation two splits cut is counted once.
+  it('sentenceSplitLoss counts the relations a rule keeps in one sentence that a split cuts', () => {
+    const raw = buildRawDoc({
+      body: 'the cat saw the dog',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 15 },
+        { id: 'w-5', begin: 16, end: 19 },
+      ],
+    });
+    const at = [
+      [0, 3],
+      [4, 7],
+      [8, 11],
+      [12, 15],
+      [16, 19],
+    ];
+    const rel = (id, source, target) => ({ id, source, target });
+    raw.textLayers[0].tokenLayers.push({
+      id: 'otherW',
+      name: 'Other words',
+      parentTokenLayer: 'sentL',
+      tokens: at.map(([begin, end], i) => ({ id: `o-${i + 1}`, begin, end })),
+      spanLayers: [
+        {
+          id: 'otherS',
+          spans: at.map((_, i) => ({ id: `os-${i + 1}`, tokens: [`o-${i + 1}`] })),
+          relationLayers: [
+            {
+              id: 'ruled',
+              constraints: { other: [{ type: 'same-ancestor', tokenLayer: 'sentL' }] },
+              relations: [
+                rel('r-1', 'os-1', 'os-2'),
+                rel('r-2', 'os-2', 'os-4'),
+                rel('r-3', 'os-3', 'os-4'),
+                rel('r-4', 'os-4', 'os-5'),
+              ],
+            },
+            { id: 'free', relations: [rel('r-5', 'os-1', 'os-5')] },
+          ],
+        },
+      ],
+      vocabs: [],
+    });
+    const doc = makeDoc({ raw });
+    expect(doc.sentenceSplitLoss([8])).toEqual({ annotations: 1, links: 0 });
+    expect(doc.sentenceSplitLoss([12, 8])).toEqual({ annotations: 2, links: 0 });
+    expect(doc.sentenceSplitLoss([16])).toEqual({ annotations: 1, links: 0 });
+    // Inside a word, at a sentence's start, or past the text: nothing splits.
+    expect(doc.sentenceSplitLoss([5, 0, 40])).toEqual({ annotations: 0, links: 0 });
+    // The count changes nothing.
+    expect(doc.client.calls).toEqual([]);
+    expect(doc.sentences).toHaveLength(1);
+  });
+
   it('mergeSentence reparents the merged-away sentence spans onto prev', async () => {
     // Two sentences; a Translation annotation lives on the SECOND one. After
     // merging it into the first, the server reparents that span onto the

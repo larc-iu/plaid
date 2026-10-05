@@ -53,6 +53,8 @@ const mount = async () => {
     sentences: [],
     reload: vi.fn(async () => {}),
     _reload: vi.fn(async () => {}),
+    sentenceSplitLoss: vi.fn(() => ({ annotations: 0, links: 0 })),
+    splitSentence: vi.fn(async () => true),
     subscribe: () => () => {},
     getSnapshot: () => 0,
   };
@@ -90,6 +92,39 @@ describe('a Tokenize run that failed', () => {
     const { doc, view, ops } = await mount();
     await view.step(() => ops().handleTokenize());
     expect(doc.reload).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+// A sentence split deletes the relations a layer rule keeps inside one
+// sentence that the new break cuts, whichever app made them. It asks first
+// when there are any, and splits at once when there are none.
+describe('a sentence split', () => {
+  it('splits at once when it deletes nothing', async () => {
+    const { doc, view, ops } = await mount();
+    await view.step(() => ops().splitSentence(8));
+    expect(doc.sentenceSplitLoss).toHaveBeenCalledWith([8]);
+    expect(doc.splitSentence).toHaveBeenCalledWith(8);
+    expect(ops().pendingStructural).toBe(null);
+    await view.unmount();
+  });
+
+  it('asks first when it deletes annotations, and splits on the answer', async () => {
+    const { doc, view, ops } = await mount();
+    doc.sentenceSplitLoss.mockReturnValue({ annotations: 2, links: 0 });
+    await view.step(() => ops().splitSentence(8));
+    expect(doc.splitSentence).not.toHaveBeenCalled();
+    expect(ops().pendingStructural).toMatchObject({
+      kind: 'sentence-split',
+      payload: { charPos: 8 },
+      annotations: 2,
+    });
+    await view.step(() => ops().cancelPendingStructural());
+    expect(doc.splitSentence).not.toHaveBeenCalled();
+    await view.step(() => ops().splitSentence(8));
+    await view.step(() => ops().confirmPendingStructural());
+    expect(doc.splitSentence).toHaveBeenCalledWith(8);
+    expect(ops().pendingStructural).toBe(null);
     await view.unmount();
   });
 });

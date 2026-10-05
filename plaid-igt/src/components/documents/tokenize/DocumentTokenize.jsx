@@ -12,6 +12,7 @@ import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { notifySuccess } from '@/utils/feedback';
 import { splitPointsFromSegments } from '@/domain/segments.js';
 import { clearSentencesFits, TOO_MANY_SENTENCES } from '@/domain/mutations/sentences.js';
@@ -96,13 +97,15 @@ export function DocumentTokenize() {
   const splitAtSegments = async () => {
     const { positions, insideWord } = segmentSplits;
     const n = positions.length;
+    const lost = lossPhrase(doc.sentenceSplitLoss(positions));
     const ok = await confirm({
       title: 'Split sentences at segments?',
       description:
         `${n} sentence break${n === 1 ? '' : 's'} will be added where segments start.` +
         (insideWord
           ? ` ${insideWord} segment${insideWord === 1 ? ' starts' : 's start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
-          : ''),
+          : '') +
+        (lost ? ` Deletes ${lost} that cross the new break${n === 1 ? '' : 's'}.` : ''),
       confirmLabel: 'Split sentences',
     });
     if (!ok) return;
@@ -365,28 +368,44 @@ export function DocumentTokenize() {
 
       {/* Split/merge annotation-loss confirm: only opens when the affected
           word(s) carry morpheme-scope annotations the op would destroy
-          (split/merge delete the words' morphemes). Word-scope spans survive. */}
+          (split/merge delete the words' morphemes). Word-scope spans survive.
+          A sentence split opens it when the new break cuts relations a layer
+          rule keeps inside one sentence. */}
       <ConfirmDeleteDialog
         open={!!ops.pendingStructural}
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingStructural();
         }}
-        title={ops.pendingStructural?.kind === 'merge' ? 'Merge words?' : 'Split word?'}
+        title={
+          ops.pendingStructural?.kind === 'merge'
+            ? 'Merge words?'
+            : ops.pendingStructural?.kind === 'sentence-split'
+              ? 'Split sentence?'
+              : 'Split word?'
+        }
         confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge' : 'Split'}
         onConfirm={() => ops.confirmPendingStructural()}
       >
-        <p>
-          {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
-          <strong>“{ops.pendingStructural?.label}”</strong> discards the morpheme analysis, deleting{' '}
-          <strong>
-            {ops.pendingStructural?.annotations || 0} annotation
-            {ops.pendingStructural?.annotations === 1 ? '' : 's'}
-            {ops.pendingStructural?.links
-              ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}`
-              : ''}
-          </strong>{' '}
-          at the morpheme level. Word-level annotations are unchanged.
-        </p>
+        {ops.pendingStructural?.kind === 'sentence-split' ? (
+          <p>
+            Splitting the sentence here deletes <strong>{lossPhrase(ops.pendingStructural)}</strong>{' '}
+            that cross the new break.
+          </p>
+        ) : (
+          <p>
+            {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
+            <strong>“{ops.pendingStructural?.label}”</strong> discards the morpheme analysis,
+            deleting{' '}
+            <strong>
+              {ops.pendingStructural?.annotations || 0} annotation
+              {ops.pendingStructural?.annotations === 1 ? '' : 's'}
+              {ops.pendingStructural?.links
+                ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}`
+                : ''}
+            </strong>{' '}
+            at the morpheme level. Word-level annotations are unchanged.
+          </p>
+        )}
       </ConfirmDeleteDialog>
 
       {/* Destructive re-tokenize confirm: a tokenizer service run on a
