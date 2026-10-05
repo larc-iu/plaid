@@ -40,7 +40,11 @@ refused here the same way, and a batch refuses what the real batch refuses.
 What it does NOT do is keep the documents up to date: a write is recorded,
 not applied, and a later read sees the fixture as it was given. Nor does it
 lose a lock, apply an ``as_of`` read, or check that an id exists before a
-write names it.
+write names it. A delete is the exception in one way: what core would delete
+with it (nested tokens, emptied spans and links, their relations) is read off
+the fixture into ``cascaded``, and ``cascaded_work()`` keeps the part that is
+someone's work, so a test can see what a delete takes beyond what it names. A
+layer rule's remedy (``same-ancestor``, ``coextensive``) is not modelled.
 
 It lives in the shipped package rather than beside the tests because a
 test-only copy had no home either app could import from, and the two apps kept
@@ -65,6 +69,7 @@ from plaid_client.document_lock import DocumentLock
 from plaid_client.http import BatchRef, PlaidAPIError
 from plaid_client.ids import uuid7
 from plaid_client.metadata_ops import apply_metadata_ops
+from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_protected
 from plaid_client.services import CancelScope, requester_message
 from plaid_client.transforms import transform_request, transform_response
 
@@ -293,6 +298,7 @@ class _Batch:
         self.results = []
         self.open = True
         self._effects = []
+        self._cascade = []
         self._deleted = set()
         self._refused = None
         for name in client.RESOURCES:
@@ -346,6 +352,10 @@ class _Batch:
         """Run ``effect`` when the batch submits, where the server would."""
         self._effects.append(effect)
 
+    def note_cascade(self, kind, taken):
+        """What a queued delete takes with it, kept until the batch submits."""
+        self._cascade.extend({**entry, 'by': kind} for entry in taken)
+
     def note_deletes(self, resource, entity_ids, single):
         """A single delete finds its row gone when an earlier delete in this
         batch took it, and the server 404s the batch. A bulk delete of a gone
@@ -363,6 +373,7 @@ class _Batch:
             raise PlaidAPIError('This batch was already submitted or aborted')
         self.open = False
         queued, effects, results = self.queued, self._effects, self.results
+        cascade, self._cascade = self._cascade, []
         self.queued, self._effects, self.results = [], [], []
         if not queued:
             return self.results  # nothing is sent
@@ -385,6 +396,7 @@ class _Batch:
             raise
         self.client.batches.append(list(queued))
         self.client.calls.extend(queued)
+        self.client.cascaded.extend(cascade)
         self.results = results
         return self.results
 
@@ -394,6 +406,7 @@ class _Batch:
         self.queued = []
         self.results = []
         self._effects = []
+        self._cascade = []
 
 
 #: the real client's class for each resource the fake writes through, so the
@@ -489,6 +502,9 @@ class Resource:
             writer.note_deletes(self._name, [first], single=True)
         elif on_batch and method == 'bulk_delete':
             writer.note_deletes(self._name, payload, single=False)
+        if method in ('delete', 'bulk_delete'):
+            named = [first] if method == 'delete' else list(payload)
+            writer.note_cascade(kind, _cascade(_root(writer), self._name, named))
         return {'batched': True} if on_batch else answer
 
     def _shape(self, writer, method, args, kwargs, arguments, first, sent):
@@ -619,6 +635,122 @@ def _layer_ids(doc):
             for sl in kl.get('span_layers') or []:
                 out.add(sl.get('id'))
                 out.update(rl.get('id') for rl in sl.get('relation_layers') or [])
+    return out
+
+
+#: the layer each app nests a role's tokens under, for a fixture that does
+#: not say (``parent_token_layer``): igt and ud words in the sentences,
+#: morphemes and ud's syntactic words in the words
+_PARENT_ROLE = {'word': 'sentence', 'morpheme': 'word', 'syntactic-word': 'word'}
+
+
+def _role(layer):
+    return (((layer or {}).get('config') or {}).get('plaid') or {}).get('role')
+
+
+def _fixture_documents(root):
+    docs = root._documents.values() if isinstance(root._documents, dict) else root._documents
+    seen, out = set(), []
+    for doc in [*docs, *(d for spec in (root.other_projects or {}).values()
+                         for d in (spec['documents'].values()
+                                   if isinstance(spec['documents'], dict)
+                                   else spec['documents']))]:
+        key = (doc or {}).get('id') or id(doc)
+        if key not in seen:
+            seen.add(key)
+            out.append(doc or {})
+    return out
+
+
+def _cascade(root, resource, ids):
+    """What the server deletes along with the ``resource`` entities ``ids``
+    names, read from the fixture as given (a write is not applied, so an
+    entity a test's own earlier write made is not here). Each entry is
+    ``{'kind', 'id', 'entity'}``, the named entities themselves left out.
+
+    The rules are plaid-core's (``sql/token.clj`` ``multi-delete!``): a
+    token takes every token of a layer nested under its own that lies wholly
+    inside it, a span or lexicon link left with none of its tokens, and every
+    relation on such a span. A span takes its relations. A lexicon entry
+    takes every link to it. A layer takes everything in it and in the layers
+    nested under it. A token layer's parent is its ``parent_token_layer``,
+    or else the one the apps nest its role under (``_PARENT_ROLE``)."""
+    ids = [i for i in ids or [] if isinstance(i, str)]
+    if not ids:
+        return []
+    roles = {}
+    for holder in [root.project or {}, *_fixture_documents(root)]:
+        for tl in holder.get('text_layers') or []:
+            for kl in tl.get('token_layers') or []:
+                if _role(kl):
+                    roles[kl['id']] = _role(kl)
+    out, named = [], set(ids)
+
+    def take(kind, entity):
+        if entity.get('id') not in named and all(e['id'] != entity.get('id') for e in out):
+            out.append({'kind': kind, 'id': entity.get('id'), 'entity': entity})
+
+    for doc in _fixture_documents(root):
+        for tl in doc.get('text_layers') or []:
+            layers = tl.get('token_layers') or []
+            by_role = {roles.get(kl['id']): kl['id'] for kl in layers if roles.get(kl['id'])}
+
+            def parent(kl):
+                given = kl.get('parent_token_layer')
+                if isinstance(given, dict):
+                    given = given.get('id')
+                return given or by_role.get(_PARENT_ROLE.get(roles.get(kl['id'])))
+
+            def below(lid):
+                kids = [kl for kl in layers if parent(kl) == lid]
+                return kids + [d for kl in kids for d in below(kl['id'])]
+
+            dying_tokens, dying_spans = set(), set()
+            whole_layers = set()
+            if resource in ('token_layers', 'span_layers', 'relation_layers'):
+                whole_layers = set(ids)
+            for kl in layers:
+                hit = kl['id'] in whole_layers if resource == 'token_layers' else False
+                if hit:
+                    for nested in [kl, *below(kl['id'])]:
+                        dying_tokens.update(t['id'] for t in nested.get('tokens') or [])
+            if resource == 'tokens':
+                for kl in layers:
+                    for t in kl.get('tokens') or []:
+                        if t['id'] not in named:
+                            continue
+                        dying_tokens.add(t['id'])
+                        for nested in below(kl['id']):
+                            for c in nested.get('tokens') or []:
+                                if t['begin'] <= c['begin'] and c['end'] <= t['end']:
+                                    dying_tokens.add(c['id'])
+            for kl in layers:
+                for t in kl.get('tokens') or []:
+                    if t['id'] in dying_tokens:
+                        take('tokens', t)
+                for sl in kl.get('span_layers') or []:
+                    for span in sl.get('spans') or []:
+                        tokens = span.get('tokens') or []
+                        if ((resource == 'spans' and span.get('id') in named)
+                                or (resource == 'span_layers' and sl.get('id') in whole_layers)
+                                or (tokens and all(x in dying_tokens for x in tokens))):
+                            dying_spans.add(span['id'])
+                            take('spans', span)
+                for vocab in kl.get('vocabs') or []:
+                    for link in vocab.get('vocab_links') or []:
+                        item = link.get('vocab_item')
+                        item = item.get('id') if isinstance(item, dict) else item
+                        tokens = link.get('tokens') or []
+                        if ((resource == 'vocab_items' and item in named)
+                                or (tokens and all(x in dying_tokens for x in tokens))):
+                            take('vocab_links', link)
+            for kl in layers:
+                for sl in kl.get('span_layers') or []:
+                    for rl in sl.get('relation_layers') or []:
+                        for rel in rl.get('relations') or []:
+                            if (rel.get('source') in dying_spans or rel.get('target') in dying_spans
+                                    or (resource == 'relation_layers' and rl.get('id') in whole_layers)):
+                                take('relations', rel)
     return out
 
 
@@ -836,6 +968,9 @@ class FakeClient:
         self.queries = []
         #: the body of each text made by ``texts.create``, by its id
         self.text_bodies = {}
+        #: what the server deletes beyond what a submitted delete names, as
+        #: ``{'kind', 'id', 'entity', 'by'}`` in order (see ``_cascade``)
+        self.cascaded = []
         self.server = types.SimpleNamespace(limits=lambda: dict(self.limits),
                                             info=lambda: {'limits': dict(self.limits)})
 
@@ -851,6 +986,37 @@ class FakeClient:
     def record(self, kind, payload=None, result=None):
         self.note_stamp(kind)
         self.calls.append((kind, payload))
+
+    def note_cascade(self, kind, taken):
+        """What a delete made on the client takes with it."""
+        self.cascaded.extend({**entry, 'by': kind} for entry in taken)
+
+    def cascaded_work(self):
+        """The cascaded entities that carry someone's work: a span, a
+        relation or a lexicon link, or a token with content of its own (keys
+        beyond provenance) or a stamp a person verified or contributed. Bare
+        substrate tokens are left out. An entity some write named for deletion
+        itself is left out too: that one the caller chose."""
+        named = set()
+        for kind, payload in self.calls:
+            resource, _, method = kind.partition('.')
+            if method == 'delete':
+                named.add((resource, payload if isinstance(payload, str) else None))
+            elif method == 'bulk_delete':
+                named.update((resource, i) for i in payload or [])
+        out = []
+        for entry in self.cascaded:
+            if (entry['kind'], entry['id']) in named:
+                continue
+            meta = entry['entity'].get('metadata') or {}
+            if entry['kind'] == 'tokens' and not (
+                    any(k not in PROVENANCE_KEYS for k in meta)
+                    or (PROV_KEY in meta and is_protected(meta))):
+                continue
+            if any(e is entry for e in out):
+                continue
+            out.append(entry)
+        return out
 
     def note_stamp(self, kind):
         """Remember the strict-mode stamp a write carries, as the real client
