@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, ArrowRight } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
@@ -82,6 +82,8 @@ export const MatchGroups = ({
   selectable = () => true,
 }) => {
   const groups = useMemo(() => groupByDoc(rows), [rows]);
+  // A row's tick is named by the row's own text (the change and the sentence).
+  const hitId = useId();
   const flat = useMemo(() => groups.flatMap((g) => g.rows.map((r) => ({ g, r }))), [groups]);
   const paged = usePagedList(flat, {
     pageSize: TALL_LIST_PAGE_SIZE,
@@ -125,9 +127,10 @@ export const MatchGroups = ({
                     checked={selectable(r) && selected.has(r.id)}
                     onChange={(v) => toggle(r.id, v)}
                     disabled={!selectable(r)}
+                    aria-labelledby={`${hitId}-${i}`}
                   />
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1" id={`${hitId}-${i}`}>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{renderRow(r)}</div>
                   {r.sentenceId && (
                     <Link

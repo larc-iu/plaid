@@ -33,9 +33,15 @@ const Field = ({ id, label, value, onChange, placeholder, hint, invalid }) => (
 const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates }) => {
   const set = (patch) => onChange({ ...lang, ...patch });
   return (
-    <div className="flex flex-col gap-3 rounded-md border p-4">
+    <div
+      role="group"
+      aria-labelledby={`${prefix}-title`}
+      className="flex flex-col gap-3 rounded-md border p-4"
+    >
       <div>
-        <p className="text-sm font-medium">{title}</p>
+        <p id={`${prefix}-title`} className="text-sm font-medium">
+          {title}
+        </p>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <Field

@@ -101,6 +101,19 @@ describe('MatchGroups', () => {
 
 // A row that would never be written (an emptied word, a value outside the
 // tagset) cannot be ticked, so what is ticked is what Apply counts.
+describe("a row's tick", () => {
+  it('is named by the row it ticks', async () => {
+    const { container, unmount } = await mount(rowsIn('d1', 'Doc one', 2));
+    const ticks = all(container, 'input[type=checkbox]').slice(1);
+    expect(ticks).toHaveLength(2);
+    const names = ticks.map((t) =>
+      document.getElementById(t.getAttribute('aria-labelledby')).textContent.trim(),
+    );
+    expect(names).toEqual(['cat#1sentence 0', 'cat#2sentence 1']);
+    await unmount();
+  });
+});
+
 describe('rows that cannot be selected', () => {
   const rows = rowsIn('d1', 'Doc one', 4).map((r, i) => (i < 2 ? { ...r, invalid: 'empty' } : r));
   const selectable = (r) => !r.invalid;
