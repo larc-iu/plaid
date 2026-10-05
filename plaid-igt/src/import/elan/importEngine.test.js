@@ -318,6 +318,23 @@ describe('runElanImport', () => {
     expect(result).toMatchObject({ imported: 1, skipped: 0, redone: 0 });
   });
 
+  // The screens count documents off `index`, so a step that left it out read
+  // as the first document: "(1/23)" through the whole run.
+  it('says which document every step belongs to', async () => {
+    const second = { ...BUILD.documents[0], id: 'b.eaf', name: 'Second' };
+    const build = { ...BUILD, documents: [BUILD.documents[0], second] };
+    const seen = [];
+    await runElanImport({
+      client: stubClient(),
+      projectId: 'p1',
+      build,
+      onProgress: (p) => p.phase === 'document' && seen.push(p),
+    });
+    const steps = seen.filter((p) => p.doc === 'Second');
+    expect(steps.length).toBeGreaterThan(1);
+    expect(steps.every((p) => p.index === 1 && p.total === 2)).toBe(true);
+  });
+
   it('reports each warning as it happens, tagged with its document', async () => {
     const client = stubClient();
     const seen = [];

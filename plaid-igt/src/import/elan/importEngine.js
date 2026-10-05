@@ -360,13 +360,10 @@ async function runElanImportImpl({
   for (let i = 0; i < build.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = build.documents[i];
-    onProgress?.({
-      phase: 'document',
-      doc: doc.name,
-      index: i,
-      total: build.documents.length,
-      step: 'Starting',
-    });
+    // Every report from inside a document says which one it is. Only the
+    // first used to, so the screens read the rest as the first document.
+    const docProgress = (p) => onProgress?.({ ...p, index: i, total: build.documents.length });
+    docProgress({ phase: 'document', doc: doc.name, step: 'Starting' });
     const warn = (text) => note(text, doc.name);
     const existing = prior.find(doc.id);
     const leftover = !!existing && redo.includes(existing.id);
@@ -383,7 +380,14 @@ async function runElanImportImpl({
         keepUnfinished: projectOpen,
       });
       if (!proceed) {
-        await addRecordingToExisting({ client, existing, doc, results, onProgress, warn });
+        await addRecordingToExisting({
+          client,
+          existing,
+          doc,
+          results,
+          onProgress: docProgress,
+          warn,
+        });
         continue;
       }
     }
@@ -394,7 +398,7 @@ async function runElanImportImpl({
         projectId,
         targets,
         doc,
-        onProgress,
+        onProgress: docProgress,
         shouldStop,
         copyName,
         onDocument: (id) => {
