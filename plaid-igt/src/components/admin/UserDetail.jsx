@@ -214,7 +214,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
             documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
             empty="Nothing recorded."
             fetchPage={({ limit, cursor }) =>
-              client.users.auditPage(userId, { limit, cursor, order: 'desc' })
+              client.users.auditPage(userId, { limit, cursor, order: 'desc', opsLimit: 1 })
             }
           />
         </>

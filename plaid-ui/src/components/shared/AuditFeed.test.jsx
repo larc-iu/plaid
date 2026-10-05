@@ -172,3 +172,15 @@ describe('the href builders the app owes the feed', () => {
     error.mockRestore();
   });
 });
+
+describe('the audit feed and long entries', () => {
+  it('counts every write of an entry read with only its first', async () => {
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    await view.step(async () => d.settle('A', [{ ...entry('run'), opCount: 14139 }]));
+    expect(shown(view.container)).toContain('14,139 writes');
+    expect(shown(view.container)).toContain('changed run');
+    await view.unmount();
+  });
+});

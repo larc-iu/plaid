@@ -259,7 +259,13 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
         showUser
         empty="Nothing in this window."
         fetchPage={({ limit, cursor }) => {
-          const opts = { limit, cursor, order: 'desc', startTime: startFor(range) };
+          const opts = {
+            limit,
+            cursor,
+            order: 'desc',
+            startTime: startFor(range),
+            opsLimit: 1,
+          };
           return projectId
             ? client.projects.auditPage(projectId, opts)
             : client.audit.listPage(opts);

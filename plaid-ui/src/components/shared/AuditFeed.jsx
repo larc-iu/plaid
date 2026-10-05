@@ -35,6 +35,10 @@ const entryLabel = (entry) => {
   return readableDescription(head?.description) || head?.type || 'Change';
 };
 
+// How many writes an entry has. A feed reads each entry with only its first
+// operation (`opsLimit: 1`), and `opCount` says how many it has.
+const writes = (entry) => entry.opCount ?? entry.ops?.length ?? 0;
+
 const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
 
 // `projectHref` and `documentHref` build the "Where" column's links. The apps
@@ -217,7 +221,7 @@ export const AuditFeed = ({
       render: (e) => (
         <>
           {e.apiToken ? e.apiToken.name : ''}
-          {e.ops?.length > 1 ? ` ${e.ops.length} writes` : ''}
+          {writes(e) > 1 ? ` ${writes(e).toLocaleString()} writes` : ''}
         </>
       ),
     },
