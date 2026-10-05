@@ -21,15 +21,25 @@ export const conflicts = {
   // The note under a cell that lost a conflict, or nothing. It has no `dir`
   // of its own: it hangs from the start of its cell, which is the right edge
   // in a right-to-left sentence, and "Yours" would make it left to right. The
-  // words are left to right and the value takes its own direction. The hint
-  // after the value shows only while the cell has focus, where Enter does
-  // what it says, so the notes of neighbouring cells do not run over each
-  // other. A screen reader reads it all the same.
+  // words are left to right and the value takes its own direction. The note
+  // keeps to one line about its cell's width, cut short with an ellipsis
+  // when the value is longer, and the hint after the value shows only while
+  // the cell has focus, where Enter does what it says, so the notes of
+  // neighbouring cells do not run over each other. The whole note is its
+  // title, and a screen reader reads it all. A press on it goes to its cell.
   _conflictNote(key) {
     const c = this.readOnly ? null : this._cells.conflictOf(key);
     if (!c) return nothing;
     const { before, value, after } = conflictNoteParts(c.typed);
-    return html`<span class="igt-field-conflict" role="status" id=${noteId(this._cells, key)}
+    return html`<span
+      class="igt-field-conflict"
+      role="status"
+      id=${noteId(this._cells, key)}
+      title=${`${before}${value}${after}`}
+      @mousedown=${(e) => {
+        e.preventDefault();
+        e.currentTarget.parentElement?.querySelector('.igt-field')?.focus();
+      }}
       ><span dir="ltr"
         >${before}<bdi>${value}</bdi><span class="igt-field-conflict__hint">${after}</span></span
       ></span
