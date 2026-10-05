@@ -336,3 +336,37 @@ describe('a request too large for the server', () => {
     );
   });
 });
+
+// REV-R4-UD R2: the clients now wait past core's 30 s query limit, so core's
+// own 408 reaches the page, worded for a developer. A query core's full queue
+// refused (503) says the server is busy, not that it cannot be reached.
+describe('a query that took too long or found the server busy', () => {
+  const queryError = (status, said) =>
+    Object.assign(new Error(`HTTP ${status} ${said} at http://x/api/v1/query`), {
+      status,
+      method: 'POST',
+      url: 'http://x/api/v1/query',
+      responseData: { error: said },
+    });
+
+  it("says the search took too long, without the server's wording", () => {
+    const said =
+      'Query exceeded the 30s time limit \u2014 narrow it with more selective clauses or a tighter :scope.';
+    expect(humanizeError(queryError(408, said), 'Failed to search.')).toBe(
+      'The search took too long. Narrow it and try again.',
+    );
+  });
+
+  it('says the server is busy for a query refused 503', () => {
+    const said = 'The server is busy with other large queries. Try again in a moment.';
+    expect(humanizeError(queryError(503, said), 'Failed to search.')).toBe(
+      'The server is busy. Try again in a moment.',
+    );
+  });
+
+  it('leaves any other 503 as a server it cannot reach', () => {
+    expect(humanizeError(httpError(503, 'Database busy'))).toBe(
+      'Failed to reach the server. Check your connection and try again.',
+    );
+  });
+});

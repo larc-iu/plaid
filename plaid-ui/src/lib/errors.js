@@ -140,8 +140,20 @@ const isLockLost = (error) =>
   (error && error.name === 'DocumentLockLost') ||
   /\block on document \S+ lapsed\b/i.test(String((error && error.message) || error || ''));
 
+// A query core stopped at its time limit (408), and one its queue of large
+// queries had no room for before that limit (503). The clients wait past the
+// limit, so these answers reach the page and are not taken for a lost
+// connection.
+const QUERY = /\/api\/v1\/query(?:[?#]|$)/;
+const urlOf = (error) =>
+  String(error?.url || String(error?.message || '').match(/\bat (\S+)$/)?.[1] || '');
+const TOO_LONG = 'The search took too long. Narrow it and try again.';
+const BUSY = 'The server is busy. Try again in a moment.';
+
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
+  if (statusOf(error) === 408) return TOO_LONG;
+  if (statusOf(error) === 503 && QUERY.test(urlOf(error))) return BUSY;
   if (isUnreachable(error)) return UNREACHABLE;
   if (isGone(error)) return GONE;
   if (isLockLost(error)) return 'The lock on this document lapsed.';
