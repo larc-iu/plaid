@@ -187,8 +187,12 @@ export const restoreError = (err, fallback) => {
 // and what that entry is called, or null for a document with no history. Read
 // BEFORE a restore so the state from just before it can be brought back.
 export const latestState = async (client, documentId) => {
-  const entries = await client.documents.audit(documentId);
-  const last = entries?.[entries.length - 1];
+  const page = await client.documents.auditPage(documentId, {
+    order: 'desc',
+    limit: 1,
+    opsLimit: 1,
+  });
+  const last = page?.entries?.[0];
   if (!last) return null;
   return {
     time: last.endTime || last.time,

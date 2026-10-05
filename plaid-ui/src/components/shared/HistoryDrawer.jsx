@@ -17,6 +17,10 @@ import { Notice } from './Notice.jsx';
 // Rows size to their content (no fixed-height virtualization): a lone write
 // is two short lines, a multi-op unit adds a count badge and can expand.
 //
+// An entry may arrive holding only its oldest actions (`opCount` says how
+// many it has): open, it lists those, newest first, under a row that reads
+// the next ones when `onLoadMoreOps` is given.
+//
 // Through `readableDescription`, as the Activity feed's rows are: a raw
 // description naming two layer ids ran to three lines here and crowded out the
 // entries a reader is looking for.
@@ -41,6 +45,10 @@ export const KindChip = ({ kind }) => {
 const actor = (user, apiToken) =>
   user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
 
+// How many actions an entry has, and how many of them it does not hold.
+const opTotal = (entry) => entry?.opCount ?? (entry?.ops || []).length;
+const notShown = (entry) => opTotal(entry) - (entry?.ops || []).length;
+
 // The panel pushes the page's content right rather than overlaying it, so the
 // app that mounts it has to know how wide it is. One number, exported, rather
 // than the same literal in two call sites.
@@ -61,6 +69,8 @@ export const HistoryDrawer = ({
   selectedEntry,
   canRestore = false,
   onRestore,
+  onLoadMoreOps,
+  loadingMoreOps = null,
 }) => {
   const [expanded, setExpanded] = useState(() => new Set());
 
@@ -98,17 +108,19 @@ export const HistoryDrawer = ({
   const [focusKey, setFocusKey] = useState(null);
   const unitKey = (entry) => `u:${entry.id}`;
   const opKey = (entry, op) => `o:${entry.id}:${op.id}`;
+  const moreKey = (entry) => `m:${entry.id}`;
   const visibleKeys = [];
   let selectedKey = null;
   for (const entry of reversedAuditEntries) {
     visibleKeys.push(unitKey(entry));
     const ops = entry.ops || [];
-    const open = ops.length > 1 && expanded.has(entry.id);
+    const open = opTotal(entry) > 1 && expanded.has(entry.id);
     if (entry.id === selectedEntry?.id) selectedKey = unitKey(entry);
     for (const op of ops) {
       if (op.id !== selectedEntry?.id) continue;
       selectedKey = open ? opKey(entry, op) : unitKey(entry);
     }
+    if (open && notShown(entry) > 0 && onLoadMoreOps) visibleKeys.push(moreKey(entry));
     if (open) [...ops].reverse().forEach((op) => visibleKeys.push(opKey(entry, op)));
   }
   const tabKey =
@@ -135,7 +147,7 @@ export const HistoryDrawer = ({
     const back = rtl ? 'ArrowRight' : 'ArrowLeft';
     const entryId = key.slice(2).split(':')[0];
     const entry = reversedAuditEntries.find((en) => en.id === entryId);
-    const multi = (entry?.ops || []).length > 1;
+    const multi = opTotal(entry) > 1;
     let handled = true;
     if (e.key === 'ArrowDown') focusItem(visibleKeys[Math.min(i + 1, visibleKeys.length - 1)]);
     else if (e.key === 'ArrowUp') focusItem(visibleKeys[Math.max(i - 1, 0)]);
@@ -144,8 +156,9 @@ export const HistoryDrawer = ({
     else if (e.key === forward && key.startsWith('u:') && multi) {
       if (expanded.has(entryId)) focusItem(visibleKeys[i + 1]);
       else toggleExpanded(entryId);
-    } else if (e.key === back && key.startsWith('o:')) focusItem(unitKey(entry));
-    else if (e.key === back && key.startsWith('u:') && expanded.has(entryId)) {
+    } else if (e.key === back && (key.startsWith('o:') || key.startsWith('m:'))) {
+      focusItem(unitKey(entry));
+    } else if (e.key === back && key.startsWith('u:') && expanded.has(entryId)) {
       toggleExpanded(entryId);
     } else handled = false;
     if (handled) e.preventDefault();
@@ -212,9 +225,34 @@ export const HistoryDrawer = ({
     );
   };
 
+  const renderMore = (entry) => {
+    const busy = loadingMoreOps === entry.id;
+    return (
+      <button
+        key={`${entry.id}:more`}
+        {...itemProps(moreKey(entry))}
+        aria-disabled={busy || undefined}
+        className={cn(
+          'block w-full cursor-pointer border-b border-l-4 border-l-primary/30 bg-muted/20 py-2 pl-9 pr-3 text-start text-sm text-primary hover:bg-muted/50',
+          focusRing,
+          busy && 'cursor-default text-muted-foreground',
+        )}
+        onClick={() => {
+          if (!busy) onLoadMoreOps(entry.id);
+        }}
+      >
+        {busy ? 'Loading…' : 'Show later actions'}
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          {notShown(entry).toLocaleString()} not shown
+        </span>
+      </button>
+    );
+  };
+
   const renderUnit = (entry) => {
     const ops = entry.ops || [];
-    const multi = ops.length > 1;
+    const total = opTotal(entry);
+    const multi = total > 1;
     const isExpanded = multi && expanded.has(entry.id);
     const isSelected = selectedEntry?.id === entry.id;
     // Highlight a collapsed unit softly when it hides the selected member op.
@@ -271,7 +309,7 @@ export const HistoryDrawer = ({
             <span className="line-clamp-2 block text-sm font-medium leading-snug">
               {multi && (
                 <span className="mr-1.5 inline-block rounded bg-primary/10 px-1.5 py-px align-[1px] text-[11px] font-semibold text-primary">
-                  {ops.length} actions
+                  {total.toLocaleString()} actions
                 </span>
               )}
               <KindChip kind={entry.kind} />
@@ -283,6 +321,7 @@ export const HistoryDrawer = ({
             </span>
           </button>
         </div>
+        {isExpanded && notShown(entry) > 0 && onLoadMoreOps && renderMore(entry)}
         {isExpanded &&
           [...ops].reverse().map((op, i, arr) => renderOp(entry, op, i === arr.length - 1))}
       </div>

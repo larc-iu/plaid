@@ -31,6 +31,8 @@ export const DocumentHistoryPanel = ({
       selectedEntry={history.selectedEntry}
       canRestore={canRestore}
       onRestore={history.setRestoreEntry}
+      onLoadMoreOps={history.loadMoreOps}
+      loadingMoreOps={history.loadingMoreOps}
     />
     <RestoreDialog
       open={!!history.restoreEntry}

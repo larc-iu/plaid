@@ -237,7 +237,22 @@ describe('restoreError', () => {
 });
 
 describe('latestState', () => {
-  const client = (entries) => ({ documents: { audit: async () => entries } });
+  // The log oldest first, as a page reads it newest first.
+  const asked = [];
+  const client = (entries) => ({
+    documents: {
+      auditPage: async (id, opts) => {
+        asked.push([id, opts]);
+        return { entries: [...entries].reverse().slice(0, opts.limit), nextCursor: null };
+      },
+    },
+  });
+
+  it('reads one entry with one action, not the whole log', async () => {
+    asked.length = 0;
+    await latestState(client([{ time: '1' }, { time: '2' }]), 'd1');
+    expect(asked).toEqual([['d1', { order: 'desc', limit: 1, opsLimit: 1 }]]);
+  });
 
   it('takes the newest entry, preferring the moment it ended', async () => {
     const state = await latestState(

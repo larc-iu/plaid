@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderComponent } from '../test/renderComponent.jsx';
 import { useState } from 'react';
 
+// The log as the rail reads it: pages of entries. `audit` answers with the
+// entries, so a test counts reads and stages answers on it.
+const pagesOf = (audit) => ({
+  auditPage: (...args) => audit(...args).then((entries) => ({ entries, nextCursor: null })),
+});
+
 // The audit read and the snapshot read are the network, so the document model
 // and the client are the seam. What is under test is the STATE MACHINE around
 // them: an entry is selected the instant it is clicked and the snapshot shows
@@ -78,7 +84,7 @@ const mount = async () => {
 beforeEach(() => {
   notifyError.mockReset();
   audit = vi.fn(() => Promise.resolve([ENTRY_B, ENTRY_A]));
-  client = { documents: { audit } };
+  client = { documents: pagesOf(audit) };
   reload = vi.fn(() => Promise.resolve());
   onExpired = vi.fn();
   doc = makeDoc();

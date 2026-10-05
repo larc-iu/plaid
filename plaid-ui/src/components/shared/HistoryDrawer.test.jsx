@@ -263,3 +263,53 @@ describe('HistoryDrawer', () => {
     await view.unmount();
   });
 });
+
+// An entry read cut to its oldest actions counts all of them, and open, it
+// offers the rest under its newest held action.
+describe('an entry holding only some of its actions', () => {
+  const cut = { ...entry, opCount: 40000 };
+  const open = (props) => (
+    <HistoryDrawer
+      isOpen
+      onClose={() => {}}
+      auditEntries={[cut]}
+      loading={false}
+      error={null}
+      onSelectEntry={() => {}}
+      selectedEntry={null}
+      {...props}
+    />
+  );
+
+  it('counts every action and reads the later ones on request', async () => {
+    const onLoadMoreOps = vi.fn();
+    const view = await renderComponent(open({ onLoadMoreOps }));
+    expect(byText(view.container, 'button', '40,000 actions')).not.toBeNull();
+    await view.step(() => view.container.querySelector('button[aria-label="Expand"]').click());
+    const rows = [...view.container.querySelectorAll('[data-history-item]')].map((r) =>
+      r.getAttribute('data-history-item'),
+    );
+    expect(rows).toEqual(['u:batch-1', 'm:batch-1', 'o:batch-1:op-2', 'o:batch-1:op-1']);
+    const more = view.container.querySelector('[data-history-item="m:batch-1"]');
+    expect(more.textContent).toContain('39,998 not shown');
+    await view.step(() => more.click());
+    expect(onLoadMoreOps).toHaveBeenCalledWith('batch-1');
+    await view.unmount();
+  });
+
+  it('reads nothing more while a read is out, or with nowhere to send it', async () => {
+    const onLoadMoreOps = vi.fn();
+    const view = await renderComponent(open({ onLoadMoreOps, loadingMoreOps: 'batch-1' }));
+    await view.step(() => view.container.querySelector('button[aria-label="Expand"]').click());
+    const more = view.container.querySelector('[data-history-item="m:batch-1"]');
+    expect(more.textContent).toContain('Loading…');
+    await view.step(() => more.click());
+    expect(onLoadMoreOps).not.toHaveBeenCalled();
+    await view.unmount();
+
+    const bare = await renderComponent(open({}));
+    await bare.step(() => bare.container.querySelector('button[aria-label="Expand"]').click());
+    expect(bare.container.querySelector('[data-history-item^="m:"]')).toBeNull();
+    await bare.unmount();
+  });
+});

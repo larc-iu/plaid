@@ -117,6 +117,8 @@ export function useHistoryView({ documentId, client, doc, reload, onExpired }) {
     auditEntries: history.auditEntries,
     loadingAudit: history.loadingAudit,
     historyError: history.error,
+    loadMoreOps: history.loadMoreOps,
+    loadingMoreOps: history.loadingMore,
     restoreEntry,
     setRestoreEntry,
     handleRestored,
