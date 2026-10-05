@@ -160,7 +160,8 @@
 (def ^:private fidelity-runs
   [["coverage.mjs" "the kitchen sink still holds every catalogued feature"]
    ["roundTrip.mjs" "every format reads back what it wrote, or its loss list says why not"]
-   ["validate.mjs" "every export passes its own format's validator"]])
+   ["validate.mjs" "every export passes its own format's validator"]
+   ["mirror.mjs" "the editor shows what the server keeps after each reshape, and asks about what it deletes"]])
 
 (defn run-fidelity! []
   (ensure-repo-root!)
