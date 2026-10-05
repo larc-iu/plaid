@@ -228,10 +228,12 @@ The speed slider runs from 0.25× to 5×, and clicking the value returns to 1×.
 From a transcript row, **Shift+↑** and **Shift+↓** change the speed without reaching for the slider, and **Alt+↑** and **Alt+↓** move to the row above or below from anywhere in the row.
 The loop button repeats the segment you are on until you pause.
 
-Deleting a segment from its row removes its times and speaker but leaves its text in the baseline.
-Tick the box in the confirmation to delete the text too, together with every word and annotation on it.
+The trash on a row deletes the segment and its text.
+When the text, or anything over it, carries annotations, it asks first and counts them.
+**Delete text** deletes them with the text, and **Keep text** deletes only the segment's times and speaker and leaves its text in the baseline.
+A vocabulary link or annotation that also covers text that stays is shortened, and the question counts it apart.
 
-A transcript writes its segments onto one line of the baseline, so **Split at segments** on the Tokenize tab is what makes each of them a sentence.
+A segment typed in the transcript is written onto one line of the baseline, so **Split at segments** on the Tokenize tab is what makes each of them a sentence.
 The transcript says so under its rows, with a link.
 
 === Timeline
@@ -283,12 +285,15 @@ Whichever runs, what comes back is proposals, kept the same way, and no segment 
 
 Transcription is a separate run, from the **Transcribe** button in the **Transcript** header: it writes segments and their text to the document, where detection only proposes times.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
+Each segment it hears goes into the text in time order and gets a sentence of its own.
+Everything already in the document stays: its words, glosses, sentences and comments, and a sentence's translation and notes stay on the text they were written for.
+A segment heard at a time a segment already holds is skipped, so pressing **Transcribe** again adds only what is new. When nothing is, it says `Nothing new to transcribe`.
+To transcribe from scratch, clear the text on the Baseline tab first.
 The text it writes is split into words as a Baseline save's is, unless the project has **Tokenize new text** off.
 When the document's segments are out of time order in the text, a transcription that would place a new segment among them is refused, naming the segment in the way, and nothing is written.
 Put the segments in time order first.
 **Delete segments**, beside it, removes segments in bulk: every segment, the segments with no text, or the segments whose text is a value you give.
 The count is shown before you confirm, and the text stays in the baseline whichever you choose.
-The trash on a row deletes that segment and its text. When annotations are built on the text, it asks first whether the text goes too or stays in the baseline.
 
 == Tokenize
 
@@ -301,9 +306,12 @@ You can tokenize by hand:
 * **Drag** across plain text to make a word of it, or across several words to merge them.
 * **Click** a word to split it at a character. A split beside a space leaves the space out of both words. **Esc** closes the split points.
 * **Right-click** a word to delete it.
-* **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one. This is how a merge is undone.
+* **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one. This is how a merge is undone. When the split would delete annotations that join words on both sides of the new break, it asks first and says how many.
 * **Alt+click** a word to open it on the Analyze tab.
 * The **↑** button on a sentence merges it with the previous one.
+
+Deleting, splitting or merging words asks first when it would delete annotations, and counts them.
+A vocabulary link or annotation that also covers a word that stays is shortened, and the question counts it apart.
 
 The two tabs hand over to each other: Analyze opens on the last word you clicked here, and this tab opens on the sentence you were in on Analyze, with the word flashed, whether you switch by Alt+click or by the tab itself.
 
@@ -312,12 +320,13 @@ Words already there are kept, so text added after a first run can be tokenized b
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
 A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
 A service run that stops partway says how many sentences and words it wrote. Run it again to finish.
-A service run on a document that already holds annotations asks first, with a count of what a new segmentation would delete.
+A service run on a document that already holds annotations asks first, with a count of what a new segmentation would delete, and of the most that new sentence breaks could delete among the annotations that join words across them.
 On a document that is one sentence, a service that finds the same sentence leaves it and its words as they are. One that splits it makes the words again, and their analyses are lost.
 **Clear tokens** and **Reset sentences**, beside it, start over.
 **Reset sentences** is refused on a document of more than about a thousand sentences, and its confirmation says to split the document.
 **Split at segments** adds a sentence break wherever a segment from the Media tab starts, so a recording cut into utterances becomes one sentence per utterance.
 It only adds breaks, never removes one, and a segment that starts inside a word is left alone.
+Its confirmation counts any annotations the new breaks would delete.
 
 A project can mark certain tokens as **ignored**, usually punctuation.
 Ignored tokens carry no word-level annotation and host no morphemes, so they stay out of your way in the grid (see <<_annotation>>).
@@ -400,8 +409,9 @@ An edit that reaches the server after someone else changed the document is handl
 * Any other edit is saved only when what the other person changed is a kind of annotation it does not touch. Otherwise it is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows their change.
 
 When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X**, with **Enter to keep yours** after it while the cell has focus.
+A long note is cut short, and shows whole while its cell has focus or under the pointer.
 A message names the change, such as `b changed this to DOG.`
-A Bulk Edit, a Baseline save or a restore is named by who made it, when nobody else has changed the document since.
+A change that names no cell, such as a Bulk Edit, a Baseline save or a restore, is named by who made it when that person is the only other one who changed the document since your page last read it.
 When the change cannot be traced to one person, the message says `Someone`, and `You` for your own change from another tab.
 **Enter** writes your value over theirs, **Escape** or typing another value lets yours go, and leaving the cell sends nothing.
 The same happens when someone else split, joined or respelled the word, re-segmented its morpheme, or split, joined or respelled the sentence of a sentence field, before your value was saved.
@@ -842,7 +852,7 @@ There are four operations:
 * **Respell words**: change the spelling of a word everywhere it occurs, keeping its morphemes, glosses, links, and other annotations. Optionally respell the same string inside morpheme forms and lexicon entry forms too.
 * **Replace in a field**: find and replace across one field's values, as plain text or a regular expression, or across morpheme forms.
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
-* **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor, links made after the preview included. A word already linked to the survivor keeps its one link.
+* **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor, links made after the preview included. A word already linked to the survivor keeps its one link. Anything else that names a merged entry, in any project the vocabulary is linked to, names the survivor afterwards.
 
 Respelling a lexicon entry and merging entries rename or delete them, which only a maintainer of the entry's vocabulary may do.
 Entries of a vocabulary you do not maintain are listed as *maintainers only* and are not respelled, and a merge says so.
@@ -979,7 +989,7 @@ Close the tab or reload it and the service carries on. Reopen the document and t
 A run that has been finished and collected, or that is more than fifteen minutes past, is gone, and the document simply opens with whatever it wrote.
 **Stop**, on the banner or in the dialog, ends a run.
 It takes effect at the next point the work reports progress, so how promptly depends on how finely it reports: a service working sentence by sentence stops within a sentence, while one whose model runs in a single pass (transcription, for instance) stops when that pass ends, before it writes anything.
-A transcription stopped before the service has started ends at once, and the message that follows says whether the previous transcript was already cleared.
+A transcription stopped before the service has started ends at once, and the transcript is unchanged.
 Auto-analyze's built-in steps stop the same way, between the documents they read.
 A run part-way through writing always finishes writing, so a stop never leaves half a document.
 Whatever it wrote stays.
@@ -1037,7 +1047,10 @@ A recording is matched to the `.eaf` that names it, and a document whose recordi
 One too large for the server says so and says what converting would produce, and it can be converted to MP3 in the browser before the run (see <<_media>>), so the import does not finish without it.
 A conversion can be stopped. Recordings already converted stay converted, and the rest are imported as they are.
 A file imported into this project before says so on its row, with a link to its document, and the screen asks once for all of them: keep that document, replace it (which deletes it and everything added to it since), or add a copy beside it, named with a number.
+This includes a document an earlier import did not finish, which is kept unless you choose to replace it.
 A recording chosen beside a kept file is added to its document when that document has no recording yet.
+A recording that fails to upload is named among the import's warnings. Upload it on the document's Media tab, or choose it again here beside its `.eaf`.
+An import here that is stopped or fails removes the document it was making. The documents it finished stay in the project.
 The rest of the project is untouched, and nothing is locked while the import runs.
 
 Either way, the import asks what each tier becomes:
@@ -1061,6 +1074,7 @@ Where two segments still overlap in time with the same speaker, or with none, th
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file or files and it carries on, keeping the documents and entries already there and finishing the ones it never reached.
 A document is recognised by the file's own identifier for it, not by its name, so two texts called the same thing are kept apart, and a document you made by hand is never taken for one of the import's.
+A copy of an imported document is never taken for it.
 A FLEx import writes into the lexicon it started with, and finishes placing every sense an earlier run left flat.
 Importing the same backup afresh into a lexicon you have since arranged places only the entries it adds.
 If what arrived is enough, **Use the project as it is** on that screen puts the project back in your hands.
