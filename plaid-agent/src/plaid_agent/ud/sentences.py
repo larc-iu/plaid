@@ -140,6 +140,63 @@ def crossing_suppressors(doc: UdDoc, sentence: Sentence, char_pos: int) -> List[
     return out
 
 
+def _ancestor_layer(constraint) -> Optional[str]:
+    """The token layer a ``same-ancestor`` rule keeps a relation inside, or
+    None for any other rule. The read may spell the key either way."""
+    if not isinstance(constraint, dict) or constraint.get('type') != 'same-ancestor':
+        return None
+    for key in ('token_layer', 'tokenLayer', 'token-layer'):
+        if constraint.get(key):
+            return constraint[key]
+    return None
+
+
+def other_layers_crossing(raw: Dict[str, Any], sentence_layer_id: str, sentence_id: str,
+                          char_pos: int, skip_layer_ids=()) -> List[str]:
+    """The relations of OTHER layers that core's ``same-ancestor`` rule deletes
+    when the sentence ``sentence_id`` is split at ``char_pos``: those on a
+    relation layer that declares the rule over the sentence layer, under any
+    namespace, whose two ends fall in different halves. An end lies at the
+    smallest begin of its span's tokens, as core places it, and a relation
+    with an end outside the sentence is left alone. Counted by layer, naming
+    no app: the Python twin of plaid-ui's ``countSplitLoss``, which the Text
+    Editor asks with. ``skip_layer_ids`` are the token layers whose relations
+    this assistant counts itself (UD's own, ``crossing_relations``).
+    """
+    layers = [tl for text in raw.get('text_layers') or [] for tl in text.get('token_layers') or []]
+    begin_of = {t['id']: t['begin'] for tl in layers for t in tl.get('tokens') or []}
+    sentence_layer = next((tl for tl in layers if tl.get('id') == sentence_layer_id), None)
+    sentence = next((t for t in (sentence_layer or {}).get('tokens') or [] if t['id'] == sentence_id), None)
+    if not sentence or not (sentence['begin'] < char_pos < sentence['end']):
+        return []
+
+    def side(span) -> int:
+        begins = [begin_of[t] for t in (span or {}).get('tokens') or [] if t in begin_of]
+        if not begins:
+            return 0
+        place = min(begins)
+        if place < sentence['begin'] or place >= sentence['end']:
+            return 0
+        return -1 if place < char_pos else 1
+
+    out = []
+    for tl in layers:
+        if tl.get('id') in skip_layer_ids:
+            continue
+        for sl in tl.get('span_layers') or []:
+            spans = {sp['id']: sp for sp in sl.get('spans') or []}
+            for rl in sl.get('relation_layers') or []:
+                rules = (rl.get('constraints') or {}).values()
+                if not any(_ancestor_layer(c) == sentence_layer_id
+                           for lst in rules if isinstance(lst, list) for c in lst):
+                    continue
+                for r in rl.get('relations') or []:
+                    a, b = side(spans.get(r.get('source'))), side(spans.get(r.get('target')))
+                    if a and b and a != b:
+                        out.append(r['id'])
+    return out
+
+
 def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> str:
     """PLAN: start a new sentence at the named word."""
     doc = ws.doc(document)
@@ -171,6 +228,13 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
                         f'start is before "{first.form}" (w{first.index}).')
 
     losing = crossing_relations(sentence, thing.token.begin)
+    # What the same cut takes on the document's other layers, which this
+    # assistant does not read: core's rule deletes those relations in the
+    # split's own transaction, and the card names them, as the Text Editor's
+    # question does (REV-N5-APPS R9). The whole document is read for it.
+    full = ws.client.documents.get(doc.id, include_body=True)
+    others = other_layers_crossing(full, ws.project.sentence_layer_id, sentence.id,
+                                   thing.token.begin, skip_layer_ids=(ws.project.word_layer_id,))
     ws.add_op({
         'kind': 'split_sentence',
         'document_id': doc.id,
@@ -184,9 +248,14 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         # A suppressor is no arc of its own, so it is not counted: it stands
         # over one of `losing` and goes with it.
         'suppressor_ids': crossing_suppressors(doc, sentence, thing.token.begin),
+        # The other layers' relations the cut deletes, which the card counts
+        # as annotations, naming no layer.
+        'other_relation_ids': others,
         'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
     })
     lost = f', dropping {len(losing)} dependency relation(s) that would cross it' if losing else ''
+    if others:
+        lost += f'{" and" if losing else ", dropping"} {len(others)} annotation(s) of other layers that would cross it'
     return (f'Planned: s{sentence.index} splits before "{thing.form}"{lost}. '
             f'Sentences after it renumber.')
 

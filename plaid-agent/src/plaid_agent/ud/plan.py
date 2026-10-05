@@ -321,6 +321,11 @@ def _split_sentence_summary(op, n):
     gone = len(op.get('relation_ids') or [])
     if gone:
         out.append((_REMOVED_DEP, gone))
+    # And what the same cut takes on the document's other layers, by count
+    # only (REV-N5-APPS R9).
+    others = len(op.get('other_relation_ids') or [])
+    if others:
+        out.append((('removed annotation', 'removed annotations'), others))
     return out
 
 

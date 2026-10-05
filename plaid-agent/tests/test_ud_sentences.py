@@ -485,3 +485,42 @@ def test_a_turn_that_read_the_web_cannot_plan_a_change(ws):
         out = run(ws, tool, document='Viaje', **args)
         assert 'read the web' in out, f'{tool} planned anyway: {out}'
     assert not ws.ops
+
+
+def test_a_split_names_what_it_takes_on_the_other_layers():
+    """REV-N5-APPS R9. Core's same-ancestor rule deletes, in the split's own
+    transaction, every relation of a layer that keeps its relations inside
+    one sentence and that the cut leaves across it, whoever made it. The plan
+    names those too, by count, as the Text Editor's question does, and leaves
+    alone a layer with no such rule and a relation on one side of the cut."""
+    from ud_fixtures import document_raw, SENT_LAYER
+    from plaid_agent.ud.plan import summarize
+
+    raw = document_raw()
+    raw['text_layers'][0]['token_layers'].append({
+        'id': 'other-nodes',
+        'tokens': [
+            {'id': 'n1', 'begin': 0, 'end': 5},
+            {'id': 'n4', 'begin': 9, 'end': 12},
+            # Over the whole sentence: placed at its first character.
+            {'id': 'n0', 'begin': 0, 'end': 13},
+        ],
+        'span_layers': [{
+            'id': 'other-concepts',
+            'spans': [{'id': 'c1', 'tokens': ['n1']}, {'id': 'c4', 'tokens': ['n4']},
+                      {'id': 'c0', 'tokens': ['n0']}],
+            'relation_layers': [
+                {'id': 'kept', 'constraints': {'x': [{'type': 'same-ancestor', 'token_layer': SENT_LAYER}]},
+                 'relations': [{'id': 'x-cut', 'source': 'c1', 'target': 'c4'},
+                               {'id': 'x-whole', 'source': 'c0', 'target': 'c4'},
+                               {'id': 'x-left', 'source': 'c0', 'target': 'c1'}]},
+                {'id': 'free', 'relations': [{'id': 'f-cut', 'source': 'c1', 'target': 'c4'}]},
+            ]}],
+    })
+    client = ud_client(documents={'ud1': raw})
+    ws = Workspace(client, load_project(client, PID))
+    out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w4'})
+    op = ws.ops[-1]
+    assert op['other_relation_ids'] == ['x-cut', 'x-whole']
+    assert 'and 2 annotation(s) of other layers' in out
+    assert summarize(ws.ops) == '4 removed dependencies, 2 removed annotations, 1 sentence split'
