@@ -2,6 +2,7 @@
   "Relation layers: the `relation_layers` table, ordered within a span
   layer by `order_idx`. Relations cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
@@ -126,21 +127,14 @@
                      (let [existing (psc/fetch-by-id tx :relation_layers eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Relation layer" eid) {:code 404 :id eid})))
-                       ;; Audited per-relation delete before the FK cascade fires.
-                       ;; One bulk DELETE ... RETURNING * collapses the per-row
-                       ;; loop into a single round-trip (per-id audits via
-                       ;; delete-where!).
-                       (let [rel-ids (->> (psc/q tx {:select [:id]
-                                                     :from :relations
-                                                     :where [:= :relation_layer_id eid]})
-                                          (mapv :id))]
-                         (when (seq rel-ids)
-                           (crud/delete-where! tx :relations [:in :id rel-ids])
-                           (psc/execute! tx
-                                         {:delete-from :entity_metadata
-                                          :where [:and
-                                                  [:= :entity_type "relation"]
-                                                  [:in :entity_id rel-ids]]})))
+                       ;; Audited per-relation delete before the FK cascade fires,
+                       ;; read by the layer's index and deleted in chunks by id
+                       ;; (per-id audits via delete-ids!).
+                       (cascade-stats/prepare! tx)
+                       (let [rel-ids (mapv :id (crud/select-in tx :relations "id" :relation_layer_id
+                                                               "idx_relations_layer_doc" [eid]))]
+                         (crud/delete-ids! tx :relations rel-ids)
+                         (crud/delete-entity-metadata! tx "relation" rel-ids))
                        ;; Sweep entity_metadata for the relation-layer itself
                        ;; (no FK; no auto-cascade).
                        (psc/execute! tx

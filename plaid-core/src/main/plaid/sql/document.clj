@@ -5,6 +5,7 @@
   (:require [clojure.data.json :as json]
             [clojure.string]
             [taoensso.timbre :as log]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -640,6 +641,7 @@
   ENTIRE token list lives under the deleted set). Finally cleans up
   entity_metadata for the document and its texts and drops the row."
   [tx eid]
+  (cascade-stats/prepare! tx)
   (let [text-ids (->> (psc/q tx {:select [:id]
                                  :from :texts
                                  :where [:= :document_id eid]})
@@ -652,45 +654,23 @@
       ;; which text a token belongs to, so a single call over the full
       ;; set does the same work as one-per-text with far fewer
       ;; round-trips and one batched audit pass.
-      (let [tok-ids (->> (psc/q tx {:select [:id]
-                                    :from :tokens
-                                    :where [:in :text_id text-ids]})
-                         (mapv :id))]
+      (let [tok-ids (mapv :id (crud/select-in tx :tokens "id" :text_id "idx_tokens_text_begin_end" text-ids))]
         (when (seq tok-ids)
           (multi-delete! tx tok-ids)))
-      (crud/delete-where! tx :texts [:in :id text-ids])
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "text"]
-                             [:in :entity_id text-ids]]})))
+      (crud/delete-ids! tx :texts text-ids)
+      (crud/delete-entity-metadata! tx "text" text-ids)))
   ;; Defensive sweep: any spans/relations/vocab_links left attached to
   ;; the document but not removed via the token cascade (orphans the
   ;; partition-spans-by-deletion split can't see because their token
-  ;; lists were already empty). Each is one audited
-  ;; `DELETE ... WHERE document_id = ?` round-trip (batched audit via
-  ;; delete-where!), not a per-row SELECT + delete-by-id! loop.
-  (let [rel-ids (mapv :id (crud/delete-where! tx :relations [:= :document_id eid]))]
-    (when (seq rel-ids)
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "relation"]
-                             [:in :entity_id rel-ids]]})))
-  (let [span-ids (mapv :id (crud/delete-where! tx :spans [:= :document_id eid]))]
-    (when (seq span-ids)
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "span"]
-                             [:in :entity_id span-ids]]})))
-  (let [vl-ids (mapv :id (crud/delete-where! tx :vocab_links [:= :document_id eid]))]
-    (when (seq vl-ids)
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "vocab-link"]
-                             [:in :entity_id vl-ids]]})))
+  ;; lists were already empty). Each reads the document's rows by its
+  ;; document_id index and deletes them in audited chunks by id, not a
+  ;; per-row SELECT + delete-by-id! loop.
+  (doseq [[table index entity-type] [[:relations "idx_relations_document" "relation"]
+                                     [:spans "idx_spans_document" "span"]
+                                     [:vocab_links "idx_vocab_links_document" "vocab-link"]]]
+    (let [ids (mapv :id (crud/select-in tx table "id" :document_id index [eid]))]
+      (crud/delete-ids! tx table ids)
+      (crud/delete-entity-metadata! tx entity-type ids)))
   ;; Document's own metadata + row.
   (metadata/delete-metadata! tx "document" eid)
   (crud/delete-by-id! tx :documents eid))

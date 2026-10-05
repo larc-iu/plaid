@@ -6,6 +6,7 @@
   cascade-deleted by the FK when a vocab layer is dropped."
   (:require [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -382,12 +383,12 @@
                              ;; docs explicitly.
                              affected-doc-ids (volatile! [])]
                          (when (seq vi-ids)
+                           (cascade-stats/prepare! tx)
                            ;; Vocab_links pointing at any of these items —
                            ;; one bulk DELETE ... RETURNING * collapses the
                            ;; per-row loop into a single round-trip.
-                           (let [vl-rows (psc/q tx {:select [:id :document_id]
-                                                    :from :vocab_links
-                                                    :where [:in :vocab_item_id vi-ids]})
+                           (let [vl-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
+                                                         "idx_vocab_links_item" vi-ids)
                                  vl-ids (mapv :id vl-rows)]
                              (when (seq vl-ids)
                                ;; Capture the per-link document_ids (may
@@ -395,19 +396,11 @@
                                ;; share a doc) — bump-document-versions!
                                ;; dedups internally.
                                (vswap! affected-doc-ids into (mapv :document_id vl-rows))
-                               (crud/delete-where! tx :vocab_links [:in :id vl-ids])
-                               (psc/execute! tx
-                                             {:delete-from :entity_metadata
-                                              :where [:and
-                                                      [:= :entity_type "vocab-link"]
-                                                      [:in :entity_id vl-ids]]})))
+                               (crud/delete-ids! tx :vocab_links vl-ids)
+                               (crud/delete-entity-metadata! tx "vocab-link" vl-ids)))
                            ;; Vocab_items themselves + their metadata.
-                           (crud/delete-where! tx :vocab_items [:in :id vi-ids])
-                           (psc/execute! tx
-                                         {:delete-from :entity_metadata
-                                          :where [:and
-                                                  [:= :entity_type "vocab-item"]
-                                                  [:in :entity_id vi-ids]]}))
+                           (crud/delete-ids! tx :vocab_items vi-ids)
+                           (crud/delete-entity-metadata! tx "vocab-item" vi-ids))
                          ;; Bump versions on every document that lost a
                          ;; vocab_link — emits :doc-version-bump audit
                          ;; rows so OCC clients are told their view is

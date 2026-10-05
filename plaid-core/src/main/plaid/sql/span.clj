@@ -9,6 +9,7 @@
   (:require [taoensso.timbre :as log]
             [plaid.sql.bulk :as bulk]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
@@ -68,14 +69,14 @@
     (:project_id (psc/fetch-by-id db :span_layers sl-id))))
 
 (defn get-relation-ids
-  "Return the IDs of relations whose source or target is `eid`."
+  "Return the IDs of relations whose source or target is `eid`, each end
+  read by its own index."
   [db eid]
-  (->> (psc/q db {:select-distinct [:id]
-                  :from [:relations]
-                  :where [:or
-                          [:= :source_span_id eid]
-                          [:= :target_span_id eid]]})
-       (mapv :id)))
+  (->> (concat (crud/select-in db :relations "id" :source_span_id "idx_relations_source" [eid])
+               (crud/select-in db :relations "id" :target_span_id "idx_relations_target" [eid]))
+       (map :id)
+       distinct
+       vec))
 
 ;; ============================================================
 ;; Internal helpers
@@ -259,6 +260,7 @@
              :user user-id}]
      (when (nil? (psc/fetch-by-id tx :spans eid))
        (throw (ex-info (psc/err-msg-not-found "Span" eid) {:code 404 :id eid})))
+     (cascade-stats/prepare! tx)
      (let [rel-ids (get-relation-ids tx eid)]
        (doseq [rid rel-ids]
          (crud/delete-by-id! tx :relations rid))
@@ -460,24 +462,21 @@
            (when (> (count doc-ids) 1)
              (throw (ex-info "Not all spans belong to the same document"
                              {:document-ids doc-ids :code 400}))))
+         (cascade-stats/prepare! tx)
          ;; Relations referencing any of these spans, audited individually.
-         (let [rel-ids (->> (psc/q tx {:select-distinct [:id]
-                                       :from [:relations]
-                                       :where [:or
-                                               [:in :source_span_id existing-ids]
-                                               [:in :target_span_id existing-ids]]})
-                            (mapv :id))]
+         (let [rel-ids (->> (concat
+                             (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" existing-ids)
+                             (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" existing-ids))
+                            (map :id)
+                            distinct
+                            vec)]
            (doseq [rid rel-ids]
              (crud/delete-by-id! tx :relations rid)))
          ;; Spans themselves. FK CASCADE on span_tokens sweeps the join rows.
          (doseq [sid existing-ids]
            (crud/delete-by-id! tx :spans sid))
          ;; entity_metadata (no FK, manual sweep).
-         (psc/execute! tx
-                       {:delete-from :entity_metadata
-                        :where [:and
-                                [:= :entity_type "span"]
-                                [:in :entity_id existing-ids]]}))
+         (crud/delete-entity-metadata! tx "span" existing-ids))
        existing-ids))))
 
 ;; ============================================================

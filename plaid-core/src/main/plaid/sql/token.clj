@@ -22,6 +22,7 @@
   (:require [taoensso.timbre :as log]
             [plaid.sql.bulk :as bulk]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
@@ -267,16 +268,16 @@
 ;; ============================================================
 
 (defn- relations-referencing-spans
-  "IDs of relations whose source or target span is in `span-ids`."
+  "IDs of relations whose source or target span is in `span-ids`, each end
+  read by its own index."
   [tx span-ids]
   (if (empty? span-ids)
     []
-    (->> (psc/q tx {:select-distinct [:id]
-                    :from :relations
-                    :where [:or
-                            [:in :source_span_id (vec span-ids)]
-                            [:in :target_span_id (vec span-ids)]]})
-         (mapv :id))))
+    (->> (concat (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" span-ids)
+                 (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" span-ids))
+         (map :id)
+         distinct
+         vec)))
 
 (defn- partition-spans-by-deletion
   "For the set of spans that reference any token in `token-ids`,
@@ -297,15 +298,17 @@
   [tx token-ids token-ids-set]
   (if (empty? token-ids)
     {:orphan-span-ids [] :span-trim-plan []}
-    (let [touched-span-ids (->> (psc/q tx {:select-distinct [:span_id]
-                                           :from :span_tokens
-                                           :where [:in :token_id (vec token-ids)]})
-                                (mapv :span_id))]
+    (let [touched-span-ids (->> (crud/select-in tx :span_tokens "span_id" :token_id
+                                                "idx_span_tokens_token" token-ids)
+                                (map :span_id)
+                                distinct
+                                vec)]
       (if (empty? touched-span-ids)
         {:orphan-span-ids [] :span-trim-plan []}
-        (let [span-rows-by-id (psc/fetch-ids-as-map tx :spans :id touched-span-ids)
+        (let [span-rows-by-id (crud/rows-by-id tx :spans touched-span-ids)
+              tokens-of (crud/junction-token-ids-of tx :spans touched-span-ids)
               plans (for [span-id touched-span-ids
-                          :let [pre-tokens (crud/junction-token-ids tx :spans span-id)
+                          :let [pre-tokens (clojure.core/get tokens-of span-id [])
                                 post-tokens (vec (remove token-ids-set pre-tokens))]]
                       {:span-id span-id
                        :span-row (clojure.core/get span-rows-by-id span-id)
@@ -348,15 +351,17 @@
   (if (empty? token-ids)
     {:orphan-vl-ids [] :vl-trim-plan []}
     (let [;; Vocab_link ids touched by the delete set.
-          touched-vl-ids (->> (psc/q tx {:select-distinct [:vocab_link_id]
-                                         :from :vocab_link_tokens
-                                         :where [:in :token_id (vec token-ids)]})
-                              (mapv :vocab_link_id))]
+          touched-vl-ids (->> (crud/select-in tx :vocab_link_tokens "vocab_link_id" :token_id
+                                              "idx_vocab_link_tokens_token" token-ids)
+                              (map :vocab_link_id)
+                              distinct
+                              vec)]
       (if (empty? touched-vl-ids)
         {:orphan-vl-ids [] :vl-trim-plan []}
-        (let [vl-rows-by-id (psc/fetch-ids-as-map tx :vocab_links :id touched-vl-ids)
+        (let [vl-rows-by-id (crud/rows-by-id tx :vocab_links touched-vl-ids)
+              tokens-of (crud/junction-token-ids-of tx :vocab_links touched-vl-ids)
               plans (for [vl-id touched-vl-ids
-                          :let [pre-tokens (crud/junction-token-ids tx :vocab_links vl-id)
+                          :let [pre-tokens (clojure.core/get tokens-of vl-id [])
                                 post-tokens (vec (remove token-ids-set pre-tokens))]]
                       {:vl-id vl-id
                        :vl-row (clojure.core/get vl-rows-by-id vl-id)
@@ -408,12 +413,7 @@
   the same way the token sweep at the bottom of `multi-delete!`
   handles tokens directly."
   [tx entity-type ids]
-  (when (seq ids)
-    (psc/execute! tx
-                  {:delete-from :entity_metadata
-                   :where [:and
-                           [:= :entity_type entity-type]
-                           [:in :entity_id (vec ids)]]})))
+  (crud/delete-entity-metadata! tx entity-type ids))
 
 (defn multi-delete!
   "Delete every token in `eids`, AND cascade to the visible entities
@@ -444,6 +444,7 @@
   going away in the history replica."
   [tx eids]
   (when (seq eids)
+    (cascade-stats/prepare! tx)
     (let [eids (vec eids)
           eids-set (set eids)
           ;; 1. Spans touched by this delete set — split into
@@ -457,13 +458,12 @@
           {:keys [orphan-vl-ids vl-trim-plan]}
           (partition-vocab-links-by-deletion tx eids eids-set)]
       ;; Order: relations → spans → vocab_links → tokens.
-      ;; Each cascade phase is one DELETE ... WHERE id IN (...) RETURNING *
-      ;; round-trip; per-id audit rows still emitted via delete-where!.
-      (when (seq rel-ids)
-        (crud/delete-where! tx :relations [:in :id rel-ids]))
+      ;; Each cascade phase is a chunked DELETE ... WHERE id IN (...)
+      ;; RETURNING * by the primary key, with per-id audit rows
+      ;; (crud/delete-ids!).
+      (crud/delete-ids! tx :relations rel-ids)
       (sweep-entity-metadata! tx "relation" rel-ids)
-      (when (seq orphan-span-ids)
-        (crud/delete-where! tx :spans [:in :id orphan-span-ids]))
+      (crud/delete-ids! tx :spans orphan-span-ids)
       (sweep-entity-metadata! tx "span" orphan-span-ids)
       ;; Span partial trim: emit synthetic audit + rewrite junctions.
       (doseq [plan span-trim-plan]
@@ -472,10 +472,9 @@
       (doseq [plan vl-trim-plan]
         (trim-vocab-link-tokens! tx plan))
       ;; Vocab_link full-orphan delete.
-      (when (seq orphan-vl-ids)
-        (crud/delete-where! tx :vocab_links [:in :id orphan-vl-ids]))
+      (crud/delete-ids! tx :vocab_links orphan-vl-ids)
       (sweep-entity-metadata! tx "vocab-link" orphan-vl-ids)
-      (crud/delete-where! tx :tokens [:in :id eids])
+      (crud/delete-ids! tx :tokens eids)
       (sweep-entity-metadata! tx "token" eids))))
 
 ;; ============================================================

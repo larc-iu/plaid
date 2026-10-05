@@ -7,6 +7,7 @@
   (:require [clojure.data.json :as json]
             [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.datasource :as psd]
@@ -548,15 +549,18 @@
                                        :join [[:projects :p] [:= :p.id :d.project_id]]
                                        :where [:and [:= :d.project_id pid] [:<> :p.deleted_at nil]]
                                        :limit 1}))]
-      (let [in-doc [:= :document_id doc-id]]
-        (sweep-metadata! tx "text" :texts in-doc)
-        (sweep-metadata! tx "token" :tokens in-doc)
-        (sweep-metadata! tx "span" :spans in-doc)
-        (sweep-metadata! tx "relation" :relations in-doc)
-        (sweep-metadata! tx "vocab-link" :vocab_links in-doc)
-        (psc/execute! tx {:delete-from :entity_metadata
-                          :where [:and [:= :entity_type "document"] [:= :entity_id doc-id]]})
-        (psc/execute! tx {:delete-from :documents :where [:= :id doc-id]}))
+      (cascade-stats/prepare! tx)
+      (sweep-metadata! tx "text" :texts [:= :document_id doc-id])
+      ;; The document's rows of each table read by its document_id index,
+      ;; then their metadata by the metadata's key.
+      (doseq [[etype table index] [["token" :tokens "idx_tokens_document"]
+                                   ["span" :spans "idx_spans_document"]
+                                   ["relation" :relations "idx_relations_document"]
+                                   ["vocab-link" :vocab_links "idx_vocab_links_document"]]]
+        (crud/delete-entity-metadata! tx etype (map :id (crud/select-in tx table "id" :document_id index [doc-id]))))
+      (psc/execute! tx {:delete-from :entity_metadata
+                        :where [:and [:= :entity_type "document"] [:= :entity_id doc-id]]})
+      (psc/execute! tx {:delete-from :documents :where [:= :id doc-id]})
       doc-id)))
 
 (defn remove-hidden-project!

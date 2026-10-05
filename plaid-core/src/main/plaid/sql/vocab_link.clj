@@ -5,6 +5,7 @@
   CASCADE sweeps the junction rows."
   (:require [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -385,12 +386,10 @@
            (when (> (count doc-ids) 1)
              (throw (ex-info "Tokens in a bulk vocab-link delete must all belong to the same document"
                              {:document-ids doc-ids :code 400}))))
+         (cascade-stats/prepare! tx)
          (doseq [eid existing-ids]
            (crud/delete-by-id! tx :vocab_links eid))
-         (psc/execute! tx {:delete-from :entity_metadata
-                           :where [:and
-                                   [:= :entity_type "vocab-link"]
-                                   [:in :entity_id existing-ids]]}))
+         (crud/delete-entity-metadata! tx "vocab-link" existing-ids))
        existing-ids))))
 
 ;; ============================================================

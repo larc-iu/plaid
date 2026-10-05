@@ -4,6 +4,7 @@
   cleaned up by FK ON DELETE CASCADE — we do not manually delete
   them here."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
@@ -117,6 +118,7 @@
   vocab_links, plus texts and their entity_metadata) before the FK
   CASCADE fires. Reused by project's cascade walker."
   [tx eid]
+  (cascade-stats/prepare! tx)
   ;; 1. Token_layers under this text_layer (root layers only — each
   ;; cascade-delete! walks the parent_token_layer_id subtree itself).
   (let [tl-ids (->> (psc/q tx {:select [:id]

@@ -40,6 +40,74 @@
     (mapv :token_id (psc/q db {:select [:token_id] :from [jtable]
                                :where [:= jcol id] :order-by [:order_idx]}))))
 
+;; ============================================================
+;; Index-driven reads and deletes over many ids
+;;
+;; A delete reaches an unbounded set of rows (the 200,000 spans of a large
+;; document), so every statement that takes the set as an IN list runs in
+;; chunks of `psc/bulk-chunk-size`: one statement over all of them broke
+;; SQLite's statement length limit (SQLITE_TOOBIG). Each one also names the
+;; index it seeks (INDEXED BY), so a chunk costs its own ids' seeks whatever
+;; the planner's statistics say. With statistics from a near-empty table,
+;; SQLite planned `id IN (...)` as a scan of the whole table per chunk.
+;; ============================================================
+
+(defn- placeholders [n]
+  (apply str (interpose ", " (repeat n "?"))))
+
+(defn- pk-index
+  "The index SQLite made for `table`'s TEXT PRIMARY KEY."
+  [table]
+  (str "sqlite_autoindex_" (name table) "_1"))
+
+(defn- in-chunks
+  "`(f chunk)` over `xs` (distinct) in chunks of `psc/bulk-chunk-size`,
+  concatenated into a vector."
+  [f xs]
+  (into [] (mapcat f) (partition-all psc/bulk-chunk-size (distinct (seq xs)))))
+
+(defn select-in
+  "The rows (`cols`, a SQL column list) of `table` whose `col` is one of
+  `vs`, read through `index`, which must lead with `col`."
+  [db table cols col index vs]
+  (in-chunks (fn [chunk]
+               (psc/q db (into [(str "SELECT " cols " FROM " (name table) " INDEXED BY " index
+                                     " WHERE " (name col) " IN (" (placeholders (count chunk)) ")")]
+                               (map str chunk))))
+             vs))
+
+(defn rows-by-id
+  "Map of id to row for the rows of `table` whose id is one of `ids`, read
+  by the primary key's index."
+  [db table ids]
+  (into {} (map (juxt :id identity)) (select-in db table "*" :id (pk-index table) ids)))
+
+(defn junction-token-ids-of
+  "Map of row id to its token ids in order, for rows `ids` of `table`
+  (`:spans`, `:vocab_links`), read from its junction table by its primary
+  key. A row with no tokens is absent."
+  [db table ids]
+  (let [[jtable jcol] (junction table)
+        rows (select-in db jtable (str (name jcol) ", token_id, order_idx") jcol (pk-index jtable) ids)]
+    (->> rows
+         (group-by jcol)
+         (into {} (map (fn [[id rs]] [id (mapv :token_id (sort-by :order_idx rs))]))))))
+
+(defn delete-entity-metadata!
+  "Delete the `entity_metadata` rows of the `entity-type` entities `ids`, by
+  that table's primary key. Unaudited: see the callers."
+  [tx entity-type ids]
+  (in-chunks (fn [chunk]
+               (psc/execute! tx (into [(str "DELETE FROM entity_metadata INDEXED BY "
+                                            (pk-index :entity_metadata)
+                                            " WHERE entity_type = ? AND entity_id IN ("
+                                            (placeholders (count chunk)) ")")
+                                       entity-type]
+                                      (map str chunk)))
+               nil)
+             ids)
+  nil)
+
 (defn insert!
   "Insert one row into `table`. Returns the inserted row (the RETURNING *
   post-image, so DB defaults / generated columns are reflected). Records an
@@ -281,6 +349,23 @@
      (psaw/record-audit-writes! tx table :delete
                                 (map (fn [pre] [(get pre id-col) pre nil]) pres))
      pres)))
+
+(defn delete-ids!
+  "Delete the rows of `table` whose id is one of `ids` and audit each
+  deletion, as `delete-where!` does over `[:in :id ids]`, but in chunks and
+  by the primary key's index (see \"Index-driven reads and deletes\" above).
+  Returns the deleted pre-images. An id with no row is skipped."
+  [tx table ids]
+  (psaw/ensure-op-bound!)
+  (in-chunks (fn [chunk]
+               (let [pres (psc/execute-returning!
+                           tx (into [(str "DELETE FROM " (name table) " INDEXED BY " (pk-index table)
+                                          " WHERE id IN (" (placeholders (count chunk)) ") RETURNING *")]
+                                    (map str chunk)))]
+                 (psaw/record-audit-writes! tx table :delete
+                                            (map (fn [pre] [(:id pre) pre nil]) pres))
+                 pres))
+             ids))
 
 ;; ============================================================
 ;; Join-table write helpers (unaudited; the parent entity audits cover them)

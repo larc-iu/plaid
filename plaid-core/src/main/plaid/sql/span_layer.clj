@@ -3,6 +3,7 @@
   `order_idx`. Child rows (relation_layers, spans, span_tokens,
   relations) cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
@@ -129,47 +130,29 @@
   relations elsewhere that reference spans in this span_layer — before
   touching any relation_layer or span row."
   [tx eid]
+  (cascade-stats/prepare! tx)
   (let [rl-ids (->> (psc/q tx {:select [:id]
                                :from :relation_layers
                                :where [:= :span_layer_id eid]})
                     (mapv :id))
-        span-ids (->> (psc/q tx {:select [:id]
-                                 :from :spans
-                                 :where [:= :span_layer_id eid]})
-                      (mapv :id))
-        ;; 1. Collect ALL affected relations in a single query:
+        span-ids (mapv :id (crud/select-in tx :spans "id" :span_layer_id "idx_spans_layer_doc" [eid]))
+        ;; 1. Collect ALL affected relations, each set by its own index:
         ;;    - relations inside nested relation_layers (rl-ids), AND
         ;;    - relations anywhere whose source/target span is in this
-        ;;      span_layer (span-ids). DISTINCT collapses any overlap.
-        rel-where (cond
-                    (and (seq rl-ids) (seq span-ids))
-                    [:or
-                     [:in :relation_layer_id rl-ids]
-                     [:in :source_span_id span-ids]
-                     [:in :target_span_id span-ids]]
-                    (seq rl-ids)
-                    [:in :relation_layer_id rl-ids]
-                    (seq span-ids)
-                    [:or
-                     [:in :source_span_id span-ids]
-                     [:in :target_span_id span-ids]]
-                    :else nil)
-        rel-ids (if rel-where
-                  (->> (psc/q tx {:select-distinct [:id]
-                                  :from :relations
-                                  :where rel-where})
-                       (mapv :id))
-                  [])]
+        ;;      span_layer (span-ids). `distinct` collapses any overlap.
+        rel-ids (->> (concat
+                      (crud/select-in tx :relations "id" :relation_layer_id "idx_relations_layer_doc" rl-ids)
+                      (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" span-ids)
+                      (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" span-ids))
+                     (map :id)
+                     distinct
+                     vec)]
     ;; 2. Audit-delete every affected relation BEFORE any
-    ;;    relation_layer or span row goes away. One bulk DELETE ...
-    ;;    RETURNING * fans out per-id audit rows via delete-where!.
+    ;;    relation_layer or span row goes away. Chunked DELETE ...
+    ;;    RETURNING * with per-id audit rows (crud/delete-ids!).
     (when (seq rel-ids)
-      (crud/delete-where! tx :relations [:in :id rel-ids])
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "relation"]
-                             [:in :entity_id rel-ids]]}))
+      (crud/delete-ids! tx :relations rel-ids)
+      (crud/delete-entity-metadata! tx "relation" rel-ids))
     ;; 3. Relation_layers under this span_layer + their
     ;;    entity_metadata. Relations under them were drained in step 2,
     ;;    so the FK cascade on `relations.relation_layer_id` is a no-op.
@@ -184,12 +167,8 @@
     ;;    referencing these spans were drained in step 2, so FK cascade
     ;;    on `relations.source_span_id` / `target_span_id` is a no-op.
     (when (seq span-ids)
-      (crud/delete-where! tx :spans [:in :id span-ids])
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "span"]
-                             [:in :entity_id span-ids]]})))
+      (crud/delete-ids! tx :spans span-ids)
+      (crud/delete-entity-metadata! tx "span" span-ids)))
   ;; 5. The span_layer itself + its own entity_metadata.
   (psc/execute! tx
                 {:delete-from :entity_metadata

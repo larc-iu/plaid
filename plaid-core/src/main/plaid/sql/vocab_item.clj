@@ -3,6 +3,7 @@
   `vocab_layer_id`."
   (:require [clojure.string :as str]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -192,9 +193,8 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
                                          {:code 404 :id eid})))
-                       (let [vl-rows (psc/q tx {:select [:id :document_id]
-                                                :from :vocab_links
-                                                :where [:= :vocab_item_id eid]})
+                       (let [vl-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
+                                                     "idx_vocab_links_item" [eid])
                              vl-ids (mapv :id vl-rows)]
                          (reset! links-found (count vl-rows))
                          (when (and (some? expected-link-count)
@@ -202,14 +202,10 @@
                            (throw (ex-info (str "This entry has " (count vl-rows) " links now, not "
                                                 expected-link-count)
                                            {:code 409 :id eid :links (count vl-rows)})))
-                         (doseq [vlid vl-ids]
-                           (crud/delete-by-id! tx :vocab_links vlid))
                          (when (seq vl-ids)
-                           (psc/execute! tx
-                                         {:delete-from :entity_metadata
-                                          :where [:and
-                                                  [:= :entity_type "vocab-link"]
-                                                  [:in :entity_id vl-ids]]}))
+                           (cascade-stats/prepare! tx))
+                         (crud/delete-ids! tx :vocab_links vl-ids)
+                         (crud/delete-entity-metadata! tx "vocab-link" vl-ids)
                          (op/bump-document-versions! tx (mapv :document_id vl-rows)))
                        (psc/execute! tx
                                      {:delete-from :entity_metadata
@@ -417,23 +413,17 @@
                              ;; nothing left to read the parent layer off of.
                              layer-ids (get-layer-ids tx existing-ids)]
                          (when (seq existing-ids)
+                           (cascade-stats/prepare! tx)
                            ;; Descendant vocab_links (audited per row), then their
                            ;; metadata (unaudited sweep, no FK on entity_metadata).
-                           (let [link-rows (crud/delete-where! tx :vocab_links
-                                                               [:in :vocab_item_id existing-ids])
-                                 link-ids (mapv :id link-rows)]
-                             (when (seq link-ids)
-                               (psc/execute! tx {:delete-from :entity_metadata
-                                                 :where [:and
-                                                         [:= :entity_type "vocab-link"]
-                                                         [:in :entity_id link-ids]]}))
+                           (let [link-ids (mapv :id (crud/select-in tx :vocab_links "id" :vocab_item_id
+                                                                    "idx_vocab_links_item" existing-ids))
+                                 link-rows (crud/delete-ids! tx :vocab_links link-ids)]
+                             (crud/delete-entity-metadata! tx "vocab-link" link-ids)
                              (op/bump-document-versions! tx (mapv :document_id link-rows)))
                            ;; The items' own metadata, then the items (audited per row).
-                           (psc/execute! tx {:delete-from :entity_metadata
-                                             :where [:and
-                                                     [:= :entity_type "vocab-item"]
-                                                     [:in :entity_id existing-ids]]})
-                           (crud/delete-where! tx :vocab_items [:in :id existing-ids])
+                           (crud/delete-entity-metadata! tx "vocab-item" existing-ids)
+                           (crud/delete-ids! tx :vocab_items existing-ids)
                            (op/touch-vocab-layers! tx layer-ids))
                          existing-ids))))
 

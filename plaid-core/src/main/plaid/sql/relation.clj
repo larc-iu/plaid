@@ -371,11 +371,7 @@
                            {:document-ids doc-ids :code 400}))))
        (doseq [rid eids]
          (crud/delete-by-id! tx :relations rid))
-       (psc/execute! tx
-                     {:delete-from :entity_metadata
-                      :where [:and
-                              [:= :entity_type "relation"]
-                              [:in :entity_id eids]]}))
+       (crud/delete-entity-metadata! tx "relation" eids))
      eids)))
 
 ;; ============================================================

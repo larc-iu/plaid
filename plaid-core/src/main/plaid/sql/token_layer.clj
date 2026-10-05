@@ -10,6 +10,7 @@
   not here."
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]
+            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
@@ -287,24 +288,23 @@
 
   Reused by text_layer's cascade walker as well as `delete` here."
   [tx root-id]
+  (cascade-stats/prepare! tx)
   ;; Resolve once: child token_layers (deepest first).
   (let [layer-ids (descendant-token-layer-ids tx root-id)
         project-id (:project_id (psc/fetch-by-id tx :token_layers root-id))]
     ;; Step 1: drop vocab_links touching tokens in ANY descendant layer
     ;; in one pass — dedupes cross-layer links so each is audited once.
-    (let [vl-ids (->> (psc/q tx {:select-distinct [:vl.id]
-                                 :from [[:vocab_links :vl]]
-                                 :join [[:vocab_link_tokens :vlt] [:= :vlt.vocab_link_id :vl.id]
-                                        [:tokens :t] [:= :t.id :vlt.token_id]]
-                                 :where [:in :t.token_layer_id (vec layer-ids)]})
-                      (mapv :id))]
+    ;; Each set is read by its index: the layers' tokens, then the links
+    ;; on those tokens.
+    (let [tok-ids (crud/select-in tx :tokens "id" :token_layer_id "idx_tokens_layer_doc_begin" layer-ids)
+          vl-ids (->> (crud/select-in tx :vocab_link_tokens "vocab_link_id" :token_id
+                                      "idx_vocab_link_tokens_token" (map :id tok-ids))
+                      (map :vocab_link_id)
+                      distinct
+                      vec)]
       (when (seq vl-ids)
-        (crud/delete-where! tx :vocab_links [:in :id vl-ids])
-        (psc/execute! tx
-                      {:delete-from :entity_metadata
-                       :where [:and
-                               [:= :entity_type "vocab-link"]
-                               [:in :entity_id vl-ids]]})))
+        (crud/delete-ids! tx :vocab_links vl-ids)
+        (crud/delete-entity-metadata! tx "vocab-link" vl-ids)))
     ;; Step 2: per-layer span_layers, tokens, then the layer row.
     (doseq [tl-id layer-ids]
       ;; span_layers under this token_layer.
@@ -317,10 +317,8 @@
       ;; Tokens in this token_layer (token/multi-delete! cascades to
       ;; spans/relations/vocab_links + entity_metadata for tokens).
       ;; vocab_links touching these tokens have already been swept above.
-      (let [tok-ids (->> (psc/q tx {:select [:id]
-                                    :from :tokens
-                                    :where [:= :token_layer_id tl-id]})
-                         (mapv :id))]
+      (let [tok-ids (mapv :id (crud/select-in tx :tokens "id" :token_layer_id
+                                              "idx_tokens_layer_doc_begin" [tl-id]))]
         (when (seq tok-ids)
           (token/multi-delete! tx tok-ids)))
       ;; Token_layer's own entity_metadata + row.
