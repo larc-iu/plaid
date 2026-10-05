@@ -14,6 +14,8 @@
 //   joined     sentences 1 and 2 joined, as IGT's Merge does: two graphs in
 //              one sentence, the export writing the first one's
 //   split      sentence 1 split between two of its words, as IGT does
+//   words      sentence 1's first two words joined into one, as IGT's
+//              Tokenize tab joins them: a word holding a space
 //
 // The gloss lines are taken off each sentence's record first. The AnCast
 // writer writes Index and Words only (AnCast reads no gloss line), and the
@@ -32,7 +34,7 @@ const { parseUmrFile } = await import(`${UMR}/src/domain/format/umrFile.js`);
 const { planImport } = await import(`${UMR}/src/domain/umrImport.js`);
 const { UmrDocument } = await import(`${UMR}/src/domain/UmrDocument.js`);
 const { rawFromPlan } = await import(`${UMR}/test/rawFromPlan.js`);
-const { layersOf, mergeSentence, sentencesOf, splitSentenceAt, wordsOf } = await import(
+const { layersOf, mergeSentence, mergeWords, sentencesOf, splitSentenceAt, wordsOf } = await import(
   `${UMR}/test/igtEdits.js`
 );
 
@@ -129,6 +131,13 @@ const CASES = {
     return true;
   },
   split,
+  words: (raw) => {
+    const s = sentencesOf(raw)[0];
+    const [a, b] = wordsOf(raw).filter((w) => w.begin >= s.begin && w.end <= s.end);
+    if (!b) return false;
+    mergeWords(raw, a.id, b.id);
+    return true;
+  },
 };
 
 const out = [];

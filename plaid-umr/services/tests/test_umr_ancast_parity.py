@@ -14,9 +14,9 @@ export, a joined document's coreference came out at 0.76.
 
 ``ancast_parity_mirror.mjs`` makes each case, every sample in
 ``test/fixtures/umr`` as imported, with a fragment, a self-loop, two
-sentences joined and one split, and the app's export of each, the gloss
-lines taken off first (this writer writes Index and Words only). The
-service's whole file must match it byte for byte.
+sentences joined, one split and two words joined into one, and the app's
+export of each, the gloss lines taken off first (this writer writes Index and
+Words only). The service's whole file must match it byte for byte.
 """
 
 import glob
@@ -32,7 +32,7 @@ from plaid_client import testing as servicetest
 HERE = pathlib.Path(__file__).resolve().parent
 RUNNER = HERE / 'ancast_parity_mirror.mjs'
 SAMPLES = sorted(p.stem for p in (HERE.parent.parent / 'test' / 'fixtures' / 'umr').glob('*.umr'))
-CHANGES = ['imported', 'fragment', 'selfloop', 'joined', 'split']
+CHANGES = ['imported', 'fragment', 'selfloop', 'joined', 'split', 'words']
 
 umr = servicetest.load_service(HERE.parent / 'umr_ancast.py')
 

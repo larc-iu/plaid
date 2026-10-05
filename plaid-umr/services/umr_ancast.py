@@ -162,7 +162,7 @@ def to_umr_sentences(document):
                 groups[h['group']].append((h['source'], h.get('rel'), h['target']))
         has_triples = any(groups[name] for name in groups)
 
-        words = [w.text for w in s.words]
+        words = [_word_for_file(w.text) for w in s.words]
         out.append({
             'index': s.index,
             'snt': snt,
@@ -281,6 +281,14 @@ _JS_SPACE = '\t\n\x0b\x0c\r \xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u300
 
 def _js_trim(text: str) -> str:
     return re.sub(f'^[{_JS_SPACE}]+|[{_JS_SPACE}]+$', '', text)
+
+
+def _word_for_file(text) -> str:
+    """``wordForFile`` in sentenceGraph.js: a word as the Words line writes
+    it, trimmed, each run of space in it one ``_``. A word may hold a space
+    (a phrase FLEx brought, or two words joined in IGT), and written bare it
+    would be two items on the Words line."""
+    return re.sub(f'[{_JS_SPACE}]+', '_', _js_trim(str(text or '')))
 
 
 def _one_line(text) -> str:
