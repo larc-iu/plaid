@@ -279,3 +279,9 @@ html {
 html:has([data-pinned]) {
   scroll-padding-top: calc(var(--plaid-sticky-top) + var(--plaid-tab-row-height) + 0.25rem);
 }
+
+/* A page's heading takes focus when the page changes (useRouteFocus.js), as
+   the place reading starts, not as a control: no ring. */
+main h1[tabindex='-1']:focus {
+  outline: none;
+}

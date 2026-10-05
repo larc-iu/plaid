@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { appName, appRoutes } from '../../lib/uiConfig.js';
@@ -12,6 +13,7 @@ import { useAssistantScope } from '../assistant/subject.js';
 import { adminUrl } from '../../domain/siblingApps.js';
 import { useUserKeymap } from '../../hooks/useUserKeymap.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
+import { focusMain, useRouteFocus } from '../../hooks/useRouteFocus.js';
 
 // The app shell, and the one place the assistant panel is mounted.
 //
@@ -39,6 +41,9 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
   const { user, logout, getClient } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  // A new page puts focus on its heading (useRouteFocus.js).
+  const mainRef = useRef(null);
+  useRouteFocus(location.pathname, mainRef);
   // `getClient` throws when nobody is signed in, and this is a layout route:
   // everything below it is guarded, but the shell itself renders first.
   const client = user ? getClient() : null;
@@ -81,6 +86,18 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
       {({ chip }) => (
         <>
           {children}
+          {/* The first Tab stop on every page. Not an in-page `#` link: the
+              apps route on the hash. */}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              focusMain(mainRef.current);
+            }}
+            className="sr-only z-50 rounded-md bg-background px-3 py-2 text-sm font-medium shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            Skip to content
+          </a>
           {/* Sticky in every app: the band is how a reader leaves a long
               document, and plaid-igt's document bar sits right under it. The
               assistant dock is fixed at z-30, below this. */}
@@ -155,7 +172,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
             </div>
           </header>
 
-          <main className="flex-1">
+          <main ref={mainRef} className="flex-1 focus:outline-none">
             {/* One container that changes shape, never a `cond ? <Outlet/> :
                 <div><Outlet/></div>`. Swapping the element AT this position
                 would unmount everything below it when you move into or out of a
