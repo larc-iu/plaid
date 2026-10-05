@@ -36,7 +36,10 @@
 //
 // A node left outside every sentence is removed: there is no sentence for it
 // to belong to and nothing on screen would show it. A stray kept is a
-// fragment the annotator sees and deletes; a node removed is gone. A node
+// fragment the annotator sees and deletes; a node removed is gone. A
+// document with no sentences at all is waiting to be tokenized again (a
+// "Clear tokens" that deletes every sentence), not a deletion, and keeps every
+// node: the sentences that come back take them in again. A node
 // that records no sentence and has a word under it is aligned, and is left
 // alone.
 //
@@ -97,6 +100,9 @@ export function planUnalignedHeal(graph, namespace) {
   const rebind = [];
   const resize = [];
   const unanchor = [];
+  // No sentences at all: a tokenization in progress, as a sentence with no
+  // words is below. Every node is left where it stands.
+  if (!sentences.length) return { remove, rebind, resize, unanchor };
   // An unaligned node's anchor made one stretch of text inside its
   // sentence: from where its first piece of text begins to where its last
   // ends, cut to the sentence, and the whole sentence when it covers no text

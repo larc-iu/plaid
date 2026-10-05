@@ -96,7 +96,8 @@ export function deleteTokens(raw, ids) {
 }
 
 // The `same-ancestor` rule UMR declares on its relation layer: a relation
-// whose ends begin in different sentences (or in none) is deleted.
+// whose ends begin in two different sentences is deleted. An end in no
+// sentence crosses nothing.
 function sameAncestor(raw) {
   const L = layersOf(raw);
   const tokens = new Map(L.nodes.tokens.map((t) => [t.id, t]));
@@ -108,7 +109,8 @@ function sameAncestor(raw) {
   };
   L.relations.relations = L.relations.relations.filter((r) => {
     const a = home(place(r.source));
-    return a != null && a === home(place(r.target));
+    const b = home(place(r.target));
+    return a == null || b == null || a === b;
   });
 }
 

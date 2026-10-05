@@ -8,6 +8,7 @@
 //   has shifted the sentences since. The next open renumbers them.
 // - A sentence with no words at all (IGT's "Clear tokens", before it tokenizes
 //   again) is a tokenization in progress, and its nodes keep their anchors.
+//   So is a document with no sentences at all: every node is kept.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -195,6 +196,43 @@ test('a sentence whose words were all cleared keeps its nodes aligned where they
   role(raw, 'word').tokens = words;
   const { doc: again } = open(raw);
   assert.ok(again.sentence(2).nodes.every((n) => n.aligned));
+});
+
+test('a document whose sentences were all deleted keeps every node, and its sentences made again take them back', async () => {
+  const named = (n) =>
+    block(n)
+      .replace(
+        `:ARG1 (s${n}a / person))`,
+        `:ARG1 (s${n}a / person\n        :name (s${n}n / name :op1 "Ali")))`,
+      )
+      .replace(`s${n}a: 1-1`, `s${n}a: 1-1\ns${n}n: 0-0`);
+  const raw = fromText(`${named(1)}\n${named(2)}`);
+  const sentenceLayer = role(raw, 'sentence');
+  const sentences = sentenceLayer.tokens;
+  const words = role(raw, 'word').tokens;
+  const before = open(raw).doc;
+  const unaligned = [...before.graph.nodesById.values()].filter((n) => !n.constant && !n.aligned);
+  assert.equal(unaligned.length, 2);
+  // Every sentence deleted, with the words nested in them. The node layer is
+  // a root layer of its own, so its tokens, spans and relations stay.
+  sentenceLayer.tokens = [];
+  role(raw, 'word').tokens = [];
+  const { doc, calls } = open(raw);
+  assert.equal(doc.graph.sentences.length, 0);
+  assert.deepEqual(await doc._reconcile(), { findings: [] });
+  assert.equal(calls.length, 0, 'nothing is removed or rewritten');
+  // Tokenized again: new sentence tokens over the same text, and the words.
+  sentenceLayer.tokens = sentences.map((t) => ({ ...t, id: `${t.id}-again` }));
+  role(raw, 'word').tokens = words;
+  const { doc: again, calls: written } = open(raw);
+  const result = await again._reconcile();
+  assert.ok(!result.removed, JSON.stringify(result));
+  assert.equal(result.rebound, unaligned.length, 'each unaligned node takes its new sentence');
+  assert.ok(again.sentence(1).nodes.length && again.sentence(2).nodes.length);
+  assert.ok(
+    written.every((c) => !/delete/i.test(c.name)),
+    JSON.stringify(written.map((c) => c.name)),
+  );
 });
 
 test('a sentence that keeps some words still unanchors a node whose word went', async () => {
