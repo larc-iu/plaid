@@ -72,7 +72,7 @@ describe('cellWrite', () => {
     const { server, doc, errors } = open();
     server.values.gloss = 'HOUND';
     server.version += 1;
-    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
+    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'), { engine: true });
     expect(outcome).toMatchObject({ landed: false, status: 409, readBack: true });
     expect(outcome.error.status).toBe(409);
     expect(errors).toEqual([]);
@@ -156,20 +156,41 @@ describe('cellWrite', () => {
   // L2-IGT-MULTI-3: a cell shows a refusal for a row deleted meanwhile as a
   // conflict (its note, and the toast naming who cleared it). The document
   // says nothing of its own, neither a second toast nor a banner.
-  it('answers a refusal for a deleted row as it answers a conflict', async () => {
+  const gone = () =>
+    Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
+      status: 403,
+      method: 'PATCH',
+      responseData: { unresolved: true },
+    });
+
+  it('answers a refusal for a deleted row as it answers a conflict, when an engine settles it', async () => {
     const { server, doc, errors } = open();
-    server.fail.push(() =>
-      Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
-        status: 403,
-        method: 'PATCH',
-        responseData: { unresolved: true },
-      }),
-    );
-    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
+    server.fail.push(gone);
+    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'), { engine: true });
     expect(outcome).toMatchObject({ landed: false, status: 403, readBack: true });
     expect(errors).toEqual([]);
     expect(doc.error).toBe('');
     expect(doc.errorCause?.status).toBe(403);
+  });
+
+  // REV-R4-IGT R4-2: ud's feature box writes through cellWrite with no cell
+  // engine behind it. Nobody else says the value was not saved.
+  it('reports a refusal for a deleted row, or a conflict, itself when no engine settles it', async () => {
+    const { server, doc, errors } = open();
+    server.fail.push(gone);
+    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
+    expect(outcome).toMatchObject({ landed: false, status: 403 });
+    server.values.pos = 'V';
+    server.version += 1;
+    await doc.cellWrite(() => doc.set('pos', 'N'));
+    expect(errors.map((e) => e.err.status)).toEqual([403, 409]);
+  });
+
+  it('answers when the document the edit was made on was last changed', async () => {
+    const { server, doc } = open();
+    doc._raw = { ...doc._raw, timeModified: '2026-10-05T01:00:00Z' };
+    server.fail.push(failing(500));
+    expect((await doc.cellWrite(() => doc.set('gloss', 'DOG'))).since).toBe('2026-10-05T01:00:00Z');
   });
 
   // L2-IGT-MULTI-3: igt's grid draws the banner with its data, so the next

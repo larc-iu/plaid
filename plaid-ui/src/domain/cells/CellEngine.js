@@ -64,7 +64,7 @@ export class CellEngine {
    *   toast can name who), else null.
    * - `view(key, canonical)`: the drawn cell, a CellView, or null.
    * - `announce(event)`: hears `{ kind: 'conflict', key, typed, stored, recut,
-   *   entityIds }`, `{ kind: 'keptInCell', key, field }` and `{ kind: 'lost',
+   *   entityIds, since }`, `{ kind: 'keptInCell', key, field }` and `{ kind: 'lost',
    *   key, typed, field }` (cellConflict.js `announceCells` words them).
    * - `describe(key)`: the leave question's name for the cell, or null.
    * - `entityIds(key)`: the ids of what the cell writes as stored now, for
@@ -339,13 +339,13 @@ export class CellEngine {
     // Still showing the edit itself: the read after the refusal did not come.
     const stored = now === typed ? base : now;
     if (stored !== base) {
-      this.conflict(key, typed, stored, null, ticket.entityIds);
+      this.conflict(key, typed, stored, null, ticket.entityIds, outcome.since);
       return { kind: 'conflict', typed, stored, recut: null, status };
     }
     const final = this._final.has(status);
     const recut = final ? null : this._recutSince(ticket.shape, key);
     if (recut != null) {
-      this.conflict(key, typed, stored, recut, ticket.entityIds);
+      this.conflict(key, typed, stored, recut, ticket.entityIds, outcome.since);
       return { kind: 'conflict', typed, stored, recut, status };
     }
     if (final) {
@@ -381,13 +381,14 @@ export class CellEngine {
   /**
    * `typed` lost to `stored`, which someone else wrote. Nothing is held when
    * the two agree. `recut` is `{ unit, text }` when what the cell is on was
-   * re-cut meanwhile.
+   * re-cut meanwhile. `since` is when the document the edit was made on was
+   * last changed (DocumentModel.cellWrite), for the toast's lookup of who.
    */
-  conflict(key, typed, stored, recut = null, entityIds = null) {
-    this._conflict(key, typed, stored, recut, entityIds, false);
+  conflict(key, typed, stored, recut = null, entityIds = null, since = null) {
+    this._conflict(key, typed, stored, recut, entityIds, false, since);
   }
 
-  _conflict(key, typed, stored, recut, entityIds, quiet) {
+  _conflict(key, typed, stored, recut, entityIds, quiet, since = null) {
     const k = this._canonical(key);
     this._take(k);
     this._putBacks.delete(k);
@@ -403,7 +404,7 @@ export class CellEngine {
     const ids = [...(entityIds ?? []), ...(this._entityIds?.(this._canonical(key)) ?? [])].filter(
       Boolean,
     );
-    this._announce?.({ kind: 'conflict', key, typed, stored, recut, entityIds: ids });
+    this._announce?.({ kind: 'conflict', key, typed, stored, recut, entityIds: ids, since });
   }
 
   /** Enter in a cell that lost: its value is kept. Answers it, or null. */

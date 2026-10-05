@@ -177,7 +177,9 @@ describe('a refused edit', () => {
       entityIds: () => ['span-now'],
     });
     const t = engine.sending('k', { saved: '', typed: 'mine', entityIds: ['span-then'] });
-    const d = engine.settle(t, refused());
+    // `since`, when the document the edit was made on was last changed, goes
+    // with it for the toast's lookup of who (REV-R4-IGT R4-1).
+    const d = engine.settle(t, { ...refused(), since: '2026-10-05T01:00:00Z' });
     expect(d).toMatchObject({ kind: 'conflict', typed: 'mine', stored: 'theirs', recut: null });
     expect(engine.conflictOf('k')).toEqual({ typed: 'mine', stored: 'theirs', recut: null });
     expect(views.k.shown).toEqual([['theirs', true]]);
@@ -189,6 +191,7 @@ describe('a refused edit', () => {
         stored: 'theirs',
         recut: null,
         entityIds: ['span-then', 'span-now'],
+        since: '2026-10-05T01:00:00Z',
       },
     ]);
     // A conflict asks nothing before leaving the page.

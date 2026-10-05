@@ -232,9 +232,15 @@ export const AnnotationEditor = () => {
   // useCallback keeps their identity stable across the transient saving
   // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
   // isn't re-rendered mid-edit — otherwise focus jitters during the save.
+  // A cell engine settles every field's refusal but the feature box's, which
+  // has none: the document says what became of a feature (DocumentModel.cellWrite).
   const handleAnnotationUpdate = useCallback(
     (tokenId, field, value) =>
-      doc ? doc.cellWrite(() => doc.updateAnnotation(tokenId, field, value)) : undefined,
+      doc
+        ? doc.cellWrite(() => doc.updateAnnotation(tokenId, field, value), {
+            engine: field !== 'features',
+          })
+        : undefined,
     [doc],
   );
   const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);

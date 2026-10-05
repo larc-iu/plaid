@@ -88,64 +88,76 @@ describe('announceCells', () => {
     expect(said).toEqual([['warn', 'Someone changed this morpheme to si.']]);
   });
 
-  // L2-IGT-MULTI-4: a Bulk Edit respell names no word, but it is who changed
-  // this one when nobody but its author (and this person) wrote since.
+  // L2-IGT-MULTI-4, REV-R4-IGT R4-1: a Bulk Edit names no row. The change is
+  // named only when exactly one person other than this one wrote anything
+  // since the document the edit was made on.
   describe('a change that names no row', () => {
+    const SINCE = '2026-10-05T01:00:00.5Z';
+    const at = (s) => `2026-10-05T01:00:${s}Z`;
     const user = (id) => ({ id, displayName: id.split('@')[0] });
-    const bulk = (id) => ({
+    const bulk = (id, time) => ({
       user: user(id),
-      kind: 'bulk-edit',
+      time,
       ops: [
         { type: 'text/update-body', description: 'Update body of text t1' },
         { type: 'token/bulk-update', description: 'Bulk update 26 tokens' },
       ],
     });
-    const gloss = (id, span) => ({
+    const gloss = (id, span, time) => ({
       user: user(id),
+      time,
       ops: [{ type: 'span/update-attributes', description: `Update span ${span}` }],
     });
     const base = { kind: 'conflict', key: 'k', typed: 'canine', stored: '', entityIds: ['w1'] };
-    const word = { ...base, recut: { unit: 'word', text: 'kichen', ids: ['w1'] } };
+    const word = { ...base, recut: { unit: 'word', text: 'kichen', ids: ['w1'] }, since: SINCE };
 
-    it('names the author of the newest bulk change', async () => {
-      const { announce, said } = setup([bulk('c@x.com')]);
-      announce(word);
-      await flush();
-      expect(said).toEqual([['warn', 'c changed this word to kichen.']]);
-    });
-
-    it('still names them past later changes of their own and of this person', async () => {
+    it('names the one person who wrote since, past changes of this person', async () => {
       const { announce, said } = setup([
-        gloss('a@b.com', 's7'),
-        gloss('c@x.com', 's8'),
-        bulk('c@x.com'),
+        gloss('a@b.com', 's7', at('09')),
+        gloss('c@x.com', 's8', at('08')),
+        bulk('c@x.com', at('05')),
+        bulk('d@x.com', at('00.400000000')),
       ]);
       announce(word);
       await flush();
       expect(said).toEqual([['warn', 'c changed this word to kichen.']]);
     });
 
-    it('names nobody once someone else wrote since', async () => {
-      const { announce, said } = setup([gloss('d@x.com', 's9'), bulk('c@x.com')]);
+    // R4-1: C's Bulk Edit hit the cell, A's later one did not. Two people
+    // wrote since, so nobody is named.
+    it('names nobody when two people wrote since, whichever is newer', async () => {
+      const { announce, said } = setup([bulk('e@x.com', at('09')), bulk('c@x.com', at('05'))]);
+      announce({ ...word, since: SINCE, recut: null, stored: 'kid' });
+      await flush();
+      expect(said).toEqual([['warn', 'Someone changed this to kid.']]);
+    });
+
+    it('names nobody without the time the page held, or when the log page stops short of it', async () => {
+      const without = setup([bulk('c@x.com', at('05'))]);
+      without.announce({ ...word, since: null });
+      const full = Array.from({ length: 50 }, (_, i) => bulk('c@x.com', at(String(10 + i))));
+      const short = setup(full);
+      short.announce(word);
+      await flush();
+      expect(without.said).toEqual([['warn', 'Someone changed this word to kichen.']]);
+      expect(short.said).toEqual([['warn', 'Someone changed this word to kichen.']]);
+    });
+
+    it('names nobody when only this person wrote since', async () => {
+      const { announce, said } = setup([bulk('a@b.com', at('05'))]);
       announce(word);
       await flush();
       expect(said).toEqual([['warn', 'Someone changed this word to kichen.']]);
     });
 
-    it('takes the type with or without its namespace, and a restore or a text edit', async () => {
-      for (const type of ['bulk-update', 'update-body', 'document/restore']) {
-        const { announce, said } = setup([{ user: user('c@x.com'), ops: [{ type }] }]);
-        announce(word);
-        await flush();
-        expect(said).toEqual([['warn', 'c changed this word to kichen.']]);
-      }
-    });
-
-    it('says You for a bulk change from this account, with nobody else since', async () => {
-      const { announce, said } = setup([bulk('a@b.com')]);
-      announce(word);
+    it('does not take a change the page had already read as the cause', async () => {
+      const { announce, said } = setup([
+        bulk('c@x.com', at('05')),
+        gloss('d@x.com', 'w1', at('00.100')),
+      ]);
+      announce({ ...word, recut: null, stored: 'DOG' });
       await flush();
-      expect(said).toEqual([['warn', 'You changed this word to kichen.']]);
+      expect(said).toEqual([['warn', 'c changed this to DOG.']]);
     });
   });
 

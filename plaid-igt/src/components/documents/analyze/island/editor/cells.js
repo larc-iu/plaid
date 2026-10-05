@@ -586,7 +586,7 @@ export const cells = {
       // The leave question's name for the cell ("Gloss of "dogs" in sentence 3").
       what: el.igtWhat ?? null,
     });
-    this.doc.cellWrite(fn).then((outcome) => {
+    this.doc.cellWrite(fn, { engine: true }).then((outcome) => {
       if (!this._destroyed) this._cells.settle(ticket, outcome);
     });
   },

@@ -115,8 +115,10 @@ describe('refused because the body changed', () => {
     const server = segmentServer(RAW());
     const doc = open(server);
     server.otherRetypes('a-2', 'deux');
-    const outcome = await doc.cellWrite(() =>
-      doc.editAlignment('a-2', { text: 'dos', timeBegin: 1, timeEnd: 2 }),
+    // The transcript row's write, which its cell engine settles.
+    const outcome = await doc.cellWrite(
+      () => doc.editAlignment('a-2', { text: 'dos', timeBegin: 1, timeEnd: 2 }),
+      { engine: true },
     );
     await idle(doc);
     expect(outcome.landed).toBe(false);

@@ -965,14 +965,16 @@ export function TranscriptList({
       // What becomes of it if the server refuses it is the cell engine's.
       if (text !== storedText) {
         const before = doc.dataVersion;
-        const outcome = doc.cellWrite(() =>
-          doc.editAlignment(id, {
-            text,
-            timeBegin: timeBeginOf(token),
-            timeEnd: timeEndOf(token),
-            speaker,
-            edits,
-          }),
+        const outcome = doc.cellWrite(
+          () =>
+            doc.editAlignment(id, {
+              text,
+              timeBegin: timeBeginOf(token),
+              timeEnd: timeEndOf(token),
+              speaker,
+              edits,
+            }),
+          { engine: true },
         );
         // Refused by a check before it showed: nothing went out.
         if (doc.dataVersion === before) return (await outcome).landed;

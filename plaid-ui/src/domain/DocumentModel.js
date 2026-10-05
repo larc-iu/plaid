@@ -549,12 +549,20 @@ export class DocumentModel {
    * write's. `readBack` says the document was read again after the refusal,
    * so what it holds is what the server holds. A write whose answer was lost
    * is sent again until it is answered (`resendWhenBack`), so it never ends
-   * here unknown. The cell engine
-   * (cells/CellEngine.js) takes it from here.
+   * here unknown. `since` is when the document the edit was made on was last
+   * changed (its `timeModified`), so a toast can look for who changed it
+   * since. The cell engine (cells/CellEngine.js) takes it from here.
+   *
+   * With `engine`, a cell engine settles the outcome and says what became of
+   * a conflict or a value whose row was deleted meanwhile, so the document
+   * says nothing of its own for either. Without it (a cell with no engine
+   * behind it), the document reports them as any refused write.
    */
-  cellWrite(fn) {
+  cellWrite(fn, { engine = false } = {}) {
     const outer = this._cellScope;
     const scope = [];
+    scope.engine = engine;
+    const since = this._raw?.timeModified ?? null;
     this._cellScope = scope;
     let answer;
     try {
@@ -571,6 +579,7 @@ export class DocumentModel {
         status: statusOf(error) ?? null,
         error,
         readBack: !this.outOfStep,
+        since,
       };
     });
   }
@@ -748,6 +757,8 @@ export class DocumentModel {
   ) {
     const operation = this._operation || named;
     const conflictHandled = this._conflictHandled;
+    const cellScoped = this._cellScope != null;
+    const engineSettles = this._cellScope?.engine === true;
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
     const kept = this._unsent.filter((u) => u.base).length;
@@ -843,10 +854,18 @@ export class DocumentModel {
           // role, the page is put in step with it now rather than within the
           // minute (a reader's page offers nothing to edit).
           if (statusOf(err) === 403 && !this._deleted) this.refreshProject();
-          // A cell shows a refusal for a row deleted meanwhile as it shows a
-          // conflict (cells/CellEngine.js), so neither gets a toast or a
-          // banner of its own.
-          this._writeFailed(label, err, conflictHandled && isChangedElsewhere(err));
+          // A cell engine shows a conflict, and a refusal for a row deleted
+          // meanwhile, itself (cells/CellEngine.js), so neither gets a toast
+          // or a banner of its own. A cell with no engine behind it (ud's
+          // feature box) is told of neither, so the document says it. A
+          // screen that shows conflicts itself outside a cell write
+          // (`handlesConflicts`) is told of a 409 only.
+          const handled =
+            conflictHandled &&
+            (cellScoped
+              ? engineSettles && (statusOf(err) === 409 || isChangedElsewhere(err))
+              : statusOf(err) === 409);
+          this._writeFailed(label, err, handled);
         },
         resync: () =>
           unsent.stale || this._deleted ? undefined : this._reloadAfterFailure(conflict),
