@@ -20,7 +20,7 @@ const typeInto = (el, value) => {
 };
 
 describe('the project setup steps', () => {
-  it('focuses the new step heading, and nothing on the first', async () => {
+  it('focuses the new step heading, unless the step put focus in its own field', async () => {
     const view = await renderComponent(
       <MemoryRouter>
         <ProjectSetup />
@@ -33,8 +33,9 @@ describe('the project setup steps', () => {
     expect(document.activeElement).toBe(heading());
     expect(heading().textContent).not.toBe('Basic information');
     await view.step(() => button(view.container, 'Previous').click());
-    expect(document.activeElement).toBe(heading());
     expect(heading().textContent).toBe('Basic information');
+    // That step puts the caret in Project name itself, and keeps it.
+    expect(document.activeElement).toBe(view.container.querySelector('input'));
     await view.unmount();
   });
 });

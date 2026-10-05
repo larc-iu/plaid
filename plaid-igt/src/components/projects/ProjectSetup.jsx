@@ -100,10 +100,13 @@ export const ProjectSetup = () => {
   // Previous and Enter in a field all change the step, and the button that was
   // pressed may be gone (the last step has no Next).
   const stepHeading = useRef(null);
+  const stepBody = useRef(null);
   const shownStep = useRef(currentStep);
   useEffect(() => {
     if (shownStep.current === currentStep) return;
     shownStep.current = currentStep;
+    // A step that puts the caret in its own field (Basic information) keeps it.
+    if (stepBody.current?.contains(document.activeElement)) return;
     stepHeading.current?.focus({ preventScroll: true });
   }, [currentStep]);
 
@@ -229,19 +232,21 @@ export const ProjectSetup = () => {
                   </h2>
                 </div>
 
-                <StepComponent
-                  data={setupData[stepIdToDataKey(currentStepData.id)]}
-                  onDataChange={(data) =>
-                    updateSetupData(stepIdToDataKey(currentStepData.id), data)
-                  }
-                  setupData={setupData}
-                  onNext={() => {
-                    if (currentStep < steps.length - 1 && isCurrentStepValid()) handleNext();
-                  }}
-                  isNewProject={isNewProject}
-                  projectId={projectId}
-                  client={client}
-                />
+                <div ref={stepBody}>
+                  <StepComponent
+                    data={setupData[stepIdToDataKey(currentStepData.id)]}
+                    onDataChange={(data) =>
+                      updateSetupData(stepIdToDataKey(currentStepData.id), data)
+                    }
+                    setupData={setupData}
+                    onNext={() => {
+                      if (currentStep < steps.length - 1 && isCurrentStepValid()) handleNext();
+                    }}
+                    isNewProject={isNewProject}
+                    projectId={projectId}
+                    client={client}
+                  />
+                </div>
 
                 <div className="flex items-center justify-between gap-2 pt-4">
                   <Button variant="outline" onClick={handlePrevious} disabled={currentStep === 0}>
