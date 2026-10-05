@@ -34,7 +34,14 @@ const { TextEditor } = await import('./TextEditor.jsx');
 const home = { id: 'w1', begin: 0, end: 4 };
 const setup = (
   loss,
-  { other = { annotations: 0, links: 0 }, clear, split, tokenizeLoss, service = null } = {},
+  {
+    other = { annotations: 0, links: 0 },
+    clear,
+    split,
+    tokenizeLoss,
+    serviceLoss,
+    service = null,
+  } = {},
 ) => {
   const doc = {
     id: 'd1',
@@ -53,6 +60,7 @@ const setup = (
     otherLossForSentenceSplit: vi.fn(() => split || { annotations: 0, links: 0 }),
     clearTokens: vi.fn(async () => true),
     tokenizeLoss: vi.fn(() => tokenizeLoss || { annotations: 0, links: 0 }),
+    serviceTokenizeLoss: vi.fn(() => serviceLoss || { annotations: 0, links: 0 }),
     toggleSentenceBoundary: vi.fn(async () => true),
     setWordMorphemes: vi.fn(async () => true),
     deleteWord: vi.fn(async () => true),
@@ -324,21 +332,50 @@ describe('the Text Editor asking before Tokenize', () => {
     await view.unmount();
   });
 
-  it('asks with the most a service can take, which decides its own breaks', async () => {
+  // REV-D7-FAKES R2: a service resets a lone sentence with this editor's
+  // trees in it, and refuses to delete a person's work without leave. The
+  // question counts what the service takes, and a yes is that leave.
+  it('asks with the most a service can take, and a yes is its leave to overwrite', async () => {
     const doc = setup(
       { annotations: 0, relations: 0, forms: 0 },
-      { tokenizeLoss: { annotations: 5, links: 0 }, service: { serviceId: 's' } },
+      { serviceLoss: { annotations: 5, links: 1 }, service: { serviceId: 's' } },
     );
     const view = await mount();
     let done;
     await act(async () => {
       done = tokenizeProps.props.tokenize.start('home');
     });
-    expect(dialog().textContent).toContain('Deletes up to 5 annotations.');
-    expect(doc.tokenizeLoss).toHaveBeenCalledWith(null);
+    expect(dialog().textContent).toContain('Deletes up to 5 annotations and 1 vocabulary link.');
+    expect(doc.serviceTokenizeLoss).toHaveBeenCalled();
+    expect(doc.tokenizeLoss).not.toHaveBeenCalled();
     await press('Tokenize');
     await act(async () => done);
+    expect(editor.current.services.tokenize.start).toHaveBeenCalledWith('home', {
+      overwrite: true,
+    });
+    await view.unmount();
+  });
+
+  it('runs a service without leave when it takes nothing, and Cancel runs nothing', async () => {
+    setup({ annotations: 0, relations: 0, forms: 0 }, { service: { serviceId: 's' } });
+    let view = await mount();
+    await act(async () => tokenizeProps.props.tokenize.start('home'));
+    expect(dialog()).toBeNull();
     expect(editor.current.services.tokenize.start).toHaveBeenCalledWith('home');
+    await view.unmount();
+
+    setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { serviceLoss: { annotations: 2, links: 0 }, service: { serviceId: 's' } },
+    );
+    view = await mount();
+    let done;
+    await act(async () => {
+      done = tokenizeProps.props.tokenize.start('home');
+    });
+    await press('Cancel');
+    await act(async () => done);
+    expect(editor.current.services.tokenize.start).not.toHaveBeenCalled();
     await view.unmount();
   });
 });

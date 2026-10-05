@@ -72,20 +72,21 @@ export const countReTokenizeLoss = (layerInfo, vocabularies) => {
 /**
  * Count the relations a tokenizer service's new sentence breaks can take on
  * any layer: those a layer keeps inside one sentence whose ends lie at two
- * places of the one sentence the service resplits (REV-N5-CORE F3). The
- * service decides the breaks, so this is the most they can take. A relation
- * the reset deletes with its tokens is counted by countReTokenizeLoss, not
- * here. Zero when the run does not resplit (not exactly one sentence).
+ * places of the one sentence the service resplits, or of a text with no
+ * sentences, which it gives them (REV-N5-CORE F3). The service decides the
+ * breaks, so this is the most they can take. A relation the reset deletes
+ * with its tokens is counted by countReTokenizeLoss, not here. Zero when the
+ * run leaves the sentences (more than one).
  *
  * @returns {{annotations: number, links: number}}
  */
 export const countReTokenizeCut = (layerInfo) => {
   const sentenceLayer = layerInfo?.sentenceTokenLayer;
   const sentenceTokens = sentenceLayer?.tokens || [];
-  if (sentenceTokens.length !== 1) return ZERO();
+  if (!sentenceLayer || sentenceTokens.length > 1) return ZERO();
   return counted(
     countPartitionLoss(tokenLayersOf(layerInfo), sentenceLayer.id, 'any', {
-      deleting: [sentenceTokens[0].id],
+      deleting: sentenceTokens.map((t) => t.id),
     }),
   );
 };

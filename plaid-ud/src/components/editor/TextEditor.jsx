@@ -277,11 +277,14 @@ export const TextEditor = () => {
   // Tokenize asks first when its sentences would take relations another
   // layer keeps inside one sentence (REV-N5-CORE F3). The built-in's breaks
   // are known, a service's are not, so for a service the count is the most
-  // the new breaks can take.
+  // the new breaks can take. A service also gives a text with no sentences
+  // its sentences, and resets a lone sentence with everything in it, this
+  // editor's trees included, so its count takes that in, and a yes is its
+  // leave to overwrite: it refuses to delete a person's work without one.
   const handleTokenize = async (text) => {
     if (!doc) return;
     const service = !!services.tokenize.spot.service;
-    const loss = lossPhrase(doc.tokenizeLoss(service ? null : text));
+    const loss = lossPhrase(service ? doc.serviceTokenizeLoss() : doc.tokenizeLoss(text));
     if (loss) {
       const ok = await confirm({
         title: 'Tokenize?',
@@ -291,7 +294,9 @@ export const TextEditor = () => {
       });
       if (!ok) return;
     }
-    return services.tokenize.start(text);
+    return service && loss
+      ? services.tokenize.start(text, { overwrite: true })
+      : services.tokenize.start(text);
   };
 
   // A split that would take relations another layer keeps inside one

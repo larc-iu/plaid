@@ -124,6 +124,60 @@ test("Tokenize counts the relations its new sentences cut, and none of UD's own"
   assert.deepEqual(doc.tokenizeLoss(null), { annotations: 1, links: 0 });
 });
 
+// REV-D7-FAKES R2: a tokenizer service resets a lone sentence, which takes
+// this editor's tree and everything else in it, and its breaks cut the
+// relations a graph over no sentence keeps inside one. The question counts
+// all of it, since a yes lets the service overwrite a person's work.
+test('a tokenizer service counts what its reset deletes on every layer, and what it cuts', () => {
+  const { doc, she, word } = open();
+  const home = word('home');
+  doc.layerInfo.textLayer.tokenLayers.push({
+    id: 'graph-nodes',
+    tokens: [
+      { id: 'n1', begin: she.begin, end: she.end },
+      { id: 'n2', begin: home.begin, end: home.end },
+    ],
+    spanLayers: [
+      {
+        id: 'graph-concepts',
+        spans: [
+          { id: 'c1', tokens: ['n1'], value: 'person' },
+          { id: 'c2', tokens: ['n2'], value: 'home' },
+        ],
+        relationLayers: [
+          {
+            id: 'graph-edges',
+            constraints: {
+              other: [{ type: 'same-ancestor', tokenLayer: doc.layerInfo.sentenceTokenLayer.id }],
+            },
+            relations: [{ id: 'e1', source: 'c2', target: 'c1', value: ':ARG0' }],
+          },
+        ],
+      },
+    ],
+  });
+  // The reset: 3 lemmas, 3 UPOS, 3 dependencies, a word gloss, 3 morpheme
+  // glosses, their relation, the sentence's own text, and 2 links. The cut:
+  // the graph's edge. The graph's nodes are in no sentence and stay.
+  assert.deepEqual(doc.serviceTokenizeLoss(), { annotations: 15 + 1, links: 2 });
+  // The built-in's count is unchanged: a newline nowhere cuts nothing.
+  assert.deepEqual(doc.tokenizeLoss('she came home'), { annotations: 0, links: 0 });
+  // With more than one sentence a service only fills in words.
+  const [s1] = doc.layerInfo.sentenceTokenLayer.tokens;
+  doc.layerInfo.sentenceTokenLayer.tokens = [
+    { ...s1, id: 'sa', end: home.begin },
+    { ...s1, id: 'sb', begin: home.begin },
+  ];
+  assert.deepEqual(doc.serviceTokenizeLoss(), { annotations: 0, links: 0 });
+  // Cleared, the text has no sentences, and the service makes them. That
+  // deletes nothing, and the breaks can still cut the graph's edge.
+  doc.layerInfo.sentenceTokenLayer.tokens = [];
+  for (const tl of doc.layerInfo.textLayer.tokenLayers) {
+    if (tl.id !== 'graph-nodes') tl.tokens = [];
+  }
+  assert.deepEqual(doc.serviceTokenizeLoss(), { annotations: 1, links: 0 });
+});
+
 // A parse keeps the sentences and words a document has, and makes its own
 // only when it lacks them. Then it counts like a tokenizer service.
 test('Parse counts only when it makes the sentences', () => {

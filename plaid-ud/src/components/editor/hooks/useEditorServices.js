@@ -119,11 +119,14 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     [acquireWriteLock, doc, builtinRun],
   );
 
+  // `overwrite` is the service's leave to delete a person's work, given when
+  // the person was asked about it and said yes.
   const runTokenize = useCallback(
-    (textContent) => {
+    (textContent, { overwrite = false } = {}) => {
       if (!tokenize.spot.service) return runBuiltinTokenize(textContent);
       const layers = doc.layerInfo;
       return tokenize.start({
+        ...(overwrite ? { overwrite: true } : {}),
         textLayerId: layers.textLayer?.id,
         sentenceLayerId: layers.sentenceTokenLayer?.id,
         primaryTokenLayerId: layers.wordTokenLayer?.id,

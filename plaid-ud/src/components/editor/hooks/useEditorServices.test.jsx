@@ -591,6 +591,20 @@ describe('the tokenize service', () => {
       sentenceLayerId: 'sent-1',
       primaryTokenLayerId: 'word-1',
     });
+    expect(sent[0].params).not.toHaveProperty('overwrite');
+    await view.unmount();
+  });
+
+  // REV-D7-FAKES R2: the person's yes to the Tokenize question.
+  it('is given leave to overwrite when the person said yes to deleting their work', async () => {
+    localStorage.setItem(TOKENIZE_KEY, 'service:tok:punkt');
+    const view = await mount({
+      client: fakeClient({ services: [TOKENIZE_SERVICE], answer: () => ({}) }),
+    });
+
+    await view.step(() => view.api().tokenize.start('some text', { overwrite: true }));
+
+    expect(sent[0].params).toMatchObject({ overwrite: true, sentenceLayerId: 'sent-1' });
     await view.unmount();
   });
 });

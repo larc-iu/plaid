@@ -288,6 +288,13 @@ describe('countReTokenizeCut', () => {
       { id: 'S2', begin: 5, end: 9 },
     ]);
     expect(countReTokenizeCut(two)).toMatchObject({ annotations: 0, links: 0 });
-    expect(countReTokenizeCut(doc([]))).toMatchObject({ annotations: 0, links: 0 });
+  });
+
+  // REV-D7-FAKES R2: a text with no sentences, and so no words, is given
+  // them by the service, and the breaks can cut the edge between two nodes.
+  it('counts what the breaks can cut when the text has no sentences', () => {
+    const none = doc([]);
+    none.primaryTokenLayer.tokens = [];
+    expect(countReTokenizeCut(none)).toMatchObject({ annotations: 1, links: 0 });
   });
 });

@@ -5,10 +5,12 @@ import {
   cpSlice,
   cpSlicer,
   isMachine,
+  isProtected,
   isReviewed,
   mergeMetadata,
   metadataOps,
   PLAID_NAMESPACE,
+  PROV,
   isReservedMetadataKey,
   SPLIT_ON_SPACE_KEY,
   applyTextOps,
@@ -42,6 +44,7 @@ import {
   countPartitionLoss,
   countSplitLoss,
   dropRelations,
+  hasOwnContent,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from './otherLoss.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
@@ -588,6 +591,28 @@ export class ConlluDocument extends DocumentModel {
       { skip: this._ownLossLayers() },
     );
     return { annotations: loss.annotations, links: loss.links };
+  }
+
+  // What a tokenizer service's run takes, on every layer, this editor's
+  // own included. A service makes the sentences when the text has none, and
+  // resets them when one sentence covers the text: that deletes the
+  // sentence, every token under it and everything on them. Either way its
+  // breaks cut the relations a layer keeps inside one sentence. It decides
+  // its own breaks, so the cut is the most they can take. With more
+  // sentences it only fills in words and takes nothing. A token counts when
+  // it holds content of its own, or when a person made or verified it, as
+  // the service counts it. `{ annotations, links }`.
+  serviceTokenizeLoss() {
+    const { textLayer, sentenceTokenLayer } = this.layerInfo;
+    const sentences = sentenceTokenLayer?.tokens || [];
+    if (!sentenceTokenLayer || sentences.length > 1) return { annotations: 0, links: 0 };
+    const layers = textLayer?.tokenLayers || [];
+    const ids = sentences.map((t) => t.id);
+    const content = (t) =>
+      hasOwnContent(t) || (PROV.key in (t.metadata || {}) && isProtected(t.metadata));
+    const reset = countDeleteLoss(layers, ids, { content });
+    const cut = countPartitionLoss(layers, sentenceTokenLayer.id, 'any', { deleting: ids });
+    return { annotations: reset.annotations + cut.annotations, links: reset.links };
   }
 
   // What Parse takes the same way, when it makes the sentences: a parser
