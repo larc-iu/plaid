@@ -92,20 +92,7 @@ A sentence AnCast cannot read is reported as unscored rather than dropped.
 KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
 
 
-def held_relations(raw, layers):
-    """The relations each sentence's record holds on a graph kept as text, by
-    the record's token id: `[{source, rel, target, group}]`, by name. The
-    app reads them as a sentence's `held` (`recordFields` in
-    sentenceGraph.js)."""
-    out = {}
-    for token in (layers.node_layer or {}).get('tokens') or []:
-        meta = (token.get('metadata') or {}).get(UMR_NAMESPACE)
-        if isinstance(meta, dict) and isinstance(meta.get('held'), list):
-            out[token['id']] = meta['held']
-    return out
-
-
-def to_umr_sentences(document, held=None):
+def to_umr_sentences(document):
     """The sentence objects `serialize_umr_file` takes, from a document read by
     `plaid_client.workflows.umr` (a port of `toUmrSentences` in
     src/domain/sentenceGraph.js).
@@ -115,11 +102,10 @@ def to_umr_sentences(document, held=None):
     root. Nodes the root does not reach (a second fragment, or the second graph
     of two sentences joined in another app) are not written: the file has one
     graph per sentence. Their alignment lines go with them, and so does every
-    document-level relation naming one. `held` is `held_relations`: the
-    relations a graph kept as text holds, written back while the names they
-    use are in the file.
+    document-level relation naming one. The relations a graph kept as text
+    holds (`Sentence.held`) are written back while the names they use are in
+    the file.
     """
-    held = held or {}
     nodes_by_id = document.nodes_by_id
     # What the file will hold, across the document: a triple naming a node the
     # export leaves out is left out with it, as its alignment line is.
@@ -169,7 +155,7 @@ def to_umr_sentences(document, held=None):
                            _name_of(document, triple.target)))
         # Held relations, back in the block that wrote them, while both names
         # are in the file.
-        for h in held.get(s.record_token, []) if s.record_token else []:
+        for h in s.held:
             if not isinstance(h, dict):
                 continue
             if h.get('source') in named and h.get('target') in named and h.get('group') in groups:
@@ -385,9 +371,8 @@ def read_umr(raw):
     """One document, read once: its graph and its `.umr` text. The handler needs
     both and a document is read the once, because reading a long one is not
     free."""
-    layers = resolve_layers(raw)
-    document = read_document(raw, layers)
-    return document, serialize_umr_file(to_umr_sentences(document, held_relations(raw, layers)))
+    document = read_document(raw, resolve_layers(raw))
+    return document, serialize_umr_file(to_umr_sentences(document))
 
 
 def render_umr(raw) -> str:

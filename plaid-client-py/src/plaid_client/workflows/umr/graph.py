@@ -215,6 +215,11 @@ class Sentence:
     meta: List[Any] = dc_field(default_factory=list)
     raw_graph: Optional[str] = None
     raw_alignment: Optional[str] = None
+    #: The document-level relations this sentence's block wrote that name a
+    #: node of a graph kept as text, by name: `[{source, rel, target, group}]`
+    #: (`held` in sentenceGraph.js). Made real when the graph is mended, and
+    #: written back by the export while the names are in the file.
+    held: List[dict] = dc_field(default_factory=list)
     #: The token of this sentence's record, None for a sentence that records
     #: nothing (one made in Plaid). One standing before this sentence when
     #: it was left on new text typed in before it.
@@ -447,7 +452,8 @@ def _record_fields(holder: Optional[dict], begin: int, end: int, body: str) -> d
         text=meta.get('text') or body[begin:end].rstrip('\n'),
         snt=meta.get('snt') or None, stored_ilg=list(meta.get('ilg') or []),
         meta=list(meta.get('meta') or []), raw_graph=meta.get('rawGraph'),
-        raw_alignment=meta.get('rawAlignment'))
+        raw_alignment=meta.get('rawAlignment'),
+        held=list(meta['held']) if isinstance(meta.get('held'), list) else [])
 
 
 def _variable_number(sentence: Sentence) -> Optional[int]:

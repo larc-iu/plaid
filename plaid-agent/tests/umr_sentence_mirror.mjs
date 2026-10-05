@@ -15,9 +15,11 @@
 //                 node of the second sentence
 //   outside       an unaligned node standing outside every sentence
 //   gone          an unaligned node recording a sentence token that is gone
+//   held          a graph kept as text, with the relations held on it
+//   heldPrepend   the same past a sentence typed in before the first
 //
 // Writes one object per case to stdout: `{name, raw, nodes: {var: sentence},
-// sentences: [{snt, ilg, meta, rawGraph, triples}]}`.
+// sentences: [{snt, ilg, meta, rawGraph, triples, held}]}`.
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -86,6 +88,29 @@ Gloss: Veli slept .
 
 # document level annotation:
 (s${n}s0 / sentence)
+`;
+
+// A sentence whose graph the parser cannot read (an unclosed quote), kept
+// as text, with the relations its block writes on that graph held by name.
+const kept = (n) => `${SEP}
+# :: snt${n}
+Index: 1 2 3
+Words: Veli uyudu .
+Gloss: Veli slept .
+
+# sentence level graph:
+(s${n}u / uyu-01
+    :ARG0 (s${n}p / person :wiki "Veli))
+
+# alignment:
+s${n}u: 2-2
+s${n}p: 1-1
+
+# document level annotation:
+(s${n}s0 / sentence
+    :temporal ((s1v :before s${n}u))
+    :modal ((root :modal author)
+        (author :full-affirmative s${n}u)))
 `;
 
 const fromText = (text) =>
@@ -175,6 +200,14 @@ const CASES = {
     insertSentenceAtStart(raw, undefined, { recordCut: true });
     return raw;
   },
+  // A graph kept as text holds its block's relations, on its own
+  // sentence and past a sentence typed in before the first.
+  held: () => fromText(`${block(1)}\n${kept(2)}`),
+  heldPrepend: () => {
+    const raw = fromText(`${block(1)}\n${kept(2)}`);
+    insertSentenceAtStart(raw, undefined, { recordCut: true });
+    return raw;
+  },
   gone: () => {
     const raw = fromText(`${block(1)}\n${block(2)}`);
     spanOf(raw, "s2n").metadata.umr.sentence = "a-token-that-is-gone";
@@ -201,6 +234,7 @@ for (const [name, make] of Object.entries(CASES)) {
       meta: s.meta,
       rawGraph: s.rawGraph,
       triples: s.triples.map((t) => t.rel).sort(),
+      held: s.held.map((h) => [h.source, h.rel, h.target, h.group]),
     })),
   });
 }

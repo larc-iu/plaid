@@ -1,7 +1,8 @@
 """``plaid_client.workflows.umr`` places nodes and reads sentence records as
 plaid-umr's reader does, over a document IGT changed and the app has not yet
 healed: the sentence each node is in, and each sentence's stored ``snt``
-number, gloss and metadata lines, kept graph and block triples.
+number, gloss and metadata lines, kept graph, the relations held on it and
+block triples.
 
 The Python reader placed a node by where its anchor begins, and nothing else.
 The app reads an unaligned node in the sentence it records while that token is
@@ -50,12 +51,14 @@ def _python_side(case):
         'snt': s.snt, 'text': s.text, 'ilg': [line.get('header') for line in s.stored_ilg],
         'meta': s.meta, 'rawGraph': s.raw_graph,
         'triples': sorted(t.rel for t in s.triples),
+        'held': [[h.get('source'), h.get('rel'), h.get('target'), h.get('group')]
+                 for h in s.held],
     } for s in doc.sentences]
     return nodes, sentences
 
 
 @pytest.mark.parametrize('name', ['prepend', 'excerpt', 'between', 'later', 'outside', 'gone',
-                                  'bareExcerpt', 'bareShifted'])
+                                  'bareExcerpt', 'bareShifted', 'held', 'heldPrepend'])
 def test_the_document_reads_as_the_app_reads_it(cases, name):
     case = cases[name]
     nodes, sentences = _python_side(case)
@@ -87,3 +90,7 @@ def test_the_cases_are_the_ones_the_rules_are_for(cases):
     # sentence's position and stored number do not both give.
     assert [s['snt'] for s in cases['bareExcerpt']['sentences']] == [2, None]
     assert [s['snt'] for s in cases['bareShifted']['sentences']] == [None, 1, 2, None]
+    # A graph kept as text holds the relations its block wrote on it, by
+    # name, and they move with its record.
+    assert [len(s['held']) for s in cases['held']['sentences']] == [0, 2]
+    assert [len(s['held']) for s in cases['heldPrepend']['sentences']] == [0, 0, 2]
