@@ -1033,6 +1033,13 @@ Five formats are supported:
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, comments, guidelines, the **Show the project's plaid** setting, and whether a space typed inside a word splits it. Two settings are not carried: which members' work is reviewed, since it names people, and **Record responses to suggestions**, which each project decides for itself.
 
+A FLEx backup keeps the times of the sentences that were timed against a recording in FLEx, and they become the segments on each document's Media tab.
+To bring the recordings too, choose them together with the backup.
+Each recording goes to the texts that name it, matched by its file name or by the same name with another extension, so one recording that several texts were timed against goes to each of them.
+The review screen says how many of the chosen texts have their recording, and names any recording not chosen, any over the server's size limit, and any that no text uses.
+A text whose recording is missing or too large is imported with its times and no recording. Upload the recording on its Media tab afterwards, where a large one can be sent as audio.
+A sentence that FLEx timed against a second recording of the same text, such as a video beside its audio, or that overlaps an earlier one in time, is imported without its time, and the review screen counts these.
+
 A FLEx category is one thing with a name in each of the project's analysis languages, `v` in English and `kt.kerja` in Indonesian, so one of those names is imported and not both.
 Where a file carries more than one, the review screen of either FLEx import lists them under **Part-of-speech language**, and the words, morphemes and entries take the name in the one selected.
 The rest are listed as not imported.
