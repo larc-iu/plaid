@@ -187,6 +187,7 @@ The first 69 milliseconds play as silence.
 A server refuses a file over its own size limit, and the offer says so before the upload starts rather than after it.
 
 When someone else deletes or replaces the recording while you have the tab open, the tab says **Recording deleted** or **Recording replaced** after your next change.
+A segment you made or retimed on the old recording meanwhile is not saved, and the notice says so, as in `Replaced elsewhere. Segment not saved.` A change to a row's text alone is saved.
 Deleting a recording someone else has replaced since the tab showed it is refused with `Replaced elsewhere. Showing the current recording.`, and the tab shows their recording.
 Uploading when someone else has added a recording since the tab showed the upload form is refused with `Another recording was added elsewhere. Now showing it.`, and the tab shows theirs. To replace it, delete it first.
 
@@ -209,6 +210,8 @@ Every segment is a row you can edit:
 
 A change to a row's text is saved where you typed it, as in the Baseline tab.
 The segment keeps its times and speaker, and the words in it keep their analysis as they do there.
+Text a row edit adds, and a new segment's text, is split into words as a Baseline save's is, unless the project has **Tokenize new text** off.
+Text in a script written without spaces, such as Chinese or Thai, gets no words.
 
 When someone else changed a segment's text while you were editing it, the row shows their text with yours under it: **Yours: X · Enter to keep yours**.
 **Enter** saves yours over theirs, **Esc** or typing lets yours go, and leaving the row then saves nothing.
@@ -280,6 +283,7 @@ Whichever runs, what comes back is proposals, kept the same way, and no segment 
 
 Transcription is a separate run, from the **Transcribe** button in the **Transcript** header: it writes segments and their text to the document, where detection only proposes times.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
+The text it writes is split into words as a Baseline save's is, unless the project has **Tokenize new text** off.
 When the document's segments are out of time order in the text, a transcription that would place a new segment among them is refused, naming the segment in the way, and nothing is written.
 Put the segments in time order first.
 **Delete segments**, beside it, removes segments in bulk: every segment, the segments with no text, or the segments whose text is a value you give.
@@ -395,8 +399,9 @@ An edit that reaches the server after someone else changed the document is handl
 * A link to a lexicon entry is refused, and you link it again.
 * Any other edit is saved only when what the other person changed is a kind of annotation it does not touch. Otherwise it is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows their change.
 
-When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X · Enter to keep yours**.
+When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X**, with **Enter to keep yours** after it while the cell has focus.
 A message names the change, such as `b changed this to DOG.`
+A Bulk Edit, a Baseline save or a restore is named by who made it, when nobody else has changed the document since.
 When the change cannot be traced to one person, the message says `Someone`, and `You` for your own change from another tab.
 **Enter** writes your value over theirs, **Escape** or typing another value lets yours go, and leaving the cell sends nothing.
 The same happens when someone else split, joined or respelled the word, re-segmented its morpheme, or split, joined or respelled the sentence of a sentence field, before your value was saved.
@@ -423,6 +428,8 @@ Comments other people write appear while the tab is open.
 
 A comment stays even when what it was about is edited away, for example a word that is merged or retyped.
 Such a comment sits behind the tab's **Outdated** filter, headed by what it was about, until someone deletes it.
+A comment you post on a value someone else deletes meanwhile is not posted.
+Its text opens again in the thread of the word, morpheme or sentence the value was on, or, with none of them left, in a notice that stays until you close it.
 
 Comments are notes about the text rather than part of it.
 They are not versioned with the document (see <<_history>>) and do not appear in exports, except in the native archive, which carries them along.
@@ -715,7 +722,7 @@ The count is checked again when you press **Delete**. If it changed, the dialog 
 Each field records the **language** its values are in, as a writing system tag such as `pmy` or `nl`: a FLEx, ELAN, or CLDF import fills it in from the file, a field made with a tag in parentheses in its name (`Gloss (nl)`) is given that tag, and FLEx and ELAN exports label each field with it.
 A language you clear stays cleared.
 A field with no language goes out under the project's meta language.
-**Tokenize new text**, on by default, splits the text a Baseline save adds into words with the built-in tokenizer, which reads the ignored tokens rule.
+**Tokenize new text**, on by default, splits the text added on the Baseline and Media tabs, and by the assistant, into words with the built-in tokenizer, which reads the ignored tokens rule.
 Text in a script written without spaces, such as Chinese or Thai, gets no words.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
 Its **Ignore punctuation and symbols** option takes every punctuation mark and symbol except ∅ and pictographs such as ★.
@@ -871,6 +878,7 @@ It proposes a **plan**, which you **Approve** or **Discard**.
 The plan lists every change under the document or lexicon it lands in. Each word is a link to its place in the editor, so a change can be checked before it is approved.
 A change that rewrites your baseline text, rather than annotating it, is marked **Rewrite**, counted on a line of its own above the list, and never folded away when the list is long.
 The assistant is told not to propose one unless you asked for it.
+Text the assistant adds is split into words as a Baseline save's is, and gets none when **Tokenize new text** is off.
 A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
 A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
@@ -1382,7 +1390,7 @@ A shortcut given to another action in another tab, or on another computer, since
 | **Enter** | Move to the next cell in the row, accepting the faint guess if the cell shows one. Of the keys that move one cell, only Enter accepts a guess.
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the row, leaving a guess as it is. **Shift+Enter** moves back the same way.
 | **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_details>>.
-| **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first.
+| **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first. In a cell with nothing typed, **Esc** lets the next **Tab** leave the grid, and **Shift+Tab** go back before it.
 | **Alt+↓** | List every value the project has given this form, with counts. **↑** / **↓** move through the list, **Enter** takes the highlighted value, **Esc** closes the list. A field held to a tagset opens its list on its own.
 | **Enter** (sentence field) | Save the value and stay. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
