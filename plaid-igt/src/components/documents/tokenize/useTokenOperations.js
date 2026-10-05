@@ -8,6 +8,7 @@ import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js
 import {
   countAnnotationLossForWord,
   countSubWordAnnotationLoss,
+  countSplitWordLoss,
   countReTokenizeLoss,
   countReTokenizeCut,
 } from '../../../domain/annotationLoss.js';
@@ -117,7 +118,7 @@ export const useTokenOperations = () => {
   const [pendingStructural, setPendingStructural] = useState(null); // {kind: 'split'|'merge'|'sentence-split', payload, label, annotations, links}
   const splitToken = async (tokenId, splitOffset) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
-    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, word ? [word] : []);
+    const loss = countSplitWordLoss(doc.layerInfo, doc.vocabularies, word);
     if (!hasLoss(loss)) return run(() => doc.splitToken(tokenId, splitOffset));
     setPendingStructural({
       kind: 'split',

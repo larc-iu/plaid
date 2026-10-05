@@ -91,13 +91,15 @@ export const countReTokenizeCut = (layerInfo) => {
 };
 
 /**
- * Count the annotation loss a SPLIT or MERGE of the given word token(s) causes.
+ * Count the annotation loss a MERGE of the given word tokens causes.
  *
- * Split/merge delete the words' coincident morphemes (and anything nested under
+ * A merge deletes the words' coincident morphemes (and anything nested under
  * them) in the same batch, cascade-deleting their morpheme-scope spans /
- * relations / vocab links. Word-scope spans are NOT lost (split resizes the
- * word in place, merge reparents word spans onto the survivor), so unlike
+ * relations / vocab links, and a layer that keeps its tokens coextensive with
+ * the words loses the merged words' tokens by its rule. Word-scope spans are
+ * NOT lost (merge reparents word spans onto the survivor), so unlike
  * countAnnotationLossForWord this counts ONLY what lies under the words.
+ * A split takes less: countSplitWordLoss.
  *
  * @param {object} layerInfo  getIgtLayerInfo result
  * @param {object} vocabularies  the doc's vocabularies map
@@ -113,5 +115,28 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
       list.map((w) => w.id),
       { under: true, vocabLinks: linksOf(vocabularies) },
     ),
+  );
+};
+
+/**
+ * Count the annotation loss a SPLIT of `word` causes. The split deletes the
+ * word's coincident morphemes in its batch (a boundary change invalidates
+ * their analysis), and with them their spans, the relations on those and
+ * their vocabulary links. Another app's token nested under the word is split
+ * with it by the server, not deleted, so unlike a merge (where a layer that
+ * keeps its tokens coextensive with the words loses them) nothing else is
+ * counted.
+ *
+ * @returns {{annotations: number, links: number}}
+ */
+export const countSplitWordLoss = (layerInfo, vocabularies, word) => {
+  const morphemes = layerInfo?.morphemeTokenLayer?.tokens || [];
+  if (!layerInfo?.primaryTokenLayer || !word) return ZERO();
+  const ids = morphemes
+    .filter((m) => m.begin === word.begin && m.end === word.end)
+    .map((m) => m.id);
+  if (!ids.length) return ZERO();
+  return counted(
+    countDeleteLoss(tokenLayersOf(layerInfo), ids, { vocabLinks: linksOf(vocabularies) }),
   );
 };

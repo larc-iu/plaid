@@ -3,6 +3,8 @@ import {
   countAnnotationLossForWord,
   countReTokenizeCut,
   countReTokenizeLoss,
+  countSplitWordLoss,
+  countSubWordAnnotationLoss,
 } from './annotationLoss.js';
 
 // A shared IGT+UD-shaped layerInfo: the word carries an IGT gloss, its IGT
@@ -93,6 +95,36 @@ describe('countAnnotationLossForWord', () => {
     expect(
       countAnnotationLossForWord({ primaryTokenLayer: { id: 't', tokens: [] } }, null, null),
     ).toMatchObject({ annotations: 0, links: 0 });
+  });
+});
+
+describe('countSplitWordLoss', () => {
+  // A split deletes the word's morphemes, and the server splits another app's
+  // token nested under the word instead of deleting it. Counting everything
+  // under the word, as for a merge, asked about a UD lemma, UPOS and
+  // dependency the split kept (D7-FAKES, on a real core).
+  it("counts the morphemes' analysis and not another app's nested tokens", () => {
+    const { layerInfo, vocabularies, word } = make();
+    layerInfo.morphemeTokenLayer = layerInfo.primaryTextLayer.tokenLayers[1];
+    expect(countSplitWordLoss(layerInfo, vocabularies, word)).toMatchObject({
+      annotations: 1,
+      links: 1,
+    });
+    // A merge takes the nested tokens too: s2 and l1, and sw1's s3, s4 and r1.
+    expect(countSubWordAnnotationLoss(layerInfo, vocabularies, [word])).toMatchObject({
+      annotations: 4,
+      links: 1,
+    });
+  });
+
+  it('is zero for a word with no morphemes, whatever else is under it', () => {
+    const { layerInfo, vocabularies } = make();
+    layerInfo.morphemeTokenLayer = layerInfo.primaryTextLayer.tokenLayers[1];
+    const w2 = layerInfo.primaryTokenLayer.tokens[1];
+    expect(countSplitWordLoss(layerInfo, vocabularies, w2)).toMatchObject({
+      annotations: 0,
+      links: 0,
+    });
   });
 });
 

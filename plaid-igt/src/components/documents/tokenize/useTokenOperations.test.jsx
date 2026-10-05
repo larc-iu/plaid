@@ -32,6 +32,7 @@ const cut = vi.hoisted(() => ({ annotations: 0, links: 0 }));
 vi.mock('../../../domain/annotationLoss.js', () => ({
   countAnnotationLossForWord: () => 0,
   countSubWordAnnotationLoss: () => 0,
+  countSplitWordLoss: () => 0,
   countReTokenizeLoss: () => ({ annotations: 0, links: 0 }),
   countReTokenizeCut: () => cut,
 }));
