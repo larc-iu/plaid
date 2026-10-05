@@ -10,6 +10,7 @@ import { planReanalyze, applyReanalyze } from './bulkRunner.js';
 import { AnalysisCard } from './AnalysisCard.jsx';
 import { countOf, skippedNote, useRun } from './bulkShared.js';
 import { ApplyBar, MatchGroups, Progress, SelectionSummary } from './parts.jsx';
+import { usePreviewFocus } from './usePreviewFocus.js';
 
 // Re-analyze: replace one analysis of a word form with another everywhere.
 export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
@@ -39,12 +40,14 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
     if (!plan) return;
     const candidates = tallyCandidates(plan.rows);
     r.setPlan({ ...plan, form: form.trim(), candidates });
+    results.shown();
     const sig = candidates[0]?.signature ?? null;
     setTargetSig(sig);
     r.setSelected(new Set(plan.rows.filter((x) => x.signature !== sig).map((x) => x.id)));
   };
 
   const plan = r.plan;
+  const results = usePreviewFocus();
   const target = plan?.candidates.find((c) => c.signature === targetSig) ?? null;
   const targetBad = target ? analysisViolations(target.analysis, tagsetFor) : [];
   const targetName = target
@@ -184,6 +187,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
           )}
           {target && (
             <ApplyBar
+              focusRef={results.ref}
               count={targetBad.length ? 0 : selectedRows.length}
               busy={r.busy}
               onApply={doApply}

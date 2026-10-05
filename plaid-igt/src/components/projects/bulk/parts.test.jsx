@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
-import { MatchGroups, Progress, SelectionSummary } from './parts.jsx';
+import { ApplyBar, MatchGroups, Progress, SelectionSummary } from './parts.jsx';
+import { usePreviewFocus } from './usePreviewFocus.js';
 
 // A sweep over a corpus previews thousands of matches, and every row carries a
 // change grid, a marked sentence and a link into Analyze. The list is paged, so
@@ -171,6 +172,28 @@ describe('the run line', () => {
     );
     expect(document.body.textContent).toContain('Applying to document 3 of 67…');
     expect(document.body.textContent).toContain('1:05');
+    await view.unmount();
+  });
+});
+
+describe('a Preview', () => {
+  it('puts focus on the bar over what it found', async () => {
+    let results;
+    const Panel = () => {
+      results = usePreviewFocus();
+      return (
+        <ApplyBar count={2} busy={false} summary="" onApply={() => {}} focusRef={results.ref}>
+          <span>2 matches</span>
+        </ApplyBar>
+      );
+    };
+    const view = await renderComponent(<Panel />);
+    expect(document.activeElement).toBe(document.body);
+    await view.step(() => results.shown());
+    const bar = document.activeElement;
+    expect(bar.getAttribute('role')).toBe('group');
+    expect(bar.getAttribute('aria-label')).toBe('Preview');
+    expect(bar.textContent).toContain('2 matches');
     await view.unmount();
   });
 });

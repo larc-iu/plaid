@@ -31,6 +31,7 @@ import {
   SelectionSummary,
   SubstitutionFields,
 } from './parts.jsx';
+import { usePreviewFocus } from './usePreviewFocus.js';
 
 // Field replace: find and replace inside one annotation field.
 // The tagset governing a replace target, or null. Only annotation fields have
@@ -139,10 +140,12 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
         )
       : plan.rows;
     r.setPlan({ ...plan, rows, find, repl, target, tagset });
+    results.shown();
     r.setSelected(new Set(rows.filter((x) => !x.invalid).map((x) => x.id)));
   };
 
   const plan = r.plan;
+  const results = usePreviewFocus();
   // What an Apply sends: the selected rows a stopped Apply has not already
   // sent or skipped (`applied`), so the count and the confirm say what is left.
   const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];
@@ -238,6 +241,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       {plan && (
         <>
           <ApplyBar
+            focusRef={results.ref}
             count={selectedRows.filter((x) => !x.invalid).length}
             busy={r.busy}
             onApply={doApply}

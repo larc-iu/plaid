@@ -192,10 +192,16 @@ export const SelectionSummary = ({
 };
 
 // Apply button + the confirm step. `summary` is the sentence in the dialog.
-export const ApplyBar = ({ count, busy, summary, onApply, children }) => {
+export const ApplyBar = ({ count, busy, summary, onApply, focusRef, children }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      role="group"
+      aria-label="Preview"
+      className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       {children}
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={() => setOpen(true)} disabled={busy || count === 0}>

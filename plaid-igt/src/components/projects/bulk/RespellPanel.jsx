@@ -18,6 +18,7 @@ import {
   SelectionSummary,
   SubstitutionFields,
 } from './parts.jsx';
+import { usePreviewFocus } from './usePreviewFocus.js';
 
 // Respell: change a word's spelling wherever it occurs, morphemes included.
 const RespellChange = ({ row, includeMorphemes }) => {
@@ -82,6 +83,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     );
     if (!plan) return;
     r.setPlan({ ...plan, find, repl });
+    results.shown();
     // A row that would empty a word, a form or an entry is listed, not ticked.
     r.setSelected(
       new Set(
@@ -94,6 +96,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
+  const results = usePreviewFocus();
   // A row that would empty a word, a form or an entry, or an entry of a
   // vocabulary this person does not maintain, cannot be ticked.
   const selectableRow = (x) =>
@@ -186,6 +189,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
       {plan && (
         <>
           <ApplyBar
+            focusRef={results.ref}
             count={total}
             busy={r.busy}
             onApply={doApply}

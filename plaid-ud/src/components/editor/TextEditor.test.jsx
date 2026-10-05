@@ -56,6 +56,20 @@ const typeInto = (el, value) => {
 };
 
 describe('the Text Editor', () => {
+  it('opens a document with no text with the caret in the text box', async () => {
+    setup('');
+    const view = await mount();
+    expect(document.activeElement).toBe(view.container.querySelector('textarea'));
+    await view.unmount();
+  });
+
+  it('leaves focus alone on a document that has text', async () => {
+    setup('The saved text.');
+    const view = await mount();
+    expect(document.activeElement).not.toBe(view.container.querySelector('textarea'));
+    await view.unmount();
+  });
+
   it('registers typed text as unsaved, and the saved text as nothing to lose', async () => {
     setup('The saved text.');
     const view = await mount();

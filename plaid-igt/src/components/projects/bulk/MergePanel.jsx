@@ -25,6 +25,7 @@ import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
 import { countOf, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
+import { usePreviewFocus } from './usePreviewFocus.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
@@ -170,10 +171,14 @@ export const MergePanel = ({ project, client }) => {
     const plan = await r.run('Preview', () => planMerge(client, vocabId, losers, survivor), {
       reset: true,
     });
-    if (plan) r.setPlan(plan);
+    if (plan) {
+      r.setPlan(plan);
+      results.shown();
+    }
   };
 
   const plan = r.plan;
+  const results = usePreviewFocus();
   // The at-a-glance line for an unticked entry: its inline fields (the ones
   // the vocabulary table shows as columns), values only.
   const inlineLine = (it) =>
@@ -413,6 +418,7 @@ export const MergePanel = ({ project, client }) => {
       <Progress text={r.progress} startedAt={r.startedAt} />
       {plan && survivor && (
         <ApplyBar
+          focusRef={results.ref}
           count={losers.length}
           busy={r.busy}
           onApply={doApply}

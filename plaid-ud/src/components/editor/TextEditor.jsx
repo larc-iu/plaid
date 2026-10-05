@@ -323,6 +323,15 @@ export const TextEditor = () => {
   const canWrite = canEdit && !setupIncomplete;
   const readOnly = !canWrite || !!writeLockHeld;
 
+  // A document with no text yet opens with the caret in the text box, as
+  // igt's Baseline does: typing the text is the only thing to do here.
+  const focusedFor = useRef(null);
+  useEffect(() => {
+    if (focusedFor.current === documentId) return;
+    focusedFor.current = documentId;
+    if (!readOnly && !serverText.trim()) textareaRef.current?.focus();
+  }, [documentId, readOnly, serverText]);
+
   // Project-level misconfig: the three token layers exist but their
   // overlap-mode / parent chain doesn't match the UD layout. Runtime
   // validation (not legacy detection) — applies regardless of how the data

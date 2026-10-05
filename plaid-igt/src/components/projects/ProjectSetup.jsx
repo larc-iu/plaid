@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
@@ -95,6 +95,17 @@ export const ProjectSetup = () => {
       component: ConfirmationStep,
     },
   ];
+
+  // A new step puts focus on its heading, where reading it starts. Next,
+  // Previous and Enter in a field all change the step, and the button that was
+  // pressed may be gone (the last step has no Next).
+  const stepHeading = useRef(null);
+  const shownStep = useRef(currentStep);
+  useEffect(() => {
+    if (shownStep.current === currentStep) return;
+    shownStep.current = currentStep;
+    stepHeading.current?.focus({ preventScroll: true });
+  }, [currentStep]);
 
   const currentStepData = steps[currentStep];
   const StepComponent = currentStepData.component;
@@ -209,7 +220,13 @@ export const ProjectSetup = () => {
             <div className="rounded-lg border bg-card p-6">
               <div className="flex flex-col gap-6">
                 <div>
-                  <h2 className="text-lg font-semibold">{currentStepData.title}</h2>
+                  <h2
+                    ref={stepHeading}
+                    tabIndex={-1}
+                    className="text-lg font-semibold focus:outline-none"
+                  >
+                    {currentStepData.title}
+                  </h2>
                 </div>
 
                 <StepComponent
