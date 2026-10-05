@@ -899,13 +899,15 @@
       new-id)))
 
 (defn- split-straddlers!
-  "Split every descendant token straddling `position` at `position`.
-  Used by the split cascade and the partitioning shift cascade."
-  [tx straddlers position]
+  "Split every descendant token straddling `position` at `position`, each
+  keeping its row on the side `keep` names (`:right`, else the left), as
+  the token split above them does. Used by the split cascade and the
+  partitioning shift cascade."
+  [tx straddlers position & [keep]]
   (doseq [s straddlers]
     (let [t-row (psc/fetch-by-id tx :tokens (:token/id s))]
       (when t-row
-        (split-one! tx t-row position)))))
+        (split-one! tx t-row position nil keep)))))
 
 (defn split
   "Split `eid` at `position`. Cascades to descendant tokens that
@@ -922,7 +924,9 @@
 
   `:keep` `:right` keeps the original token (its id, spans, vocab links,
   comments and metadata) on the right half and makes the left half the new
-  token. Descendants a cascade splits keep theirs on the left as always."
+  token. Descendants the cascade splits follow it: each keeps its row on
+  the right too, so a word and its morphemes keep their annotations on one
+  side."
   ([db eid position user-id]
    (split db eid position user-id nil))
   ([db eid position user-id {:keys [id keep]}]
@@ -941,7 +945,7 @@
             straddlers (tc/straddling-descendant-tokens-in tx dlids doc-id begin end position)
             _ (psc/claim-ids! tx :tokens "token" [id])
             new-right-id (split-one! tx t-row position id keep)]
-        (split-straddlers! tx straddlers position)
+        (split-straddlers! tx straddlers position keep)
         (tc/enforce! tx :split
                      {:layer layer :doc-id doc-id
                       :begin begin :end end

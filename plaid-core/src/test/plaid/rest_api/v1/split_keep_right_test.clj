@@ -93,3 +93,41 @@
   (let [{:keys [sent]} (setup)]
     (is (= 400 (:status (split sent 3 {:keep "middle"}))))
     (is (= [0 7] ((juxt :token/begin :token/end) (token-row sent))))))
+
+(defn- glossed-word
+  "`alphabeta`, a word with a gloss, and one morpheme over it with a gloss
+  of its own, on a morpheme layer nested under the words."
+  []
+  (let [proj (create-test-project admin-request "KeepRightWord")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        txt (-> (create-text admin-request tl doc "alphabeta") :body :id)
+        wl (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}) :body :id)
+        ml (-> (create-token-layer-opts admin-request tl "Morphemes" {:overlap-mode "any"
+                                                                      :parent-token-layer-id wl}) :body :id)
+        word (-> (create-token admin-request wl txt 0 9) :body :id)
+        morph (-> (create-token admin-request ml txt 0 9) :body :id)
+        wg (-> (create-span-layer admin-request wl "Gloss") :body :id)
+        mg (-> (create-span-layer admin-request ml "Gloss") :body :id)
+        wspan (-> (create-span admin-request wg [word] "ALPHABETA") :body :id)
+        mspan (-> (create-span admin-request mg [morph] "m-alphabeta") :body :id)]
+    {:word word :morph morph :wspan wspan :mspan mspan}))
+
+(defn- span-tokens [id]
+  (:span/tokens (:body (api-call admin-request {:method :get :path (str "/api/v1/spans/" id)}))))
+
+(deftest keep-right-takes-a-split-words-morphemes-to-the-same-side
+  ;; REV-ASR R6: the word's gloss went right while its morpheme's stayed left.
+  (let [{:keys [word morph wspan mspan]} (glossed-word)]
+    (assert-created (split word 5 {:keep "right"}))
+    (is (= [5 9] ((juxt :token/begin :token/end) (token-row word))))
+    (is (= [5 9] ((juxt :token/begin :token/end) (token-row morph))))
+    (is (= [word] (span-tokens wspan)))
+    (is (= [morph] (span-tokens mspan)))))
+
+(deftest keep-left-takes-a-split-words-morphemes-left-as-before
+  (let [{:keys [word morph mspan]} (glossed-word)]
+    (assert-created (split word 5 {}))
+    (is (= [0 5] ((juxt :token/begin :token/end) (token-row word))))
+    (is (= [0 5] ((juxt :token/begin :token/end) (token-row morph))))
+    (is (= [morph] (span-tokens mspan)))))

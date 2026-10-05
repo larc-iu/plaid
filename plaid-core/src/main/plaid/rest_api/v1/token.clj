@@ -265,7 +265,7 @@
                            "<body>\"right\"</body>: with <body>\"right\"</body> the original token (its id, spans, "
                            "vocab-links, comments and metadata) becomes the right half, and the new token, whose id is "
                            "returned and named by <body>id</body>, is the left half. Descendants split by the cascade "
-                           "keep theirs on the left.")
+                           "keep theirs on the same side.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
              :parameters {:query [:map [:document-version {:optional true} :int]]

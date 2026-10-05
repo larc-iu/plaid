@@ -1154,7 +1154,8 @@ A moved link keeps its id and metadata. A link on words the survivor is already 
 The links are read when the merge runs, so a link someone made to a loser after the caller looked moves with the rest.
 Every loser must be in the survivor's vocabulary, and a loser that no longer exists is skipped, so repeating a merge changes nothing.
 It needs maintainer rights on the vocabulary, and answers `{"moved": n, "duplicates": n, "removed": [...]}`.
-Plaid does not know what an entry's metadata means, so a reference to a loser inside another entry's metadata is left for the caller to rewrite, in the same batch as the merge.
+Metadata that names a loser by its id, as a string anywhere in a value, is rewritten to name the survivor, in the same operation: in the vocabulary's other entries, and on every document, text, token, span, relation and link in a project the vocabulary is linked to. A list that already names the survivor drops the loser instead. Each rewritten document has its version bumped.
+The survivor's own reference to a loser (its parent was one) is left for the caller to rewrite, in the same batch as the merge, since the rewrite would make the entry name itself.
 
 == Metadata and Config
 
@@ -1312,7 +1313,7 @@ These editing operations are available on `any` and `non-overlapping` layers too
 In every case, dependent spans and vocab-links are preserved: a split keeps them on the original (left) token, and a merge reparents the right token's spans and vocab-links onto the surviving left token.
 A split that sends `keep: "right"` keeps the original token, with its id, spans, vocab-links, comments and metadata, on the right half instead, and the new token, whose id it answers (and which `id` names), is the left half.
 That is for new text put in front of a token's own, such as a transcription inserted before a sentence, so the sentence's translation stays on the text it translates.
-Descendants the split cuts keep theirs on the left either way.
+Descendants the split cuts keep theirs on the same side as the token split, so a word and its morphemes keep their annotations together.
 
 [,python]
 ----
@@ -2001,7 +2002,7 @@ Each rule is a **constraint** object with a `type` and the type's parameters:
 
 |`same-ancestor`
 |relation
-|Both ends of a relation lie in one token of `token-layer`, such as one sentence. An end's place is the first token of its span. The token layer must be on the same text layer and allow no overlap.
+|Both ends of a relation lie in one token of `token-layer`, such as one sentence. An end's place is the first token of its span. An end in no token of `token-layer` crosses nothing, so deleting every sentence of a document deletes none of the relations outside them, and a relation is judged again when sentences are made over its ends. The token layer must be on the same text layer and allow no overlap.
 
 |`single-span`
 |span

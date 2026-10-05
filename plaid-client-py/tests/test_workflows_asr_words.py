@@ -333,10 +333,17 @@ def test_a_segment_ending_inside_a_word_puts_the_new_text_after_the_word():
     assert words['w0'] == 'onetwo'
 
 
-def test_a_document_with_no_text_yet_gets_one():
+def test_a_document_with_no_text_yet_gets_one_and_its_sentences_and_words():
+    # REV-ASR R5: the text was made, and then no sentence and no word.
     doc = _with_words(_document(''))
     doc['text_layers'][0]['text'] = None
     client = _FakeClient([doc])
-    assert _run(client, [Alignment(text='hello', start=0.0, end=1.0)]) == 1
+    assert _run(client, [Alignment(text='a b', start=0.0, end=1.0), Alignment(text='c', start=1.0, end=2.0)]) == 2
     assert ('text_create', '') in client.calls
+    doc['text_layers'][0]['text'] = {'id': 'text-1', 'body': ''}
+    after = _replay(doc, client.calls)
+    assert [text for _, text in _sentences_of(after)] == ['a b', ' c']
+    body = after['text_layers'][0]['text']['body']
+    words = sorted(after['text_layers'][0]['token_layers'][2]['tokens'], key=lambda t: t['begin'])
+    assert [body[t['begin']:t['end']] for t in words] == ['a', 'b', 'c']
 

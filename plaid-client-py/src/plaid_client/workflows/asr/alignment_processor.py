@@ -577,15 +577,17 @@ class AlignmentProcessor:
         sentence on the right (``keep='right'``), so its annotations stay on
         its own text.
         """
+        # The text layer holding the sentence layer, found by the layer and
+        # not by the text: a text this run made is not in the read
+        # (REV-ASR R5).
         sentence_token_layer = None
         text_layer = None
         for tl in document["text_layers"]:
-            if (tl.get("text") or {}).get("id") == text_id:
-                text_layer = tl
-                for token_layer in tl.get("token_layers", []):
-                    if token_layer["id"] == sentence_token_layer_id:
-                        sentence_token_layer = token_layer
-                        break
+            for token_layer in tl.get("token_layers", []):
+                if token_layer["id"] == sentence_token_layer_id:
+                    text_layer, sentence_token_layer = tl, token_layer
+                    break
+            if text_layer is not None:
                 break
 
         if not sentence_token_layer or not new_alignment_tokens:
