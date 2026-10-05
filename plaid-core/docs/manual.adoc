@@ -1023,8 +1023,12 @@ Spaces the token already had do not split it.
 The token stays on the part holding the most of its old letters, the first on a tie, with its annotations and the tokens as long as it.
 Each other part holding a letter of the token becomes a new token of the same layer, and for each layer under it where the token had a token as long as itself (syntactic words, morphemes), the new token gets a new token of that layer as long as it.
 A part holding only typed text is text typed apart from the token and belongs to no token.
-Where a layer under the token held as many tokens as long as it as there are parts (a multi-word token, `can't` as `ca` + `n't`, typed as `ca n't`), those tokens go one to each part in order of `precedence` instead, so each stays on its own letters.
-A token inside it goes to the part holding most of its letters and is cut to it, and is deleted when it holds no letter of any part.
+The tokens of the layers under it are placed by where they stand.
+One that lies in one part goes with that part.
+One that reaches over a cut stays, with its annotations and links, on the part the token stays on (else the first part it reaches) and is cut to it, and each other part it reaches gets a new token of its layer over its letters there, with nothing on it.
+One left with no letter of any part is deleted.
+Only a layer of role `syntactic-word` (see <<Roles>>) deals its tokens out: where it held as many tokens as long as the token as there are parts (a multi-word token, `can't` as `ca` + `n't`, typed as `ca n't`), those go one to each part in order of `precedence`, so each stays on its own letters.
+Any other token inside it goes to the part holding most of its letters and is cut to it, and is deleted when it holds no letter of any part.
 A token over several words that began or ended with it begins or ends where the token now does.
 The answer's `reshape.tokens` names each new token with its `layer`.
 The key holds for every word of the text, so on a word layer two apps share, one app's key decides for both.
@@ -1816,7 +1820,7 @@ A layer carries at most one role, and the inventory is deliberately small:
 | `time-alignment` | token layer | Tokens aligned to a media timeline, for audio or video.
 |===
 
-Plaid itself attaches no meaning to these values.
+Plaid itself attaches meaning to one of these values only: a space typed inside a word deals out the tokens of a `syntactic-word` layer under it (see `splitOnSpace` above).
 These names are rather blessed conventional names for communicating the meaning of a layer that apps are expected to honor when present.
 The app that first sets the project up might record the roles of its sentence and word layers like this:
 

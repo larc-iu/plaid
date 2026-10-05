@@ -583,9 +583,10 @@
   ;; the token and what hangs off it, and the other part is a new token of
   ;; the layer, with a new token under it on each layer the word had one as
   ;; long as it on. A multi-word token's words (as long as it, told apart by
-  ;; precedence) go one to each part when there are as many.
+  ;; precedence, on a layer that deals them out) go one to each part when
+  ;; there are as many.
   (let [t (fn [id l b e & [p]] (cond-> {:token/id id :token/layer l :token/begin b :token/end e} p (assoc :token/precedence p)))
-        opts {:split-on-space true :children #{:x}}
+        opts {:split-on-space true :children #{:x} :dealt #{:x}}
         run (fn [body tokens ops]
               (let [r (ta/plain-edits body tokens ops #{:s} #{:w} opts)
                     nb (:text/body (:text r))
@@ -622,6 +623,75 @@
     (testing "no layer splits on space: nothing is made"
       (let [r (ta/plain-edits "wonderful" [(t :s :s 0 9) (t :w :w 0 9)] [(ins 6 " ")] #{:s} #{:w} {:children #{:x}})]
         (is (nil? (:made r)))))))
+
+;; FX6-SPLIT (2026-10-06): the tokens under a word a typed space splits are
+;; placed by where they stand. Only a layer that deals them out (role
+;; `syntactic-word`, the words of a multi-word token) has those as long as
+;; the word go one to each part in order. A morpheme layer's stay with the
+;; word, and one reaching over the cut is cut at it, the new part getting a
+;; new, bare token over its letters there.
+(deftest a-split-places-the-tokens-under-a-word-by-where-they-stand
+  (let [t (fn [id l b e & [p]] (cond-> {:token/id id :token/layer l :token/begin b :token/end e} p (assoc :token/precedence p)))
+        run (fn [body tokens ops opts]
+              (let [r (ta/plain-edits body tokens ops #{:s} #{:w} (merge {:split-on-space true} opts))
+                    nb (:text/body (:text r))
+                    gone (set (:deleted r))]
+                {:body nb
+                 :live (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id #(cp/cp-subs nb (:token/begin %) (:token/end %))))) (:tokens r))
+                 :gone gone
+                 :made (mapv (juxt :token/layer #(cp/cp-subs nb (:token/begin %) (:token/end %))) (:made r))}))]
+    (testing "singers analysed si + ngers as two morphemes as long as it: both stay on sing, ers gets a bare one"
+      (let [body "singers"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 7 1) (t :ngers :m 0 7 2)]]
+        (is (= {:body "sing ers" :live {:s "sing ers" :w "sing" :si "sing" :ngers "sing"} :gone #{}
+                :made [[:w "ers"] [:m "ers"]]}
+               (run body toks [(ins 4 " ")] {:children #{:m}})))))
+    (testing "the same word where a layer beside it deals its words out: only that layer's go one to each part"
+      (let [body "singers"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 7 1) (t :ngers :m 0 7 2) (t :x1 :x 0 7 0) (t :x2 :x 0 7 1)]]
+        (is (= {:body "sing ers"
+                :live {:s "sing ers" :w "sing" :si "sing" :ngers "sing" :x1 "sing" :x2 "ers"} :gone #{}
+                :made [[:w "ers"] [:m "ers"]]}
+               (run body toks [(ins 4 " ")] {:children #{:m :x} :dealt #{:x}})))))
+    (testing "morphemes inside the word: si stays, ngers is cut at the space, ers is new"
+      (let [body "singers"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 2) (t :ngers :m 2 7)]]
+        (is (= {:body "sing ers" :live {:s "sing ers" :w "sing" :si "si" :ngers "ng"} :gone #{}
+                :made [[:w "ers"] [:m "ers"]]}
+               (run body toks [(ins 4 " ")] {:children #{:m}})))))
+    (testing "a morpheme wholly on the new part goes with it"
+      (let [body "singers"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :sing :m 0 4) (t :ers :m 4 7)]]
+        (is (= {:body "sing ers" :live {:s "sing ers" :w "sing" :sing "sing" :ers "ers"} :gone #{}
+                :made [[:w "ers"]]}
+               (run body toks [(ins 4 " ")] {:children #{:m}})))))
+    (testing "the word stays on the right part: a morpheme over the cut stays with it there"
+      (let [body "abcdefg"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :a :m 0 1) (t :bcd :m 1 4) (t :efg :m 4 7)]]
+        (is (= {:body "ab cdefg" :live {:s "ab cdefg" :w "cdefg" :a "a" :bcd "cd" :efg "efg"} :gone #{}
+                :made [[:w "ab"] [:m "b"]]}
+               (run body toks [(ins 2 " ")] {:children #{:m}})))))
+    (testing "no layer deals: a multi-word token's words stay with the word"
+      (let [body "I can't go"
+            toks [(t :s :s 0 10) (t :w :w 2 7) (t :ca :x 2 7 0) (t :nt :x 2 7 1)]]
+        (is (= {:body "I ca n't go" :live {:s "I ca n't go" :w "n't" :ca "n't" :nt "n't"} :gone #{}
+                :made [[:w "ca"] [:x "ca"]]}
+               (run body toks [(ins 4 " ")] {:children #{:x}})))))
+    (testing "a whole-body save alike"
+      (let [r (ta/plain-body "singers" "sing ers" [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 2) (t :ngers :m 2 7)]
+                             #{:s} #{:w} {:split-on-space true :children #{:m}})]
+        (is (= [[:w 5 8] [:m 5 8]] (mapv (juxt :token/layer :token/begin :token/end) (:made r))))
+        (is (= [2 4] ((juxt :token/begin :token/end) (some #(when (= :ngers (:token/id %)) %) (:tokens r)))))))))
+
+(deftest layer-roles-deals-only-a-syntactic-word-layer
+  (let [r (ta/layer-roles [{:id :s :overlap-mode "partitioning" :role "sentence"}
+                           {:id :w :overlap-mode "non-overlapping" :parent :s :role "word" :split-on-space true}
+                           {:id :m :overlap-mode "any" :parent :w :role "morpheme"}
+                           {:id :x :overlap-mode "any" :parent :w :role "syntactic-word"}
+                           {:id :u :overlap-mode "any" :role "syntactic-word"}])]
+    (is (= #{:m :x} (:children r)))
+    ;; a layer of that role not under the words is no child, so deals nothing
+    (is (= #{:x} (:dealt r)))))
 
 (deftest a-paste-over-several-words-reads-as-a-whole-body-save
   ;; REV-F-TEXT-CORE F1 to F5: one replace over several words, the paste a

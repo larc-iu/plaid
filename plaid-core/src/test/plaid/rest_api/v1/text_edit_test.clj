@@ -61,7 +61,7 @@
                      (-> (create-token-layer-opts admin-request tl "Nodes" {:overlap-mode "any"}) :body :id))
         ns (when node-layer (mapv (fn [[b e]] (-> (create-token admin-request node-layer text-id b e) :body :id)) runs))]
     {:doc doc :text text-id :words ws :morphemes ms :glosses gs :sentences sentences :others os :nodes ns
-     :node-layer node-layer}))
+     :node-layer node-layer :layers {:text tl :words words :morphemes morphemes :glosses glosses}}))
 
 (defn- extent [id]
   (let [t (get-token admin-request id)]
@@ -351,6 +351,49 @@
     (testing "a deleted space keeps both words"
       (assert-ok (edit-text text {:edits [(del 1 1)] :base (digest-of)}))
       (is (= [[0 1 "a"] [1 6 "walkd"]] [(extent (words 0)) (extent (words 1))])))))
+
+(deftest a-split-word-keeps-its-morphemes-and-deals-out-only-syntactic-words
+  ;; FX6-SPLIT (N1-CASCADE-5, 2026-10-06): a project whose word layer splits
+  ;; on space, with a morpheme layer and a layer of role `syntactic-word`
+  ;; under the words. A space typed inside `singers`, analysed as two
+  ;; morphemes as long as it (si + ngers, each glossed), leaves both
+  ;; morphemes and their glosses on `sing` and gives `ers` a new bare
+  ;; morpheme and syntactic word. A multi-word token's two syntactic words
+  ;; still go one to each part.
+  (let [{:keys [text words morphemes glosses layers]} (setup "singers cant" :split true)
+        {word-layer :words morph-layer :morphemes gloss-layer :glosses} layers
+        sw (-> (create-token-layer-opts admin-request (:text layers) "Syntactic words" {:parent-token-layer-id word-layer})
+               :body :id)
+        _ (assert-status 204 (api-call admin-request {:method :put
+                                                      :path (str "/api/v1/token-layers/" sw "/config/plaid/role")
+                                                      :body "syntactic-word"}))
+        ;; singers: a second morpheme as long as it, glossed
+        ngers (-> (create-token admin-request morph-layer text 0 7 2) :body :id)
+        ngers-gloss (-> (create-span admin-request gloss-layer [ngers] "G2") :body :id)
+        sing-sw (-> (create-token admin-request sw text 0 7 0) :body :id)
+        ;; cant: ca + nt
+        ca (-> (create-token admin-request sw text 8 12 0) :body :id)
+        nt (-> (create-token admin-request sw text 8 12 1) :body :id)
+        digest-of #(-> (get-text admin-request text) :body :text/digest)
+        made-of (fn [res] (->> (-> res :body :reshape :tokens) (filter :layer)
+                               (map (fn [{:keys [id layer]}] [(str layer) (extent id)])) set))]
+    (testing "singers: the morphemes stay on sing with their glosses"
+      (let [res (edit-text text {:edits [(ins 4 " ")] :base (digest-of)})]
+        (assert-ok res)
+        (is (= "sing ers cant" (-> (get-text admin-request text) :body :text/body)))
+        (is (= [0 4 "sing"] (extent (words 0)) (extent (morphemes 0)) (extent ngers) (extent sing-sw)))
+        (is (= 200 (:status (get-span admin-request (glosses 0)))))
+        (is (= 200 (:status (get-span admin-request ngers-gloss))))
+        (is (= #{[(str word-layer) [5 8 "ers"]] [(str morph-layer) [5 8 "ers"]] [(str sw) [5 8 "ers"]]}
+               (made-of res)))))
+    (testing "cant: the syntactic words go one to each part, the morpheme stays with the word"
+      (let [res (edit-text text {:edits [(ins 11 " ")] :base (digest-of)})]
+        (assert-ok res)
+        (is (= "sing ers ca nt" (-> (get-text admin-request text) :body :text/body)))
+        (is (= [9 11 "ca"] (extent ca) (extent (words 1)) (extent (morphemes 1))))
+        (is (= [12 14 "nt"] (extent nt)))
+        (is (= #{[(str word-layer) [12 14 "nt"]] [(str morph-layer) [12 14 "nt"]]}
+               (made-of res)))))))
 
 (deftest a-node-is-never-deleted-while-its-word-stays
   ;; REV2 M3: `cat eel` typed over as `one`: a node goes only with its word.

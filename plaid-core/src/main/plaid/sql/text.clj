@@ -183,7 +183,9 @@
           ;; ta/apply-plain-gaps), on every token layer alike: what the layers
           ;; are to it is read from their shape (see ta/layer-roles), and a
           ;; layer setting `splitOnSpace` (ud's words) has a space typed inside
-          ;; a word split it, for every word of the text. A diffed body's
+          ;; a word split it, for every word of the text, the tokens under
+          ;; the word placed by where they stand, or dealt one to each part
+          ;; on a layer of role `syntactic-word`. A diffed body's
           ;; edits are first moved to where they disturb the fewest tokens
           ;; when they could stand in several places for the same result (see
           ;; ta/plain-body-gaps). Ops sent as the body are applied as sent.
@@ -192,13 +194,14 @@
                                   :from [:token_layers]
                                   :where [:= :text_layer_id (:text_layer_id text-row)]}))
           {:keys [partitioning deciders exclusive] :as roles}
-          (ta/layer-roles (map (fn [r] {:id (:id r)
-                                        :overlap-mode (:overlap_mode r)
-                                        :parent (:parent_token_layer_id r)
-                                        :split-on-space (true? (some-> (:config r) psc/parse-config
-                                                                       (get-in ["plaid" "splitOnSpace"])))})
+          (ta/layer-roles (map (fn [r] (let [plaid (some-> (:config r) psc/parse-config (clojure.core/get "plaid"))]
+                                         {:id (:id r)
+                                          :overlap-mode (:overlap_mode r)
+                                          :parent (:parent_token_layer_id r)
+                                          :split-on-space (true? (clojure.core/get plaid "splitOnSpace"))
+                                          :role (clojure.core/get plaid "role")}))
                                layer-rows))
-          opts (select-keys roles [:split-on-space :children :exclusive :head-layers])
+          opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads made :made}
           (cond

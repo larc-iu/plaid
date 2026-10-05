@@ -440,6 +440,16 @@
           {:id :a :overlap-mode "non-overlapping"}
           {:id :ss :overlap-mode "non-overlapping"}
           {:id :u :overlap-mode "any"}]
+   ;; the same with the layer under the words that holds several tokens as
+   ;; long as a word marked as ud's syntactic words, whose multi-word tokens
+   ;; a typed space deals out one word to each part (FX6-SPLIT)
+   :apps-dealt [{:id :s :overlap-mode "partitioning"}
+                {:id :w :overlap-mode "non-overlapping" :parent :s}
+                {:id :m :overlap-mode "any" :parent :w :role "syntactic-word"}
+                {:id :x :overlap-mode "non-overlapping" :parent :w}
+                {:id :a :overlap-mode "non-overlapping"}
+                {:id :ss :overlap-mode "non-overlapping"}
+                {:id :u :overlap-mode "any"}]
    ;; a script's layers, no app config: sentences, words on a layer with no
    ;; parent, morphemes under them
    :script [{:id :s :overlap-mode "partitioning"}
@@ -471,7 +481,7 @@
   ([old tokens ops] (run old tokens ops :apps false))
   ([old tokens ops layout split?]
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers])))))
+     (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers])))))
 
 (defn- exact
   "What `ops` do taken exactly as made: each net gap less the text it shares
@@ -481,7 +491,7 @@
         o (cps old)]
     (ta/apply-plain-gaps old tokens (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))
                          partitioning deciders
-                         (assoc (select-keys r [:split-on-space :children :exclusive :head-layers]) :caret true))))
+                         (assoc (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]) :caret true))))
 
 (defn- lost-problems
   "The words and sentences `r` deletes that `x`, the edit taken exactly as
@@ -540,14 +550,14 @@
   "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
   [old tokens ops layout]
   (let [{:keys [partitioning deciders] :as r} (roles layout false)]
-    (ta/plain-edit-gaps old ops tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers]))))
+    (ta/plain-edit-gaps old ops tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
 
 (defn- save-read
   "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has
   them (see `plain-body-read`)."
   [old new tokens layout split?]
   (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-    (ta/plain-body-read old new tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers]))))
+    (ta/plain-body-read old new tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
 
 (defn- save
   "What a whole-body save of `new` does, the layers as `layout` has them."
@@ -930,13 +940,17 @@
   letters, the first on a tie. Each other part holding one of its old
   letters is a new word, with a new
   token under it on each layer under the words the word had one as long as
-  it on, unless that layer had as many as there are parts, which then go one
-  to each part in order (Q2-UD-POLISH-2). Another token as long as it goes
-  with it, one inside it is cut to the part holding most of its letters (or
-  goes when none of it is there), one over several words that began or
-  ended with it begins or ends where it does, and nothing else differs.
-  `gaps` are the change as the server takes it."
-  [^String old tokens gaps plain split]
+  it on, unless that layer deals them out (`dealt`) and had as many as
+  there are parts, which then go one to each part in order (Q2-UD-POLISH-2,
+  FX6-SPLIT). Another token as long as it goes with it. A token under it
+  shorter than it (FX6-SPLIT) stays on the part the word stays on when it
+  reaches it, else the first part it reaches, cut to it, each other part it
+  reaches gets a new token of its layer over its letters there, and it goes
+  when it reaches none. Any other token inside it is cut to the part holding
+  most of its letters (or goes when none of it is there), one over several
+  words that began or ended with it begins or ends where it does, and
+  nothing else differs. `gaps` are the change as the server takes it."
+  [^String old tokens gaps plain split dealt]
   (let [o (cps old)
         nw (cps (:text/body (:text plain)))
         ;; old position -> new position, and the typed new positions
@@ -996,14 +1010,36 @@
                         (filter #(and (child? (:token/layer %)) (p (:token/id %))
                                       (pieces-of [(:token/begin %) (:token/end %)]))
                                 tokens))
-        shared (into {} (mapcat (fn [[[w _] ts]] (when (= (count ts) (count (pieces-of w)))
+        shared (into {} (mapcat (fn [[[w l] ts]] (when (and (dealt l) (= (count ts) (count (pieces-of w))))
                                                    (map vector (map :token/id ts) (pieces-of w))))
                                 under))
-        want-made (sort (mapcat (fn [[w ps]]
-                                  (for [piece ps :when (not= piece (moved w))
-                                        l (cons :w (keep (fn [[[w2 l] ts]] (when (and (= w2 w) (not (shared (:token/id (first ts))))) l)) under))]
-                                    [l (first piece) (second piece)]))
-                                pieces-of))
+        ;; a token under a split word, shorter than it: id -> [home others]
+        ;; (each cut to its part), by where it stands
+        own-of (fn [begin end] (set (keep #(let [x (aget newpos %)] (when (and (>= x 0) (not (ws? (aget o %)))) x))
+                                          (range begin end))))
+        under-placed (into {}
+                           (keep (fn [{:token/keys [id layer begin end]}]
+                                   (when-let [t (and (child? layer) (p id))]
+                                     (when-let [[w ps] (some (fn [[[wb we] ps]] (when (and (<= wb begin) (<= end we) (not (and (= wb begin) (= we end))))
+                                                                                  [[wb we] ps]))
+                                                             pieces-of)]
+                                       (let [own (own-of begin end)
+                                             reach (filterv (fn [[b e]] (some own (range b e)))
+                                                            (map (fn [[x y]] [(max x (:token/begin t)) (min y (:token/end t))]) ps))
+                                             [kx ky] (moved w)
+                                             home (or (first (filter (fn [[b e]] (and (<= kx b) (<= e ky))) reach)) (first reach))]
+                                         [id [home (remove #(= % home) reach) layer]])))))
+                           tokens)
+        want-made (sort (distinct
+                         (concat
+                          (mapcat (fn [[w ps]]
+                                    (for [piece ps :when (not= piece (moved w))
+                                          l (cons :w (keep (fn [[[w2 l] ts]] (when (and (= w2 w) (not (shared (:token/id (first ts))))) l)) under))]
+                                      [l (first piece) (second piece)]))
+                                  pieces-of)
+                          ;; and the pieces of those shorter than it on the
+                          ;; parts they reach
+                          (for [[_ [_ others l]] under-placed [b e] others] [l b e]))))
         out (transient [])]
     (when (not= want-made (sort (map (juxt :token/layer :token/begin :token/end) (:made split))))
       (conj! out (str "made " (pr-str (:made split)) ", want " (pr-str want-made))))
@@ -1030,6 +1066,8 @@
                          over (let [[b e] (trim-ws nw (sentence-now over))] (assoc t :token/begin b :token/end e))
                          (shared id) (let [[x y] (shared id)] (assoc t :token/begin x :token/end y))
                          (moved [begin end]) (let [[x y] (moved [begin end])] (assoc t :token/begin x :token/end y))
+                         (contains? under-placed id) (when-let [[b e] (first (under-placed id))]
+                                                       (assoc t :token/begin b :token/end e))
                          ;; to the part holding most of its own letters, the
                          ;; first on a tie
                          inside (let [in (fn [[x y]] [(max x (:token/begin t)) (min y (:token/end t))])
@@ -1051,11 +1089,12 @@
   ;; ud (Luke, 2026-09-30): the plain rule, but a word given a space splits
   ;; and (Q2-UD-POLISH-2) each other part of the word is a word of its own
   (doseq [[layout opts] [[:apps {:carets 3 :spaced 0.4 :child 0.7 :nodes true :glue 0.1}]
+                         [:apps-dealt {:carets 3 :spaced 0.4 :child 0.7 :nodes true :glue 0.1}]
                          ;; a script's words with morphemes inside them
                          [:script {:carets 3 :spaced 0.3 :sub 0.6 :glue 0.1 :typed ["Q" " " "Q R" " Q " "XZ XZ"]}]]]
     (let [fails (atom [])]
       (dotimes [seed cases-per-config]
-        (let [rng (java.util.Random. (+ seed 5151 (if (= layout :apps) 0 7)))
+        (let [rng (java.util.Random. (+ seed 5151 (if (#{:apps :apps-dealt} layout) 0 7)))
               {:keys [body tokens]} (gen-doc rng opts)
               gaps (gen-gaps rng body tokens opts)
               tokens (layout-tokens layout tokens)
@@ -1073,7 +1112,7 @@
                                               (save body new-body tokens layout false)
                                               (save body new-body tokens layout true)
                                               (first (save-read body new-body tokens layout false))]]]
-            (let [ps (split-problems body tokens sgaps plain split)]
+            (let [ps (split-problems body tokens sgaps plain split (:dealt (roles layout false)))]
               (when (seq ps) (swap! fails conj {:layout layout :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
       (testing (str layout)
         (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))))

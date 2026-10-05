@@ -2328,17 +2328,26 @@
   spaces it had. It stays on the part holding the most of its old letters
   (the first on a tie), with what hangs off it, and each other part holding
   one of its old letters is a new token of its layer (a part of typed text
-  alone is text typed apart from the word, in no word). The tokens under the word (`child?`) as long as
-  it go one to each part, in order of precedence, when there are as many
-  of a layer as parts (a multi-word token `can't`, `ca` + `n't`, typed as
-  `ca n't` leaves each word on its own part). Otherwise they stay with the
-  word, and each new part gets a new token of that layer as long as it. A
-  token that stood strictly inside the word goes to the part holding most
-  of its kept letters, cut to it, and is deleted when it holds nothing of
-  any. Another token as long as the word stays with it, and one over
-  several words that began or ended with it begins or ends where it does
-  now. `typed?` says whether a new-body position holds typed text."
-  [^ints nw old-tokens placed word? part? typed? child?]
+  alone is text typed apart from the word, in no word).
+
+  The tokens under the word (`child?`) are placed by where they stand
+  (2026-10-06). One as long as the word stays with it, and each new part
+  gets one new token of that layer as long as it. Only on a layer that
+  deals its tokens out (`dealt?`, the words of a multi-word token) do those
+  as long as the word go one to each part, in order of precedence, when
+  there are as many of them as parts (`can't`, `ca` + `n't`, typed as
+  `ca n't`, leaves each word on its own part). One shorter than the word
+  goes with the part it lies in, cut to it. One reaching over a cut stays
+  on the part the word stays on (else the first it reaches), cut to it,
+  and each other part it reaches gets a new token of its layer over its
+  letters there. One holding no letter of any part is deleted.
+
+  Any other token that stood strictly inside the word goes to the part
+  holding most of its kept letters, cut to it, and is deleted when it holds
+  nothing of any. Another token as long as the word stays with it, and one
+  over several words that began or ended with it begins or ends where it
+  does now. `typed?` says whether a new-body position holds typed text."
+  [^ints nw old-tokens placed word? part? typed? child? dealt?]
   (let [was (into {} (map (juxt :token/id identity)) old-tokens)
         letter-at? (fn [i] (and (not (typed? i)) (not (space? (aget nw i)))))
         ;; the old letters kept, by new position
@@ -2375,23 +2384,52 @@
                                 placed))
         ;; those that go one to each part: id -> part
         shared (into {}
-                     (mapcat (fn [[[w _] ts]]
+                     (mapcat (fn [[[w l] ts]]
                                (let [pieces (:pieces (splits w))]
-                                 (when (= (count ts) (count pieces))
+                                 (when (and (dealt? l) (= (count ts) (count pieces)))
                                    (map vector
                                         (map :token/id (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts))
                                         pieces)))))
                      under)
+        ;; the split word a token stood strictly inside, by its old extent
+        inside-of (fn [ob oe]
+                    (when ob
+                      (some (fn [[[wb we] :as e]] (when (and (<= wb ob) (<= oe we) (not (and (= wb ob) (= oe we)))) e))
+                            splits)))
+        ;; a token under a split word, shorter than it: id -> {:home [x y]
+        ;; :others [[x y] ...]}, the part it stays on and the others it
+        ;; reaches, each cut to it (nil home: it reaches none)
+        placed-under (into {}
+                           (keep (fn [{:token/keys [id begin end] :as t}]
+                                   (let [{ob :token/begin oe :token/end} (was id)]
+                                     (when (and (live? t) (child? t))
+                                       (when-let [[w {kp :keep :keys [pieces]}] (inside-of ob oe)]
+                                         (let [reach (filterv (fn [[x y]] (pos? (kept x y)))
+                                                              (map (fn [[x y]] [(max begin x) (min end y)]) pieces))
+                                               home (or (first (filter (fn [[x y]] (and (<= (first kp) x) (<= y (second kp)))) reach))
+                                                        (first reach))]
+                                           [id {:word w :home home :others (filterv #(not= % home) reach)}]))))))
+                           placed)
         made (into []
                    (mapcat (fn [[w {kp :keep :keys [pieces layer]}]]
-                             (for [p pieces
-                                   :when (not= p kp)
-                                   t (cons {:token/layer layer :token/begin (first p) :token/end (second p)}
-                                           (keep (fn [[[w2 l] ts]]
-                                                   (when (and (= w2 w) (not (shared (:token/id (first ts)))))
-                                                     {:token/layer l :token/begin (first p) :token/end (second p)}))
-                                                 under))]
-                               t)))
+                             (distinct
+                              (for [p pieces
+                                    t (concat
+                                       (when (not= p kp)
+                                         (cons {:token/layer layer :token/begin (first p) :token/end (second p)}
+                                               (keep (fn [[[w2 l] ts]]
+                                                       (when (and (= w2 w) (not (shared (:token/id (first ts)))))
+                                                         {:token/layer l :token/begin (first p) :token/end (second p)}))
+                                                     under)))
+                                       ;; the pieces of the tokens under it
+                                       ;; reaching over a cut, on this part
+                                       (for [c placed
+                                             :let [pu (placed-under (:token/id c))]
+                                             :when (= w (:word pu))
+                                             [x y] (:others pu)
+                                             :when (and (<= (first p) x) (<= y (second p)))]
+                                         {:token/layer (:token/layer c) :token/begin x :token/end y}))]
+                                t))))
                    splits)
         edge-moves (into {} (map (fn [[[ob _] {[x y] :keep}]] [ob [x y]])) splits)
         end-moves (into {} (map (fn [[[_ oe] {[x y] :keep}]] [oe [x y]])) splits)]
@@ -2400,11 +2438,16 @@
       {:placed
        (mapv (fn [{:token/keys [id begin end] :as t}]
                (let [{ob :token/begin oe :token/end} (was id)
-                     inside (when ob (some (fn [[[wb we] s]] (when (and (<= wb ob) (<= oe we) (not (and (= wb ob) (= oe we)))) s)) splits))]
+                     inside (second (inside-of ob oe))]
                  (cond
                    (or (::gone t) (nil? ob) (part? t)) t
                    (shared id) (let [[x y] (shared id)] (assoc t :token/begin x :token/end y))
                    (splits [ob oe]) (let [[x y] (:keep (splits [ob oe]))] (assoc t :token/begin x :token/end y))
+                   ;; under a split word, shorter than it: where it stands
+                   (contains? placed-under id)
+                   (if-let [[x y] (:home (placed-under id))]
+                     (assoc t :token/begin x :token/end y)
+                     (assoc t ::gone true))
                    ;; inside a split word: to the part holding most of it
                    inside
                    (let [in (fn [[x y]] [(max begin x) (min end y)])
@@ -2439,7 +2482,8 @@
   typed before the first one, and with `split-on-space`, `:made`, the new
   tokens of the words a typed space split (see `split-spaced-words`), each
   `{:token/layer :token/begin :token/end}`, a word before the tokens under
-  it.
+  it. `:dealt` names the layers under the words whose tokens as long as a
+  split word are dealt one to each part (see `split-spaced-words`).
 
   For a token with text, [B, E):
   - A gap inside it, or reaching one of its ends from inside, grows or
@@ -2467,7 +2511,7 @@
   A zero-width token is moved as `apply-text-edits` moves it."
   ([old tokens gaps partitioning word-layers]
    (apply-plain-gaps old tokens gaps partitioning word-layers nil))
-  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children exclusive head-layers]}]
+  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children dealt exclusive head-layers]}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
          partitioning (set partitioning)
@@ -2680,7 +2724,8 @@
                                  decides?
                                  #(partitioning (:token/layer %))
                                  #(aget typed (int %))
-                                 #(contains? (set children) (:token/layer %))))
+                                 #(contains? (set children) (:token/layer %))
+                                 #(contains? (set dealt) %)))
            {:placed placed})
          zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))
          kept (filterv (complement ::gone) placed)
@@ -3051,11 +3096,12 @@
 
 (defn layer-roles
   "What each token layer of a text is to a body save, from `layers`, each
-  `{:id :overlap-mode :parent :split-on-space}` (`:overlap-mode` as the
-  token layer row has it, `:parent` its parent token layer's id or nil,
-  `:split-on-space` whether its config sets `splitOnSpace`). Nothing but the
-  layers' shape is read, so a layer any app or script made takes an edit the
-  same way.
+  `{:id :overlap-mode :parent :split-on-space :role}` (`:overlap-mode` as
+  the token layer row has it, `:parent` its parent token layer's id or nil,
+  `:split-on-space` whether its config sets `splitOnSpace`, `:role` its
+  `config.plaid.role`). Besides those two settings nothing but the layers'
+  shape is read, so a layer any app or script made takes an edit the same
+  way.
   - `:partitioning`: the partition layers (sentences).
   - `:deciders`: the word layers, which decide where typed text goes (see
     `apply-plain-gaps`): a layer that forbids overlap and has a parent, or
@@ -3067,6 +3113,10 @@
   - `:exclusive`: the layers that forbid overlap.
   - `:split-on-space`: whether a layer of the text sets `splitOnSpace`,
     which then holds for every word of the text.
+  - `:dealt`: the children of role `syntactic-word`, the words of a
+    multi-word token, whose tokens as long as a word a typed space splits
+    go one to each part in order (see `split-spaced-words`). Every other
+    child's tokens are placed by where they stand.
   - `:head-layers`: the partitions a line typed before the first sentence
     is made a sentence of (see `apply-plain-gaps`): those the words are
     nested under, else the text's one partition layer, else none. A second
@@ -3095,5 +3145,9 @@
                         :else #{})
      :deciders deciders
      :children (into #{} (filter #(under? deciders %)) (keys parent-of))
+     :dealt (into #{}
+                  (comp (filter #(and (= "syntactic-word" (:role %)) (under? deciders (:id %))))
+                        (map :id))
+                  layers)
      :exclusive (into #{} (comp (filter #(= "non-overlapping" (:overlap-mode %))) (map :id)) layers)
      :split-on-space (boolean (some :split-on-space layers))}))
