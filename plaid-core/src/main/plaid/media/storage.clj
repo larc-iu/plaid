@@ -184,6 +184,76 @@
          :size (.length file)
          :last-modified (.lastModified file)}))))
 
+(def ^:private wav-format-names
+  "Names for the WAV format tags a refusal may have to name. Any other tag is
+  named by its number."
+  {0x0002 "MS ADPCM"
+   0x0006 "A-law"
+   0x0007 "mu-law"
+   0x0011 "IMA ADPCM"
+   0x0031 "GSM 6.10"
+   0x0040 "G.721 ADPCM"
+   0x0045 "G.726 ADPCM"
+   0x0050 "MPEG"
+   0x0055 "MP3"})
+
+(def ^:private playable-wav-tags
+  "WAV format tags browsers play: PCM (1) and IEEE float (3)."
+  #{0x0001 0x0003})
+
+(def ^:private wave-format-extensible 0xFFFE)
+
+(defn wav-format
+  "The format tag a RIFF/WAVE file's `fmt ` chunk declares, or nil when the
+  file is not a WAV or has no readable `fmt ` chunk. For WAVE_FORMAT_EXTENSIBLE
+  the tag is the subformat's (the first two bytes of its GUID), which is what
+  says how the samples are coded. Reads only the chunk headers."
+  [^File file]
+  (try
+    (with-open [raf (java.io.RandomAccessFile. file "r")]
+      (let [len (.length raf)
+            u32 (fn [^bytes b at]
+                  (bit-or (bit-and (aget b at) 0xFF)
+                          (bit-shift-left (bit-and (aget b (+ at 1)) 0xFF) 8)
+                          (bit-shift-left (bit-and (aget b (+ at 2)) 0xFF) 16)
+                          (bit-shift-left (bit-and (long (aget b (+ at 3))) 0xFF) 24)))
+            u16 (fn [^bytes b at]
+                  (bit-or (bit-and (aget b at) 0xFF)
+                          (bit-shift-left (bit-and (aget b (+ at 1)) 0xFF) 8)))
+            id (fn [^bytes b at] (String. b (int at) 4 "ISO-8859-1"))
+            head (byte-array 12)]
+        (when (>= len 12)
+          (.readFully raf head)
+          (when (and (= "RIFF" (id head 0)) (= "WAVE" (id head 8)))
+            (loop [at 12]
+              (when (<= (+ at 8) len)
+                (let [chunk (byte-array 8)]
+                  (.seek raf at)
+                  (.readFully raf chunk)
+                  (let [size (u32 chunk 4)]
+                    (if (= "fmt " (id chunk 0))
+                      (when (>= size 2)
+                        (let [body (byte-array (min size 40 (- len at 8)))]
+                          (.readFully raf body)
+                          (let [tag (u16 body 0)]
+                            (if (and (= tag wave-format-extensible) (>= (alength body) 26))
+                              (u16 body 24)
+                              tag))))
+                      (recur (+ at 8 size (mod size 2))))))))))))
+    (catch Exception e
+      (log/warn "Could not read a WAV header:" (.getMessage e))
+      nil)))
+
+(defn unplayable-wav-error
+  "The refusal for a WAV whose samples browsers cannot decode, or nil when
+  `file` is not a WAV or is PCM or float. Tika names every WAV audio/wav
+  whatever its coding, and an IMA ADPCM one was stored and then never played."
+  [file]
+  (when-let [tag (wav-format file)]
+    (when-not (contains? playable-wav-tags tag)
+      (str "WAV encoded as " (get wav-format-names tag (str "format " tag))
+           " cannot be played in a browser. Only PCM and float WAV are accepted."))))
+
 (defn validate-media-file
   "Validate a media file using Tika content detection"
   [temp-file filename]
@@ -192,12 +262,20 @@
         ;; Check if detected type is a media type
         is-detected-media? (is-media-type? detected-type)
         ;; Check if we can determine extension from detected type
-        detected-extension (when detected-type (get-extension-from-content-type detected-type))]
+        detected-extension (when detected-type (get-extension-from-content-type detected-type))
+        wav-error (unplayable-wav-error temp-file)]
 
     (log/debug "File validation - detected:" detected-type "is-media:" is-detected-media?
                "filename:" filename "ext:" filename-ext)
 
     (cond
+      ;; A WAV is refused by its coding, whatever its name or Tika says.
+      wav-error
+      {:valid? false
+       :error wav-error
+       :detected detected-type
+       :filename-ext filename-ext}
+
       ;; If Tika detected a media type and we can map it to an extension, use it
       (and is-detected-media? detected-extension)
       {:valid? true :content-type detected-type :method :tika-detection}

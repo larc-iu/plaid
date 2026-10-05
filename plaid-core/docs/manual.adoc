@@ -211,6 +211,9 @@ Every write to the database is recorded in an append-only **audit log** which pr
 Uploading and deleting a document's recording are recorded too, as operations of type `media/upload` and `media/delete`, and each moves the document's version. The recording itself is a file, not part of the log, so time travel and a restore cannot bring back a deleted one.
 A delete may name the recording it means with `media-version`, the `?v=` of the document's `media-url` (`mediaVersion` / `media_version` in the clients). It is refused with 409, `media-changed` and the current `media-url` when the stored recording is another one, so a page still showing a replaced recording cannot delete its replacement.
 An upload to a document that already has a recording is refused with 409, `media-exists` and the current `media-url`.
+An upload that is not audio or video is refused with 415.
+So is a WAV whose samples are not PCM or float, such as IMA or Microsoft ADPCM, GSM 6.10 or A-law, since browsers cannot play one.
+The `error` names its coding.
 Audit history is retained indefinitely — it is both the forensic record and the source for document time travel (see below), so pruning it trades away history. Operators monitor disk via the `/health` endpoint's `audit` block.
 
 The log can be queried like so:
