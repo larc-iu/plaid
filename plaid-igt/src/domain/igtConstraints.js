@@ -142,12 +142,13 @@ export const valueSetsAllow = (layer, value) =>
     .every((c) => valueSetAllows(c, value));
 
 /**
- * What the server's rules leave after a word merge, for the screen to show at
- * once: in each word-scope field, the survivor's own annotation stays (else
- * the one with the smallest id) and takes the distinct values of the others
- * joined with " | " in text order, unless its field's closed tagset would
- * refuse the joined value, and the others go. Of the single-word vocabulary
- * links now on the survivor, its own stays (else the smallest id).
+ * What the server's rules leave after a word or sentence merge, for the
+ * screen to show at once: in each field of the merged unit's scope, the
+ * survivor's own annotation stays (else the one with the smallest id) and
+ * takes the distinct values of the others joined with " | " in text order,
+ * unless its field's closed tagset would refuse the joined value, and the
+ * others go. Of the single-token vocabulary links now on the survivor, its
+ * own stays (else the smallest id).
  *
  * @param {object} infoNext layer info of the patched document, spans already
  *   reparented onto the survivor
@@ -157,10 +158,12 @@ export const valueSetsAllow = (layer, value) =>
  *   before the merge, by annotation id
  * @param {{spans: Set<string>, links: Set<string>}} own the survivor's own
  *   annotations and links before the merge
+ * @param {'word'|'sentence'} [scope] the fields of which scope the merge
+ *   gathered on the survivor
  */
-export const applyMergeRules = (infoNext, vocabs, survivorId, beginOf, own) => {
+export const applyMergeRules = (infoNext, vocabs, survivorId, beginOf, own, scope = 'word') => {
   const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-  for (const sl of infoNext.spanLayers?.word || []) {
+  for (const sl of infoNext.spanLayers?.[scope] || []) {
     const onSurvivor = (sl.spans || []).filter(
       (s) => s.tokens?.length === 1 && s.tokens[0] === survivorId,
     );

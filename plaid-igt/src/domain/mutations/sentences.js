@@ -11,6 +11,7 @@
 import { mergeMetadata, metadataOps, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
+import { applyMergeRules } from '../igtConstraints.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { countSplitLoss, dropRelations } from '@ui/domain/annotationLoss.js';
@@ -62,6 +63,19 @@ export const sentenceMutations = {
     // is not absorbed into a hand-made neighbour.
     const inherited = survivingProvenance([prev.metadata, sentence.metadata]);
     const patch = survivorPatch(prev.metadata, inherited, (m) => this.editStamp(m));
+    // What each field had on each side, for the server's join: prev's own
+    // annotation stays and takes the merged-away one's value after its own.
+    const onlyOn = (tokens, id) => Array.isArray(tokens) && tokens.length === 1 && tokens[0] === id;
+    const own = { spans: new Set(), links: new Set() };
+    const beginOf = new Map();
+    for (const sl of info.spanLayers?.sentence || []) {
+      for (const sp of sl.spans || []) {
+        if (onlyOn(sp.tokens, prev.id)) {
+          own.spans.add(sp.id);
+          beginOf.set(sp.id, prev.begin);
+        } else if (onlyOn(sp.tokens, sentenceId)) beginOf.set(sp.id, sentence.begin);
+      }
+    }
     this._applyRawPatch((next, infoNext) => {
       const tokens = infoNext.sentenceTokenLayer?.tokens;
       if (!Array.isArray(tokens)) return;
@@ -72,8 +86,13 @@ export const sentenceMutations = {
       }
       infoNext.sentenceTokenLayer.tokens = tokens.filter((t) => t.id !== sentenceId);
       // Server reparents the merged-away sentence's spans (translation, notes,
-      // …) onto prev (token.clj merge-tokens); mirrored here.
+      // …) onto prev (token.clj merge-tokens); mirrored here. Its layer rules
+      // then join two values of one field into prev's own annotation in the
+      // same transaction, which the screen shows too: left as two, the field
+      // showed one value while the server held both, and the next edit of it
+      // wrote over the other's.
       reparentSpans(infoNext.spanLayers?.sentence, new Set([sentenceId]), prev.id);
+      applyMergeRules(infoNext, null, prev.id, beginOf, own, 'sentence');
     });
     return this._queueWrite(label, () =>
       this._client.batched(async (b) => {

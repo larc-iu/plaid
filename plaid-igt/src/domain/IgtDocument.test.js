@@ -1063,6 +1063,30 @@ describe('sentence boundary ops', () => {
     // The translation followed onto the surviving sentence.
     expect(ss[0].annotations.Translation?.value).toBe('the cat (gloss)');
   });
+
+  it('mergeSentence joins two translations into the survivor’s as the server does', async () => {
+    // The server's one-span-per-sentence rule joins the two values into the
+    // survivor's own span and deletes the other, in the merge's transaction.
+    // The screen kept both and showed the first, so the next edit of the
+    // field wrote over the joined value and the second translation was gone
+    // (D7-FAKES, on a real core).
+    const raw = buildRawDoc({
+      body: 'the cat',
+      sentences: [
+        { id: 's-1', begin: 0, end: 4 },
+        { id: 's-2', begin: 4, end: 7 },
+      ],
+    });
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [
+      { id: 'tr-2', tokens: ['s-2'], value: 'cat' },
+      { id: 'tr-1', tokens: ['s-1'], value: 'the' },
+    ];
+    const doc = makeDoc({ raw });
+    await doc.mergeSentence('s-2');
+    expect(doc.sentences[0].annotations.Translation?.value).toBe('the | cat');
+    const spans = doc.layerInfo.spanLayers.sentence[0].spans;
+    expect(spans.map((s) => [s.id, s.tokens])).toEqual([['tr-1', ['s-1']]]);
+  });
 });
 
 describe('vocab links (read path must reflect optimistic write)', () => {
