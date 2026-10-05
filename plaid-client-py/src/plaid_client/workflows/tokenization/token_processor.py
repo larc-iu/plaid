@@ -354,7 +354,7 @@ class TokenProcessor:
                     if reset_loss['total']:
                         logger.warning(
                             "Re-tokenizing deletes %d token(s) nested in the sentence and "
-                            "%d annotation(s) on the sentence and those tokens.",
+                            "%d annotation(s) in the sentence.",
                             reset_loss['tokens'], reset_loss['total'])
                     b.tokens.bulk_delete(sentence_ids_to_delete)
 

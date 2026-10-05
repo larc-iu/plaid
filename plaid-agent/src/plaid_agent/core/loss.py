@@ -154,10 +154,14 @@ def other_layers_crossing(raw: Dict[str, Any], sentence_layer_id: str, sentence_
 
 
 def loss_note(annotations: int = 0, links: int = 0) -> str:
-    """" (3 annotations and 1 vocabulary link of other layers go with it)", or ''."""
+    """ " (3 annotations and 1 vocabulary link of other layers go with it)", " (1 annotation
+    of other layers goes with it)", or ''."""
     parts = []
     if annotations:
         parts.append(f'{annotations} annotation{"s" if annotations != 1 else ""}')
     if links:
         parts.append(f'{links} vocabulary link{"s" if links != 1 else ""}')
-    return f' ({" and ".join(parts)} of other layers go with it)' if parts else ''
+    if not parts:
+        return ''
+    verb = 'goes' if len(parts) == 1 and annotations + links == 1 else 'go'
+    return f' ({" and ".join(parts)} of other layers {verb} with it)'

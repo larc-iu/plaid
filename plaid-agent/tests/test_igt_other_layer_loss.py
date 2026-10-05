@@ -90,7 +90,7 @@ def test_two_deleted_words_count_the_dependency_between_them_once(ws):
     labels = [op['label'] for op in ws.ops]
     assert '(3 annotations of other layers go with it)' in labels[0]
     # gam's lemma only: the dependency Ali -> gam is on the row before.
-    assert '(1 annotation of other layers go with it)' in labels[1]
+    assert '(1 annotation of other layers goes with it)' in labels[1]
 
 
 def test_the_card_counts_what_the_server_cascades(ws):
