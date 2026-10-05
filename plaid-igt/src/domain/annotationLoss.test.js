@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   countAnnotationLossForRange,
   countAnnotationLossForWord,
+  countReTokenizeCut,
   countReTokenizeLoss,
 } from './annotationLoss.js';
 
@@ -229,5 +230,82 @@ describe('countReTokenizeLoss', () => {
     const info = oneSentence({ morph: { form: 'Mimm' } });
     info.sentenceTokenLayer.tokens.push({ id: 'sent2', begin: 9, end: 9 });
     expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 0, links: 0 });
+  });
+});
+
+// REV-N5-CORE F3: a service resplitting the one sentence can cut relations a
+// layer keeps inside one sentence, on a layer the reset does not take.
+describe('countReTokenizeCut', () => {
+  const doc = (sentences) => {
+    const sentenceLayer = { id: 'tl-sent', tokens: sentences };
+    const words = {
+      id: 'tl-word',
+      parentTokenLayer: 'tl-sent',
+      tokens: [
+        { id: 'w1', begin: 0, end: 4 },
+        { id: 'w2', begin: 5, end: 9 },
+      ],
+      spanLayers: [
+        {
+          id: 'sl-w',
+          spans: [
+            { id: 'a', tokens: ['w1'] },
+            { id: 'b', tokens: ['w2'] },
+          ],
+          relationLayers: [
+            {
+              id: 'rl-w',
+              constraints: { x: [{ type: 'same-ancestor', tokenLayer: 'tl-sent' }] },
+              relations: [{ id: 'rw', source: 'a', target: 'b' }],
+            },
+          ],
+        },
+      ],
+    };
+    const nodes = {
+      id: 'tl-nodes',
+      tokens: [
+        { id: 'n1', begin: 0, end: 4 },
+        { id: 'n2', begin: 5, end: 9 },
+      ],
+      spanLayers: [
+        {
+          id: 'sl-n',
+          spans: [
+            { id: 'c', tokens: ['n1'] },
+            { id: 'd', tokens: ['n2'] },
+          ],
+          relationLayers: [
+            {
+              id: 'rl-n',
+              constraints: { y: [{ type: 'same-ancestor', tokenLayer: 'tl-sent' }] },
+              relations: [{ id: 'rn', source: 'c', target: 'd' }],
+            },
+          ],
+        },
+      ],
+    };
+    return {
+      primaryTextLayer: { tokenLayers: [sentenceLayer, words, nodes] },
+      sentenceTokenLayer: sentenceLayer,
+      primaryTokenLayer: words,
+    };
+  };
+
+  it('counts what the new breaks can cut, leaving what the reset deletes to the loss count', () => {
+    // rw goes with the words the reset deletes. rn stays and can be cut.
+    expect(countReTokenizeCut(doc([{ id: 'S', begin: 0, end: 9 }]))).toEqual({
+      annotations: 1,
+      links: 0,
+    });
+  });
+
+  it('is zero when the run does not resplit', () => {
+    const two = doc([
+      { id: 'S1', begin: 0, end: 5 },
+      { id: 'S2', begin: 5, end: 9 },
+    ]);
+    expect(countReTokenizeCut(two)).toEqual({ annotations: 0, links: 0 });
+    expect(countReTokenizeCut(doc([]))).toEqual({ annotations: 0, links: 0 });
   });
 });

@@ -9,6 +9,7 @@ import {
   countAnnotationLossForWord,
   countSubWordAnnotationLoss,
   countReTokenizeLoss,
+  countReTokenizeCut,
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
@@ -283,8 +284,11 @@ export const useTokenOperations = () => {
       }
       const serviceId = spot.service.serviceId;
       const loss = countReTokenizeLoss(doc.layerInfo, doc.vocabularies);
-      if (loss.annotations + loss.links > 0) {
-        setPendingTokenize({ serviceId, ...loss });
+      // The new sentence breaks can also cut relations a layer keeps inside
+      // one sentence, which the reset itself leaves (REV-N5-CORE F3).
+      const cut = countReTokenizeCut(doc.layerInfo).annotations;
+      if (loss.annotations + loss.links + cut > 0) {
+        setPendingTokenize({ serviceId, ...loss, cut });
         return; // the dialog decides
       }
       return runServiceTokenize(serviceId, { overwrite: false });
@@ -315,9 +319,11 @@ export const useTokenOperations = () => {
   };
   const confirmPendingTokenize = async () => {
     if (!pendingTokenize) return;
-    const { serviceId } = pendingTokenize;
+    const { serviceId, annotations, links } = pendingTokenize;
     setPendingTokenize(null);
-    return runServiceTokenize(serviceId, { overwrite: true });
+    // Overwrite is the service's leave to delete what is on the old tokens.
+    // Relations the new breaks cut go by the layer's own rule either way.
+    return runServiceTokenize(serviceId, { overwrite: annotations + links > 0 });
   };
   const cancelPendingTokenize = () => setPendingTokenize(null);
 

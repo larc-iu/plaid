@@ -100,3 +100,17 @@ test('a sentence split counts the relations another layer would lose, not the tr
   assert.deepEqual(doc.otherLossForSentenceSplit(home), { annotations: 0, links: 0 });
   assert.deepEqual(doc.otherLossForSentenceSplit(0), { annotations: 0, links: 0 });
 });
+
+// REV-N5-CORE F3: once the sentences are cleared, the sentences Tokenize makes
+// can cut the other layer's relation.
+test("Tokenize counts the relations its new sentences cut, and none of UD's own", () => {
+  const { doc } = open();
+  doc.layerInfo.sentenceTokenLayer.tokens = [];
+  // One line, one sentence: nothing is cut.
+  assert.deepEqual(doc.tokenizeLoss('she came home'), { annotations: 0, links: 0 });
+  // A break between "she" and "came" cuts the other layer's relation. The
+  // tree's nsubj crosses it as well, and is UD's own.
+  assert.deepEqual(doc.tokenizeLoss('she\ncame home'), { annotations: 1, links: 0 });
+  // A service's breaks are not known: the most they can take.
+  assert.deepEqual(doc.tokenizeLoss(null), { annotations: 1, links: 0 });
+});

@@ -28,10 +28,12 @@ vi.mock('@ui/hooks/useServiceSpot.js', () => ({
     params: { errors: {}, coerced: () => ({}) },
   }),
 }));
+const cut = vi.hoisted(() => ({ annotations: 0, links: 0 }));
 vi.mock('../../../domain/annotationLoss.js', () => ({
   countAnnotationLossForWord: () => 0,
   countSubWordAnnotationLoss: () => 0,
   countReTokenizeLoss: () => ({ annotations: 0, links: 0 }),
+  countReTokenizeCut: () => cut,
 }));
 vi.mock('@/utils/feedback', () => ({
   humanizeError: (e) => String(e),
@@ -92,6 +94,27 @@ describe('a Tokenize run that failed', () => {
     const { doc, view, ops } = await mount();
     await view.step(() => ops().handleTokenize());
     expect(doc.reload).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+// REV-N5-CORE F3: a tokenizer service resplitting the one sentence can cut
+// relations a layer keeps inside one sentence. It asks first, with the most
+// the new breaks can take, and runs without leave to overwrite when the reset
+// itself deletes nothing.
+describe('a Tokenize run whose new breaks can cut relations', () => {
+  it('asks first, and runs on the answer', async () => {
+    requestService.mockReset();
+    requestService.mockResolvedValue({});
+    cut.annotations = 3;
+    const { view, ops } = await mount();
+    await view.step(() => ops().handleTokenize());
+    expect(requestService).not.toHaveBeenCalled();
+    expect(ops().pendingTokenize).toMatchObject({ cut: 3, annotations: 0, links: 0 });
+    await view.step(() => ops().confirmPendingTokenize());
+    expect(requestService).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(requestService.mock.calls[0])).not.toContain('overwrite');
+    cut.annotations = 0;
     await view.unmount();
   });
 });

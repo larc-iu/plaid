@@ -37,7 +37,11 @@ import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/con
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
-import { countDeleteLoss, countSplitLoss } from '../../../plaid-ui/src/domain/annotationLoss.js';
+import {
+  countDeleteLoss,
+  countPartitionLoss,
+  countSplitLoss,
+} from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
 import {
@@ -557,6 +561,23 @@ export class ConlluDocument extends DocumentModel {
       this.layerInfo.textLayer?.tokenLayers || [],
       containing.id,
       charPos,
+      { skip: this._ownLossLayers() },
+    );
+    return { annotations: loss.annotations, links: loss.links };
+  }
+
+  // What Tokenize takes on the text's other layers: the relations a layer
+  // keeps inside one sentence whose ends the new sentences put in two. The
+  // built-in breaks `body` at newlines, so its count is exact. A service
+  // decides its own breaks, so for one (`body` null) it is the most they can
+  // take. `{ annotations, links }`.
+  tokenizeLoss(body) {
+    const { textLayer, sentenceTokenLayer } = this.layerInfo;
+    if (!sentenceTokenLayer) return { annotations: 0, links: 0 };
+    const loss = countPartitionLoss(
+      textLayer?.tokenLayers || [],
+      sentenceTokenLayer.id,
+      body == null ? 'any' : newlineSentenceRanges(body),
       { skip: this._ownLossLayers() },
     );
     return { annotations: loss.annotations, links: loss.links };

@@ -11,7 +11,7 @@
 // made since the document was read.
 
 import { PROV, isProtected } from '@larc-iu/plaid-client';
-import { countDeleteLoss, hasOwnContent } from '@ui/domain/annotationLoss.js';
+import { countDeleteLoss, countPartitionLoss, hasOwnContent } from '@ui/domain/annotationLoss.js';
 
 const ZERO = () => ({ annotations: 0, links: 0 });
 
@@ -83,6 +83,27 @@ export const countReTokenizeLoss = (layerInfo, vocabularies) => {
     countDeleteLoss(tokenLayersOf(layerInfo), [sentenceTokens[0].id], {
       vocabLinks: linksOf(vocabularies),
       content,
+    }),
+  );
+};
+
+/**
+ * Count the relations a tokenizer service's new sentence breaks can take on
+ * any layer: those a layer keeps inside one sentence whose ends lie at two
+ * places of the one sentence the service resplits (REV-N5-CORE F3). The
+ * service decides the breaks, so this is the most they can take. A relation
+ * the reset deletes with its tokens is counted by countReTokenizeLoss, not
+ * here. Zero when the run does not resplit (not exactly one sentence).
+ *
+ * @returns {{annotations: number, links: number}}
+ */
+export const countReTokenizeCut = (layerInfo) => {
+  const sentenceLayer = layerInfo?.sentenceTokenLayer;
+  const sentenceTokens = sentenceLayer?.tokens || [];
+  if (sentenceTokens.length !== 1) return ZERO();
+  return counted(
+    countPartitionLoss(tokenLayersOf(layerInfo), sentenceLayer.id, 'any', {
+      deleting: [sentenceTokens[0].id],
     }),
   );
 };

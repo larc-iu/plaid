@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { countDeleteLoss, countSplitLoss, lossPhrase } from './annotationLoss.js';
+import {
+  countDeleteLoss,
+  countPartitionLoss,
+  countSplitLoss,
+  lossPhrase,
+} from './annotationLoss.js';
 
 // One text as a document read holds it: sentences, words under them, and two
 // layers under the words (morphemes with glosses and a vocabulary link, and
@@ -159,6 +164,66 @@ describe('countSplitLoss', () => {
     expect(countSplitLoss(make(), 'S2', 12).annotations).toBe(0);
     expect(countSplitLoss(make(), 'S1', 0).annotations).toBe(0);
     expect(countSplitLoss(make(), 'S1', 6, { skip: ['rl-dep'] }).annotations).toBe(0);
+  });
+});
+
+// Tokenize makes sentences anew: over a text whose sentences were cleared, or
+// one sentence a service resplits.
+describe('countPartitionLoss', () => {
+  const cleared = () => {
+    const layers = make();
+    layers[0].tokens = [];
+    return layers;
+  };
+
+  it('counts the relations the planned sentences put in two of them', () => {
+    // r1 runs from "w2" (6) to "w1" (0), r3 the other way on a layer with no
+    // rule. A break at 6 cuts r1, one at 10 cuts nothing.
+    expect(
+      countPartitionLoss(cleared(), 'tl-sent', [
+        [0, 6],
+        [6, 14],
+      ]).relations,
+    ).toBe(1);
+    expect(
+      countPartitionLoss(cleared(), 'tl-sent', [
+        [0, 10],
+        [10, 14],
+      ]).relations,
+    ).toBe(0);
+    // An end in no planned sentence crosses nothing.
+    expect(countPartitionLoss(cleared(), 'tl-sent', [[0, 5]]).relations).toBe(0);
+  });
+
+  it('leaves out what crosses already, and the layers the caller counts', () => {
+    // Today's S1 holds r1. A partition that keeps it whole takes nothing.
+    expect(
+      countPartitionLoss(make(), 'tl-sent', [
+        [0, 9],
+        [9, 14],
+      ]).relations,
+    ).toBe(0);
+    expect(
+      countPartitionLoss(
+        cleared(),
+        'tl-sent',
+        [
+          [0, 6],
+          [6, 14],
+        ],
+        { skip: ['tl-syn'] },
+      ).relations,
+    ).toBe(0);
+  });
+
+  it("with 'any', counts every relation whose ends lie apart", () => {
+    // r1 only: r2 is a loop, r3 has no rule.
+    expect(countPartitionLoss(cleared(), 'tl-sent', 'any').relations).toBe(1);
+    expect(countPartitionLoss(make(), 'tl-sent', 'any').relations).toBe(1);
+  });
+
+  it('leaves out a relation the same run deletes with its tokens', () => {
+    expect(countPartitionLoss(make(), 'tl-sent', 'any', { deleting: ['S1'] }).relations).toBe(0);
   });
 });
 

@@ -270,6 +270,26 @@ export const TextEditor = () => {
     }
     doc.deleteWord(wordId);
   };
+  // Tokenize asks first when its sentences would take relations another
+  // layer keeps inside one sentence (REV-N5-CORE F3). The built-in's breaks
+  // are known, a service's are not, so for a service the count is the most
+  // the new breaks can take.
+  const handleTokenize = async (text) => {
+    if (!doc) return;
+    const service = !!services.tokenize.spot.service;
+    const loss = lossPhrase(doc.tokenizeLoss(service ? null : text));
+    if (loss) {
+      const ok = await confirm({
+        title: 'Tokenize?',
+        description: service ? `Deletes up to ${loss}.` : `Deletes ${loss}.`,
+        confirmLabel: 'Tokenize',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    return services.tokenize.start(text);
+  };
+
   // A split that would take relations another layer keeps inside one
   // sentence asks first. This editor's own dependencies go without asking.
   const handleSentenceBoundaryToggle = async (charPos) => {
@@ -440,7 +460,7 @@ export const TextEditor = () => {
 
             {canWrite && (
               <TokenizeDialog
-                tokenize={services.tokenize}
+                tokenize={{ ...services.tokenize, start: handleTokenize }}
                 text={rawText}
                 writeLockHeld={writeLockHeld}
                 onOpen={services.discoverServices}

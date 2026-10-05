@@ -66,6 +66,45 @@ const nestedUnder = (childrenOf, layerId) => {
 
 const within = (outer, t) => t.begin >= outer.begin && t.end <= outer.end;
 
+// Every token deleting `ids` takes, with the layer it is on: the tokens
+// themselves (unless `under`) and every token of a nested layer within one.
+const dyingTokens = (layers, ids, under = false) => {
+  const childrenOf = childrenByParent(layers);
+  const dying = new Map(); // token id -> token layer id
+  for (const tl of layers) {
+    const given = (tl.tokens || []).filter((t) => ids.has(t.id));
+    if (!given.length) continue;
+    if (!under) given.forEach((t) => dying.set(t.id, tl.id));
+    for (const nested of nestedUnder(childrenOf, tl.id)) {
+      for (const t of nested.tokens || []) {
+        if (given.some((g) => within(g, t))) dying.set(t.id, nested.id);
+      }
+    }
+  }
+  return dying;
+};
+
+// Whether a relation layer declares `same-ancestor` over `layerId`, under any
+// app's namespace.
+const keepsWithin = (rl, layerId) =>
+  Object.values(rl.constraints || {}).some(
+    (list) =>
+      Array.isArray(list) &&
+      list.some(
+        (c) => c?.type === 'same-ancestor' && (c.tokenLayer ?? c['token-layer']) === layerId,
+      ),
+  );
+
+// Where core places a span: the smallest begin of its tokens, or null.
+const placer = (layers) => {
+  const beginOf = new Map();
+  for (const tl of layers) for (const t of tl.tokens || []) beginOf.set(t.id, t.begin);
+  return (span) => {
+    const begins = (span?.tokens || []).map((id) => beginOf.get(id)).filter(Number.isFinite);
+    return begins.length ? Math.min(...begins) : null;
+  };
+};
+
 // Whether the caller counts this layer (or the layer it hangs on) itself.
 const skipper = (skip) => {
   const set = skip instanceof Set ? skip : new Set(skip || []);
@@ -105,20 +144,7 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
   const skipped = skipper(skip);
   const hasContent =
     typeof content === 'function' ? content : content ? hasOwnContent : () => false;
-  const childrenOf = childrenByParent(layers);
-
-  // Every token that goes, with the layer it is on.
-  const dying = new Map(); // token id -> token layer id
-  for (const tl of layers) {
-    const given = (tl.tokens || []).filter((t) => ids.has(t.id));
-    if (!given.length) continue;
-    if (!under) given.forEach((t) => dying.set(t.id, tl.id));
-    for (const nested of nestedUnder(childrenOf, tl.id)) {
-      for (const t of nested.tokens || []) {
-        if (given.some((g) => within(g, t))) dying.set(t.id, nested.id);
-      }
-    }
-  }
+  const dying = dyingTokens(layers, ids, under);
   if (!dying.size) return result;
 
   for (const tl of layers) {
@@ -216,14 +242,7 @@ export const countSplitLoss = (tokenLayers, tokenId, position, options = {}) => 
     if (place < token.begin || place >= token.end) return 0;
     return place < position ? -1 : 1;
   };
-  const declares = (rl) =>
-    Object.values(rl.constraints || {}).some(
-      (list) =>
-        Array.isArray(list) &&
-        list.some(
-          (c) => c?.type === 'same-ancestor' && (c.tokenLayer ?? c['token-layer']) === owner.id,
-        ),
-    );
+  const declares = (rl) => keepsWithin(rl, owner.id);
 
   for (const tl of layers) {
     for (const sl of tl.spanLayers || []) {
@@ -237,6 +256,69 @@ export const countSplitLoss = (tokenLayers, tokenId, position, options = {}) => 
             result.relations += 1;
             bump(result.byLayer, rl.id);
           }
+        }
+      }
+    }
+  }
+  result.annotations = result.relations;
+  return result;
+};
+
+/**
+ * Count the relations a new partition of the layer `layerId` deletes: those
+ * on a relation layer that declares `same-ancestor` over it whose ends lie in
+ * one token of the layer today, or in none, and in two of `ranges` after. An
+ * end lies at the smallest begin of its span's tokens, and an end in no range
+ * crosses nothing, as in core.
+ *
+ * `ranges` are the planned tokens as [begin, end) pairs. When they are not
+ * known in advance (a service decides them), pass 'any': every two ends at
+ * different places count, which is the most the new breaks can take.
+ *
+ * @param {object[]} tokenLayers a text layer's token layers, every app's
+ * @param {string} layerId the layer partitioned anew
+ * @param {Array<[number, number]>|'any'} ranges its planned tokens
+ * @param {object} [options]
+ * @param {Iterable<string>} [options.skip] layer ids the caller counts itself
+ * @param {Iterable<string>} [options.deleting] tokens the same run deletes,
+ *   whose relations countDeleteLoss counts already: those are left out here
+ * @returns the same shape as countDeleteLoss
+ */
+export const countPartitionLoss = (tokenLayers, layerId, ranges, options = {}) => {
+  const result = EMPTY();
+  const layers = tokenLayers || [];
+  const skipped = skipper(options.skip);
+  const current = layers.find((tl) => tl.id === layerId)?.tokens || [];
+  const dying = dyingTokens(layers, new Set(options.deleting || []));
+  const placeOf = placer(layers);
+  const holder = (tokens) => (p) => {
+    if (p == null) return null;
+    const i = tokens.findIndex(([b, e]) => b <= p && p < e);
+    return i === -1 ? null : i;
+  };
+  const now = holder(current.map((t) => [t.begin, t.end]));
+  const after = ranges === 'any' ? (p) => p : holder(ranges || []);
+  const crosses = (anc, a, b) => {
+    const x = anc(a);
+    const y = anc(b);
+    return x != null && y != null && x !== y;
+  };
+
+  for (const tl of layers) {
+    for (const sl of tl.spanLayers || []) {
+      const spanById = new Map((sl.spans || []).map((sp) => [sp.id, sp]));
+      const gone = (sp) => (sp?.tokens || []).length > 0 && sp.tokens.every((t) => dying.has(t));
+      for (const rl of sl.relationLayers || []) {
+        if (skipped(tl.id, sl.id, rl.id) || !keepsWithin(rl, layerId)) continue;
+        for (const r of rl.relations || []) {
+          const src = spanById.get(r.source);
+          const tgt = spanById.get(r.target);
+          if (gone(src) || gone(tgt)) continue;
+          const a = placeOf(src);
+          const b = placeOf(tgt);
+          if (crosses(now, a, b) || !crosses(after, a, b)) continue;
+          result.relations += 1;
+          bump(result.byLayer, rl.id);
         }
       }
     }

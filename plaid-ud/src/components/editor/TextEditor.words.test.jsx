@@ -21,12 +21,21 @@ vi.mock('./TokenVisualizer.jsx', () => ({
   },
 }));
 vi.mock('./services/ParseDialog.jsx', () => ({ ParseDialog: () => null }));
-vi.mock('./services/TokenizeDialog.jsx', () => ({ TokenizeDialog: () => null }));
+const tokenizeProps = vi.hoisted(() => ({ props: null }));
+vi.mock('./services/TokenizeDialog.jsx', () => ({
+  TokenizeDialog: (props) => {
+    tokenizeProps.props = props;
+    return null;
+  },
+}));
 
 const { TextEditor } = await import('./TextEditor.jsx');
 
 const home = { id: 'w1', begin: 0, end: 4 };
-const setup = (loss, { other = { annotations: 0, links: 0 }, clear, split } = {}) => {
+const setup = (
+  loss,
+  { other = { annotations: 0, links: 0 }, clear, split, tokenizeLoss, service = null } = {},
+) => {
   const doc = {
     id: 'd1',
     name: 'D',
@@ -43,6 +52,7 @@ const setup = (loss, { other = { annotations: 0, links: 0 }, clear, split } = {}
     clearLoss: vi.fn(() => clear),
     otherLossForSentenceSplit: vi.fn(() => split || { annotations: 0, links: 0 }),
     clearTokens: vi.fn(async () => true),
+    tokenizeLoss: vi.fn(() => tokenizeLoss || { annotations: 0, links: 0 }),
     toggleSentenceBoundary: vi.fn(async () => true),
     setWordMorphemes: vi.fn(async () => true),
     deleteWord: vi.fn(async () => true),
@@ -52,7 +62,7 @@ const setup = (loss, { other = { annotations: 0, links: 0 }, clear, split } = {}
     documentId: 'd1',
     project: { id: 'p1', name: 'P', writers: ['u1'], readers: [], maintainers: [] },
     doc,
-    services: {},
+    services: { tokenize: { spot: { service }, run: {}, start: vi.fn(async () => true) } },
     writeLockHeld: null,
   };
   return doc;
@@ -240,6 +250,57 @@ describe('the Text Editor asking before the sentences go', () => {
     await press('Split');
     await act(async () => done);
     expect(doc.toggleSentenceBoundary).toHaveBeenCalledWith(2);
+    await view.unmount();
+  });
+});
+
+// REV-N5-CORE F3: the sentences Tokenize makes can cut relations another
+// layer keeps inside one sentence.
+describe('the Text Editor asking before Tokenize', () => {
+  it('runs at once when the new sentences cut nothing', async () => {
+    const doc = setup({ annotations: 0, relations: 0, forms: 0 });
+    const view = await mount();
+    await act(async () => tokenizeProps.props.tokenize.start('home'));
+    expect(dialog()).toBeNull();
+    expect(doc.tokenizeLoss).toHaveBeenCalledWith('home');
+    expect(editor.current.services.tokenize.start).toHaveBeenCalledWith('home');
+    await view.unmount();
+  });
+
+  it('asks with the exact count for the built-in, and Cancel runs nothing', async () => {
+    const doc = setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { tokenizeLoss: { annotations: 3, links: 0 } },
+    );
+    const view = await mount();
+    let done;
+    await act(async () => {
+      done = tokenizeProps.props.tokenize.start('home');
+    });
+    expect(dialog().textContent).toContain('Tokenize?');
+    expect(dialog().textContent).toContain('Deletes 3 annotations.');
+    await press('Cancel');
+    await act(async () => done);
+    expect(editor.current.services.tokenize.start).not.toHaveBeenCalled();
+    expect(doc.tokenizeLoss).toHaveBeenCalledWith('home');
+    await view.unmount();
+  });
+
+  it('asks with the most a service can take, which decides its own breaks', async () => {
+    const doc = setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { tokenizeLoss: { annotations: 5, links: 0 }, service: { serviceId: 's' } },
+    );
+    const view = await mount();
+    let done;
+    await act(async () => {
+      done = tokenizeProps.props.tokenize.start('home');
+    });
+    expect(dialog().textContent).toContain('Deletes up to 5 annotations.');
+    expect(doc.tokenizeLoss).toHaveBeenCalledWith(null);
+    await press('Tokenize');
+    await act(async () => done);
+    expect(editor.current.services.tokenize.start).toHaveBeenCalledWith('home');
     await view.unmount();
   });
 });

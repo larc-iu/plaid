@@ -421,15 +421,33 @@ export function DocumentTokenize() {
         onConfirm={() => ops.confirmPendingTokenize()}
       >
         <p>
-          Re-tokenizing re-segments this document, discarding{' '}
-          <strong>
-            {ops.pendingTokenize?.annotations || 0} existing annotation
-            {ops.pendingTokenize?.annotations === 1 ? '' : 's'}
-            {ops.pendingTokenize?.links
-              ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}`
-              : ''}
-          </strong>{' '}
-          (word, morpheme, and sentence level).
+          {ops.pendingTokenize?.annotations || ops.pendingTokenize?.links ? (
+            <>
+              Re-tokenizing re-segments this document, discarding{' '}
+              <strong>
+                {ops.pendingTokenize?.annotations || 0} existing annotation
+                {ops.pendingTokenize?.annotations === 1 ? '' : 's'}
+                {ops.pendingTokenize?.links
+                  ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}`
+                  : ''}
+              </strong>{' '}
+              (word, morpheme, and sentence level).
+            </>
+          ) : (
+            'Re-tokenizing re-segments this document.'
+          )}
+          {ops.pendingTokenize?.cut ? (
+            <>
+              {' '}
+              New sentence breaks delete up to{' '}
+              <strong>
+                {ops.pendingTokenize.cut}
+                {ops.pendingTokenize.annotations || ops.pendingTokenize.links ? ' more' : ''}{' '}
+                annotation{ops.pendingTokenize.cut === 1 ? '' : 's'}
+              </strong>
+              .
+            </>
+          ) : null}
         </p>
       </ConfirmDeleteDialog>
     </TooltipProvider>
