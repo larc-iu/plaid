@@ -164,12 +164,16 @@ export const DocumentTabStrip = ({
           inset,
         )}
       >
+        {/* The negative margin narrows the gap to the tabs, which are always
+            on its right since the row stays left to right. A logical margin
+            would follow the name's own direction and, under an Arabic name,
+            pull the link past the page's left edge instead. */}
         {sticky && scrolledPast && (
           <Link
             to={routes.documents(projectId)}
             dir="auto"
             data-testid="tab-row-project"
-            className="-me-3 flex min-w-0 max-w-[16rem] shrink items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+            className="-mr-3 flex min-w-0 max-w-[16rem] shrink items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             <ProjectTartan project={project} size={14} className="shrink-0" />
             <span className="truncate">{project?.name || 'Project'}</span>
