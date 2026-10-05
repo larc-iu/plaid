@@ -49,11 +49,26 @@ const wordCreates = (tokenLayerId, text, words) =>
 // A batch refused because a new word of it lies over a word the server put
 // there: the edit placed a word where newTextWords did not foresee one.
 // Nothing of the batch is stored.
-const wordsOverlap = (err) =>
+export const wordsOverlap = (err) =>
   statusOf(err) === 409 &&
   /Bulk-created token overlaps|Tokens in batch overlap/i.test(
     String(err?.responseData?.error ?? err?.message ?? ''),
   );
+
+// The words "Tokenize new text" gives an edit of `gaps` over `base`, the
+// body stored (newTextWords.js), read off the word layer of `info` (layer
+// info, getIgtLayerInfo): none when the project has it off. The Baseline
+// save and the Media tab's transcript rows ask it alike.
+export const newWordsOf = (info, base, gaps) => {
+  const wordLayer = info?.primaryTokenLayer;
+  if (!wordLayer?.id || !readTokenizeNewText(wordLayer.config)) return [];
+  return newTextWords({
+    base,
+    gaps,
+    words: wordLayer.tokens || [],
+    ignored: readIgnoredTokens(wordLayer.config),
+  });
+};
 
 // The vocabulary links igt keeps beside the document (`vocabs`, a patch's
 // mutable copy), brought up to date from a text edit's `reshape` as the
@@ -98,7 +113,7 @@ export const documentMutations = {
   //
   // `tokenize`: a text made here gets the words of the project's "Tokenize new
   // text" (`_newWords`) in the batch that makes it. The Baseline tab asks for
-  // it, scripts and the Media tab do not.
+  // it, scripts do not.
   async saveBaselineText(newBody, base = this.body, { tokenize = false } = {}) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
@@ -366,14 +381,7 @@ export const documentMutations = {
   // body stored (newTextWords.js), read off the word layer on screen: none
   // when the project has it off.
   _newWords(base, gaps) {
-    const wordLayer = this.layerInfo.primaryTokenLayer;
-    if (!wordLayer?.id || !readTokenizeNewText(wordLayer.config)) return [];
-    return newTextWords({
-      base,
-      gaps,
-      words: wordLayer.tokens || [],
-      ignored: readIgnoredTokens(wordLayer.config),
-    });
+    return newWordsOf(this.layerInfo, base, gaps);
   },
 
   // The update half of `saveBaselineText`, from inside its send. Answers the
