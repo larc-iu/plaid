@@ -84,7 +84,9 @@
   --muted-foreground: 25 6% 40%;
   --accent: 40 14% 92%;
   --accent-foreground: 217 33% 17%;
-  --destructive: 0 84.2% 60.2%;
+  /* Error text reads at 4.5:1 or more on the page, a card, a muted fill and
+     its own 10% tint, and so does white on the solid button. */
+  --destructive: 0 74% 45%;
   --destructive-foreground: 210 40% 98%;
   --border: 30 8% 88%;
   --input: 30 8% 84%;
