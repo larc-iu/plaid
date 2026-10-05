@@ -196,9 +196,13 @@ class TokenProcessor:
             reset_loss = {**reset_loss, 'total': reset_loss['total'] + cut['total'],
                           'protected': reset_loss['protected'] + cut['protected']}
             if reset_loss['protected'] and not overwrite:
+                # A text with no sentences loses only what the new breaks
+                # cut, and has no sentence for the loss to be "in".
+                where = ("in the sentence" if existing_sentences
+                         else "across the new sentence breaks")
                 raise ValueError(
                     f"Re-tokenizing would delete {reset_loss['protected']} human-made or "
-                    f"human-verified annotation(s) in the sentence. "
+                    f"human-verified annotation(s) {where}. "
                     f"Re-run with overwrite enabled to replace them."
                 )
         elif sentence_layer:
@@ -339,7 +343,7 @@ class TokenProcessor:
                 # leaves the right half un-annotated, which is much better than the current
                 # behavior of cascade-deleting EVERY sentence-level annotation.
                 #
-                # We don't bother today because the gate above is "exactly one existing
+                # We don't bother today because the gate above is "at most one existing
                 # sentence", so the annotation-loss scope is bounded (and we already log a
                 # warning below). If we ever loosen the gate to allow re-tokenization across
                 # multiple existing sentences, switch to the refinement-check + split path.

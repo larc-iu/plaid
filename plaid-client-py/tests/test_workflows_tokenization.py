@@ -732,6 +732,9 @@ def test_new_sentences_refuse_to_cut_a_human_edge_without_overwrite():
     with pytest.raises(ValueError) as caught:
         _reset(doc)
     assert 'Re-tokenizing would delete 1 human-made' in str(caught.value)
+    # The text had no sentence for the loss to be in.
+    assert 'across the new sentence breaks' in str(caught.value)
+    assert 'in the sentence' not in str(caught.value)
     client = _FakeClient(doc)
     counts = TokenProcessor().process_tokens(
         client, 'd1', _two_sentences(), [TokenSpan(text='Hello', start=0, end=5)],

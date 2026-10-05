@@ -48,9 +48,10 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
  * app's, and every span / relation / vocab-link on them, plus the sentence's
  * own spans. A token's own content (a segmentation, an orthography line: any
  * metadata beyond provenance) counts as one annotation, and so does a stamped
- * token a person verified or contributed. With zero or >1
- * sentences the service takes the non-destructive word-only path, so nothing
- * here is lost. Used to surface a confirm before running.
+ * token a person verified or contributed. With no sentences the service
+ * makes them and deletes nothing (its breaks are countReTokenizeCut's), and
+ * with >1 it takes the non-destructive word-only path, so nothing here is
+ * lost. Used to surface a confirm before running.
  *
  * @returns {{annotations: number, links: number}}
  */
