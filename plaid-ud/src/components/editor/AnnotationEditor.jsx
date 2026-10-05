@@ -12,6 +12,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
+import { routeGridTab } from './annotation/tabOrder.js';
 import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
 import { usePrecedent } from './hooks/usePrecedent.js';
 import { ListPager } from '@ui/components/shared/list-search';
@@ -536,7 +537,13 @@ export const AnnotationEditor = () => {
           ) : (
             // The review gestures listen here, above every sentence, because
             // each of them can cross a sentence boundary.
-            <div onKeyDown={reviewKeyDown} ref={listTopRef}>
+            <div
+              onKeyDown={(event) => {
+                reviewKeyDown(event);
+                routeGridTab(event);
+              }}
+              ref={listTopRef}
+            >
               <EditorSessionContext.Provider value={session}>
                 {paged.pageItems.map((sentenceData, offset) => {
                   // The sentence's place in the DOCUMENT, not on the page.

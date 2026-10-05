@@ -36,7 +36,7 @@ const mount = (props, session = {}) => {
         tokenIndex={0}
         field="lemma"
         tokenForm="dogs"
-        tabIndex={1}
+        tabOrder={1}
         columnWidth={80}
         {...props}
       />
@@ -71,5 +71,21 @@ describe('EditableCell and the controlled fields', () => {
     const input = all(container, 'input')[0];
     expect(input.getAttribute('role')).toBe('combobox');
     await unmount();
+  });
+});
+
+describe("a cell's name and place in the Tab order", () => {
+  it('is named by its row and its word, and keeps out of the page Tab order', async () => {
+    const lemma = await mount({ tabOrder: 5 });
+    const input = all(lemma.container, 'input')[0];
+    expect(input.getAttribute('aria-label')).toBe('Lemma for dogs');
+    expect(input.getAttribute('data-tab-order')).toBe('5');
+    expect(input.getAttribute('tabindex')).toBe(null);
+    await lemma.unmount();
+    const upos = await mount({ field: 'upos', value: 'NOUN' });
+    const picker = all(upos.container, 'input')[0];
+    expect(picker.getAttribute('aria-label')).toBe('UPOS for dogs');
+    expect(picker.getAttribute('tabindex')).toBe(null);
+    await upos.unmount();
   });
 });

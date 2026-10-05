@@ -352,9 +352,12 @@ export const TextEditor = () => {
           widest row of buttons, and on a phone that pushed the page sideways. */}
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-4">
-          <h4 className="text-base font-semibold">Text</h4>
+          <h4 id="ud-text-heading" className="text-base font-semibold">
+            Text
+          </h4>
           <Textarea
             ref={textareaRef}
+            aria-labelledby="ud-text-heading"
             value={textContent}
             spellCheck={false}
             {...editLog.handlers}
@@ -424,7 +427,9 @@ export const TextEditor = () => {
             {/* Offline, the shell's save status says so, over every tab. */}
             {saving && !doc.isOffline && <span className="italic text-blue-600">Saving…</span>}
             {!saving && lastSaved && (
-              <span className="text-success">Saved: {lastSaved.toLocaleTimeString()}</span>
+              <span className="text-success-foreground">
+                Saved: {lastSaved.toLocaleTimeString()}
+              </span>
             )}
             {!saving && !lastSaved && textContent && isTextDirty && (
               <span className="italic text-warning-foreground">Unsaved changes</span>

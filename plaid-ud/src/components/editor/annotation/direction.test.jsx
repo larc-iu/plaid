@@ -161,7 +161,7 @@ describe('a cell decides for itself', () => {
           tokenIndex={0}
           field="lemma"
           tokenForm="الولد"
-          tabIndex={1}
+          tabOrder={1}
           columnWidth={80}
           {...props}
         />

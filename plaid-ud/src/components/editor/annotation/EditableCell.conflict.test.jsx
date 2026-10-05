@@ -62,7 +62,7 @@ const cellWith = (s, field, value) => (
       tokenIndex={0}
       field={field}
       tokenForm="sat"
-      tabIndex={1}
+      tabOrder={1}
       columnWidth={80}
     />
   </EditorSessionContext.Provider>

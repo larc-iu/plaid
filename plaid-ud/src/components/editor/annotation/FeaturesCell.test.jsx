@@ -35,7 +35,7 @@ const mount = (props = {}, session = {}) => {
         spanIds={[{ spanId: 'f1' }]}
         tokenId="t1"
         tokenIndex={0}
-        tabIndex={1}
+        tabOrder={1}
         columnWidth={120}
         {...props}
       />

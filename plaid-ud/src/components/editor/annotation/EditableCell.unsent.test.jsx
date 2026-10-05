@@ -39,7 +39,7 @@ const cellFor = (s, value) => (
       tokenIndex={0}
       field="lemma"
       tokenForm="dogs"
-      tabIndex={1}
+      tabOrder={1}
       columnWidth={80}
     />
   </EditorSessionContext.Provider>

@@ -17,6 +17,8 @@ import { useConflictCell } from '@ui/hooks/useConflictCell.js';
 import { ConflictNote } from '@ui/components/shared/conflict-note.jsx';
 
 // Editable cell component for annotation fields
+const FIELD_NAMES = { lemma: 'Lemma', xpos: 'XPOS', upos: 'UPOS' };
+
 export const EditableCell = React.memo(
   ({
     value,
@@ -24,7 +26,7 @@ export const EditableCell = React.memo(
     tokenIndex,
     field,
     tokenForm,
-    tabIndex,
+    tabOrder,
     columnWidth,
     cellColor,
     provMeta,
@@ -409,6 +411,9 @@ export const EditableCell = React.memo(
     // Machine-origin record for the tooltip + the producer's distribution (when
     // one was recorded in provDetail) for ranking the dropdown.
     const cellTitle = provCellTitle(`Edit ${field}`, provMeta);
+    // The name a screen reader gives the cell: its row and its word, as igt's
+    // grid says "Gloss for dog". The tooltip stays a description.
+    const cellName = `${FIELD_NAMES[field] ?? field} for ${tokenForm ?? ''}`.trim();
     const fieldProbs = readFieldProbs(provMeta, field);
 
     // Read-only (viewer access or time travel): render the value as static text,
@@ -615,7 +620,8 @@ export const EditableCell = React.memo(
           // combobox, which has focus already.
           autoFocus={!!precedent}
           autoHighlight={false}
-          tabIndex={tabIndex}
+          data-tab-order={tabOrder}
+          aria-label={cellName}
           title={cellTitle}
           className={fieldClass}
           style={{
@@ -646,8 +652,9 @@ export const EditableCell = React.memo(
           width: columnWidth ? `${columnWidth}px` : 'auto',
           ...(hasContent && cellColor && !mark ? { color: cellColor } : {}),
         }}
+        aria-label={cellName}
         title={cellTitle}
-        tabIndex={tabIndex}
+        data-tab-order={tabOrder}
       />,
     );
   },

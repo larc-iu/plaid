@@ -21,7 +21,7 @@ const cell = (tokenId, field) => (
     tokenIndex={0}
     field={field}
     tokenForm="x"
-    tabIndex={1}
+    tabOrder={1}
     columnWidth={80}
   />
 );

@@ -20,7 +20,7 @@ import { useEditorSession } from './editorSession.js';
 // clears it. Left/Right at an empty input with no selection fall through to
 // grid column navigation, like every other cell.
 export const FeaturesCell = React.memo(
-  ({ feats, spanIds, tokenId, tokenIndex, tabIndex, columnWidth, onNavigate }) => {
+  ({ feats, spanIds, tokenId, tokenIndex, tokenForm, tabOrder, columnWidth, onNavigate }) => {
     const session = useEditorSession();
     const { isReadOnly, onAnnotationUpdate, onFeatureDelete } = session;
     const validate = session.validators?.feats;
@@ -291,7 +291,8 @@ export const FeaturesCell = React.memo(
             // it. Gated on input so Enter on an EMPTY cell doesn't insert the
             // first inventory key.
             autoHighlight={text.length > 0}
-            tabIndex={tabIndex}
+            data-tab-order={tabOrder}
+            aria-label={`Add feature for ${tokenForm ?? ''}`.trim()}
             placeholder="+"
             title="Add feature (Key=Value)"
             // Always empty when untouched, so Ctrl/Cmd+Backspace over it is the

@@ -289,12 +289,12 @@ test('B4+B5: grid arrow navigation and tab order', async ({ page }) => {
   const input = featsInput(page, 1); // dog
   const upos = page.locator(`[id="${S.morphIds[1]}-upos"]`);
 
-  // B5: feats input carries a positive tabindex
-  const tab = await input.getAttribute('tabindex');
-  console.log('feats tabindex (dog):', tab);
+  // B5: the feats input has a place in the grid's Tab walk, after the UPOS
+  // row, and no positive tabindex (that put the grid ahead of the page).
+  const tab = await input.getAttribute('data-tab-order');
   expect(Number(tab)).toBeGreaterThan(0);
-  const uposTab = await upos.getAttribute('tabindex');
-  console.log('upos tabindex (dog):', uposTab);
+  expect(await input.getAttribute('tabindex')).toBe(null);
+  const uposTab = await upos.getAttribute('data-tab-order');
   expect(Number(tab)).toBeGreaterThan(Number(uposTab)); // feats row comes after upos row
 
   // ArrowUp from feats (dropdown closed) -> UPOS input
