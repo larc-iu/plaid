@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { cn } from '../../lib/utils.js';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
@@ -41,6 +41,10 @@ import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
  * `inset` is the horizontal padding each part takes in that box, for a page
  * whose body runs to the window's edge (plaid-ud's and plaid-umr's grids).
  *
+ * Once the page has scrolled the breadcrumb and heading out of sight, the
+ * pinned row starts with the project's tartan, a link back to the project, so
+ * leaving a long document does not mean scrolling back to its top.
+ *
  * While pinned, the row's height is measured into `--plaid-tab-row-height` on
  * the root, where index.css adds it to the page's scroll padding, so a row
  * scrolled to the top of the window lands below the tabs. Measured, because on
@@ -65,7 +69,33 @@ export const DocumentTabStrip = ({
   const guard = useUnsavedGuard();
   const routes = appRoutes();
   const rowRef = useRef(null);
+  const headingRef = useRef(null);
+  // The heading has gone up behind the pinned row, and the breadcrumb with it.
+  const [scrolledPast, setScrolledPast] = useState(false);
   useProjectFavicon(project);
+
+  useLayoutEffect(() => {
+    if (!sticky) return undefined;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const heading = headingRef.current;
+      const row = rowRef.current;
+      if (!heading || !row) return;
+      setScrolledPast(heading.getBoundingClientRect().bottom <= row.getBoundingClientRect().top);
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [sticky]);
 
   // `document` here is the Plaid document, so the page is `window.document`.
   useLayoutEffect(() => {
@@ -108,6 +138,7 @@ export const DocumentTabStrip = ({
           chrome, so an Arabic name reads right to left and still starts at the
           left edge under the breadcrumb. */}
       <h1
+        ref={headingRef}
         className={cn(
           'mb-2 break-words font-text text-[1.75rem] font-bold leading-tight',
           !name && 'text-muted-foreground',
@@ -128,6 +159,17 @@ export const DocumentTabStrip = ({
           inset,
         )}
       >
+        {sticky && scrolledPast && (
+          <Link
+            to={routes.documents(projectId)}
+            title={project?.name}
+            aria-label={project?.name || 'Project'}
+            data-testid="tab-row-project"
+            className="-me-3 shrink-0 rounded-sm opacity-80 hover:opacity-100"
+          >
+            <ProjectTartan project={project} size={18} />
+          </Link>
+        )}
         <Tabs
           value={active}
           onValueChange={(v) => !disabled && navigate(to[v])}

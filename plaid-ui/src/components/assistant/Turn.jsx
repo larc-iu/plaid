@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import {
   BookOpen,
+  Clock,
   ChevronDown,
   ChevronRight,
   FolderOpen,
@@ -9,6 +10,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
@@ -236,6 +238,14 @@ export const Turn = ({
             project's guidelines were in the prompt. Its own line and not part
             of the trace, because a turn that called no tool has no trace and
             this still has to show. */}
+        {/* How long the reply took, which the clock showed while it was
+            written and which is wanted after. */}
+        {typeof item.elapsedMs === 'number' && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span className="tabular-nums">Answered in {formatElapsed(item.elapsedMs)}</span>
+          </div>
+        )}
         {item.contextNote && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <BookOpen className="h-3 w-3 shrink-0" />

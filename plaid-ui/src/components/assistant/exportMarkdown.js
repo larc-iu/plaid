@@ -4,6 +4,7 @@
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
 import { linkifyCitations, markdownText } from './citations.js';
+import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
   couldNotOpen,
   namedCitations,
@@ -87,6 +88,8 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       out.push('## Assistant', '');
       // What it did before answering, in the service's own words.
       if (d.stepsSummary) out.push(`*${d.stepsSummary}*`, '');
+      if (typeof d.elapsedMs === 'number')
+        out.push(`*Answered in ${formatElapsed(d.elapsedMs)}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');
       if (d.unavailableProjects?.length)
         out.push(`*${markdownText(couldNotOpen(d.unavailableProjects))}*`, '');

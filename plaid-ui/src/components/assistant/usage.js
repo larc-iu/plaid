@@ -50,14 +50,21 @@ export const fullness = (usage) => {
 
 const thousands = (n) => (n || 0).toLocaleString('en-US');
 
-// The tooltip: the counts the percentage came from, and what the thread has
-// cost. Said in full, because this is the place someone goes to see the
-// numbers rather than the summary.
+// The tooltip: what the percentage is a percentage OF, the counts it came
+// from, and what the thread has cost. The bar alone read as a share of a
+// quota spent, where it is how much of what the model reads at once this
+// conversation now takes.
 export const usageTitle = (usage, spend) => {
   if (!usage) return null;
-  const lines = usage.window
-    ? [`${thousands(usage.sent)} of ${thousands(usage.window)} tokens sent on the last turn.`]
-    : [`${thousands(usage.sent)} tokens sent on the last turn. This model's limit is not known.`];
+  const f = fullness(usage);
+  const lines =
+    f !== null
+      ? [
+          `This conversation takes up ${Math.round(f * 100)}% of what the model can read at once: ` +
+            `${thousands(usage.sent)} of ${thousands(usage.window)} tokens on the last turn.`,
+        ]
+      : [`${thousands(usage.sent)} tokens on the last turn. This model's limit is not known.`];
+  lines.push('A token is a word or a piece of one.');
   if (spend) lines.push(`${thousands(spend)} tokens over the whole conversation.`);
   return lines.join('\n');
 };

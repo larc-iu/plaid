@@ -176,3 +176,38 @@ describe('DocumentTabStrip', () => {
     expect(tabs.every((t) => t.tagName === 'BUTTON' && t.disabled)).toBe(true);
   });
 });
+
+describe('the pinned row, once the heading has scrolled away', () => {
+  // The page has no layout under test, so where the heading and the row
+  // stand is said outright: the heading's bottom against the row's top.
+  const place = (headingBottom, rowTop) => {
+    const h1 = view.container.querySelector('h1');
+    const row = view.container.querySelector('[data-testid="document-tab-row"]');
+    h1.getBoundingClientRect = () => ({ bottom: headingBottom });
+    row.getBoundingClientRect = () => ({ top: rowTop });
+  };
+  const scroll = () =>
+    view.step(async () => {
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((r) => window.requestAnimationFrame(() => r()));
+    });
+
+  it('starts with a link back to the project, and only then', async () => {
+    await mount({ document: { name: 'One' }, sticky: true });
+    place(200, 120);
+    await scroll();
+    expect(view.container.querySelector('[data-testid="tab-row-project"]')).toBeNull();
+    place(40, 57);
+    await scroll();
+    const link = view.container.querySelector('[data-testid="tab-row-project"]');
+    expect(link.getAttribute('href')).toContain('/projects/p1');
+    expect(link.getAttribute('aria-label')).toBe('Ay');
+  });
+
+  it('is never drawn on a strip that is not pinned', async () => {
+    await mount({ document: { name: 'One' } });
+    place(40, 57);
+    await scroll();
+    expect(view.container.querySelector('[data-testid="tab-row-project"]')).toBeNull();
+  });
+});

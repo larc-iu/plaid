@@ -94,3 +94,22 @@ def test_the_transcript_budget_is_the_windows_share_less_the_prompt_and_tools():
     # No window known: no token budget (prune falls back to bytes).
     svc.cfg = ModelConfig(model=UNKNOWN)
     assert svc.transcript_budget(UNKNOWN, ('s', [])) is None
+
+
+def test_the_reply_keeps_how_long_it_took(monkeypatch):
+    """The panel's clock runs while a reply is written and was gone once it
+    landed. The reader wants the figure afterwards, so the reply keeps it."""
+    client = FakeClient()
+    store = _seed(client)
+
+    def slow_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        import time
+        time.sleep(0.05)
+        return TurnResult('Done.', [{'role': 'assistant', 'content': 'Done.'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', slow_run_turn)
+    helper = Helper()
+    _service().process_request(_request(client), helper)
+    assert not helper.errors, helper.errors
+    conv, _meta = store.load('c1')
+    assert conv['display'][-1]['elapsed_ms'] >= 50

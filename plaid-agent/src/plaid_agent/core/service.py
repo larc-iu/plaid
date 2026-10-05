@@ -486,6 +486,10 @@ class BaseAssistantService(BaseService):
 
     def _turn(self, client, project, store, conv_id, conv, meta, request_id, response_helper,
               request_data: Optional[dict] = None) -> None:
+        # How long the reply took, kept on it: the reader watches a clock while
+        # it is written and wants the figure after (comparing it with doing the
+        # same by hand).
+        started = time.monotonic()
         transcript = conv['messages']
         if not transcript or transcript[-1].get('role') != 'user':
             response_helper.error('The conversation has no message to answer')
@@ -588,6 +592,7 @@ class BaseAssistantService(BaseService):
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
                               version=self.version, service=self.service_id)
+        item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
         if reach is not None and reach.unavailable:
             item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
