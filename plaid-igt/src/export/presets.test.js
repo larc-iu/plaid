@@ -134,7 +134,6 @@ describe('preset persistence', () => {
     expect(latexVocabulary(preset.options, vocabs).include).toBe(true);
     const choice = latexVocabulary(preset.options, vocabs);
     choice.scope = 'all';
-    choice.numbersInTexts = true;
     choice.vocabularies[0].fields[0].on = false;
     const edited = {
       ...preset,

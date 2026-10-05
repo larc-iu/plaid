@@ -1193,9 +1193,10 @@ The chapter is called "Vocabulary", or, with more than one vocabulary, one chapt
 Headwords are in alphabetical order for the project's language, an affix such as `-s` under its letters, and headwords spelled alike in the order of their numbers.
 Each headword shows its form, its number as a subscript (kai₁), its gloss and fields, the numbers of the examples promoted to it that are in the book, and then each sense by its number.
 An example number such as 3.12 is the twelfth example of chapter 3, and it links to it in the PDF.
-**Entry numbers in the texts** writes the entry's number after each linked word and morpheme in the examples, as the vocabulary chapter writes it, so a reader finds the right one of the entries spelled alike.
-A morpheme's number is on the morpheme line, and a word's on the word line.
 A headword with no senses and no other headword spelled alike has no number, and shows none.
+In the PDF, each word and morpheme of the examples that is linked to an entry in the chapter links to that entry, or to the sense it is linked to, however it is spelled.
+A word of a multi-word expression links to the expression's entry.
+The links are not marked on the page.
 
 The `.zip` holds:
 

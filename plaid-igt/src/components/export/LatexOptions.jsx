@@ -84,8 +84,7 @@ const OrderedList = ({ title, items, nameOf, scopeOf = () => null, onChange }) =
 );
 
 // The vocabulary chapter: whether there is one, which entries it lists, which
-// vocabularies and fields, and whether the texts show entry numbers. Any
-// change stores every choice.
+// vocabularies and fields. Any change stores every choice.
 const VocabularyOptions = ({ choice, onChange }) => {
   const set = (patch) => onChange(storedLatexVocabulary({ ...choice, ...patch }));
   const setVocab = (id, patch) =>
@@ -153,14 +152,6 @@ const VocabularyOptions = ({ choice, onChange }) => {
           ))}
         </div>
       )}
-      <Toggle
-        label="Entry numbers in the texts"
-        checked={choice.numbersInTexts}
-        onChange={(v) => set({ numbersInTexts: v })}
-      />
-      <p className="text-xs text-muted-foreground">
-        A linked word or morpheme whose entry has a number shows it, as in kai₁.
-      </p>
     </div>
   );
 };

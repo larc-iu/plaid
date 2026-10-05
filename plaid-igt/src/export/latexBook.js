@@ -267,33 +267,41 @@ const plainCell = (macro, docDir) => (text) =>
 const glossCell = (macro, docDir) => (text, pieces) =>
   inScript(texWord((t) => texGloss(t, pieces))(text), texLine(text), docDir, macro);
 
-// An entry's dotted number (buildItemNumbers) as a subscript after its form,
-// kai₁, in the texts and in the vocabulary alike. Digits and dots only.
+// An entry's dotted number (buildItemNumbers) as a subscript after its form
+// in the vocabulary, kai₁. Digits and dots only.
 const homonym = (number) => (number ? `\\PlaidHomonym{${number}}` : '');
 
-// A word cell with its entry's number after it.
-const numberedWordCell = (macro, docDir) => (text, number) =>
-  number
-    ? inScript(
-        texWord((t) => `${texEscape(t)}${homonym(number)}`)(text),
-        texLine(text),
-        docDir,
-        macro,
-      )
-    : plainCell(macro, docDir)(text);
+// An entry's name as a PDF destination: its id's UTF-8 bytes as the letters
+// a to p, one per half byte. Letters only, so the passes over a rendered cell
+// (ltrNumbers, rtlRuns) find nothing in it, and one name per id.
+const LETTERS = 'abcdefghijklmnop';
+export const entryAnchor = (id) =>
+  [...new TextEncoder().encode(String(id))].map((b) => LETTERS[b >> 4] + LETTERS[b & 15]).join('');
 
-// A segmented word with each morpheme's entry number after that morpheme,
-// joined as the plain line joins them (joinerBetween on the bare forms).
-const numberedMorphemes = (morphemes, numbers) => {
-  const forms = morphemes.map((m) => morphFormOf(m));
+// `rendered` as a link to the entry `id` in the vocabulary, when the chapter
+// lists it. A link takes no room, so the columns stay as they were.
+const linkTo = (entries, id, rendered) =>
+  id && entries?.has(id) ? `\\PlaidEntryLink{${entryAnchor(id)}}{${rendered}}` : rendered;
+
+// A word cell, linked to its entry.
+const linkedWordCell = (macro, docDir, entries) => (text, id) =>
+  inScript(texWord((t) => linkTo(entries, id, texEscape(t)))(text), texLine(text), docDir, macro);
+
+// A segmented word with each morpheme linked to its entry, joined as the
+// plain line joins them (joinerBetween on the bare forms). Null when the
+// pieces do not spell `text`, so the cell is never other than the plain one.
+const linkedMorphemes = (text, morphemes, entries) => {
+  const forms = morphemes.map((m) => texLine(morphFormOf(m)));
   const piece = (i) => ({
     text: forms[i],
     morphType: morphemes[i].morphType ?? morphemes[i].metadata?.morphType,
   });
+  const joints = forms.map((_, i) => (i === 0 ? '' : joinerBetween(piece(i - 1), piece(i))));
+  if (forms.map((f, i) => joints[i] + f).join('') !== text) return null;
   return forms
     .map(
       (form, i) =>
-        `${i === 0 ? '' : joinerBetween(piece(i - 1), piece(i))}${texEscape(texLine(form))}${homonym(numbers[i])}`,
+        `${texEscape(joints[i])}${form === '' ? '' : linkTo(entries, morphemes[i].vocabItem?.id, texEscape(form))}`,
     )
     .join('');
 };
@@ -307,29 +315,22 @@ const numberedMorphemes = (morphemes, numbers) => {
  * shows an uncovered stretch as one inert column. Here each run is its own,
  * so a long untokenized stretch can break across lines like any other.
  */
-// Two spellings of one form: the same letters, whatever the case and the
-// affix marks (-s, a=).
-const bareSpelling = (s) =>
-  texLine(s ?? '')
-    .normalize('NFC')
-    .replace(/^[-=]+|[-=]+$/g, '')
-    .toLocaleLowerCase();
-const sameSpelling = (a, b) => bareSpelling(a) === bareSpelling(b);
-
 const namesOf = (rows, kind) => rows.filter((r) => r.kind === kind).map((r) => r.name);
 
-function sentenceColumns(sentence, selection, numbers = null) {
+function sentenceColumns(sentence, selection) {
   const fields = {
     morphFields: namesOf(selection.rows, ROW_KINDS.MORPHEME_FIELD),
     wordFields: namesOf(selection.rows, ROW_KINDS.WORD_FIELD),
   };
   const orthographies = namesOf(selection.rows, ROW_KINDS.ORTHOGRAPHY);
   const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
-  // The number of the entry a word or morpheme is linked to, when it has one
-  // and the text spells it as the entry does: kai₁ after an allomorph ke
-  // would name another entry.
-  const numberOf = (linked, form) =>
-    numbers && linked?.id && sameSpelling(form, linked.form) ? (numbers.get(linked.id) ?? '') : '';
+  // The entry of the multi-word expression each word is in.
+  const mweEntryOf = new Map();
+  for (const mwe of sentence.mwes || []) {
+    for (const id of mwe.memberTokenIds || []) {
+      if (!mweEntryOf.has(id) && mwe.item?.id) mweEntryOf.set(id, mwe.item.id);
+    }
+  }
   const columns = [];
   for (const piece of pieces) {
     if (piece.type === 'token') {
@@ -338,7 +339,6 @@ function sentenceColumns(sentence, selection, numbers = null) {
       const word = piece.content ?? '';
       // A word with no morphemes (punctuation the project skips) has none to show.
       const segmented = morphemes.length ? cells.segmented : '';
-      const morphNumbers = morphemes.map((m) => numberOf(m.vocabItem, morphFormOf(m)));
       columns.push({
         word,
         orthographies: orthographies.map((o) => piece.orthographies?.[o] ?? ''),
@@ -347,11 +347,14 @@ function sentenceColumns(sentence, selection, numbers = null) {
         morphLines: cells.morphLines,
         morphPieces: cells.morphPieces,
         morphemes,
-        morphNumbers,
-        wordNumber: numberOf(piece.vocabItem, word),
-        // A word that is its one morpheme shows that morpheme's number when
+        wordEntry: piece.vocabItem?.id ?? null,
+        mweEntry: mweEntryOf.get(piece.id) ?? null,
+        // A word that is its one morpheme goes to that morpheme's entry when
         // the morpheme line is not printed.
-        soleNumber: morphemes.length === 1 && segmented === word ? morphNumbers[0] : '',
+        soleEntry:
+          morphemes.length === 1 && segmented === word
+            ? (morphemes[0].vocabItem?.id ?? null)
+            : null,
       });
       continue;
     }
@@ -365,9 +368,9 @@ function sentenceColumns(sentence, selection, numbers = null) {
         morphLines: fields.morphFields.map(() => ''),
         morphPieces: fields.morphFields.map(() => null),
         morphemes: [],
-        morphNumbers: [],
-        wordNumber: '',
-        soleNumber: '',
+        wordEntry: null,
+        mweEntry: null,
+        soleEntry: null,
       });
     }
   }
@@ -384,7 +387,7 @@ const hasValue = (cells) => cells.some((c) => texLine(c) !== '');
  * word in the sentence is its own single morpheme, which would only print the
  * words a second time.
  */
-function glossLines(columns, selection, docDir) {
+function glossLines(columns, selection, docDir, entries) {
   const lines = [];
   const add = (texts, render, pieces = null) => {
     if (!hasValue(texts)) return;
@@ -398,8 +401,14 @@ function glossLines(columns, selection, docDir) {
     if (row.kind === ROW_KINDS.WORDS) {
       add(
         columns.map((c) => c.word),
-        numberedWordCell('PlaidWord', docDir),
-        columns.map((c) => c.wordNumber || (morphemeLine ? '' : c.soleNumber)),
+        linkedWordCell('PlaidWord', docDir, entries),
+        // A word goes to its own entry, else to its expression's, else (with
+        // no morpheme line) to its one morpheme's: the first the chapter lists.
+        columns.map((c) =>
+          [c.wordEntry, c.mweEntry, morphemeLine ? null : c.soleEntry].find((id) =>
+            entries?.has(id),
+          ),
+        ),
       );
     } else if (row.kind === ROW_KINDS.ORTHOGRAPHY) {
       const i = index.orthography++;
@@ -418,15 +427,15 @@ function glossLines(columns, selection, docDir) {
         const plain = plainCell('PlaidMorphemes', docDir);
         add(
           columns.map((c) => c.segmented),
-          (text, c) =>
-            c.morphNumbers.some(Boolean)
-              ? inScript(
-                  texWord(() => numberedMorphemes(c.morphemes, c.morphNumbers))(text),
-                  texLine(text),
-                  docDir,
-                  'PlaidMorphemes',
-                )
-              : plain(text),
+          (text, c) => {
+            const linked =
+              entries && c.morphemes.some((m) => entries.has(m.vocabItem?.id))
+                ? linkedMorphemes(texLine(text), c.morphemes, entries)
+                : null;
+            return linked === null
+              ? plain(text)
+              : inScript(texWord(() => linked)(text), texLine(text), docDir, 'PlaidMorphemes');
+          },
           columns,
         );
       }
@@ -450,10 +459,10 @@ function glossLines(columns, selection, docDir) {
 export function formatExample(
   sentence,
   selection,
-  { docDir = 'ltr', speaker = null, numbers = null } = {},
+  { docDir = 'ltr', speaker = null, entries = null } = {},
 ) {
-  const columns = sentenceColumns(sentence, selection, numbers);
-  const lines = glossLines(columns, selection, docDir);
+  const columns = sentenceColumns(sentence, selection);
+  const lines = glossLines(columns, selection, docDir, entries);
   const free = selection.sentFields
     .map((name) => ({ name, value: texLine(sentence.annotations?.[name]?.value ?? '') }))
     .filter((f) => f.value !== '');
@@ -484,10 +493,11 @@ const RUNNING_HEAD_CHARS = 45;
 /**
  * One document as a chapter: its name, the metadata fields that have a value
  * (when the preset includes them), and its sentences as examples numbered
- * from 1. `numbers` (entry id -> its number) writes each linked word's or
- * morpheme's entry number after it. Returns the file's text.
+ * from 1. `entries` (chapterEntryIds, the ids of the entries the vocabulary
+ * chapter lists) makes each word and morpheme linked to one of them a link to
+ * it in the PDF. Returns the file's text.
  */
-export function formatChapter(igtDoc, selection, { numbers = null } = {}) {
+export function formatChapter(igtDoc, selection, { entries = null } = {}) {
   const docData = igtDoc.document || {};
   const docDir = igtDoc.textDirection === RTL ? RTL : 'ltr';
   const name = texLine(docData.name ?? '');
@@ -517,7 +527,7 @@ export function formatChapter(igtDoc, selection, { numbers = null } = {}) {
   const alignment = igtDoc.alignmentTokens || [];
   for (const sentence of igtDoc.sortedSentences || []) {
     const speaker = phraseSpeakerFor(sentence, alignment);
-    out.push(formatExample(sentence, selection, { docDir, speaker, numbers }), '');
+    out.push(formatExample(sentence, selection, { docDir, speaker, entries }), '');
   }
   if (docDir === RTL) out.push('\\end{PlaidRightToLeft}', '');
   return `${out.join('\n')}\n`;
@@ -865,8 +875,8 @@ const PLAIN_MORPH_TYPES = new Set(['stem', 'root']);
  * the project's list of vocabularies as a project read gives it ({ id, name,
  * config }). The chapter is on by default when there is a vocabulary, every
  * vocabulary and every field it exports is on unless the preset switched it
- * off (Status and Morph Type start off), the chapter lists the entries the
- * texts use, and the texts show no entry numbers.
+ * off (Status and Morph Type start off), and the chapter lists the entries
+ * the texts use.
  */
 export function latexVocabulary(options, vocabs) {
   const saved =
@@ -876,7 +886,6 @@ export function latexVocabulary(options, vocabs) {
   return {
     include: typeof saved.include === 'boolean' ? saved.include : list.length > 0,
     scope: saved.scope === VOCAB_SCOPES.ALL ? VOCAB_SCOPES.ALL : VOCAB_SCOPES.USED,
-    numbersInTexts: saved.numbersInTexts === true,
     vocabularies: list.map((v) => {
       const s = savedVocabs.find((x) => x?.id === v.id);
       const savedFields = Array.isArray(s?.fields) ? s.fields : [];
@@ -898,7 +907,6 @@ export function latexVocabulary(options, vocabs) {
 export const storedLatexVocabulary = (choice) => ({
   include: choice.include,
   scope: choice.scope,
-  numbersInTexts: choice.numbersInTexts,
   vocabularies: choice.vocabularies.map((v) => ({
     id: v.id,
     on: v.on,
@@ -906,11 +914,23 @@ export const storedLatexVocabulary = (choice) => ({
   })),
 });
 
-/** Every entry's number across `vocabularies`, by entry id (buildItemNumbers). */
-export const entryNumbers = (vocabularies) => {
-  const out = new Map();
-  for (const v of vocabularies || []) {
-    for (const [id, n] of buildItemNumbers(v.items || [])) out.set(id, n);
+/**
+ * The ids of the entries the vocabulary chapter can list: every headword of
+ * the vocabularies `choice` has on, and every sense under one. With the
+ * chapter off, none. A text links a word or morpheme only to one of these,
+ * and the chapter lists every one a text links to.
+ */
+export const chapterEntryIds = (vocabularies, choice) => {
+  const out = new Set();
+  if (!choice?.include) return out;
+  const on = new Set(choice.vocabularies.filter((v) => v.on).map((v) => v.id));
+  for (const vocab of vocabularies || []) {
+    if (!on.has(vocab.id)) continue;
+    const tree = buildSenseTree(vocab.items || []);
+    for (const root of tree.roots) {
+      out.add(root.id);
+      for (const sense of descendantsOf(tree, root.id)) out.add(sense.id);
+    }
   }
   return out;
 };
@@ -1050,6 +1070,8 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
       homographNo(a) - homographNo(b) ||
       position.get(a.id) - position.get(b.id),
   );
+  // Each headword and sense is the destination of the texts' links to it.
+  const target = (id, rendered) => `\\PlaidEntryTarget{${entryAnchor(id)}}{${rendered}}`;
   return listed.map((root) => {
     const body = parts(root);
     for (const sense of descendantsOf(tree, root.id)) {
@@ -1059,9 +1081,11 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
         texLine(sense.form ?? '') !== texLine(root.form ?? '')
           ? `${entryName(sense.form ?? '', '', 'PlaidEntryForm')} `
           : '';
-      body.push(`\\PlaidSense{${numbers.get(sense.id)}}{${form}${parts(sense).join(' ')}}`);
+      body.push(
+        `\\PlaidSense{${target(sense.id, numbers.get(sense.id))}}{${form}${parts(sense).join(' ')}}`,
+      );
     }
-    return `\\PlaidEntry{${entryName(root.form ?? '', numbers.get(root.id), 'PlaidEntryForm')}}{${body.join(' ')}}`;
+    return `\\PlaidEntry{${target(root.id, entryName(root.form ?? '', numbers.get(root.id), 'PlaidEntryForm'))}}{${body.join(' ')}}`;
   });
 }
 
@@ -1229,7 +1253,7 @@ ${scriptFonts(scripts)}
     \\setlength{\\itemsep}{0pt}\\setlength{\\parsep}{0pt}\\renewcommand{\\makelabel}[1]{##1\\hfil}}}%
   {\\end{list}\\end{multicols}}
 
-% The vocabulary, and an entry's number after a form in the texts.
+% The vocabulary. A linked word or morpheme in the texts links to its entry.
 \\newcommand{\\PlaidHomonym}[1]{\\textsubscript{\\normalfont #1}} % an entry's number: kai₁
 \\newcommand{\\PlaidEntry}[2]{\\par\\hangindent=1em\\hangafter=1\\noindent #1 #2\\par} % an entry
 \\newcommand{\\PlaidEntryForm}[1]{\\textbf{#1}}     % an entry's form
@@ -1238,6 +1262,8 @@ ${scriptFonts(scripts)}
 \\newcommand{\\PlaidEntryExamples}[1]{(#1)}         % the examples that show it
 \\newcommand{\\PlaidExampleRef}[2]{\\hyperlink{plaidex.#1.#2}{#1.#2}} % chapter and example
 \\newcommand{\\PlaidSense}[2]{\\textbf{#1.}~#2}     % a sense, by its number
+\\newcommand{\\PlaidEntryTarget}[2]{\\hypertarget{plaidentry.#1}{#2}} % where a link to an entry goes
+\\newcommand{\\PlaidEntryLink}[2]{\\hyperlink{plaidentry.#1}{#2}}     % a word or morpheme linked to it
 \\newenvironment{PlaidEntryList}{\\begin{multicols}{2}\\raggedright\\small}{\\end{multicols}}
 
 % Text that reads the other way from the text around it. A right-to-left run

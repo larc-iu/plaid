@@ -1499,16 +1499,19 @@ describe('runExport: LaTeX book', () => {
     expect(vocabulary).toContain('\\chapter*{Vocabulary}');
     // Both entries spelled perro, the homographs, are numbered as the vocabulary numbers them.
     expect(vocabulary).toContain(
-      '\\PlaidEntry{\\PlaidEntryForm{perro}\\PlaidHomonym{1}}{\\PlaidEntryGloss{dog} \\PlaidEntryExamples{\\PlaidExampleRef{2}{1}}}',
+      '\\PlaidEntry{\\PlaidEntryTarget{gjdb}{\\PlaidEntryForm{perro}\\PlaidHomonym{1}}}{\\PlaidEntryGloss{dog} \\PlaidEntryExamples{\\PlaidExampleRef{2}{1}}}',
     );
     expect(vocabulary).not.toContain('gato');
     expect(vocabulary).not.toContain('bitch');
     expect(text(entries, 'main.tex')).toContain('\\backmatter\n\\include{vocabulary}');
-    // The texts show no numbers unless asked.
-    expect(text(entries, 'texts/002-beta.tex')).toContain('\\gla \\PlaidWord{perro} ');
+    // The linked word links to its entry (i1, whose destination is gjdb),
+    // and shows no number.
+    expect(text(entries, 'texts/002-beta.tex')).toContain(
+      '\\gla \\PlaidWord{\\PlaidEntryLink{gjdb}{perro}} \\PlaidWord{yo} //',
+    );
   });
 
-  it('lists every entry when asked, and numbers the linked words in the texts', async () => {
+  it('lists every entry when asked, and ignores the entry numbers an old preset asked for', async () => {
     const client = stubClient({ docs: [linkedDoc('d2', 'Beta')], vocab: LINKED_VOCAB });
     const result = await runExport({
       client,
@@ -1520,14 +1523,15 @@ describe('runExport: LaTeX book', () => {
     const vocabulary = text(entries, 'vocabulary.tex');
     expect(vocabulary.indexOf('{gato}')).toBeLessThan(vocabulary.indexOf('{perro}'));
     expect(vocabulary).toContain(
-      '\\PlaidEntryForm{perro}\\PlaidHomonym{2}}{\\PlaidEntryGloss{bitch}}',
+      '\\PlaidEntryTarget{gjdd}{\\PlaidEntryForm{perro}\\PlaidHomonym{2}}}{\\PlaidEntryGloss{bitch}}',
     );
-    expect(text(entries, 'texts/001-beta.tex')).toContain(
-      '\\gla \\PlaidWord{perro\\PlaidHomonym{1}} \\PlaidWord{yo} //',
-    );
+    expect(vocabulary).toContain('\\PlaidEntryTarget{gjdc}{\\PlaidEntryForm{gato}}');
+    const texts = text(entries, 'texts/001-beta.tex');
+    expect(texts).toContain('\\gla \\PlaidWord{\\PlaidEntryLink{gjdb}{perro}} \\PlaidWord{yo} //');
+    expect(texts).not.toContain('PlaidHomonym');
   });
 
-  it('reads no vocabulary when the chapter and the numbers are off', async () => {
+  it('reads no vocabulary and links nothing when the chapter is off', async () => {
     const client = stubClient({ docs: [linkedDoc('d2', 'Beta')], vocab: LINKED_VOCAB });
     const result = await runExport({
       client,
@@ -1539,6 +1543,7 @@ describe('runExport: LaTeX book', () => {
     expect(entries['vocabulary.tex']).toBeUndefined();
     expect(text(entries, 'main.tex')).not.toContain('\\include{vocabulary}');
     expect(client.calls.some((c) => c[0] === 'vocabLayers.get')).toBe(false);
+    expect(text(entries, 'texts/001-beta.tex')).toContain('\\gla \\PlaidWord{perro} ');
   });
 
   it('zips even at document scope, titled after the document', async () => {

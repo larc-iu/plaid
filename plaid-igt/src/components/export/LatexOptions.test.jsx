@@ -106,7 +106,7 @@ describe('LatexOptions', () => {
       all(container, 'label').find((l) => l.textContent === text);
     const switchOf = (container, text) => labelled(container, text).querySelector('button');
 
-    it('offers the chapter on, every vocabulary and field on but Morph Type, the used entries, and no numbers in the texts', async () => {
+    it('offers the chapter on, every vocabulary and field on but Morph Type, the used entries, and no option for numbers in the texts', async () => {
       const { view } = await mountWith(defaultLatexOptions(LAYERS));
       expect(switchOf(view.container, 'Vocabulary chapter').getAttribute('aria-checked')).toBe(
         'true',
@@ -118,9 +118,8 @@ describe('LatexOptions', () => {
         expect(labelled(view.container, name)?.querySelector('input').checked, name).toBe(true);
       }
       expect(labelled(view.container, 'Morph Type').querySelector('input').checked).toBe(false);
-      expect(
-        switchOf(view.container, 'Entry numbers in the texts').getAttribute('aria-checked'),
-      ).toBe('false');
+      // Words and morphemes link to their entries whenever there is a chapter.
+      expect(view.container.textContent).not.toMatch(/entry numbers/i);
       expect(view.container.textContent).not.toMatch(/\bitems?\b/i);
       await view.unmount();
     });
@@ -150,12 +149,9 @@ describe('LatexOptions', () => {
       await view.step(() => labelled(view.container, 'Loans').querySelector('input').click());
       await rerender();
       await view.step(() => labelled(view.container, 'Morph Type').querySelector('input').click());
-      await rerender();
-      await view.step(() => switchOf(view.container, 'Entry numbers in the texts').click());
       expect(JSON.parse(JSON.stringify(state.options.vocabulary))).toEqual({
         include: true,
         scope: 'all',
-        numbersInTexts: true,
         vocabularies: [
           {
             id: 'v1',

@@ -42,7 +42,7 @@ import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
 import {
   buildLatexBook,
-  entryNumbers,
+  chapterEntryIds,
   exampleNumbersOf,
   formatChapter,
   formatVocabulary,
@@ -359,11 +359,10 @@ export async function runExport({
   // carry no metadata at all: cf fell back to the citation form, undecorated,
   // which is exactly the match FLEx cannot make.
   const wantEntries = isFlex && preset.options?.citationForms !== false;
-  // A LaTeX book reads the vocabularies for its vocabulary chapter and for
-  // the entry numbers in its texts.
+  // A LaTeX book reads the vocabularies for its vocabulary chapter, which
+  // the words and morphemes of its texts link to.
   const latexVocab = isLatex ? latexVocabulary(preset.options, project.vocabs) : null;
   const wantVocabChapter = !!latexVocab?.include && latexVocab.vocabularies.some((v) => v.on);
-  const wantLatexVocab = wantVocabChapter || !!latexVocab?.numbersInTexts;
   let vocabs = [];
   if (
     wantVocabTsvs ||
@@ -371,7 +370,7 @@ export async function runExport({
     wantCldfDictionary ||
     wantLexicon ||
     wantEntries ||
-    wantLatexVocab
+    wantVocabChapter
   ) {
     // A historical export carries the vocabularies as they were at the same
     // time as the documents.
@@ -442,7 +441,7 @@ export async function runExport({
   const exampleTexts = new Map();
   // The book's vocabulary: the entries its texts link to, and the example
   // number of each promoted example that is in the book.
-  const latexNumbers = latexVocab?.numbersInTexts ? entryNumbers(vocabs) : null;
+  const latexEntries = wantVocabChapter ? chapterEntryIds(vocabs, latexVocab) : null;
   const linkedIds = new Set();
   const bookExamples = new Map();
   const wantedExamples = new Set();
@@ -577,7 +576,7 @@ export async function runExport({
           ? null
           : isLatex
             ? formatChapter(igtDoc, latexSelection(preset.options || {}, layers), {
-                numbers: latexNumbers,
+                entries: latexEntries,
               })
             : isNative
               ? toJson(

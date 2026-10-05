@@ -6,7 +6,8 @@ import {
   formatAbbreviations,
   formatChapter,
   formatExample,
-  entryNumbers,
+  chapterEntryIds,
+  entryAnchor,
   exampleNumbersOf,
   formatVocabulary,
   latexLayout,
@@ -60,6 +61,23 @@ const balanced = (tex) => {
     if (depth < 0) return false;
   }
   return depth === 0;
+};
+
+// `tex` with every \\<macro>{name}{text} replaced by its text.
+const unwrapped = (tex, macro) => {
+  const open = new RegExp(`\\\\${macro}\\{[a-p]+\\}\\{`);
+  let out = tex;
+  for (let m = out.match(open); m; m = out.match(open)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    for (; depth > 0; i++) {
+      if (out[i] === '\\') i++;
+      else if (out[i] === '{') depth++;
+      else if (out[i] === '}') depth--;
+    }
+    out = out.slice(0, m.index) + out.slice(m.index + m[0].length, i - 1) + out.slice(i);
+  }
+  return out;
 };
 
 describe('latexLayout', () => {
@@ -536,7 +554,7 @@ describe('buildLatexBook', () => {
   });
 });
 
-describe('entry numbers in the texts', () => {
+describe('links from the texts to the vocabulary', () => {
   // kai is spelled by two headwords (kai 1, kai 2), the second with a sense.
   const ITEMS = [
     { id: 'k1', form: 'kai', metadata: { gloss: 'go' } },
@@ -545,30 +563,41 @@ describe('entry numbers in the texts', () => {
     { id: 'na', form: 'na', metadata: { gloss: 'PST' } },
     { id: 'ar', form: 'كتب', metadata: { gloss: 'write' } },
     { id: 'ar2', form: 'كتب', metadata: { gloss: 'book' } },
+    { id: 'mwe', form: 'kai na', metadata: { gloss: 'leave' } },
   ];
-  const NUMBERS = entryNumbers([{ id: 'v', items: ITEMS }]);
+  const VOCABS = [{ id: 'v', name: 'Lexicon', config: {}, items: ITEMS }];
+  const ENTRIES = chapterEntryIds(VOCABS, latexVocabulary({}, VOCABS));
+  const link = (id, text) => `\\PlaidEntryLink{${entryAnchor(id)}}{${text}}`;
   // A link as derive gives it: the entry's id and form.
   const entry = (id) => (id ? { id, form: ITEMS.find((it) => it.id === id).form } : null);
-  const linked = (w, item, morphemes = []) => ({
-    ...word(
-      w,
-      morphemes.map(([form, gloss, morphType]) => [form, gloss, morphType]),
-    ),
-    vocabItem: entry(item),
-  });
+  const linked = (w, item, morphemes = []) => ({ ...word(w, morphemes), vocabItem: entry(item) });
   const linkMorphemes = (token, ids) => ({
     ...token,
     morphemes: token.morphemes.map((m, i) => ({ ...m, vocabItem: entry(ids[i]) })),
   });
+  // The example with every link taken out, as it was before there were any.
+  const unlinked = (tex) => unwrapped(tex, 'PlaidEntryLink');
 
-  it('numbers an entry as the vocabulary does, and an entry with no homograph not at all', () => {
-    expect(NUMBERS.get('k1')).toBe('1');
-    expect(NUMBERS.get('k2')).toBe('2');
-    expect(NUMBERS.get('k2a')).toBe('2.1');
-    expect(NUMBERS.get('na')).toBe('');
+  it('names each entry by a destination of letters alone, one per entry', () => {
+    expect(entryAnchor('k1')).toBe('gldb');
+    const ids = ['k1', 'k2', 'k2a', '019a5c3e-7d2b-7c11-9f00-3a2b1c0d9e8f', 'کتب'];
+    const anchors = ids.map(entryAnchor);
+    for (const a of anchors) expect(a).toMatch(/^[a-p]+$/);
+    expect(new Set(anchors).size).toBe(ids.length);
   });
 
-  it("writes a linked morpheme's number after it on the morpheme line, and leaves the columns aligned", () => {
+  it('lists every headword and sense of the vocabularies that are on, and none with the chapter off', () => {
+    expect([...ENTRIES].sort()).toEqual(['ar', 'ar2', 'k1', 'k2', 'k2a', 'mwe', 'na']);
+    const off = latexVocabulary({ vocabulary: { include: false } }, VOCABS);
+    expect(chapterEntryIds(VOCABS, off).size).toBe(0);
+    const vocabOff = latexVocabulary(
+      { vocabulary: { vocabularies: [{ id: 'v', on: false }] } },
+      VOCABS,
+    );
+    expect(chapterEntryIds(VOCABS, vocabOff).size).toBe(0);
+  });
+
+  it('links each morpheme to its entry on the morpheme line, the sense included, and leaves the columns as they were', () => {
     const token = linkMorphemes(
       word('kaina', [
         ['kai', 'go'],
@@ -576,17 +605,21 @@ describe('entry numbers in the texts', () => {
       ]),
       ['k2a', 'na'],
     );
-    const tex = formatExample(sentenceOf([token, word('mo')]), NO_ORTHOGRAPHY, {
-      numbers: NUMBERS,
-    });
-    expect(lineOf(tex, 'glb')[0]).toBe('\\PlaidMorphemes{kai\\PlaidHomonym{2.1}-na} {}');
-    // The gloss line is untouched, and its abbreviations still small caps.
+    const sentence = sentenceOf([token, word('mo')]);
+    const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
+    expect(lineOf(tex, 'glb')[0]).toBe(
+      `\\PlaidMorphemes{${link('k2a', 'kai')}-${link('na', 'na')}} {}`,
+    );
+    // No number in the texts, the gloss line untouched, its abbreviations
+    // still small caps and the only ones.
+    expect(tex).not.toContain('PlaidHomonym');
     expect(lineOf(tex, 'glb')[1]).toBe('\\PlaidMorphemeField{go-\\textsc{pst}} {}');
     expect(smallCapsIn(tex)).toEqual(['pst']);
     expect(balanced(tex)).toBe(true);
+    expect(unlinked(tex)).toBe(formatExample(sentence, NO_ORTHOGRAPHY));
   });
 
-  it('writes no number after a form spelled unlike its entry, whatever the case', () => {
+  it('links an allomorph to its entry, whatever its spelling', () => {
     const token = linkMorphemes(
       word('kena', [
         ['ke', 'go'],
@@ -595,51 +628,113 @@ describe('entry numbers in the texts', () => {
       ['k1', 'na'],
     );
     const tex = formatExample(sentenceOf([token, linked('Kai', 'k2')]), NO_ORTHOGRAPHY, {
-      numbers: NUMBERS,
+      entries: ENTRIES,
     });
-    expect(lineOf(tex, 'gla')[0]).toBe('\\PlaidWord{kena} \\PlaidWord{Kai\\PlaidHomonym{2}}');
-    expect(lineOf(tex, 'glb')[0]).toBe('\\PlaidMorphemes{ke-na} {}');
-  });
-
-  it("writes a linked word's number on the word line", () => {
-    const tex = formatExample(
-      sentenceOf([linked('kai', 'k1'), linked('na', 'na')]),
-      NO_ORTHOGRAPHY,
-      {
-        numbers: NUMBERS,
-      },
+    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{kena} \\PlaidWord{${link('k2', 'Kai')}}`);
+    expect(lineOf(tex, 'glb')[0]).toBe(
+      `\\PlaidMorphemes{${link('k1', 'ke')}-${link('na', 'na')}} {}`,
     );
-    expect(lineOf(tex, 'gla')[0]).toBe('\\PlaidWord{kai\\PlaidHomonym{1}} \\PlaidWord{na}');
   });
 
-  it('puts the number of a word that is its one morpheme on the word line when the morpheme line is not printed', () => {
+  it('links a linked word on the word line, and each word of a multi-word expression to its entry', () => {
+    const words = [
+      { ...word('kai'), id: 't1' },
+      { ...word('pe'), id: 't2' },
+      { ...linked('na', 'na'), id: 't3' },
+    ];
+    const sentence = {
+      ...sentenceOf(words),
+      mwes: [{ item: { id: 'mwe', form: 'kai na' }, memberTokenIds: ['t1', 't3'] }],
+    };
+    const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
+    // The word's own link wins over the expression's.
+    expect(lineOf(tex, 'gla')[0]).toBe(
+      `\\PlaidWord{${link('mwe', 'kai')}} \\PlaidWord{pe} \\PlaidWord{${link('na', 'na')}}`,
+    );
+  });
+
+  it("links a word whose own entry is not in the chapter to its expression's", () => {
+    const words = [
+      { ...word('kai'), id: 't1', vocabItem: { id: 'elsewhere', form: 'kai' } },
+      { ...word('na'), id: 't2' },
+    ];
+    const sentence = {
+      ...sentenceOf(words),
+      mwes: [{ item: { id: 'mwe', form: 'kai na' }, memberTokenIds: ['t1', 't2'] }],
+    };
+    const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
+    expect(lineOf(tex, 'gla')[0]).toBe(
+      `\\PlaidWord{${link('mwe', 'kai')}} \\PlaidWord{${link('mwe', 'na')}}`,
+    );
+  });
+
+  it('links a word that is its one morpheme on the word line when the morpheme line is not printed', () => {
     const token = linkMorphemes(word('kai', [['kai', 'go']]), ['k1']);
-    const tex = formatExample(sentenceOf([token]), NO_ORTHOGRAPHY, { numbers: NUMBERS });
-    expect(lineOf(tex, 'gla')[0]).toBe('\\PlaidWord{kai\\PlaidHomonym{1}}');
+    const tex = formatExample(sentenceOf([token]), NO_ORTHOGRAPHY, { entries: ENTRIES });
+    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{${link('k1', 'kai')}}`);
     expect(tex).not.toContain('PlaidMorphemes');
   });
 
-  it('writes no number without the option', () => {
-    const tex = formatExample(sentenceOf([linked('kai', 'k1')]), NO_ORTHOGRAPHY);
-    expect(tex).not.toContain('PlaidHomonym');
+  it('links nothing without the chapter, nor to an entry the chapter does not list', () => {
+    const sentence = sentenceOf([linked('kai', 'k1'), { ...word('x'), vocabItem: { id: 'gone' } }]);
+    expect(formatExample(sentence, NO_ORTHOGRAPHY)).not.toContain('PlaidEntryLink');
+    const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
+    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{${link('k1', 'kai')}} \\PlaidWord{x}`);
   });
 
-  it('keeps the number in reading order, left to right, in a right-to-left text', () => {
-    const tex = formatExample(sentenceOf([linked('كتب', 'ar2')]), NO_ORTHOGRAPHY, {
+  it('keeps a right-to-left word in its script and direction, the link inside', () => {
+    const rtl = formatExample(sentenceOf([linked('كتب2', 'ar2')]), NO_ORTHOGRAPHY, {
       docDir: 'rtl',
-      numbers: NUMBERS,
+      entries: ENTRIES,
     });
-    expect(lineOf(tex, 'gla')[0]).toBe(
-      '\\PlaidWord{\\PlaidScript{Arabic}{كتب}\\PlaidHomonym{\\PlaidLTR{2}}}',
+    expect(lineOf(rtl, 'gla')[0]).toBe(
+      `\\PlaidWord{${link('ar2', '\\PlaidScript{Arabic}{كتب}\\PlaidLTR{2}')}}`,
+    );
+    const ltr = formatExample(sentenceOf([linked('كتب', 'ar')]), NO_ORTHOGRAPHY, {
+      entries: ENTRIES,
+    });
+    expect(lineOf(ltr, 'gla')[0]).toBe(
+      `\\PlaidRTL{\\PlaidWord{${link('ar', '\\PlaidScript{Arabic}{كتب}')}}}`,
     );
   });
 
-  it('braces a numbered word with a space in it, so it stays one column', () => {
-    const token = { ...linked('kai kai', 'k1'), vocabItem: { id: 'k1', form: 'kai kai' } };
-    const tex = formatExample(sentenceOf([token]), NO_ORTHOGRAPHY, {
-      numbers: NUMBERS,
+  it('braces a linked word with a space in it, and keeps the empty group before a special, so it stays one column', () => {
+    const tex = formatExample(
+      sentenceOf([{ ...linked('kai kai', 'k1') }, linked('#kai', 'k2')]),
+      NO_ORTHOGRAPHY,
+      { entries: ENTRIES },
+    );
+    expect(lineOf(tex, 'gla')[0]).toBe(
+      `\\PlaidWord{{${link('k1', 'kai kai')}}} \\PlaidWord{{}${link('k2', '\\#kai')}}`,
+    );
+  });
+
+  it('leaves a morpheme line plain when its morphemes do not spell it', () => {
+    // A form ending in a space: the line reads "kai -na", the pieces "kai-na".
+    const token = linkMorphemes(
+      word('kaina', [
+        ['kai ', 'go'],
+        ['na', 'PST', 'suffix'],
+      ]),
+      ['k1', 'na'],
+    );
+    const sentence = sentenceOf([token]);
+    const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
+    expect(lineOf(tex, 'glb')[0]).toBe('\\PlaidMorphemes{{kai -na}}');
+    expect(tex).toBe(formatExample(sentence, NO_ORTHOGRAPHY));
+  });
+
+  it('gives every headword and sense in the chapter its destination, once', () => {
+    const tex = formatVocabulary({
+      vocabularies: VOCABS,
+      choice: latexVocabulary({ vocabulary: { scope: 'all' } }, VOCABS),
     });
-    expect(lineOf(tex, 'gla')[0]).toBe('\\PlaidWord{{kai kai\\PlaidHomonym{1}}}');
+    const targets = [...tex.matchAll(/\\PlaidEntryTarget\{([a-p]+)\}/g)].map((m) => m[1]);
+    expect(targets.sort()).toEqual(ITEMS.map((it) => entryAnchor(it.id)).sort());
+    expect(tex).toContain(
+      `\\PlaidSense{\\PlaidEntryTarget{${entryAnchor('k2a')}}{2.1}}{\\PlaidEntryGloss{devour}}`,
+    );
+    expect(balanced(tex)).toBe(true);
   });
 });
 
@@ -670,12 +765,17 @@ describe('the vocabulary chapter', () => {
     ],
   };
   const choiceFor = (options = {}, vocabs = [VOCAB]) => latexVocabulary(options, vocabs);
+  // The chapter without the destinations of the texts' links, which the
+  // links' own tests check.
+  const vocabularyTex = (args) => {
+    const tex = formatVocabulary(args);
+    return tex === null ? null : unwrapped(tex, 'PlaidEntryTarget');
+  };
 
-  it('defaults to a chapter of the entries the texts use, every vocabulary and field on but Morph Type, no numbers in the texts', () => {
+  it('defaults to a chapter of the entries the texts use, every vocabulary and field on but Morph Type', () => {
     expect(choiceFor()).toEqual({
       include: true,
       scope: 'used',
-      numbersInTexts: false,
       vocabularies: [
         {
           id: 'v1',
@@ -696,7 +796,6 @@ describe('the vocabulary chapter', () => {
   it('round-trips through what a preset stores, and drops a vocabulary the project no longer has', () => {
     const choice = choiceFor();
     choice.scope = 'all';
-    choice.numbersInTexts = true;
     choice.vocabularies[0].fields[0].on = false;
     const stored = JSON.parse(
       JSON.stringify({
@@ -712,7 +811,7 @@ describe('the vocabulary chapter', () => {
   });
 
   it('lists the headwords the texts use, by form, each with its senses, number, fields and examples', () => {
-    const tex = formatVocabulary({
+    const tex = vocabularyTex({
       vocabularies: [VOCAB],
       choice: choiceFor(),
       used: new Set(['a2s', 'a1']),
@@ -729,7 +828,7 @@ describe('the vocabulary chapter', () => {
 
   it("sorts every entry by the language's collation, and the homographs by their number", () => {
     const forms = (lang) =>
-      formatVocabulary({
+      vocabularyTex({
         vocabularies: [VOCAB],
         choice: choiceFor({ vocabulary: { scope: 'all' } }),
         lang,
@@ -761,7 +860,7 @@ describe('the vocabulary chapter', () => {
         { id: 'a', form: 'a=', metadata: { gloss: 'DEF' } },
       ],
     };
-    const tex = formatVocabulary({
+    const tex = vocabularyTex({
       vocabularies: [affixes],
       choice: choiceFor({ vocabulary: { scope: 'all' } }, [affixes]),
     });
@@ -782,7 +881,7 @@ describe('the vocabulary chapter', () => {
         { id: 'q', form: 'dar la vuelta', metadata: { morphType: 'discontiguous phrase' } },
       ],
     };
-    const tex = formatVocabulary({
+    const tex = vocabularyTex({
       vocabularies: [vocab],
       choice: choiceFor(
         {
@@ -833,7 +932,7 @@ describe('the vocabulary chapter', () => {
         gloss: true,
         status: false,
       });
-      const tex = formatVocabulary({
+      const tex = vocabularyTex({
         vocabularies: [vocab],
         choice: latexVocabulary({ vocabulary: { scope: 'all' } }, [vocab]),
       });
@@ -850,7 +949,7 @@ describe('the vocabulary chapter', () => {
     });
 
     it('print a morph type only when it is not a plain stem or root', () => {
-      const tex = formatVocabulary({
+      const tex = vocabularyTex({
         vocabularies: [vocab],
         choice: latexVocabulary({ vocabulary: ticked }, [vocab]),
       });
@@ -873,7 +972,7 @@ describe('the vocabulary chapter', () => {
         { id: 'k1', form: 'ka', metadata: { gloss: '1SG', parent: 'k' } },
       ],
     };
-    const tex = formatVocabulary({
+    const tex = vocabularyTex({
       vocabularies: [vocab],
       choice: choiceFor({ vocabulary: { scope: 'all' } }, [vocab]),
     });
@@ -893,7 +992,7 @@ describe('the vocabulary chapter', () => {
       ...f,
       on: f.name === 'pos',
     }));
-    const tex = formatVocabulary({ vocabularies: [VOCAB], choice, used: new Set(['z']) });
+    const tex = vocabularyTex({ vocabularies: [VOCAB], choice, used: new Set(['z']) });
     expect(tex).toContain('\\PlaidEntry{\\PlaidEntryForm{zapa}}{\\PlaidEntryField{POS}{n}}');
   });
 
@@ -907,7 +1006,7 @@ describe('the vocabulary chapter', () => {
         { id: 'r2', form: 'كتب', metadata: { gloss: 'books' } },
       ],
     };
-    const tex = formatVocabulary({
+    const tex = vocabularyTex({
       vocabularies: [rtl],
       choice: choiceFor({}, [rtl]),
       used: new Set(['r2']),
@@ -921,21 +1020,21 @@ describe('the vocabulary chapter', () => {
   it('heads each of several vocabularies by its name, and leaves out one with nothing to list', () => {
     const other = { id: 'v2', name: 'Loans', config: {}, items: [{ id: 'l', form: 'kafe' }] };
     const empty = { id: 'v3', name: 'Empty', config: {}, items: [] };
-    const tex = formatVocabulary({
+    const tex = vocabularyTex({
       vocabularies: [VOCAB, other, empty],
       choice: choiceFor({ vocabulary: { scope: 'all' } }, [VOCAB, other, empty]),
     });
     expect(tex).toContain('\\chapter*{Kukama \\& co}');
     expect(tex).toContain('\\chapter*{Loans}');
     expect(tex).not.toContain('Empty');
-    expect(formatVocabulary({ vocabularies: [empty], choice: choiceFor({}, [empty]) })).toBeNull();
+    expect(vocabularyTex({ vocabularies: [empty], choice: choiceFor({}, [empty]) })).toBeNull();
   });
 
   it('leaves out a vocabulary that is off', () => {
     const choice = choiceFor({
       vocabulary: { scope: 'all', vocabularies: [{ id: 'v1', on: false }] },
     });
-    expect(formatVocabulary({ vocabularies: [VOCAB], choice })).toBeNull();
+    expect(vocabularyTex({ vocabularies: [VOCAB], choice })).toBeNull();
   });
 
   it("finds the entries a document links to, and each example's chapter and number", () => {
