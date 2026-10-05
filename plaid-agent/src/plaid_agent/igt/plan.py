@@ -1498,7 +1498,7 @@ def _entry_links_now(client, project, op) -> List[str]:
 def create_document(client, project, name: str, text: str, metadata: Dict[str, Any], new_id):
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, and the words a Baseline save gives a
-    first text, ``new_words.py``). Each is made under an id from ``new_id()`` (a :class:`Minter`),
+    first text, ``project_new_words``). Each is made under an id from ``new_id()`` (a :class:`Minter`),
     and one an earlier run of the plan made is taken as made. Returns the new
     document id."""
     doc_id = new_id()
@@ -1523,8 +1523,7 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     ``_line_starts`` says), and the last runs to the end of the text. A bulk
     create is one layer, so the sentences and the words are two, in one
     batch."""
-    from .new_words import project_new_words
-    from .project import split_sentences
+    from .project import project_new_words, split_sentences
     text_id = new_id()
     new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id))
     lines = split_sentences(text)
@@ -1573,12 +1572,11 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     as edits at their place (``texts.edit`` with the digest of the body read),
     so no word outside the region can be taken for the one changed, then give
     the edited region the sentence boundaries its line starts call for and
-    the words a Baseline save gives the text it types (``new_words.py``: the
+    the words a Baseline save gives the text it types (``project_new_words``: the
     project's "Tokenize new text", none when it is off). What it creates is
     made under ids from ``new_id()``."""
     from plaid_client import gaps_to_ops
-    from .new_words import project_new_words
-    from .project import find_layer
+    from .project import find_layer, project_new_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
         _seed_text(client, project, doc_id, new, new_id)

@@ -11,9 +11,11 @@ import requests
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
+from plaid_client.http import PlaidAPIError
 from plaid_client.service import locked_for_writes, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
+from plaid_client.workflows.igt.new_words import layer_new_words
 
 from .asr_model import Alignment
 
@@ -46,7 +48,7 @@ class AlignmentProcessor:
                           text_layer_id: str, alignment_token_layer_id: str,
                           sentence_token_layer_id: Optional[str], response_helper,
                           prov_source: Optional[str] = None, overwrite: bool = False,
-                          lock_percent: int = 2) -> int:
+                          lock_percent: int = 2, word_token_layer_id: Optional[str] = None) -> int:
         """
         Process ASR alignments and update the Plaid document.
 
@@ -74,6 +76,11 @@ class AlignmentProcessor:
                 work of its own passes what it has reached: the default is
                 what this reports standing alone, and left at it after a
                 transcription the bar ran 70, then 2, then 75.
+            word_token_layer_id: Optional ID of the word token layer. When
+                given, the text the run adds gets the words its "Tokenize new
+                text" gives it (``plaid_client.workflows.igt.new_words``, read
+                off that layer's config, none when it is off), in the batch
+                that writes the text.
 
         Returns:
             Number of new alignment tokens created
@@ -102,7 +109,7 @@ class AlignmentProcessor:
             tokens_created = self._create_time_alignment_tokens(
                 client, document_id, transcriptions, text_layer_id,
                 alignment_token_layer_id, sentence_token_layer_id, response_helper,
-                prov_source=prov_source, overwrite=overwrite
+                prov_source=prov_source, overwrite=overwrite, word_token_layer_id=word_token_layer_id
             )
 
             return tokens_created
@@ -164,7 +171,8 @@ class AlignmentProcessor:
     def _create_time_alignment_tokens(self, client, document_id: str, transcriptions: List[Dict],
                                      text_layer_id: str, alignment_token_layer_id: str,
                                      sentence_token_layer_id: Optional[str], response_helper,
-                                     prov_source: Optional[str] = None, overwrite: bool = False) -> int:
+                                     prov_source: Optional[str] = None, overwrite: bool = False,
+                                     word_token_layer_id: Optional[str] = None) -> int:
         """Create time alignment tokens from transcription results, preserving existing work"""
         # Get document with full token information
         response_helper.progress(75, "Reading the document…")
@@ -306,63 +314,116 @@ class AlignmentProcessor:
             self._refuse_out_of_time_order(
                 self._shifted(existing_alignment_tokens, text_modifications), new_alignment_tokens)
 
-            # Begin atomic batch operation
-            response_helper.progress(88, "Saving…")
-            with client.batched() as b:
-
-                # Build explicit insert ops rather than passing the full new_text
-                # string. Passing a string would make the server run an editscript
-                # diff that CAN synthesize replacement (:r) ops covering deletions;
-                # if such a synthesized delete fully covered an existing sentence,
-                # that sentence row would be gone by the time bulk_delete(sentence_ids)
-                # ran (partitioning layers require deleting ALL or none), causing a
-                # 400 and full batch rollback. ASR is insert-only by construction,
-                # so emit explicit :insert directives — they cannot synthesize deletes.
-                #
-                # Edit ops MUST be applied left-to-right against the ORIGINAL text
-                # (the server's apply-text-edits applies them in sequence and each
-                # op's index is into the text as of that point). Our text_modifications
-                # are sorted by 'position' (= insertion index in the original text),
-                # and we tracked cumulative_offset against the previous original
-                # positions, so by emitting them in order with an index that reflects
-                # the already-applied earlier inserts we exactly reproduce the
-                # new_text we built locally.
-                edit_ops = []
-                running_offset = 0
-                for mod in text_modifications:
-                    edit_ops.append({
-                        "type": "insert",
-                        "index": mod['position'] + running_offset,
-                        "value": mod['new_text'],
-                    })
-                    running_offset += len(mod['new_text'])
-                b.texts.update(text_id, edit_ops)
-            
-                # Create alignment tokens
-                if new_alignment_tokens:
-                    response_helper.progress(90, f"Aligning {len(new_alignment_tokens)} segment{'' if len(new_alignment_tokens) == 1 else 's'}…")
-                    b.tokens.bulk_create(new_alignment_tokens)
-
-                # NOTE: Do NOT update existing alignment-token positions here. The
-                # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
-                # already shifts/reindexes those tokens when texts.update runs. Applying
-                # our own shifts in the same batch would double-shift them
-                # (original + 2 * delta). The text-edit cascade is sufficient.
-
-                # Update sentence partitioning
-                if sentence_token_layer_id:
-                    response_helper.progress(92, "Updating the sentences…")
-                    self._update_sentence_partitioning(
-                        b, document, text_id, sentence_token_layer_id,
-                        existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
-                        overwrite=overwrite
-                    )
-            
-                # All queued ops are submitted atomically when this
-                # `with client.batched()` block exits.
-                response_helper.progress(95, "Saving…")
+            words = self._new_words(text_layer, word_token_layer_id, text_id, current_text,
+                                    text_modifications)
+            try:
+                self._write(client, document, text_id, text_modifications, new_alignment_tokens,
+                            words, existing_alignment_tokens, current_text, new_text,
+                            sentence_token_layer_id, response_helper, overwrite)
+            except PlaidAPIError as e:
+                # A new word over one the server placed: the batch stored
+                # nothing, and it goes again without the words.
+                if not words or not self._words_overlap(e):
+                    raise
+                self._write(client, document, text_id, text_modifications, new_alignment_tokens,
+                            [], existing_alignment_tokens, current_text, new_text,
+                            sentence_token_layer_id, response_helper, overwrite)
 
         return len(new_alignment_tokens)
+
+    @staticmethod
+    def _words_overlap(e: PlaidAPIError) -> bool:
+        data = e.response_data if isinstance(e.response_data, dict) else {}
+        text = str(data.get('error') or e)
+        return e.status == 409 and ('Bulk-created token overlaps' in text
+                                    or 'Tokens in batch overlap' in text)
+
+    @staticmethod
+    def _new_words(text_layer: Dict, word_token_layer_id: Optional[str], text_id: str,
+                   current_text: str, text_modifications: List[Dict]) -> List[Dict]:
+        """The words the inserted text gets from the word layer's "Tokenize
+        new text", as bulk-create rows, measured on the text read. Inserts at
+        one place are one gap, in the order they are written."""
+        if not word_token_layer_id:
+            return []
+        layer = next((tl for tl in text_layer.get("token_layers", [])
+                      if tl.get("id") == word_token_layer_id), None)
+        if layer is None:
+            return []
+        gaps: List[Dict] = []
+        for mod in text_modifications:
+            if gaps and gaps[-1]['start'] == mod['position']:
+                gaps[-1]['value'] += mod['new_text']
+            else:
+                gaps.append({'start': mod['position'], 'end': mod['position'], 'value': mod['new_text']})
+        return [{"token_layer_id": word_token_layer_id, "text": text_id, "begin": b, "end": e}
+                for b, e in layer_new_words(layer.get("config"), current_text, gaps,
+                                            layer.get("tokens") or [])]
+
+    def _write(self, client, document, text_id, text_modifications, new_alignment_tokens, words,
+               existing_alignment_tokens, current_text, new_text, sentence_token_layer_id,
+               response_helper, overwrite):
+        """The run's one batch: the text, the segments, the sentences and the
+        new words."""
+        # Begin atomic batch operation
+        response_helper.progress(88, "Saving…")
+        with client.batched() as b:
+
+            # Build explicit insert ops rather than passing the full new_text
+            # string. Passing a string would make the server run an editscript
+            # diff that CAN synthesize replacement (:r) ops covering deletions;
+            # if such a synthesized delete fully covered an existing sentence,
+            # that sentence row would be gone by the time bulk_delete(sentence_ids)
+            # ran (partitioning layers require deleting ALL or none), causing a
+            # 400 and full batch rollback. ASR is insert-only by construction,
+            # so emit explicit :insert directives — they cannot synthesize deletes.
+            #
+            # Edit ops MUST be applied left-to-right against the ORIGINAL text
+            # (the server's apply-text-edits applies them in sequence and each
+            # op's index is into the text as of that point). Our text_modifications
+            # are sorted by 'position' (= insertion index in the original text),
+            # and we tracked cumulative_offset against the previous original
+            # positions, so by emitting them in order with an index that reflects
+            # the already-applied earlier inserts we exactly reproduce the
+            # new_text we built locally.
+            edit_ops = []
+            running_offset = 0
+            for mod in text_modifications:
+                edit_ops.append({
+                    "type": "insert",
+                    "index": mod['position'] + running_offset,
+                    "value": mod['new_text'],
+                })
+                running_offset += len(mod['new_text'])
+            b.texts.update(text_id, edit_ops)
+        
+            # Create alignment tokens
+            if new_alignment_tokens:
+                response_helper.progress(90, f"Aligning {len(new_alignment_tokens)} segment{'' if len(new_alignment_tokens) == 1 else 's'}…")
+                b.tokens.bulk_create(new_alignment_tokens)
+
+            # NOTE: Do NOT update existing alignment-token positions here. The
+            # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
+            # already shifts/reindexes those tokens when texts.update runs. Applying
+            # our own shifts in the same batch would double-shift them
+            # (original + 2 * delta). The text-edit cascade is sufficient.
+
+            # Update sentence partitioning
+            if sentence_token_layer_id:
+                response_helper.progress(92, "Updating the sentences…")
+                self._update_sentence_partitioning(
+                    b, document, text_id, sentence_token_layer_id,
+                    existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
+                    overwrite=overwrite
+                )
+        
+            # The new words, once the sentences they lie in are there.
+            if words:
+                b.tokens.bulk_create(words)
+
+            # All queued ops are submitted atomically when this
+            # `with client.batched()` block exits.
+            response_helper.progress(95, "Saving…")
 
     def _find_text_insertion_position(self, current_text: str, existing_alignment_tokens: List[Dict], target_time: float) -> int:
         """Find the best position in text to insert a word based on its timestamp"""

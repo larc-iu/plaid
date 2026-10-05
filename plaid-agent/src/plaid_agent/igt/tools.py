@@ -24,9 +24,8 @@ from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, parse_ref, resolve, mwe_ref, REVIEWABLE,
-                      join_morphemes, segmentation, split_sentences, word_ref)
+                      join_morphemes, project_new_words, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
-from .new_words import project_new_words
 from .reads import t_plan_status
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 
@@ -688,7 +687,7 @@ def t_set_document_metadata(ws: Workspace, document: str, field: str, value: str
 
 def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[dict] = None) -> str:
     """PLAN: a new document from raw text. One sentence per line, and the words
-    a Baseline save gives a first text (``new_words.py``)."""
+    a Baseline save gives a first text (``project_new_words``)."""
     name = (name or '').strip()
     if not name:
         raise ToolError('name must not be empty')

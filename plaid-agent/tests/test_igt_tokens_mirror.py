@@ -19,9 +19,9 @@ import subprocess
 import pytest
 
 from node_exe import node_or_skip
-from plaid_agent.igt.new_words import new_text_words
 from plaid_agent.igt.project import split_words
-from plaid_agent.igt.spaceless_scripts import SPACELESS_SCRIPTS
+from plaid_client.workflows.igt.new_words import new_text_words, split_words as client_split_words
+from plaid_client.workflows.igt.spaceless_scripts import SPACELESS_SCRIPTS
 from plaid_client.workflows.igt import is_token_ignored
 from plaid_client.workflows.igt.punctuation_classes import PICTOGRAPHIC, PUNCT_OR_SYMBOL
 
@@ -135,6 +135,10 @@ def test_is_token_ignored_answers_as_the_app_does(app):
     for cfg, answers in zip(CONFIGS, app['ignored']):
         for token, expected in zip(TOKENS, answers):
             assert is_token_ignored(token, cfg) == expected, (token, cfg)
+
+
+def test_the_agent_splits_with_the_clients_splitter():
+    assert split_words is client_split_words
 
 
 def test_split_words_cuts_text_as_the_editor_does(app):

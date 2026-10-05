@@ -19,8 +19,7 @@ from plaid_client.constraints import value_set_allows
 from ..core.args import whole
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
-from .new_words import project_new_words
-from .project import Sentence, Word, resolve, split_sentences, word_ref
+from .project import Sentence, Word, project_new_words, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
 from .workspace import Workspace, _need, _refs
 

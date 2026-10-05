@@ -10,7 +10,7 @@ import shutil
 import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
-from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY
+from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY, ROLES, find_by_role
 from plaid_client.service import machine_detail, progress_heartbeat
 from plaid_client.workflows.requester import requester_of
 
@@ -269,6 +269,11 @@ class WhisperASRService(BaseService):
                 scores = (alignment.metadata or {}).get(PROV_DETAIL_KEY) or {}
                 alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
                                       requester.detail(machine_detail(self.version, **scores))}
+            # The word layer, whose "Tokenize new text" gives the transcribed
+            # text its words, as typed text gets them.
+            text_layer = next((tl for tl in full_document.get("text_layers") or []
+                               if tl.get("id") == text_layer_id), None)
+            word_layer = find_by_role((text_layer or {}).get("token_layers"), ROLES.WORD)
             # The report of the work is inside `critical()` with the work itself:
             # a stop that arrives once the writing is done has nothing left to
             # prevent, and a checkpoint out here would throw the result away and
@@ -282,6 +287,7 @@ class WhisperASRService(BaseService):
                         prov_source=service_source(self.service_id),
                         overwrite=overwrite,
                         lock_percent=72,
+                        word_token_layer_id=(word_layer or {}).get("id"),
                     )
                 response_helper.progress(100, "Done")
                 response_helper.complete({

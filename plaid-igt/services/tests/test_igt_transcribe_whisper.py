@@ -207,6 +207,32 @@ def test_the_token_and_the_sentence_partition_go_in_one_batch(monkeypatch):
     assert service.client.operations == ['Whisper ASR transcription (tr)']
 
 
+def _with_word_layer(doc, tokenize=None):
+    config = {'plaid': {'role': 'word'}, 'igt': {}}
+    if tokenize is not None:
+        config['igt']['tokenizeNewText'] = tokenize
+    doc['text_layers'][0]['token_layers'].append(
+        {'id': 'word-layer', 'name': 'Words', 'config': config, 'tokens': []})
+    return doc
+
+
+@pytest.mark.parametrize('tokenize, words', [(None, ['evler', 'geliyor', 'kedi', 'uyuyor']), (False, [])])
+def test_the_transcribed_text_gets_the_words_of_tokenize_new_text(monkeypatch, tokenize, words):
+    """The word layer, found by its role, is handed to the processor, so the
+    text gets its words in the same batch, unless the project has the setting
+    off."""
+    _media(monkeypatch)
+    module, _ = load_whisper()
+    service = _service(module, documents=[_with_word_layer(_document(), tokenize)])
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    [(_, edits)] = service.client.payloads('texts.update')
+    body = ''.join(op['value'] for op in edits)
+    made = [op for ops in service.client.payloads('tokens.bulk_create') for op in ops
+            if op['token_layer_id'] == 'word-layer']
+    assert [body[op['begin']:op['end']] for op in made] == words
+
+
 # --- the lock ----------------------------------------------------------------
 
 def test_the_lock_is_taken_before_the_writes_and_released_after_them(monkeypatch):

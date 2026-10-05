@@ -1,11 +1,13 @@
 // plaid-igt's ignored-token rule and its word splitter, run over the cases
 // test_igt_tokens_mirror.py writes, so the Python copies can be compared with
 // them answer by answer: `is_token_ignored` (plaid_client.workflows.igt.ignored)
-// against igtConfig.js's `isTokenIgnored`, and the agent's `split_words`
-// (plaid_agent/igt/project.py) against tokenizationUtils.js's `tokenizeText`.
+// against igtConfig.js's `isTokenIgnored`, and `split_words`
+// (plaid_client.workflows.igt.new_words) against tokenizationUtils.js's
+// `tokenizeText`.
 //
-// And "Tokenize new text" (newTextWords.js) against the agent's
-// `new_text_words` (plaid_agent/igt/new_words.py).
+// And "Tokenize new text" (newTextWords.js) against
+// `new_text_words` (plaid_client.workflows.igt.new_words), which the igt
+// assistant and the ASR transcription read.
 //
 // The rules read generated tables of character classes
 // (plaid-igt/tools/punctuationClasses.mjs, tools/spacelessScripts.mjs), so the
