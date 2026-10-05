@@ -307,6 +307,15 @@ const numberedMorphemes = (morphemes, numbers) => {
  * shows an uncovered stretch as one inert column. Here each run is its own,
  * so a long untokenized stretch can break across lines like any other.
  */
+// Two spellings of one form: the same letters, whatever the case and the
+// affix marks (-s, a=).
+const bareSpelling = (s) =>
+  texLine(s ?? '')
+    .normalize('NFC')
+    .replace(/^[-=]+|[-=]+$/g, '')
+    .toLocaleLowerCase();
+const sameSpelling = (a, b) => bareSpelling(a) === bareSpelling(b);
+
 const namesOf = (rows, kind) => rows.filter((r) => r.kind === kind).map((r) => r.name);
 
 function sentenceColumns(sentence, selection, numbers = null) {
@@ -316,8 +325,11 @@ function sentenceColumns(sentence, selection, numbers = null) {
   };
   const orthographies = namesOf(selection.rows, ROW_KINDS.ORTHOGRAPHY);
   const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
-  // The number of the entry a word or morpheme is linked to, when it has one.
-  const numberOf = (linked) => (numbers && linked?.id ? (numbers.get(linked.id) ?? '') : '');
+  // The number of the entry a word or morpheme is linked to, when it has one
+  // and the text spells it as the entry does: kai₁ after an allomorph ke
+  // would name another entry.
+  const numberOf = (linked, form) =>
+    numbers && linked?.id && sameSpelling(form, linked.form) ? (numbers.get(linked.id) ?? '') : '';
   const columns = [];
   for (const piece of pieces) {
     if (piece.type === 'token') {
@@ -326,7 +338,7 @@ function sentenceColumns(sentence, selection, numbers = null) {
       const word = piece.content ?? '';
       // A word with no morphemes (punctuation the project skips) has none to show.
       const segmented = morphemes.length ? cells.segmented : '';
-      const morphNumbers = morphemes.map((m) => numberOf(m.vocabItem));
+      const morphNumbers = morphemes.map((m) => numberOf(m.vocabItem, morphFormOf(m)));
       columns.push({
         word,
         orthographies: orthographies.map((o) => piece.orthographies?.[o] ?? ''),
@@ -336,7 +348,7 @@ function sentenceColumns(sentence, selection, numbers = null) {
         morphPieces: cells.morphPieces,
         morphemes,
         morphNumbers,
-        wordNumber: numberOf(piece.vocabItem),
+        wordNumber: numberOf(piece.vocabItem, word),
         // A word that is its one morpheme shows that morpheme's number when
         // the morpheme line is not printed.
         soleNumber: morphemes.length === 1 && segmented === word ? morphNumbers[0] : '',

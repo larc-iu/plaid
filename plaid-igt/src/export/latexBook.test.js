@@ -547,16 +547,18 @@ describe('entry numbers in the texts', () => {
     { id: 'ar2', form: 'كتب', metadata: { gloss: 'book' } },
   ];
   const NUMBERS = entryNumbers([{ id: 'v', items: ITEMS }]);
+  // A link as derive gives it: the entry's id and form.
+  const entry = (id) => (id ? { id, form: ITEMS.find((it) => it.id === id).form } : null);
   const linked = (w, item, morphemes = []) => ({
     ...word(
       w,
       morphemes.map(([form, gloss, morphType]) => [form, gloss, morphType]),
     ),
-    vocabItem: item ? { id: item } : null,
+    vocabItem: entry(item),
   });
   const linkMorphemes = (token, ids) => ({
     ...token,
-    morphemes: token.morphemes.map((m, i) => ({ ...m, vocabItem: ids[i] ? { id: ids[i] } : null })),
+    morphemes: token.morphemes.map((m, i) => ({ ...m, vocabItem: entry(ids[i]) })),
   });
 
   it('numbers an entry as the vocabulary does, and an entry with no homograph not at all', () => {
@@ -582,6 +584,21 @@ describe('entry numbers in the texts', () => {
     expect(lineOf(tex, 'glb')[1]).toBe('\\PlaidMorphemeField{go-\\textsc{pst}} {}');
     expect(smallCapsIn(tex)).toEqual(['pst']);
     expect(balanced(tex)).toBe(true);
+  });
+
+  it('writes no number after a form spelled unlike its entry, whatever the case', () => {
+    const token = linkMorphemes(
+      word('kena', [
+        ['ke', 'go'],
+        ['na', 'PST', 'suffix'],
+      ]),
+      ['k1', 'na'],
+    );
+    const tex = formatExample(sentenceOf([token, linked('Kai', 'k2')]), NO_ORTHOGRAPHY, {
+      numbers: NUMBERS,
+    });
+    expect(lineOf(tex, 'gla')[0]).toBe('\\PlaidWord{kena} \\PlaidWord{Kai\\PlaidHomonym{2}}');
+    expect(lineOf(tex, 'glb')[0]).toBe('\\PlaidMorphemes{ke-na} {}');
   });
 
   it("writes a linked word's number on the word line", () => {
@@ -618,7 +635,8 @@ describe('entry numbers in the texts', () => {
   });
 
   it('braces a numbered word with a space in it, so it stays one column', () => {
-    const tex = formatExample(sentenceOf([linked('kai kai', 'k1')]), NO_ORTHOGRAPHY, {
+    const token = { ...linked('kai kai', 'k1'), vocabItem: { id: 'k1', form: 'kai kai' } };
+    const tex = formatExample(sentenceOf([token]), NO_ORTHOGRAPHY, {
       numbers: NUMBERS,
     });
     expect(lineOf(tex, 'gla')[0]).toBe('\\PlaidWord{{kai kai\\PlaidHomonym{1}}}');
