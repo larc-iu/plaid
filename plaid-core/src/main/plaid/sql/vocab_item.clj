@@ -493,39 +493,36 @@
   a metadata write. Returns the ids of the documents written."
   [tx vocab-id survivor-id loser-ids]
   (let [from->to (zipmap (map str loser-ids) (repeat (str survivor-id)))
-        doc-ids {:select [:d.id]
-                 :from [[:documents :d]]
-                 :join [[:project_vocabs :pv] [:= :pv.project_id :d.project_id]]
-                 :where [:= :pv.vocab_layer_id vocab-id]}
-        ;; The losers go 200 to a query: one OR term each, and SQLite refuses
-        ;; an expression past 1,000 deep.
-        rows-naming
-        (fn [names-a-loser]
-          (concat
-           (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value]
-                              :from [[:entity_metadata :em]]
-                              :where [:and
-                                      [:= :em.entity_type "vocab-item"]
-                                      [:in :em.entity_id {:select [:id]
-                                                          :from :vocab_items
-                                                          :where [:and [:= :vocab_layer_id vocab-id]
-                                                                  [:<> :id (str survivor-id)]]}]
-                                      names-a-loser]})]
-             (assoc r :entity_type "vocab-item"))
-           (mapcat (fn [[etype [table doc-col]]]
-                     (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value [(keyword (str "x." (name doc-col))) :doc]]
-                                        :from [[:entity_metadata :em]]
-                                        :join [[table :x] [:= :x.id :em.entity_id]]
-                                        :where [:and
-                                                [:= :em.entity_type etype]
-                                                [:in (keyword (str "x." (name doc-col))) doc-ids]
-                                                names-a-loser]})]
-                       (assoc r :entity_type etype)))
-                   document-held-metadata)))
-        rows (->> (partition-all 200 (keys from->to))
-                  (mapcat (fn [ids] (rows-naming (into [:or] (map (fn [id] [:> [:instr :em.value id] 0])) ids))))
-                  (reduce (fn [m r] (assoc m [(:entity_type r) (:entity_id r) (:key r)] r)) {})
-                  vals)
+        losers-json (psc/write-json (vec (keys from->to)))
+        ;; A value names a loser when one of its string atoms is a loser's id.
+        ;; Each value is read once, against every loser at once.
+        names-a-loser (str "EXISTS (SELECT 1 FROM json_tree(em.value) jt"
+                           " WHERE jt.type = 'text' AND jt.atom IN (SELECT value FROM json_each(?)))")
+        ;; Every read starts from the vocabulary's own rows (its entries, the
+        ;; documents of its projects, their rows by document id) and reaches
+        ;; the metadata by its primary key. CROSS JOIN keeps SQLite to that
+        ;; order: from the metadata side it would read every row of a type
+        ;; on the server.
+        docs-sql (str "SELECT d.id FROM project_vocabs pv CROSS JOIN documents d"
+                      " WHERE pv.vocab_layer_id = ? AND d.project_id = pv.project_id")
+        rows (concat
+              (for [r (psc/q tx [(str "SELECT em.entity_id, em.key, em.value"
+                                      " FROM vocab_items x CROSS JOIN entity_metadata em"
+                                      " WHERE x.vocab_layer_id = ? AND x.id <> ?"
+                                      " AND em.entity_type = 'vocab-item' AND em.entity_id = x.id"
+                                      " AND " names-a-loser)
+                                 (str vocab-id) (str survivor-id) losers-json])]
+                (assoc r :entity_type "vocab-item"))
+              (mapcat (fn [[etype [table doc-col]]]
+                        (for [r (psc/q tx [(str "SELECT em.entity_id, em.key, em.value, x." (name doc-col) " AS doc"
+                                                " FROM (" docs-sql ") dd CROSS JOIN " (name table) " x"
+                                                " CROSS JOIN entity_metadata em"
+                                                " WHERE x." (name doc-col) " = dd.id"
+                                                " AND em.entity_type = ? AND em.entity_id = x.id"
+                                                " AND " names-a-loser)
+                                           (str vocab-id) etype losers-json])]
+                          (assoc r :entity_type etype)))
+                      document-held-metadata))
         written (for [{:keys [entity_type entity_id key value doc]} rows
                       :let [old (clojure.data.json/read-str value)
                             new (repoint-value old from->to)]
