@@ -111,3 +111,34 @@ def test_the_cards_count_the_words_that_will_be_made():
         w2 = scan_ws(_client(tokenize))
         out = call_tool(w2, 'create_document', {'name': 'Text 2', 'text': 'Gam akuna. 我今天去北京。 Ok.'})
         assert f'{count} words' in w2.ops[0]['label'] and f'{count} words' in out
+
+
+def test_words_refused_as_outside_every_sentence_leave_the_edit_without_them():
+    # REV-R4-TOK F3: the words go in a request of their own after the edit; a
+    # refusal of them alone must not fail the plan with the text written.
+    from plaid_client import PlaidAPIError
+    c = _client()
+    _TextServer(c)
+    c.tokens.split = lambda sid, pos, id=None: {'id': id}
+
+    def refuse(rows, *a, **k):
+        raise PlaidAPIError('HTTP 400', status=400,
+                            response_data={'error': 'Token is not contained within any parent-layer token'})
+    c.tokens.bulk_create = refuse
+    execute_plan(c, [_append(' Gam akuna.')], source='s', label='l', project=load_project(c, 'p1'))
+    assert c._documents['d1']['text_layers'][0]['text']['body'].endswith('Gam-ar. Gam akuna.')
+
+
+def test_another_refusal_of_the_words_still_fails_the_plan():
+    import pytest
+    from plaid_client import PlaidAPIError
+    from plaid_agent.igt.plan import PlanError
+    c = _client()
+    _TextServer(c)
+    c.tokens.split = lambda sid, pos, id=None: {'id': id}
+
+    def refuse(rows, *a, **k):
+        raise PlaidAPIError('HTTP 403', status=403, response_data={'error': 'Forbidden'})
+    c.tokens.bulk_create = refuse
+    with pytest.raises((PlanError, PlaidAPIError)):
+        execute_plan(c, [_append(' Gam akuna.')], source='s', label='l', project=load_project(c, 'p1'))

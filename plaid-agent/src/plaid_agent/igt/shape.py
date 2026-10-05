@@ -312,7 +312,8 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
     sep = '' if not doc.body or doc.body.endswith('\n') else '\n'
     sents = split_sentences(text)
     words = len(project_new_words(ws.project, doc.body, [(at, at, sep + text)],
-                                  [(w.begin, w.end) for st in doc.sentences for w in st.words]))
+                                  [(w.begin, w.end) for st in doc.sentences for w in st.words],
+                                  [(st.begin, st.end) for st in doc.sentences]))
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
                'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
                'label': f'{ws.doc_label(doc.id)}: append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '

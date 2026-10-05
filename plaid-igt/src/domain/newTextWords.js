@@ -72,10 +72,12 @@ function trimmed(old, gaps) {
  *   points of `base`, in order, not overlapping (plaid-ui's editLog shape)
  * @param {Array<{begin:number,end:number}>} save.words - the words on `base`
  * @param {object|null} save.ignored - the ignored-tokens rule
+ * @param {Array<{begin:number,end:number}>} [save.sentences] - the sentences
+ *   on `base`: no new word crosses one of their boundaries
  * @returns {Array<{begin:number,end:number}>} new words, in code points of
  *   the body the save makes, in order
  */
-export function newTextWords({ base, gaps, words, ignored }) {
+export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
   const old = Array.from(base ?? '');
   const sorted = trimmed(old, gaps).sort((a, b) => a.start - b.start);
   const body = [];
@@ -144,6 +146,33 @@ export function newTextWords({ base, gaps, words, ignored }) {
     const hi = endOf(w.end);
     for (let x = Math.max(0, lo); x < Math.min(n, hi); x++) covered[x] = 1;
   }
+  // The sentence boundaries, moved by the edit, cut every candidate: a word
+  // is never made across one (the word layer lies inside the sentences).
+  // Text typed at a boundary goes to the sentence before, as the server puts
+  // it. Where a gap that deletes reaches a boundary, which sentence its typed
+  // text lands in is the server's to say, so that text gets no word.
+  const cut = new Uint8Array(n + 1);
+  for (const s of sentences || []) {
+    const p = s.begin;
+    if (!(p > 0 && p < old.length)) continue;
+    const touching = [];
+    const i = lastStarting(p, false);
+    for (let j = Math.max(0, i - 1); j <= i; j++) {
+      if (j >= 0 && sorted[j].start <= p && p <= sorted[j].end) touching.push(j);
+    }
+    if (!touching.length) {
+      cut[startOf(p)] = 1;
+    } else if (touching.every((j) => sorted[j].start === p && sorted[j].end === p)) {
+      cut[at[touching.at(-1)] + lens[touching.at(-1)]] = 1;
+    } else {
+      for (const j of touching) {
+        cut[at[j]] = 1;
+        cut[at[j] + lens[j]] = 1;
+        for (let x = at[j]; x < at[j] + lens[j]; x++) covered[x] = 1;
+      }
+    }
+  }
+
   // Typed text against a word with no whitespace between goes to the word.
   const joins = (x) => typed[x] && !isSpace(body[x]);
   for (let x = 1; x < n; x++) if (!covered[x] && covered[x - 1] && joins(x)) covered[x] = 1;
@@ -156,7 +185,7 @@ export function newTextWords({ base, gaps, words, ignored }) {
       continue;
     }
     let y = x;
-    while (y < n && !covered[y]) y++;
+    while (y < n && !covered[y] && !(y > x && cut[y])) y++;
     ranges.push({ start: x, end: y });
     x = y;
   }

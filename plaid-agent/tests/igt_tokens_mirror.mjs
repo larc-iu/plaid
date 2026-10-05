@@ -35,18 +35,19 @@ const newWords = await import(
   pathToFileURL(resolve(SRC, "domain/newTextWords.js")).href
 );
 
-// The spaceless table as ranges, read off the module's predicate (the table
-// itself is not exported).
-const spacelessRanges = () => {
+// The code points a predicate holds for, as ranges: the spaceless table (not
+// exported itself) and the editor's word-break punctuation class.
+const rangesOf = (holds) => {
   const out = [];
   for (let cp = 0; cp <= 0x10ffff; cp++) {
-    if (!spaceless.isSpacelessScript(String.fromCodePoint(cp))) continue;
+    if (!holds(String.fromCodePoint(cp))) continue;
     const last = out[out.length - 1];
     if (last && last[1] === cp - 1) last[1] = cp;
     else out.push([cp, cp]);
   }
   return out;
 };
+const spacelessRanges = () => rangesOf(spaceless.isSpacelessScript);
 
 const cases = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const len = (text) => Array.from(text).length;
@@ -56,6 +57,7 @@ process.stdout.write(
       punctOrSymbol: classes.PUNCT_OR_SYMBOL,
       pictographic: classes.PICTOGRAPHIC,
       spaceless: spacelessRanges(),
+      breaks: rangesOf(tokenization.isUnicodePunctuation),
     },
     ignored: cases.configs.map((cfg) =>
       cases.tokens.map((t) => config.isTokenIgnored(t, cfg)),

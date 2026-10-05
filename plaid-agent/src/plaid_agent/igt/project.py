@@ -817,13 +817,13 @@ def document_lines(documents: List[dict]) -> List[str]:
 
 # --- cutting the text the way the editor does --------------------------------
 
-def project_new_words(project: 'IgtProject', base: str, gaps, words) -> List[Tuple[int, int]]:
+def project_new_words(project: 'IgtProject', base: str, gaps, words, sentences=()) -> List[Tuple[int, int]]:
     """The words "Tokenize new text" gives an edit of ``gaps`` over ``base``
-    (``plaid_client.workflows.igt.new_words``), under the project's setting:
-    none when it is off."""
+    (``plaid_client.workflows.igt.new_words``), kept inside ``sentences``,
+    under the project's setting: none when it is off."""
     if not project.tokenize_new_text:
         return []
-    return new_text_words(base, gaps, words, project.ignored_cfg)
+    return new_text_words(base, gaps, words, project.ignored_cfg, sentences)
 
 
 def split_sentences(text: str) -> List[tuple]:

@@ -147,9 +147,6 @@ class WhisperASRService(BaseService):
                 Param.string('language', 'Language (optional)', default='',
                              placeholder='auto-detect (e.g. en, es, de)',
                              description='ISO code to force a language; blank = auto-detect.'),
-                Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
-                              description='Allow the sentence-partition reset to delete sentence-level '
-                                          'annotations a human created or verified.'),
             ],
         )
         self.asr_model = None
@@ -188,7 +185,6 @@ class WhisperASRService(BaseService):
         # User-controlled arguments (declared in the service's parameter schema).
         model_size = request_data.get('model_size') or None
         language = request_data.get('language') or None
-        overwrite = bool(request_data.get('overwrite', False))
         requester = requester_of(self.client, request_data)
         
         # Validate required parameters
@@ -256,13 +252,12 @@ class WhisperASRService(BaseService):
             response_helper.progress(70, f"Found {len(alignments)} segments…")
 
             # Process alignments using the alignment processor. Created tokens
-            # are stamped machine-made (provenance convention); the processor
-            # refuses to destroy protected annotations unless `overwrite`.
+            # are stamped machine-made (provenance convention). Nothing already
+            # there is deleted: each new segment's sentence is split out.
             # Group every write into ONE labeled audit-log entry (the processor acquires the
             # document lock and does the batched alignment writes inside this scope).
-            # `critical` because the writes reset the sentence partition before
-            # rebuilding it: stopping part-way would leave the document worse
-            # than either finishing or never starting.
+            # `critical` because the writes are one batch that a stop part-way
+            # would only throw away after the transcription was paid for.
             audit_msg = requester.label(f"Whisper ASR transcription ({language})" if language
                                         else "Whisper ASR transcription")
             for alignment in alignments:
@@ -285,7 +280,6 @@ class WhisperASRService(BaseService):
                         self.client, document_id, alignments, text_layer_id,
                         alignment_token_layer_id, sentence_token_layer_id, response_helper,
                         prov_source=service_source(self.service_id),
-                        overwrite=overwrite,
                         lock_percent=72,
                         word_token_layer_id=(word_layer or {}).get("id"),
                     )

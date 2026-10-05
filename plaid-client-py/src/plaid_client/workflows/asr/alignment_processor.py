@@ -10,12 +10,13 @@ import os
 import requests
 from typing import List, Dict, Optional
 
-from plaid_client.provenance import stamp_inferred, is_protected
+from plaid_client.provenance import stamp_inferred
 from plaid_client.http import PlaidAPIError
+from plaid_client.ids import uuid7
 from plaid_client.service import locked_for_writes, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
-from plaid_client.workflows.igt.new_words import layer_new_words
+from plaid_client.workflows.igt.new_words import is_js_space, layer_new_words, words_refused
 
 from .asr_model import Alignment
 
@@ -53,10 +54,10 @@ class AlignmentProcessor:
         Process ASR alignments and update the Plaid document.
 
         Alignment tokens are insertion-only and time-collision-aware: existing
-        ones are never modified or deleted. The sentence partition, however,
-        is fully reset on each pass, which cascade-deletes sentence-level
-        annotations — per the provenance write contract, the run refuses when
-        any of those are human-made or human-verified unless ``overwrite``.
+        ones are never modified or deleted. Neither are sentences: each new
+        segment's sentence is split out of the sentences there
+        (``_update_sentence_partitioning``), so the words nested in them and
+        every annotation stay.
 
         Args:
             client: PlaidClient instance
@@ -69,8 +70,8 @@ class AlignmentProcessor:
             prov_source: Optional provenance producer id (e.g.
                 ``service_source('<service-id>')``). When set, created tokens
                 are stamped machine-made per the provenance convention.
-            overwrite: Allow the sentence-partition reset to destroy
-                human-made or human-verified sentence-level annotations.
+            overwrite: Accepted for callers that pass it. The run deletes no
+                annotation, so there is nothing for it to allow.
             lock_percent: The percent to report the lock step at. The rest of
                 the run reports 75 to 98, so a caller that has already done
                 work of its own passes what it has reached: the default is
@@ -312,16 +313,17 @@ class AlignmentProcessor:
             self._refuse_out_of_time_order(
                 self._shifted(existing_alignment_tokens, text_modifications), new_alignment_tokens)
 
-            words = self._new_words(text_layer, word_token_layer_id, text_id, current_text,
-                                    text_modifications)
+            words = self._new_words(text_layer, word_token_layer_id, sentence_token_layer_id, text_id,
+                                    current_text, text_modifications)
             try:
                 self._write(client, document, text_id, text_modifications, new_alignment_tokens,
                             words, existing_alignment_tokens, current_text, new_text,
                             sentence_token_layer_id, response_helper, overwrite)
             except PlaidAPIError as e:
-                # A new word over one the server placed: the batch stored
-                # nothing, and it goes again without the words.
-                if not words or not self._words_overlap(e):
+                # A new word over one the server placed, or outside every
+                # sentence: the batch stored nothing, and it goes again
+                # without the words.
+                if not words or not words_refused(e):
                     raise
                 self._write(client, document, text_id, text_modifications, new_alignment_tokens,
                             [], existing_alignment_tokens, current_text, new_text,
@@ -332,7 +334,8 @@ class AlignmentProcessor:
     @staticmethod
     def _pad(current_text: str, text_modifications: List[Dict]) -> None:
         """Give each insert (in text order) a space before it when the
-        character before it is not whitespace, and one after it when the text
+        character before it is not whitespace (JavaScript's, as the Media
+        tab reads it), and one after it when the text
         after it does not start with whitespace, so a segment's text never runs
         into the text beside it: "one" and "two three" make "one two three".
         Inserts at one place stand in the order given, each apart from the one
@@ -346,30 +349,27 @@ class AlignmentProcessor:
                 before = current_text[pos - 1:pos]
             nxt = text_modifications[i + 1] if i + 1 < len(text_modifications) else None
             after = '' if nxt is not None and nxt['position'] == pos else current_text[pos:pos + 1]
-            lead = ' ' if before and not before.isspace() else ''
-            trail = ' ' if after and not after.isspace() else ''
+            lead = ' ' if before and not is_js_space(before) else ''
+            trail = ' ' if after and not is_js_space(after) else ''
             mod['new_text'] = lead + mod['new_text'] + trail
             mod['segment_start_offset'] = len(lead)
 
     @staticmethod
-    def _words_overlap(e: PlaidAPIError) -> bool:
-        data = e.response_data if isinstance(e.response_data, dict) else {}
-        text = str(data.get('error') or e)
-        return e.status == 409 and ('Bulk-created token overlaps' in text
-                                    or 'Tokens in batch overlap' in text)
-
-    @staticmethod
-    def _new_words(text_layer: Dict, word_token_layer_id: Optional[str], text_id: str,
+    def _new_words(text_layer: Dict, word_token_layer_id: Optional[str],
+                   sentence_token_layer_id: Optional[str], text_id: str,
                    current_text: str, text_modifications: List[Dict]) -> List[Dict]:
         """The words the inserted text gets from the word layer's "Tokenize
-        new text", as bulk-create rows, measured on the text read. Inserts at
-        one place are one gap, in the order they are written."""
+        new text", as bulk-create rows, measured on the text read and kept
+        inside its sentences. Inserts at one place are one gap, in the order
+        they are written."""
         if not word_token_layer_id:
             return []
         layer = next((tl for tl in text_layer.get("token_layers", [])
                       if tl.get("id") == word_token_layer_id), None)
         if layer is None:
             return []
+        sentences = next((tl.get("tokens") or [] for tl in text_layer.get("token_layers", [])
+                          if tl.get("id") == sentence_token_layer_id), [])
         gaps: List[Dict] = []
         for mod in text_modifications:
             if gaps and gaps[-1]['start'] == mod['position']:
@@ -378,7 +378,7 @@ class AlignmentProcessor:
                 gaps.append({'start': mod['position'], 'end': mod['position'], 'value': mod['new_text']})
         return [{"token_layer_id": word_token_layer_id, "text": text_id, "begin": b, "end": e}
                 for b, e in layer_new_words(layer.get("config"), current_text, gaps,
-                                            layer.get("tokens") or [])]
+                                            layer.get("tokens") or [], sentences)]
 
     def _write(self, client, document, text_id, text_modifications, new_alignment_tokens, words,
                existing_alignment_tokens, current_text, new_text, sentence_token_layer_id,
@@ -434,7 +434,7 @@ class AlignmentProcessor:
                 self._update_sentence_partitioning(
                     b, document, text_id, sentence_token_layer_id,
                     existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
-                    overwrite=overwrite
+                    new_words=words,
                 )
         
             # The new words, once the sentences they lie in are there.
@@ -537,131 +537,100 @@ class AlignmentProcessor:
     def _update_sentence_partitioning(self, batch, document: Dict, text_id: str, sentence_token_layer_id: str,
                                      existing_alignment_tokens: List[Dict], new_alignment_tokens: List[Dict],
                                      original_text: str, updated_text: str, text_modifications: List[Dict],
-                                     overwrite: bool = False):
+                                     new_words: List[Dict] = ()):
         """
-        Update sentence partitioning after ASR text insertion.
+        Give each new segment a sentence of its own, on the batch it is handed.
 
-        The sentence token layer is :partitioning, so the server rejects single
-        token create/delete and rejects bulk_create against a non-empty layer or
-        bulk_delete that doesn't clear the layer entirely. ASR insertion can also
-        invalidate partial-replacement bookkeeping (existing sentence positions
-        relative to inserted text), so we take a "full reset" approach:
-
-        1. Gather ALL existing sentence IDs in this layer for this text.
-        2. Build a NEW complete partition of [0, len(updated_text)) using the
-           combined alignment tokens (existing positions reindexed for the inserted
-           text + the new alignment tokens) as anchors.
-        3. On the batch it is handed: bulk_delete all existing + bulk_create the
-           new partition. Both must be queued on the SAME batch so the layer is
-           empty in-tx when bulk_create runs (it rejects against a non-empty
-           layer).
+        A sentence runs from the end of the segment before it in the text to
+        the end of its own segment. A layer with no sentences gets a whole
+        partition so (bulk create). Otherwise no sentence is deleted: the
+        sentences as the inserts leave them are split at the new segments'
+        boundaries (``tokens.split``), so every word nested in them, and every
+        annotation on a sentence or a word, stays (REV-R4-TOK F1: a full reset
+        deleted every sentence, and the core took the nested words and their
+        glosses with them). A boundary that already is one, or that lies
+        inside a word, or that would leave a sentence of whitespace alone, is
+        left alone.
         """
-        if not sentence_token_layer_id:
-            print("No sentence token layer provided, skipping sentence partitioning")
-            return
-
-        # Find sentence token layer (document already fetched)
         sentence_token_layer = None
+        text_layer = None
         for tl in document["text_layers"]:
-            # Find the text layer that contains our text_id
             if tl.get("text", {}).get("id") == text_id:
+                text_layer = tl
                 for token_layer in tl.get("token_layers", []):
                     if token_layer["id"] == sentence_token_layer_id:
                         sentence_token_layer = token_layer
                         break
                 break
 
-        if not sentence_token_layer:
-            return
-
-        # Nothing to anchor sentences against
-        if not new_alignment_tokens:
+        if not sentence_token_layer or not new_alignment_tokens:
             return
 
         existing_sentence_tokens = sentence_token_layer.get("tokens", [])
         text_length = len(updated_text)
-
-        # Provenance write contract: the full reset below cascade-deletes every
-        # sentence-level annotation. Machine-made UNVERIFIED ones are
-        # replaceable; human-made or human-verified ones are not — fail closed
-        # (raising aborts the batch BEFORE submit) unless explicitly overwriting.
-        if existing_sentence_tokens and not overwrite:
-            deleted_ids = {s.get("id") for s in existing_sentence_tokens}
-            protected = 0
-            for sl in sentence_token_layer.get('span_layers', []) or []:
-                for span in sl.get('spans', []) or []:
-                    if any(tid in deleted_ids for tid in (span.get('tokens') or [])) \
-                            and is_protected(span.get('metadata')):
-                        protected += 1
-            for vocab in sentence_token_layer.get('vocabs', []) or []:
-                for vl in vocab.get('vocab_links', []) or []:
-                    if any(tid in deleted_ids for tid in (vl.get('tokens') or [])) \
-                            and is_protected(vl.get('metadata')):
-                        protected += 1
-            if protected:
-                raise ValueError(
-                    f"Transcribing would redo the sentences and delete {protected} "
-                    f"human-made or human-verified sentence-level annotation(s). Re-run with "
-                    f"overwrite enabled to replace them."
-                )
-
         if text_length <= 0:
-            # Empty text — partition must be empty too. Clear if anything exists.
-            if existing_sentence_tokens:
-                batch.tokens.bulk_delete([s["id"] for s in existing_sentence_tokens if "id" in s])
             return
 
-        all_alignment_tokens = (self._shifted(existing_alignment_tokens, text_modifications)
-                                + list(new_alignment_tokens))
+        all_alignment_tokens = sorted(self._shifted(existing_alignment_tokens, text_modifications)
+                                      + list(new_alignment_tokens), key=lambda t: t["begin"])
 
-        # Build a complete partition of [0, text_length) anchored on the alignment tokens
-        new_sentences = self._create_sentences_from_alignment_tokens(
-            all_alignment_tokens, text_id, sentence_token_layer_id,
-            full_text=updated_text, text_start=0, text_end=text_length
-        )
+        if not existing_sentence_tokens:
+            new_sentences = self._create_sentences_from_alignment_tokens(
+                all_alignment_tokens, text_id, sentence_token_layer_id,
+                full_text=updated_text, text_start=0, text_end=text_length
+            )
+            batch.tokens.bulk_create([{"token_layer_id": sentence_token_layer_id, "text": text_id, **r}
+                                      for r in partition(new_sentences, text_length)])
+            return
 
-        new_sentences = [{"token_layer_id": sentence_token_layer_id, "text": text_id, **r}
-                         for r in partition(new_sentences, text_length)]
+        # The sentences as the inserts leave them: text inserted at a boundary
+        # goes to the sentence before it, as the core puts it.
+        def moved(p: int, start: bool) -> int:
+            if start and p == 0:
+                return 0
+            return p + sum(len(m['new_text']) for m in text_modifications if m['position'] <= p)
 
-        # TODO(annotation-preservation): ASR runs incrementally, and this full-reset
-        # bulk_delete + bulk_create wipes every sentence-level annotation (spans,
-        # vocab-links, relations grounded on sentence spans) on EACH ASR pass. That
-        # is the right thing to do only if the new partition were unrelated to the
-        # old one.
-        #
-        # We investigated whether the new partition is always a strict REFINEMENT of
-        # the old (i.e. every existing boundary survives, the new partition only adds
-        # cut points). It is NOT, in general:
-        #   * `_create_sentences_from_alignment_tokens` anchors each sentence's END
-        #     on an alignment token's `end` and each sentence's START on the
-        #     preceding token's `end`. Inserting a new alignment token BETWEEN two
-        #     existing ones therefore moves the boundary that used to sit at
-        #     `prev.end` to the new inserted token's `end` — a DIFFERENT offset.
-        #     So old boundaries don't survive byte-exactly.
-        #   * Even if they did, ASR can insert tokens before the very first existing
-        #     token, shifting the leading sentence's start (which the normalizer
-        #     then pushes back to 0).
-        #
-        # A correct incremental approach would be:
-        #   1. Walk old sentence boundaries vs. new sentence boundaries.
-        #   2. For each old boundary that has a corresponding new boundary at the
-        #      same (post-cascade) offset, leave that sentence's identity alone.
-        #   3. For each new boundary inside an existing sentence, call
-        #      `batch.tokens.split(sentence_id, position)` — this preserves the
-        #      original sentence's annotations on the LEFT half.
-        #   4. For any remaining mismatches, fall back to full reset on only the
-        #      affected sub-range.
-        # This is complex enough that we're deferring it. If sentence-level
-        # annotation loss becomes a real problem for ASR users, implement the
-        # refinement-detection path above.
-        #
-        # Full reset: clear the whole layer first (partitioning rejects partial bulk_delete),
-        # then establish the new partition. Must be in the same batch (the layer must be
-        # empty in-tx when bulk_create runs).
-        existing_ids = [s["id"] for s in existing_sentence_tokens if "id" in s]
-        if existing_ids:
-            batch.tokens.bulk_delete(existing_ids)
-        batch.tokens.bulk_create(new_sentences)
+        sentences = sorted([moved(t["begin"], True), moved(t["end"], False), t["id"]]
+                           for t in existing_sentence_tokens)
+        # Every other token over the text (the words and morphemes nested in
+        # the sentences), where the inserts leave it, and the new words.
+        # An insert at a token's edge stands outside it (the inserts are
+        # padded with whitespace, `_pad`).
+        def shift(p: int, inclusive: bool) -> int:
+            return p + sum(len(m['new_text']) for m in text_modifications
+                           if (m['position'] <= p if inclusive else m['position'] < p))
+
+        skip = {sentence_token_layer_id} | {a.get("token_layer_id") for a in new_alignment_tokens}
+        inner = [(shift(t["begin"], True), shift(t["end"], False))
+                 for tl in (text_layer or {}).get("token_layers", []) if tl["id"] not in skip
+                 for t in tl.get("tokens", [])]
+        inner += [(w["begin"], w["end"]) for w in new_words]
+
+        def blank(a: int, z: int) -> bool:
+            return all(is_js_space(c) for c in updated_text[a:z])
+
+        new_ids = {id(t) for t in new_alignment_tokens}
+        boundaries = set()
+        for k, token in enumerate(all_alignment_tokens):
+            if id(token) in new_ids:
+                boundaries.add(token["end"])
+                if k > 0:
+                    boundaries.add(all_alignment_tokens[k - 1]["end"])
+        for b in sorted(boundaries):
+            if not 0 < b < text_length:
+                continue
+            hit = next((s for s in sentences if s[0] < b < s[1]), None)
+            if hit is None or any(ib < b < ie for ib, ie in inner):
+                continue
+            # Never a sentence of whitespace alone: the boundary already
+            # there past a line break stands for this one.
+            if blank(hit[0], b) or blank(b, hit[1]):
+                continue
+            right = uuid7()
+            batch.tokens.split(hit[2], b, id=right)
+            sentences.append([b, hit[1], right])
+            hit[1] = b
+            sentences.sort()
 
     def _create_sentences_from_alignment_tokens(self, alignment_tokens: List[Dict], text_id: str, 
                                                sentence_token_layer_id: str, full_text: str = "",

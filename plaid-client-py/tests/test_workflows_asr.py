@@ -133,6 +133,9 @@ class _FakeClient:
         def bulk_delete(self, ids):
             self._client._record(('bulk_delete', list(ids)))
 
+        def split(self, token_id, position, audit_message=None, *, id=None):
+            self._client._record(('split', token_id, position, id))
+
     class _Texts:
         def __init__(self, client):
             self._client = client
@@ -187,25 +190,19 @@ def test_a_transcription_is_stamped_machine_made_and_lands_in_one_batch():
     assert token_ops[0]['metadata']['timeBegin'] == 0.0
 
 
-def test_the_sentence_reset_refuses_to_take_a_persons_work_with_it():
-    # The reset cascade-deletes every sentence-level annotation. It fails
-    # CLOSED, inside the batch and before submit, so nothing at all is written.
+def test_a_persons_sentence_work_stays_and_the_new_segment_is_split_out():
+    # REV-R4-TOK F1: the run used to delete every sentence and make a new
+    # partition, and the core took the nested words and their glosses with
+    # them. Now no sentence is deleted: the new segment's sentence is split
+    # out of the one its text went into, which keeps its id and its spans.
     human = {'id': 'sp1', 'tokens': ['s0'], 'value': 'a note', 'metadata': {}}
-    client = _FakeClient([_document('already here', sentences=[(0, 12)],
-                                    align=[(0, 12, 5.0, 6.0)], sentence_spans=[human])])
-    with pytest.raises(ValueError) as caught:
-        _run(client)
-    assert 'human-made or human-verified' in str(caught.value)
-    assert [c for c in client.calls if c[0] in ('text_update', 'bulk_create', 'bulk_delete')] == []
-    assert client.calls[0] == ('lock', 'd1') and client.calls[-1] == ('unlock', 'd1')
-
-
-def test_overwrite_lets_the_reset_through():
-    human = {'id': 'sp1', 'tokens': ['s0'], 'value': 'a note', 'metadata': {}}
-    client = _FakeClient([_document('already here', sentences=[(0, 12)],
-                                    align=[(0, 12, 5.0, 6.0)], sentence_spans=[human])])
-    assert _run(client, overwrite=True) == 1
-    assert any(c[0] == 'bulk_delete' for c in client.calls)
+    for overwrite in (False, True):
+        client = _FakeClient([_document('already here', sentences=[(0, 12)],
+                                        align=[(0, 12, 5.0, 6.0)], sentence_spans=[human])])
+        assert _run(client, overwrite=overwrite) == 1
+        assert not any(c[0] == 'bulk_delete' for c in client.calls)
+        [split] = [c for c in client.calls if c[0] == 'split']
+        assert split[1:3] == ('s0', 11)  # "hello there" put before "already here"
 
 
 def test_the_run_never_reads_the_document_back():

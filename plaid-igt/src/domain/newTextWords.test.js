@@ -34,6 +34,36 @@ const wordsOf = (text) => {
 };
 
 describe('newTextWords', () => {
+  it('never makes a word across a sentence boundary, moved by the edit', () => {
+    // REV-R4-TOK F3: `Hello.|World`, a boundary between letters, `x` typed at it.
+    const at = (base, gaps, sentences, words = []) =>
+      newTextWords({ base, gaps, words, ignored: PUNCT, sentences }).map(({ begin, end }) => [
+        begin,
+        end,
+      ]);
+    const two = [
+      { begin: 0, end: 6 },
+      { begin: 6, end: 11 },
+    ];
+    // Typed at the boundary: it goes to the sentence before, so `x` alone.
+    expect(at('Hello.World', [{ start: 6, end: 6, value: 'x' }], two)).toEqual([[6, 7]]);
+    // Without the sentences, the old prediction: one word across it.
+    expect(at('Hello.World', [{ start: 6, end: 6, value: 'x' }], [])).toEqual([[6, 12]]);
+    // Typed before the boundary, the boundary moves on with it.
+    expect(
+      at(
+        'ab cd',
+        [{ start: 1, end: 1, value: 'x' }],
+        [
+          { begin: 0, end: 1 },
+          { begin: 1, end: 5 },
+        ],
+      ),
+    ).toEqual([[0, 2]]);
+    // A gap that deletes across a boundary: its typed text gets no word.
+    expect(at('Hello.World', [{ start: 5, end: 8, value: 'zz' }], two)).toEqual([]);
+  });
+
   it('reads a selection typed over and a line pasted over as the server does, trimmed of what they share', () => {
     // L1-TEXT-2: the gaps as typed repeat the old text at their ends.
     const line = 'One two three four.';

@@ -90,7 +90,17 @@ NEW_WORDS = [
      'words': [{'begin': 0, 'end': 3}, {'begin': 4, 'end': 9}], 'ignored': PUNCT},
     {'base': 'One two', 'gaps': [{'start': 4, 'end': 7, 'value': 'two'}],
      'words': [{'begin': 0, 'end': 3}, {'begin': 4, 'end': 7}], 'ignored': PUNCT},
+    # A sentence boundary between letters, text typed at it (REV-R4-TOK F3).
+    {'base': 'Hello.World', 'gaps': [{'start': 6, 'end': 6, 'value': 'x'}], 'words': [], 'ignored': PUNCT,
+     'sentences': [{'begin': 0, 'end': 6}, {'begin': 6, 'end': 11}]},
 ]
+
+
+def _sentences(rng, base):
+    """A partition of ``base`` with boundaries anywhere, between letters too."""
+    cuts = sorted({rng.randint(1, len(base) - 1) for _ in range(rng.randint(0, 3))}) if len(base) > 1 else []
+    ends = cuts + [len(base)]
+    return [{'begin': b, 'end': e} for b, e in zip([0] + cuts, ends)] if base else []
 
 
 def _random_new_words(seed: int, n: int):
@@ -116,7 +126,8 @@ def _random_new_words(seed: int, n: int):
             value = ''.join(rng.choice(alphabet) for _ in range(rng.randint(0, 5)))
             gaps.append({'start': start, 'end': end, 'value': value})
             pos = end + 1
-        out.append({'base': base, 'gaps': gaps, 'words': words, 'ignored': cfg})
+        out.append({'base': base, 'gaps': gaps, 'words': words, 'ignored': cfg,
+                    'sentences': _sentences(rng, base)})
     return out
 
 
@@ -137,7 +148,7 @@ def _random_paste_overs(seed: int, n: int):
         cut = rng.randint(0, len(old))
         added = ''.join(rng.choice(alphabet) for _ in range(rng.randint(1, 6)))
         out.append({'base': base, 'gaps': [{'start': start, 'end': end, 'value': old[:cut] + added + old[cut:]}],
-                    'words': words, 'ignored': cfg})
+                    'words': words, 'ignored': cfg, 'sentences': _sentences(rng, base)})
     return out
 
 
@@ -170,6 +181,23 @@ def test_is_token_ignored_answers_as_the_app_does(app):
             assert is_token_ignored(token, cfg) == expected, (token, cfg)
 
 
+def test_the_word_break_class_is_the_editors_on_every_code_point(app):
+    """The splitter's punctuation class is a hand copy of the editor's: it
+    once kept two Sharada code points the editor had dropped."""
+    from plaid_client.workflows.igt.new_words import is_unicode_punctuation
+    out = []
+    for cp in range(0x110000):
+        if 0xD800 <= cp <= 0xDFFF:
+            continue
+        if not is_unicode_punctuation(chr(cp)):
+            continue
+        if out and out[-1][1] == cp - 1:
+            out[-1][1] = cp
+        else:
+            out.append([cp, cp])
+    assert out == app['tables']['breaks']
+
+
 def test_the_agent_splits_with_the_clients_splitter():
     assert split_words is client_split_words
 
@@ -184,7 +212,8 @@ def test_new_text_words_are_the_editors(app):
     """The words "Tokenize new text" gives an edit, the app's and the
     assistant's, on the table and on random edits."""
     for case, expected in zip(NEW_WORDS + RANDOM_NEW_WORDS, app['newWords']):
-        got = [list(w) for w in new_text_words(case['base'], case['gaps'], case['words'], case['ignored'])]
+        got = [list(w) for w in new_text_words(case['base'], case['gaps'], case['words'], case['ignored'],
+                                               case.get('sentences') or ())]
         assert got == expected, case
 
 
@@ -210,6 +239,7 @@ def test_the_new_words_cases_reach_every_answer(app):
     assert texts[11] == ['plus']
     assert texts[12] == ['new']
     assert texts[13] == []
+    assert texts[14] == ['x']
 
 
 def test_the_cases_reach_every_answer(app):

@@ -144,6 +144,21 @@ describe('a new segment with "Tokenize new text"', () => {
   });
 });
 
+describe('a Media write refused for a word outside every sentence', () => {
+  it('goes again without its words', async () => {
+    const server = segmentServer(RAW());
+    const doc = open(server);
+    server.refuseNext(400, 'Token is not contained within any parent-layer token');
+    expect(await doc.createAlignment({ text: 'four', timeBegin: 3, timeEnd: 4 })).toBe(true);
+    await idle(doc);
+    expect(requests(server)).toEqual([
+      ['texts.update', 'tokens.create', 'tokens.bulkCreate'],
+      ['texts.update', 'tokens.create'],
+    ]);
+    expect(server.body).toBe('one two three four');
+  });
+});
+
 describe('a transcript row edit with "Tokenize new text"', () => {
   it('a word typed after a space is made', async () => {
     const server = segmentServer(RAW());

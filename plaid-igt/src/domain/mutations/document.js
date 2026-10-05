@@ -47,11 +47,11 @@ const wordCreates = (tokenLayerId, text, words) =>
   words.map(({ begin, end }) => ({ tokenLayerId, text, begin, end }));
 
 // A batch refused because a new word of it lies over a word the server put
-// there: the edit placed a word where newTextWords did not foresee one.
-// Nothing of the batch is stored.
+// there, or outside every sentence (a boundary moved where newTextWords did
+// not foresee): nothing of the batch is stored.
 export const wordsOverlap = (err) =>
-  statusOf(err) === 409 &&
-  /Bulk-created token overlaps|Tokens in batch overlap/i.test(
+  [400, 409].includes(statusOf(err)) &&
+  /Bulk-created token overlaps|Tokens in batch overlap|not contained within any parent-layer token/i.test(
     String(err?.responseData?.error ?? err?.message ?? ''),
   );
 
@@ -67,6 +67,7 @@ export const newWordsOf = (info, base, gaps) => {
     gaps,
     words: wordLayer.tokens || [],
     ignored: readIgnoredTokens(wordLayer.config),
+    sentences: info.sentenceTokenLayer?.tokens || [],
   });
 };
 

@@ -149,3 +149,114 @@ def test_another_refusal_is_not_taken_for_one():
             _run(client, [Alignment(text='hello there', start=0.0, end=1.0)])
     finally:
         _Batch.submit = submit
+
+
+# --- what the core does with the run's writes ----------------------------------
+
+def _replay(doc, calls):
+    """The document after ``calls``, as the core takes them: an insert at a
+    sentence boundary goes to the sentence before, one at a word's edge stays
+    outside it, a split keeps the left half's id, and a sentence deleted takes
+    every token of the layers nested in it (the words) and every span on
+    those with it, as the core cascades a delete."""
+    import copy
+    doc = copy.deepcopy(doc)
+    tl = doc['text_layers'][0]
+    layers = {layer['id']: layer for layer in tl['token_layers']}
+    body = tl['text']['body']
+    for call in calls:
+        kind = call[0]
+        if kind == 'text_update':
+            for op in call[1]:
+                i, n = op['index'], len(op['value'])
+                body = body[:i] + op['value'] + body[i:]
+                for lid, layer in layers.items():
+                    for t in layer['tokens']:
+                        if lid == SENTENCE_LAYER:
+                            if t['begin'] >= i and t['begin'] > 0:
+                                t['begin'] += n
+                            if t['end'] >= i:
+                                t['end'] += n
+                        else:
+                            if t['begin'] >= i:
+                                t['begin'] += n
+                            if t['end'] > i:
+                                t['end'] += n
+        elif kind == 'bulk_create':
+            for op in call[1]:
+                layers[op['token_layer_id']]['tokens'].append(
+                    {'id': op.get('id') or f"made-{len(layers[op['token_layer_id']]['tokens'])}",
+                     'begin': op['begin'], 'end': op['end']})
+        elif kind == 'bulk_delete':
+            gone = set(call[1])
+            dead = [t for t in layers[SENTENCE_LAYER]['tokens'] if t['id'] in gone]
+            for lid, layer in layers.items():
+                if lid in (SENTENCE_LAYER, ALIGN_LAYER):
+                    continue
+                for t in layer['tokens']:
+                    if any(d['begin'] <= t['begin'] and t['end'] <= d['end'] for d in dead):
+                        gone.add(t['id'])
+            for layer in layers.values():
+                layer['tokens'] = [t for t in layer['tokens'] if t['id'] not in gone]
+                for sl in layer.get('span_layers', []):
+                    sl['spans'] = [sp for sp in sl['spans'] if not set(sp['tokens']) & gone]
+        elif kind == 'split':
+            _, tid, pos, new_id = call
+            [t] = [t for t in layers[SENTENCE_LAYER]['tokens'] if t['id'] == tid]
+            assert t['begin'] < pos < t['end'], (t, pos)
+            layers[SENTENCE_LAYER]['tokens'].append({'id': new_id, 'begin': pos, 'end': t['end']})
+            t['end'] = pos
+    tl['text']['body'] = body
+    return doc
+
+
+def _glossed():
+    """`one two`, one sentence, the words `one` and `two` glossed by a person,
+    one segment over the text at 0 to 2 s."""
+    doc = _with_words(_document('one two', sentences=[(0, 7)], align=[(0, 7, 0.0, 2.0)]),
+                      words=[(0, 3), (4, 7)])
+    words = doc['text_layers'][0]['token_layers'][2]
+    words['span_layers'] = [{'id': 'gloss', 'name': 'Gloss', 'spans': [
+        {'id': 'g0', 'tokens': ['w0'], 'value': 'ONE', 'metadata': {}},
+        {'id': 'g1', 'tokens': ['w1'], 'value': 'TWO', 'metadata': {}}]}]
+    return doc
+
+
+def test_a_transcription_keeps_every_word_and_gloss_already_there():
+    # REV-R4-TOK F1: the full sentence reset deleted every word and gloss.
+    for word_layer in (WORD_LAYER, None):
+        doc = _glossed()
+        client = _FakeClient([doc])
+        _run(client, [Alignment(text='three', start=3.0, end=4.0)], word_layer=word_layer)
+        after = _replay(doc, client.calls)
+        tl = after['text_layers'][0]
+        body = tl['text']['body']
+        layers = {layer['id']: layer for layer in tl['token_layers']}
+        words = sorted(layers[WORD_LAYER]['tokens'], key=lambda t: t['begin'])
+        assert body == 'one two three'
+        assert [body[t['begin']:t['end']] for t in words] == (
+            ['one', 'two', 'three'] if word_layer else ['one', 'two'])
+        assert [w['id'] for w in words][:2] == ['w0', 'w1']
+        assert [sp['value'] for sp in layers[WORD_LAYER]['span_layers'][0]['spans']] == ['ONE', 'TWO']
+        # The new segment has a sentence of its own, split from the old one.
+        sentences = sorted(layers[SENTENCE_LAYER]['tokens'], key=lambda t: t['begin'])
+        assert [(t['id'] == 's0', body[t['begin']:t['end']]) for t in sentences] == [
+            (True, 'one two'), (False, ' three')]
+        assert not any(c[0] == 'bulk_delete' for c in client.calls)
+
+
+def test_a_segment_put_between_two_gets_a_sentence_of_its_own():
+    doc = _with_words(_document('one\nthree', sentences=[(0, 4), (4, 9)],
+                                align=[(0, 3, 0.0, 1.0), (4, 9, 4.0, 5.0)]), words=[(0, 3), (4, 9)])
+    client = _FakeClient([doc])
+    _run(client, [Alignment(text='two', start=2.0, end=3.0)])
+    after = _replay(doc, client.calls)
+    tl = after['text_layers'][0]
+    body = tl['text']['body']
+    layers = {layer['id']: layer for layer in tl['token_layers']}
+    sentences = sorted(layers[SENTENCE_LAYER]['tokens'], key=lambda t: t['begin'])
+    assert body == 'one two\nthree'
+    assert [body[t['begin']:t['end']] for t in sentences] == ['one', ' two\n', 'three']
+    assert [body[t['begin']:t['end']] for t in sorted(layers[WORD_LAYER]['tokens'], key=lambda t: t['begin'])] == [
+        'one', 'two', 'three']
+

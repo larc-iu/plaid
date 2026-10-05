@@ -91,6 +91,7 @@ from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops, uuid7
 
 from plaid_client.service import requester_message
+from plaid_client.workflows.igt.new_words import words_refused
 
 from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
@@ -1583,6 +1584,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         return
     raw = client.documents.get(doc_id, include_body=True)
     tl, read_words = find_layer(raw.get('text_layers'), project.word_layer_id)
+    _, read_sents = find_layer(raw.get('text_layers'), project.sentence_layer_id)
     body = ((tl or {}).get('text') or {}).get('body') or ''
     b, e = op['begin'], op['end']
     if body[b:e] != op['old']:
@@ -1592,7 +1594,8 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     # Measured on the body read, before the server places its words on the
     # new one, as the Baseline save measures them.
     planned = project_new_words(project, body, gaps,
-                                [(t['begin'], t['end']) for t in (read_words or {}).get('tokens') or []])
+                                [(t['begin'], t['end']) for t in (read_words or {}).get('tokens') or []],
+                                [(t['begin'], t['end']) for t in (read_sents or {}).get('tokens') or []])
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True)
     region_end = b + len(new)
@@ -1617,14 +1620,20 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
     words = [(t['begin'], t['end']) for t in (word_layer or {}).get('tokens') or []]
-    # A planned word over one the server placed is left out (the app's save
-    # goes again without its words then). A word never straddles a sentence
-    # boundary: those sit after whitespace.
+    # A planned word over one the server placed, or outside every sentence as
+    # they stand now, is left out (the app's save goes again without its
+    # words then), and so are all of them when the server refuses them so.
     creates = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
                 'id': new_id()}
-               for wb, we in planned if not any(ob < we and wb < oe for ob, oe in words)]
+               for wb, we in planned
+               if not any(ob < we and wb < oe for ob, oe in words)
+               and any(sb <= wb and we <= se for sb, se, _ in sents)]
     if creates:
-        new_id.once(lambda: client.tokens.bulk_create(creates), whole=True)
+        try:
+            new_id.once(lambda: client.tokens.bulk_create(creates), whole=True)
+        except PlaidAPIError as e:
+            if not words_refused(e):
+                raise
 
 
 def _region_gaps(old: str, new: str, at: int) -> List[Dict[str, Any]]:

@@ -161,6 +161,18 @@ describe('a Baseline save with "Tokenize new text"', () => {
     expect(errors).toEqual([]);
   });
 
+  it('saves the edit without the words when one of them lies outside every sentence', async () => {
+    // REV-R4-TOK F3: a 400, refused whole, every save while the setting is on.
+    const server = segmentServer(tokenized('uno'));
+    const doc = open(server);
+    server.refuseNext(400, 'Token is not contained within any parent-layer token');
+    const gaps = [{ start: 3, end: 3, value: ' dos' }];
+    expect(await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps })).toBe(true);
+    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate'], ['texts.edit']]);
+    expect(server.sent[1].key).not.toBe(server.sent[0].key);
+    expect(server.body).toBe('uno dos');
+  });
+
   it('gives a document’s first text its words in the batch that makes it', async () => {
     const raw = buildRawDoc({ body: '', words: [], morphemes: [], sentences: [] });
     delete raw.textLayers[0].text;

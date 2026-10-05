@@ -339,7 +339,11 @@ def test_a_missing_parameter_is_reported_once_and_nothing_is_read(monkeypatch):
     assert service.client.calls == []
 
 
-def test_human_work_the_reset_would_delete_refuses_the_run_once(monkeypatch):
+def test_a_persons_sentence_work_stays(monkeypatch):
+    """REV-R4-TOK F1: the run used to delete every sentence and make a new
+    partition (refused when a person's sentence annotation was on one, and
+    taking every nested word with it when not). It now deletes nothing and
+    splits the new segments' sentences out."""
     _media(monkeypatch)
     module, _ = load_whisper()
     human = {'id': 'sp1', 'tokens': ['s0'], 'value': 'a note', 'metadata': {}}
@@ -348,13 +352,10 @@ def test_human_work_the_reset_would_delete_refuses_the_run_once(monkeypatch):
     service = _service(module, documents=[doc])
     helper = servicetest.run(service, REQUEST)
 
-    assert len(helper.errors) == 1
-    assert 'human-made or human-verified' in helper.errors[0]
-    assert 'overwrite enabled' in helper.errors[0]
-    # It fails closed, inside the batch and before submit, so nothing at all
-    # reached the server.
-    assert service.client.writes == []
-    assert service.client.kinds[-1] == 'unlock'
+    assert helper.errors == []
+    kinds = [kind for kind, _ in service.client.writes]
+    assert 'tokens.bulk_delete' not in kinds
+    assert 'tokens.split' in kinds
 
 
 def test_a_failure_reaches_the_requester_once_without_an_internal_url(monkeypatch):
