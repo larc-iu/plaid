@@ -4301,6 +4301,20 @@ class PlaidClient:
                                         self.document_versions, versions_map, replayed))
                             except (json.JSONDecodeError, TypeError):
                                 pass
+                # The batch's own header holds each document's version after
+                # the whole batch, the layer rules' remedies at its end
+                # included, which no single operation's answer does: a split
+                # that deletes a relation crossing the new boundary moves the
+                # version once more.
+                outer_header = (getattr(response, 'headers', None) or {}).get('X-Document-Versions')
+                if outer_header:
+                    try:
+                        versions_map = json.loads(outer_header)
+                        if isinstance(versions_map, dict):
+                            self.document_versions.update(merge_versions(
+                                self.document_versions, versions_map, replayed))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
 
                 results_out.extend({**r, 'body': transform_response(r.get('body'))}
                                    if isinstance(r, dict) else r

@@ -4000,6 +4000,28 @@ class PlaidClient {
           }
         }
       }
+      // The batch's own header holds each document's version after the whole
+      // batch, the layer rules' remedies at its end included, which no single
+      // operation's answer does: a split that deletes a relation crossing
+      // the new boundary moves the version once more.
+      const outerVersions = response.headers?.get?.("X-Document-Versions");
+      if (outerVersions) {
+        try {
+          const versionsMap = JSON.parse(outerVersions);
+          if (typeof versionsMap === "object" && versionsMap !== null) {
+            this.documentVersions = mergeVersions(
+              this.documentVersions,
+              versionsMap,
+              replayed,
+            );
+          }
+        } catch (e) {
+          console.warn(
+            "Failed to parse document versions header from batch response:",
+            e,
+          );
+        }
+      }
 
       const out = results.map((result) => ({
         ...result,
