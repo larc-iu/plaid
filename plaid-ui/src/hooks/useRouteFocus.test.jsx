@@ -8,10 +8,14 @@ import { focusMain, useRouteFocus } from './useRouteFocus.js';
 
 const settle = (ms = 40) => act(() => new Promise((r) => setTimeout(r, ms)));
 
-let go;
+const nav = { to: null };
+const go = (path) => nav.to(path);
 const Shell = ({ children }) => {
   const location = useLocation();
-  go = useNavigate();
+  const navigate = useNavigate();
+  useEffect(() => {
+    nav.to = navigate;
+  }, [navigate]);
   const main = useRef(null);
   useRouteFocus(location.pathname, main);
   return (

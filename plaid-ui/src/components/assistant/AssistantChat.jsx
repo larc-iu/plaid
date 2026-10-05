@@ -744,10 +744,11 @@ export const AssistantChat = ({
   const turnSeen = useRef({ busy: null, id: null, length: 0 });
   useEffect(() => {
     const id = active?.id ?? null;
+    const items = active?.display || [];
     if (busy) setLanded('');
-    else if (replyLanded(turnSeen.current, { busy, id, display })) setLanded('Reply ready');
-    turnSeen.current = { busy, id, length: display.length };
-  }, [busy, active?.id, display]);
+    else if (replyLanded(turnSeen.current, { busy, id, display: items })) setLanded('Reply ready');
+    turnSeen.current = { busy, id, length: items.length };
+  }, [busy, active?.id, active?.display]);
   // A step's output, looked up by the tool call it belongs to. The transcript
   // is where it is stored, so the trace does not carry a second copy.
   const results = useMemo(
