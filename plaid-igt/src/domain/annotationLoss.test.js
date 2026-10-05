@@ -108,8 +108,9 @@ describe('countAnnotationLossForRange', () => {
     // it, and link l2).
     const two = countAnnotationLossForWord(layerInfo, vocabularies, { id: 'w2', begin: 6, end: 9 });
     expect(two).toEqual({ annotations: 3, links: 1 });
+    // The relation between the two words goes once, not once for each.
     expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 9)).toEqual({
-      annotations: one.annotations + two.annotations,
+      annotations: one.annotations + two.annotations - 1,
       links: one.links + two.links,
     });
     expect(countAnnotationLossForRange(layerInfo, vocabularies, 5, 6)).toEqual({
@@ -120,12 +121,19 @@ describe('countAnnotationLossForRange', () => {
 
   it('adds the spans of a sentence lying wholly inside the stretch, not one it cuts', () => {
     const { layerInfo, vocabularies } = make();
+    const sentenceLayer = {
+      id: 'tl-sent',
+      tokens: [{ id: 'sent1', begin: 0, end: 9 }],
+      spanLayers: [
+        { id: 'sl-tr', spans: [{ id: 'tr', tokens: ['sent1'], value: 'a translation' }] },
+      ],
+    };
     const withSentence = {
       ...layerInfo,
-      sentenceTokenLayer: { tokens: [{ id: 'sent1', begin: 0, end: 9 }] },
-      spanLayers: {
-        sentence: [{ spans: [{ id: 'tr', tokens: ['sent1'], value: 'a translation' }] }],
+      primaryTextLayer: {
+        tokenLayers: [sentenceLayer, ...layerInfo.primaryTextLayer.tokenLayers],
       },
+      sentenceTokenLayer: sentenceLayer,
     };
     const plain = countAnnotationLossForRange(layerInfo, vocabularies, 0, 9);
     const whole = countAnnotationLossForRange(withSentence, vocabularies, 0, 9);

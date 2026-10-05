@@ -662,13 +662,14 @@ describe('TranscriptList', () => {
       const ops = makeOps();
       const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
       // A word over "the" with one annotation on it, in the shape layerInfo has.
+      const wordLayer = {
+        id: 'wl',
+        tokens: [{ id: 'w1', begin: 0, end: 3 }],
+        spanLayers: [{ spans: [{ id: 's1', tokens: ['w1'], value: 'DET' }] }],
+      };
       doc.layerInfo = {
-        primaryTextLayer: { tokenLayers: [] },
-        primaryTokenLayer: {
-          id: 'wl',
-          tokens: [{ id: 'w1', begin: 0, end: 3 }],
-          spanLayers: [{ spans: [{ id: 's1', tokens: ['w1'], value: 'DET' }] }],
-        },
+        primaryTextLayer: { tokenLayers: [wordLayer] },
+        primaryTokenLayer: wordLayer,
         sentenceTokenLayer: { tokens: [] },
         spanLayers: { sentence: [] },
       };
