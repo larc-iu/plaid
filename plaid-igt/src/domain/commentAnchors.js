@@ -26,6 +26,8 @@ import { anchorExcerpt, anchorName, documentAnchor, quoted } from '@ui/domain/co
  * `jumpId` is what a "show me" link navigates to (the sentence), or null.
  * `order` is the anchor's place in the text as an array compared entry by
  * entry: sentence, word, morpheme, then the thing itself before its values.
+ * `parentId` is the anchor it sits on (a value's word, morpheme or sentence,
+ * a morpheme's word, a word's sentence), or absent.
  *
  * Annotations (spans) are indexed at all three scopes, so a comment on a
  * sentence translation and a comment on a morpheme gloss both resolve.
@@ -74,6 +76,7 @@ export function buildAnchorIndex(doc) {
           excerpt: anchorExcerpt(span.value),
           ...at,
           order: [sIdx, -1, -1, 1],
+          parentId: sentence.id,
         });
       }
     }
@@ -85,6 +88,7 @@ export function buildAnchorIndex(doc) {
         detail: where,
         ...at,
         order: [sIdx, wIdx, -1, 0],
+        parentId: sentence.id,
       });
 
       for (const [field, span] of Object.entries(token.annotations || {})) {
@@ -95,6 +99,7 @@ export function buildAnchorIndex(doc) {
             detail: where,
             ...at,
             order: [sIdx, wIdx, -1, 1],
+            parentId: token.id,
           });
         }
       }
@@ -107,6 +112,7 @@ export function buildAnchorIndex(doc) {
           detail: `in ${anchorName(token.content)}, ${where}`,
           ...at,
           order: [sIdx, wIdx, mIdx, 0],
+          parentId: token.id,
         });
 
         for (const [field, span] of Object.entries(morph.annotations || {})) {
@@ -117,6 +123,7 @@ export function buildAnchorIndex(doc) {
               detail: `in ${anchorName(token.content)}, ${where}`,
               ...at,
               order: [sIdx, wIdx, mIdx, 1],
+              parentId: morph.id,
             });
           }
         }

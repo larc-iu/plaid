@@ -151,6 +151,72 @@ describe('a comment the server refuses, from the grid', () => {
     expect(hasUnsavedDraft()).toBe(null);
   });
 
+  // L2-IGT-MULTI-2: the value was deleted meanwhile, so no cell opens its
+  // thread again. The text moves to the morpheme the value was on, and that
+  // thread opens with it.
+  it('on a value deleted meanwhile, opens on the nearest anchor still there with the text', async () => {
+    const store = seededStore();
+    let refuse;
+    store._client = {
+      comments: {
+        create: () => new Promise((_, reject) => (refuse = reject)),
+      },
+    };
+    const doc = mount({ comments: store });
+    await doc.updateMorphemeSpan('m-2', 'Gloss', 'CAT');
+    await settle();
+    host.querySelector('[title="Comment on Gloss of morpheme cat"]').click();
+    typeInto(composer(), 'is this CAT or FELINE?');
+    host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
+    await settle();
+    // Someone clears the value, and the post is refused for the gone anchor.
+    await doc.updateMorphemeSpan('m-2', 'Gloss', '');
+    await settle();
+    refuse(
+      Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
+        status: 403,
+        method: 'POST',
+        responseData: { unresolved: true },
+      }),
+    );
+    await settle();
+    const pop = host.querySelector('.igt-cmt-pop');
+    expect(pop?.getAttribute('aria-label')).toBe('Comments on morpheme cat');
+    expect(composer().value).toBe('is this CAT or FELINE?');
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
+  });
+
+  it('on a value deleted after the refusal, moves the text once the document is read again', async () => {
+    const store = seededStore();
+    store._client = {
+      comments: {
+        create: async () => {
+          throw Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
+            status: 403,
+            method: 'POST',
+            responseData: { unresolved: true },
+          });
+        },
+      },
+    };
+    const doc = mount({ comments: store });
+    await doc.updateMorphemeSpan('m-2', 'Gloss', 'CAT');
+    await settle();
+    host.querySelector('[title="Comment on Gloss of morpheme cat"]').click();
+    typeInto(composer(), 'second thought');
+    host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
+    await settle();
+    // Refused while the page still shows the value: the text is back in it.
+    expect(composer().value).toBe('second thought');
+    // The read after the refusal finds it gone.
+    await doc.updateMorphemeSpan('m-2', 'Gloss', '');
+    await settle();
+    expect(host.querySelector('.igt-cmt-pop')?.getAttribute('aria-label')).toBe(
+      'Comments on morpheme cat',
+    );
+    expect(composer().value).toBe('second thought');
+  });
+
   it('reads left to right in a right-to-left document, and the composer takes its own direction', () => {
     const store = seededStore();
     mount({ comments: store });

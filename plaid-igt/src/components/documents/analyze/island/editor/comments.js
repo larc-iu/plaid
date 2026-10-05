@@ -4,6 +4,11 @@ import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
 import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
 import { isVirtualMorphemeId } from '@/domain/virtualMorpheme';
+import { notifyWarning } from '@/utils/feedback';
+
+// How long after a refused post its anchor is watched for going (the
+// document read again after the refusal), so the typed text can follow it.
+const RESCUE_WATCH_MS = 30_000;
 
 // Comment badges on cells and the comment popover they open.
 export const comments = {
@@ -128,6 +133,72 @@ export const comments = {
     );
   },
 
+  // The anchors a comment on `entityId` falls back to when it is deleted, the
+  // nearest first: a value's word, morpheme or sentence, then theirs. Each
+  // `{ entityType, entityId }`, as their badges post.
+  _cmtFallbacks(entityId) {
+    const index = buildAnchorIndex(this.doc);
+    const out = [];
+    for (let id = index.get(entityId)?.parentId; id && index.has(id); ) {
+      out.push({ entityType: 'token', entityId: id });
+      id = index.get(id).parentId;
+    }
+    return out;
+  },
+
+  // A post refused because its anchor was deleted meanwhile (someone cleared
+  // the value) keeps its text where a cell opens it again: once the document
+  // read after the refusal lacks the anchor, the text moves to the nearest
+  // anchor still there (`fallbacks`) and that thread opens with it in its
+  // composer. Never left under an id no cell opens.
+  _cmtWatchAnchor(entityId, fallbacks) {
+    this._cmtUnwatch?.();
+    const doc = this.doc;
+    if (this._cmtRescue(entityId, fallbacks)) return;
+    let seen = doc.dataVersion;
+    const unsubscribe = doc.subscribe(() => {
+      if (doc.dataVersion === seen) return;
+      seen = doc.dataVersion;
+      if (this._destroyed || this.doc !== doc || this._cmtRescue(entityId, fallbacks)) stop();
+    });
+    const timer = setTimeout(() => stop(), RESCUE_WATCH_MS);
+    const stop = () => {
+      unsubscribe();
+      clearTimeout(timer);
+      if (this._cmtUnwatch === stop) this._cmtUnwatch = null;
+    };
+    this._cmtUnwatch = stop;
+  },
+
+  // Moves the text typed for `entityId` to the nearest of `fallbacks` the
+  // document holds, once it holds no `entityId`, and opens that thread unless
+  // another popover is open. With none of them left, or no badge to open,
+  // the text is shown in a notice that stays until closed, to copy. Answers whether the anchor is gone.
+  _cmtRescue(entityId, fallbacks) {
+    const index = buildAnchorIndex(this.doc);
+    if (index.has(entityId)) return false;
+    const draft = this._cmtDraftFor(entityId);
+    if (!draft.trim()) return true;
+    this._cmtDrafts.delete(entityId);
+    const target = fallbacks.find((f) => index.has(f.entityId));
+    if (!target) {
+      this._cmtSyncUnsaved();
+      notifyWarning(draft, 'Comment not posted', { duration: Infinity });
+      return true;
+    }
+    this._cmtSetDraft(
+      target.entityId,
+      withReturnedDraft(draft, this._cmtDraftFor(target.entityId)),
+    );
+    const free = !this._popover || this._popover.entityId === entityId;
+    if (free) this._closePopover();
+    this._render(true);
+    const opener = free && this._openerEl(`comment:${target.entityId}`);
+    if (opener) this._openCommentPopover(target.entityType, target.entityId, opener);
+    else notifyWarning(draft, 'Comment not posted', { duration: Infinity });
+    return true;
+  },
+
   _commentPopover(entityType, entityId, label) {
     const pos = this._popoverPos;
     const posStyle = pos
@@ -233,6 +304,9 @@ export const comments = {
             submit: async () => {
               const draft = this._cmtDraftFor(entityId).trim();
               if (!draft) return;
+              // Where the text goes if the anchor is deleted meanwhile, read
+              // while the page still holds it.
+              const fallbacks = this._cmtFallbacks(entityId);
               this._cmtSending = (this._cmtSending || 0) + 1;
               this._cmtSetDraft(entityId, '');
               this._render(true);
@@ -246,6 +320,7 @@ export const comments = {
               if (!created && !this._destroyed) {
                 this._cmtSetDraft(entityId, withReturnedDraft(draft, this._cmtDraftFor(entityId)));
                 this._render(true);
+                this._cmtWatchAnchor(entityId, fallbacks);
               }
               this._cmtSyncUnsaved();
               // A new row makes the popover taller; keep it anchored.
