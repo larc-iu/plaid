@@ -10,8 +10,9 @@
                                      relations of the layer
     acyclic        (relation layer)  the layer's relations in a document form
                                      no cycle
-    same-ancestor  (relation layer)  both ends of a relation lie in one token
-                                     of `token-layer`
+    same-ancestor  (relation layer)  the two ends of a relation lie in no
+                                     two different tokens of `token-layer`
+                                     (an end in none crosses nothing)
     single-span    (span layer)      a token is in at most one span of the
                                      layer
     value-set      (span or relation) a value is in a closed list
@@ -734,17 +735,21 @@
                   span-ids)))
 
 (defn- crossing
-  "The relations among `rels` whose two places are not in one token."
+  "The relations among `rels` whose two places are in two different tokens.
+  An end in no token (or a span with no tokens, which has no place) has
+  nothing to cross: a document whose sentences are all deleted keeps its
+  relations, and a relation is judged again when tokens come back over it."
   [anc place-of rels]
   (filter (fn [r]
             (let [a (anc (place-of (u (:source_span_id r))))
                   b (anc (place-of (u (:target_span_id r))))]
-              (or (nil? a) (nil? b) (not= a b))))
+              (and (some? a) (some? b) (not= a b))))
           rels))
 
 (def ^:private crossing-sql
-  "The relations of a layer in one document whose two places are not in one
-  token of the ancestor layer, worked out in SQLite: the layer's relations
+  "The relations of a layer in one document whose two places are in two
+  different tokens of the ancestor layer (an end in none crosses nothing,
+  as in `crossing`), worked out in SQLite: the layer's relations
   in the document by their index, each end's place (the smallest begin of
   its span's tokens) by an index seek, then the nearest ancestor token
   starting at or before each place by an index seek, and whether it reaches
@@ -763,7 +768,7 @@
          " FROM relations r INDEXED BY idx_relations_layer_doc"
          " WHERE r.relation_layer_id = ? AND r.document_id = ?),"
          " x AS MATERIALIZED (SELECT e.id AS id, " (anc "sp") " AS sa, " (anc "tp") " AS ta FROM e)"
-         " SELECT id FROM x WHERE sa IS NULL OR ta IS NULL OR sa <> ta")))
+         " SELECT id FROM x WHERE sa <> ta")))
 
 (defn- crossing-in-sql [tx lid _sl al doc]
   (psc/q tx [crossing-sql (str lid) (str doc) (str al) (str doc) (str al) (str doc)]))

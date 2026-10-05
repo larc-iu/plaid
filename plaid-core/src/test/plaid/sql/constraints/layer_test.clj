@@ -559,6 +559,65 @@
     (is (not (exists? :relations sat-dogs)))
     (is (some? txt))))
 
+(defn- node-graph!
+  "A root token layer of its own beside the sentences (as a meaning graph's
+  nodes are), a span per node and a relation layer on them that declares
+  same-ancestor over the sentences. `nodes` is name -> [begin end]."
+  [{:keys [tl txt sl]} nodes]
+  (let [nl (id (create-token-layer-opts admin-request tl "Nodes" {:overlap-mode "any"}))
+        concepts (id (create-span-layer admin-request nl "Concepts"))
+        edges (id (create-relation-layer admin-request concepts "Edges"))
+        node (fn [[b e]] (id (create-span admin-request concepts [(id (create-token admin-request nl txt b e))] "n")))]
+    {:nl nl :edges edges :node (update-vals nodes node)
+     :edge! (fn [s t] (create-relation admin-request edges s t "arg"))
+     :declare! #(declare! "relation" edges "umr" [{:type "same-ancestor" :token-layer sl}])}))
+
+(deftest an-end-in-no-sentence-crosses-nothing
+  (let [{:keys [sl txt sentence] :as s} (setup!)
+        {:keys [node edge!] :as g} (node-graph! s {:cat [4 7] :dogs [13 17] :ran [18 21]})
+        cat-dogs (id (edge! (node :cat) (node :dogs)))
+        ran-dogs (id (edge! (node :ran) (node :dogs)))]
+    (assert-status 200 ((:declare! g)))
+    ;; Shrinking the sentence token puts dogs and ran outside every sentence.
+    (assert-status 200 (call :patch (str "/api/v1/tokens/" sentence) {:end 12}))
+    (is (exists? :relations cat-dogs) "an end in no sentence has nothing to cross")
+    (is (exists? :relations ran-dogs))
+    (testing "a relation to an end in no sentence may be made"
+      (assert-status 201 (edge! (node :cat) (node :ran))))
+    (testing "a sentence put over the loose ends judges their relations again"
+      (assert-status 201 (create-token admin-request sl txt 13 (count text)))
+      (is (not (exists? :relations cat-dogs)) "now crossing, so deleted")
+      (is (exists? :relations ran-dogs) "inside the new sentence, so kept"))))
+
+(deftest deleting-every-sentence-keeps-the-relations-of-a-layer-outside-them
+  (let [{:keys [sl txt sentence doc] :as s} (setup!)
+        {:keys [nl node edge!] :as g} (node-graph! s {:the [0 3] :cat [4 7] :dogs [13 17]
+                                                      :whole [0 (count text)]})
+        e1 (id (edge! (node :cat) (node :the)))
+        e2 (id (edge! (node :whole) (node :cat)))
+        e3 (id (edge! (node :the) (node :cat)))
+        e4 (id (edge! (node :dogs) (node :dogs)))]
+    (assert-status 201 (call :post (str "/api/v1/tokens/" sentence "/split") {:position 13}))
+    (assert-status 200 ((:declare! g)))
+    (let [sentences (mapv (comp str :id) (psc/q db {:select [:id] :from :tokens :where [:= :token_layer_id sl]}))]
+      (is (= 2 (count sentences)))
+      (testing "deleting every sentence, with the words nested in them"
+        (assert-status 204 (call :delete "/api/v1/tokens/bulk" sentences))
+        (is (zero? (count-rows :tokens [:= :token_layer_id sl])))
+        (is (every? #(exists? :relations %) [e1 e2 e3 e4]) "no relation is deleted")
+        (is (empty? (ops-of doc "layer/apply-constraints")) "no remedy runs"))
+      (testing "sentences made again judge every relation"
+        (assert-status 201 (create-token admin-request sl txt 0 12))
+        (assert-status 201 (create-token admin-request sl txt 13 (count text)))
+        (is (every? #(exists? :relations %) [e1 e2 e3 e4])
+            "each relation's two places are in one sentence")
+        (testing "a node moved into the other sentence makes its relations cross"
+          (assert-status 200 (call :put (str "/api/v1/spans/" (node :the) "/tokens")
+                                   {:tokens [(id (create-token admin-request nl txt 18 21))]}))
+          (is (not (exists? :relations e1)))
+          (is (not (exists? :relations e3)))
+          (is (exists? :relations e2) "the whole-text node's place is in the first sentence"))))))
+
 (deftest deleting-the-ancestor-layer-drops-the-constraint
   (let [{:keys [deps sl] :as s} (setup!)]
     (assert-status 200 (declare! "relation" deps "ud" [{:type "same-ancestor" :token-layer sl}

@@ -180,7 +180,7 @@
                         (for [[rid r] (of-layer :relations l)
                               :let [a (ancestor-of snap sl (place snap (:s r)))
                                     b (ancestor-of snap sl (place snap (:t r)))]
-                              :when (or (nil? a) (nil? b) (not= a b))]
+                              :when (and (some? a) (some? b) (not= a b))]
                           {:type :same-ancestor :ids #{rid}}))
         dep-rels (of-layer :relations deps)
         ;; A relation an import, a copy or a restore wrote, with the ends
