@@ -180,6 +180,7 @@ const project = {
             { id: 'sl-wp', name: 'POS', config: scope('Word') },
           ],
         },
+        { id: 'align1', config: role('time-alignment'), spanLayers: [] },
         {
           id: 'morph1',
           config: role('morpheme'),
@@ -242,6 +243,10 @@ function makeFakeClient({
       get: (docId) => Promise.resolve(docsById.get(docId)),
       delete: (docId) => record('documents.delete', { docId }, {}),
       setMetadata: (docId, body) => record('documents.setMetadata', { docId, body }, {}),
+      uploadMedia: (docId, file) => {
+        if (file.fail) return Promise.reject(new Error('Too large'));
+        return record('documents.uploadMedia', { docId, file: file.name }, {});
+      },
     },
     texts: {
       create: (layerId, docId, body) =>
@@ -833,6 +838,70 @@ describe('runImport', () => {
     expect(operations).toEqual([['Import FLEx texts', { kind: 'import', ref: 'format:flextext' }]]);
     expect(client.calls.filter((c) => c.kind.startsWith('vocab'))).toEqual([]);
     expect(client.calls.filter((c) => c.kind === 'tokens.bulkCreate')).toHaveLength(3);
+  });
+
+  // A text FLEx kept sentence times for: the times become the alignment
+  // layer's tokens, and the recording picked for it is uploaded before the
+  // document is marked done.
+  it('writes the sentence times and uploads the recording', async () => {
+    client = makeFakeClient();
+    const timed = {
+      ...build,
+      documents: [
+        {
+          ...build.documents[0],
+          alignments: [{ begin: 0, end: 12, timeBegin: 0, timeEnd: 1.5 }],
+          mediaFile: { name: 'story.wav' },
+        },
+      ],
+    };
+    const results = await runImport({
+      client,
+      projectId: 'p1',
+      build: timed,
+      lexicon,
+      config,
+      vocabId: 'v1',
+    });
+    const align = client.calls
+      .filter((c) => c.kind === 'tokens.bulkCreate')
+      .flatMap((c) => c.args)
+      .filter((t) => t.tokenLayerId === 'align1');
+    expect(align).toHaveLength(1);
+    expect(align[0]).toMatchObject({ begin: 0, end: 12, metadata: { timeBegin: 0, timeEnd: 1.5 } });
+    const kinds = client.calls.map((c) => c.kind);
+    expect(kinds).toContain('documents.uploadMedia');
+    // Done is marked after the upload.
+    expect(kinds.lastIndexOf('documents.setMetadata')).toBeGreaterThan(
+      kinds.indexOf('documents.uploadMedia'),
+    );
+    expect(results.warnings).toEqual([]);
+  });
+
+  it('leaves a document whose recording failed to upload unfinished, and says so', async () => {
+    client = makeFakeClient();
+    const failing = {
+      ...build,
+      documents: [
+        { ...build.documents[0], alignments: [], mediaFile: { name: 'big.mov', fail: true } },
+      ],
+    };
+    const results = await runImport({
+      client,
+      projectId: 'p1',
+      build: failing,
+      lexicon,
+      config,
+      vocabId: 'v1',
+    });
+    expect(results.warnings).toHaveLength(1);
+    expect(results.warnings[0]).toContain('media upload failed');
+    // Resume treats an unmarked document as unfinished and makes it again.
+    const marks = client.calls.filter(
+      (c) =>
+        c.kind === 'documents.setMetadata' && JSON.stringify(c.args.body).includes('importDone'),
+    );
+    expect(marks).toEqual([]);
   });
 
   // FLEx marks a guessed analysis in a .flextext by its status, and a guessed

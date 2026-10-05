@@ -29,6 +29,7 @@ import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
 import { parseFlextextFiles } from '../../import/flex/flextextParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
+import { matchMediaFiles } from '../../import/elan/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
@@ -51,8 +52,8 @@ const FORMATS = {
     kind: 'FLEx',
     title: 'Import from FLEx (.fwbackup)',
     pageTitle: 'Import FLEx project',
-    accept: '.fwbackup,application/zip',
-    drop: 'Drop a .fwbackup file here, or click to choose',
+    accept: '.fwbackup,application/zip,audio/*,video/*',
+    drop: 'Drop a .fwbackup file and its recordings here, or click to choose',
     where: 'In FieldWorks: File → Project Management → Back up this Project',
     reading: 'Reading backup…',
     again: 'Choose the same backup: what is already there is unchanged.',
@@ -96,6 +97,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const [lexiconName, setLexiconName] = useState(null);
   const [existingVocabs, setExistingVocabs] = useState([]);
   const [existingVocabId, setExistingVocabId] = useState('');
+  // Recordings picked with the backup or added on review. Each goes to the
+  // text whose sentences FLEx timed against a file of that name.
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const mediaInputRef = useRef(null);
 
   // Survive retries within this page session (see header comment).
   const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
@@ -117,15 +122,24 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const resumedLexicon =
     (resumeProject?.vocabs || []).find((v) => v.id === resumeRecord?.vocabId) ?? null;
 
-  // A backup is one file, and names its project. A .flextext is one of any
+  // A backup is one file, and names its project, and the recordings its
+  // texts were timed against may come with it. A .flextext is one of any
   // number, named for the texts it holds.
   const readFiles = async (files) => {
     if (!flextext) {
-      const bytes = new Uint8Array(await files[0].arrayBuffer());
+      const backup = files.find((f) => /\.(fwbackup|zip)$/i.test(f.name));
+      if (!backup) throw new Error('No .fwbackup file among those chosen');
+      const bytes = new Uint8Array(await backup.arrayBuffer());
       // Let the spinner paint before the synchronous parse occupies the thread.
       await new Promise((r) => setTimeout(r, 50));
       const { name, xml } = readFwbackup(bytes);
-      return { sourceName: name, fileCount: 1, projectName: name, ir: parseFwdata(xml) };
+      return {
+        sourceName: name,
+        fileCount: 1,
+        projectName: name,
+        ir: parseFwdata(xml),
+        media: files.filter(isMediaFile),
+      };
     }
     const picked = files.filter((f) => /\.flextext$/i.test(f.name));
     if (!picked.length) throw new Error('No .flextext files among those chosen');
@@ -151,7 +165,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     if (!files.length) return;
     setStage('parsing');
     try {
-      const { sourceName, fileCount, projectName: name, ir } = await readFiles(files);
+      const { sourceName, fileCount, projectName: name, ir, media = [] } = await readFiles(files);
       const build = buildDocuments(ir);
       if (build.documents.length === 0) {
         throw new Error(
@@ -173,6 +187,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         ...[...used].filter((ws) => !ir.writingSystems.analysis.includes(ws)),
       ];
       setParsed({ sourceName, fileCount, ir, build, analysisWssAvailable });
+      setMediaFiles(media);
       setProjectName(name);
       setOrthoNames(Object.fromEntries(build.orthographyWss.map((ws) => [ws, ws])));
       setSelectedTexts(new Set(build.documents.map((d) => d.guid)));
@@ -237,13 +252,28 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
   // The selection knobs (texts, analysis languages) feed straight into the
   // derived config so the review cards always show what will be created.
+  // Which picked recording belongs to which text, by the file name FLEx
+  // recorded for it (the ELAN importer's matching: the exact name, then the
+  // same name with another extension).
+  const recordings = useMemo(() => {
+    const wanted = (parsed?.build.documents ?? []).filter((d) => d.mediaName);
+    return {
+      wanted,
+      ...matchMediaFiles(
+        wanted.map((d) => ({ fileName: d.guid, media: [{ relativeUrl: d.mediaName }] })),
+        mediaFiles,
+      ),
+    };
+  }, [parsed, mediaFiles]);
   const filteredBuild = useMemo(
     () =>
       parsed && {
         ...parsed.build,
-        documents: parsed.build.documents.filter((d) => selectedTexts.has(d.guid)),
+        documents: parsed.build.documents
+          .filter((d) => selectedTexts.has(d.guid))
+          .map((d) => ({ ...d, mediaFile: recordings.byFile.get(d.guid) ?? null })),
       },
-    [parsed, selectedTexts],
+    [parsed, selectedTexts, recordings],
   );
   const liveConfig = useMemo(
     () =>
@@ -409,8 +439,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
           ) : (
             <p className="text-sm text-muted-foreground">
               Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
-              morpheme analyses, translations, and the full lexicon are imported. Media (audio and
-              pictures) is not imported.
+              morpheme analyses, translations, and the full lexicon are imported. Choose a text's
+              recording along with the backup and it is imported too, with the text's sentence
+              times. Pictures are not imported.
             </p>
           )}
           {resumeId && (
@@ -435,7 +466,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               ref={fileInputRef}
               type="file"
               accept={fmt.accept}
-              multiple={flextext}
+              multiple
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
             />
@@ -483,6 +514,28 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   .
                 </p>
               )}
+              {recordings.wanted.length > 0 && (
+                <RecordingsSummary
+                  recordings={recordings}
+                  locked={locked}
+                  onAdd={() => mediaInputRef.current?.click()}
+                />
+              )}
+              <input
+                ref={mediaInputRef}
+                type="file"
+                accept="audio/*,video/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const added = [...(e.target.files ?? [])].filter(isMediaFile);
+                  e.target.value = '';
+                  setMediaFiles((prev) => [
+                    ...prev,
+                    ...added.filter((f) => !prev.some((p) => p.name === f.name)),
+                  ]);
+                }}
+              />
               {totalWarnings > 0 && (
                 <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
                   <p className="font-medium text-orange-800">
@@ -874,6 +927,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   {results?.skipped ? `, ${results.skipped} already present` : ''}
                   {results?.redone ? `, ${results.redone} redone` : ''}.
                 </p>
+                {results?.warnings?.length > 0 && (
+                  <ul className="mt-2 list-disc ps-5">
+                    {results.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                )}
                 <Button className="mt-3" asChild>
                   <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
                 </Button>
@@ -882,6 +942,46 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+// A recording, by its type or, where the browser gives none, its extension.
+const MEDIA_EXTENSIONS =
+  /\.(wav|mp3|m4a|aac|flac|ogg|oga|opus|wma|aif|aiff|mp4|m4v|mov|avi|mkv|webm|mpg|mpeg|wmv)$/i;
+const isMediaFile = (f) => /^(audio|video)\//.test(f.type || '') || MEDIA_EXTENSIONS.test(f.name);
+
+// The texts FLEx timed against a recording, and which of those have one.
+const RecordingsSummary = ({ recordings, locked, onAdd }) => {
+  const { wanted, byFile, missing, unmatched } = recordings;
+  const have = wanted.filter((d) => byFile.has(d.guid)).length;
+  const overlapping = wanted.reduce((n, d) => n + (d.timeWarnings?.length ?? 0), 0);
+  return (
+    <div className="mt-3 rounded-md border p-3 text-sm" data-testid="flex-recordings">
+      <p className="font-medium">
+        Recordings: {have} of {countOf(wanted.length, 'text')} with sentence times
+      </p>
+      {missing.length > 0 && (
+        <p className="mt-1 text-muted-foreground">
+          Not chosen: {missing.join(', ')}. These texts are imported with their times and no
+          recording.
+        </p>
+      )}
+      {overlapping > 0 && (
+        <p className="mt-1 text-muted-foreground">
+          {countOf(overlapping, 'sentence')} overlap an earlier one in time and are left untimed.
+        </p>
+      )}
+      {unmatched.length > 0 && (
+        <p className="mt-1 text-muted-foreground">
+          No text uses: {unmatched.map((f) => f.name).join(', ')}.
+        </p>
+      )}
+      {!locked && missing.length > 0 && (
+        <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onAdd}>
+          Add recordings
+        </Button>
+      )}
     </div>
   );
 };

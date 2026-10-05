@@ -299,3 +299,91 @@ describe('parseFwdata — the Info tab', () => {
     expect(ir.warnings).toEqual([]);
   });
 });
+
+// A text FLEx took from ELAN: each segment keeps its place in the recording
+// (milliseconds) and points to the recording by a path on the machine the
+// project was made on. One segment was never timed.
+const TIMED_FWDATA = `<?xml version="1.0" encoding="utf-8"?>
+<languageproject version="7000072">
+<rt class="LangProject" guid="lp1">
+  <CurVernWss><Uni>tst</Uni></CurVernWss>
+  <CurAnalysisWss><Uni>en</Uni></CurAnalysisWss>
+</rt>
+<rt class="Text" guid="t1">
+  <Contents><objsur guid="st1" t="o" /></Contents>
+  <Name><AUni ws="tst">Story</AUni></Name>
+</rt>
+<rt class="StText" guid="st1" ownerguid="t1">
+  <Paragraphs><objsur guid="p1" t="o" /></Paragraphs>
+</rt>
+<rt class="StTxtPara" guid="p1" ownerguid="st1">
+  <Contents><Str><Run ws="tst">ab cd. ef gh. ij.</Run></Str></Contents>
+  <Segments><objsur guid="s1" t="o" /><objsur guid="s2" t="o" /><objsur guid="s3" t="o" /></Segments>
+</rt>
+<rt class="Segment" guid="s1" ownerguid="p1">
+  <BeginOffset val="0" />
+  <BeginTimeOffset><Uni>0</Uni></BeginTimeOffset>
+  <EndTimeOffset><Uni>1500</Uni></EndTimeOffset>
+  <MediaURI><objsur guid="m2" t="r" /></MediaURI>
+</rt>
+<rt class="Segment" guid="s2" ownerguid="p1">
+  <BeginOffset val="7" />
+  <BeginTimeOffset><Uni>1500</Uni></BeginTimeOffset>
+  <EndTimeOffset><Uni>4250</Uni></EndTimeOffset>
+  <MediaURI><objsur guid="m2" t="r" /></MediaURI>
+</rt>
+<rt class="Segment" guid="s3" ownerguid="p1">
+  <BeginOffset val="14" />
+</rt>
+<rt class="CmMediaURI" guid="m1" ownerguid="mc1">
+  <MediaURI><Uni>S:\\Sessions\\story\\story_Source.MOV</Uni></MediaURI>
+</rt>
+<rt class="CmMediaURI" guid="m2" ownerguid="mc1">
+  <MediaURI><Uni>S:\\Sessions\\story\\story_Source_StandardAudio.wav</Uni></MediaURI>
+</rt>
+</languageproject>`;
+
+describe('parseFwdata and buildDocuments — sentence times', () => {
+  const ir = parseFwdata(TIMED_FWDATA);
+  const segments = ir.texts[0].paragraphs[0].segments;
+
+  it('reads each segment’s times and the name of the recording, not its path', () => {
+    expect(segments[0]).toMatchObject({
+      timeBeginMs: 0,
+      timeEndMs: 1500,
+      mediaName: 'story_Source_StandardAudio.wav',
+    });
+    expect(segments[2].timeBeginMs).toBeUndefined();
+    expect(segments[2].mediaName).toBeUndefined();
+  });
+
+  it('gives the document the recording its sentences point to, and seconds per timed sentence', async () => {
+    const { buildDocuments } = await import('./buildDocuments.js');
+    const [doc] = buildDocuments(ir).documents;
+    // The text's container also lists the video; the sentences were timed
+    // against the audio, so the audio is the text's recording.
+    expect(doc.mediaName).toBe('story_Source_StandardAudio.wav');
+    expect(doc.alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([
+      [0, 1.5],
+      [1.5, 4.25],
+    ]);
+    // Each timed sentence's own extent.
+    expect(doc.alignments.map((a) => [a.begin, a.end])).toEqual(
+      doc.sentences.slice(0, 2).map((s) => [s.begin, s.end]),
+    );
+  });
+});
+
+describe('buildDocuments — overlapping sentence times', () => {
+  it('keeps the first of two sentences timed over the same stretch', async () => {
+    const { buildDocuments } = await import('./buildDocuments.js');
+    const overlapping = TIMED_FWDATA.replace(
+      '<BeginOffset val="14" />',
+      '<BeginOffset val="14" /><BeginTimeOffset><Uni>4000</Uni></BeginTimeOffset><EndTimeOffset><Uni>5000</Uni></EndTimeOffset>',
+    );
+    const [doc] = buildDocuments(parseFwdata(overlapping)).documents;
+    expect(doc.alignments.map((a) => a.timeBegin)).toEqual([0, 1.5]);
+    expect(doc.timeWarnings).toHaveLength(1);
+    expect(doc.timeWarnings[0]).toContain('Utterance 3');
+  });
+});

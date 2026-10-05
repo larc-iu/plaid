@@ -22,6 +22,7 @@ import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets } from '../project.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
+import { humanizeError } from '@ui/lib/errors.js';
 
 // Everything a word carries comes out of ONE WfiAnalysis: its gloss, its
 // category, and the morph bundles the segmentation is built from. FLEx records
@@ -633,6 +634,8 @@ const DOCUMENT_STEPS = [
   'Creating morphemes',
   'Creating annotations',
   'Linking lexicon',
+  'Creating time alignment',
+  'Uploading media',
 ];
 
 /** Import one document end to end. Assumes it does not exist yet. */
@@ -649,6 +652,7 @@ async function importDocument({
   total = 1,
   onProgress,
   shouldStop,
+  warnings = null,
 }) {
   const progress = documentProgress({
     onProgress,
@@ -826,11 +830,59 @@ async function importDocument({
     );
   }
 
+  // Where each sentence sits in its recording, for a text FLEx kept times
+  // for: one token per timed sentence on the alignment layer, seconds in
+  // metadata, as the ELAN importer and the editor write them.
+  if (textId && doc.alignments?.length) {
+    if (targets.alignmentLayerId) {
+      check();
+      progress('Creating time alignment');
+      await bulkInChunks(
+        doc.alignments.map((a) => ({
+          tokenLayerId: targets.alignmentLayerId,
+          text: textId,
+          begin: a.begin,
+          end: a.end,
+          metadata: { timeBegin: a.timeBegin, timeEnd: a.timeEnd },
+        })),
+        check,
+        (specs) => client.tokens.bulkCreate(specs),
+      );
+    } else {
+      warnings?.push(
+        `"${doc.name}": ${doc.alignments.length} timed sentences were left untimed. This project is not set up for time alignment.`,
+      );
+    }
+  }
+
+  // The recording the text's sentences point to, when the user picked it. A
+  // failed upload leaves the document unfinished, so resuming the import
+  // tries it again, as in the ELAN importer.
+  let mediaFailed = false;
+  if (doc.mediaFile) {
+    check();
+    progress('Uploading media');
+    try {
+      await client.documents.uploadMedia(docId, doc.mediaFile, `Import media for ${doc.name}`, {
+        onProgress: (bytes) =>
+          onProgress?.({ phase: 'document', doc: doc.name, step: 'Uploading media', bytes }),
+      });
+    } catch (err) {
+      mediaFailed = true;
+      warnings?.push(
+        `"${doc.name}": media upload failed. ${humanizeError(err)} ` +
+          "Upload the recording on the document's Media tab.",
+      );
+    }
+  }
+
   // Mark complete LAST — resume treats unmarked documents as partial.
-  await client.documents.setMetadata(
-    docId,
-    importStamp(documentMetadataOf(doc), doc.guid, docId, true),
-  );
+  if (!mediaFailed) {
+    await client.documents.setMetadata(
+      docId,
+      importStamp(documentMetadataOf(doc), doc.guid, docId, true),
+    );
+  }
   return docId;
 }
 
@@ -901,7 +953,7 @@ async function runImportImpl({
   // Resume bookkeeping: what an earlier run made, by FLEx text guid.
   const prior = await priorImports(client, projectId);
 
-  const results = { imported: 0, skipped: 0, redone: 0 };
+  const results = { imported: 0, skipped: 0, redone: 0, warnings: [] };
   for (let i = 0; i < build.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = build.documents[i];
@@ -926,6 +978,7 @@ async function runImportImpl({
       total: build.documents.length,
       onProgress,
       shouldStop,
+      warnings: results.warnings,
     });
     results.imported += 1;
   }

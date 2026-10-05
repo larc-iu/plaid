@@ -221,7 +221,7 @@ function tierSpeakers(tiers) {
  * overlap that is not cross-talk the later one loses its time, and a warning
  * says which. `utterances[i]` is the number of the utterance segment i is in.
  */
-function keepTimeRule(alignments, utterances, warnings) {
+export function keepTimeRule(alignments, utterances, warnings) {
   const asToken = (a) => ({ metadata: { speaker: a.speaker ?? '' } });
   const order = alignments
     .map((a, i) => i)

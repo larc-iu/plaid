@@ -18,6 +18,7 @@ import { SaxesParser } from 'saxes';
 const KEEP_CLASSES = new Set([
   'LangProject',
   'Text',
+  'CmMediaURI',
   'StText',
   'StTxtPara',
   'Segment',
@@ -256,6 +257,30 @@ export function parseFwdata(xml) {
     const n = guid == null ? null : byGuid.get(guid);
     if (guid != null && !n && why) warnings.push(`missing ${why} object ${guid}`);
     return n ?? null;
+  };
+
+  // A segment FLEx took from ELAN (or that was aligned in FLEx) keeps its
+  // place in a recording: times in milliseconds, and the recording as a
+  // CmMediaURI holding the path on the machine the project was made on. Only
+  // the file's NAME travels: the import matches it to a file the user picks
+  // and keeps nothing else of it.
+  const uni = (n, tag) => child(child(n, tag), 'Uni')?.text?.trim() || null;
+  const segmentTime = (seg) => {
+    const begin = Number(uni(seg, 'BeginTimeOffset'));
+    const end = Number(uni(seg, 'EndTimeOffset'));
+    const uri = uni(get(refGuid(seg, 'MediaURI'), null), 'MediaURI');
+    const out = {};
+    if (
+      Number.isFinite(begin) &&
+      Number.isFinite(end) &&
+      uni(seg, 'BeginTimeOffset') &&
+      end > begin
+    ) {
+      out.timeBeginMs = begin;
+      out.timeEndMs = end;
+    }
+    if (uri) out.mediaName = uri.split(/[\\/]/).pop();
+    return out;
   };
 
   // Writing systems (space-separated ws-tag lists on the language project)
@@ -547,6 +572,7 @@ export function parseFwdata(xml) {
         segments.push({
           guid: sGuid,
           beginOffset,
+          ...segmentTime(s),
           freeTranslation,
           literalTranslation,
           notes,
