@@ -500,7 +500,7 @@ async function importNativeDocument({
   // The import's marks go on only when both fit under the cap, so a document
   // is never marked as begun with no room to be marked done.
   const docMetadata = withoutStamps(docData.metadata);
-  const marked = fitsCap(importStamp(docMetadata, docData.id, true));
+  const marked = fitsCap(importStamp(docMetadata, docData.id, '', true));
   if (!marked) {
     warnings.push(
       `"${docData.name}": imported without its archive id (metadata at the 500-key limit)`,
@@ -512,14 +512,18 @@ async function importNativeDocument({
     if (!marked && unmarked && docData.id != null)
       await unmarked.documentMade(docData.id, id, done);
   };
-  const stamp = (metadata, done = false) =>
-    marked ? importStamp(metadata, docData.id, done) : metadata;
+  const stamp = (metadata, documentId, done = false) =>
+    marked ? importStamp(metadata, docData.id, documentId, done) : metadata;
   const shell = await createDocumentShell({
     client,
     projectId,
     targets,
     name: docData.name,
-    metadata: stamp(rewriteReferences(docMetadata, (id) => docIdMap.get(id))),
+    metadata: (id) =>
+      stamp(
+        rewriteReferences(docMetadata, (ref) => docIdMap.get(ref)),
+        id,
+      ),
     body,
     // A text the archive names is made even when its body is empty: it may
     // hold metadata and comments of its own.
@@ -888,21 +892,24 @@ async function importNativeDocument({
     } catch (err) {
       mediaFailed = true;
       warnings.push(
-        `"${docData.name}": media upload failed. ${humanizeError(err)} The document is unfinished, ` +
-          'and importing again retries the upload.',
+        `"${docData.name}": media upload failed. ${humanizeError(err)} ` +
+          "Upload the recording on the document's Media tab.",
       );
     }
   }
 
   // Mark complete LAST — resume treats unmarked documents as partial. If the
-  // media upload failed, deliberately leave the document UNMARKED so a re-import
-  // deletes-and-redoes it (recovering the media) instead of silently marking it
-  // done and losing the media forever.
+  // media upload failed, deliberately leave the document UNMARKED so a resume
+  // of this import deletes-and-redoes it (recovering the media). Once the run
+  // finishes there is no resume, and the warning names the Media tab.
   //
   // The metadata goes again whole, now that what it names in the document
   // itself exists. From here on another document's reference to it resolves.
   if (!mediaFailed) {
-    await client.documents.setMetadata(docId, stamp(rewriteReferences(docMetadata, lookup), true));
+    await client.documents.setMetadata(
+      docId,
+      stamp(rewriteReferences(docMetadata, lookup), docId, true),
+    );
     await recordUnmarked(docId, true);
     if (docData.id != null) docIdMap.set(docData.id, docId);
   }

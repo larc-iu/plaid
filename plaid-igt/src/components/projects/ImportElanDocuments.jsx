@@ -171,15 +171,16 @@ export const ImportElanDocuments = () => {
     };
   }, [client, projectId, project]);
 
-  // Files an earlier run finished. A file only half imported is redone without
-  // asking, which is what resume has always meant.
+  // Files an earlier run imported, finished or not: this project is open for
+  // work, so a document a run left unfinished may hold someone's work and
+  // gets the same Keep, Replace or Add copies choice as a finished one.
   // Keyed by .eaf file name, which is what a document's resume stamp holds.
   // Null until the listing is read, so no row claims "new" on a guess.
   const imported = prior
     ? new Map(
         (batch.files ?? []).flatMap((eaf) => {
           const existing = prior.find(eaf.fileName);
-          return existing && prior.done(existing) ? [[eaf.fileName, existing]] : [];
+          return existing ? [[eaf.fileName, existing]] : [];
         }),
       )
     : null;
@@ -191,6 +192,9 @@ export const ImportElanDocuments = () => {
     : [];
 
   const startImport = async () => {
+    // A retry reads the project afresh: the screen's listing may not have
+    // caught up with what the stopped run made.
+    const retrying = !!runError;
     setStage('running');
     setRunError(null);
     setLog([]);
@@ -208,8 +212,9 @@ export const ImportElanDocuments = () => {
         client,
         projectId,
         build: batch.build,
-        prior,
+        prior: retrying ? null : prior,
         priorMode,
+        projectOpen: true,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
         onProgress: (p) => {
@@ -237,8 +242,13 @@ export const ImportElanDocuments = () => {
       }
     } catch (e) {
       console.error('ELAN import failed:', e);
-      setRunError(humanizeError(e));
+      setRunError({ message: humanizeError(e), unfinishedRemoved: e.unfinishedRemoved === true });
       setStage('review');
+      // What the run made before it stopped is in the project now, and a
+      // retry has to see it there rather than make it again.
+      priorImports(client, projectId)
+        .then(setPrior)
+        .catch((err) => console.error('Could not read what is already imported:', err));
       if (!/cancelled/i.test(e.message)) notifyError(humanizeError(e), 'Failed to import');
     }
   };
@@ -446,11 +456,10 @@ export const ImportElanDocuments = () => {
 
                 {runError && (
                   <Panel tone="error" title="Failed to import">
-                    <p className="mt-1 text-xs">{runError}</p>
-                    <p className="mt-1 text-xs">
-                      Retrying continues where it stopped: documents that finished are skipped, and
-                      one left part way is replaced.
-                    </p>
+                    <p className="mt-1 text-xs">{runError.message}</p>
+                    {runError.unfinishedRemoved && (
+                      <p className="mt-1 text-xs">The unfinished document was removed.</p>
+                    )}
                   </Panel>
                 )}
 
@@ -499,11 +508,11 @@ export const ImportElanDocuments = () => {
           <div className="flex flex-col gap-4">
             <Panel tone="success" title="Import complete">
               <p className="mt-1 text-xs">
-                {results.imported} added
+                {results.imported - results.redone} added
                 {results.copied
                   ? `, ${results.copied} added as ${results.copied === 1 ? 'a copy' : 'copies'}`
                   : ''}
-                {results.skipped ? `, ${results.skipped} already there` : ''}
+                {results.skipped ? `, ${results.skipped} kept` : ''}
                 {results.redone ? `, ${results.redone} replaced` : ''}
                 {results.recordingsAdded
                   ? `, ${results.recordingsAdded === 1 ? 'a recording' : `${results.recordingsAdded} recordings`} added to ${results.recordingsAdded === 1 ? 'an existing document' : 'existing documents'}`

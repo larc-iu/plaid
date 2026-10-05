@@ -16,7 +16,7 @@
 // — have one home. The format-shaped work (reading the file, naming fields,
 // glosses, lexicons, media) stays in each importer.
 
-import { createdIds } from '@larc-iu/plaid-client';
+import { createdIds, uuidv7 } from '@larc-iu/plaid-client';
 import {
   defaultIgnoredTokensSetup,
   findAlignmentTokenLayer,
@@ -136,7 +136,8 @@ export function resolveIgtTargets(project, fields = []) {
  * row anyway (the archive does, for a document whose text was cleared: the
  * row is still there and may hold metadata and comments).
  *
- * `metadata` is the caller's, already stamped. `textMetadata` is the baseline
+ * `metadata` is the caller's. As a function it is given the id the document
+ * is created under, which an import's stamp names (resume.js). `textMetadata` is the baseline
  * text's, if the source carries one; as a function it is called once the
  * document exists, which is what an engine that resolves references against
  * the new document needs. `onDocument` is told the new id as soon as there is
@@ -163,7 +164,14 @@ export async function createDocumentShell({
   check = () => {},
 }) {
   progress('Creating document');
-  const created = await client.documents.create(projectId, name, metadata);
+  const id = uuidv7();
+  const created = await client.documents.create(
+    projectId,
+    name,
+    typeof metadata === 'function' ? metadata(id) : metadata,
+    undefined,
+    { id },
+  );
   const documentId = created.id ?? created;
   await onDocument?.(documentId);
   if (!body?.length && !keepEmptyText) return { documentId, textId: null, sentenceIds: [] };

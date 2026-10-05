@@ -152,10 +152,28 @@ describe('createDocumentShell', () => {
       'texts.create',
       'tokens.bulkCreate',
     ]);
-    expect(client.calls[0].slice(1)).toEqual(['p1', 'Story', { source: 'a.eaf' }]);
+    expect(client.calls[0].slice(1, 4)).toEqual(['p1', 'Story', { source: 'a.eaf' }]);
     expect(client.calls[1].slice(1)).toEqual(['tl', 'doc1', 'los perros', undefined]);
     expect(client.calls[2][1]).toEqual([{ tokenLayerId: 'sl', text: 'text1', begin: 0, end: 10 }]);
     expect(shell).toEqual({ documentId: 'doc1', textId: 'text1', sentenceIds: ['t1'] });
+  });
+
+  // An import stamps a document with the id it is made under (resume.js),
+  // so the id is minted before the create and the metadata is given it.
+  it('creates the document under a minted id its metadata can name', async () => {
+    const client = stubClient();
+    await createDocumentShell({
+      client,
+      projectId: 'p1',
+      targets,
+      name: 'Story',
+      metadata: (id) => ({ importSource: `${id}:a.eaf` }),
+      body: '',
+      sentences: [],
+    });
+    const [, , , metadata, , { id }] = client.calls[0];
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/);
+    expect(metadata).toEqual({ importSource: `${id}:a.eaf` });
   });
 
   it('gives an empty document no text and no sentences', async () => {

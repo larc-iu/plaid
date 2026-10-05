@@ -8,7 +8,10 @@
 // Resumability follows the same scheme (see ../resume.js): a document is
 // stamped with its .eaf file name and marked done only once every write for it
 // succeeded, so on resume finished documents are skipped and half-imported ones
-// are deleted and redone.
+// are deleted and redone. Into a project open for work (`projectOpen`) nothing
+// is deleted unasked: a document an earlier run left unfinished is kept like a
+// finished one unless the person says Replace, and a run that stops removes
+// only the document it was making.
 //
 // The engine is indifferent to WHERE it writes: it resolves every layer and
 // field off the project it is handed, so the same run imports into a project
@@ -77,6 +80,7 @@ export async function importDocument({
   shouldStop,
   warnings,
   copyName = null,
+  onDocument = null,
 }) {
   const progress = (step) => onProgress?.({ phase: 'document', doc: doc.name, step });
   const check = () => {
@@ -93,8 +97,11 @@ export async function importDocument({
     projectId,
     targets,
     name: copyName ?? doc.name,
-    metadata: copyName ? withoutStamps(doc.metadata) : importStamp(doc.metadata, doc.id),
+    metadata: copyName
+      ? withoutStamps(doc.metadata)
+      : (id) => importStamp(doc.metadata, doc.id, id),
     body: doc.body,
+    onDocument,
     sentences: doc.sentences,
     progress,
     check,
@@ -217,8 +224,9 @@ export async function importDocument({
 
   // The recording the .eaf names, when the user supplied it. Same contract as
   // the CLDF importer: a failure is a warning and the document is left
-  // unfinished, so re-importing retries the upload instead of leaving a
-  // document that quietly has no media.
+  // unfinished, so a resume of a new project's import retries the upload. Into
+  // an open project the document is kept, and importing the file again with
+  // its recording adds the recording to it (addRecordingToExisting).
   let mediaFailed = false;
   if (doc.mediaFile) {
     check();
@@ -230,8 +238,8 @@ export async function importDocument({
     } catch (err) {
       mediaFailed = true;
       warnings?.push(
-        `"${doc.name}": media upload failed. ${humanizeError(err)} The document is unfinished, ` +
-          'and importing again retries the upload.',
+        `"${doc.name}": media upload failed. ${humanizeError(err)} ` +
+          "Upload the recording on the document's Media tab.",
       );
     }
   }
@@ -240,7 +248,7 @@ export async function importDocument({
   // which is also how a failed media upload gets another chance. A copy is
   // never resumed, so it is never marked.
   if (!mediaFailed && !copyName) {
-    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
+    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, docId, true));
   }
   return docId;
 }
@@ -267,6 +275,19 @@ async function addRecordingToExisting({ client, existing, doc, results, onProgre
   }
 }
 
+// The document a stopped or failed run was making, in a project open for
+// work. A later run would list it as imported before and keep it, half made.
+// When the delete fails too, it stays, and the error says so.
+async function removeUnfinished(client, documentId, err) {
+  try {
+    await client.documents.delete(documentId);
+    err.unfinishedRemoved = true;
+  } catch (cleanup) {
+    console.error('Could not remove the unfinished document:', cleanup);
+    err.unfinishedRemoved = false;
+  }
+}
+
 /**
  * Run a full import against a set-up project. The whole import is ONE logical
  * operation in the audit log; each write keeps its own description underneath.
@@ -286,9 +307,14 @@ async function runElanImportImpl({
   onWarning,
   shouldStop,
   prior: priorGiven = null,
-  // What to do with a file an earlier run finished: keep its document, replace
+  // What to do with a file an earlier run imported: keep its document, replace
   // it, or make a copy beside it.
   priorMode = 'skip',
+  // The project is open for work (no import record locks it), so a document
+  // an earlier run left unfinished may hold someone's work: priorMode decides
+  // for it as for a finished one, and a run that stops or fails deletes the
+  // document it was making, which no one has had the chance to work on.
+  projectOpen = false,
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
@@ -336,33 +362,44 @@ async function runElanImportImpl({
     });
     const warn = (text) => note(text, doc.name);
     const existing = prior.find(doc.id);
-    // A copy is only a copy of a document that is finished. One left half
-    // done is redone, which is what resume has always meant.
+    // A copy is only a copy of a document that is finished, or one an open
+    // project keeps. One a resume left half done is redone, which is what
+    // resume has always meant.
     const copyName =
-      priorMode === 'copy' && existing && prior.done(existing)
+      priorMode === 'copy' && existing && (prior.done(existing) || projectOpen)
         ? unusedName(doc.name, prior.names)
         : null;
     if (!copyName) {
       const proceed = await settlePrior(client, prior, doc.id, results, {
         replace: priorMode === 'replace',
+        keepUnfinished: projectOpen,
       });
       if (!proceed) {
         await addRecordingToExisting({ client, existing, doc, results, onProgress, warn });
         continue;
       }
     }
-    await importDocument({
-      client,
-      projectId,
-      targets,
-      doc,
-      onProgress,
-      shouldStop,
-      copyName,
-      // A push-alike, so a warning raised while writing is logged the moment it
-      // happens like any other.
-      warnings: { push: (...w) => w.forEach(warn) },
-    });
+    let making = null;
+    try {
+      await importDocument({
+        client,
+        projectId,
+        targets,
+        doc,
+        onProgress,
+        shouldStop,
+        copyName,
+        onDocument: (id) => {
+          making = id;
+        },
+        // A push-alike, so a warning raised while writing is logged the moment it
+        // happens like any other.
+        warnings: { push: (...w) => w.forEach(warn) },
+      });
+    } catch (err) {
+      if (projectOpen && making) await removeUnfinished(client, making, err);
+      throw err;
+    }
     for (const w of doc.warnings) warn(w);
     if (copyName) results.copied += 1;
     else results.imported += 1;

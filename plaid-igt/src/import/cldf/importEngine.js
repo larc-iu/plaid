@@ -255,7 +255,7 @@ async function importDocument({
     projectId,
     targets,
     name: doc.name,
-    metadata: importStamp(doc.metadata, doc.id),
+    metadata: (id) => importStamp(doc.metadata, doc.id, id),
     body: doc.body,
     sentences: doc.sentences,
     progress,
@@ -365,8 +365,8 @@ async function importDocument({
     } catch (err) {
       mediaFailed = true;
       warnings?.push(
-        `"${doc.name}": media upload failed. ${humanizeError(err)} The document is unfinished, ` +
-          'and importing again retries the upload.',
+        `"${doc.name}": media upload failed. ${humanizeError(err)} ` +
+          "Upload the recording on the document's Media tab.",
       );
     }
   }
@@ -374,7 +374,7 @@ async function importDocument({
   // Marked LAST: resume treats an unmarked document as partial and redoes it,
   // which is also how a failed media upload gets another chance.
   if (!mediaFailed) {
-    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
+    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, docId, true));
   }
   return docId;
 }

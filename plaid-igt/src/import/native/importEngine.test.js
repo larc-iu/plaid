@@ -245,8 +245,11 @@ function stubClient({
     // Documents this import made keep the metadata written to them, so a read
     // answers what the server would.
     documents: {
-      create: async (projectId, name, metadata) => {
-        const made = record('documents.create', [projectId, name, metadata], { id: fresh('doc') });
+      // Under the id the client names, as core takes it.
+      create: async (projectId, name, metadata, _message, { id } = {}) => {
+        const made = record('documents.create', [projectId, name, metadata], {
+          id: id ?? fresh('doc'),
+        });
         written.set(made.id, { id: made.id, name, metadata });
         return made;
       },
@@ -656,7 +659,10 @@ describe('runNativeImport — comments', () => {
     // Every anchor is a NEW id minted during this import, never the archive's
     // own correlation key.
     for (const [, , entityId] of posted) {
-      expect(entityId).toMatch(/^(doc|text|tok|span)-\d+$/);
+      // A document is made under an id the client mints (UUIDv7).
+      expect(entityId).toMatch(
+        /^((doc|text|tok|span)-\d+|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})$/,
+      );
     }
   });
 
@@ -903,13 +909,13 @@ describe('runNativeImport (full archive)', () => {
   it('skips done documents and redoes half-imported ones on resume', async () => {
     const done = await run({
       existingDocs: [
-        { id: 'old1', name: 'Doc One', metadata: { importSource: 'doc1', importDone: true } },
+        { id: 'old1', name: 'Doc One', metadata: { importSource: 'old1:doc1', importDone: true } },
       ],
     });
     expect(done.result).toMatchObject({ imported: 0, skipped: 1, redone: 0 });
 
     const half = await run({
-      existingDocs: [{ id: 'old1', name: 'Doc One', metadata: { importSource: 'doc1' } }],
+      existingDocs: [{ id: 'old1', name: 'Doc One', metadata: { importSource: 'old1:doc1' } }],
     });
     expect(half.result).toMatchObject({ imported: 1, skipped: 0, redone: 1 });
     expect(callsOf(half.client, 'documents.delete')[0][1]).toBe('old1');
@@ -1016,13 +1022,14 @@ describe('runNativeImport, what the archive holds comes back as it was', () => {
       importDone: true,
     };
     const { client } = await importOf(archive);
-    expect(callsOf(client, 'documents.create')[0][3]).toEqual({
+    const made = callsOf(client, 'documents.create')[0];
+    expect(made[3]).toEqual({
       Source: 'notes',
-      importSource: 'doc1',
+      importSource: `${made.result.id}:doc1`,
     });
     expect(callsOf(client, 'documents.setMetadata').at(-1)[2]).toEqual({
       Source: 'notes',
-      importSource: 'doc1',
+      importSource: `${made.result.id}:doc1`,
       importDone: true,
     });
   });
@@ -1045,7 +1052,7 @@ describe('runNativeImport, what the archive holds comes back as it was', () => {
     raw.metadata.nested = { inner: 1 };
     const { client, result } = await importOf(archiveOf(raw));
     expect(callsOf(client, 'documents.setMetadata').at(-1)[2]).toMatchObject({
-      importSource: 'doc1',
+      importSource: `${callsOf(client, 'documents.create')[0].result.id}:doc1`,
       importDone: true,
     });
     expect(result.warnings).toEqual([]);
@@ -1532,7 +1539,7 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
         {
           id: 'srv-doc',
           name: 'Doc One',
-          metadata: { importSource: 'doc1', importDone: true },
+          metadata: { importSource: 'srv-doc:doc1', importDone: true },
           // The server's copy of it, with ids of its own.
           textLayers: [
             {
@@ -2140,10 +2147,10 @@ describe('runNativeImport, references in metadata', () => {
     // The first is made before the second exists, and before its own id is known.
     expect(created[0]).toMatchObject({ next: 'doc2', self: 'doc1' });
     // The second names the first, which is done by then.
-    expect(created[1]).toMatchObject({ previous: one, importSource: 'doc2' });
+    expect(created[1]).toMatchObject({ previous: one, importSource: `${two}:doc2` });
     // Its own id is known by the time it is marked done.
     const done = argsOf(client, 'documents.setMetadata').find(([id]) => id === one)[1];
-    expect(done).toMatchObject({ self: one, next: 'doc2', importSource: 'doc1' });
+    expect(done).toMatchObject({ self: one, next: 'doc2', importSource: `${one}:doc1` });
     expect(argsOf(client, 'documents.patchMetadata')).toEqual([[one, [set('next', two)]]]);
   });
 
@@ -2155,7 +2162,12 @@ describe('runNativeImport, references in metadata', () => {
           {
             id: 'old1',
             name: 'Doc One',
-            metadata: { importSource: 'doc1', importDone: true, Source: 'notes', next: 'doc2' },
+            metadata: {
+              importSource: 'old1:doc1',
+              importDone: true,
+              Source: 'notes',
+              next: 'doc2',
+            },
           },
         ],
       },

@@ -10,8 +10,14 @@
 // several texts share a name in the wild ('Untitled' is the fallback for a
 // FLEx text with no title), and a document a person made by hand under the
 // same name is not this import's to delete.
+//
+// The stamp also names the document it was written on, as
+// `<document id>:<source id>`. A document copy carries its source's metadata
+// over (core rewrites a value that IS the copied document's id to the copy's,
+// and leaves a string that only contains it), so a copy keeps a stamp naming
+// another document and is never taken for the one the import made.
 
-/** The source's own id for the document, written at creation. */
+/** `<document id>:<source id>`, written at creation. */
 const SOURCE_KEY = 'importSource';
 /** Written last, so a document without it is one the run did not finish. */
 const DONE_KEY = 'importDone';
@@ -26,14 +32,29 @@ export class ImportCancelled extends Error {
 }
 
 /**
- * A document's metadata with the import's marks on it. A done mark the
- * source's own metadata carries is dropped (a CLDF column, an ELAN property
- * or an archive may name a key `importDone`), since it would say the document
- * was finished before this import had made any of it.
+ * A document's metadata with the import's marks on it, for the document
+ * `documentId` made from the source's `sourceId`. A done mark the source's
+ * own metadata carries is dropped (a CLDF column, an ELAN property or an
+ * archive may name a key `importDone`), since it would say the document was
+ * finished before this import had made any of it.
  */
-export const importStamp = (metadata, sourceId, done = false) => {
+export const importStamp = (metadata, sourceId, documentId, done = false) => {
   const { [DONE_KEY]: _, ...rest } = metadata || {};
-  return { ...rest, [SOURCE_KEY]: String(sourceId), ...(done ? { [DONE_KEY]: true } : {}) };
+  return {
+    ...rest,
+    [SOURCE_KEY]: `${documentId}:${sourceId}`,
+    ...(done ? { [DONE_KEY]: true } : {}),
+  };
+};
+
+// The source id a document's stamp gives, or null when it has none or the
+// stamp was written on another document (this one is a copy of it).
+const stampedSource = (doc) => {
+  const stamp = doc?.metadata?.[SOURCE_KEY];
+  if (typeof stamp !== 'string') return null;
+  const at = stamp.indexOf(':');
+  if (at < 0 || stamp.slice(0, at) !== doc.id) return null;
+  return stamp.slice(at + 1) || null;
 };
 
 /**
@@ -48,8 +69,8 @@ export async function priorImports(client, projectId) {
   const docs = await Promise.all(listed.map((d) => client.documents.get(d.id)));
   const bySource = new Map();
   for (const d of docs) {
-    const source = d?.metadata?.[SOURCE_KEY];
-    if (typeof source === 'string' && source) bySource.set(source, d);
+    const source = stampedSource(d);
+    if (source) bySource.set(source, d);
   }
   const names = new Set(listed.map((d) => d.name));
   return {
@@ -77,12 +98,21 @@ export function unusedName(base, taken) {
  * an earlier run finished it, and redone (deleted first) when one only began
  * it. `replace` redoes a finished one too, which is what a screen asks for
  * when the person has been shown what is already there and said to import it
- * again anyway. Counts into `results`.
+ * again anyway. `keepUnfinished` skips an unfinished one as well: outside a
+ * resume the project is open for work, so a document a run left unfinished
+ * may hold someone's work and is deleted only when the person says Replace.
+ * Counts into `results`.
  */
-export async function settlePrior(client, prior, sourceId, results, { replace = false } = {}) {
+export async function settlePrior(
+  client,
+  prior,
+  sourceId,
+  results,
+  { replace = false, keepUnfinished = false } = {},
+) {
   const existing = prior.find(sourceId);
   if (!existing) return true;
-  if (prior.done(existing) && !replace) {
+  if ((prior.done(existing) || keepUnfinished) && !replace) {
     results.skipped += 1;
     return false;
   }

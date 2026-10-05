@@ -79,9 +79,10 @@ function stubClient({ documents = [], docMetadata = {}, docMedia = [] } = {}) {
         calls.push(['projects.setConfig', projectId, ns, key, value]),
     },
     documents: {
-      create: async (projectId, name, metadata) => {
-        calls.push(['documents.create', name, metadata]);
-        return { id: 'doc1' };
+      // The id the client names, as core takes it.
+      create: async (projectId, name, metadata, _message, { id } = {}) => {
+        calls.push(['documents.create', name, metadata, id]);
+        return { id };
       },
       get: async (id) => ({
         id,
@@ -246,8 +247,11 @@ describe('importDocument', () => {
     const targets = resolveTargets(PROJECT, BUILD);
     await importDocument({ client, projectId: 'p1', targets, doc: BUILD.documents[0] });
     const last = client.calls.at(-1);
+    const [, , begun, id] = client.calls.find(([m]) => m === 'documents.create');
+    expect(begun).toEqual({ Source: 'notes', importSource: `${id}:a.eaf` });
     expect(last[0]).toBe('documents.setMetadata');
-    expect(last[2]).toEqual({ Source: 'notes', importSource: 'a.eaf', importDone: true });
+    expect(last[1]).toBe(id);
+    expect(last[2]).toEqual({ Source: 'notes', importSource: `${id}:a.eaf`, importDone: true });
   });
 
   it('warns instead of failing when the project has no alignment layer', async () => {
@@ -340,7 +344,7 @@ describe('runElanImport', () => {
   it('skips a document already marked done and redoes a half-imported one', async () => {
     const done = stubClient({
       documents: [{ id: 'old', name: 'Story' }],
-      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+      docMetadata: { old: { importSource: 'old:a.eaf', importDone: true } },
     });
     expect(await runElanImport({ client: done, projectId: 'p1', build: BUILD })).toMatchObject({
       imported: 0,
@@ -350,7 +354,7 @@ describe('runElanImport', () => {
 
     const partial = stubClient({
       documents: [{ id: 'old', name: 'Story' }],
-      docMetadata: { old: { importSource: 'a.eaf' } },
+      docMetadata: { old: { importSource: 'old:a.eaf' } },
     });
     expect(await runElanImport({ client: partial, projectId: 'p1', build: BUILD })).toMatchObject({
       imported: 1,
@@ -365,7 +369,7 @@ describe('runElanImport', () => {
   it('replaces a document already marked done when the run asks it to', async () => {
     const client = stubClient({
       documents: [{ id: 'old', name: 'Story' }],
-      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+      docMetadata: { old: { importSource: 'old:a.eaf', importDone: true } },
     });
     expect(
       await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'replace' }),
@@ -381,7 +385,7 @@ describe('runElanImport', () => {
         { id: 'old', name: 'Story' },
         { id: 'other', name: 'Story (2)' },
       ],
-      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+      docMetadata: { old: { importSource: 'old:a.eaf', importDone: true } },
     };
 
     it('is a new document with the next free name, and the original is untouched', async () => {
@@ -422,7 +426,7 @@ describe('runElanImport', () => {
     it('still redoes a document an earlier run left half done', async () => {
       const client = stubClient({
         documents: [{ id: 'old', name: 'Story' }],
-        docMetadata: { old: { importSource: 'a.eaf' } },
+        docMetadata: { old: { importSource: 'old:a.eaf' } },
       });
       const res = await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'copy' });
       expect(res).toMatchObject({ imported: 1, redone: 1, copied: 0 });
@@ -437,7 +441,7 @@ describe('runElanImport', () => {
     const withWav = { ...BUILD, documents: [{ ...BUILD.documents[0], mediaFile: wav }] };
     const prior = {
       documents: [{ id: 'old', name: 'Story' }],
-      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+      docMetadata: { old: { importSource: 'old:a.eaf', importDone: true } },
     };
 
     it('is added to the existing document when it has none', async () => {
@@ -493,6 +497,82 @@ describe('runElanImport', () => {
     const client = stubClient();
     await runElanImport({ client, projectId: 'p1', build: BUILD });
     expect(client.calls.some(([m]) => m === 'projects.setConfig')).toBe(false);
+  });
+
+  // N3-IMPORT-OVER-1: Add documents deleted a document an earlier run left
+  // unfinished (a failed recording upload, a Stop) with every gloss and
+  // translation a person had added to it, and listed the file as new.
+  describe('into a project open for work', () => {
+    const wav = { name: 'a.wav' };
+    const withWav = { ...BUILD, documents: [{ ...BUILD.documents[0], mediaFile: wav }] };
+    const unfinished = {
+      documents: [{ id: 'old', name: 'Story' }],
+      docMetadata: { old: { importSource: 'old:a.eaf' } },
+    };
+    const open = (client, extra = {}) =>
+      runElanImport({ client, projectId: 'p1', build: withWav, projectOpen: true, ...extra });
+
+    it('keeps an unfinished document by default, and gives it the recording', async () => {
+      const client = stubClient(unfinished);
+      const res = await open(client);
+      expect(res).toMatchObject({ imported: 0, skipped: 1, redone: 0, recordingsAdded: 1 });
+      expect(client.calls.some(([m]) => m === 'documents.delete')).toBe(false);
+      expect(client.calls.some(([m]) => m === 'documents.create')).toBe(false);
+      expect(client.calls).toContainEqual(['documents.uploadMedia', 'old', 'a.wav']);
+    });
+
+    it('replaces it when the person says Replace', async () => {
+      const client = stubClient(unfinished);
+      expect(await open(client, { priorMode: 'replace' })).toMatchObject({
+        imported: 1,
+        redone: 1,
+      });
+      expect(client.calls[0]).toEqual(['documents.delete', 'old']);
+    });
+
+    it('adds a copy beside it when the person says Add copies', async () => {
+      const client = stubClient(unfinished);
+      expect(await open(client, { priorMode: 'copy' })).toMatchObject({ copied: 1, redone: 0 });
+      expect(client.calls.some(([m]) => m === 'documents.delete')).toBe(false);
+    });
+
+    it('removes the document a stopped run was making, and says so', async () => {
+      const client = stubClient();
+      let stop = false;
+      client.tokens.bulkCreate = async () => {
+        stop = true;
+        return { ids: [] };
+      };
+      const err = await open(client, { shouldStop: () => stop }).catch((e) => e);
+      expect(err).toBeInstanceOf(ImportCancelled);
+      expect(err.unfinishedRemoved).toBe(true);
+      const [, , , made] = client.calls.find(([m]) => m === 'documents.create');
+      expect(client.calls).toContainEqual(['documents.delete', made]);
+    });
+
+    it('leaves it in place on a resume, which redoes it', async () => {
+      const client = stubClient();
+      let stop = false;
+      client.tokens.bulkCreate = async () => {
+        stop = true;
+        return { ids: [] };
+      };
+      await expect(
+        runElanImport({ client, projectId: 'p1', build: BUILD, shouldStop: () => stop }),
+      ).rejects.toBeInstanceOf(ImportCancelled);
+      expect(client.calls.some(([m]) => m === 'documents.delete')).toBe(false);
+    });
+
+    it('points a failed recording upload to the Media tab', async () => {
+      const client = stubClient();
+      client.documents.uploadMedia = async () => {
+        throw new Error('disk full');
+      };
+      const res = await open(client);
+      expect(res.warnings.join(' ')).toMatch(
+        /media upload failed\..*Upload the recording on the document's Media tab\./,
+      );
+    });
   });
 
   it('stops when asked', async () => {

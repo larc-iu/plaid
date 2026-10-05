@@ -675,7 +675,7 @@ async function importDocument({
     projectId,
     targets,
     name: doc.name,
-    metadata: importStamp(documentMetadataOf(doc), doc.guid),
+    metadata: (id) => importStamp(documentMetadataOf(doc), doc.guid, id),
     body: doc.body,
     sentences,
     progress,
@@ -827,7 +827,10 @@ async function importDocument({
   }
 
   // Mark complete LAST — resume treats unmarked documents as partial.
-  await client.documents.setMetadata(docId, importStamp(documentMetadataOf(doc), doc.guid, true));
+  await client.documents.setMetadata(
+    docId,
+    importStamp(documentMetadataOf(doc), doc.guid, docId, true),
+  );
   return docId;
 }
 

@@ -516,7 +516,7 @@ describe('runCldfImport', () => {
     const done = {
       id: 'd-done',
       name: 'Test & Doc',
-      metadata: { importSource: source, importDone: true },
+      metadata: { importSource: `d-done:${source}`, importDone: true },
     };
     const skipClient = stubClient({ existingDocs: [done] });
     const skipped = await runCldfImport({
@@ -527,7 +527,11 @@ describe('runCldfImport', () => {
     expect(skipped).toMatchObject({ imported: 0, skipped: 1 });
     expect(callsOf(skipClient, 'documents.create')).toHaveLength(0);
 
-    const partial = { id: 'd-partial', name: 'Test & Doc', metadata: { importSource: source } };
+    const partial = {
+      id: 'd-partial',
+      name: 'Test & Doc',
+      metadata: { importSource: `d-partial:${source}` },
+    };
     const redoClient = stubClient({ existingDocs: [partial] });
     const redone = await runCldfImport({
       client: redoClient,
