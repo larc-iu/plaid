@@ -1,4 +1,4 @@
-from plaid_client.client import PlaidClient
+from plaid_client.client import PlaidClient, MAX_BATCH_OPS
 from plaid_client.document_lock import (
     DocumentLock,
     DocumentLockLost,
@@ -25,6 +25,7 @@ from plaid_client.provenance import (
     stamp_contributed,
     prov_state,
     prov_origin,
+    is_machine,
     is_protected,
     needs_review,
     contribute_on_edit,
@@ -65,6 +66,7 @@ __all__ = [
     "uuid7",
     "was_replayed",
     "PlaidClient",
+    "MAX_BATCH_OPS",
     "PlaidAPIError",
     "DocumentLock",
     "DocumentLockLost",
@@ -88,6 +90,7 @@ __all__ = [
     "stamp_contributed",
     "prov_state",
     "prov_origin",
+    "is_machine",
     "is_protected",
     "needs_review",
     "contribute_on_edit",

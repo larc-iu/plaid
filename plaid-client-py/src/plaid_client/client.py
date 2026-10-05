@@ -19,7 +19,7 @@ from plaid_client.http import (
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
     retry_unknown, is_unknown_outcome, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
-    IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
+    IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout,
 )
 from plaid_client.ids import uuid7
 from plaid_client.replayed import mark_replayed, was_replayed
@@ -2636,7 +2636,7 @@ class ProjectsResource(_Resource):
             id: The resource ID
             audit_message: Custom audit-log message.
             timeout: Per-request timeout in seconds, the client's own by
-                default. ``None`` disables it.
+                default. ``None`` or 0 disables it.
         """
         return self._request('DELETE', f'/api/v1/projects/{id}',
                               audit_message=audit_message,
@@ -3783,10 +3783,10 @@ class PlaidClient:
         Args:
             base_url: The base URL for the API
             token: The authentication token
-            timeout: Per-request timeout in seconds (default 30; ``None`` disables
-                it). Also bounds media up/downloads — raise it for large files.
+            timeout: Per-request timeout in seconds (default 30; ``None`` or 0
+                disables it). Also bounds media up/downloads — raise it for large files.
             batch_timeout: Timeout for batch submissions in seconds (default 180;
-                ``None`` disables it). Batches get their own, longer budget:
+                ``None`` or 0 disables it). Batches get their own, longer budget:
                 aborting one does NOT stop the server, which keeps running the
                 transaction and holding the single SQLite write lock. Defaults
                 to ``timeout`` when that was given explicitly and this was not.
@@ -4252,7 +4252,7 @@ class PlaidClient:
                 def attempt(data=data, request_headers=request_headers):
                     try:
                         resp = self.session.post(url, headers=request_headers, data=data,
-                                                 timeout=self.batch_timeout)
+                                                 timeout=wire_timeout(self.batch_timeout))
                     except PlaidAPIError:
                         raise
                     except Exception as e:
@@ -4384,7 +4384,7 @@ class PlaidClient:
         """GET a path that takes no Authorization header."""
         url = f'{base_url.rstrip("/")}{path}'
         try:
-            response = req_lib.get(url, timeout=timeout)
+            response = req_lib.get(url, timeout=wire_timeout(timeout))
         except Exception as e:
             if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
                 raise PlaidAPIError(f'Request timed out at {url}', url=url, method='GET',
@@ -4410,7 +4410,7 @@ class PlaidClient:
             response = req_lib.post(url,
                                     headers={'Content-Type': 'application/json'},
                                     data=json.dumps(body),
-                                    timeout=timeout)
+                                    timeout=wire_timeout(timeout))
         except Exception as e:
             if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
                 raise PlaidAPIError(f'Request timed out at {url}', url=url, method='POST',
@@ -4448,7 +4448,9 @@ class PlaidClient:
     @classmethod
     def redeem_invite(cls, base_url: str, code: str, password: str,
                       email: str | None = None, display_name: str | None = None,
-                      timeout: float | None = DEFAULT_TIMEOUT_S) -> tuple[PlaidClient, Any]:
+                      timeout: float | None = DEFAULT_TIMEOUT_S, *,
+                      batch_timeout: float | None = _UNSET,
+                      retry_delays: list[float] | None = None) -> tuple[PlaidClient, Any]:
         """Redeem an invite code, with NO authentication.
 
         For a signup invite, pass ``email`` and ``password`` to create the
@@ -4468,7 +4470,9 @@ class PlaidClient:
                 login (signup invites only)
             display_name: How the new user is shown in the UI; defaults to the
                 local part of the email (signup invites only)
-            timeout: Per-request timeout in seconds
+            timeout: Per-request timeout in seconds, forwarded to the new client.
+            batch_timeout: Forwarded to the new client (see :class:`PlaidClient`).
+            retry_delays: Forwarded to the new client (see :class:`PlaidClient`).
 
         Returns:
             ``(client, result)`` where ``result`` carries ``user_id`` and ``kind``.
@@ -4480,12 +4484,15 @@ class PlaidClient:
             body['display-name'] = display_name
         data = cls._anonymous_post(base_url, '/api/v1/invites/redeem', body,
                                    timeout=timeout)
-        client = cls(base_url.rstrip('/'), data.get('token', ''), timeout=timeout)
+        client = cls(base_url.rstrip('/'), data.get('token', ''), timeout=timeout,
+                     batch_timeout=batch_timeout, retry_delays=retry_delays)
         return client, data
 
     @classmethod
     def login(cls, base_url: str, user_id: str, password: str,
-              timeout: float | None = DEFAULT_TIMEOUT_S) -> PlaidClient:
+              timeout: float | None = DEFAULT_TIMEOUT_S, *,
+              batch_timeout: float | None = _UNSET,
+              retry_delays: list[float] | None = None) -> PlaidClient:
         """Authenticate and return a new client instance with token.
 
         This is the single auth entry point — there is no ``client.login`` resource.
@@ -4495,6 +4502,8 @@ class PlaidClient:
             user_id: User ID for authentication
             password: Password for authentication
             timeout: Per-request timeout in seconds, forwarded to the new client.
+            batch_timeout: Forwarded to the new client (see :class:`PlaidClient`).
+            retry_delays: Forwarded to the new client (see :class:`PlaidClient`).
 
         Returns:
             Authenticated client instance
@@ -4505,7 +4514,7 @@ class PlaidClient:
             response = req_lib.post(url,
                                     headers={'Content-Type': 'application/json'},
                                     data=json.dumps({'user-id': user_id, 'password': password}),
-                                    timeout=timeout)
+                                    timeout=wire_timeout(timeout))
         except Exception as e:
             if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
                 raise PlaidAPIError(f'Request timed out at {url}', url=url, method='POST',
@@ -4518,7 +4527,8 @@ class PlaidClient:
 
         data = response.json()
         token = data.get('token', '')
-        return cls(base_url, token, timeout=timeout)
+        return cls(base_url, token, timeout=timeout, batch_timeout=batch_timeout,
+                   retry_delays=retry_delays)
 
 
 class PlaidBatch:

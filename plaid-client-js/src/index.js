@@ -3730,7 +3730,7 @@ class PlaidClient {
    * matching end, and the outer numbering resumes after it.
    *
    * @param {string} message - Human label for the operation.
-   * @param {object} [opts] - Optional `{ id, kind, ref, keys }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind`, `ref` and `keys` are described above.
+   * @param {object} [opts] - Optional `{ id, kind, ref, keys, minted }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). Python names it `group_id`. `kind`, `ref` and `keys` are described above. `minted` is the ids the operation mints for what it creates: a create refused 409 id-taken for one of them was made by an earlier send of the operation, and answers as made.
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { id, kind, ref, keys, minted } = {}) {
@@ -3836,7 +3836,7 @@ class PlaidClient {
    *
    * @param {string} message - Human label for the operation.
    * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
-   * @param {object} [opts] - Optional `{ kind, ref, id, keys }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
+   * @param {object} [opts] - Optional `{ kind, ref, id, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
   async withOperation(message, fn, { kind, ref, id, keys, minted } = {}) {

@@ -193,7 +193,8 @@ def _report_event(client, project_id, request_id, body):
     """
     client.messages._request(
         'POST',
-        f'/api/v1/projects/{project_id}/service-requests/{request_id}/events',
+        f'/api/v1/projects/{project_id}/service-requests/'
+        f'{urllib.parse.quote(str(request_id), safe="")}/events',
         body=body, out_of_band=True)
 
 
@@ -755,7 +756,8 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
     :func:`request_service`, ``timeout`` is how long the service may be silent,
     and an error carrying ``pending = True`` means the request is still there
     to rejoin again."""
-    url = f'{client.base_url}/api/v1/projects/{project_id}/service-requests/{request_id}'
+    url = (f'{client.base_url}/api/v1/projects/{project_id}/service-requests/'
+           f'{urllib.parse.quote(str(request_id), safe="")}')
     try:
         resp = requests.get(url, headers=_stream_headers(client), stream=True, timeout=(10, None))
     except Exception as e:
@@ -779,7 +781,8 @@ def cancel_service_request(client, project_id, request_id):
     changes no project data (see the note at the top of http.py).
     """
     return client.messages._request(
-        'DELETE', f'/api/v1/projects/{project_id}/service-requests/{request_id}',
+        'DELETE',
+        f'/api/v1/projects/{project_id}/service-requests/{urllib.parse.quote(str(request_id), safe="")}',
         out_of_band=True)
 
 

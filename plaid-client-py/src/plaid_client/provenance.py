@@ -177,10 +177,16 @@ def prov_origin(metadata):
     return CONTRIBUTED if metadata.get(PROV_KEY) == CONTRIBUTED else INFERRED
 
 
+def is_machine(metadata):
+    """Whether this entity is machine-made and not yet verified: the material
+    machine writers may replace. Complement of :func:`is_protected`."""
+    return prov_state(metadata) == MACHINE
+
+
 def is_protected(metadata):
     """Whether a machine writer must leave this entity alone (write-contract
     rule 2): True for human-made, contributed and verified material."""
-    return prov_state(metadata) != MACHINE
+    return not is_machine(metadata)
 
 
 def needs_review(metadata):
@@ -310,7 +316,7 @@ class WriterPolicy:
         """Material this writer's review gestures act on: a verifier reviews
         machine and contributed material; a contributor reviews machine
         proposals only, since their own vouching is itself a contribution."""
-        return prov_state(metadata) == MACHINE if self.is_contributor else needs_review(metadata)
+        return is_machine(metadata) if self.is_contributor else needs_review(metadata)
 
     def reviewable_state(self, state):
         if self.is_contributor:

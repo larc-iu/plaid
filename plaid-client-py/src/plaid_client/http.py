@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Default per-request timeout (seconds). Applied to every request unless the
-# client is constructed with a different ``timeout`` (None disables it). Note:
+# client is constructed with a different ``timeout`` (None or 0 disables it). Note:
 # this also bounds media up/downloads — raise it (or disable) for large files.
 DEFAULT_TIMEOUT_S = 30.0
 
@@ -89,6 +89,15 @@ BUSY_BACKOFF_S = 0.25
 # Sentinel distinguishing "no per-call timeout override" from an explicit
 # ``timeout=None`` (which disables the timeout for that call).
 _UNSET = object()
+
+
+def wire_timeout(timeout):
+    """The timeout to hand ``requests``: None (no timeout) for None, 0 or
+    less, as the JS client reads them, and the value itself otherwise.
+    ``requests`` refuses a timeout of 0 outright."""
+    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) and timeout <= 0:
+        return None
+    return timeout
 
 
 class PlaidAPIError(Exception):
@@ -936,8 +945,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         headers[IDEMPOTENCY_HEADER] = key
 
     kwargs = {'method': method, 'url': url, 'headers': headers,
-              'timeout': (timeout if timeout is not _UNSET
-                          else getattr(client, 'timeout', DEFAULT_TIMEOUT_S))}
+              'timeout': wire_timeout(timeout if timeout is not _UNSET
+                                      else getattr(client, 'timeout', DEFAULT_TIMEOUT_S))}
 
     encoded_upload = None
     if request_body is not None:
