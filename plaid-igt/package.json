@@ -44,6 +44,7 @@
     "lucide-react": "^1.17.0",
     "marked": "^18.0.12",
     "onnxruntime-web": "^1.29.0",
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.0",

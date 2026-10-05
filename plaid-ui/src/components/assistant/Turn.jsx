@@ -252,6 +252,21 @@ export const Turn = ({
             {item.contextNote}
           </div>
         )}
+        {/* What this reply fetched and kept with the conversation (a PDF from
+            the web), which later replies read as they read an attachment. */}
+        {item.files?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {item.files.map((f) =>
+              f.source ? (
+                <a key={f.id} href={f.source} target="_blank" rel="noreferrer" title={f.source}>
+                  <AttachmentChip file={f} className="hover:bg-muted" />
+                </a>
+              ) : (
+                <AttachmentChip key={f.id} file={f} />
+              ),
+            )}
+          </div>
+        )}
         {item.unavailableProjects?.length > 0 && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <FolderOpen className="h-3 w-3 shrink-0" />

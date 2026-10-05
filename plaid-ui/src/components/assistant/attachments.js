@@ -20,6 +20,7 @@
 // when the paperclip was clicked.
 
 import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
+import { pdfText } from './pdfText.js';
 
 // What can be attached. Text, in the sense that a person could open it in an
 // editor and read it: the assistant reads a table as rows and everything else
@@ -29,6 +30,9 @@ import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
 // them: someone who drags a .conllu in wants to be told what is in it, and the
 // assistant saying "this belongs in the import screen" is a better answer than
 // the composer refusing the file with no explanation at all.
+//
+// A PDF is read here, in the browser, into text with its pages and sections
+// marked (pdfText.js), and from then on it is a text file like the others.
 export const ACCEPT = [
   '.csv',
   '.tsv',
@@ -42,6 +46,7 @@ export const ACCEPT = [
   '.eaf',
   '.lift',
   '.umr',
+  '.pdf',
 ];
 
 // Files one message may carry. The note the service writes names every one of
@@ -55,6 +60,11 @@ export const MAX_FILES = 5;
 // corpus rather than a question about one, and the import screens are what a
 // corpus is for.
 export const MAX_BYTES = 4_000_000;
+
+// The largest PDF read. It is held to MAX_BYTES by the text taken out of it,
+// since a PDF's size is mostly fonts and figures; this bounds what the browser
+// has to hold to get at that text.
+export const MAX_PDF_BYTES = 100_000_000;
 
 // What one stored value may weigh when the server does not say. The real cap is
 // the server's and it publishes it at /info.
@@ -96,8 +106,14 @@ const suffixOf = (name) => {
 // it is shown where the file was dropped.
 export const refuse = (file) => {
   const name = file?.name || '';
-  if (!ACCEPT.includes(suffixOf(name))) {
-    return `${name || 'That file'} is not a kind the assistant can read. It reads text: ${ACCEPT.join(', ')}.`;
+  const suffix = suffixOf(name);
+  if (!ACCEPT.includes(suffix)) {
+    return `${name || 'That file'} is not a kind the assistant can read. It reads ${ACCEPT.join(', ')}.`;
+  }
+  if (suffix === '.pdf') {
+    return (file?.size ?? 0) > MAX_PDF_BYTES
+      ? `${name} is ${Math.round(file.size / 1_000_000)} MB, over the ${MAX_PDF_BYTES / 1_000_000} MB limit for a PDF.`
+      : null;
   }
   if ((file?.size ?? 0) > MAX_BYTES) {
     return `${name} is ${Math.round(file.size / 1_000_000)} MB, over the ${MAX_BYTES / 1_000_000} MB limit for an attachment. Import a file this size from the project's import screen instead.`;
@@ -204,11 +220,75 @@ const decodeFile = (buffer, name) => {
   }
 };
 
+// A PDF that cannot be attached, said by name in one sentence.
+export class PdfAttachError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'PdfAttachError';
+  }
+}
+
+// pdf.js, loaded the first time a PDF is picked, so the apps carry none of it
+// until then. Its worker comes from the app's own build.
+const loadPdfjs = async () => {
+  const [pdfjs, worker] = await Promise.all([
+    import('pdfjs-dist'),
+    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+  ]);
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  return pdfjs;
+};
+
+// A PDF's text, with its pages and sections marked, or a refusal naming the
+// file: a scan has no text to read, and the text is held to MAX_BYTES.
+const readPdfText = async (buffer, name, loadPdf = loadPdfjs) => {
+  const pdfjs = await loadPdf();
+  let doc;
+  try {
+    // Errors only: a font pdf.js cannot fully interpret is reported to the
+    // console as a warning, and the text is read regardless.
+    doc = await pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      isEvalSupported: false,
+      verbosity: 0,
+    }).promise;
+  } catch (e) {
+    if (e?.name === 'PasswordException') {
+      throw new PdfAttachError(`${name} is locked with a password.`);
+    }
+    throw new PdfAttachError(`${name} could not be opened as a PDF.`);
+  }
+  try {
+    const got = await pdfText(doc);
+    if (got.scan) {
+      throw new PdfAttachError(
+        `${name} has no text in it (a scan). Only PDFs with text can be read.`,
+      );
+    }
+    const bytes = new TextEncoder().encode(got.text).length;
+    if (bytes > MAX_BYTES) {
+      throw new PdfAttachError(
+        `${name} holds ${(bytes / 1_000_000).toFixed(1)} MB of text, over the ${MAX_BYTES / 1_000_000} MB limit for an attachment.`,
+      );
+    }
+    return got.text;
+  } finally {
+    doc.destroy?.();
+  }
+};
+
 // One picked file, read and measured, waiting for the message it belongs to.
 // It holds the TEXT, which is what makes it pending: nothing of it is stored
 // until the message is sent.
-export const readAttachment = async (file, budget = VALUE_BYTES - HEADROOM) => {
-  const text = decodeFile(await file.arrayBuffer(), file.name);
+export const readAttachment = async (
+  file,
+  budget = VALUE_BYTES - HEADROOM,
+  loadPdf = loadPdfjs,
+) => {
+  const text =
+    suffixOf(file.name) === '.pdf'
+      ? await readPdfText(await file.arrayBuffer(), file.name, loadPdf)
+      : decodeFile(await file.arrayBuffer(), file.name);
   return {
     id: newId(),
     name: file.name,

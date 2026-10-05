@@ -249,3 +249,35 @@ describe('Turn and the names of other projects', () => {
     await view.unmount();
   });
 });
+
+describe('Turn and what a reply kept', () => {
+  it('shows a PDF the reply fetched as a chip that links to where it came from', async () => {
+    const view = await renderComponent(
+      <Turn
+        item={{
+          kind: 'assistant',
+          text: 'Section 9 says...',
+          files: [
+            {
+              id: 'f1',
+              name: 'grammar.pdf',
+              bytes: 130000,
+              lines: 1900,
+              chunks: 1,
+              source: 'https://repo.example/grammar.pdf',
+            },
+          ],
+        }}
+        projectId="pA"
+        adapter={adapter}
+        results={new Map()}
+        movedHere={false}
+      />,
+    );
+    const link = view.container.querySelector('a[href="https://repo.example/grammar.pdf"]');
+    expect(link).not.toBeNull();
+    expect(link.textContent).toContain('grammar.pdf');
+    expect(link.textContent).toContain('130 KB');
+    await view.unmount();
+  });
+});

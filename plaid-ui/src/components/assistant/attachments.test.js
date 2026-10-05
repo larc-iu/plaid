@@ -108,7 +108,8 @@ describe('what may be attached', () => {
   it('reads text and refuses what it cannot, naming the remedy', () => {
     expect(refuse({ name: 'wordlist.csv', size: 10 })).toBeNull();
     expect(refuse({ name: 'story.flextext', size: 10 })).toBeNull();
-    expect(refuse({ name: 'photo.png', size: 10 })).toContain('It reads text');
+    expect(refuse({ name: 'photo.png', size: 10 })).toContain('It reads .csv');
+    expect(refuse({ name: 'photo.png', size: 10 })).toContain('.pdf');
     expect(refuse({ name: 'corpus.csv', size: MAX_BYTES + 1 })).toContain('import screen');
   });
 

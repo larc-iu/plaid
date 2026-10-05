@@ -382,7 +382,7 @@ describe('AssistantChat attachments', () => {
     await flush(m);
     await drop(m, [{ name: 'photo.png', size: 10, arrayBuffer: async () => new ArrayBuffer(0) }]);
     await flush(m);
-    expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('It reads text'));
+    expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('It reads .csv'));
     expect(m.container.querySelector('[aria-label="Remove photo.png"]')).toBeNull();
     await m.unmount();
   });

@@ -33,6 +33,7 @@
     "dompurify": "*",
     "lucide-react": "*",
     "marked": "*",
+    "pdfjs-dist": "*",
     "react": "*",
     "react-dom": "*",
     "react-router-dom": "*",
@@ -107,6 +108,9 @@
       "optional": true
     },
     "marked": {
+      "optional": true
+    },
+    "pdfjs-dist": {
       "optional": true
     },
     "react": {
