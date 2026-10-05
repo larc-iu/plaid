@@ -493,32 +493,39 @@
   a metadata write. Returns the ids of the documents written."
   [tx vocab-id survivor-id loser-ids]
   (let [from->to (zipmap (map str loser-ids) (repeat (str survivor-id)))
-        names-a-loser (into [:or] (map (fn [id] [:> [:instr :em.value id] 0])) (keys from->to))
         doc-ids {:select [:d.id]
                  :from [[:documents :d]]
                  :join [[:project_vocabs :pv] [:= :pv.project_id :d.project_id]]
                  :where [:= :pv.vocab_layer_id vocab-id]}
-        rows (concat
-              (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value]
-                                 :from [[:entity_metadata :em]]
-                                 :where [:and
-                                         [:= :em.entity_type "vocab-item"]
-                                         [:in :em.entity_id {:select [:id]
-                                                             :from :vocab_items
-                                                             :where [:and [:= :vocab_layer_id vocab-id]
-                                                                     [:<> :id (str survivor-id)]]}]
-                                         names-a-loser]})]
-                (assoc r :entity_type "vocab-item"))
-              (mapcat (fn [[etype [table doc-col]]]
-                        (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value [(keyword (str "x." (name doc-col))) :doc]]
-                                           :from [[:entity_metadata :em]]
-                                           :join [[table :x] [:= :x.id :em.entity_id]]
-                                           :where [:and
-                                                   [:= :em.entity_type etype]
-                                                   [:in (keyword (str "x." (name doc-col))) doc-ids]
-                                                   names-a-loser]})]
-                          (assoc r :entity_type etype)))
-                      document-held-metadata))
+        ;; The losers go 200 to a query: one OR term each, and SQLite refuses
+        ;; an expression past 1,000 deep.
+        rows-naming
+        (fn [names-a-loser]
+          (concat
+           (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value]
+                              :from [[:entity_metadata :em]]
+                              :where [:and
+                                      [:= :em.entity_type "vocab-item"]
+                                      [:in :em.entity_id {:select [:id]
+                                                          :from :vocab_items
+                                                          :where [:and [:= :vocab_layer_id vocab-id]
+                                                                  [:<> :id (str survivor-id)]]}]
+                                      names-a-loser]})]
+             (assoc r :entity_type "vocab-item"))
+           (mapcat (fn [[etype [table doc-col]]]
+                     (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value [(keyword (str "x." (name doc-col))) :doc]]
+                                        :from [[:entity_metadata :em]]
+                                        :join [[table :x] [:= :x.id :em.entity_id]]
+                                        :where [:and
+                                                [:= :em.entity_type etype]
+                                                [:in (keyword (str "x." (name doc-col))) doc-ids]
+                                                names-a-loser]})]
+                       (assoc r :entity_type etype)))
+                   document-held-metadata)))
+        rows (->> (partition-all 200 (keys from->to))
+                  (mapcat (fn [ids] (rows-naming (into [:or] (map (fn [id] [:> [:instr :em.value id] 0])) ids))))
+                  (reduce (fn [m r] (assoc m [(:entity_type r) (:entity_id r) (:key r)] r)) {})
+                  vals)
         written (for [{:keys [entity_type entity_id key value doc]} rows
                       :let [old (clojure.data.json/read-str value)
                             new (repoint-value old from->to)]
