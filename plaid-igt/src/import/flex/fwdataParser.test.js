@@ -387,3 +387,24 @@ describe('buildDocuments — overlapping sentence times', () => {
     expect(doc.timeWarnings[0]).toContain('Utterance 3');
   });
 });
+
+describe('buildDocuments — a sentence timed against a second recording', () => {
+  it('leaves it untimed and lists it, so the review screen can count it', async () => {
+    const { buildDocuments } = await import('./buildDocuments.js');
+    const twoRecordings = TIMED_FWDATA.replace(
+      '<BeginTimeOffset><Uni>1500</Uni></BeginTimeOffset>\n  <EndTimeOffset><Uni>4250</Uni></EndTimeOffset>\n  <MediaURI><objsur guid="m2" t="r" /></MediaURI>',
+      '<BeginTimeOffset><Uni>1500</Uni></BeginTimeOffset>\n  <EndTimeOffset><Uni>4250</Uni></EndTimeOffset>\n  <MediaURI><objsur guid="m1" t="r" /></MediaURI>',
+    );
+    expect(twoRecordings).not.toBe(TIMED_FWDATA);
+    const [doc] = buildDocuments(parseFwdata(twoRecordings)).documents;
+    expect(doc.mediaName).toBe('story_Source_StandardAudio.wav');
+    expect(doc.alignments.map((a) => a.timeBegin)).toEqual([0]);
+    expect(doc.otherRecording).toEqual([{ n: 2, mediaName: 'story_Source.MOV' }]);
+  });
+
+  it('lists nothing when every sentence was timed against one recording', async () => {
+    const { buildDocuments } = await import('./buildDocuments.js');
+    const [doc] = buildDocuments(parseFwdata(TIMED_FWDATA)).documents;
+    expect(doc.otherRecording).toEqual([]);
+  });
+});

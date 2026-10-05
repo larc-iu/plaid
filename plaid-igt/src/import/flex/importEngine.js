@@ -22,7 +22,7 @@ import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets } from '../project.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
-import { humanizeError } from '@ui/lib/errors.js';
+import { mediaUploadFailure } from '../mediaUpload.js';
 
 // Everything a word carries comes out of ONE WfiAnalysis: its gloss, its
 // category, and the morph bundles the segmentation is built from. FLEx records
@@ -856,8 +856,10 @@ async function importDocument({
   }
 
   // The recording the text's sentences point to, when the user picked it. A
-  // failed upload leaves the document unfinished, so resuming the import
-  // tries it again, as in the ELAN importer.
+  // failed upload leaves the document unstamped, so a resume (when a later
+  // step of the same run fails) redoes it with its recording. A run that
+  // finishes leaves nothing to resume: its warning sends the user to the
+  // Media tab.
   let mediaFailed = false;
   if (doc.mediaFile) {
     check();
@@ -870,7 +872,7 @@ async function importDocument({
     } catch (err) {
       mediaFailed = true;
       warnings?.push(
-        `"${doc.name}": media upload failed. ${humanizeError(err)} ` +
+        `"${doc.name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
           "Upload the recording on the document's Media tab.",
       );
     }

@@ -105,13 +105,24 @@ const mediaBasename = (eaf) => {
   return String(ref).split(/[\\/]/).pop() || '';
 };
 
-/** A file name without its extension, case-folded, for matching. */
-const stem = (name) =>
+/**
+ * A file name as matching compares it: case-folded, and in one Unicode
+ * normalization, since macOS writes `ó` as `o` plus a combining accent where
+ * Windows (and so FieldWorks and most .eaf files) writes one character.
+ */
+export const matchKey = (name) =>
   String(name || '')
-    .split(/[\\/]/)
-    .pop()
-    .replace(/\.[^.]*$/, '')
+    .normalize('NFC')
     .toLowerCase();
+
+/** A file name without its extension, as matchKey compares it. */
+const stem = (name) =>
+  matchKey(
+    String(name || '')
+      .split(/[\\/]/)
+      .pop()
+      .replace(/\.[^.]*$/, ''),
+  );
 
 /**
  * Pair picked media files with the .eaf files that reference them.
@@ -126,25 +137,30 @@ const stem = (name) =>
  * media file whose stem matches the .eaf's OWN name is taken as its recording,
  * which is the other convention corpora follow.
  *
+ * Each file is claimed once, so two .eafs cannot take the same recording.
+ * With `shared`, a file goes to every entry that names it instead: FLEx texts
+ * cut from one long session are each timed against the whole recording.
+ *
  * @returns {{byFile: Map<string, File>, unmatched: File[], missing: string[]}}
- *   missing = the media names .eaf files reference but nothing supplied.
+ *   missing = the media names .eaf files reference but nothing supplied, each
+ *   once.
  */
-export function matchMediaFiles(eafs, mediaFiles) {
+export function matchMediaFiles(eafs, mediaFiles, { shared = false } = {}) {
   const pool = [...(mediaFiles || [])];
   const taken = new Set();
   const byFile = new Map();
   const missing = [];
-  const claim = (predicate) => pool.find((f, i) => !taken.has(i) && predicate(f, i));
+  const claim = (predicate) => pool.find((f, i) => (shared || !taken.has(i)) && predicate(f, i));
   for (const eaf of eafs || []) {
     const referenced = mediaBasename(eaf);
     const pick =
-      (referenced && claim((f) => f.name.toLowerCase() === referenced.toLowerCase())) ||
+      (referenced && claim((f) => matchKey(f.name) === matchKey(referenced))) ||
       (referenced && claim((f) => stem(f.name) === stem(referenced))) ||
       claim((f) => stem(f.name) === stem(eaf.fileName));
     if (pick) {
       taken.add(pool.indexOf(pick));
       byFile.set(eaf.fileName, pick);
-    } else if (referenced) {
+    } else if (referenced && !missing.some((m) => matchKey(m) === matchKey(referenced))) {
       missing.push(referenced);
     }
   }

@@ -29,11 +29,14 @@ import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
 import { parseFlextextFiles } from '../../import/flex/flextextParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
-import { matchMediaFiles } from '../../import/elan/buildDocuments';
+import { matchKey } from '../../import/elan/buildDocuments';
+import { matchRecordings } from '../../import/flex/recordings';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+import { useServerLimits } from '@/hooks/useServerLimits';
+import { formatBytes } from '@/utils/formatBytes';
 import { setupDataFor } from '../../import/project';
 
 import { documentFraction, documentLabel } from '../../import/progress';
@@ -127,8 +130,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   // number, named for the texts it holds.
   const readFiles = async (files) => {
     if (!flextext) {
-      const backup = files.find((f) => /\.(fwbackup|zip)$/i.test(f.name));
-      if (!backup) throw new Error('No .fwbackup file among those chosen');
+      const backups = files.filter((f) => /\.(fwbackup|zip)$/i.test(f.name));
+      if (!backups.length) throw new Error('No .fwbackup file among those chosen');
+      if (backups.length > 1) throw new Error('Choose one .fwbackup file');
+      const [backup] = backups;
       const bytes = new Uint8Array(await backup.arrayBuffer());
       // Let the spinner paint before the synchronous parse occupies the thread.
       await new Promise((r) => setTimeout(r, 50));
@@ -250,21 +255,20 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     setImportVariants(!!resumeChoices.importVariants);
   }, [parsed, resumeChoices]);
 
+  const limits = useServerLimits();
+  const maxBytes = limits?.mediaFileBytes ?? null;
+  const recordings = useMemo(
+    () =>
+      matchRecordings({
+        documents: parsed?.build.documents ?? [],
+        selected: selectedTexts,
+        mediaFiles,
+        maxBytes,
+      }),
+    [parsed, mediaFiles, selectedTexts, maxBytes],
+  );
   // The selection knobs (texts, analysis languages) feed straight into the
   // derived config so the review cards always show what will be created.
-  // Which picked recording belongs to which text, by the file name FLEx
-  // recorded for it (the ELAN importer's matching: the exact name, then the
-  // same name with another extension).
-  const recordings = useMemo(() => {
-    const wanted = (parsed?.build.documents ?? []).filter((d) => d.mediaName);
-    return {
-      wanted,
-      ...matchMediaFiles(
-        wanted.map((d) => ({ fileName: d.guid, media: [{ relativeUrl: d.mediaName }] })),
-        mediaFiles,
-      ),
-    };
-  }, [parsed, mediaFiles]);
   const filteredBuild = useMemo(
     () =>
       parsed && {
@@ -514,7 +518,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   .
                 </p>
               )}
-              {recordings.wanted.length > 0 && (
+              {(recordings.wanted.length > 0 || mediaFiles.length > 0) && (
                 <RecordingsSummary
                   recordings={recordings}
                   locked={locked}
@@ -530,9 +534,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 onChange={(e) => {
                   const added = [...(e.target.files ?? [])].filter(isMediaFile);
                   e.target.value = '';
+                  // A file chosen again under a name already chosen replaces it.
                   setMediaFiles((prev) => [
-                    ...prev,
-                    ...added.filter((f) => !prev.some((p) => p.name === f.name)),
+                    ...prev.filter(
+                      (p) => !added.some((f) => matchKey(f.name) === matchKey(p.name)),
+                    ),
+                    ...added,
                   ]);
                 }}
               />
@@ -951,20 +958,36 @@ const MEDIA_EXTENSIONS =
   /\.(wav|mp3|m4a|aac|flac|ogg|oga|opus|wma|aif|aiff|mp4|m4v|mov|avi|mkv|webm|mpg|mpeg|wmv)$/i;
 const isMediaFile = (f) => /^(audio|video)\//.test(f.type || '') || MEDIA_EXTENSIONS.test(f.name);
 
-// The texts FLEx timed against a recording, and which of those have one.
-const RecordingsSummary = ({ recordings, locked, onAdd }) => {
-  const { wanted, byFile, missing, unmatched } = recordings;
+// The chosen texts FLEx timed against a recording, and which of those have one.
+export const RecordingsSummary = ({ recordings, locked, onAdd }) => {
+  const { wanted, byFile, missing, tooLarge, unmatched, maxBytes } = recordings;
   const have = wanted.filter((d) => byFile.has(d.guid)).length;
   const overlapping = wanted.reduce((n, d) => n + (d.timeWarnings?.length ?? 0), 0);
+  const elsewhere = wanted.flatMap((d) => d.otherRecording ?? []);
+  const elsewhereNames = [...new Set(elsewhere.map((o) => o.mediaName))];
   return (
     <div className="mt-3 rounded-md border p-3 text-sm" data-testid="flex-recordings">
       <p className="font-medium">
-        Recordings: {have} of {countOf(wanted.length, 'text')} with sentence times
+        {wanted.length > 0
+          ? `Recordings: ${have} of ${countOf(wanted.length, 'text')} with sentence times`
+          : 'Recordings'}
       </p>
       {missing.length > 0 && (
         <p className="mt-1 text-muted-foreground">
           Not chosen: {missing.join(', ')}. These texts are imported with their times and no
           recording.
+        </p>
+      )}
+      {tooLarge.length > 0 && (
+        <p className="mt-1 text-destructive">
+          Over the {formatBytes(maxBytes)} limit: {tooLarge.map((f) => f.name).join(', ')}. These
+          texts are imported with their times and no recording.
+        </p>
+      )}
+      {elsewhere.length > 0 && (
+        <p className="mt-1 text-muted-foreground">
+          {countOf(elsewhere.length, 'sentence')} timed against a second recording (
+          {elsewhereNames.join(', ')}) are left untimed.
         </p>
       )}
       {overlapping > 0 && (
@@ -977,7 +1000,7 @@ const RecordingsSummary = ({ recordings, locked, onAdd }) => {
           No text uses: {unmatched.map((f) => f.name).join(', ')}.
         </p>
       )}
-      {!locked && missing.length > 0 && (
+      {!locked && (missing.length > 0 || tooLarge.length > 0) && (
         <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onAdd}>
           Add recordings
         </Button>

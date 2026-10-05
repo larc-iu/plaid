@@ -19,7 +19,7 @@ import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
-import { humanizeError } from '@ui/lib/errors.js';
+import { mediaUploadFailure } from '../mediaUpload.js';
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
@@ -365,7 +365,7 @@ async function importDocument({
     } catch (err) {
       mediaFailed = true;
       warnings?.push(
-        `"${doc.name}": media upload failed. ${humanizeError(err)} ` +
+        `"${doc.name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
           "Upload the recording on the document's Media tab.",
       );
     }

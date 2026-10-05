@@ -244,6 +244,8 @@ function makeFakeClient({
       delete: (docId) => record('documents.delete', { docId }, {}),
       setMetadata: (docId, body) => record('documents.setMetadata', { docId, body }, {}),
       uploadMedia: (docId, file) => {
+        if (file.fail === 413)
+          return Promise.reject(Object.assign(new Error('HTTP 413'), { status: 413 }));
         if (file.fail) return Promise.reject(new Error('Too large'));
         return record('documents.uploadMedia', { docId, file: file.name }, {});
       },
@@ -902,6 +904,33 @@ describe('runImport', () => {
         c.kind === 'documents.setMetadata' && JSON.stringify(c.args.body).includes('importDone'),
     );
     expect(marks).toEqual([]);
+  });
+
+  it('says a recording the server refused as too large is over the limit', async () => {
+    const run = async (fake) =>
+      runImport({
+        client: fake,
+        projectId: 'p1',
+        build: {
+          ...build,
+          documents: [
+            { ...build.documents[0], alignments: [], mediaFile: { name: 'big.mov', fail: 413 } },
+          ],
+        },
+        lexicon,
+        config,
+        vocabId: 'v1',
+      });
+    client = makeFakeClient();
+    let results = await run(client);
+    expect(results.warnings).toEqual([
+      expect.stringContaining('media upload failed. The recording is over the size limit.'),
+    ]);
+    expect(results.warnings[0]).not.toMatch(/document is too large/);
+    client = makeFakeClient();
+    client.server = { limits: async () => ({ mediaFileBytes: 209715200 }) };
+    results = await run(client);
+    expect(results.warnings[0]).toContain('The recording is over the 210 MB limit.');
   });
 
   // FLEx marks a guessed analysis in a .flextext by its status, and a guessed

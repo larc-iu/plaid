@@ -1170,6 +1170,41 @@ describe('matchMediaFiles', () => {
     expect(missing).toEqual(['a.mp4']);
   });
 
+  it('matches a name written in another Unicode normalization, in any case', () => {
+    // macOS writes the accents as combining marks, FieldWorks and ELAN as one character.
+    const nfd = file('Narración_Ñandú.WAV'.normalize('NFD'));
+    const { byFile, unmatched, missing } = matchMediaFiles(
+      [eaf('a.eaf', 'narración_ñandú.wav'.normalize('NFC'))],
+      [nfd],
+    );
+    expect(byFile.get('a.eaf')).toBe(nfd);
+    expect(unmatched).toEqual([]);
+    expect(missing).toEqual([]);
+    // And by stem, with another extension.
+    const mp3 = file('Narración.mp3'.normalize('NFD'));
+    expect(matchMediaFiles([eaf('b.eaf', 'Narración.wav')], [mp3]).byFile.get('b.eaf')).toBe(mp3);
+  });
+
+  it('with shared, gives one recording to every entry that names it', () => {
+    const one = file('session.wav');
+    const { byFile, unmatched, missing } = matchMediaFiles(
+      [eaf('a', 'session.wav'), eaf('b', 'session.wav'), eaf('c', 'other.wav')],
+      [one],
+      { shared: true },
+    );
+    expect(byFile.get('a')).toBe(one);
+    expect(byFile.get('b')).toBe(one);
+    expect(unmatched).toEqual([]);
+    expect(missing).toEqual(['other.wav']);
+  });
+
+  it('names a missing recording once however many entries want it', () => {
+    const { missing } = matchMediaFiles([eaf('a', 'x.wav'), eaf('b', 'x.wav')], [], {
+      shared: true,
+    });
+    expect(missing).toEqual(['x.wav']);
+  });
+
   it('reports what nobody claimed and what nobody supplied', () => {
     const spare = file('unrelated.mp4');
     const { byFile, unmatched, missing } = matchMediaFiles(

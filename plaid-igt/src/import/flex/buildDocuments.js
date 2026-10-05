@@ -132,7 +132,8 @@ export function buildDocuments(ir, opts = {}) {
     // The recording the text's sentences point to (FLEx can list a video and
     // its audio, and the sentences say which one they were timed against),
     // and each timed sentence's place in it, in seconds as the editor reads
-    // them. A sentence timed against another recording is left untimed.
+    // them. A document has one recording, so a sentence timed against another
+    // is left untimed, and listed (`otherRecording`) for the review screen.
     const named = new Map();
     for (const s of sentences) {
       const name = s.seg?.mediaName;
@@ -144,6 +145,12 @@ export function buildDocuments(ir, opts = {}) {
       .filter(
         ({ s }) =>
           s.seg?.timeBeginMs != null && (!s.seg.mediaName || s.seg.mediaName === mediaName),
+      );
+    const otherRecording = sentences
+      .map((s, i) => ({ n: i + 1, mediaName: s.seg?.mediaName }))
+      .filter(
+        ({ n, mediaName: name }) =>
+          name && name !== mediaName && sentences[n - 1].seg.timeBeginMs != null,
       );
     // Two sentences FLEx timed over the same stretch keep only the first's
     // time, as the ELAN importer does: with no speakers to tell them apart
@@ -165,6 +172,7 @@ export function buildDocuments(ir, opts = {}) {
       mediaName,
       alignments,
       timeWarnings,
+      otherRecording,
       name: text.names?.[baselineWs] ?? pickEn(text.names) ?? text.fallbackName ?? 'Untitled',
       names: text.names ?? {},
       // Every writing system's abbreviation, each distinct one kept under its

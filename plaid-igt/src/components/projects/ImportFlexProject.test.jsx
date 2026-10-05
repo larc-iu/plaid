@@ -7,7 +7,10 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // the defaults: locked, the defaults could not be unticked, and the resume
 // would import every text the first run left out.
 
-const auth = vi.hoisted(() => ({ client: {}, user: { id: 'u', isAdmin: true } }));
+const auth = vi.hoisted(() => ({
+  client: { server: { limits: async () => ({ mediaFileBytes: 1000 }) } },
+  user: { id: 'u', isAdmin: true },
+}));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 const TEXT = (n) => `
@@ -43,7 +46,8 @@ vi.mock('@/hooks/useResumeImport', () => ({
   }),
 }));
 
-const { ImportFlexProject } = await import('./ImportFlexProject.jsx');
+const { ImportFlexProject, RecordingsSummary } = await import('./ImportFlexProject.jsx');
+const { matchRecordings } = await import('../../import/flex/recordings.js');
 
 const pick = async (view) => {
   const input = view.container.querySelector('input[type="file"]');
@@ -85,5 +89,98 @@ describe('ImportFlexProject on a resume', () => {
     expect(ticked(view)).toEqual(first);
     expect(view.container.textContent).toContain('1 of 3 selected');
     await view.unmount();
+  });
+});
+
+// FLEx names the recording each text's sentences were timed against.
+describe('matchRecordings and RecordingsSummary', () => {
+  const text = (guid, mediaName, extra = {}) => ({ guid, mediaName, ...extra });
+  const media = (name, size = 10) => ({ name, size });
+  const all = (docs) => new Set(docs.map((d) => d.guid));
+  const show = async (recordings) =>
+    (await renderComponent(<RecordingsSummary recordings={recordings} locked={false} />)).container
+      .textContent;
+
+  it('gives a recording two texts were timed against to both', async () => {
+    const docs = [text('a', 'session.wav'), text('b', 'session.wav')];
+    const wav = media('session.wav');
+    const r = matchRecordings({ documents: docs, selected: all(docs), mediaFiles: [wav] });
+    expect(r.byFile.get('a')).toBe(wav);
+    expect(r.byFile.get('b')).toBe(wav);
+    const shown = await show(r);
+    expect(shown).toContain('Recordings: 2 of 2 texts with sentence times');
+    expect(shown).not.toContain('Not chosen');
+  });
+
+  it('matches a name macOS wrote in another Unicode normalization', () => {
+    const docs = [text('a', 'Narración_ñandú.wav'.normalize('NFC'))];
+    const nfd = media('Narración_ñandú.wav'.normalize('NFD'));
+    const r = matchRecordings({ documents: docs, selected: all(docs), mediaFiles: [nfd] });
+    expect(r.byFile.get('a')).toBe(nfd);
+    expect(r.missing).toEqual([]);
+    expect(r.unmatched).toEqual([]);
+  });
+
+  it('counts only the texts chosen for import', async () => {
+    const docs = [text('a', 'a.wav'), text('b', 'b.wav'), text('c', 'c.wav')];
+    const r = matchRecordings({
+      documents: docs,
+      selected: new Set(['a']),
+      mediaFiles: [media('a.wav')],
+    });
+    expect(await show(r)).toContain('Recordings: 1 of 1 text with sentence times');
+  });
+
+  it('refuses a recording over the server limit when it is chosen, and takes a smaller copy', async () => {
+    const docs = [text('a', 'big.mov')];
+    const big = media('big.mov', 2000);
+    let r = matchRecordings({
+      documents: docs,
+      selected: all(docs),
+      mediaFiles: [big],
+      maxBytes: 1000,
+    });
+    expect(r.byFile.size).toBe(0);
+    expect(r.tooLarge).toEqual([big]);
+    expect(r.missing).toEqual([]);
+    const shown = await show(r);
+    expect(shown).toContain('Over the 1.0 KB limit: big.mov.');
+    expect(shown).not.toContain('Not chosen');
+    expect(shown).toContain('Add recordings');
+    const mp3 = media('big.mp3', 500);
+    r = matchRecordings({
+      documents: docs,
+      selected: all(docs),
+      mediaFiles: [big, mp3],
+      maxBytes: 1000,
+    });
+    expect(r.byFile.get('a')).toBe(mp3);
+    expect(r.tooLarge).toEqual([]);
+  });
+
+  it('counts sentences timed against a second recording', async () => {
+    const docs = [
+      text('a', 'story.wav', {
+        otherRecording: [
+          { n: 2, mediaName: 'story.MOV' },
+          { n: 5, mediaName: 'story.MOV' },
+        ],
+      }),
+    ];
+    const r = matchRecordings({ documents: docs, selected: all(docs), mediaFiles: [] });
+    expect(await show(r)).toContain(
+      '2 sentences timed against a second recording (story.MOV) are left untimed.',
+    );
+  });
+
+  it('names recordings chosen with a backup whose texts have no times', async () => {
+    const r = matchRecordings({
+      documents: [text('a', null)],
+      selected: new Set(['a']),
+      mediaFiles: [media('x.wav')],
+    });
+    const shown = await show(r);
+    expect(shown).toContain('No text uses: x.wav.');
+    expect(shown).not.toContain('0 of');
   });
 });
