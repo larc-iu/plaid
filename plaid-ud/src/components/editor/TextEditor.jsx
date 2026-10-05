@@ -19,6 +19,7 @@ import { TokenizeDialog } from './services/TokenizeDialog.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { sentenceNumberOf } from './hooks/useSentenceDeepLink.js';
+import { notifyError } from '../../utils/feedback.jsx';
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
@@ -145,10 +146,24 @@ export const TextEditor = () => {
   // --- thin wrappers around doc methods, kept for the bits that need to
   // poke TextEditor-local state (originalTokenizedText, lastSaved, etc.). ---
 
+  // A throw anywhere in a save is reported and leaves the draft as it was,
+  // so Save works again (rather than a button that does nothing).
   const handleSaveText = async () => {
+    const at = { sent: null, settled: false };
+    try {
+      await saveText(at);
+    } catch (err) {
+      if (at.sent && !at.settled) editLog.unsend(at.sent);
+      setSending(null);
+      notifyError(err, 'Failed to save text');
+    }
+  };
+
+  const saveText = async (at) => {
     if (!doc) return;
     if (!textContent.trim() || doc.isSaving) return;
     const sent = editLog.send();
+    at.sent = sent;
     setSending(sent);
     let stored = null;
     const ok = await doc.saveText(sent, {
@@ -156,6 +171,7 @@ export const TextEditor = () => {
         stored = { body, digest };
       },
     });
+    at.settled = true;
     setSending(null);
     const text = doc.layerInfo.textLayer?.text;
     const read = text?.body ?? '';

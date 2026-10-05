@@ -3,7 +3,7 @@ import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
-import { notifySuccess } from '@/utils/feedback';
+import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 // Baseline tab operations, backed by the shared IgtDocument. The box keeps
@@ -62,7 +62,23 @@ export const useBaselineOperations = () => {
   // `text` as the box shows it: every line break a `\n`.
   const shown = (text) => text.replace(/\r\n?/g, '\n');
 
+  // A throw anywhere in a save is reported and leaves the draft as it was,
+  // so Save works again (rather than a button that does nothing).
   const handleSave = async () => {
+    const at = { sent: null, settled: false };
+    try {
+      await save(at);
+    } catch (err) {
+      if (at.sent && !at.settled) {
+        editLog.unsend(at.sent);
+        setBase(base);
+      }
+      setSaving(false);
+      notifyError(err, 'Failed to save baseline text');
+    }
+  };
+
+  const save = async (at) => {
     // Nothing changed (or typed and taken back): nothing to send, and no
     // operation is written for it.
     if (editLog.gaps().length === 0 || editedText === base) {
@@ -94,10 +110,12 @@ export const useBaselineOperations = () => {
     setSaving(true);
     setChangedElsewhere(false);
     const sent = editLog.send();
+    at.sent = sent;
     // What was sent, as the base of what is typed while it is on its way.
     setBase(shown(applyTextOps(sent.base, gapsToOps(sent.gaps))));
     const outcome = {};
     const ok = await doc.editBaselineText(sent, outcome);
+    at.settled = true;
     setSaving(false);
     if (!ok && !outcome.landed) {
       editLog.unsend(sent);
