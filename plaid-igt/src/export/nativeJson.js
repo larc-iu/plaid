@@ -43,9 +43,11 @@ import { normalizeVocabFields } from '../domain/vocabFields.js';
 import {
   UNCARRIED_PLAID_KEYS,
   configWithout,
+  constraintsWithout,
   otherTokenLayers,
   ownTokenLayers,
   parentsFirst,
+  withConstraints,
   withoutPlaidKeys,
 } from '../domain/otherLayers.js';
 import { discoverExportLayers } from './exportLayers.js';
@@ -209,11 +211,9 @@ function tokenLayerOrder(textLayer) {
 }
 
 const relationLayerRows = (spanLayer) =>
-  (spanLayer.relationLayers || []).map((rl) => ({
-    id: rl.id,
-    name: rl.name ?? null,
-    config: rl.config || {},
-  }));
+  (spanLayer.relationLayers || []).map((rl) =>
+    withConstraints({ id: rl.id, name: rl.name ?? null, config: rl.config || {} }, rl),
+  );
 
 /**
  * Everything on the baseline text layer that another app put there, as layer
@@ -222,6 +222,10 @@ const relationLayerRows = (spanLayer) =>
  * - `config`: what this app's own text and token layers hold under namespaces
  *   other than `igt`, by role, `plaid` without the role (setup writes `igt`
  *   and the role itself).
+ * - `constraints`: the layer rules this app's own token layers hold under
+ *   namespaces other than `igt`, by role, when any does. Every other layer
+ *   described here carries its own rules the same way, all namespaces, under
+ *   `constraints` (absent when it holds none).
  * - `spanLayers`: span layers on this app's token layers that it has no field
  *   for, plus any field that other apps hang relation layers or settings on.
  *   The spans on them are in each document already (a field's in the tree, the
@@ -247,6 +251,11 @@ function describeOtherLayers(textLayer) {
     ]);
     if (nonEmpty(rest)) config[role] = rest;
   }
+  const constraints = {};
+  for (const [role, layer] of own) {
+    const rules = constraintsWithout(layer, [IGT_NAMESPACE]);
+    if (rules) constraints[role] = rules;
+  }
 
   const spanLayers = [];
   for (const [role, layer] of own) {
@@ -254,13 +263,15 @@ function describeOtherLayers(textLayer) {
       const scope = readScope(sl.config);
       const rest = configWithout(sl.config, [IGT_NAMESPACE]);
       const relationLayers = relationLayerRows(sl);
-      if (scope && !nonEmpty(rest) && !relationLayers.length) continue;
+      const rules = constraintsWithout(sl, [IGT_NAMESPACE]);
+      if (scope && !nonEmpty(rest) && !relationLayers.length && !rules) continue;
       spanLayers.push({
         id: sl.id,
         tokenLayer: role,
         scope,
         name: sl.name ?? null,
         config: rest,
+        ...(rules ? { constraints: rules } : {}),
         relationLayers,
       });
     }
@@ -273,20 +284,31 @@ function describeOtherLayers(textLayer) {
   const others = parentsFirst(otherTokenLayers(tokenLayers), (tl) => tl.parentTokenLayer);
   return {
     config,
+    ...(nonEmpty(constraints) ? { constraints } : {}),
     spanLayers,
-    tokenLayers: others.map((tl) => ({
-      id: tl.id,
-      name: tl.name ?? null,
-      overlapMode: tl.overlapMode ?? null,
-      parent: parentRef(tl.parentTokenLayer),
-      config: tl.config || {},
-      spanLayers: (tl.spanLayers || []).map((sl) => ({
-        id: sl.id,
-        name: sl.name ?? null,
-        config: sl.config || {},
-        relationLayers: relationLayerRows(sl),
-      })),
-    })),
+    tokenLayers: others.map((tl) =>
+      withConstraints(
+        {
+          id: tl.id,
+          name: tl.name ?? null,
+          overlapMode: tl.overlapMode ?? null,
+          parent: parentRef(tl.parentTokenLayer),
+          config: tl.config || {},
+          spanLayers: (tl.spanLayers || []).map((sl) =>
+            withConstraints(
+              {
+                id: sl.id,
+                name: sl.name ?? null,
+                config: sl.config || {},
+                relationLayers: relationLayerRows(sl),
+              },
+              sl,
+            ),
+          ),
+        },
+        tl,
+      ),
+    ),
   };
 }
 

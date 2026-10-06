@@ -13,6 +13,8 @@
 
 import { PLAID_NAMESPACE, ROLES, createdIds } from '@larc-iu/plaid-client';
 import { bulkInChunks } from '../../domain/bulk.js';
+import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstraints.js';
+import { humanizeError } from '../../../../plaid-ui/src/lib/errors.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import {
   UNCARRIED_PLAID_KEYS,
@@ -33,7 +35,15 @@ const canonical = (v) => {
 };
 const sameValue = (a, b) => a !== undefined && canonical(a) === canonical(b);
 
-const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const plural = (n, noun, nouns = `${noun}s`) => `${n} ${n === 1 ? noun : nouns}`;
+
+// The keys of the archive's `layers` naming this app's own token layers.
+const OWN_LAYER_KEYS = [
+  ['sentence', ROLES.SENTENCE],
+  ['word', ROLES.WORD],
+  ['morpheme', ROLES.MORPHEME],
+  ['timeAlignment', ROLES.TIME_ALIGNMENT],
+];
 
 // A warning names what the linguist knows, never the layer underneath.
 const ROLE_NOUN = {
@@ -54,6 +64,11 @@ export const noOtherLayers = () => ({
   tokenLayers: new Map(), // archive id -> {id, overlapMode}
   spanLayers: new Map(), // archive id -> id
   relationLayers: new Map(), // archive id -> id
+  // This app's own layers: archive id -> id, for a rule that names one.
+  ownLayers: new Map(),
+  // The layer rules the archive carries, per layer restored:
+  // {kind, layerId, name, constraints: {namespace: [rule]}, stored}.
+  rules: [],
 });
 
 /**
@@ -115,6 +130,23 @@ export async function restoreOtherLayers({
   if (!textLayer) return out;
   const tokenLayers = textLayer.tokenLayers || [];
   const ownByRole = new Map(ownTokenLayers(tokenLayers));
+  const archived = manifest?.layers || {};
+  if (archived.baselineText) out.ownLayers.set(archived.baselineText, textLayer.id);
+  for (const [key, role] of OWN_LAYER_KEYS) {
+    const layer = ownByRole.get(role);
+    if (archived[key] && layer) out.ownLayers.set(archived[key], layer.id);
+  }
+  // What `layer` (made or found for archive row `row`) is to declare again.
+  const keepRules = (kind, layer, row) => {
+    if (!isMap(row?.constraints) || !Object.keys(row.constraints).length) return;
+    out.rules.push({
+      kind,
+      layerId: layer.id,
+      name: row.name ?? layer.name ?? null,
+      constraints: row.constraints,
+      stored: layer.constraints ?? null,
+    });
+  };
 
   const claimed = new Set();
   const claim = (candidates, matches) => {
@@ -132,6 +164,7 @@ export async function restoreOtherLayers({
         layer = { id: newId(await client.relationLayers.create(spanLayer.id, row.name)) };
       }
       out.relationLayers.set(row.id, layer.id);
+      keepRules('relation', layer, row);
       await writeConfig(
         (id, ns, key, value) => client.relationLayers.setConfig(id, ns, key, value),
         layer.id,
@@ -159,6 +192,10 @@ export async function restoreOtherLayers({
       [PLAID_NAMESPACE]: UNCARRIED_PLAID_KEYS.layer,
     });
   }
+  for (const [role, constraints] of Object.entries(described.constraints || {})) {
+    const layer = ownByRole.get(role);
+    if (layer) keepRules('token', layer, { name: layer.name, constraints });
+  }
 
   // Span layers on this app's own token layers: a field setup already made,
   // or one no field is, made here on the token layer it sat on.
@@ -184,6 +221,7 @@ export async function restoreOtherLayers({
       continue;
     }
     out.spanLayers.set(row.id, layer.id);
+    keepRules('span', layer, row);
     await writeConfig(
       (id, ns, key, value) => client.spanLayers.setConfig(id, ns, key, value),
       layer.id,
@@ -241,6 +279,7 @@ export async function restoreOtherLayers({
     }
     out.tokenLayers.set(row.id, { id: layer.id, overlapMode });
     out.order.push(row.id);
+    keepRules('token', layer, row);
     await writeConfig(
       (id, ns, key, value) => client.tokenLayers.setConfig(id, ns, key, value),
       layer.id,
@@ -254,6 +293,7 @@ export async function restoreOtherLayers({
         spanLayer = { id: newId(await client.spanLayers.create(layer.id, spanRow.name)) };
       }
       out.spanLayers.set(spanRow.id, spanLayer.id);
+      keepRules('span', spanLayer, spanRow);
       await writeConfig(
         (id, ns, key, value) => client.spanLayers.setConfig(id, ns, key, value),
         spanLayer.id,
@@ -264,6 +304,53 @@ export async function restoreOtherLayers({
     }
   }
   return out;
+}
+
+// `value` with every string that is an archive layer id in `ids` replaced by
+// the id of the layer made or found for it (a rule names a layer by id).
+const remapIds = (value, ids) => {
+  if (Array.isArray(value)) return value.map((v) => remapIds(v, ids));
+  if (isMap(value)) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, remapIds(v, ids)]));
+  }
+  return typeof value === 'string' && ids.has(value) ? ids.get(value) : value;
+};
+
+/**
+ * Declare again the layer rules the archive carries for the layers
+ * `restoreOtherLayers` made or found, once every document is in, so the
+ * import is never refused by them partway. A rule naming a layer by its
+ * archive id names the layer made for it. Rules the stored data still breaks
+ * are left out and named in a warning, as are rules the server refuses. A
+ * layer that holds them already (a resumed import) is left alone.
+ */
+export async function declareOtherLayerRules({ client, restored, warnings = [] }) {
+  if (!restored?.rules?.length) return;
+  const ids = new Map(restored.ownLayers);
+  restored.tokenLayers.forEach((layer, archiveId) => ids.set(archiveId, layer.id));
+  restored.spanLayers.forEach((id, archiveId) => ids.set(archiveId, id));
+  restored.relationLayers.forEach((id, archiveId) => ids.set(archiveId, id));
+  for (const r of restored.rules) {
+    const wanted = Object.entries(r.constraints)
+      .filter(([, list]) => Array.isArray(list) && list.length)
+      .map(([namespace, list]) => ({
+        kind: r.kind,
+        layerId: r.layerId,
+        namespace,
+        constraints: remapIds(list, ids),
+        stored: r.stored?.[namespace] ?? null,
+      }));
+    try {
+      const { pending } = await ensureLayerConstraints(client, wanted, { canManage: true });
+      for (const p of pending) {
+        warnings.push(
+          `Another app's rules for "${r.name}" are not in force (${plural(p.violationCount, 'annotation breaks', 'annotations break')} them)`,
+        );
+      }
+    } catch (err) {
+      warnings.push(`Another app's rules for "${r.name}" were not set: ${humanizeError(err)}`);
+    }
+  }
 }
 
 /**

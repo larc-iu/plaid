@@ -100,3 +100,23 @@ export function parentsFirst(layers, parentOf) {
   }
   return out;
 }
+
+/**
+ * The layer rules `layer` holds (plaid-core's layer constraints) under
+ * namespaces other than those in `drop`, as `{namespace: [rule, …]}`, or null
+ * when it holds none. The app that declared them declares them once, when it
+ * sets its layers up, so an archive carries them for the import to declare
+ * again on the layers it makes.
+ */
+export const constraintsWithout = (layer, drop = []) => {
+  const kept = Object.entries(layer?.constraints || {}).filter(
+    ([ns, list]) => !drop.includes(ns) && Array.isArray(list) && list.length > 0,
+  );
+  return kept.length ? Object.fromEntries(kept) : null;
+};
+
+/** `row` with `constraints` set to `layer`'s rules but `drop`'s, when it holds any. */
+export const withConstraints = (row, layer, drop = []) => {
+  const constraints = constraintsWithout(layer, drop);
+  return constraints ? { ...row, constraints } : row;
+};

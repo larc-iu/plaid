@@ -688,6 +688,28 @@ describe("other apps' layers", () => {
     expect(manifest().otherConfig).toEqual({ other: { setting: 'x', nested: { a: [1, 2] } } });
   });
 
+  it("carries every layer's rules but this app's, and none where a layer holds none", () => {
+    const project = makeOtherAppProject();
+    const text = project.textLayers[0];
+    const sentence = text.tokenLayers.find((tl) => tl.config?.plaid?.role === 'sentence');
+    const words = text.tokenLayers.find((tl) => tl.id === 'olWords');
+    const nodes = text.tokenLayers.find((tl) => tl.id === 'olNodes');
+    const relations = nodes.spanLayers[0].relationLayers[0];
+    const inSentence = [{ type: 'same-ancestor', tokenLayer: sentence.id }];
+    sentence.constraints = { igt: [{ type: 'single-link' }], other: [{ type: 'coextensive' }] };
+    words.constraints = { other: [{ type: 'coextensive' }], empty: [] };
+    relations.constraints = { other: inSentence };
+    const { otherLayers } = buildProjectFile({ project, documents: [], vocabularies: [] });
+    expect(otherLayers.constraints).toEqual({ sentence: { other: [{ type: 'coextensive' }] } });
+    const described = (id) => otherLayers.tokenLayers.find((tl) => tl.id === id);
+    expect(described('olWords').constraints).toEqual({ other: [{ type: 'coextensive' }] });
+    expect(described('olNodes').spanLayers[0].relationLayers[0].constraints).toEqual({
+      other: inSentence,
+    });
+    expect('constraints' in described('olNodes')).toBe(false);
+    expect('constraints' in described('olNodes').spanLayers[0]).toBe(false);
+  });
+
   it("carries what other namespaces this app's own layers hold, by role", () => {
     expect(manifest().otherLayers.config).toEqual({ baseline: { other: { locale: 'es' } } });
   });

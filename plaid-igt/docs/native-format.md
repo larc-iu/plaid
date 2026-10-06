@@ -293,6 +293,13 @@ that owns a layer finds it again by whatever it looks for.
   another layer in this list. `config` is verbatim, `plaid` included.
 - A relation layer is `{id, name, config}`, its config verbatim, and hangs on the
   span layer whose `relationLayers` it is in.
+- `constraints`, on any layer described here, holds the layer rules it keeps
+  (plaid-core's layer constraints) as `{"<namespace>": [rule, …]}`, every namespace
+  but `igt`, and is absent when it keeps none. `otherLayers.constraints` holds the
+  same for this app's own token layers, keyed by role. A rule names a layer by its
+  id here. The import declares each layer's rules again once every document is in,
+  with each archive layer id in a rule replaced by the id of the layer made for it.
+  A rule the imported data breaks is left out, and the import warns.
 - Every `id` is the source layer's, a correlation key the document files use.
 
 ### In a document file

@@ -33,6 +33,7 @@ import { CHUNK } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import {
+  declareOtherLayerRules,
   hasOtherTokens,
   importOtherLayerData,
   noOtherLayers,
@@ -1182,6 +1183,10 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       shouldStop,
     });
   }
+  // Other apps' layer rules, declared again once every document is in, so
+  // their layers hold the rules the archived project's did.
+  if (shouldStop?.()) throw new ImportCancelled();
+  await declareOtherLayerRules({ client, restored: targets.otherLayers, warnings });
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
 }

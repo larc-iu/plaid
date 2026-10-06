@@ -127,6 +127,12 @@ function stubClient({
   let batch = null;
   const counter = store ?? { nextId: 0 };
   const fresh = (prefix) => `${prefix}-${counter.nextId++}`;
+  // Layer rules: a check finds no stored row breaking them.
+  const ruleCalls = (bundle) => ({
+    setConstraints: async (...a) => record(`${bundle}.setConstraints`, a),
+    checkConstraints: async (...a) =>
+      record(`${bundle}.checkConstraints`, a, { violations: [], violationCount: 0 }),
+  });
   // Each call keeps what it answered, out of sight of toEqual, so a test can
   // follow an id from the call that made it to the calls that use it.
   const record = (name, args, result) => {
@@ -173,6 +179,7 @@ function stubClient({
     spanLayers: {
       create: async (...a) => record('spanLayers.create', a, { id: fresh('sl') }),
       setConfig: async (...a) => record('spanLayers.setConfig', a),
+      ...ruleCalls('spanLayers'),
     },
     textLayers: {
       setConfig: async (...a) => record('textLayers.setConfig', a),
@@ -184,10 +191,12 @@ function stubClient({
       create: async (...a) => record('tokenLayers.create', a, { id: fresh('tl') }),
       setConfig: async (...a) => record('tokenLayers.setConfig', a),
       get: async (id) => record('tokenLayers.get', [id], { id, ...tokenLayerShapes[id] }),
+      ...ruleCalls('tokenLayers'),
     },
     relationLayers: {
       create: async (...a) => record('relationLayers.create', a, { id: fresh('rl') }),
       setConfig: async (...a) => record('relationLayers.setConfig', a),
+      ...ruleCalls('relationLayers'),
     },
     relations: {
       bulkCreate: async (specs) =>
@@ -1873,6 +1882,43 @@ describe("runNativeImport, other apps' layers", () => {
       ([specs]) => specs[0].relationLayerId,
     );
     expect(relationLayers.sort()).toEqual(['had-deps', 'had-rels']);
+  });
+
+  it("declares another app's layer rules on the layers it made, once every document is in", async () => {
+    const archive = otherAppArchive();
+    const described = archive.manifest.otherLayers;
+    const sentenceLayer = archive.manifest.layers.sentence;
+    const inSentence = [{ type: 'same-ancestor', tokenLayer: sentenceLayer }];
+    const concepts = described.tokenLayers.find((tl) => tl.name === 'Nodes').spanLayers[0];
+    concepts.relationLayers[0].constraints = { other: inSentence };
+    described.tokenLayers.find((tl) => tl.name === 'Words').constraints = {
+      other: [{ type: 'coextensive' }],
+    };
+    const { client, result } = await freshImport(archive);
+    expect(result.warnings).toEqual([]);
+    const relsId = madeBy(client, 'relationLayers.create', (c) => c[2] === 'Relations');
+    const wordsId = madeBy(client, 'tokenLayers.create', (c) => c[2] === 'Words');
+    const newSentenceLayer = targetProject().textLayers[0].tokenLayers.find(
+      (tl) => tl.config?.plaid?.role === 'sentence',
+    ).id;
+    expect(argsOf(client, 'relationLayers.setConstraints')).toEqual([
+      [
+        relsId,
+        'other',
+        [{ type: 'same-ancestor', tokenLayer: newSentenceLayer }],
+        undefined,
+        { expected: null },
+      ],
+    ]);
+    expect(argsOf(client, 'tokenLayers.setConstraints')).toEqual([
+      [wordsId, 'other', [{ type: 'coextensive' }], undefined, { expected: null }],
+    ]);
+    // After the data, which the rules would otherwise have to admit one write
+    // at a time.
+    const names = client.calls.map(([n]) => n);
+    expect(names.indexOf('relationLayers.setConstraints')).toBeGreaterThan(
+      names.lastIndexOf('relations.bulkCreate'),
+    );
   });
 
   it('warns rather than making a span layer the archive does not describe', async () => {
