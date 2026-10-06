@@ -116,13 +116,16 @@ test('B13-03: the same token linked from a stale tab conflicts; one link survive
     await expect
       .poll(async () => (await linksTo(ids.w[0])).map((l) => l.vocabItem.id))
       .toEqual([items.occA.id]);
-    // B still holds the old document version.
+    // B still holds the old document version. Its link is refused with a notice
+    // naming the entry linked first, and no banner.
     await linkVia(B.page, ids.w[0], items.occB.form);
-    const status = B.page.locator('.igt-island__error');
-    await expect(status).toContainText(/changed elsewhere/i);
-    const text = await status.innerText();
+    const notice = B.page.getByText(/linked this to/);
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(items.occA.form);
+    const text = await notice.innerText();
     expect(text).not.toMatch(/https?:\/\//);
     expect(text).not.toMatch(UUID_RE);
+    await expect(B.page.locator('.igt-island__error')).toHaveCount(0);
     // B resynced to A's state: the chip shows A's item, and the server has exactly one link.
     await expect(chip(B.page, ids.w[0])).toHaveText(items.occA.form);
     const links = await linksTo(ids.w[0]);
@@ -134,7 +137,7 @@ test('B13-03: the same token linked from a stale tab conflicts; one link survive
   }
 });
 
-test("B13-02: a gloss in A, then a link in stale B: banner, resync, A's gloss kept", async ({
+test("B13-02: a gloss in A, then a link in stale B: the link is sent again and lands, A's gloss kept", async ({
   browser,
 }) => {
   const A = await openTab(browser);
@@ -146,17 +149,18 @@ test("B13-02: a gloss in A, then a link in stale B: banner, resync, A's gloss ke
     await A.page.keyboard.press('Enter');
     // B is stale only once A's write has landed, and the cell shows first.
     await expect.poll(() => glossOf(ids.m[1])).toBe('TWO');
-    await linkVia(B.page, ids.w[2], items.occB.form);
-    await expect(B.page.locator('.igt-island__error')).toContainText(/changed elsewhere/i);
-    // After the resync B sees A's gloss; B's rejected link is not on the server.
-    await expect(B.page.locator(`.igt-field[data-cell-key="ma:${ids.m[1]}:Gloss"]`)).toHaveValue(
-      'TWO',
-    );
-    expect((await linksTo(ids.w[2])).length).toBe(0);
-    // Redoing the link from the now-current B succeeds.
+    // A's write touched nothing the link changes, so B's link is sent again on
+    // the fresh document and lands, with no banner.
     await linkVia(B.page, ids.w[2], items.occB.form);
     await expect(chip(B.page, ids.w[2])).toHaveText(items.occB.form);
     await expect.poll(async () => (await linksTo(ids.w[2])).length).toBe(1);
+    expect((await linksTo(ids.w[2]))[0].vocabItem.id).toBe(items.occB.id);
+    await expect(B.page.locator('.igt-island__error')).toHaveCount(0);
+    // B sees A's gloss after the re-read, and A's gloss is still on the server.
+    await expect(B.page.locator(`.igt-field[data-cell-key="ma:${ids.m[1]}:Gloss"]`)).toHaveValue(
+      'TWO',
+    );
+    expect(await glossOf(ids.m[1])).toBe('TWO');
   } finally {
     await A.ctx.close();
     await B.ctx.close();
