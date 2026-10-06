@@ -32,6 +32,7 @@ def test_error_classes(text, cls):
 def test_turn_ends():
     assert turn_end({'kind': 'error', 'stopped': True}) == 'stopped'
     assert turn_end({'kind': 'error'}) == 'failed'
+    assert turn_end({'kind': 'error', 'lost': True}) == 'lost'
     assert turn_end({'kind': 'assistant', 'text': 'x\n\n*(Stopped after the same step failed 3 times.)*'}) == \
         'stopped_repeat'
     assert turn_end({'kind': 'assistant', 'text': 'x\n\n*(Stopped at the step limit.)*'}) == 'step_limit'
@@ -105,6 +106,23 @@ def test_a_failed_turns_calls_are_read_off_its_own_item():
     assert {c['turn_end'] for c in conv.tool_calls} == {'failed'}
     assert arg_names(None) is None and arg_names('not json') == ['(not an object)']
     assert arg_names({'x' * 40: 1}) == ['x' * 23 + '…']
+
+
+def test_a_retried_turn_keeps_the_attempt_that_did_not_finish():
+    # Luke, 2026-10-06: Retry keeps the failed attempt in the record and sends
+    # the question again as a new item marked `retry` (plaid-ui resume.js).
+    from plaid_agent.research.records import Conversations
+    conv = Conversations(Pseudonyms(b'k' * 32))
+    record = {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}], 'display': [
+        {'kind': 'user', 'text': 'q'},
+        {'kind': 'error', 'text': 'boom'},
+        {'kind': 'user', 'text': 'q', 'retry': True},
+        {'kind': 'error', 'lost': True, 'text': 'No answer came back for this message.'},
+        {'kind': 'user', 'text': 'q', 'retry': True},
+        {'kind': 'assistant', 'text': 'a'}]}
+    conv.add('u@x', 'igt', 'p1', 'c1', record, None, 10, None)
+    assert [(t['turn'], t['end'], t['retry']) for t in conv.turns] == [
+        (1, 'failed', False), (2, 'lost', True), (3, 'answered', True)]
 
 
 def test_an_old_database_reads_no_credential():

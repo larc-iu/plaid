@@ -141,7 +141,7 @@ def arg_names(args: Any) -> Optional[List[str]]:
 def turn_end(item: Dict[str, Any]) -> str:
     """How a turn ended: an answer, or which of the ways it can stop."""
     if item.get('kind') == 'error':
-        return 'stopped' if item.get('stopped') else 'failed'
+        return 'stopped' if item.get('stopped') else 'lost' if item.get('lost') else 'failed'
     text = item.get('text') or ''
     if STOPPED_REPEAT.search(text):
         return 'stopped_repeat'
@@ -245,6 +245,7 @@ class Conversations:
                 **base, 'item_index': index, 'turn': n_user, 'end': turn_end(item),
                 'model': item.get('model'), 'version': item.get('version'), 'service': item.get('service'),
                 'asked_at': asked.get('created_at'), 'created_at': item.get('created_at'),
+                'retry': bool(asked.get('retry')),
                 'elapsed_ms': item.get('elapsed_ms'),
                 'sent_tokens': (usage or {}).get('sent'), 'received_tokens': (usage or {}).get('received'),
                 'window_tokens': (usage or {}).get('window'),

@@ -22,6 +22,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - A plan's proposal time is read off its id, a UUIDv7 minted when the turn staged it. Plans made before 2026-09-30, when the ids became UUIDv7, have no proposal time.
 - Every question, reply and error carries the time it was written since 2026-10-06 (`turns.created_at`, `turns.asked_at`). Before that a turn without a plan has only its duration (`elapsed_ms`, recorded since 2026-10-05).
 - A failed or stopped turn keeps the tool calls it made before it ended since 2026-10-06. Before that its tool use is lost.
+- Retry keeps the attempt that did not finish since 2026-10-06: the question and its error stay, and the question sent again is a new turn marked `retry`. Before that Retry took the failed attempt out of the record, so a failure the user retried left no trace.
 - `settled_at` is recorded since 2026-09-29. For an applied plan without it, the start of the plan's operation in the audit log stands in (`settled_at_source: audit_group_start`). A discarded, stale or replaced plan without it has no settle time.
 - `proposed` (what each change targeted and its value) is recorded since 2026-09-29. Before that it is derived from the plan's `ops` when the record still holds them (`proposed_source: derived_from_ops`). A plan compacted before `proposed` existed has neither (`none`), only its row count.
 - Approval is of the whole plan. A change's own outcome is the plan's status, and what happened to it afterwards is read from the audit log (`plan_changes.fate`).
@@ -80,9 +81,10 @@ One row per reply or error (one per turn).
 | conversation_id, app, project_id, project, user | as above |
 | item_index | the item's place in the conversation |
 | turn | which user message it answers (1 is the first) |
-| end | `answered`, `stopped` (the user stopped it), `failed` (no answer), `stopped_repeat` (the same tool call failed or repeated three times), `step_limit`, `empty_reply`, `cut_at_length` |
+| end | `answered`, `stopped` (the user stopped it), `failed` (no answer), `lost` (no answer came back and the user retried it, since 2026-10-06), `stopped_repeat` (the same tool call failed or repeated three times), `step_limit`, `empty_reply`, `cut_at_length` |
 | model, version, service | what answered |
 | asked_at | when the question it answers was written (since 2026-10-06) |
+| retry | the question is one the turn before it did not finish, sent again with Retry (since 2026-10-06) |
 | created_at | when the reply or error was written, at the end of the turn (since 2026-10-06) |
 | elapsed_ms | how long the turn took |
 | sent_tokens, received_tokens | the turn's last model call |

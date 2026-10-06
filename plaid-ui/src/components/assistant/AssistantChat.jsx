@@ -592,6 +592,8 @@ export const AssistantChat = ({
           kind: 'user',
           text,
           createdAt: itemTime(),
+          // Sent again with Retry, below the attempt that did not finish.
+          ...(retry ? { retry: true } : {}),
           ...(where ? { where } : {}),
           ...(sent.length ? { files: sent } : {}),
           ...(joined.length ? { projects: joined } : {}),
@@ -697,12 +699,12 @@ export const AssistantChat = ({
   }, [list.loaded, list.rows, store, userId, projectId]);
 
   // Send the user's last message again, whether the turn was lost (its
-  // request went away with the server or the service) or failed. Both rewind
-  // the same way, to just before the user's item.
+  // request went away with the server or the service), failed or was stopped.
+  // The attempt stays in the conversation above the message sent again.
   const retryTurn = () => {
     const conv = activeRef.current;
     if (!conv || !canSend) return;
-    const rewound = rewindForRetry(conv);
+    const rewound = rewindForRetry(conv, { stopped: !!stoppedIn(stopped, conv.id) });
     if (!rewound) return;
     activeRef.current = rewound.conv;
     send(rewound.text, rewound.files, rewound.projects);

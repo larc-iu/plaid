@@ -1,5 +1,7 @@
-// Rewinding a conversation so the user's last message can be sent again, and
-// what a turn the reader stopped had already got through.
+// Sending the user's last message again, and what a turn the reader stopped
+// had already got through.
+
+import { itemTime } from './itemTime.js';
 
 // What a turn the reader STOPPED had already got through, if it was this
 // conversation's. The live step list lives inside the panel's `busy` block and
@@ -28,9 +30,14 @@ export const retryNote = (display, stoppedHere) => {
 // Whether item `i` is the stop record the retry line stands in for.
 export const hidesStopped = (display, i) => i === display.length - 1 && !!display[i]?.stopped;
 
-// Rewind to just before the user's last message, so sending it again rebuilds
-// the same request. Returns null when there is nothing to retry.
-export const rewindForRetry = (conv) => {
+// What sending the user's last message again starts from. The attempt that
+// failed stays in the conversation, so the record keeps every failure: the
+// question and the line saying how it ended, with the retry asked again below
+// them. Only the model transcript goes back to before that question, so the
+// model reads it once. A turn that got no answer at all has no such line yet,
+// and is given the one the screen showed under it (`stopped` when the reader
+// stopped it). Returns null when there is nothing to retry.
+export const rewindForRetry = (conv, { stopped = false } = {}) => {
   const i = (conv?.display || []).map((d) => d.kind).lastIndexOf('user');
   if (i < 0) return null;
   const text = conv.display[i].text || '';
@@ -54,6 +61,15 @@ export const rewindForRetry = (conv) => {
     : isMessage(messages.at(-1), text)
       ? messages.length - 1
       : -1;
+  const ended = i < conv.display.length - 1;
+  const unanswered = stopped
+    ? { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() }
+    : {
+        kind: 'error',
+        lost: true,
+        text: 'No answer came back for this message.',
+        createdAt: itemTime(),
+      };
   return {
     text,
     files,
@@ -61,7 +77,7 @@ export const rewindForRetry = (conv) => {
     conv: {
       ...conv,
       messages: at >= 0 ? messages.slice(0, at) : messages,
-      display: conv.display.slice(0, i),
+      display: ended ? conv.display : [...conv.display, unanswered],
     },
   };
 };

@@ -4,7 +4,7 @@ import { hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js'
 const conv = (messages, display) => ({ id: 'c1', messages, display });
 
 describe('rewindForRetry', () => {
-  it('drops the user message from an interrupted turn, so sending it again does not duplicate it', () => {
+  it('drops the user message of a lost turn from the transcript, so sending it again does not duplicate it', () => {
     const c = conv(
       [
         { role: 'user', content: 'first' },
@@ -20,8 +20,25 @@ describe('rewindForRetry', () => {
     const out = rewindForRetry(c);
     expect(out.text).toBe('second');
     expect(out.conv.messages).toHaveLength(2);
-    expect(out.conv.display).toHaveLength(2);
+    // The question stays, with the line the screen showed under it, so the
+    // record keeps the turn that got no answer above the one sent again.
+    expect(out.conv.display).toHaveLength(4);
+    expect(out.conv.display.slice(0, 3)).toEqual(c.display);
+    expect(out.conv.display[3]).toMatchObject({
+      kind: 'error',
+      lost: true,
+      text: 'No answer came back for this message.',
+    });
+    expect(out.conv.display[3].createdAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
     expect(out.conv.id).toBe('c1');
+  });
+
+  it('records a turn the reader stopped and got no record of as stopped', () => {
+    const c = conv([{ role: 'user', content: 'count' }], [{ kind: 'user', text: 'count' }]);
+    const out = rewindForRetry(c, { stopped: true });
+    expect(out.conv.messages).toEqual([]);
+    expect(out.conv.display[1]).toMatchObject({ kind: 'error', stopped: true, text: 'Stopped.' });
+    expect(out.conv.display[1].lost).toBeUndefined();
   });
 
   it('leaves the transcript alone for a failed turn, whose user message was already dropped', () => {
@@ -40,11 +57,11 @@ describe('rewindForRetry', () => {
     const out = rewindForRetry(c);
     expect(out.text).toBe('second');
     expect(out.conv.messages).toHaveLength(2);
-    // Both the user's item and the error go, so the retry rebuilds them.
-    expect(out.conv.display).toEqual(c.display.slice(0, 2));
+    // The failed question and its error stay, for the record.
+    expect(out.conv.display).toEqual(c.display);
   });
 
-  it('drops a saved turn whose save went unanswered, the stamped message included', () => {
+  it('takes a saved turn whose save went unanswered out of the transcript, the stamped message included', () => {
     // conc-2026-09-29 H8-6: the service's save of the turn landed and its
     // answer was lost, so the record holds the question (stamped with where
     // it was asked) and the answer. A retry sent the question a second time.
@@ -66,7 +83,7 @@ describe('rewindForRetry', () => {
     const out = rewindForRetry(c);
     expect(out.text).toBe('What is s4?');
     expect(out.conv.messages).toEqual(c.messages.slice(0, 2));
-    expect(out.conv.display).toEqual(c.display.slice(0, 2));
+    expect(out.conv.display).toEqual(c.display);
   });
 
   it('keeps an earlier answered copy of the same question when the failed turn was dropped', () => {
@@ -96,7 +113,7 @@ describe('rewindForRetry', () => {
     const out = rewindForRetry(c);
     expect(out.text).toBe('hi');
     expect(out.conv.messages).toEqual([]);
-    expect(out.conv.display).toEqual([]);
+    expect(out.conv.display).toEqual(c.display);
   });
 
   it('returns null when there is nothing the user said to retry', () => {
@@ -142,7 +159,7 @@ describe('rewindForRetry and attachments', () => {
     const r = rewindForRetry(conv);
     expect(r.text).toBe('count these');
     expect(r.files).toBe(files);
-    expect(r.conv.display).toEqual([]);
+    expect(r.conv.display).toEqual(conv.display);
   });
 });
 

@@ -358,6 +358,7 @@ def summarize(conv: Conversations, fates: F.Fates, units: List[Dict[str, Any]], 
         'plan_operations_by_record': dict(Counter(u['plan_record'] for u in units if u['kind'] == 'assistant-plan')),
         'plans_by_comment_link': dict(Counter(str(p.get('comment_link')) for p in plans)),
         'turns_dated': sum(1 for t in conv.turns if t['created_at']),
+        'turns_retried': sum(1 for t in conv.turns if t['retry']),
         'failed_or_stopped_turn_steps': sum(t['n_steps'] for t in conv.turns if t['end'] in ('failed', 'stopped')),
         'plan_change_fates': dict(Counter(str(c['fate']) for c in conv.plan_changes if c['plan_status'] in
                                           ('applied', 'partial'))),

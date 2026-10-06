@@ -366,6 +366,52 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 
+  // Luke, 2026-10-06: a retry keeps the attempt that did not finish, so the
+  // record (the study's dataset) keeps every failure. The model still reads
+  // the question once.
+  it('keeps the failed attempt above the message it sends again', async () => {
+    const failed = [
+      { kind: 'user', text: 'compare -ka', projects: [B] },
+      { kind: 'error', text: 'The assistant could not answer: boom' },
+    ];
+    const client = fakeClient({ conv: { messages: [], display: failed } });
+    const m = await mount(client);
+    await flush(m);
+    await m.step(() => byText(m.container, 'button', 'Retry').click());
+    await flush(m, 8);
+    const conv = client.records.get('igt:assistant:p1:conv:c1');
+    expect(conv.display.slice(0, 2)).toEqual(failed);
+    expect(conv.display[2]).toMatchObject({ kind: 'user', text: 'compare -ka', retry: true });
+    expect(conv.messages).toEqual([{ role: 'user', content: 'compare -ka' }]);
+    expect(all(m.container, '[role="alert"]').map((n) => n.textContent)).toContain(
+      'The assistant could not answer: boom',
+    );
+    await m.unmount();
+  });
+
+  it('records a turn that got no answer when it is sent again', async () => {
+    const client = fakeClient({
+      conv: {
+        messages: [{ role: 'user', content: 'compare -ka' }],
+        display: [{ kind: 'user', text: 'compare -ka', projects: [B] }],
+      },
+    });
+    const m = await mount(client);
+    await flush(m);
+    await m.step(() => byText(m.container, 'button', 'Retry').click());
+    await flush(m, 8);
+    const conv = client.records.get('igt:assistant:p1:conv:c1');
+    expect(conv.display.map((d) => d.kind)).toEqual(['user', 'error', 'user']);
+    expect(conv.display[1]).toMatchObject({
+      lost: true,
+      text: 'No answer came back for this message.',
+    });
+    expect(conv.display[2].retry).toBe(true);
+    // Sent once to the model, not twice.
+    expect(conv.messages).toEqual([{ role: 'user', content: 'compare -ka' }]);
+    await m.unmount();
+  });
+
   it('offers nothing, and writes nothing, for an assistant that reads one project', async () => {
     const client = fakeClient({ service: OLD_SERVICE });
     const m = await mount(client);
