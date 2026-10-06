@@ -199,6 +199,25 @@ const firstDocument = await client.documents.get(firstDocumentId, true)
 console.log("First document:", firstDocument)
 ----
 
+=== Static pages
+Plaid can serve a folder of your own web pages, for example a small frontend for one project.
+Set `static_resources_path` under `[server]` in `data/config.toml` to the folder and restart.
+Every file in it is served at its path from the root, without authentication, so put nothing private there.
+
+Plaid also serves the JavaScript client at `/client/plaid-client.js`, the same version as the server, whether or not this folder is set.
+A page imports it as a module, so it needs no copy of its own:
+
+[,html]
+----
+<script type="module">
+  import { PlaidClient } from "/client/plaid-client.js";
+  const client = await PlaidClient.login(location.origin, "user@example.com", "password");
+  console.log(await client.projects.list());
+</script>
+----
+
+Its type declarations are at `/client/plaid-client.d.ts`.
+
 === Pagination
 
 Collection endpoints (documents, users, API tokens, audit, and similar lists) are paginated.

@@ -222,6 +222,63 @@
           (handler request))
       (handler request))))
 
+;; The JavaScript client, for pages served from static_resources_path (or from
+;; anywhere else) to import instead of bundling their own copy. `bb build`
+;; copies plaid-client-js/src and its index.d.ts into resources/client/, so the
+;; jar holds the package's files byte for byte, in the package's own layout.
+;; They are served as they are, unbundled: every module imports its siblings
+;; by relative path, so the entry at /client/plaid-client.js pulls the rest
+;; from /client/<module>.js with no build step in between.
+(def ^:private client-js-resource-root "client/")
+
+(def client-js-dir-property
+  "JVM system property naming a plaid-client-js checkout to serve the client
+  from instead of the classpath. The :dev alias sets it to the working tree's
+  `../plaid-client-js`, so the dev core serves the client as it is edited. A
+  release jar never sets it."
+  "plaid.client-js-dir")
+
+(defn- client-js-file
+  "The client file `uri` names, relative to the package root, or nil.
+  /client/plaid-client.js is the entry (src/index.js), /client/plaid-client.d.ts
+  its types, and /client/<module>.js any other module, for the entry's relative
+  imports. A name is letters, digits, `-` and `_` only, so no path segment or
+  `..` can reach past the package's src/."
+  [uri]
+  (cond
+    (= uri "/client/plaid-client.js") "src/index.js"
+    (= uri "/client/plaid-client.d.ts") "index.d.ts"
+    :else (when-let [[_ module] (re-matches #"/client/([A-Za-z0-9_-]+)\.js" uri)]
+            (when-not (= module "index")
+              (str "src/" module ".js")))))
+
+(defn wrap-client-js
+  "Serve the JavaScript client that matches this core's version at
+  /client/plaid-client.js, with its types at /client/plaid-client.d.ts.
+  Unauthenticated, like the bundled SPAs. `Cache-Control: no-cache` makes a
+  browser revalidate on each load (a 304 while unchanged), since the files
+  change with every release at the same path. Misses fall through."
+  [handler]
+  (let [dev-dir (not-empty (System/getProperty client-js-dir-property))]
+    (when dev-dir
+      (log/info (format "Serving the JavaScript client at /client/ from `%s`" dev-dir)))
+    (fn [{:keys [uri request-method] :as request}]
+      (if-let [rel (and (= :get request-method)
+                        (str/starts-with? uri "/client/")
+                        (client-js-file uri))]
+        (let [resp (if dev-dir
+                     (let [f (io/file dev-dir rel)]
+                       (when (.isFile f) (response/file-response (.getPath f))))
+                     (response/resource-response (str client-js-resource-root rel)))]
+          (if resp
+            (-> resp
+                (response/content-type (if (str/ends-with? rel ".js")
+                                         "text/javascript; charset=utf-8"
+                                         "text/plain; charset=utf-8"))
+                (response/header "Cache-Control" "no-cache"))
+            (handler request)))
+        (handler request)))))
+
 (def ^:private root-landing-html
   "<!DOCTYPE html>
 <html lang=\"en\">
@@ -455,6 +512,7 @@
         (wrap-rest-routes datasource)
         wrap-root-landing
         wrap-bundled-spa
+        wrap-client-js
         wrap-static-resources
         wrap-health
         (wrap-defaults defaults-config)

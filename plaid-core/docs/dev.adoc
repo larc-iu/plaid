@@ -81,7 +81,7 @@ Run every task from the repository root.
 bb build
 ----
 
-This builds both SPAs, bundles them and the official services into `plaid-core/resources/`, compiles the uberjar, boot-smoke-tests it against `/health` on port 8080, and packs the npm tarball plus the Python sdist and wheel.
+This builds the SPAs, bundles them, the JavaScript client and the official services into `plaid-core/resources/`, compiles the uberjar, boot-smoke-tests it on port 8080 (its `/health`, each app and the client), and packs the npm tarball plus the Python sdist and wheel.
 Artifacts land in `dist-artifacts/`:
 
 [,bash]
@@ -95,7 +95,7 @@ In CI the git tag is the sole source of truth for the version. Locally it is jus
 Useful flags:
 
 * `--skip-clients`: build only the jar (skips npm and Python packaging, and their toolchain requirements).
-* `--no-smoke`: skip the jar boot test. Needed if something else already answers on port 8080.
+* `--no-smoke`: skip the jar boot test. Needed if something else already answers on port 8080, unless you set `PLAID_SMOKE_PORT` to a free port instead.
 
 NOTE: `bb build` leaves the built SPAs, services, and `version.edn` inside `plaid-core/resources/` (all gitignored). Run `bb clean` to remove them before starting a plain development server, or the dev server will serve the stale bundled SPAs.
 

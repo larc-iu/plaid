@@ -88,6 +88,9 @@
                  :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
                             "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"
                             "-Djdk.attach.allowAttachSelf"
+                            ;; Serve the JavaScript client at /client/ from the
+                            ;; working tree (plaid.server.middleware/wrap-client-js).
+                            "-Dplaid.client-js-dir=../plaid-client-js"
                             "--add-opens" "java.base/java.nio=ALL-UNNAMED"
                             "--enable-native-access=ALL-UNNAMED"]
                  :exec-fn user/start

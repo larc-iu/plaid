@@ -194,13 +194,20 @@
 ;; (proves version.edn + the SPAs/services were bundled). Runs in a throwaway
 ;; temp dir so the auto-generated data/, services/, config.toml don't dirty the
 ;; repo. The jar self-heals JVM flags by re-execing, so a bare `java -jar` boots.
+;; PLAID_SMOKE_PORT boots it on another port (a data/config.toml naming that
+;; port is written first), for a machine where something else holds 8080.
 (defn smoke-test! [version]
   (step "Smoke-test the jar (boots via re-exec + reports release version)")
   (let [jar    (str (fs/absolutize (str "plaid-core/target/plaid-" version ".jar")))
-        health ["curl" "-sf" "http://localhost:8080/health"]]
+        port   (or (not-empty (System/getenv "PLAID_SMOKE_PORT")) "8080")
+        base   (str "http://localhost:" port)
+        health ["curl" "-sf" (str base "/health")]]
     (when (zero? (:exit (apply p/sh health)))
-      (fail "something already answers http://localhost:8080/health — stop it, or pass --no-smoke"))
+      (fail (str "something already answers " base "/health: stop it, set PLAID_SMOKE_PORT, or pass --no-smoke")))
     (let [tmp  (fs/create-temp-dir {:prefix "plaid-smoke-"})
+          _    (when (not= port "8080")
+                 (fs/create-dirs (fs/path tmp "data"))
+                 (spit (str (fs/path tmp "data" "config.toml")) (str "[server]\nport = " port "\n")))
           proc (p/process ["java" "-jar" jar]
                           {:dir (str tmp)
                            :extra-env {"SKIP_ACCOUNT_CREATION_PROMPT" "1"}
@@ -220,10 +227,28 @@
           ;; passes with an app missing from resources/ or from
           ;; bundled-spa-roots, which is how an app ships invisibly broken.
           (doseq [path ["/ud/" "/igt/" "/dict/" "/umr/"]]
-            (let [r (p/sh ["curl" "-sf" (str "http://localhost:8080" path)])]
+            (let [r (p/sh ["curl" "-sf" (str base path)])]
               (when-not (and (zero? (:exit r)) (str/includes? (:out r) "<div id=\"root\""))
                 (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
           (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
+          ;; The JavaScript client: the entry, its types, and every module the
+          ;; entry reaches by relative import, each byte for byte the source.
+          (let [fetch (fn [path src]
+                        (let [r (p/sh ["curl" "-sf" "-D" "-" (str base path)])]
+                          (when-not (and (zero? (:exit r))
+                                         (str/includes? (str/lower-case (:out r))
+                                                        (if (str/ends-with? path ".js")
+                                                          "content-type: text/javascript"
+                                                          "content-type: text/plain"))
+                                         (str/ends-with? (:out r) (slurp src)))
+                            (throw (ex-info (str path " did not serve " src " from the jar") {:path path})))))]
+            (fetch "/client/plaid-client.js" "plaid-client-js/src/index.js")
+            (fetch "/client/plaid-client.d.ts" "plaid-client-js/index.d.ts")
+            (doseq [f (fs/glob "plaid-client-js/src" "*.js")
+                    :let [n (str (fs/file-name f))]
+                    :when (not= n "index.js")]
+              (fetch (str "/client/" n) (str f))))
+          (println "  JavaScript client served at /client/plaid-client.js")
           ;; First boot must also have extracted the bundled services next to data/.
           (doseq [f ["ud_parse_stanza.py" "igt_tokenize_punkt.py" "igt_transcribe_whisper.py"
                      "umr_draft_llm.py" "umr_bootstrap_igt.py" "umr_ancast.py"]]
@@ -323,6 +348,13 @@
       ;; three SPAs serve, copied rather than duplicated (see wrap-root-landing).
       (fs/copy "plaid-ui/public/plaid.svg" "plaid-core/resources/plaid.svg" {:replace-existing true})
       (spit "plaid-core/resources/version.edn" (str "{:version \"" version "\"}\n"))
+      ;; The JavaScript client, served at /client/plaid-client.js to pages that
+      ;; import it instead of bundling their own (see wrap-client-js). The
+      ;; package's own files in its own layout, unbundled: its modules import
+      ;; each other by relative path, so a browser loads them as they are.
+      (rm-rf "plaid-core/resources/client")
+      (fs/copy-tree "plaid-client-js/src" "plaid-core/resources/client/src")
+      (fs/copy "plaid-client-js/index.d.ts" "plaid-core/resources/client/index.d.ts")
 
       ;; Each app's services/*.py rides the jar and is extracted next to data/
       ;; on boot. manifest.edn maps filename -> sha256 (the extractor enumerates
@@ -439,6 +471,7 @@
                "plaid-core/resources/services"
                "plaid-core/resources/version.edn"
                "plaid-core/resources/plaid.svg"
+               "plaid-core/resources/client"
                "plaid-ud/dist"
                "plaid-igt/dist"
                "plaid-dict/dist"
