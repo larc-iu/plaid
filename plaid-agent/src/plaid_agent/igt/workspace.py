@@ -283,15 +283,6 @@ class Workspace(BaseWorkspace):
     def load_doc(self, doc_id: str) -> IgtDoc:
         return load_document(self.client, self.project, doc_id)
 
-    def resolve_document_id(self, document: str) -> str:
-        """As every app resolves a name, refusing first what is not text: the
-        code's ``load()`` handed the ``{"id", "name"}`` pair ``documents()``
-        returns, and was answered with a Python error about ``lower``."""
-        if document is not None and not isinstance(document, str):
-            raise ToolError('document must be a document\'s name or id, as text. For an entry of documents(), '
-                            'pass its "id".')
-        return super().resolve_document_id(document)
-
     def doc(self, document: str) -> IgtDoc:
         did = self.resolve_document_id(document)
         if did not in self._docs:

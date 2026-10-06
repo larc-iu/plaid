@@ -247,7 +247,13 @@ class BaseWorkspace:
                 self._staged_versions.setdefault(did, version)
 
     def resolve_document_id(self, document: str) -> str:
-        """Accept a document id, an exact name, or an unambiguous prefix."""
+        """Accept a document id, an exact name, or an unambiguous prefix.
+        Anything but text is refused first: the code's ``load()`` handed the
+        ``{"id", "name"}`` pair ``documents()`` returns, and was answered with
+        a Python error about ``lower``."""
+        if document is not None and not isinstance(document, str):
+            raise ToolError('document must be a document\'s name or id, as text. For an entry of documents(), '
+                            'pass its "id".')
         if not document:
             raise ToolError('Name a document (id or exact name); project_overview lists them.')
         docs = self.documents()
