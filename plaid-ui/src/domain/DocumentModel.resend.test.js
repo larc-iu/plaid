@@ -313,8 +313,31 @@ describe("an edit to what is kept beside, judged by the subclass's rule (D8-PROD
     server.elsewhere('t2', 'DEF');
     const { done } = doc.gloss('t2', 'CANINE', { besideToo: true });
     expect(await done).toBe(false);
-    expect(doc.judged).toEqual([]);
     expect(server.sent).toEqual(['add t2 CANINE']);
+  });
+
+  it("an edit to the document and beside refused by the document's rule takes the subclass's words", async () => {
+    const { server, doc } = openBesideDoc();
+    server.elsewhere('t2', 'DEF');
+    // Passing it changes nothing: the document's rule has refused it.
+    doc.judge = () => true;
+    const { done } = doc.gloss('t2', 'CANINE', { besideToo: true });
+    expect(await done).toBe(false);
+    expect(doc.judged).toHaveLength(1);
+    expect(server.sent).toEqual(['add t2 CANINE']);
+    // When the rule finds what changed, its words are the refusal's.
+    const again = openBesideDoc();
+    again.server.elsewhere('t2', 'DEF');
+    again.doc.judge = (unsent) => {
+      unsent.refusal = Object.assign(new Error('b changed this morpheme.'), {
+        changedElsewhere: true,
+        notice: true,
+      });
+      return false;
+    };
+    expect(await again.doc.gloss('t2', 'CANINE', { besideToo: true }).done).toBe(false);
+    expect(again.errors.map((e) => e.msg)).toEqual(['b changed this morpheme.']);
+    expect(again.doc.error).toBe('');
   });
 
   it('an edit to the document and beside goes again when both pass', async () => {

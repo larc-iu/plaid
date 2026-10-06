@@ -127,7 +127,7 @@ export function linkFootprint(before, after) {
  * was last checked against) and `current` (as read now, with the edits ahead
  * of it shown) touches `footprint`, in a document whose tokens are
  * `tokenIds` (server ids). Answers `{ ok: true }`, or `{ ok: false,
- * conflict }` with what changed: `{ kind, ids, form?, unit? }`, the kinds
+ * conflict }` with what changed: `{ kind, ids, form?, item?, unit? }`, the kinds
  * plaid-ui `linkChangedTo` words.
  */
 export function linksUntouched(footprint, checked, current, tokenIds, unitOf = () => 'word') {
@@ -147,7 +147,12 @@ export function linksUntouched(footprint, checked, current, tokenIds, unitOf = (
         const form = typeof link.vocabItem === 'object' ? (link.vocabItem?.form ?? null) : null;
         return {
           ok: false,
-          conflict: { kind: 'linked', form, ids: [id, other, ...tokensOf(link)] },
+          conflict: {
+            kind: 'linked',
+            form,
+            item: itemOf(link),
+            ids: [id, other, ...tokensOf(link)],
+          },
         };
       }
       return { ok: false, conflict: { kind: 'removed', ids: [id, ...tokensOf(old)] } };
@@ -172,7 +177,10 @@ export function linksUntouched(footprint, checked, current, tokenIds, unitOf = (
     if (old && linkContent(old) === linkContent(link)) continue;
     const form = typeof link.vocabItem === 'object' ? (link.vocabItem?.form ?? null) : null;
     const kind = old ? 'changed' : 'linked';
-    return { ok: false, conflict: { kind, form, ids: [id, ...tokensOf(link)] } };
+    return {
+      ok: false,
+      conflict: { kind, form, item: itemOf(link), ids: [id, ...tokensOf(link)] },
+    };
   }
   for (const [id, link] of was) {
     if (!is.has(id))

@@ -1045,7 +1045,12 @@ export class DocumentModel {
         footprint !== null || changesEntities(unsent.origin ?? unsent.base, unsent.made);
     }
     const judged = !unsent.beside || unsent.writesDocument;
-    if (judged && !this._resendable(unsent, footprint, now)) return false;
+    if (judged && !this._resendable(unsent, footprint, now)) {
+      // Refused, with the subclass's words when its rule finds what changed
+      // beside as well (the morpheme a link names, removed).
+      if (unsent.beside) this._besideUntouched(unsent, now);
+      return false;
+    }
     if (unsent.beside && !this._besideUntouched(unsent, now)) return false;
     unsent.origin ??= unsent.base;
     unsent.base = now;

@@ -256,6 +256,17 @@ describe('a link, an unlink and a multi-word expression after a write elsewhere'
     expect(linkOn(doc, 'w-2').vocabItem.id).toBe('i-dog');
   });
 
+  it('names the entry linked first by its number when a sense shares its form', async () => {
+    const { server, doc, errors } = await openDoc();
+    server.items.push({ id: 'i-dog1', form: 'dog', metadata: { parent: 'i-dog', senseOrder: 1 } });
+    server.elsewhere((s) => {
+      s.links.push({ id: uuid(78), tokens: ['w-2'], vocabItem: { id: 'i-dog1', form: 'dog' } });
+    });
+    expect(await doc.linkVocab('w-2', 'i-cat')).toBe(false);
+    expect(errors[0].err.linkConflict).toMatchObject({ kind: 'linked', form: 'dog 1.1' });
+    expect(linkChangedTo('b', errors[0].err.linkConflict)).toBe('b linked this to dog 1.1.');
+  });
+
   it('a new link is refused when its entry was deleted elsewhere', async () => {
     const { server, doc, errors } = await openDoc();
     server.elsewhere((s) => {

@@ -414,7 +414,7 @@ Two people can have one document open, and neither page shows the other's edits 
 An edit that reaches the server after someone else changed the document is handled this way:
 
 * A gloss, a translation, or any other word, morpheme or sentence field is saved when what the other person changed is on another word or sentence, or is a kind of annotation the field does not touch.
-* A link to a lexicon entry is refused, and you link it again.
+* A link to a lexicon entry, an accepted link, or a removed link is saved when the other person did not change that link, link the same word or words, change the word, or delete the entry. Otherwise it is refused, and a message names the change, such as `b linked this to tama.`
 * Any other edit is saved only when what the other person changed is a kind of annotation it does not touch. Otherwise it is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows their change.
 
 When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X**, with **Enter to keep yours** after it while the cell has focus.

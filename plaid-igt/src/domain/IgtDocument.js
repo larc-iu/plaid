@@ -31,6 +31,7 @@ import { analysisCopyMutations } from './mutations/analysisCopy.js';
 import { pendingMutations } from './mutations/pending.js';
 import { linkFootprint, linksUntouched, tokenIdsOf } from './linkRebase.js';
 import { linkChangedTo } from '@ui/lib/cellConflict.js';
+import { buildItemNumbers, itemLabel } from './vocabDictionary.js';
 
 // A patch's own copy of the vocabularies. Everything but the entry lists is
 // copied whole: this document's links and the vocabulary's settings, which
@@ -419,8 +420,12 @@ export class IgtDocument extends DocumentModel {
       unsent.besideChecked,
       current,
       tokenIdsOf(now),
+      // A token named in the conflict is gone from `now`: whether it was a
+      // morpheme is read in the document the edit was made on.
       (id) =>
-        (getIgtLayerInfo(now).morphemeTokenLayer?.tokens || []).some((m) => settledId(m.id) === id)
+        (getIgtLayerInfo(unsent.origin ?? unsent.base).morphemeTokenLayer?.tokens || []).some(
+          (m) => settledId(m.id) === id,
+        )
           ? 'morpheme'
           : 'word',
     );
@@ -429,6 +434,18 @@ export class IgtDocument extends DocumentModel {
       return true;
     }
     if (conflict) {
+      // The entry it is linked to now, by its form and number, "kai 1.1",
+      // as an entry is written wherever it is text: a headword and its
+      // sense share a form.
+      if (conflict.item) {
+        for (const vocab of Object.values(current || {})) {
+          const item = (vocab?.items || []).find((it) => settledId(it.id) === conflict.item);
+          if (item) {
+            conflict.form = itemLabel(item, buildItemNumbers(vocab.items));
+            break;
+          }
+        }
+      }
       const since = (unsent.origin ?? unsent.base)?.timeModified ?? null;
       unsent.refusal = Object.assign(new Error(linkChangedTo(null, conflict)), {
         changedElsewhere: true,
