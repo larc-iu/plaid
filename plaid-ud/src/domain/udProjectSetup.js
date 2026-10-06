@@ -223,6 +223,9 @@ export const adoptSubstrate = (client, page) =>
     const existingTextLayer = baseline || textLayers[0] || null;
 
     await client.batched(async (b) => {
+      // The layers this batch makes, by getUdLayerInfo's key: they are empty,
+      // so their rules go in this batch and cannot be refused.
+      const made = {};
       let textLayerId = existingTextLayer?.id;
       if (!textLayerId) {
         textLayerId = uuidv7();
@@ -259,6 +262,9 @@ export const adoptSubstrate = (client, page) =>
         declareSplitOnSpace(b, wordLayerId);
       }
       const morphemeLayerId = ensureTokenLayer(ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayerId);
+      if (!findByRole(existingTextLayer?.tokenLayers, ROLES.SYNTACTIC_WORD)) {
+        made.morphemeTokenLayer = { id: morphemeLayerId };
+      }
 
       // Annotation layers are UD's own, found by UD's flags under the layer UD
       // annotates: the one that was already there, or none when this call
@@ -279,6 +285,7 @@ export const adoptSubstrate = (client, page) =>
           id = uuidv7();
           b.spanLayers.create(morphemeLayerId, name, undefined, { id });
           b.spanLayers.setConfig(id, UD_NAMESPACE, configKey, true);
+          made[`${configKey}Layer`] = { id };
         }
         if (configKey === UD_SPAN_CONFIG_KEYS.lemma) {
           lemmaLayer = existing;
@@ -293,16 +300,26 @@ export const adoptSubstrate = (client, page) =>
         const id = uuidv7();
         b.relationLayers.create(lemmaLayerId, 'Dependency Relations', undefined, { id });
         b.relationLayers.setConfig(id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+        made.relationLayer = { id };
       }
       if (!findFlagged(lemmaLayer?.relationLayers, UD_ENHANCED_RELATION_CONFIG_KEY)) {
-        queueEnhancedRelationLayer(b, lemmaLayerId);
+        made.enhancedRelationLayer = { id: queueEnhancedRelationLayer(b, lemmaLayerId) };
       }
+      // UD's layer rules on the layers made here (utils/udConstraints.js), in
+      // the batch that makes them, so no failure after it leaves them bare.
+      queueDeclarations(
+        b,
+        wantedConstraints({
+          ...made,
+          sentenceTokenLayer: { id: sentenceLayerId },
+          wordTokenLayer: { id: wordLayerId },
+        }),
+      );
     });
 
-    // UD's layer rules (utils/udConstraints.js). The layers adopted may hold
-    // another app's data, which the server repairs first where a rule has a
-    // repair. A rule the data still breaks is left undeclared, and the rest
-    // are in force.
+    // UD's layer rules on the layers it found. They may hold another app's
+    // data, which the server repairs first where a rule has a repair. A rule
+    // the data still breaks is left undeclared, and the rest are in force.
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
   });

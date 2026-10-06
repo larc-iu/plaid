@@ -76,3 +76,31 @@ test('a set-up adds what the project lacks as it is now', async () => {
   );
   assert.deepEqual(creates(calls), ['batched.relationLayers.create']);
 });
+
+// The project another app set up: sentences and words, none of UD's layers.
+const substrateOnly = () => {
+  const project = fullProject();
+  const text = project.textLayers[0];
+  text.tokenLayers = text.tokenLayers.filter((t) => t.config?.plaid?.role !== 'syntactic-word');
+  return project;
+};
+
+test('a set-up declares the rules of every layer it makes in the batch that makes them', async () => {
+  const calls = [];
+  await adoptSubstrate(
+    serverClient(calls, () => substrateOnly()),
+    substrateOnly(),
+  );
+  const declared = calls.filter((c) => c.startsWith('batched.') && c.endsWith('.setConstraints'));
+  // Syntactic words, Form, Lemma, UPOS, XPOS, and both relation layers: what
+  // a failure after the batch would otherwise leave bare for good.
+  assert.deepEqual(declared, [
+    'batched.tokenLayers.setConstraints',
+    'batched.spanLayers.setConstraints',
+    'batched.spanLayers.setConstraints',
+    'batched.spanLayers.setConstraints',
+    'batched.spanLayers.setConstraints',
+    'batched.relationLayers.setConstraints',
+    'batched.relationLayers.setConstraints',
+  ]);
+});
