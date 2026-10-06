@@ -1094,10 +1094,11 @@ class FakeClient:
         return None
 
     def query(self, body):
-        """The one query the fake runs: the ids of a lexicon entry's links
+        """The two queries the fake runs: the ids of a lexicon entry's links
         (``where [['link', '?l', {'item': id}]]``, grouped by ``'?l.id'``),
         answered from the documents as given, in document order, ``limit`` at
-        most. Each query is kept in ``queries``. Any other is refused, as the
+        most, and the morphemes linked to entries (``_linked_morphemes``).
+        Each query is kept in ``queries``. Any other is refused, as the
         server refuses a query it cannot run, so a test that needs one sets
         ``client.query`` to its own engine."""
         self.queries.append(body)
