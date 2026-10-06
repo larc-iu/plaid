@@ -18,7 +18,7 @@ from ..core.args import sentence_number
 from plaid_client import uuid7
 from plaid_client.workflows.umr import (concept_problem,
                                         new_variable_problem, parse_attribute_line,
-                                        relation_form_problem, triple_sentence_number,
+                                        relation_form_problem,
                                         unknown_doc_relation_problem,
                                         unknown_relation_problem, variable_form_problem,
                                         written_value_problem)
@@ -636,10 +636,19 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     if target['span_id']:
         op['target_span_id'] = target['span_id']
     # A triple between two constants belongs to no sentence by itself, so the
-    # one whose block writes it is named.
+    # one whose block writes it is named, and its record lists it, in the
+    # batch that makes it (plan.py). A sentence with no record gets one over
+    # the sentence.
     if source.get('constant') and target.get('constant'):
+        if not doc.sentences:
+            raise ToolError(f'"{doc.name}" has no sentences to write the triple in.')
         s = _sentence(ws, doc, sentence) if sentence is not None else doc.sentences[0]
-        op['sentences'] = [triple_sentence_number(doc.sentences, s)]
+        op['record_id'] = s.record_token
+        op['record_triples'] = list(s.record_triples)
+        if not s.record_token:
+            op['node_layer_id'] = ws.project.node_layer_id
+            op['text_id'] = doc.text_id
+            op['begin'], op['end'] = s.begin, s.end
         op['sentence'] = s.index
         op['sentence_id'] = s.id
         op['ref'] = f's{s.index}'

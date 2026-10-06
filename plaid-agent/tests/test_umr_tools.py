@@ -164,7 +164,8 @@ def test_a_triple_between_two_constants_says_whose_block_writes_it(ws):
         b='document-creation-time', sentence=2)
     op = ws.ops[-1]
     assert op['kind'] == 'create_triple'
-    assert op['sentences'] == [2] and op['ref'] == 's2'
+    assert op['record_id'] == 'mr-2' and op['ref'] == 's2'
+    assert 'sentences' not in op
 
 
 def test_a_triple_that_is_already_there_plans_nothing(ws):

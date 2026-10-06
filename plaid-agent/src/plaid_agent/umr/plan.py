@@ -58,6 +58,9 @@ class Context:
         self.b = b
         # (document, variable) -> the id of the new node's concept span.
         self.span_at: Dict[tuple, str] = {}
+        # (document, sentence token) -> the record a triple between two
+        # constants is listed in: its id and the list as written so far.
+        self.records: Dict[tuple, Dict[str, Any]] = {}
 
     def end_of(self, op: Dict[str, Any], side: str):
         """One end of an edge or a triple: the span it already has, or the
@@ -172,13 +175,45 @@ def _apply_create_edge(ctx: Context, op) -> int:
 
 
 def _apply_create_triple(ctx: Context, op) -> int:
+    """A triple between two constants is listed in the record of the sentence
+    whose block writes it, in the batch that makes it, as the editor does: the
+    record's whole list as the plan read it, with every triple this plan has
+    added to it so far, or a new record over the sentence when it has none."""
     meta: Dict[str, Any] = {'group': op['group']}
-    if op.get('sentences'):
-        meta['sentences'] = list(op['sentences'])
-    ctx.b.add(lambda batch, o=op, m=meta: batch.relations.create(
-        o['document_graph_layer_id'], ctx.end_of(o, 'source'),
-        ctx.end_of(o, 'target'), o['rel'], {**ctx.stamp(), UMR: m}, id=ctx.b.new_id()))
+    triple = ctx.b.new_id()
+
+    def queue(batch, o=op):
+        batch.relations.create(
+            o['document_graph_layer_id'], ctx.end_of(o, 'source'),
+            ctx.end_of(o, 'target'), o['rel'], {**ctx.stamp(), UMR: meta}, id=triple)
+        if 'record_triples' not in o:
+            return
+        key = (o['document_id'], o.get('sentence_id'))
+        record = ctx.records.get(key)
+        if record is None:
+            record = {'id': o.get('record_id'), 'triples': list(o['record_triples'])}
+            ctx.records[key] = record
+        record['triples'].append(triple)
+        if record['id']:
+            batch.tokens.patch_metadata(record['id'], [
+                {'op': 'set', 'path': [UMR, 'triples'], 'value': list(record['triples'])}])
+        else:
+            record['id'] = ctx.b.new_id()
+            batch.tokens.bulk_create([{
+                'id': record['id'], 'token_layer_id': o['node_layer_id'],
+                'text': o['text_id'], 'begin': o['begin'], 'end': o['end'],
+                'metadata': {UMR: {'triples': list(record['triples'])}}}])
+
+    ctx.b.add(queue, count=2 if 'record_triples' in op else 1)
     return 1
+
+
+def _record_anchors(op) -> List[Tuple[Optional[str], str]]:
+    """A new record stands over its sentence, read from the sentence when the
+    plan is applied."""
+    if 'record_triples' not in op or op.get('record_id') or not op.get('sentence_id'):
+        return []
+    return [(None, op['sentence_id'])]
 
 
 # --- what a scope stands for --------------------------------------------------
@@ -411,7 +446,10 @@ KIND = ok.registry([
            required=('document_graph_layer_id', 'rel', 'group'), apply=_apply_create_triple,
            target=lambda op: ('new-triple', op.get('document_id'), op.get('source_var'),
                               op.get('rel'), op.get('target_var')),
-           token_keys=('source_span_id', 'target_span_id')),
+           token_keys=('source_span_id', 'target_span_id', 'record_id'),
+           # A new record stands over the whole of its sentence, wherever an
+           # edit before it has moved it since (core.fingerprint).
+           extra={'anchors': _record_anchors}),
     # One attribute over every node in a document whose concept matches,
     # stored as the predicate the model gave and resolved to one `set_attrs`
     # per node at approval, so the card carries one row rather than two

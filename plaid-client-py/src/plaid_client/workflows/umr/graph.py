@@ -28,8 +28,7 @@ this reads, so there is one answer to every question the shape raises:
   left on new text typed in before its sentence is read with the graph it
   describes, when the variables there say so without doubt;
 * a triple between two constants belongs to the sentences whose records list
-  it, and to those its own ``sentences`` names by the number their variables
-  carry.
+  it.
 
 The readers that used to hold a copy of these rules each: this module, the two
 bundled UMR services and the assistant in ``plaid-agent``.
@@ -152,7 +151,6 @@ class Triple:
     target: str
     rel: str
     group: str
-    sentences: List[int] = dc_field(default_factory=list)
     #: The whole metadata, provenance keys and all.
     metadata: Optional[dict] = None
     #: The sentences whose block writes this triple (see :func:`read_document`).
@@ -224,6 +222,9 @@ class Sentence:
     #: nothing (one made in Plaid). One standing before this sentence when
     #: it was left on new text typed in before it.
     record_token: Optional[str] = None
+    #: The ids its record lists of the triples between two constants its
+    #: block writes (`triples` on the record).
+    record_triples: List[str] = dc_field(default_factory=list)
     #: The records after the first that stand in this sentence: one joined to
     #: the sentence before it in another app holds both until it is split.
     other_records: List[str] = dc_field(default_factory=list)
@@ -453,7 +454,8 @@ def _record_fields(holder: Optional[dict], begin: int, end: int, body: str) -> d
         snt=meta.get('snt') or None, stored_ilg=list(meta.get('ilg') or []),
         meta=list(meta.get('meta') or []), raw_graph=meta.get('rawGraph'),
         raw_alignment=meta.get('rawAlignment'),
-        held=list(meta['held']) if isinstance(meta.get('held'), list) else [])
+        held=list(meta['held']) if isinstance(meta.get('held'), list) else [],
+        record_triples=list(meta['triples']) if isinstance(meta.get('triples'), list) else [])
 
 
 def _variable_number(sentence: Sentence) -> Optional[int]:
@@ -556,38 +558,6 @@ def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, di
                                          s.begin, s.end, body).items():
             setattr(s, key, value)
         s.other_records = s.other_records[1:]
-
-
-def _sentence_number_reader(sentences: List[Sentence]):
-    """The sentence a stored number now names, for a triple between two
-    constants (``sentenceNumberReader``): the one sentence whose variables
-    carry the number, else the number as it is."""
-    if _numbered_by_file(sentences):
-        return lambda n: n
-    holders: Dict[int, set] = {}
-    for s in sentences:
-        for node in s.nodes:
-            m = _NUMBERED.match(node.var or '')
-            if m:
-                holders.setdefault(int(m.group(1)), set()).add(s.index)
-
-    def now(n):
-        at = holders.get(n)
-        return next(iter(at)) if at is not None and len(at) == 1 else n
-    return now
-
-
-def triple_sentence_number(sentences: List[Sentence], sentence: Sentence) -> int:
-    """The number a triple between two constants records for ``sentence``,
-    the one whose block writes it: the number the reader
-    (``sentenceNumberReader``) takes back to that sentence. A document whose
-    file skipped a number keeps its variables until it is opened, and the
-    reader then goes by the number they carry rather than by position."""
-    read = _sentence_number_reader(sentences)
-    for n in (_variable_number(sentence), sentence.index):
-        if n is not None and read(n) == sentence.index:
-            return n
-    return sentence.index
 
 
 def read_document(raw: dict, layers: UmrLayers,
@@ -730,7 +700,6 @@ def read_document(raw: dict, layers: UmrLayers,
         if source.sentence is not None:
             sentences[source.sentence - 1].edges.append(edge)
 
-    number_now = _sentence_number_reader(sentences)
     for rel in doc_relations:
         source = nodes_by_id.get(rel.get('source'))
         target = nodes_by_id.get(rel.get('target'))
@@ -740,22 +709,17 @@ def read_document(raw: dict, layers: UmrLayers,
         triple = Triple(id=rel['id'], source=rel['source'], target=rel['target'],
                         rel=rel.get('value') or '',
                         group=meta.get('group') or group_of(rel.get('value') or ''),
-                        sentences=list(meta.get('sentences') or []),
                         metadata=rel.get('metadata'))
         source.doc_out.append(triple)
         target.doc_in.append(triple)
         # The triple is written in the block of the LATER of its two sentences.
-        # One between two constants belongs to the sentences its metadata lists.
+        # One between two constants belongs to the sentences whose records
+        # list it.
         later = max(source.sentence or 0, target.sentence or 0)
         if later > 0:
             triple.blocks = [later]
         elif source.constant and target.constant:
-            # The sentences whose records list it, and those it names by the
-            # number each had when it was written: after another app added or
-            # removed a sentence before it, the one whose variables still
-            # carry it.
             blocks = set(listed_in.get(rel['id']) or ())
-            blocks.update(number_now(n) for n in triple.sentences)
             triple.blocks = sorted(n for n in blocks if 1 <= n <= len(sentences))
         for n in triple.blocks:
             sentences[n - 1].triples.append(triple)
