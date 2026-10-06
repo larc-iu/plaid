@@ -1398,8 +1398,8 @@ With **No project** as the project, a link creates an account and grants nothing
 A service that has gone for good can be forgotten here.
 
 **Assistant** is every conversation anyone has had with the assistant, on any project, with who had it and how many turns it ran.
-Opening one shows the whole conversation: what was asked, what was answered, the examples it cited, and any plan it proposed with what became of it.
-Conversations are otherwise private to the person who had them, and they are read-only here.
+Opening one shows the conversation as its owner saw it, read-only, and it can be downloaded or copied as Markdown.
+Conversations are otherwise private to the person who had them.
 
 **Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at sign-in.
 Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a sign-in block for someone who mistyped their password too many times.
