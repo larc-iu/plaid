@@ -56,6 +56,16 @@ describe('a plan refused as out of date', () => {
     await view.unmount();
   });
 
+  // Discarding it keeps the verdict the record holds (an approval that was
+  // refused) and takes the buttons away.
+  it('once discarded stays out of date and offers nothing', async () => {
+    const view = await mount(plan([{ label: 'a' }]), { status: 'stale', dismissed: true });
+    expect(byText(view.container, 'span, div', 'Out of date')).not.toBeNull();
+    expect(all(view.container, 'button').map((b) => b.textContent.trim())).toEqual([]);
+    expect(byText(view.container, 'p', 'Ask again to plan on the current version.')).toBeNull();
+    await view.unmount();
+  });
+
   it('is exported as out of date', () => {
     const conv = {
       display: [

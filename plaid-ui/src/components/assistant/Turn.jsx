@@ -310,6 +310,7 @@ export const Turn = ({
             unwritten={item.unwritten}
             unknown={!!item.unknown}
             recordedAsHuman={item.asHuman}
+            dismissed={!!item.dismissed}
             interrupted={interrupted}
             applying={applying}
             projectId={projectId}

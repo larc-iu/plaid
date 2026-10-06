@@ -160,30 +160,114 @@ export const buildMeta = (store, prev, conv, service, pending = null, about = nu
   };
 };
 
+// How many times a write of the record is made again on what is stored when
+// another writer's write landed first.
+const WRITE_TRIES = 8;
+
+const moved = (e) => e?.status === 409;
+
+// The pending marker a write leaves on the sidebar entry `stored`, when it
+// meant to leave `meta.pending`: its own, or, for a write that settles
+// (leaves none), the stored one when that names a request other than
+// `settles`, which is newer work (a turn another tab started).
+const pendingOver = (stored, meta, settles) => {
+  if (meta.pending) return meta.pending;
+  const other = stored?.pending?.requestId;
+  return other && other !== settles ? stored.pending : null;
+};
+
+// The sidebar entry `meta` written over the stored one: what is set once
+// (title, when it began, where) as stored, the turn count from the record as
+// it now stands, and the marker as `pendingOver` says.
+const metaOver = (fresh, meta, settles) => ({
+  ...meta,
+  title: fresh.meta?.title || meta.title,
+  createdAt: fresh.meta?.createdAt || meta.createdAt,
+  about: fresh.meta?.about || meta.about || null,
+  turns: fresh.conv.display.filter((d) => d.kind === 'user').length,
+  pending: pendingOver(fresh.meta, meta, settles),
+});
+
 // Write a conversation (transcript + sidebar entry, or the entry alone).
 // Writes for one conversation run one after another so a slow earlier PUT
 // cannot land on top of a newer one.
 //
-// Resolves to whether the write landed. A failure is reported here, and a
-// caller about to act on the record (a turn reads the message from it) must
-// not go on without it.
+// The record has a second writer, the service, and other tabs write it too.
+// Each write names the version of the record the page's copy was read or last
+// written at (`conv.rev`), and is refused (409) when another write landed
+// since, rather than putting back a copy from before it. Then the record is
+// read again and `rebase(fresh)` makes the change again on it: it answers
+// `{conv, meta}` to write, or null when the change no longer applies (it is
+// then not written, and the write resolves `{declined: true, fresh}`). A
+// sidebar entry refused after its transcript landed is written again over the
+// stored one (`metaOver`), keeping a marker that names a request other than
+// `settles`. The written copy carries the versions it was written at.
+//
+// Resolves to `{conv, meta}` as written, `{declined, fresh}`, or false when
+// the write failed. A failure is reported here, and a caller about to act on
+// the record (a turn reads the message from it) must not go on without it.
 //
 // `failure` replaces the message a refused write shows, for a write that is
 // not the sending of a message.
-export const persistConv = (store, conv, meta, { metaOnly = false, failure = null } = {}) => {
+export const persistConv = (
+  store,
+  conv,
+  meta,
+  { metaOnly = false, failure = null, rebase = null, settles = null } = {},
+) => {
   const { client, userId, app, projectId } = store;
   if (!userId) return Promise.resolve(false);
   const prev = saveQueues.get(conv.id) || Promise.resolve();
   const next = prev
     .then(async () => {
-      if (!metaOnly) {
-        await client.userData.put(userId, convKey(app, projectId, conv.id), {
-          messages: conv.messages,
-          display: conv.display,
-        });
+      let c = conv;
+      let m = meta;
+      for (let i = 0; ; i += 1) {
+        try {
+          if (!metaOnly) {
+            const put = await client.userData.put(
+              userId,
+              convKey(app, projectId, c.id),
+              { messages: c.messages, display: c.display },
+              { version: c.rev?.conv },
+            );
+            c.rev = { ...c.rev, conv: put?.version };
+          }
+          break;
+        } catch (e) {
+          if (!moved(e) || !rebase || i >= WRITE_TRIES) throw e;
+          const fresh = await readRecord(store, c.id);
+          const again = fresh.meta ? rebase(fresh) : null;
+          if (!again) return { declined: true, fresh };
+          c = again.conv;
+          m = again.meta;
+        }
       }
-      await client.userData.put(userId, metaKey(app, projectId, conv.id), meta);
-      return true;
+      for (let i = 0; ; i += 1) {
+        try {
+          const put = await client.userData.put(userId, metaKey(app, projectId, c.id), m, {
+            version: c.rev?.meta,
+          });
+          c.rev = { ...c.rev, meta: put?.version };
+          return { conv: c, meta: m };
+        } catch (e) {
+          if (!moved(e) || i >= WRITE_TRIES) throw e;
+          const fresh = await readRecord(store, c.id);
+          if (!fresh.meta) return { declined: true, fresh };
+          if (metaOnly && rebase) {
+            // A write of the entry alone is the change itself (an approval
+            // marking its request): made again on the stored one.
+            const again = rebase(fresh);
+            if (!again) return { declined: true, fresh };
+            m = again.meta;
+          } else {
+            m = metaOver(fresh, m, settles);
+          }
+          // The record as it now stands, which holds this write's transcript
+          // and whatever landed after it.
+          c = fresh.conv;
+        }
+      }
     })
     .catch((e) => {
       console.error('[Assistant] could not save the conversation', e);
@@ -205,15 +289,32 @@ export const persistConv = (store, conv, meta, { metaOnly = false, failure = nul
 
 // The record as the server has it. Read after any write of ours has landed.
 export const readConv = async (store, id) => {
-  const { client, userId, app, projectId } = store;
   await (saveQueues.get(id) || Promise.resolve());
+  return readRecord(store, id, { strict: true });
+};
+
+// The record as the server has it, now (a write in progress reads it so).
+// The copy carries the versions it was read at (`rev`), which the next write
+// of it names (`persistConv`). Unless `strict`, a key that is gone (deleted
+// in another tab) reads as empty, its sidebar entry as null.
+const readRecord = async (store, id, { strict = false } = {}) => {
+  const { client, userId, app, projectId } = store;
+  const gone = (e) => {
+    if (strict || e?.status !== 404) throw e;
+    return null;
+  };
   const [c, m] = await Promise.all([
-    client.userData.get(userId, convKey(app, projectId, id)),
-    client.userData.get(userId, metaKey(app, projectId, id)),
+    client.userData.get(userId, convKey(app, projectId, id)).catch(gone),
+    client.userData.get(userId, metaKey(app, projectId, id)).catch(gone),
   ]);
   const v = c?.value || {};
   return {
-    conv: { id, messages: v.messages || [], display: v.display || [] },
+    conv: {
+      id,
+      messages: v.messages || [],
+      display: v.display || [],
+      rev: { conv: c ? c.version : 0, meta: m ? m.version : 0 },
+    },
     // Under this project's keys is the only place it was looked for, so that is
     // the project it belongs to. The entry goes back into the list as it is,
     // and a row there has to know its own project.
@@ -382,6 +483,67 @@ const watch = async (j, run) => {
   }
 };
 
+// What the page writes when a job's stream ended and the record still names
+// its request (the service never wrote the outcome): `{conv, meta, failure,
+// gone}`, or null when the record no longer names it.
+const settleJob = (j, conv, meta, store, service) => {
+  if (meta?.pending?.requestId !== j.requestId) return null;
+  let failure = null;
+  let gone = false;
+  if (j.kind === 'turn') {
+    // A stop the service ended the request on without writing the record
+    // (its result says `stopped`) is a stop like one this page saw.
+    if (j.stopped || j.outcome?.stopped || j.outcome?.kind === 'stopped') {
+      conv = {
+        ...conv,
+        messages: dropUnanswered(conv),
+        display: [
+          ...conv.display,
+          { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() },
+        ],
+      };
+    } else if (j.outcome?.kind === 'turn' && j.outcome.item) {
+      // The service has the answer and the record refused it: written here,
+      // unless its transcript landed after all (the save lost its answer, and
+      // only the marker is left to clear).
+      const { item } = j.outcome;
+      const landed = conv.display.some(
+        (d) => d.kind === item.kind && d.createdAt === item.createdAt && d.text === item.text,
+      );
+      if (!landed) {
+        conv = withAnswer(conv, j.outcome);
+        failure = NOT_SAVED;
+      }
+    } else if (j.error && j.error.status !== 404) {
+      conv = {
+        ...conv,
+        messages: dropUnanswered(conv),
+        display: [
+          ...conv.display,
+          {
+            kind: 'error',
+            text: humanizeError(j.error, 'The assistant failed to answer.'),
+            createdAt: itemTime(),
+          },
+        ],
+      };
+    } else {
+      // The request is simply gone: the message stays unanswered and the
+      // tab offers to send it again. Gone from the server is not gone from
+      // the service, which may still write the answer (`followLate`).
+      gone = true;
+    }
+  } else {
+    conv = {
+      ...conv,
+      display: conv.display.map((d) =>
+        d.plan?.id === j.planId && d.status === null ? { ...d, interrupted: true } : d,
+      ),
+    };
+  }
+  return { conv, meta: buildMeta(store, meta, conv, service, null), failure, gone };
+};
+
 // However a job's stream ended, the record is the outcome: the service wrote
 // it before finishing. Read it back; if it still says this request is under
 // way, the service never got to write (it or the server went away, or the
@@ -403,54 +565,26 @@ const finishJob = async (j, store, service) => {
   }
   const stillOut = j.error?.pending === true;
   if (stillOut && j.kind === 'turn') notifyWarning(LOST_CONTACT, 'Assistant');
-  let failure = null;
   let gone = false;
-  if (!stillOut && meta?.pending?.requestId === j.requestId) {
-    if (j.kind === 'turn') {
-      // A stop the service ended the request on without writing the record
-      // (its result says `stopped`) is a stop like one this page saw.
-      if (j.stopped || j.outcome?.stopped || j.outcome?.kind === 'stopped') {
-        conv = {
-          ...conv,
-          messages: dropUnanswered(conv),
-          display: [
-            ...conv.display,
-            { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() },
-          ],
-        };
-      } else if (j.outcome?.kind === 'turn' && j.outcome.item) {
-        // The service has the answer and the record refused it: written here.
-        conv = withAnswer(conv, j.outcome);
-        failure = NOT_SAVED;
-      } else if (j.error && j.error.status !== 404) {
-        conv = {
-          ...conv,
-          messages: dropUnanswered(conv),
-          display: [
-            ...conv.display,
-            {
-              kind: 'error',
-              text: humanizeError(j.error, 'The assistant failed to answer.'),
-              createdAt: itemTime(),
-            },
-          ],
-        };
-      } else {
-        // The request is simply gone: the message stays unanswered and the
-        // tab offers to send it again. Gone from the server is not gone from
-        // the service, which may still write the answer (`followLate`).
-        gone = true;
-      }
+  const settled = stillOut ? null : settleJob(j, conv, meta, store, service);
+  if (settled) {
+    gone = settled.gone;
+    // Made again on the record as stored when another write landed first
+    // (the service's late answer, another tab): settled there only while it
+    // still names this request.
+    const written = await persistConv(store, settled.conv, settled.meta, {
+      // Nothing is added to an unanswered turn: its marker alone is cleared.
+      metaOnly: settled.gone,
+      ...(settled.failure ? { failure: settled.failure } : {}),
+      settles: j.requestId,
+      rebase: (fresh) => settleJob(j, fresh.conv, fresh.meta, store, service),
+    });
+    if (written?.declined) {
+      ({ conv, meta } = written.fresh);
+      gone = false;
     } else {
-      conv = {
-        ...conv,
-        display: conv.display.map((d) =>
-          d.plan?.id === j.planId && d.status === null ? { ...d, interrupted: true } : d,
-        ),
-      };
+      ({ conv, meta } = written || settled);
     }
-    meta = buildMeta(store, meta, conv, service, null);
-    await persistConv(store, conv, meta, failure ? { failure } : {});
   }
   j.done = true;
   j.result = { conv, meta };
@@ -492,6 +626,30 @@ export const aboutOf = (where) =>
     ? { [`${where.kind}Id`]: where.id, [`${where.kind}Name`]: where.name ?? null }
     : null;
 
+// The message `asked` (the display item) and `said` (the model's copy) after
+// the record as stored, for a send whose write was refused because another
+// landed first: an answer the service wrote after this page stopped waiting
+// for it stays, and the question goes after it. Null when the message no
+// longer goes there: a turn is under way (another tab asked), or it is a
+// retry, which is asked again only from a record the reader has seen.
+const askedAgain = (store, fresh, asked, said, service, meta) => {
+  if (!asked || asked.retry || fresh.meta?.pending) return null;
+  const has = fresh.conv.display.some(
+    (d) => d.kind === asked.kind && d.createdAt === asked.createdAt && d.text === asked.text,
+  );
+  const conv = has
+    ? fresh.conv
+    : {
+        ...fresh.conv,
+        messages: [...fresh.conv.messages, said],
+        display: [...fresh.conv.display, asked],
+      };
+  return {
+    conv,
+    meta: buildMeta(store, fresh.meta, conv, service, meta.pending, meta.about),
+  };
+};
+
 // Run one turn for `conv`, whose last message is the user's.
 export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
   const { client, projectId } = store;
@@ -530,9 +688,37 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
     // A message that did not reach the record is never sent: the service
     // reads the message FROM the record, so it would answer the one before.
     // The text goes back to the composer (`unsent`) rather than being lost.
-    if (!(await persistConv(store, conv, meta))) {
-      j.unsent = conv.display.at(-1)?.text ?? null;
+    const asked = conv.display.at(-1);
+    const saved = await persistConv(store, conv, meta, {
+      rebase: (fresh) => askedAgain(store, fresh, asked, conv.messages.at(-1), service, meta),
+    });
+    if (!saved) {
+      j.unsent = asked?.text ?? null;
       return finishJob(j, store, service);
+    }
+    if (saved.declined) {
+      // The record moved on under the message (a turn another tab started, or
+      // the answer a retry asks for landed): nothing is sent. The record is
+      // shown as it is, a turn under way there is followed, and a typed
+      // message goes back to the composer.
+      if (!asked?.retry) j.unsent = asked?.text ?? null;
+      j.declined = true;
+      j.done = true;
+      j.result = saved.fresh;
+      notifyJob(j);
+      jobs.delete(j.id);
+      notifyJob(j);
+      const { conv: now, meta: nowMeta } = saved.fresh;
+      if (nowMeta?.pending?.requestId && !jobFor(j.id))
+        attachJob({ store, conv: now, meta: nowMeta });
+      return j.result;
+    }
+    if (saved.conv !== conv) {
+      // Written after what landed since the page read the record (an answer
+      // the page had stopped waiting for): shown so while the turn runs.
+      j.conv = saved.conv;
+      j.rebased = true;
+      notifyJob(j);
     }
     await watch(j, () =>
       client.messages.requestService(
@@ -637,7 +823,27 @@ export const startApply = ({ store, service, conv, prevMeta, plan, asHuman, dock
     startedAt: new Date(j.startedAt).toISOString(),
   });
   j.promise = (async () => {
-    await persistConv(store, conv, meta, { metaOnly: true });
+    // Marked on the entry as stored, unless something else is under way there
+    // or the plan was decided meanwhile (another tab): then nothing is asked.
+    const saved = await persistConv(store, conv, meta, {
+      metaOnly: true,
+      rebase: (fresh) =>
+        fresh.meta?.pending || !undecided(fresh.conv, plan.id)
+          ? null
+          : {
+              conv: fresh.conv,
+              meta: buildMeta(store, fresh.meta, fresh.conv, service, meta.pending),
+            },
+    });
+    if (saved?.declined) {
+      j.declined = true;
+      j.done = true;
+      j.result = saved.fresh;
+      notifyJob(j);
+      jobs.delete(j.id);
+      notifyJob(j);
+      return j.result;
+    }
     await watch(j, () =>
       client.messages.requestService(
         projectId,
@@ -755,7 +961,16 @@ export const stopJob = async (client, projectId, j) => {
 // A conversation that has not been sent yet. It gets its id up front so it can
 // sit in the sidebar like any other, and turns into a saved one the moment the
 // first message goes out.
-export const newConversation = () => ({ id: newId(), messages: [], display: [], draft: true });
+//
+// Its first write names version 0, which only creates: an id is never taken
+// twice, so a record already there is another tab's.
+export const newConversation = () => ({
+  id: newId(),
+  messages: [],
+  display: [],
+  draft: true,
+  rev: { conv: 0, meta: 0 },
+});
 
 // The model that wrote the reply before this one. A conversation keeps the
 // assistant it started with, but that one can go offline and another answer

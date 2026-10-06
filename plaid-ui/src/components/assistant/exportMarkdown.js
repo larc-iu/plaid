@@ -125,13 +125,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       }
       if (d.plan)
         out.push(
-          planToMarkdown(
-            d.plan,
-            d.status,
-            !!d.interrupted,
-            d.outcome,
-            planProjectAt(display, i, projectName),
-          ),
+          planToMarkdown(d.plan, d.status, !!d.interrupted, d.outcome, planProjectAt(display, i)),
           '',
         );
     }

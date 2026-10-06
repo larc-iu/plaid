@@ -474,13 +474,18 @@ export const AssistantChat = ({
         // A message that could not be saved was not sent. It comes back to
         // the composer, unless the record kept it after all (then the tab
         // offers to send it again) or something new has been typed since.
-        if (j.unsent && j.result.conv.display.at(-1)?.kind !== 'user') {
+        if (j.unsent && (j.declined || j.result.conv.display.at(-1)?.kind !== 'user')) {
           setInput((typed) => typed || j.unsent);
         }
         // An answer that landed late (after the page stopped waiting for it)
         // arrives while the reader may be typing somewhere else.
         if (!j.late) inputRef.current?.focus();
       } else {
+        // The message went after what had landed meanwhile (`startTurn`).
+        if (j.rebased && activeRef.current !== j.conv) {
+          activeRef.current = j.conv;
+          setActive(j.conv);
+        }
         showJob(j);
       }
     };
@@ -499,8 +504,12 @@ export const AssistantChat = ({
   // Apply `fn` to the active conversation and persist the result. No service
   // is involved (discarding a plan is the user's own doing), so the
   // conversation keeps the assistant already recorded against it.
+  //
+  // `fn` answers null when it has nothing to change. Made again on the record
+  // as stored when another write landed first, and that copy is shown.
   const update = (fn) => {
     const next = fn(activeRef.current);
+    if (!next) return;
     activeRef.current = next;
     setActive(next);
     const meta = buildMeta(
@@ -510,7 +519,18 @@ export const AssistantChat = ({
       null,
     );
     applyMeta(meta);
-    persistConv(store, next, meta);
+    persistConv(store, next, meta, {
+      rebase: (fresh) => {
+        const c = fn(fresh.conv);
+        return c && { conv: c, meta: buildMeta(store, fresh.meta, c, null) };
+      },
+    }).then((written) => {
+      const shown = written?.declined ? written.fresh : written;
+      if (!shown || activeRef.current !== next || shown.conv === next) return;
+      activeRef.current = shown.conv;
+      setActive(shown.conv);
+      if (shown.meta) applyMeta(shown.meta);
+    });
   };
 
   const startNew = () => {
@@ -582,6 +602,14 @@ export const AssistantChat = ({
         activeRef.current = ahead.conv;
         setActive(ahead.conv);
         applyMeta(ahead.meta);
+        // A turn is under way there (asked in another tab): it is followed
+        // here, and the message waits in the composer.
+        if (ahead.meta?.pending?.requestId) {
+          if (!jobFor(base.id)) {
+            attachJob({ store, conv: base, meta: ahead.meta, docked: !toastOnApply });
+          }
+          return;
+        }
       }
     }
     const pending = retry ? [] : attachments;
@@ -617,6 +645,8 @@ export const AssistantChat = ({
     const joined = retry ? projects || [] : projectsToSend(reach, projectId);
     const conv = {
       id: base.id,
+      // The versions of the record the message is written over.
+      rev: base.rev,
       messages: [...base.messages, { role: 'user', content: text }],
       display: [
         ...base.display,
@@ -757,6 +787,12 @@ export const AssistantChat = ({
       activeRef.current = conv;
       setActive(conv);
       applyMeta(ahead.meta);
+      if (ahead.meta?.pending?.requestId) {
+        if (!jobFor(conv.id)) {
+          attachJob({ store, conv, meta: ahead.meta, docked: !toastOnApply });
+        }
+        return;
+      }
       const last = conv.display.at(-1)?.kind;
       if (last !== 'user' && last !== 'error') return;
     }
@@ -796,10 +832,27 @@ export const AssistantChat = ({
     );
   };
 
-  const discard = (index) =>
-    update((c) =>
-      settle(c, index, 'discarded', '(note) The user discarded the plan; nothing was changed.'),
-    );
+  // Found by its plan's id, on whichever copy the write is made (the record
+  // as stored, when another write landed first). An undecided plan is settled
+  // as discarded. An out-of-date one keeps that verdict (the record of an
+  // approval that was refused) and is marked dismissed. A plan decided
+  // meanwhile is left as it is.
+  const discard = (index) => {
+    const planId = activeRef.current?.display[index]?.plan?.id;
+    update((c) => {
+      const i = c.display.findIndex((d) => d.plan?.id === planId);
+      const d = c.display[i];
+      if (!d) return null;
+      if (d.status === 'stale') {
+        if (d.dismissed) return null;
+        const display = [...c.display];
+        display[i] = { ...d, dismissed: true, dismissedAt: itemTime() };
+        return { ...c, display };
+      }
+      if (d.status != null) return null;
+      return settle(c, i, 'discarded', '(note) The user discarded the plan; nothing was changed.');
+    });
+  };
 
   const display = active?.display || [];
   // A reply that lands is said once to a screen reader, from a region that is
@@ -964,7 +1017,7 @@ export const AssistantChat = ({
                   applying={!!d.plan && applyingPlanId === d.plan.id}
                   onApprove={(opts) => approve(d.plan, opts)}
                   onDiscard={() => discard(i)}
-                  planProject={planProjectAt(display, i, projectName)}
+                  planProject={planProjectAt(display, i)}
                   onOpenPlan={() =>
                     client.events?.record?.('plan.opened', {
                       projectId,

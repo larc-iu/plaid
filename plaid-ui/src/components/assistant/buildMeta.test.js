@@ -62,6 +62,6 @@ describe('readConv', () => {
   it('reads nothing back as nothing', async () => {
     const { meta, conv: read } = await readConv(store(), 'c1');
     expect(meta).toBeNull();
-    expect(read).toEqual({ id: 'c1', messages: [], display: [] });
+    expect(read).toEqual({ id: 'c1', messages: [], display: [], rev: { conv: 0, meta: 0 } });
   });
 });

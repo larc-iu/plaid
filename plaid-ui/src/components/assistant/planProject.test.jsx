@@ -16,19 +16,23 @@ const plan = {
   changes: [],
 };
 const other = [{ id: 'lmk', name: 'Lamkang-01 v2' }];
+const home = { id: 'kgv', name: 'Kalamang_v3' };
+// The service names the project only in a turn that read others.
 const display = (projects) => [
   { kind: 'user', text: 'Plan it.', ...(projects ? { projects } : {}) },
-  { kind: 'assistant', text: 'Planned.', plan, status: null },
+  {
+    kind: 'assistant',
+    text: 'Planned.',
+    plan: projects ? { ...plan, project: home } : plan,
+    status: null,
+  },
 ];
 
 describe('the project a plan writes in', () => {
   it('is named only where the turn read other projects', () => {
-    expect(planProjectAt(display(other), 1, 'Kalamang_v3')).toBe('Kalamang_v3');
-    expect(planProjectAt(display(null), 1, 'Kalamang_v3')).toBe(null);
-    const named = display(other);
-    named[1] = { ...named[1], plan: { ...plan, project: { id: 'kgv', name: 'Kalamang (v3)' } } };
-    expect(planProjectAt(named, 1, 'Kalamang_v3')).toBe('Kalamang (v3)');
-    expect(planProjectAt(display(other), 0, 'Kalamang_v3')).toBe(null);
+    expect(planProjectAt(display(other), 1)).toBe('Kalamang_v3');
+    expect(planProjectAt(display(null), 1)).toBe(null);
+    expect(planProjectAt(display(other), 0)).toBe(null);
   });
 
   it('is shown on the card and in the export', async () => {

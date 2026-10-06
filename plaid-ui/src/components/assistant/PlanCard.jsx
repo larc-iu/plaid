@@ -40,6 +40,9 @@ export const PlanCard = ({
   unwritten,
   unknown = false,
   recordedAsHuman,
+  // An out-of-date plan the reader discarded. It stays out of date (the
+  // record of an approval that was refused) and offers nothing more.
+  dismissed = false,
   interrupted,
   applying,
   canWrite,
@@ -238,7 +241,7 @@ export const PlanCard = ({
           <ChevronDown className="h-3 w-3" /> Show all {allRows.length}
         </button>
       )}
-      {stale && (
+      {stale && !dismissed && (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
             Changed since this plan was made. Ask again to plan on the current version.
