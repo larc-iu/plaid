@@ -524,6 +524,7 @@ A reply is written into the conversation as it arrives, and it lands whether or 
 **Stop** ends a turn early, even while the model is still working on its answer.
 The conversation then reads `You stopped this turn.` with **Retry**.
 A turn the model does not finish ends with the reason and **Retry**.
+Retry sends the question again below it. The attempt that did not finish stays in the conversation.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 

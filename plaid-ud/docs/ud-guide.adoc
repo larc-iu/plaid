@@ -438,6 +438,7 @@ A parse the assistant started that stops partway reads **Partly applied** too, w
 A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 **Stop** ends a turn early, even while the model is still working on its answer.
 The conversation then reads `You stopped this turn.` with **Retry**.
+Retry sends the question again below it. The attempt that did not finish stays in the conversation.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 

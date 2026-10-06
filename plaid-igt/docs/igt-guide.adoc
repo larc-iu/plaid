@@ -929,6 +929,7 @@ A reply is written into the conversation as it arrives, and it lands whether or 
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
 **Stop** ends a turn early, even while the model is still working on its answer.
 The conversation then reads `You stopped this turn.` with **Retry**.
+Retry sends the question again below it. The attempt that did not finish stays in the conversation.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 The tab opens on a new conversation. The list on the left holds the earlier ones, and each has its own link.
