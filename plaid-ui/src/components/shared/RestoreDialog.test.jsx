@@ -94,6 +94,39 @@ describe('RestoreDialog', () => {
     expect(byText(document.body, 'li', 'The text')).not.toBeNull();
   });
 
+  // What the app writes after a restore lands runs before the newest history
+  // entry is read for Undo, so Undo does not take it for an edit made since.
+  it('runs afterRestore once the restore lands, before reading the state Undo compares with', async () => {
+    const order = [];
+    const restore = vi.fn(async (_id, _at, opts) => {
+      if (!opts?.dryRun) order.push('restore');
+      return summary;
+    });
+    const audit = vi.fn().mockResolvedValue([]);
+    const auditPage = vi.fn(async () => {
+      order.push('latest');
+      return { entries: [{ time: 't' }] };
+    });
+    const afterRestore = vi.fn(async () => order.push('after'));
+    view = await renderComponent(
+      <RestoreDialog
+        open
+        onOpenChange={() => {}}
+        client={{ documents: { restore, audit, auditPage } }}
+        documentId="d1"
+        raw={{}}
+        roleWords={{}}
+        entry={entry}
+        onRestored={vi.fn().mockResolvedValue(undefined)}
+        afterRestore={afterRestore}
+      />,
+    );
+    await settle(view);
+    await view.step(() => byText(document.body, 'button', 'Restore').click());
+    await settle(view);
+    expect(order).toEqual(['latest', 'restore', 'after', 'latest']);
+  });
+
   it('heads each kind of change, and says a recording added since is not changed', async () => {
     const restore = vi.fn().mockResolvedValue({ texts: { inserted: 1 }, name: true });
     const audit = vi.fn().mockResolvedValue([

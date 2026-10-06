@@ -108,3 +108,18 @@ def test_an_answer_too_long_is_asked_for_in_halves():
                  source='s', label='l', project=load_project(c, 'p1'))
     assert asked == [['vi-head', 'vi-sense'], ['vi-head'], ['vi-sense']]
     assert _written(c) == [('m-1b', [{'op': 'set', 'path': ['morphType'], 'value': 'enclitic'}])]
+
+
+def test_a_restored_document_takes_the_types_its_entries_go_by_now():
+    """A restore brings morphemes back with the types they cached then. The
+    entry m-1b links to (vi-erg) goes by enclitic now, where m-1b caches
+    suffix, so the plan writes it after the restore."""
+    lex = lexicon_raw()
+    for it in lex['items']:
+        if it['id'] == 'vi-erg':
+            it['metadata']['morphType'] = 'enclitic'
+    c = FakeClient(lexicon=lex)
+    execute_plan(c, [{'kind': 'restore_document', 'document_id': 'd1',
+                      'as_of': '2026-01-01T00:00:00Z', 'label': ''}],
+                 source='s', label='l', project=load_project(c, 'p1'))
+    assert _written(c) == [('m-1b', [{'op': 'set', 'path': ['morphType'], 'value': 'enclitic'}])]

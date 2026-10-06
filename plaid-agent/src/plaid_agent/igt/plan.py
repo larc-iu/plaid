@@ -1441,6 +1441,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
             b.finish(op)
+        sync_restored_caches(client, project, [op['document_id'] for op in ctx.restores])
 
         # Text edits after the batches (which carry pre-edit offsets).
         # Region edits first, highest region first: each is re-verified
@@ -1624,6 +1625,42 @@ def sync_morph_type_caches(client, project, ops: List[Dict[str, Any]],
                 client.strict_mode_document_id = held
             written += len(plans)
     return written
+
+
+def sync_restored_caches(client, project, document_ids: List[str]) -> int:
+    """A restore brings a document's morphemes back with the type each
+    cached then, and the entry each is linked to may go by another type now.
+    Write on each linked morpheme of the restored documents the type its
+    entry goes by now where it caches another, as the app does after a
+    restore (``writeEntryTypes``). Returns how many it wrote."""
+    if not document_ids or project is None:
+        return 0
+    from .project import load_document
+    trees: Dict[str, Any] = {}
+    plans = []
+    for doc_id in dict.fromkeys(document_ids):
+        doc = load_document(client, project, doc_id)
+        for sentence in doc.sentences:
+            for word in sentence.words:
+                for m in word.morphemes:
+                    link = m.link
+                    if m.virtual or link is None or not link.item_id:
+                        continue
+                    if link.vocab_id not in trees:
+                        items = (client.vocab_layers.get(link.vocab_id, include_items=True) or {}).get('items') or []
+                        trees[link.vocab_id] = build_sense_tree(items)
+                    tree = trees[link.vocab_id]
+                    t = morph_type_of(tree, link.item_id) if link.item_id in tree.by_id else None
+                    if isinstance(t, str) and t and m.morph_type != t:
+                        plans.append({'id': m.id,
+                                      'metadata': [{'op': 'set', 'path': ['morphType'], 'value': t}]})
+    held, client.strict_mode_document_id = client.strict_mode_document_id, None
+    try:
+        for i in range(0, len(plans), CACHE_CHUNK):
+            client.tokens.bulk_update(plans[i:i + CACHE_CHUNK])
+    finally:
+        client.strict_mode_document_id = held
+    return len(plans)
 
 
 def _document_of_text(ops) -> Optional[str]:

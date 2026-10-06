@@ -402,6 +402,20 @@ describe('morph type from the linked lexicon entry', () => {
     expect(doc.vocabularies.v1.items[0].metadata.morphType).toBe('proclitic');
   });
 
+  // A restore brings a morpheme back with the type it cached then. After
+  // one, the type its entry goes by now is written on it, once.
+  it('writeEntryTypes writes the type a linked entry goes by where the morpheme caches another', async () => {
+    const doc = linkedDoc('enclitic');
+    expect(await doc.writeEntryTypes()).toBe(true);
+    const updates = doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate');
+    expect(updates.map((u) => u.args[0])).toEqual([
+      [{ id: 'm-2', metadata: [{ op: 'set', path: ['morphType'], value: 'enclitic' }] }],
+    ]);
+    expect(doc.sentences[0].tokens[0].morphemes[1].metadata.morphType).toBe('enclitic');
+    await doc.writeEntryTypes();
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate')).toHaveLength(1);
+  });
+
   // The other documents are written before the entry's batch, which the
   // server can still refuse: their copies then get back what they held.
   it('a refused entry write puts back the types written in other documents', async () => {

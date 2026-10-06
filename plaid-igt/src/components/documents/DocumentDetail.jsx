@@ -404,6 +404,12 @@ const DocumentEditor = () => {
         raw={liveDoc?.raw}
         canRestore={permissions.canManage && !writeLock.held}
         roleWords={TOKEN_ROLE_WORDS}
+        // The morphemes it brought back take the types their entries go
+        // by now (writeEntryTypes).
+        afterRestore={async () => {
+          await liveDoc?.reload();
+          await liveDoc?.writeEntryTypes();
+        }}
       />
 
       {/* History rail trigger (left edge). The assistant's rail is the same

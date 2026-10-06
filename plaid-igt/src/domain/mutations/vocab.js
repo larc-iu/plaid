@@ -570,6 +570,39 @@ export const vocabMutations = {
     });
   },
 
+  // After a restore, which brings this document's morphemes back with the
+  // type each cached then while the entry each is linked to may go by
+  // another now: write the type its entry goes by on each linked morpheme
+  // that caches another, in one operation. Writes nothing when none differs.
+  writeEntryTypes() {
+    const want = new Map();
+    for (const s of this.sentences || []) {
+      for (const t of s.tokens || []) {
+        for (const m of t.morphemes || []) {
+          const type = m.entryMorphType;
+          if (m.virtual || typeof type !== 'string' || !type) continue;
+          if (m.metadata?.morphType !== type) want.set(m.id, type);
+        }
+      }
+    }
+    if (!want.size) return Promise.resolve(true);
+    const label = 'Write morpheme types from lexicon entries';
+    if (!this._canWrite(label)) return Promise.resolve(false);
+    this._applyRawPatch((next, info) => {
+      (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
+        if (want.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: want.get(m.id) };
+      });
+    });
+    const plans = [...want].map(([id, morphType]) => ({
+      projectId: this._project?.id,
+      morphemeId: settledId(id),
+      morphType,
+    }));
+    return this._queueWrite(label, () =>
+      this._client.batched((b) => sendMorphTypeCaches(b, plans)),
+    );
+  },
+
   // Run `send(client)` with this document's client out of strict mode, for
   // writes to other documents in an edit's turn: a version of this document
   // claimed there would be refused. The write queue sends one edit at a time,

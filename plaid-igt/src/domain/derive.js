@@ -173,7 +173,8 @@ export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = fa
         // It also hides a copy left stale in a project the writer of the
         // entry could only read.
         morphType: effectiveMorphType(m.metadata, vocabItem, entryTypes),
-        // The entry's side of that alone.
+        // The entry's side of that alone, which a restore writes on the
+        // token (writeEntryTypes).
         entryMorphType: entryMorphType(vocabItem, entryTypes),
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);

@@ -8,6 +8,12 @@
 // layers of its own, `layerWords` (a layer's config -> [singular, plural], or
 // null to leave it out; see `indexLayers`). Everything else, down to the
 // wording of the toasts, is the same in every app.
+//
+// `afterRestore` is what an app writes once a restore, or its Undo, has
+// landed: a value its own writes keep in step that the restore brought back
+// as it was. It runs before the restore's newest history entry is read, so
+// the Undo does not take it for an edit made since. A failure there leaves
+// the restore as it landed.
 
 import { useEffect, useRef, useState } from 'react';
 import { readRole } from '@larc-iu/plaid-client';
@@ -44,6 +50,7 @@ export const RestoreDialog = ({
   layerWords,
   entry,
   onRestored,
+  afterRestore,
 }) => {
   const [preview, setPreview] = useState(null);
   // The recording's changes since the chosen moment (the document's audit,
@@ -56,6 +63,15 @@ export const RestoreDialog = ({
   // callback rather than the one it closed over.
   const onRestoredRef = useRef(onRestored);
   onRestoredRef.current = onRestored;
+  const afterRestoreRef = useRef(afterRestore);
+  afterRestoreRef.current = afterRestore;
+  const settle = async () => {
+    try {
+      await afterRestoreRef.current?.();
+    } catch (err) {
+      console.error('Writing after the restore failed:', err);
+    }
+  };
 
   // Bumped after a refused restore: that reloads the page, so the list of
   // changes is read again against what is now live.
@@ -125,12 +141,12 @@ export const RestoreDialog = ({
       });
       if (!ok) return;
     }
-    const run = client.documents.restore(
-      documentId,
-      before.time,
-      {},
-      historyMessage(before.time, before.label),
-    );
+    const run = client.documents
+      .restore(documentId, before.time, {}, historyMessage(before.time, before.label))
+      .then(async (res) => {
+        await settle();
+        return res;
+      });
     // The failure is already on screen as the toast, so swallow the rejection
     // rather than letting it surface a second time as an unhandled one.
     notifyPromise(
@@ -156,6 +172,7 @@ export const RestoreDialog = ({
         {},
         historyMessage(asOf, entry?.label),
       );
+      await settle();
       const message = res?.skipped?.length
         ? skippedLines(res.skipped).join(' ')
         : `Restored to ${fullTimestamp(asOf)}.`;
