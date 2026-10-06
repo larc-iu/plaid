@@ -110,7 +110,7 @@ Every field in a project belongs to exactly one scope, which decides which row o
 The **Documents** tab lists a project's texts with their word counts, when each was last changed by anyone, and when you last changed it yourself.
 Click a column heading to sort by it, and again to reverse it.
 Sorting by **Your last edit** is the quickest way back to what you were working on. A document you have never edited shows a dash.
-Opening a document does not count as changing it, even when a repair is made on opening.
+Opening a document does not change it.
 Once there are many, the list can be searched and paged.
 How a list is sorted is remembered for next time, and for the document list so is the page you were on, both per project.
 **New document** creates an empty document and opens it on its Baseline tab.
@@ -562,6 +562,7 @@ Every item in a vocabulary is an entry: a headword, or a sense under another ent
 A sense says where it sits on the line under its name: **Sense 1.2 of** its entry.
 Beside it, **Senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
 A sense with no morph type of its own goes by its headword's, on the interlinear line and in auto-linking alike.
+Setting an entry's type, or the headword a sense goes under, writes the type it goes by onto every morpheme linked to it and to its senses, in every project you can write.
 Senses are rearranged by dragging in that tree: drop one above or below another to reorder them, onto one to make it a sense of that sense, onto **Make separate entry** to make it an entry of its own, or onto **Move to other entry** and pick where it goes.
 A whole entry can be dragged the same way, senses and all.
 **Set parent** works for any entry, dragging or not.
@@ -1302,14 +1303,10 @@ An entry that is one of these kinds is marked with it:
 * **Bulk edit**: a change made in Bulk Edit.
 * **Guess taken**: a faint guess accepted.
 * **Review**: a proposal accepted as it stands.
-* **Repair**: a repair made when the document was opened.
+* **Repair**: a repair of the document's data, rather than an edit.
 
 The Activity tab marks its entries the same way.
 An Assistant plan that stopped partway is listed as `Assistant, partly applied:` followed by the changes it wrote.
-
-A repair is made when a document that needs one is opened.
-When someone saves while it is being made, it starts again by itself.
-If it fails again, or the server does not answer, a message asks you to reload the page.
 
 Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore**.
