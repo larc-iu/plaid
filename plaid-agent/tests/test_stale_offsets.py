@@ -242,14 +242,33 @@ def test_a_rebase_moves_creates_and_cuts_by_as_much_as_their_token():
 
 
 @pytest.mark.parametrize('extents', [{}, {'w': (13, 18)}, {'w': (13, 16)}])
-def test_a_rebase_refuses_a_token_gone_or_of_another_length(extents):
-    """Whatever let the plan through, a change planned over a token that is
+def test_a_rebase_refuses_a_create_over_a_token_gone_or_of_another_length(extents):
+    """Whatever let the plan through, a create planned over a token that is
     gone or no longer as long never lands on other text."""
     from plaid_agent.core.plan import PlanOutOfDate
-    for op in ({'kind': 'make', 'word_id': 'w', 'begin': 10, 'end': 14},
-               {'kind': 'cut', 'word_id': 'w', 'position': 12, 'token_at': {'begin': 10, 'end': 14}}):
-        with pytest.raises(PlanOutOfDate):
-            fp.rebase_offsets(_Client(extents), _REG, [op])
+    with pytest.raises(PlanOutOfDate):
+        fp.rebase_offsets(_Client(extents), _REG, [{'kind': 'make', 'word_id': 'w', 'begin': 10, 'end': 14}])
+
+
+def test_a_cut_is_refused_only_when_its_token_is_gone():
+    """A run applied again after its own cut landed finds the token already
+    cut, and sends the cut where its first run did."""
+    from plaid_agent.core.plan import PlanOutOfDate
+    cut = {'kind': 'cut', 'word_id': 'w', 'position': 12, 'token_at': {'begin': 10, 'end': 14}}
+    with pytest.raises(PlanOutOfDate):
+        fp.rebase_offsets(_Client({}), _REG, [cut])
+    [again] = fp.rebase_offsets(_Client({'w': (10, 12)}), _REG, [cut])
+    assert again['position'] == 12
+
+
+def test_a_document_a_change_pins_whole_is_left_as_planned():
+    """A text edit in the plan pins its document, so nothing in it moved but
+    by the plan's own writes: a run again after its text edit landed sends
+    its creates as its first run did."""
+    ops = [{'kind': 'make', 'word_id': 'w', 'begin': 10, 'end': 14, 'text_id': 't1'},
+           {'kind': 'edit', 'text_id': 't1', 'begin': 2, 'end': 3}]
+    made, _ = fp.rebase_offsets(_Client({'w': (11, 15)}), _REG, ops)
+    assert (made['begin'], made['end']) == (10, 14)
 
 
 def test_a_sentence_print_counts_offsets_from_the_sentence():

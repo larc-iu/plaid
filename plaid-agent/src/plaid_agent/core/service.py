@@ -82,8 +82,8 @@ from .conversation import (ConversationStore, MissingConversation, assistant_ite
                            find_plan, partial_note, partial_tally, pending_kept, plan_settling,
                            proposed_changes, prune, record_budget, turn_ending)
 from .opkind import ROW
-from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, drawable,
-                   forget_held, held_from, holding, outcome_unknown)
+from .plan import (HELD_FROM, DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock,
+                   drawable, forget_held, held_from, holding, outcome_unknown)
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -1196,7 +1196,15 @@ def stale_documents(client, documents: list, reread=None) -> list:
     moved: ``reread(document_id)`` gives the fingerprints as they are now, and
     only those sentences are compared, so an edit elsewhere in the document
     does not refuse the plan (ruled 2026-09-28). Without a list, or
-    without ``reread``, the version alone decides, as it always did."""
+    without ``reread``, the version alone decides, as it always did.
+
+    A document an earlier run of the plan held (``held_from``) is not
+    compared: that run may have written to it, which moves its version and
+    changes its sentences, and the check would refuse the run again saying
+    nothing was written. The run again holds it at the version the first run
+    held it at, so what landed is answered from its first send, and what did
+    not claims the version the answers leave, which the server refuses if
+    anyone else has written since."""
     out = []
     for d in documents:
         # A record with no id or no version cannot be checked, and skipping it
@@ -1215,7 +1223,7 @@ def stale_documents(client, documents: list, reread=None) -> list:
         except Exception as e:  # noqa: BLE001 - deleted or unreadable: the plan cannot apply
             out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
             continue
-        if now.get('version') == d['version']:
+        if now.get('version') == d['version'] or d.get(HELD_FROM) is not None:
             continue
         named = _named(now.get('name') or d.get('name'))
         changed = None

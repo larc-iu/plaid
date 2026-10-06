@@ -252,12 +252,23 @@ def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) ->
 
     Approval has already compared the pinned sentences, so a token in one of
     them is where it was, relative to its sentence. A token that is gone, or
-    whose length is not the length the plan read, is refused
+    one a create stands on that is not the length the plan read, is refused
     (:class:`~plaid_agent.core.plan.PlanOutOfDate`) before anything is
     written, whatever let it through: a change made for other text never
-    lands on this text."""
+    lands on this text. A cut moves by as much as its token's start has, and
+    is not asked its token's length, since a run applied again after its own
+    cut landed finds the token already cut.
+
+    A document any change of the plan pins whole (:func:`offsets_follow`) is
+    left as planned: approval refused it after any edit, so nothing in it has
+    moved but by the plan's own writes, and a run applied again after its own
+    text edit landed must send its earlier requests as they were first sent."""
     from .plan import PlanOutOfDate
-    wanted = [offset_anchors(reg, op) for op in ops]
+    whole = set()
+    for op in ops:
+        if not offsets_follow(reg, op):
+            whole |= _documents(op)
+    wanted = [[] if _documents(op) & whole else offset_anchors(reg, op) for op in ops]
     extents: Dict[str, Optional[tuple]] = {}
     for pairs in wanted:
         for _, tid in pairs:
@@ -277,7 +288,8 @@ def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) ->
                 was = _span(op.get(place))
             if was is None:
                 continue
-            if extent is None or extent[1] - extent[0] != was[1] - was[0]:
+            cut = place in POSITION_KEYS or place == TOKEN_AT
+            if extent is None or (not cut and extent[1] - extent[0] != was[1] - was[0]):
                 raise PlanOutOfDate([MOVED])
             if place in POSITION_KEYS:
                 if _whole(op.get(place)):
@@ -288,6 +300,12 @@ def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) ->
                 now[place] = {**now[place], 'begin': extent[0], 'end': extent[1]}
         out.append(now)
     return out
+
+
+def _documents(op: Dict[str, Any]) -> Set[str]:
+    """What names the document a change lands in, under any of the keys the
+    apps write it under (its id, or its text's)."""
+    return {str(op[k]) for k in ('document_id', 'doc', 'text_id') if isinstance(op.get(k), str)}
 
 
 def _whole(value: Any) -> bool:
