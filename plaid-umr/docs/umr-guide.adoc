@@ -492,6 +492,8 @@ Everyone in the project can open both copies.
 The **Assistant** tab is a chat with a language model that knows your project.
 Ask it which events still lack `:aspect`, what the document graph says about a sentence, or to summarize the concepts used across the corpus.
 It reads the documents and their graphs, the search results, the project's guidelines, the comments and the history to answer, and it shows what it read.
+A sentence holding more than one graph is read whole, as Text mode shows it.
+A graph the assistant rewrites as text is the root's, and the parts the root does not reach stay as they are.
 Steps it could not make are shown in red and are not counted.
 
 When you ask it to change something, it does not touch the data.
@@ -512,8 +514,10 @@ When the people running the site's assistant have said, the panel shows their st
 Otherwise, ask the site's administrators.
 
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
-An edit to another sentence does not stop it, even one that adds or removes letters before the plan's sentences, and an edit to a sentence's glosses in Plaid IGT counts as an edit to that sentence.
+An edit to another sentence does not stop it, even one that adds or removes letters before the plan's sentences, and an edit to a sentence's glosses counts as an edit to that sentence.
 A change to every node of a concept, and a plan that adds a document-level constant such as `author`, are refused after any edit to their document.
+An out-of-date plan can still be discarded, which removes its buttons and leaves it marked **Out of date**.
+Ask again to have it planned on the current text.
 Approving a plan on a document that another run (Draft, a parser) is writing to is refused with nothing written. Approve again once the run has finished.
 A plan approved in two tabs at once is applied once. The other tab shows it applied when the first has finished.
 
@@ -521,12 +525,25 @@ A plan that stops partway reads **Partly applied**, with how many of its changes
 Ask the assistant to finish it.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
+If the server restarts while the assistant works, the answer appears when it is ready, and **Retry** then shows it rather than asking again.
+A message sent while a turn asked in another tab is still under way in the same conversation is not sent.
+It stays in the message box, and that turn's answer is shown when it comes.
 **Stop** ends a turn early, even while the model is still working on its answer.
 The conversation then reads `You stopped this turn.` with **Retry**.
 A turn the model does not finish ends with the reason and **Retry**.
 Retry sends the question again below it. The attempt that did not finish stays in the conversation.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
+The Markdown names the files attached to each question and the PDFs a reply fetched.
 Your server's administrator can read them.
+Deleting a conversation asks first, and cannot be undone. What its plans applied stays.
+
+== Other projects
+
+Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other projects you can open, to compare or to look something up there.
+Each project added is shown above the message box, and each question shows the projects it was sent with.
+The assistant only reads them.
+It plans changes in the conversation's own project, and a change asked for in another project is not planned: the assistant says it can plan changes in this project only.
+In such a conversation, a plan names the project it changes.
 
 == Files and PDFs
 
