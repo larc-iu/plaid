@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman
 from plaid_client.workflows.umr.graph import next_order
 
+from .plan import attr_line
 from .project import Sentence, UmrDoc, UmrProject, attrs_change, penman_of, reachable_from_root
 
 
@@ -257,7 +258,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         if changed_attrs:
             updates.append({
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.index}.{var}',
-                'span_id': old.id, 'var': var, 'attrs': attrs,
+                'span_id': old.id, 'var': var, 'attrs': attrs, 'attr_line': attr_line(attrs),
                 'umr_set': {'attrs': attrs},
                 'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
 

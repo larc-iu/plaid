@@ -28,7 +28,7 @@ from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
-from .plan import (GRAPH_KINDS, KIND, attrs_scope_held, attrs_scope_targets, graphs_of_op, holds,
+from .plan import (GRAPH_KINDS, KIND, attr_line, attrs_scope_held, attrs_scope_targets, graphs_of_op, holds,
                    replacing_phrase, sentence_graph_key)
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject, attrs_change,
                       gloss_headers, group_of, load_document, node_ref, place_attributes,
@@ -418,6 +418,11 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
         raise ToolError('Give text: the sentence graph in PENMAN, starting at its root node.')
     diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true')
     if diff.errors:
+        if 'after the topmost closing bracket' in diff.errors[0]:
+            # Copied whole from a read of a sentence holding several graphs.
+            raise ToolError('The text holds more than one graph. apply_penman takes the root\'s graph '
+                            'alone, the first one read_document prints, and leaves the parts after it '
+                            'as they are: give that one only.')
         raise ToolError('The graph could not be read. ' + diff.errors[0])
     if diff.refused:
         raise ToolError(diff.refused)
@@ -436,7 +441,27 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
     return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.index} in "{doc.name}" '
-            f'({what}).' + kept)
+            f'({what}).' + _removals(diff.ops) + kept)
+
+
+# How many of a plan's removals a tool result names before it counts the rest.
+REMOVALS_SHOWN = 20
+
+
+def _removals(ops: List[Dict[str, Any]]) -> str:
+    """What the staged changes take away, in the card's own words: a node
+    removed with the document-level relations it takes, a relation removed,
+    an attribute a node's new line drops. The count of changes alone left the
+    model telling the user it had added an attribute where the card said it
+    removed another one."""
+    gone = [str(op.get('label')) for op in ops
+            if op.get('label') and 'remove' in str(op.get('label'))]
+    if not gone:
+        return ''
+    shown = gone[:REMOVALS_SHOWN]
+    more = len(gone) - len(shown)
+    return (' It removes: ' + '; '.join(shown)
+            + (f'; and {more} more' if more else '') + '.')
 
 
 def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: str = None,
@@ -458,9 +483,12 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     ws.add_ops(_staged([{
         'kind': 'set_attrs', 'document_id': doc.id, 'ref': node_ref(s, node),
         'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
-        'attrs': placed, 'umr_set': {'attrs': placed},
+        'attrs': placed, 'attr_line': attr_line(placed), 'umr_set': {'attrs': placed},
         'label': f'{node.var}: {attrs_change(node.attrs, placed)}'}]))
-    return f'Planned the attributes of {node.var} in s{s.index}: {shown}.'
+    # What changes, as the card says it, so a line that drops an attribute the
+    # model did not write says so.
+    return (f'Planned the attributes of {node.var} in s{s.index}: {shown} '
+            f'({attrs_change(node.attrs, placed)}).')
 
 
 def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: str = None,

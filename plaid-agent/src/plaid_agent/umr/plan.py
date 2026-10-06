@@ -247,6 +247,14 @@ def replacing_phrase(targets, rel: str) -> str:
     return ', '.join(f'{v} on {n}' for v, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+def attr_line(attrs) -> str:
+    """A node's attributes as one line, ``:aspect state :polarity -``, empty
+    for none. A set_attrs change carries it (``attr_line``) so a settled plan
+    keeps what the attributes became (``proposed``), where its ``attrs`` list
+    is not kept."""
+    return ' '.join(f'{a.get("rel")} {a.get("value")}' for a in attrs or [])
+
+
 def _resolve_attrs_scope(res: Resolution, op):
     did = op['document_id']
     doc = res.document(did)
@@ -255,7 +263,8 @@ def _resolve_attrs_scope(res: Resolution, op):
         shown = f'{rel} {value}' if value else f'{rel} removed'
         yield {'kind': 'set_attrs', 'document_id': did, 'ref': node_ref(s, node),
                'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
-               'attrs': placed, 'umr_set': {'attrs': placed}, 'label': f'{node.var}: {shown}'}
+               'attrs': placed, 'attr_line': attr_line(placed), 'umr_set': {'attrs': placed},
+               'label': f'{node.var}: {shown}'}
 
 
 def _attrs_scope_summary(op, n):
@@ -363,7 +372,7 @@ KIND = ok.registry([
            compact_label=_kind_label('change', ('concept', 'concepts'))),
     OpKind('set_attrs', _ATTRS, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),
-           compact_each=('span_id', 'var', 'attrs', 'umr_set', 'ref', 'label'),
+           compact_each=('span_id', 'var', 'attrs', 'attr_line', 'umr_set', 'ref', 'label'),
            compact_label=_kind_label('set attributes on', ('node', 'nodes'))),
     # A variable typed over in a graph text and read as a rename: the new name
     # written on the node itself, as Text mode writes it, so the node keeps its

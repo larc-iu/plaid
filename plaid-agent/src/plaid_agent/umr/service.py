@@ -43,10 +43,11 @@ class AssistantService(BaseAssistantService):
     reference_shape = 'a bare reference like s3 or s3.s3e'
     # What a proposed change is kept as once its plan is settled: the node or
     # relation it lands on (an edge at its source, a new node at its sentence),
-    # and its new value.
+    # and its new value (a node's attributes as one line, empty when a change
+    # removes them all).
     proposed_keys = (('span_id', 'relation_id', 'token_ids', 'source_span_id', 'guideline_id', 'entity_id',
                       'sentence_id', 'document_id', 'text_id'),
-                     ('value', 'concept', 'role', 'rel', 'order', 'title', 'body', 'as_of'),
+                     ('value', 'concept', 'role', 'rel', 'attr_line', 'order', 'title', 'body', 'as_of'),
                      # The second thing a relation joins: its target node
                      # (None for a node the plan makes).
                      {'create_edge': 'target_span_id', 'create_triple': 'target_span_id'})

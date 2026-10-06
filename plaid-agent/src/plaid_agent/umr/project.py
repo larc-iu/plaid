@@ -21,7 +21,7 @@ from plaid_client.workflows.umr import (
     MISSING, Morpheme, Piece, Triple, UMR_NAMESPACE as UMR, UmrLayers, Word,  # noqa: F401
     alignment_of, gloss_values, group_of, next_order, penman_nodes, penman_of,  # noqa: F401
     place_attributes, project_language, read_document, reachable_from_root,  # noqa: F401
-    resolve_layers, roots_of, umr_config, with_attribute)  # noqa: F401
+    resolve_layers, roots_of, sentence_penman, umr_config, with_attribute)  # noqa: F401
 # A GRAPH node, kept apart from a PENMAN node by name because both appear in
 # the same modules here.
 from plaid_client.workflows.umr import Node as GNode, Sentence, UmrDocument as UmrDoc
@@ -251,9 +251,18 @@ def render_sentence(doc: UmrDoc, sentence: Sentence, *, lines: Optional[List[dic
         lang = line.get('lang')
         out.append(f'{label}{f" ({lang})" if lang else ""}: ' + ' '.join(str(i) for i in line.get('items') or []))
     if graph:
-        text = penman_of(doc, sentence)
+        # Every node, as the app's Text mode shows them: the root's graph,
+        # then each part the root does not reach (a node added on the canvas
+        # with no parent, a sentence joined to this one in another app).
+        text = sentence_penman(doc, sentence)
         if text:
-            out.append('Graph:')
+            graphs = len(text.split('\n\n'))
+            if graphs > 1:
+                out.append(f'Graph: this sentence holds {graphs} graphs. The first is the root\'s, and '
+                           f'each after it is a part the root does not reach. apply_penman takes the '
+                           f'root\'s graph alone and leaves the others as they are.')
+            else:
+                out.append('Graph:')
             out.append(text)
             out.append('Alignment: ' + (_alignment_line(sentence) or '(nothing aligned)'))
         elif sentence.raw_graph:
