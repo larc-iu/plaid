@@ -212,7 +212,7 @@ Uploading and deleting a document's recording are recorded too, as operations of
 A delete may name the recording it means with `media-version`, the `?v=` of the document's `media-url` (`mediaVersion` / `media_version` in the clients). It is refused with 409, `media-changed` and the current `media-url` when the stored recording is another one, so a page still showing a replaced recording cannot delete its replacement.
 An upload to a document that already has a recording is refused with 409, `media-exists` and the current `media-url`.
 An upload that is not audio or video is refused with 415.
-So is a WAV whose samples are not PCM or float, such as IMA or Microsoft ADPCM, GSM 6.10 or A-law, since browsers cannot play one.
+So is a WAV whose samples are not PCM, 32-bit float, A-law or mu-law, such as IMA or Microsoft ADPCM, GSM 6.10 or 64-bit float, since browsers cannot play one.
 The `error` names its coding.
 Audit history is retained indefinitely — it is both the forensic record and the source for document time travel (see below), so pruning it trades away history. Operators monitor disk via the `/health` endpoint's `audit` block.
 
@@ -1675,6 +1675,8 @@ Both clients raise when such a call is made on a batch, before anything is sent,
 A batch of many single updates is expensive: every request in it is processed on its own inside the one transaction, and each writes its own operation.
 When the changes are all of one kind, use the bulk endpoints instead, which apply a whole list in one operation and one transaction.
 `bulk_create` and `bulk_delete` exist for tokens, spans, relations, vocab links and vocab items.
+A bulk delete skips an id that is already deleted and deletes the rest, and one whose ids are all deleted answers 204 and changes nothing, alone or in a batch.
+An id that still exists in a project you cannot write refuses the whole list with 403.
 `bulk_update` exists for spans and relations (a value, metadata ops, or both, per entry), for tokens (metadata ops per entry) and for vocab items (a form, metadata ops, or both, per entry):
 
 [,python]

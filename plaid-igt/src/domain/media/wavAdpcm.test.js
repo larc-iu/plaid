@@ -102,9 +102,65 @@ describe('ADPCM WAV to PCM', () => {
   });
 });
 
+/** A WAV of `tag` at `bits`, whose fmt chunk is `fmtBody` when given. */
+function wavOf({ tag, bits, channels = 1, data = new Uint8Array(0), fmtBody = null }) {
+  const fmt = fmtBody ?? new Uint8Array(16);
+  if (!fmtBody) {
+    const v = new DataView(fmt.buffer);
+    v.setUint16(0, tag, true);
+    v.setUint16(2, channels, true);
+    v.setUint32(4, 8000, true);
+    v.setUint32(8, (8000 * channels * bits) / 8, true);
+    v.setUint16(12, (channels * bits) / 8, true);
+    v.setUint16(14, bits, true);
+  }
+  const bytes = new Uint8Array(12 + 8 + fmt.length + 8 + data.length);
+  const v = new DataView(bytes.buffer);
+  const id = (at, s) => [...s].forEach((c, i) => (bytes[at + i] = c.charCodeAt(0)));
+  id(0, 'RIFF');
+  v.setUint32(4, bytes.length - 8, true);
+  id(8, 'WAVE');
+  id(12, 'fmt ');
+  v.setUint32(16, fmt.length, true);
+  bytes.set(fmt, 20);
+  id(20 + fmt.length, 'data');
+  v.setUint32(24 + fmt.length, data.length, true);
+  bytes.set(data, 28 + fmt.length);
+  return bytes;
+}
+
 describe('wavVerdict', () => {
   it('plays PCM', async () => {
     expect(wavVerdict(await readWavInfoFromBytes(fixture('pcm.wav')))).toBe('play');
+  });
+
+  it('plays 32-bit float, A-law and mu-law, which Chrome and Firefox play', async () => {
+    for (const [tag, bits] of [
+      [3, 32],
+      [6, 8],
+      [7, 8],
+    ]) {
+      expect(wavVerdict(await readWavInfoFromBytes(wavOf({ tag, bits })))).toBe('play');
+    }
+  });
+
+  it('converts 64-bit float, which Chrome does not play, to 16-bit PCM', async () => {
+    const floats = new Float64Array([0, 0.5, -0.5, 1, -1, 2, -2, NaN]);
+    const bytes = wavOf({ tag: 3, bits: 64, data: new Uint8Array(floats.buffer) });
+    const info = await readWavInfoFromBytes(bytes);
+    expect(wavVerdict(info)).toBe('convert');
+    expect(wavCodingName(info.tag, info.bitsPerSample)).toBe('64-bit float');
+    const got = await pcmOf(adpcmWavToPcm(info, bytes));
+    expect(Array.from(got.samples)).toEqual([0, 16384, -16383, 32767, -32767, 32767, -32768, 0]);
+    expect(got.sampleRate).toBe(8000);
+  });
+
+  it('refuses an extensible fmt chunk too short to name its subformat', async () => {
+    const fmtBody = new Uint8Array(18);
+    new DataView(fmtBody.buffer).setUint16(0, 0xfffe, true);
+    const info = await readWavInfoFromBytes(wavOf({ fmtBody }));
+    expect(wavVerdict(info)).toBe('refuse');
+    expect(wavCodingName(info.tag, info.bitsPerSample)).toBe('format 0xfffe');
   });
 
   it('refuses codings it cannot decode, by name', async () => {

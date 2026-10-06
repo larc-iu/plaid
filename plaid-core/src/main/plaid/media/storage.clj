@@ -198,16 +198,18 @@
    0x0055 "MP3"})
 
 (def ^:private playable-wav-tags
-  "WAV format tags browsers play: PCM (1) and IEEE float (3)."
-  #{0x0001 0x0003})
+  "WAV format tags Chrome and Firefox play: PCM (1), IEEE float (3, 32-bit
+  only, see `unplayable-wav-error`), A-law (6) and mu-law (7)."
+  #{0x0001 0x0003 0x0006 0x0007})
 
 (def ^:private wave-format-extensible 0xFFFE)
 
-(defn wav-format
-  "The format tag a RIFF/WAVE file's `fmt ` chunk declares, or nil when the
-  file is not a WAV or has no readable `fmt ` chunk. For WAVE_FORMAT_EXTENSIBLE
-  the tag is the subformat's (the first two bytes of its GUID), which is what
-  says how the samples are coded. Reads only the chunk headers."
+(defn wav-coding
+  "The coding a RIFF/WAVE file's `fmt ` chunk declares, as `{:tag :bits}`, or
+  nil when the file is not a WAV or has no readable `fmt ` chunk. For
+  WAVE_FORMAT_EXTENSIBLE the tag is the subformat's (the first two bytes of its
+  GUID), which is what says how the samples are coded. `:bits` is the bits a
+  sample, nil when the chunk is too short to say. Reads only the chunk headers."
   [^File file]
   (try
     (with-open [raf (java.io.RandomAccessFile. file "r")]
@@ -236,23 +238,35 @@
                         (let [body (byte-array (min size 40 (- len at 8)))]
                           (.readFully raf body)
                           (let [tag (u16 body 0)]
-                            (if (and (= tag wave-format-extensible) (>= (alength body) 26))
-                              (u16 body 24)
-                              tag))))
+                            {:tag (if (and (= tag wave-format-extensible) (>= (alength body) 26))
+                                    (u16 body 24)
+                                    tag)
+                             :bits (when (>= (alength body) 16) (u16 body 14))})))
                       (recur (+ at 8 size (mod size 2))))))))))))
     (catch Exception e
       (log/warn "Could not read a WAV header:" (.getMessage e))
       nil)))
 
+(defn wav-format
+  "The format tag of a WAV (see `wav-coding`), or nil when `file` is not one."
+  [^File file]
+  (:tag (wav-coding file)))
+
 (defn unplayable-wav-error
   "The refusal for a WAV whose samples browsers cannot decode, or nil when
-  `file` is not a WAV or is PCM or float. Tika names every WAV audio/wav
-  whatever its coding, and an IMA ADPCM one was stored and then never played."
+  `file` is not a WAV or is one they play. Tika names every WAV audio/wav
+  whatever its coding, and an IMA ADPCM one was stored and then never played.
+  Float is played at 32 bits only: Chrome has no decoder for 64-bit float."
   [file]
-  (when-let [tag (wav-format file)]
-    (when-not (contains? playable-wav-tags tag)
-      (str "WAV encoded as " (get wav-format-names tag (str "format " tag))
-           " cannot be played in a browser. Only PCM and float WAV are accepted."))))
+  (when-let [{:keys [tag bits]} (wav-coding file)]
+    (when-let [coding (cond
+                        (not (contains? playable-wav-tags tag))
+                        (get wav-format-names tag (str "format " tag))
+
+                        (and (= tag 0x0003) (= bits 64))
+                        "64-bit float")]
+      (str "WAV encoded as " coding " cannot be played in a browser. "
+           "Only PCM, 32-bit float, A-law and mu-law WAV are accepted."))))
 
 (defn validate-media-file
   "Validate a media file using Tika content detection"

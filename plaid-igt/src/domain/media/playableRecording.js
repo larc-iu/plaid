@@ -3,10 +3,10 @@
 //
 // Every path that uploads a recording passes it through here when it is
 // chosen: the Media tab, and each importer's recordings. A WAV is decided by
-// its `fmt ` chunk (wavAdpcm.js): PCM and float go as they are, IMA and MS
-// ADPCM are decoded to a 16-bit PCM WAV of the same rate and channels (the
-// same length, so no time in the document moves), and any other coding is
-// refused by name. Anything else is asked of a media element.
+// its `fmt ` chunk (wavAdpcm.js): PCM, 32-bit float, A-law and mu-law go as
+// they are, IMA and MS ADPCM and 64-bit float are decoded to a 16-bit PCM WAV
+// of the same rate and channels (the same length, so no time in the document
+// moves), and any other coding is refused by name. Anything else is asked of a media element.
 
 import { adpcmWavToPcm, readWavInfo, wavCodingName, wavVerdict } from './wavAdpcm.js';
 import { bareMediaType, mediaTypeForName } from './mediaTypes.js';
@@ -73,13 +73,23 @@ export async function prepareRecording(file, { canPlay = browserCanPlay } = {}) 
     const verdict = wavVerdict(info);
     if (verdict === 'play') return { file, convertedFrom: null };
     if (verdict === 'convert') {
-      const pcm = adpcmWavToPcm(info, new Uint8Array(await file.arrayBuffer()));
-      return {
-        file: new File([pcm], name, { type: 'audio/wav', lastModified: file.lastModified }),
-        convertedFrom: wavCodingName(info.tag),
-      };
+      // A file that cannot be read, or too large to decode in this tab's
+      // memory, is refused like one that cannot be decoded at all, so the
+      // person is told instead of the choice coming to nothing.
+      try {
+        const pcm = adpcmWavToPcm(info, new Uint8Array(await file.arrayBuffer()));
+        return {
+          file: new File([pcm], name, { type: 'audio/wav', lastModified: file.lastModified }),
+          convertedFrom: wavCodingName(info.tag, info.bitsPerSample),
+        };
+      } catch (error) {
+        console.error('Converting a recording failed:', error);
+        return { refused: `${name} could not be converted to PCM WAV.` };
+      }
     }
-    return { refused: `${name} cannot be played in a browser (${wavCodingName(info.tag)} WAV).` };
+    return {
+      refused: `${name} cannot be played in a browser (${wavCodingName(info.tag, info.bitsPerSample)} WAV).`,
+    };
   }
   if (await canPlay(file)) return { file, convertedFrom: null };
   return { refused: `${name} cannot be played in this browser.` };
@@ -111,5 +121,5 @@ export function convertedNote(converted) {
   if (converted.length === 1) {
     return `Converted ${converted[0].name} from ${converted[0].from} to PCM WAV.`;
   }
-  return `Converted ${converted.length} recordings from ADPCM to PCM WAV.`;
+  return `Converted ${converted.length} recordings to PCM WAV.`;
 }

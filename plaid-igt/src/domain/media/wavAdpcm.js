@@ -1,11 +1,12 @@
-// Reading a WAV's coding, and turning an ADPCM one into 16-bit PCM.
+// Reading a WAV's coding, and turning an ADPCM or 64-bit float one into
+// 16-bit PCM.
 //
-// Browsers play a WAV only when its samples are PCM or float. An ADPCM one
-// (IMA, as ELAN and many field recorders write, or Microsoft's) is accepted
-// by the server's content check like any other WAV and then never plays: the
-// media element fails without a word. The recording is therefore decoded
-// here, before it is uploaded, into a PCM WAV of the same rate and channels,
-// so every time in it stays where it was.
+// Chrome and Firefox play a WAV only when its samples are PCM, 32-bit float,
+// A-law or mu-law. An ADPCM one (IMA, as ELAN and many field recorders write,
+// or Microsoft's) was accepted by the server's content check like any other
+// WAV and then never played: the media element fails without a word. The
+// recording is therefore decoded here, before it is uploaded, into a PCM WAV
+// of the same rate and channels, so every time in it stays where it was.
 //
 // Pure: no DOM, so the importers can use it on archive bytes and the tests run
 // in node. The reference the decoders are tested against is libsndfile's
@@ -14,6 +15,8 @@
 const WAV_PCM = 0x0001;
 export const WAV_MS_ADPCM = 0x0002;
 const WAV_FLOAT = 0x0003;
+const WAV_ALAW = 0x0006;
+const WAV_MULAW = 0x0007;
 export const WAV_IMA_ADPCM = 0x0011;
 const WAV_EXTENSIBLE = 0xfffe;
 
@@ -30,8 +33,10 @@ const CODING_NAMES = {
 };
 
 /** A name for a WAV coding a person may recognize, for a refusal. */
-export const wavCodingName = (tag) =>
-  CODING_NAMES[tag] ?? `format 0x${tag.toString(16).padStart(4, '0')}`;
+export const wavCodingName = (tag, bitsPerSample = null) =>
+  tag === WAV_FLOAT && bitsPerSample === 64
+    ? '64-bit float'
+    : (CODING_NAMES[tag] ?? `format 0x${tag.toString(16).padStart(4, '0')}`);
 
 const ascii = (bytes, at) =>
   String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);
@@ -93,10 +98,11 @@ function parseFmt(body) {
   if (formatTag === WAV_EXTENSIBLE) {
     // wValidBitsPerSample / wSamplesPerBlock, dwChannelMask, then the GUID,
     // whose first two bytes are the coding's tag.
+    // Too short to name its subformat: refused as what it says it is.
     if (extra.length < 22)
       return {
         formatTag,
-        tag: null,
+        tag: formatTag,
         channels,
         sampleRate,
         blockAlign,
@@ -135,13 +141,16 @@ function parseFmt(body) {
 
 /**
  * What to do with a WAV of this coding:
- *   'play'    — PCM or float, which browsers play
- *   'convert' — ADPCM this module decodes
+ *   'play'    — PCM, 32-bit float, A-law or mu-law, which browsers play
+ *   'convert' — ADPCM or 64-bit float, which this module decodes
  *   'refuse'  — anything else
  */
 export function wavVerdict(info) {
   if (!info) return 'play';
-  if (info.tag === WAV_PCM || info.tag === WAV_FLOAT) return 'play';
+  if (info.tag === WAV_FLOAT && info.bitsPerSample === 64) {
+    return info.channels >= 1 && info.dataOffset != null ? 'convert' : 'refuse';
+  }
+  if ([WAV_PCM, WAV_FLOAT, WAV_ALAW, WAV_MULAW].includes(info.tag)) return 'play';
   if (
     (info.tag === WAV_IMA_ADPCM || info.tag === WAV_MS_ADPCM) &&
     info.bitsPerSample === 4 &&
@@ -330,8 +339,29 @@ function encodePcmWav(samples, channels, sampleRate) {
   return bytes;
 }
 
-/** An ADPCM WAV's bytes as a 16-bit PCM WAV's, given its `readWavInfo`. */
+/** 64-bit float samples, -1 to 1, as 16-bit ones. Chrome plays no 64-bit float. */
+function decodeFloat64(data) {
+  const view = new DataView(data.buffer, data.byteOffset, data.length);
+  const out = new Int16Array(Math.floor(data.length / 8));
+  for (let i = 0; i < out.length; i += 1) {
+    const v = Math.round(view.getFloat64(i * 8, true) * 32767);
+    out[i] = Number.isNaN(v) ? 0 : clamp16(v);
+  }
+  return out;
+}
+
+/**
+ * An ADPCM or 64-bit float WAV's bytes as a 16-bit PCM WAV's, given its
+ * `readWavInfo` (whose `wavVerdict` is 'convert').
+ */
 export function adpcmWavToPcm(info, bytes) {
   const data = bytes.subarray(info.dataOffset, info.dataOffset + info.dataSize);
-  return encodePcmWav(decodeAdpcm(info, data), info.channels, info.sampleRate);
+  const samples = info.tag === WAV_FLOAT ? decodeFloat64(data) : decodeAdpcm(info, data);
+  return encodePcmWav(
+    samples.length % info.channels
+      ? samples.subarray(0, samples.length - (samples.length % info.channels))
+      : samples,
+    info.channels,
+    info.sampleRate,
+  );
 }

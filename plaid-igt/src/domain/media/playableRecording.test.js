@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +34,20 @@ describe('prepareRecording', () => {
     });
   });
 
+  it('refuses an ADPCM WAV it cannot convert, as when the file cannot be read', async () => {
+    const adpcm = fixture('ima-mono.wav', 'long.wav');
+    const unreadable = new File([adpcm], 'long.wav', { type: 'audio/wav' });
+    unreadable.arrayBuffer = async () => {
+      throw new RangeError('Array buffer allocation failed');
+    };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await prepareRecording(unreadable)).toEqual({
+      refused: 'long.wav could not be converted to PCM WAV.',
+    });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it('asks the browser about anything else', async () => {
     const amr = new File(['#!AMR\n'], 'note.amr', { type: 'audio/amr' });
     expect(await prepareRecording(amr, { canPlay: async () => false })).toEqual({
@@ -60,7 +74,7 @@ describe('prepareRecordings', () => {
     expect(out.refused).toEqual(['b.wav cannot be played in a browser (G.721 ADPCM WAV).']);
     expect(convertedNote(out.converted)).toBe('Converted c.wav from MS ADPCM to PCM WAV.');
     expect(convertedNote([...out.converted, { name: 'd.wav', from: 'IMA ADPCM' }])).toBe(
-      'Converted 2 recordings from ADPCM to PCM WAV.',
+      'Converted 2 recordings to PCM WAV.',
     );
     expect(convertedNote([])).toBeNull();
   });

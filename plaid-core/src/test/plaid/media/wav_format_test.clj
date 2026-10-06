@@ -1,6 +1,6 @@
 (ns plaid.media.wav-format-test
-  "A WAV is refused by its coding: browsers play only PCM and float samples,
-  and an IMA ADPCM WAV from ELAN was accepted as audio/wav, stored, and never
+  "A WAV is refused by its coding: browsers play only PCM, 32-bit float,
+  A-law and mu-law samples, and an IMA ADPCM WAV from ELAN was accepted as audio/wav, stored, and never
   played. Checked on the storage function and through the upload route."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
@@ -28,14 +28,14 @@
 
 (defn- fmt-body
   "A fmt chunk body: `tag`, and for WAVE_FORMAT_EXTENSIBLE the subformat."
-  [tag & {:keys [subformat]}]
+  [tag & {:keys [subformat bits] :or {bits 4}}]
   (let [buf (doto (ByteBuffer/allocate (if subformat 40 20)) (.order ByteOrder/LITTLE_ENDIAN))]
     (.putShort buf (unchecked-short tag))
     (.putShort buf (short 1))      ; channels
     (.putInt buf 22050)            ; rate
     (.putInt buf 11100)            ; bytes a second
     (.putShort buf (short 512))    ; block align
-    (.putShort buf (short 4))      ; bits a sample
+    (.putShort buf (short bits))   ; bits a sample
     (if subformat
       (do (.putShort buf (short 22))
           (.putShort buf (short 1017))
@@ -90,6 +90,17 @@
   (is (nil? (media/unplayable-wav-error (wav 1))))
   (is (nil? (media/unplayable-wav-error (wav 3))))
   (is (nil? (media/unplayable-wav-error (wav 0xFFFE :subformat 3))))
+  (testing "A-law and mu-law, which Chrome and Firefox play"
+    (is (nil? (media/unplayable-wav-error (wav 6 :bits 8))))
+    (is (nil? (media/unplayable-wav-error (wav 7 :bits 8))))
+    (is (nil? (media/unplayable-wav-error (wav 0xFFFE :subformat 7 :bits 8)))))
+  (testing "float at 32 bits plays, at 64 it does not"
+    (is (nil? (media/unplayable-wav-error (wav 3 :bits 32))))
+    (is (= (str "WAV encoded as 64-bit float cannot be played in a browser. "
+                "Only PCM, 32-bit float, A-law and mu-law WAV are accepted.")
+           (media/unplayable-wav-error (wav 3 :bits 64))))
+    (is (str/includes? (media/unplayable-wav-error (wav 0xFFFE :subformat 3 :bits 64))
+                       "64-bit float")))
   (is (str/includes? (media/unplayable-wav-error (wav 0x11)) "IMA ADPCM"))
   (is (str/includes? (media/unplayable-wav-error (wav 2)) "MS ADPCM"))
   (is (str/includes? (media/unplayable-wav-error (wav 0x31)) "GSM 6.10"))
@@ -122,7 +133,7 @@
                   body (parse-response-body res)]
               (is (= 415 (:status res)))
               (is (= (str "WAV encoded as IMA ADPCM cannot be played in a browser. "
-                          "Only PCM and float WAV are accepted.")
+                          "Only PCM, 32-bit float, A-law and mu-law WAV are accepted.")
                      (:error body)))
               (is (not (media/media-exists? did)))))
           (testing "whatever the file is called"

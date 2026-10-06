@@ -261,8 +261,8 @@
            :summary (str "Upload a media file for a document. Uses Apache Tika for content validation. "
                          "A document that already has one refuses it 409, with "
                          "<body>media-exists</body> and the current <body>media-url</body>. "
-                         "A WAV whose samples are not PCM or float (IMA or MS ADPCM, GSM, A-law and "
-                         "the rest), which browsers cannot play, is refused 415 with an "
+                         "A WAV whose samples are not PCM, 32-bit float, A-law or mu-law (IMA or MS ADPCM, GSM, "
+                         "64-bit float and the rest), which browsers cannot play, is refused 415 with an "
                          "<body>error</body> naming its coding.")
            :middleware [[pra/wrap-writer-required get-project-id-from-document]]
            :parameters {:path [:map [:document-id :uuid]]}

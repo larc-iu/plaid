@@ -180,9 +180,10 @@ Media is optional, and a document with none is simply a text.
 Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others), and an upload shows its progress.
 
 A recording has to be one the browser can play.
-A WAV plays when its samples are PCM or float, which is what most recorders write.
-A WAV in IMA or Microsoft ADPCM, as ELAN and some recorders write, is converted to PCM in the browser when you choose it, and a line says so, as in `Converted story.wav from IMA ADPCM to PCM WAV.`
-The converted file is about four times the size, has the same timing, and is what is uploaded.
+A WAV plays when its samples are PCM, 32-bit float, A-law or mu-law, which is what most recorders write.
+A WAV in IMA or Microsoft ADPCM, as ELAN and some recorders write, or in 64-bit float, is converted to 16-bit PCM in the browser when you choose it, and a line says so, as in `Converted story.wav from IMA ADPCM to PCM WAV.`
+The converted file has the same timing and is what is uploaded.
+From ADPCM it is about four times the size.
 Any other recording the browser cannot play is refused when you choose it, as in `story.wav cannot be played in a browser (GSM 6.10 WAV).`
 Convert such a file to MP3 or PCM WAV with an audio editor first.
 The same holds for the recordings an import brings.

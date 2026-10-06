@@ -2148,9 +2148,9 @@ class PlaidClient {
        * Upload a media file for a document. Uses Apache Tika for content validation.
        * A document that already has a recording refuses it with a 409
        * (`media-exists`, and the current `media-url`): delete that one first.
-       * A WAV whose samples are not PCM or float (IMA or MS ADPCM, GSM, A-law
-       * and the rest), which browsers cannot play, is refused with a 415
-       * whose `error` names its coding.
+       * A WAV whose samples are not PCM, 32-bit float, A-law or mu-law (IMA or
+       * MS ADPCM, GSM, 64-bit float and the rest), which browsers cannot play,
+       * is refused with a 415 whose `error` names its coding.
        * @param {string} documentId - The document ID
        * @param {File} file - The file to upload
        * @param {string} [auditMessage] - Custom audit-log message for this write
