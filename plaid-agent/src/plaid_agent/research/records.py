@@ -53,6 +53,7 @@ ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for 
     ('plan_limit', r'more than the [\d,]+ one plan may hold'),
     ('unavailable', r'is connected to this project|not configured|not available|is offline'),
     ('server_refused', r'could not be read'),
+    ('plan_conflict', r"this plan's set_words renumbers"),
     ('not_found', r'^No |has no |has \d+ words?\b|not found|does not exist|no such|is not in '),
     ('plan_conflict', r'^This plan |already|discard_plan first|cannot be planned|would (delete|replace|lose)'),
 )]
