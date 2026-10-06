@@ -91,6 +91,14 @@ describe('a PDF read in the browser', () => {
     expect(text).toContain('A question takes Q at the end.');
   });
 
+  it('keeps the case of a lower-case word merely set smaller', async () => {
+    const words = (await pdfText(await open('smaller.pdf'))).text.replace(/\s+/g, ' ');
+    expect(words).toContain('This sentence has a smaller word in it.');
+    expect(words).toContain('Online at example.org today.');
+    expect(words).toContain('margin note words in it');
+    expect(words).toContain('Main text. note');
+  });
+
   it('reads Arabic in reading order, as letters rather than shaped forms', async () => {
     const { text } = await pdfText(await open('sample.pdf'));
     expect(text).toContain('اللغة العربية لغة سامية');

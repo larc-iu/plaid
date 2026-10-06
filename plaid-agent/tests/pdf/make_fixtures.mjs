@@ -65,6 +65,19 @@ const smallcaps = `<!doctype html><html><head><meta charset="utf-8"><style>${sty
 <p>A question takes <span class="sc">q</span> at the end.</p>
 </body></html>`;
 
+// Lower-case words that are merely smaller: a word in a sentence, a link, a
+// margin note beside the text on the same baselines, and a footnote. None of
+// them is small capitals, and neither reader may write them in capitals.
+const smaller = `<!doctype html><html><head><meta charset="utf-8"><style>${style}
+  .small { font-size: 8pt; } .row { display: flex; align-items: baseline; gap: 2em; } .row > div { flex: 1; }
+</style></head><body>
+<p>This sentence has a <span class="small">smaller</span> word in it.</p>
+<p>Online at <span class="small">example.org</span> today.</p>
+<div class="row"><div>Main column text runs here and here and here.</div><div class="small">margin note words in it</div></div>
+<div class="row"><div>Main text.</div><div class="small">note</div></div>
+<p class="small">see also the notes below here</p>
+</body></html>`;
+
 // No text layer at all: what a scanned grammar is.
 const scan = `<!doctype html><html><head><meta charset="utf-8"><style>@page { size: A5; margin: 18mm; }</style></head><body>
 <svg width="300" height="200"><rect x="10" y="10" width="280" height="40" fill="#999"/><rect x="10" y="70" width="200" height="40" fill="#999"/></svg>
@@ -80,6 +93,7 @@ try {
     ['sample-raw.pdf', sample],
     ['scan.pdf', scan],
     ['smallcaps.pdf', smallcaps],
+    ['smaller.pdf', smaller],
   ]) {
     if (only.length && !only.includes(name.replace('-raw', ''))) continue;
     await page.setContent(html);

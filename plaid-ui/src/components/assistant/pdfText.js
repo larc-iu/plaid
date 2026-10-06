@@ -160,12 +160,18 @@ const smallCaps = (runs) => {
   const out = runs.map((r) => ({ ...r }));
   out.forEach((r, i) => {
     if (!SMALL_CAPS_RE.test(r.text)) return;
-    // Smaller than any run of its line on the same baseline, touching it or
-    // alone in its column, as pdftext.py reads it.
-    if (
-      runs.some((n, j) => j !== i && r.size < 0.85 * n.size && Math.abs(r.y - n.y) <= 0.15 * n.size)
-    ) {
-      r.text = r.text.toUpperCase();
+    for (const j of [i - 1, i + 1]) {
+      if (j < 0 || j >= runs.length) continue;
+      const n = runs[j];
+      const gap = j < i ? r.x0 - n.x1 : n.x0 - r.x1;
+      if (
+        r.size < 0.85 * n.size &&
+        gap < JOIN_GAP * n.size &&
+        Math.abs(r.y - n.y) <= 0.15 * n.size
+      ) {
+        r.text = r.text.toUpperCase();
+        break;
+      }
     }
   });
   return out;

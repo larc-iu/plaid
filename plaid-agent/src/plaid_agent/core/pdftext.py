@@ -217,19 +217,21 @@ def _small_caps(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     A word processor or a browser makes small capitals by setting lower-case
     letters in capital shapes at a smaller size, and the PDF says the letters
-    are the lower-case ones, so "3SG" comes out as "3sg". A run of
-    lower-case letters set smaller than another run of its line, on the same
-    baseline, is such letters, whether it touches that run or stands alone
-    in its column (a tag such as NEG). A superscript is smaller too, but
-    raised, and a line all in the smaller size has nothing to be smaller
-    than.
+    are the lower-case ones, so "3SG" comes out as "3sg". Lower-case
+    letters set smaller than the run they touch, on the same baseline, are
+    such letters. A superscript is smaller too, but raised, and a word in a
+    smaller font on its own touches nothing.
     """
     out = [dict(r) for r in runs]
     for i, r in enumerate(out):
         if not _SMALL_CAPS_RE.match(r['text']):
             continue
-        for j, n in enumerate(runs):
-            if (j != i and r['size'] < 0.85 * n['size']
+        for j in (i - 1, i + 1):
+            if not 0 <= j < len(runs):
+                continue
+            n = runs[j]
+            gap = r['x0'] - n['x1'] if j < i else n['x0'] - r['x1']
+            if (r['size'] < 0.85 * n['size'] and gap < JOIN_GAP * n['size']
                     and abs(r['y'] - n['y']) <= 0.15 * n['size']):
                 r['text'] = r['text'].upper()
                 break
@@ -401,7 +403,9 @@ def _items_from_chars(textpage, raw) -> List[Dict[str, Any]]:
     y = ctypes.c_double()
     box = raw.FS_RECTF()
     m = raw.FS_MATRIX()
+    ink = [ctypes.c_double() for _ in range(4)]
     out: List[Dict[str, Any]] = []
+    shapes: List[Tuple[int, float, Any]] = []
     for i in range(n):
         if raw.FPDFText_IsGenerated(textpage, i) == 1:
             continue
@@ -418,7 +422,63 @@ def _items_from_chars(textpage, raw) -> List[Dict[str, Any]]:
         size = float(raw.FPDFText_GetFontSize(textpage, i)) * abs(m.d or 1.0)
         out.append({'text': chr(code), 'x0': float(box.left), 'x1': float(box.right),
                     'y': float(y.value), 'size': size})
-    return out
+        if chr(code) in _X_LETTERS and size > 0 and raw.FPDFText_GetCharBox(textpage, i, *ink):
+            font = raw.FPDFText_GetTextObject(textpage, i)
+            font = ctypes.cast(raw.FPDFTextObj_GetFont(font), ctypes.c_void_p).value if font else None
+            shapes.append((len(out) - 1, (ink[3].value - y.value) / size, font))
+    return _capital_shapes(out, shapes)
+
+
+# Lower-case letters that reach the x-height and no higher, where a capital
+# reaches the cap height.
+_X_LETTERS = frozenset('acegmnopqrsuvwxyz')
+
+
+def _capital_shapes(chars: List[Dict[str, Any]], shapes: List[Tuple[int, float, Any]]):
+    """``chars`` with each lower-case letter drawn as a capital written as one.
+
+    A browser or a word processor makes small capitals by drawing capitals
+    at a smaller size and saying in the PDF that the text is the lower-case
+    letters. PDFium reads what the PDF says ("neg"), pdf.js the letters drawn
+    ("NEG"), so the same word read differently from a link and from the
+    paperclip. The drawn shape tells: a letter such as n, e or s rises to its
+    font's x-height, its capital clearly higher. Measured against the same
+    letters elsewhere in the same font on the page, so a font whose boxes say
+    nothing (every letter the font's full height) changes nothing, and a word
+    merely set smaller keeps its case.
+
+    ``shapes`` holds ``(index, top above the baseline / size, font)`` for the
+    letters of :data:`_X_LETTERS`. A letter with no such measure (t, h, i)
+    goes with the measured letters drawn next to it in the same size, and so
+    does one a combining mark follows, since one glyph often draws both and
+    its box takes the mark's height.
+    """
+    shapes = [s for s in shapes
+              if not (s[0] + 1 < len(chars) and unicodedata.combining(chars[s[0] + 1]['text'][:1] or ' '))]
+    by_font: Dict[Any, List[float]] = {}
+    for _, top, font in shapes:
+        by_font.setdefault(font, []).append(top)
+    low = {f: sorted(tops)[len(tops) // 4] for f, tops in by_font.items()}
+    caps = {i for i, top, font in shapes if top > 1.2 * low[font] and low[font] > 0}
+    if not caps:
+        return chars
+    lower = {i for i, _, _ in shapes} - caps
+    k = 0
+    while k < len(chars):
+        # One stretch of letters in one size, drawn one after another.
+        end = k + 1
+        while (end < len(chars) and chars[end]['text'].isalpha() and chars[k]['text'].isalpha()
+               and chars[end]['size'] == chars[k]['size'] and abs(chars[end]['y'] - chars[k]['y']) < 0.01
+               and chars[end]['x0'] - chars[end - 1]['x1'] < JOIN_GAP * chars[k]['size']):
+            end += 1
+        stretch = range(k, end)
+        if any(i in caps for i in stretch) and not any(i in lower for i in stretch):
+            for i in stretch:
+                up = chars[i]['text'].upper()
+                if len(up) == 1:
+                    chars[i]['text'] = up
+        k = end
+    return chars
 
 
 def _sections(doc) -> List[Tuple[int, str, int]]:

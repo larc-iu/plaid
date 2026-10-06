@@ -97,7 +97,9 @@ def test_an_interlinear_example_keeps_its_columns_and_its_small_capitals():
 def test_a_small_capital_tag_alone_in_its_column_reads_in_capitals():
     """A gloss line's NEG alone in its cell touches no full-size run. PDFium
     hands it on its own, and it read "neg" where the browser read "NEG"
-    (A4-CROSS-4). A lone small-capitals word in running text is one too."""
+    (A4-CROSS-4). A lone small-capitals word in running text is one too.
+    The PDF draws capitals and says the text is lower case: PDFium reads what
+    it says, pdf.js what it draws, and the drawn shape decides here."""
     text = pdftext.extract(fixture('smallcaps.pdf')).text
     glosses = next(line for line in text.split('\n') if 'sleep-NEG' in line)
     assert glosses.split() == ['3SG', 'NEG', 'sleep-NEG']
@@ -114,6 +116,35 @@ def test_a_smaller_lower_case_word_on_a_line_of_its_size_stays_as_it_is():
     raised = [{'text': 'Word', 'x0': 50, 'x1': 70, 'y': 100, 'size': 10},
               {'text': 'a', 'x0': 80, 'x1': 84, 'y': 104, 'size': 7}]
     assert pdftext.layout(raised).split() == ['Word', 'a'], 'a superscript is raised, not small capitals'
+
+
+def test_a_word_merely_set_smaller_keeps_its_case():
+    """A smaller word in a sentence, a link in a smaller size, a margin note
+    on the baselines of the text beside it: lower-case letters set smaller
+    than the line are not small capitals unless they are drawn as capitals.
+    A rule reading every smaller lower-case run of a line as small capitals
+    wrote all of these in capitals, on both readers (REV-FX9-RM)."""
+    text = pdftext.extract(fixture('smaller.pdf')).text
+    assert 'This sentence has a smaller word in it.' in text
+    assert 'Online at example.org today.' in text
+    assert 'margin note words in it' in text
+    assert 'see also the notes below here' in text
+    assert not any(w.isupper() and len(w) > 1 for w in text.replace('===', '').split()), text
+
+
+def test_a_font_whose_boxes_say_nothing_changes_nothing():
+    """Every letter measured as tall as a capital (a font whose glyph boxes
+    are its full height) is no evidence of capitals: there is no lower-case
+    letter in it to compare with."""
+    chars = [{'text': c, 'x0': 10.0 * k, 'x1': 10.0 * k + 9, 'y': 100.0, 'size': 10.0}
+             for k, c in enumerate('neg')]
+    same = pdftext._capital_shapes([dict(c) for c in chars], [(k, 0.9, 'f') for k in range(3)])
+    assert ''.join(c['text'] for c in same) == 'neg'
+    mixed = [(k, 0.73 if k < 3 else 0.5, 'f') for k in range(9)]
+    word = [{'text': c, 'x0': 5.0 * k, 'x1': 5.0 * k + 5, 'y': 100.0, 'size': 10.0 if k >= 3 else 7.0}
+            for k, c in enumerate('negsenses')]
+    out = pdftext._capital_shapes(word, mixed)
+    assert ''.join(c['text'] for c in out) == 'NEGsenses'
 
 
 def test_arabic_reads_in_reading_order_as_letters():
