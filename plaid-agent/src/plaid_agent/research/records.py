@@ -354,6 +354,8 @@ class Conversations:
         row = {
             **base, 'plan_id': plan_id, 'item_index': index, 'turn': turn, 'status': status,
             'interrupted': bool(item.get('interrupted')),
+            # A stale plan the reader discarded after the refusal stays stale.
+            'dismissed': bool(item.get('dismissed')), 'dismissed_at': item.get('dismissed_at'),
             'model': item.get('model'), 'version': item.get('version'), 'service': item.get('service'),
             'proposed_at': proposed_at, 'settled_at': settled_at,
             'settled_at_source': 'record' if settled_at else None,
