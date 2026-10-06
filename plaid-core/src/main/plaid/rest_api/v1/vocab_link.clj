@@ -157,7 +157,8 @@
              :delete {:summary "Delete multiple vocab links in a single operation. Provide an array of IDs."
                       ;; Mirror single delete's gate: project-WRITER + vocab-WRITER
                       ;; on each distinct vocab layer touched.
-                      :middleware [[pra/wrap-writer-required bulk-get-project-id]
+                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-project-id]
+                                   [pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}

@@ -200,7 +200,8 @@
                                            :body {:error (or error "Internal server error")}})))))}
              :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. Needs maintainer rights on the vocabulary of every item. "
                                     "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
-                      :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]
+                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-layer-id-from-item]
+                                   [pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as req}]
                                  (or (pra/vocab-layers-refusal db (vocab-item/get-layer-ids db ids) user-id)

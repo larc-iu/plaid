@@ -633,6 +633,27 @@
   [lookup]
   (bulk-resolver (fn [db entry] (lookup db (:id entry)))))
 
+(defn wrap-bulk-delete-of-nothing
+  "Answer a bulk DELETE 204 and write nothing when no id in its body
+  resolves (`resolver` is the route's gate resolver, a `bulk-resolver`).
+  Goes FIRST in the route's middleware, before its privilege gate.
+
+  Bulk delete is idempotent: a gone id in a list is skipped and the live
+  ones are deleted. A list whose ids are ALL gone gave the gate no project
+  to judge, so it refused a writer 403 `unresolved` (an admin passed and got
+  204), and inside a batch that refused the whole batch. A script deleting
+  words and then their morphemes, which the words' delete had already
+  taken, stopped halfway (D8-PRODLOG-1). The no-op tells nobody anything:
+  the ids belong to no project, so a member and a stranger learn the same.
+  A list naming any id that does resolve still meets the gate on that id's
+  project, so this lets nobody past it. Single deletes keep the unknown-id
+  ruling (writer 403, admin 404)."
+  [handler resolver]
+  (fn [request]
+    (if (nil? (resolver request))
+      {:status 204}
+      (handler request))))
+
 (defn- resolve-project-id
   "Run a route's project resolver against `request`.
 

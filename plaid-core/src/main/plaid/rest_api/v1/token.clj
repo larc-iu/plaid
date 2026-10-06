@@ -166,7 +166,8 @@
                                     "single delete, each deleted token also drags down the descendant tokens nested "
                                     "within it (and their dependent spans, relations, and vocab-links) if the layer "
                                     "has child token layers.")
-                      :middleware [[pra/wrap-writer-required bulk-get-project-id]
+                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-project-id]
+                                   [pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}

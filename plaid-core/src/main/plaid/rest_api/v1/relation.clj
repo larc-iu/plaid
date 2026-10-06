@@ -167,7 +167,8 @@
                                      db (:documents extra))
                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}
              :delete {:summary "Delete multiple relations in a single operation. Provide an array of IDs."
-                      :middleware [[pra/wrap-writer-required bulk-get-project-id]
+                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-project-id]
+                                   [pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}
