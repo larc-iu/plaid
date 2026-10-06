@@ -98,7 +98,7 @@ from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, confirm_note, ConfirmRows, expand_ops)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
-from .vocab import parent_of
+from .vocab import PARENT_KEY, build_sense_tree, morph_type_of, parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
 # kind tagged with one of these, so the four tools that reason about "does
@@ -1476,6 +1476,10 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             finally:
                 client.strict_mode_document_id = held
             b.finish(op)
+        # Last, once every write stands: the morph type cached on the
+        # morphemes whose entry the plan retyped, placed under another
+        # headword, or merged into another, as the app writes it.
+        sync_morph_type_caches(client, project, ops)
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
@@ -1486,6 +1490,93 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     if notes:
         result['notes'] = notes
     return result
+
+
+# How many entries one query of their linked morphemes names, and how many
+# morphemes one bulk update rewrites (the app's CHUNK).
+CACHE_CHUNK = 500
+
+
+def _retyped_roots(ops: List[Dict[str, Any]]) -> List[str]:
+    """The entries whose type the plan may have changed, and so every entry
+    below each of them: a type set or cleared, a place under another headword
+    set or cleared, and an entry another was merged into (its links)."""
+    roots: List[str] = []
+    for op in ops:
+        kind = op.get('kind')
+        if kind == 'set_entry_field' and op.get('field') == 'morphType':
+            roots.append(op.get('item_id'))
+        elif kind == 'set_entry_metadata' and any(
+                k in (op.get('patch') or {}) for k in ('morphType', PARENT_KEY)):
+            roots.append(op.get('item_id'))
+        elif kind == 'merge_entries':
+            roots.append(op.get('keep_id'))
+    return [r for r in dict.fromkeys(roots) if r]
+
+
+def linked_morphemes_query(project_id: str, item_ids: List[str]) -> Dict[str, Any]:
+    """The morphemes of project ``project_id`` linked to ``item_ids``, each
+    with the entry and the type it caches (morphTypeCaches.js
+    ``linkedMorphemesQuery``)."""
+    return {'scope': {'project_ids': [project_id]},
+            'where': [['link', '?l', {'item': item_ids}],
+                      ['link-item', '?l', '?v'],
+                      ['link-token', '?l', '?t'],
+                      ['token', '?t', {'layer': '?tl'}],
+                      ['token-layer', '?tl', {}],
+                      ['=', '?tl.config.plaid.role', 'morpheme']],
+            'return': {'group': ['?t', '?v', '?t.metadata.morphType'], 'aggregates': [['count']]},
+            'limit': 100000}
+
+
+def sync_morph_type_caches(client, project, ops: List[Dict[str, Any]]) -> int:
+    """Write on every morpheme of the project linked to an entry the plan
+    retyped (``_retyped_roots`` and the entries below them) the type that
+    entry goes by now, its own or its headword's, where the morpheme caches
+    another. The app writes the same with every change of an entry's type
+    (morphTypeCaches.js), and nothing writes it later. An entry that goes by
+    no type leaves its morphemes as they are. Read after the plan's writes,
+    so what the plan wrote is what is read. Returns how many it wrote."""
+    roots = _retyped_roots(ops)
+    if not roots or project is None:
+        return 0
+    targets: Dict[str, str] = {}
+    for vocab in getattr(project, 'vocabs', None) or []:
+        if not vocab.get('id'):
+            continue
+        items = (client.vocab_layers.get(vocab['id'], include_items=True) or {}).get('items') or []
+        tree = build_sense_tree(items)
+
+        def visit(item_id):
+            if item_id in targets or item_id not in tree.by_id:
+                return
+            t = morph_type_of(tree, item_id)
+            if isinstance(t, str) and t:
+                targets[item_id] = t
+            for child in tree.children_of.get(item_id) or []:
+                visit(child['id'])
+        for root in roots:
+            visit(root)
+    if not targets:
+        return 0
+    ids = list(targets)
+    plans = []
+    for i in range(0, len(ids), CACHE_CHUNK):
+        res = client.query(linked_morphemes_query(project.id, ids[i:i + CACHE_CHUNK]))
+        for morpheme_id, item_id, cached, *_ in (res or {}).get('results') or []:
+            t = targets.get(item_id)
+            if t and cached != t:
+                plans.append({'id': morpheme_id,
+                              'metadata': [{'op': 'set', 'path': ['morphType'], 'value': t}]})
+    # The morphemes lie in any document of the project, so no one document's
+    # version is claimed for them.
+    held, client.strict_mode_document_id = client.strict_mode_document_id, None
+    try:
+        for i in range(0, len(plans), CACHE_CHUNK):
+            client.tokens.bulk_update(plans[i:i + CACHE_CHUNK])
+    finally:
+        client.strict_mode_document_id = held
+    return len(plans)
 
 
 def _document_of_text(ops) -> Optional[str]:

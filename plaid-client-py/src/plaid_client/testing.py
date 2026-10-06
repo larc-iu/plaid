@@ -1103,6 +1103,8 @@ class FakeClient:
         self.queries.append(body)
         where = body.get('where') or []
         group = (body.get('return') or {}).get('group') if isinstance(body.get('return'), dict) else None
+        if group == ['?t', '?v', '?t.metadata.morphType'] and where[:1] and where[0][:1] == ['link']:
+            return self._linked_morphemes(where[0][2].get('item'), body.get('limit'))
         if not (len(where) == 1 and where[0][:1] == ['link'] and len(where[0]) == 3
                 and set(where[0][2]) == {'item'} and group == [f'{where[0][1]}.id']):
             raise _refusal(self, 400, 'The fake client runs no such query', 'POST', '/api/v1/query')
@@ -1120,6 +1122,36 @@ class FakeClient:
         rows = rows[:body['limit']] if body.get('limit') else rows
         return {'return': 'aggregate', 'columns': ['l_id', 'count'], 'results': rows,
                 'count': len(rows), 'truncated': False}
+
+    def _linked_morphemes(self, items, limit=None):
+        """The second query the fake runs: the morphemes (tokens of a layer
+        whose role is ``morpheme``) linked to the entries ``items``, as
+        ``[token id, entry id, cached morphType, 1]`` rows, the shape of the
+        apps' ``linkedMorphemesQuery``."""
+        wanted = set(items if isinstance(items, list) else [items])
+        # A document's layers carry no config: the role is the project's.
+        morpheme_layers = {layer['id'] for _, layers in self._fixture_token_layers()
+                           for layer in layers if _role(layer) == 'morpheme'}
+        docs = self._documents.values() if isinstance(self._documents, dict) else self._documents[-1:]
+        rows = []
+        for doc in docs:
+            for text_layer in doc.get('text_layers') or []:
+                for token_layer in text_layer.get('token_layers') or []:
+                    if token_layer.get('id') not in morpheme_layers:
+                        continue
+                    meta = {t['id']: t.get('metadata') or {} for t in token_layer.get('tokens') or []}
+                    for vocab in token_layer.get('vocabs') or []:
+                        for link in vocab.get('vocab_links') or []:
+                            target = link.get('vocab_item')
+                            item = target.get('id') if isinstance(target, dict) else target
+                            if item not in wanted:
+                                continue
+                            for tok in link.get('tokens') or []:
+                                if tok in meta:
+                                    rows.append([tok, item, meta[tok].get('morphType'), 1])
+        rows = rows[:limit] if limit else rows
+        return {'return': 'aggregate', 'columns': ['t', 'v', 't_metadata_morphType', 'count'],
+                'results': rows, 'count': len(rows), 'truncated': False}
 
     # -- which project answers --
     def _home(self):
