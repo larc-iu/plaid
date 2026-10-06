@@ -52,3 +52,23 @@ export function uuidv7() {
   }
   return s;
 }
+
+/**
+ * A random UUIDv4, for ids that need no order (an operation group, a lock
+ * holder). Built on `crypto.getRandomValues`, since `crypto.randomUUID`
+ * exists only in a secure context and a page served over plain HTTP from
+ * another host than localhost is not one.
+ * @returns {string}
+ */
+export function uuidv4() {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  let s = "";
+  for (let i = 0; i < 16; i++) {
+    s += hex[b[i]];
+    if (i === 3 || i === 5 || i === 7 || i === 9) s += "-";
+  }
+  return s;
+}

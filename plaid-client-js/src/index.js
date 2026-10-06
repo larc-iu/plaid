@@ -22,7 +22,7 @@ import {
   DEFAULT_BATCH_TIMEOUT_MS,
   queryTimeout,
 } from "./http.js";
-import { uuidv7 } from "./ids.js";
+import { uuidv4, uuidv7 } from "./ids.js";
 import { constraintsBody } from "./constraints.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
 import { recorderFor } from "./events.js";
@@ -3826,7 +3826,7 @@ class PlaidClient {
       return open.id;
     }
     this.operationGroup = {
-      id: groupId ? String(groupId) : crypto.randomUUID(),
+      id: groupId ? String(groupId) : uuidv4(),
       message: message == null ? null : String(message),
       kind: kind == null ? null : String(kind),
       ref: ref == null ? null : String(ref),

@@ -1,4 +1,5 @@
 import { isUnknownOutcome, retryUnknown } from "./http.js";
+import { uuidv4 } from "./ids.js";
 
 /**
  * Keeping a document lock alive for as long as a `locked()` block runs.
@@ -216,7 +217,7 @@ export class DocumentLock {
 export const LOCK_ACQUIRE_RETRY_MS = 500;
 
 function mintLockId() {
-  return globalThis.crypto.randomUUID();
+  return uuidv4();
 }
 
 /**
