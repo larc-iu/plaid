@@ -71,7 +71,7 @@ def test_delete_word_and_sentence_ops():
 
     out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
     assert 'Planned 1 change' in out
-    assert w.ops[-1] == {'kind': 'split_sentence', 'sentence_id': 's-1', 'position': 7,
+    assert w.ops[-1] == {'kind': 'split_sentence', 'sentence_id': 's-1', 'position': 7, 'token_at': {'begin': 0, 'end': 17},
                          'label': 'Text 1 s1: split before w2 "gam" → "Ali-di" | "gam akuna." '
                                   '(sentence values such as the translation stay with the first part)'}
     assert 'between 2 and 3' in call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 1})

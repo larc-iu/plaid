@@ -43,6 +43,9 @@ ADDRESSING_KEYS = frozenset({
 # is applied, :func:`rebase_offsets`) or pins the whole document.
 OFFSET_KEYS = frozenset({'begin', 'end'})
 POSITION_KEYS = frozenset({'position', 'char_pos'})
+# Where a change that cuts at a position records the extent of the token it
+# cuts, as it was read (:func:`offset_anchors`).
+TOKEN_AT = 'token_at'
 
 
 def _plain(obj: Any, path: tuple) -> Any:
@@ -182,13 +185,15 @@ def _holds_offset(value: Any) -> bool:
 def offset_places(op: Dict[str, Any]) -> Optional[Set[Optional[str]]]:
     """Where a planned change holds a place in the text: ``None`` in the set
     for the change's own ``begin`` and ``end``, a key for a dict under it
-    holding its own. None when it holds one a rebase cannot reach: a
-    position inside a token, or an offset any deeper."""
+    holding its own, and the key of a position (a cut inside a token). None
+    when it holds one a rebase cannot reach: an offset any deeper."""
     places: Set[Optional[str]] = set()
     for k, v in op.items():
         if k in POSITION_KEYS:
-            return None
-        if k in OFFSET_KEYS:
+            if not _whole(v):
+                return None
+            places.add(k)
+        elif k in OFFSET_KEYS:
             places.add(None)
         elif isinstance(v, dict):
             if any(kk in POSITION_KEYS or _holds_offset(vv) for kk, vv in v.items()):
@@ -203,7 +208,10 @@ def offset_places(op: Dict[str, Any]) -> Optional[Set[Optional[str]]]:
 def offset_anchors(reg: Mapping[str, Any], op: Dict[str, Any]) -> List[Tuple[Optional[str], str]]:
     """``(place, token id)`` for each place in the text ``op`` holds and the
     token it was read from, as its kind declares them (``extra['anchors']``):
-    the extent the place stands for is that token's, wherever it is now."""
+    the extent the place stands for is that token's, wherever it is now. A
+    position names the token it cuts, and the change carries that token's
+    extent as it was read under :data:`TOKEN_AT`, anchored to the same
+    token, so the position moves by as much as the token has."""
     spec = reg.get(op.get('kind')) if isinstance(op, dict) else None
     fn = (getattr(spec, 'extra', None) or {}).get('anchors') if spec is not None else None
     return [(place, tid) for place, tid in (fn(op) if fn else ()) if tid]
@@ -217,7 +225,17 @@ def offsets_follow(reg: Mapping[str, Any], op: Dict[str, Any]) -> bool:
     places = offset_places(op)
     if places is None:
         return False
-    return places <= {place for place, _ in offset_anchors(reg, op)}
+    anchors = dict(offset_anchors(reg, op))
+    if not places <= set(anchors):
+        return False
+    return all(anchors.get(TOKEN_AT) == anchors[p] and _span(op.get(TOKEN_AT)) is not None
+               for p in places & POSITION_KEYS)
+
+
+# The rebase refuses with this when the token a place was read from is gone or
+# is no longer as long as it was: what the change was planned against is not
+# there any more.
+MOVED = 'The text this plan writes over has changed since the plan was made.'
 
 
 def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -229,9 +247,16 @@ def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) ->
     sentence's fingerprint counts its offsets from its own start, so it does
     not see that move. What a planned create was given is the extent of the
     token it was read from (a new token over the one it stands on), so it is
-    taken from that token as it is now. A token that
-    is gone leaves the place as it was planned: approval has already refused a
-    plan whose sentence lost it, so nothing that reaches here has moved."""
+    taken from that token as it is now, and a cut inside a token moves by as
+    much as the token has.
+
+    Approval has already compared the pinned sentences, so a token in one of
+    them is where it was, relative to its sentence. A token that is gone, or
+    whose length is not the length the plan read, is refused
+    (:class:`~plaid_agent.core.plan.PlanOutOfDate`) before anything is
+    written, whatever let it through: a change made for other text never
+    lands on this text."""
+    from .plan import PlanOutOfDate
     wanted = [offset_anchors(reg, op) for op in ops]
     extents: Dict[str, Optional[tuple]] = {}
     for pairs in wanted:
@@ -241,16 +266,40 @@ def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) ->
     out: List[Dict[str, Any]] = []
     for op, pairs in zip(ops, wanted):
         now = dict(op)
+        held = _span(op.get(TOKEN_AT))
         for place, tid in pairs:
             extent = extents.get(tid)
-            if extent is None:
+            if place in POSITION_KEYS:
+                was = held
+            elif place is None:
+                was = _span(op)
+            else:
+                was = _span(op.get(place))
+            if was is None:
                 continue
-            if place is None:
+            if extent is None or extent[1] - extent[0] != was[1] - was[0]:
+                raise PlanOutOfDate([MOVED])
+            if place in POSITION_KEYS:
+                if _whole(op.get(place)):
+                    now[place] = op[place] + extent[0] - was[0]
+            elif place is None:
                 now['begin'], now['end'] = extent
-            elif isinstance(now.get(place), dict):
+            else:
                 now[place] = {**now[place], 'begin': extent[0], 'end': extent[1]}
         out.append(now)
     return out
+
+
+def _whole(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _span(value: Any) -> Optional[tuple]:
+    """(begin, end) held under ``value``'s ``begin`` and ``end``, or None."""
+    if not isinstance(value, dict):
+        return None
+    begin, end = value.get('begin'), value.get('end')
+    return (begin, end) if _whole(begin) and _whole(end) else None
 
 
 def _extent(client, token_id: str) -> Optional[tuple]:

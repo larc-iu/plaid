@@ -161,7 +161,10 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
         note = f' (its {len(w.morphemes)}-morpheme analysis is deleted)'
     if w.fields or w.link:
         note += ' (word values and link go to the left part)'
-    ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n, 'morpheme_ids': morphs,
+    # The word's extent as read: the cut moves with the word when an edit
+    # before its sentence has moved it (core.fingerprint, `token_at`).
+    ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n,
+               'token_at': {'begin': w.begin, 'end': w.end}, 'morpheme_ids': morphs,
                'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": split into "{left}" + "{right}"{note}'})
     return ws.planned_note(1)
 
@@ -284,6 +287,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     note += loss_note(len(other_layers_crossing(_other_layers(ws, doc), ws.project.sentence_layer_id,
                                                 s.id, w.begin)))
     ws.add_op({'kind': 'split_sentence', 'sentence_id': s.id, 'position': w.begin,
+               'token_at': {'begin': s.begin, 'end': s.end},
                'label': f'{ws.doc_label(doc.id)} {ref}: split before w{n} "{w.surface}" → "{left[:40]}" | "{right[:40]}"{note}'})
     return ws.planned_note(1)
 

@@ -234,6 +234,9 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         'document_id': doc.id,
         'sentence_id': sentence.id,
         'char_pos': thing.token.begin,
+        # The sentence's extent as read: the cut moves with the sentence when
+        # an edit before it has moved it (core.fingerprint, `token_at`).
+        'token_at': {'begin': sentence.begin, 'end': sentence.end},
         'ref': ref,
         # Every dependency relation the cut would leave spanning two sentences,
         # the tree's and the enhanced layer's extra edges alike. All arcs, so

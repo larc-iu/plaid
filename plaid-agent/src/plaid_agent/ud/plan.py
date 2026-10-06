@@ -479,7 +479,10 @@ KIND = ok.registry([
            required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
            deletes=lambda op: (list(op.get('relation_ids') or [])
                                + list(op.get('suppressor_ids') or [])),
-           summary=_split_sentence_summary),
+           summary=_split_sentence_summary,
+           # The cut moves with its sentence (core.fingerprint, `token_at`).
+           extra={'anchors': lambda op: [('char_pos', op.get('sentence_id')),
+                                         ('token_at', op.get('sentence_id'))]}),
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), apply=_apply_merge_sentences,
            required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE),
     # A second restore of the SAME document replaces the first, the way every

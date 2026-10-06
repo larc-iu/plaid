@@ -129,15 +129,58 @@ def test_an_edit_inside_the_planned_sentence_still_refuses():
     assert _refused(_approve(spec, client, plan))
 
 
-def test_a_cut_at_a_position_pins_the_whole_document():
-    """A split names a place inside a word, which is not read again: an edit
-    anywhere before it refuses the plan rather than cut at the wrong place."""
+def _cuts(client):
+    """(token id, position) of every split the apply sent, in order."""
+    out = []
+    for kind, payload in client.calls:
+        if kind == 'tokens.split':
+            args = list(payload['args']) if isinstance(payload, dict) and 'args' in payload else list(payload)
+            out.append((args[0], args[1]))
+    return out
+
+
+@pytest.mark.parametrize('app, tool, at, cut', [
+    # s2.w1 "Gam-ar" is 18-24: cut after "Gam".
+    ('igt', ('split_word', {'document': 'd1', 'ref': 's2.w1', 'at': 'Gam'}), 7, ('w-4', 25)),
+    # Text typed before sentence 1: a new sentence from its third word.
+    ('igt', ('split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 3}), 0, None),
+    ('ud', ('split_sentence', {'document': 'Viaje', 'ref': 's2.w2'}), 2, None),
+])
+def test_a_cut_follows_its_token_after_an_edit_in_an_earlier_sentence(app, tool, at, cut):
+    """A split is pinned to its sentence and its cut moves with the token it
+    falls in, as a create does: a letter typed before the sentence neither
+    stales it nor cuts at the wrong place."""
+    spec = APPS[app]()
+    client = spec['client']()
+    plan, _ = _plan(spec, client, tool=tool)
+    assert plan['documents'][0].get('sentences'), plan['documents']
+    planned = [o for o in plan['ops'] if o['kind'].startswith('split')][0]
+    key = 'position' if 'position' in planned else 'char_pos'
+    assert at <= planned['token_at']['begin'], 'the edit falls before the cut sentence'
+    _edit(client, spec, _insert(at, 'xyz '))
+    helper = _approve(spec, client, plan)
+    assert not helper.errors, helper.errors
+    [(_, position)] = _cuts(client)
+    assert position == planned[key] + 4
+    if cut:
+        assert (planned[key] + 4) == cut[1]
+
+
+def test_a_cut_without_an_edit_lands_where_it_was_planned():
     spec = APPS['igt']()
     client = spec['client']()
     plan, _ = _plan(spec, client, tool=('split_word', {'document': 'd1', 'ref': 's2.w1', 'at': 'Gam'}))
-    assert not plan['documents'][0].get('sentences')
-    _edit(client, spec, _insert(7, 'big '))
+    assert not _approve(spec, client, plan).errors
+    assert [p for _, p in _cuts(client)] == [21]
+
+
+def test_an_edit_inside_the_cut_sentence_still_refuses():
+    spec = APPS['igt']()
+    client = spec['client']()
+    plan, _ = _plan(spec, client, tool=('split_word', {'document': 'd1', 'ref': 's2.w1', 'at': 'Gam'}))
+    _edit(client, spec, _insert(19, 'x'))   # inside "Gam-ar"
     assert _refused(_approve(spec, client, plan))
+    assert not _cuts(client)
 
 
 # --- the rules on their own ------------------------------------------------------------
@@ -152,6 +195,61 @@ def test_offsets_follow_only_where_every_place_names_its_token():
                                        'at': {'begin': 1, 'end': 2}})
     assert not fp.offsets_follow(reg, {'kind': 'k', 'word_id': 'w', 'position': 4})
     assert not fp.offsets_follow(reg, {'kind': 'k', 'word_id': 'w', 'rows': [{'begin': 1}]})
+
+
+def test_a_position_follows_only_with_the_extent_of_the_token_it_cuts():
+    cut = type('K', (), {'extra': {'anchors': lambda op: [('position', op.get('word_id')),
+                                                          ('token_at', op.get('word_id'))]}})()
+    loose = type('K', (), {'extra': {'anchors': lambda op: [('position', op.get('word_id')),
+                                                            ('token_at', 'other')]}})()
+    reg = {'cut': cut, 'loose': loose}
+    assert fp.offsets_follow(reg, {'kind': 'cut', 'word_id': 'w', 'position': 4,
+                                   'token_at': {'begin': 2, 'end': 6}})
+    assert not fp.offsets_follow(reg, {'kind': 'cut', 'word_id': 'w', 'position': 4})
+    assert not fp.offsets_follow(reg, {'kind': 'loose', 'word_id': 'w', 'position': 4,
+                                       'token_at': {'begin': 2, 'end': 6}})
+
+
+class _Tokens:
+    def __init__(self, extents):
+        self.extents = extents
+
+    def get(self, token_id):
+        if token_id not in self.extents:
+            gone = LookupError(token_id)
+            gone.status = 404
+            raise gone
+        begin, end = self.extents[token_id]
+        return {'id': token_id, 'begin': begin, 'end': end}
+
+
+class _Client:
+    def __init__(self, extents):
+        self.tokens = _Tokens(extents)
+
+
+_REG = {'make': type('K', (), {'extra': {'anchors': lambda op: [(None, op['word_id'])]}})(),
+        'cut': type('K', (), {'extra': {'anchors': lambda op: [('position', op['word_id']),
+                                                               ('token_at', op['word_id'])]}})()}
+
+
+def test_a_rebase_moves_creates_and_cuts_by_as_much_as_their_token():
+    ops = [{'kind': 'make', 'word_id': 'w', 'begin': 10, 'end': 14},
+           {'kind': 'cut', 'word_id': 'w', 'position': 12, 'token_at': {'begin': 10, 'end': 14}}]
+    made, cut = fp.rebase_offsets(_Client({'w': (13, 17)}), _REG, ops)
+    assert (made['begin'], made['end']) == (13, 17)
+    assert cut['position'] == 15 and cut['token_at'] == {'begin': 13, 'end': 17}
+
+
+@pytest.mark.parametrize('extents', [{}, {'w': (13, 18)}, {'w': (13, 16)}])
+def test_a_rebase_refuses_a_token_gone_or_of_another_length(extents):
+    """Whatever let the plan through, a change planned over a token that is
+    gone or no longer as long never lands on other text."""
+    from plaid_agent.core.plan import PlanOutOfDate
+    for op in ({'kind': 'make', 'word_id': 'w', 'begin': 10, 'end': 14},
+               {'kind': 'cut', 'word_id': 'w', 'position': 12, 'token_at': {'begin': 10, 'end': 14}}):
+        with pytest.raises(PlanOutOfDate):
+            fp.rebase_offsets(_Client(extents), _REG, [op])
 
 
 def test_a_sentence_print_counts_offsets_from_the_sentence():

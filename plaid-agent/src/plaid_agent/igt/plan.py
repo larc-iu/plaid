@@ -212,12 +212,17 @@ def _token(ctx: Context, op, token_id: str, metadata: Optional[Dict[str, Any]] =
 def _anchors(op) -> List[tuple]:
     """Where in the text a change holds a place, and the word it was read
     from (``core.fingerprint.offset_anchors``): a new analysis's morphemes
-    over its word, and the derived morpheme of an unsegmented word made over
-    it (``virtual_at``). Each is read from the word when the plan is applied,
-    so an edit before its sentence does not leave it where the word was."""
+    over its word, the derived morpheme of an unsegmented word made over it
+    (``virtual_at``), and a cut inside a word or a sentence (``position``,
+    with the extent it was read at, ``token_at``). Each is read from its
+    token when the plan is applied, so an edit before its sentence does not
+    leave it where the token was."""
     out = []
     if op.get('kind') == 'set_analysis' and op.get('word_id'):
         out.append((None, op['word_id']))
+    for kind, key in (('split_word', 'word_id'), ('split_sentence', 'sentence_id')):
+        if op.get('kind') == kind and op.get(key):
+            out += [('position', op[key]), ('token_at', op[key])]
     if isinstance(op.get('virtual_at'), dict):
         virtual = next((op[k] for k in ('token_id', 'morpheme_id') if is_virtual(op.get(k))), None)
         if virtual:
@@ -798,7 +803,7 @@ KIND = ok.registry([
            apply=_apply_split_word, target=lambda op: ('word_shape', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=WORD_SHAPE,
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []),
-           extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id',)}),
+           extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id',), 'anchors': _anchors}),
     OpKind('merge_words', ('word merge', 'word merges'), required=('word_id', 'other_ids'),
            apply=_apply_merge_words, target=lambda op: ('word_shape', op.get('word_id')),
            shape=WORD_SHAPE, deletes=_merge_deletes,
@@ -813,7 +818,7 @@ KIND = ok.registry([
     OpKind('split_sentence', ('split sentence', 'split sentences'), required=('sentence_id', 'position'),
            apply=_apply_split_sentence, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, token_keys=('sentence_id',), shape=SENTENCE_SHAPE,
-           extra={'reshapes': ('sentence_id',)}),
+           extra={'reshapes': ('sentence_id',), 'anchors': _anchors}),
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), required=('sentence_id', 'other_id'),
            apply=_apply_merge_sentences, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, shape=SENTENCE_SHAPE, deletes=_merge_deletes,
