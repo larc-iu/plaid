@@ -73,7 +73,7 @@ from . import prompt as shared_prompt
 from .guidelines import in_reading_order
 from .limits import MAX_PROJECTS, TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
-from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed,
+from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed, turn_trace,
                     context_window, model_failure_line, ping_model, run_turn, token_counter)
 from .files import Attachments, FileKeeper
 from .guidelines import in_context as guidelines_in_context
@@ -564,15 +564,19 @@ class BaseAssistantService(BaseService):
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
-        except TurnCancelled:
+        except TurnCancelled as e:
             self._release(ws)
             ws.keeper.discard()
             # The user's message leaves the model transcript (a retry must not
-            # send it twice) and stays on screen with what happened.
-            stopped = {'messages': transcript[:-1],
-                       'display': conv['display'] + [error_item('Stopped.', stopped=True, model=model,
-                                                                version=self.version,
-                                                                service=self.service_id)]}
+            # send it twice) and stays on screen with what happened. What the
+            # turn did before it stopped stays on the item, for the record.
+            steps, calls = turn_trace(e)
+            stopped = prune({'messages': transcript[:-1],
+                             'display': conv['display'] + [error_item('Stopped.', stopped=True, model=model,
+                                                                      version=self.version,
+                                                                      service=self.service_id,
+                                                                      steps=steps, calls=calls)]},
+                            record_budget(client), self.transcript_budget(model, overhead))
             self._write(store, conv_id, stopped,
                         build_meta(meta, conv_id, stopped, self.service_id, model, version=self.version), request_id)
             response_helper.complete({'kind': 'stopped'})
@@ -582,9 +586,12 @@ class BaseAssistantService(BaseService):
             ws.keeper.discard()
             traceback.print_exc()
             line = self.turn_failure_line(e)
-            failed = {'messages': transcript[:-1],
-                      'display': conv['display'] + [error_item(line, model=model, version=self.version,
-                                                             service=self.service_id)]}
+            steps, calls = turn_trace(e)
+            failed = prune({'messages': transcript[:-1],
+                            'display': conv['display'] + [error_item(line, model=model, version=self.version,
+                                                                   service=self.service_id,
+                                                                   steps=steps, calls=calls)]},
+                           record_budget(client), self.transcript_budget(model, overhead))
             self._write(store, conv_id, failed,
                         build_meta(meta, conv_id, failed, self.service_id, model, version=self.version), request_id)
             response_helper.error(line)

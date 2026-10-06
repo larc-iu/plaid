@@ -9,6 +9,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
+import { itemTime } from './itemTime.js';
 import {
   atProjectCap,
   couldNotOpen,
@@ -590,6 +591,7 @@ export const AssistantChat = ({
         {
           kind: 'user',
           text,
+          createdAt: itemTime(),
           ...(where ? { where } : {}),
           ...(sent.length ? { files: sent } : {}),
           ...(joined.length ? { projects: joined } : {}),

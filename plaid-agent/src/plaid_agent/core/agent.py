@@ -24,6 +24,7 @@ import litellm
 # TIMEOUT_RETRIES are imported for the docstrings and tests that name them.
 from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
+from .tools import truncate
 from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
@@ -569,6 +570,14 @@ class Spend:
         return {**self.last, 'total': total}
 
 
+def turn_trace(e: BaseException):
+    """``(steps, calls)`` of a turn that ended with ``e``: the tool calls it
+    made before it failed or was stopped, as :func:`run_turn` left them on
+    the exception (see `conversation.error_item`). Empty for an exception
+    raised anywhere else."""
+    return list(getattr(e, 'turn_steps', None) or []), list(getattr(e, 'turn_calls', None) or [])
+
+
 def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: List[Dict[str, Any]],
              on_progress: Callable[[int, str], None] = lambda p, m: None,
              cancelled: Callable[[], bool] = lambda: False,
@@ -577,10 +586,26 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     is polled before every tool call and while a model call waits; once it answers
     True the turn ends with :class:`TurnCancelled`. ``on_text`` receives the
     text of the reply being written, whole each time, as it grows (and ''
-    when a new model call starts)."""
+    when a new model call starts).
+
+    A turn that ends with an exception (failed, or stopped) carries the tool
+    calls it made on it, for the record (:func:`turn_trace`)."""
+    trace: List[Dict[str, Any]] = []
+    calls: List[Dict[str, Any]] = []
+    try:
+        return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, calls)
+    except Exception as e:
+        try:
+            e.turn_steps, e.turn_calls = trace, calls
+        except AttributeError:  # an exception type that takes no attributes keeps none
+            pass
+        raise
+
+
+def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
+              trace: List[Dict[str, Any]], calls_made: List[Dict[str, Any]]) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
-    trace: List[Dict[str, Any]] = []
     rounds = 0
     # The call that last failed (or was a plan call repeated to no effect)
     # and how many times running, as (name, arguments). Only an IDENTICAL
@@ -676,6 +701,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             failed = str(result).startswith('Error')
             trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
+            calls_made.append({'id': c['id'], 'name': name, 'arguments': truncate(raw), 'result': result})
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:
                 failing['times'] += 1
             else:

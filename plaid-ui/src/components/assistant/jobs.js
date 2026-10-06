@@ -3,6 +3,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { deleteConversationFiles } from './attachments.js';
 import { lastProjects } from './projectReach.js';
 import { compactPlan } from './planRecord.js';
+import { itemTime } from './itemTime.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and starting, watching,
@@ -314,7 +315,10 @@ const finishJob = async (j, store, service) => {
         conv = {
           ...conv,
           messages: dropUnanswered(conv),
-          display: [...conv.display, { kind: 'error', stopped: true, text: 'Stopped.' }],
+          display: [
+            ...conv.display,
+            { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() },
+          ],
         };
       } else if (j.error && j.error.status !== 404) {
         conv = {
@@ -322,7 +326,11 @@ const finishJob = async (j, store, service) => {
           messages: dropUnanswered(conv),
           display: [
             ...conv.display,
-            { kind: 'error', text: humanizeError(j.error, 'The assistant failed to answer.') },
+            {
+              kind: 'error',
+              text: humanizeError(j.error, 'The assistant failed to answer.'),
+              createdAt: itemTime(),
+            },
           ],
         };
       }

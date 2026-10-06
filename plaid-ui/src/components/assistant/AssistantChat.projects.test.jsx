@@ -191,6 +191,19 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 
+  it('dates the message it sends, as every item of the record is dated', async () => {
+    const client = fakeClient();
+    const m = await mount(client);
+    await flush(m);
+    const before = Date.now();
+    await typeAndSend(m, 'when was this?');
+    await flush(m, 8);
+    const at = lastAsked(client).createdAt;
+    expect(at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+    expect(Date.parse(at)).toBeGreaterThanOrEqual(before - 1);
+    await m.unmount();
+  });
+
   it('writes none once the last one is removed', async () => {
     const client = fakeClient();
     const m = await mount(client);

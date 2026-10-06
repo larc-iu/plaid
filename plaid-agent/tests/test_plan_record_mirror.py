@@ -23,8 +23,11 @@ from node_exe import node_or_skip
 import test_stale_by_sentence as sbs
 
 from plaid_client.transforms import transform_request
+from datetime import datetime, timedelta, timezone
+
 from plaid_agent.core.conversation import (
-    PROPOSED_MAX, PROPOSED_VALUE_MAX, assistant_item, compact_plan, proposed_changes)
+    PROPOSED_MAX, PROPOSED_VALUE_MAX, assistant_item, compact_plan, error_item, now_iso, proposed_changes,
+    user_item)
 from plaid_agent.igt.service import AssistantService as IgtService
 from plaid_agent.ud.service import AssistantService as UdService
 from plaid_agent.umr.service import AssistantService as UmrService
@@ -109,7 +112,18 @@ def _cases():
     cases.append(_item([_group(rng, PROPOSED_MAX + 17)], 'discarded', KEYS[0]))
     cases.append(_item([_group(rng, PROPOSED_MAX), _op(rng)], 'stale', KEYS[2]))
     cases.append({'kind': 'assistant', 'text': 'no plan', 'plan': None, 'status': None})
+    cases.append(user_item('a question'))
+    cases.append(error_item('Stopped.', stopped=True, model='m', steps=[{'id': 'c1', 'name': 'search',
+                                                                          'kind': 'read', 'label': 'Searched'}],
+                            calls=[{'id': 'c1', 'name': 'search', 'arguments': '{"query_text": "x"}',
+                                    'result': 'Error: No such thing'}]))
     return cases
+
+
+# Instants the two sides date items at: the epoch, whole seconds, a single
+# millisecond, the end of a year, a leap day, and now.
+TIMES = [0, 1_000, 1, 1_759_276_800_999, 1_709_164_799_123, 4_102_444_800_000,
+         int(datetime.now(timezone.utc).timestamp() * 1000)]
 
 
 @pytest.fixture(scope='module')
@@ -120,7 +134,7 @@ def compared():
     cases = _cases()
     stored = [transform_request(c) for c in cases]
     with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f:
-        json.dump(stored, f)
+        json.dump({'cases': stored, 'times': TIMES}, f)
         path = f.name
     try:
         run = subprocess.run([node, RUNNER, path], capture_output=True, text=True, timeout=300)
@@ -128,11 +142,12 @@ def compared():
         os.unlink(path)
     if run.returncode != 0:
         pytest.fail(f"plaid-ui's planRecord.js would not run:\n{run.stderr[:2000]}")
-    return cases, json.loads(run.stdout)
+    out = json.loads(run.stdout)
+    return cases, out['results'], out['times']
 
 
 def test_the_cases_reach_every_shape_they_are_for(compared):
-    cases, _ = compared
+    cases, _, _ = compared
     proposed = [compact_plan(c)['plan'] for c in cases if c.get('plan') and c.get('status')]
     flat = [p for plan in proposed for p in plan['proposed']]
     assert any(plan['proposed_count'] > PROPOSED_MAX for plan in proposed), 'the cap'
@@ -145,8 +160,28 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
 
 
 def test_the_service_and_the_browser_write_the_same_record(compared):
-    cases, results = compared
+    cases, results, _ = compared
     assert len(results) == len(cases)
     for i, (case, got) in enumerate(zip(cases, results)):
         want = json.loads(json.dumps(transform_request(compact_plan(case))))
         assert got == want, f'case {i}: {json.dumps(case)[:600]}'
+
+
+def test_every_item_keeps_when_it_was_written(compared):
+    """Each item carries ``created_at``, and compaction keeps it on both
+    sides: a reader of the record dates every turn by it."""
+    cases, results, _ = compared
+    assert all(c.get('created_at') for c in cases if c.get('kind') in ('user', 'error')
+               or (c.get('kind') == 'assistant' and c.get('text') != 'no plan'))
+    for case, got in zip(cases, results):
+        if case.get('created_at'):
+            assert got['created-at'] == case['created_at']
+
+
+def test_the_service_and_the_browser_date_items_alike(compared):
+    """The browser stamps the items it writes (a question, a turn it settles
+    as failed or stopped) with ``itemTime``, the service with ``now_iso``,
+    so one reader sorts and compares them as one kind of string."""
+    _, _, times = compared
+    want = [now_iso(datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(milliseconds=ms)) for ms in TIMES]
+    assert times == want

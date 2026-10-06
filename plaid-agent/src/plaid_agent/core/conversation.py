@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from plaid_client.http import PlaidAPIError
 
 from .plan import expand_ops
+from .trace import summarize_steps
 
 # What one stored record may weigh, when the server does not say. A turn's
 # tool results are almost all of a conversation's weight and the part it can
@@ -63,8 +64,12 @@ def meta_key(app: str, project_id: str, conv_id: str) -> str:
     return f'{app}:assistant:{project_id}:meta:{conv_id}'
 
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+def now_iso(at: Optional[datetime] = None) -> str:
+    """``at`` (now by default) as the record writes every time: UTC, to the
+    millisecond, with a ``Z``, the same string a browser's
+    ``Date.toISOString`` gives (plaid-ui ``itemTime``)."""
+    at = at or datetime.now(timezone.utc)
+    return at.astimezone(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
 
 class MissingConversation(Exception):
@@ -144,8 +149,14 @@ class ConversationStore:
 
 # --- items ----------------------------------------------------------------------
 
+# Every item of a conversation carries ``created_at``, when it was written
+# (`now_iso`): a question when it was asked, a reply or an error when the turn
+# ended. The browser stamps the items it writes the same way (plaid-ui
+# ``itemTime``). A plan's own times stay where they were: its id dates its
+# staging, ``settled_at`` its decision.
+
 def user_item(text: str) -> Dict[str, Any]:
-    return {'kind': 'user', 'text': text}
+    return {'kind': 'user', 'text': text, 'created_at': now_iso()}
 
 
 def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Dict[str, Any]],
@@ -177,7 +188,8 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
     it, not the one running when it is approved.
     """
     item = {'kind': 'assistant', 'text': text or '', 'plan': plan, 'citations': citations or [],
-            'status': None, 'model': model, 'steps': steps or [], 'steps_summary': steps_summary or ''}
+            'status': None, 'model': model, 'steps': steps or [], 'steps_summary': steps_summary or '',
+            'created_at': now_iso()}
     if version:
         item['version'] = version
     if service:
@@ -190,12 +202,29 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
 
 
 def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
-               version: Optional[str] = None, service: Optional[str] = None) -> Dict[str, Any]:
+               version: Optional[str] = None, service: Optional[str] = None,
+               steps: Optional[List[Dict[str, Any]]] = None,
+               calls: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """A turn that ended without an answer. ``model``, ``version`` and
-    ``service`` say which assistant it was asked of, as on an answer."""
-    item: Dict[str, Any] = {'kind': 'error', 'text': text}
+    ``service`` say which assistant it was asked of, as on an answer.
+
+    ``steps`` are the tool calls the turn made before it failed or was
+    stopped, as an answer's are (`trace.trace_step`), and ``calls`` what each
+    was sent and answered: ``{id, name, arguments, result}``, the arguments as
+    the model wrote them and the result as the tool returned it (cut to
+    ``MAX_RESULT_CHARS`` like every result). An answer keeps these in the
+    model transcript, but a failed turn's messages leave the transcript (a
+    retry must not send them again), so they are kept on the item instead,
+    which the model never reads. `prune` drops their results first, then
+    them, like an old answer's."""
+    item: Dict[str, Any] = {'kind': 'error', 'text': text, 'created_at': now_iso()}
     if stopped:
         item['stopped'] = True
+    if steps:
+        item['steps'] = steps
+        item['steps_summary'] = summarize_steps(steps)
+    if calls:
+        item['calls'] = calls
     if model:
         item['model'] = model
     if version:
@@ -507,18 +536,42 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
     if excess <= 0:
         return conv
 
-    # Stages two and three walk `display` oldest first and leave the last item
-    # whole, because that is the reply on screen.
+    # A failed or stopped turn keeps its calls' results on its own item (see
+    # `error_item`), where they are tool results like any other: they go
+    # next, oldest first, the newest item's too, since the model never reads
+    # them and the reader of the record has their steps and arguments still.
     display = list(conv.get('display') or [])
+    for i, item in enumerate(display):
+        if excess <= 0:
+            break
+        if item.get('kind') != 'error' or not item.get('calls'):
+            continue
+        calls = []
+        for c in item['calls']:
+            if excess > 0 and isinstance(c, dict) and c.get('result') not in (None, DROPPED):
+                excess -= _bytes(c['result']) - dropped
+                c = {**c, 'result': DROPPED}
+            calls.append(c)
+        display[i] = {**item, 'calls': calls}
+    if excess <= 0:
+        return {**conv, 'display': display}
+
+    # Stages two and three walk `display` oldest first and leave the last item
+    # whole, because that is the reply on screen. A failed turn's steps go with
+    # the calls they name.
     for key in ('steps', 'citations'):
         for i in range(max(0, len(display) - 1)):
             if excess <= 0:
                 break
             item = display[i]
-            if item.get('kind') != 'assistant' or not item.get(key):
+            if item.get('kind') not in ('assistant', 'error') or not item.get(key):
                 continue
             excess -= _bytes(item[key])
-            display[i] = {**item, key: []}
+            thinner = {**item, key: []}
+            if key == 'steps' and item.get('calls'):
+                excess -= _bytes(item['calls'])
+                thinner['calls'] = []
+            display[i] = thinner
         if excess <= 0:
             break
     return {**conv, 'display': display}

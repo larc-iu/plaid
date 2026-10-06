@@ -128,8 +128,10 @@ def test_items_and_plan_settlement():
     assert conv['display'][1]['status'] is None, 'the input is not mutated'
     assert out['display'][1]['plan'] == {'id': 'p1', 'summary': '1 field value', 'labels': [], 'op_count': 0}, \
         'a settled plan keeps its card and drops what only approving it needed'
-    assert error_item('Stopped.', stopped=True) == {'kind': 'error', 'text': 'Stopped.', 'stopped': True}
-    assert error_item('x') == {'kind': 'error', 'text': 'x'}
+    undated = lambda item: {k: v for k, v in item.items() if k != 'created_at'}  # noqa: E731
+    assert undated(error_item('Stopped.', stopped=True)) == {'kind': 'error', 'text': 'Stopped.', 'stopped': True}
+    assert undated(error_item('x')) == {'kind': 'error', 'text': 'x'}
+    assert error_item('x')['created_at'].endswith('Z')
 
 
 def test_store_round_trip_and_ownership():

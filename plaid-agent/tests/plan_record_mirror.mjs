@@ -4,7 +4,10 @@
 // kebab-case keys to camelCase), compacted, and written back the way the
 // browser writes it.
 //
-// Reads a cases JSON path as argv[2] and writes the results to stdout.
+// It also dates instants the way the browser dates the items it writes, to
+// compare with the service's `now_iso`.
+//
+// Reads a JSON path as argv[2] and writes the results to stdout.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -15,6 +18,12 @@ const { transformRequest, transformResponse } = await import(
   `${ROOT}/plaid-client-js/src/transforms.js`
 );
 
-const cases = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const { itemTime } = await import(`${ROOT}/plaid-ui/src/components/assistant/itemTime.js`);
+
+// `cases` are plan items, `times` instants in epoch milliseconds, which the
+// browser dates its own items with (`itemTime`).
+const { cases, times } = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const results = cases.map((stored) => transformRequest(compactPlan(transformResponse(stored))));
-process.stdout.write(JSON.stringify(results));
+process.stdout.write(
+  JSON.stringify({ results, times: times.map((ms) => itemTime(new Date(ms))) }),
+);
