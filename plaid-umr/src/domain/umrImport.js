@@ -3,7 +3,7 @@
 // The text is the sentences' words joined by spaces, one sentence per line,
 // since a .umr file carries tokens and not a text. Sentences tile the text
 // (the sentence layer is partitioning), each taking the newline after it.
-import { cpLength, createdIds } from '@larc-iu/plaid-client';
+import { cpLength } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/umrLayerUtils.js';
 import { parseUmrFile } from './format/umrFile.js';
 import { nfc } from './format/penman.js';
@@ -91,12 +91,16 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       textId = textResponse.id;
     }
 
-    // Tokens: sentences, words, node anchors and the sentences' records in
-    // one atomic batch. Onto an existing document, the anchors and records
-    // alone: a sentence that has a record takes what the file said in it.
+    // Tokens: sentences, words, node anchors and the sentences' records, and
+    // the nodes on the anchors, in one atomic batch, so no anchor is stored
+    // without its node. Onto an existing document, the anchors, records and
+    // nodes alone: a sentence that has a record takes what the file said in
+    // it. Every row is made under an id minted here, so the nodes name their
+    // anchors, sentences and words without waiting for an answer.
     const sentenceOps = existing
       ? []
       : plan.sentences.map((s) => ({
+          id: pendingId(),
           tokenLayerId: layerInfo.sentenceTokenLayer.id,
           text: textId,
           begin: s.begin,
@@ -124,6 +128,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       ? []
       : plan.sentences.flatMap((s) =>
           s.words.map((w) => ({
+            id: pendingId(),
             tokenLayerId: layerInfo.wordTokenLayer.id,
             text: textId,
             begin: w.begin,
@@ -131,15 +136,41 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
           })),
         );
     const pieceOps = plan.pieces.map((p) => ({
+      id: pendingId(),
       tokenLayerId: layerInfo.nodeTokenLayer.id,
       text: textId,
       begin: p.begin,
       end: p.end,
     }));
-    const tokenResults = await client.batched(async (b) => {
+    const pieceIds = pieceOps.map((p) => p.id);
+    // The sentence tokens by number, for the unaligned nodes to record.
+    const sentenceIds = existing
+      ? existing.graph.sentences.map((s) => s.tokenId)
+      : sentenceOps.map((s) => s.id);
+    // The words by their position in text order (planImport), for the
+    // aligned nodes to record.
+    const wordIds = existing
+      ? plan.sentences.flatMap((s) => s.words.map((w) => w.id))
+      : wordOps.map((w) => w.id);
+    const metaOf = (n) => {
+      if (n.home) return { ...n.meta, sentence: sentenceIds[n.home - 1] };
+      return n.words.length ? { ...n.meta, words: n.words.map((k) => wordIds[k]) } : n.meta;
+    };
+    // Nodes: one span per graph node and per constant in use. A constant the
+    // document already has (an attach onto one with triples) is reused.
+    const toCreate = plan.nodes.filter((n) => !n.existingId);
+    const spanOps = toCreate.map((n) => ({
+      id: pendingId(),
+      spanLayerId: layerInfo.conceptLayer.id,
+      tokens: n.pieceIndexes.map((i) => pieceIds[i]),
+      value: n.concept,
+      metadata: { [UMR_NAMESPACE]: metaOf(n) },
+    }));
+    await client.batched(async (b) => {
       if (sentenceOps.length) b.tokens.bulkCreate(sentenceOps);
       if (wordOps.length) b.tokens.bulkCreate(wordOps);
       if (pieceOps.length) b.tokens.bulkCreate(pieceOps);
+      if (spanOps.length) b.spans.bulkCreate(spanOps);
       if (recordOps.length) b.tokens.bulkCreate(recordOps);
       plan.sentences.forEach((s) => {
         const record = had[s.index - 1]?.recordToken;
@@ -150,58 +181,8 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
         }
       });
     });
-    // The anchors' ids: after the sentence and word creates, before the
-    // records.
-    const pieceIndex = (sentenceOps.length ? 1 : 0) + (wordOps.length ? 1 : 0);
-    const pieceIds = pieceOps.length ? createdIds(tokenResults[pieceIndex]) : [];
     createdTokenIds = [...pieceIds, ...(existing ? recordOps.map((r) => r.id) : [])];
-    if (pieceIds.length !== pieceOps.length) {
-      throw new Error(
-        `The server returned ${pieceIds.length} anchor ids for ${pieceOps.length} anchors.`,
-      );
-    }
-
-    // Nodes: one span per graph node and per constant in use. A constant the
-    // document already has (an attach onto one with triples) is reused.
-    // The sentence tokens by number, for the unaligned nodes to record.
-    const sentenceIds = existing
-      ? existing.graph.sentences.map((s) => s.tokenId)
-      : createdIds(tokenResults[0]);
-    // The words by their position in text order (planImport), for the
-    // aligned nodes to record.
-    const wordIds = existing
-      ? plan.sentences.flatMap((s) => s.words.map((w) => w.id))
-      : wordOps.length
-        ? createdIds(tokenResults[sentenceOps.length ? 1 : 0])
-        : [];
-    if (!existing && wordIds.length !== wordOps.length) {
-      throw new Error(
-        `The server returned ${wordIds.length} word ids for ${wordOps.length} words.`,
-      );
-    }
-    const metaOf = (n) => {
-      if (n.home) return { ...n.meta, sentence: sentenceIds[n.home - 1] };
-      return n.words.length ? { ...n.meta, words: n.words.map((k) => wordIds[k]) } : n.meta;
-    };
-    const toCreate = plan.nodes.filter((n) => !n.existingId);
-    const spanOps = toCreate.map((n) => ({
-      spanLayerId: layerInfo.conceptLayer.id,
-      tokens: n.pieceIndexes.map((i) => pieceIds[i]),
-      value: n.concept,
-      metadata: { [UMR_NAMESPACE]: metaOf(n) },
-    }));
-    let spanIds = [];
-    if (spanOps.length) {
-      const spanResults = await client.batched(async (b) => {
-        b.spans.bulkCreate(spanOps);
-      });
-      spanIds = createdIds(spanResults.at(-1));
-    }
-    if (spanIds.length !== spanOps.length) {
-      throw new Error(
-        `The server returned ${spanIds.length} node ids for ${spanOps.length} nodes.`,
-      );
-    }
+    const spanIds = spanOps.map((op) => op.id);
     const createdIndex = new Map(toCreate.map((n, i) => [n.key, i]));
     const spanOf = (key) => {
       const node = plan.nodes[plan.nodeIndex.get(key)];

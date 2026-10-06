@@ -11,7 +11,9 @@ import {
   readerNotes,
 } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
 import { rawFromPlan } from './rawFromPlan.js';
+import { recordingClient } from './recordingClient.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -338,4 +340,45 @@ describe('an attach onto a document with a triple between constants', () => {
     record.metadata.umr = { ...plan.sentences[0].meta, triples: plan.sentences[0].triples };
     assert.match(new UmrDocument({ raw: after }).toUmr(), /:modal \(\(root :modal author\)\)/);
   });
+});
+
+// Every anchor an import makes goes in the request that makes the node on
+// it, so no anchor is ever stored without its node, whatever cuts the import
+// off after it.
+test('an import makes its anchors and the nodes on them in one request', async () => {
+  const text = file({
+    words: 'the cat sleeps',
+    graph: '(s1s / sleep-01\n    :ARG0 (s1c / cat))',
+    alignment: 's1s: 3-3\ns1c: 2-2',
+    doc: '(s1s0 / sentence)',
+  });
+  const raw = rawFromPlan(planImport(parseUmrFile(text).sentences, []));
+  const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+  nodes.tokens = [];
+  nodes.spanLayers[0].spans = [];
+  nodes.spanLayers[0].relationLayers.forEach((l) => (l.relations = []));
+  const { client, calls } = recordingClient();
+  client.documents.get = async () => structuredClone(raw);
+  const sent = [];
+  const batched = client.batched;
+  client.batched = async (fn) => {
+    const from = calls.length;
+    try {
+      return await batched(fn);
+    } finally {
+      sent.push(calls.slice(from).map((c) => c.name));
+    }
+  };
+  const { attached } = await importUmrDocument(client, 'p', 'doc', text, getUmrLayerInfo(raw), {
+    into: raw.id,
+  });
+  assert.ok(attached);
+  const anchors = sent.findIndex((names) => names.includes('tokens.bulkCreate'));
+  assert.ok(sent[anchors].includes('spans.bulkCreate'), JSON.stringify(sent));
+  assert.equal(sent.flat().filter((n) => n === 'spans.bulkCreate').length, 1);
+  // The nodes name their anchors by the ids the import made them under.
+  const pieces = calls.find((c) => c.name === 'tokens.bulkCreate').args[0];
+  const spans = calls.find((c) => c.name === 'spans.bulkCreate').args[0];
+  const pieceIds = new Set(pieces.map((p) => p.id));
+  assert.ok(spans.every((s) => s.tokens.every((id) => pieceIds.has(id))));
 });

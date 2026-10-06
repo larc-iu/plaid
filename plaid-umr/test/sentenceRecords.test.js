@@ -9,8 +9,8 @@
 //   refuses a repeat: `non-unique-sent-id`).
 // - A record left on new text before the sentence it describes is read with
 //   its graph, and reconcile moves it there.
-// - A triple between two constants listed by number (as the canvas writes
-//   one) goes into the records of its sentences.
+// - A triple between two constants is listed in the records of its
+//   sentences, which follow them where a number would not.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
@@ -127,7 +127,6 @@ test('a sentence typed in before the first leaves every record with its sentence
   // Nothing of the records needs moving: only the variables are renumbered.
   const result = await doc._reconcile();
   assert.equal(result.recordsMoved, 0);
-  assert.equal(result.triplesMoved, 0);
   assert.equal(result.renumbered, 4);
   assert.deepEqual(
     calls.filter((c) => c.name.startsWith('tokens.') || c.name.startsWith('relations.')),
@@ -185,47 +184,6 @@ test('a record left on new text typed in before its sentence goes back to it', a
       [1, 1],
       [2, 1],
     ],
-  );
-  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
-});
-
-test('a triple between constants listed by number goes into the records of its sentences', async () => {
-  const raw = fromText(`${block(1)}\n${block(2)}\n${block(3)}`);
-  const records = recordTokens(raw);
-  const triple = raw.textLayers[0].tokenLayers
-    .find((l) => l.config?.umr?.nodes)
-    .spanLayers[0].relationLayers.find((l) => l.config?.umr?.documentGraph)
-    .relations.find((r) => r.value === ':modal');
-  // As the canvas or a script writes one: by the sentences' numbers. The
-  // third sentence was made in Plaid and has no record.
-  records.forEach((t) => delete t.metadata.umr.triples);
-  const nodeLayer = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
-  nodeLayer.tokens = nodeLayer.tokens.filter((t) => t !== records[2]);
-  triple.metadata.umr.sentences = [1, 3, 9];
-  const { doc, calls } = open(raw);
-  assert.deepEqual(
-    doc.graph.sentences.map((s) => s.triples.length),
-    [1, 0, 1],
-  );
-  const result = await doc._reconcile();
-  assert.equal(result.triplesMoved, 1);
-  assert.deepEqual(calls.find((c) => c.name === 'relations.patchMetadata').args, [
-    triple.id,
-    [{ op: 'set', path: ['umr', 'sentences'], value: [9] }],
-  ]);
-  assert.deepEqual(calls.find((c) => c.name === 'tokens.patchMetadata').args, [
-    records[0].id,
-    [{ op: 'set', path: ['umr', 'triples'], value: [triple.id] }],
-  ]);
-  const made = calls.find((c) => c.name === 'tokens.bulkCreate').args[0];
-  assert.equal(made.length, 1);
-  assert.deepEqual(made[0].metadata, { umr: { triples: [triple.id] } });
-  assert.equal(made[0].begin, doc.graph.sentences[2].begin);
-  applyPatches(raw, calls);
-  const again = open(raw);
-  assert.deepEqual(
-    again.doc.graph.sentences.map((s) => s.triples.length),
-    [1, 0, 1],
   );
   assert.deepEqual(await again.doc._reconcile(), { findings: [] });
 });
@@ -335,7 +293,6 @@ test('a triple between constants follows its sentences past one typed in between
   );
   // The records list it, so nothing about it is written.
   const result = await doc._reconcile();
-  assert.equal(result.triplesMoved, 0);
   assert.equal(result.recordsMoved, 0);
   assert.equal(
     calls.find((c) => c.name === 'relations.patchMetadata' || c.name === 'tokens.patchMetadata'),

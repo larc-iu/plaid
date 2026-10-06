@@ -1,9 +1,10 @@
 // The rule core holds on UMR relations (a relation stays inside its sentence,
-// umrConstraints.js): a maintainer's open declares it when the layer lacks
-// it, after core's repair, and reports data that keeps it out as ONE finding.
-// Nobody else declares. And an edit core refuses under it (422) puts the
-// screen back and says what the server said, as any refusal does. The resend
-// rechecks no longer ask for one sentence: core refuses that itself.
+// umrConstraints.js) is declared by setup and adopt only: an open asks
+// nothing of it, whoever opens and whatever the layer holds (a one-off
+// script declared it on the projects made before). An edit core refuses
+// under it (422) puts the screen back and says what the server said, as any
+// refusal does. The resend rechecks no longer ask for one sentence: core
+// refuses that itself.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
@@ -73,10 +74,9 @@ const refusal = (count) =>
   });
 
 // The recording client with the relation layers' constraint methods, in a
-// batch as well as on their own. `declare` answers setConstraints: an error
-// to throw, or nothing for a landed declaration. `broken` is whether a check
-// finds stored relations the rule would change.
-function load({ user = MAINTAINER, stored, declare = null, broken = true } = {}) {
+// batch as well as on their own. A check finds stored relations the rule
+// would change.
+function load({ user = MAINTAINER, stored } = {}) {
   const raw = rawFromPlan(planImport(parseUmrFile(TEXT).sentences, []));
   const layer = relationLayerOf(raw);
   layer.name = 'UMR relations';
@@ -85,14 +85,11 @@ function load({ user = MAINTAINER, stored, declare = null, broken = true } = {})
   client.relationLayers = {
     setConstraints: async (...args) => {
       calls.push({ name: 'relationLayers.setConstraints', args });
-      if (declare) throw declare;
       return { constraints: { umr: args[2] } };
     },
     checkConstraints: async (...args) => {
       calls.push({ name: 'relationLayers.checkConstraints', args });
-      return broken
-        ? { violations: [{ constraint: 'same-ancestor' }], violationCount: 1 }
-        : { violations: [], violationCount: 0 };
+      return { violations: [{ constraint: 'same-ancestor' }], violationCount: 1 };
     },
     repairConstraints: async (...args) => {
       calls.push({ name: 'relationLayers.repairConstraints', args });
@@ -136,128 +133,26 @@ function load({ user = MAINTAINER, stored, declare = null, broken = true } = {})
 const ruleFor = (raw) => relationRules(sentenceLayerOf(raw).id);
 const constraintCalls = (calls) => calls.filter((c) => c.name.startsWith('relationLayers.'));
 
-test('an open by a maintainer on a layer that already holds the rule writes nothing', async () => {
+test('an open asks nothing of the layer rules, whoever opens and whatever the layer holds', async () => {
   const probe = load();
-  const { doc, calls } = load({ stored: ruleFor(probe.raw) });
-  const result = await doc._reconcile();
-  assert.deepEqual(result, { findings: [] });
-  assert.deepEqual(constraintCalls(calls), []);
-  assert.equal(doc.describeReconcile(result), null);
-});
-
-test('an open by a maintainer repairs, then declares the rule on UMR relations only', async () => {
-  const { doc, calls, raw, reloads } = load();
-  const result = await doc._reconcile();
-  const layerId = relationLayerOf(raw).id;
-  const made = constraintCalls(calls);
-  assert.deepEqual(
-    made.map((c) => c.name),
-    [
-      'relationLayers.checkConstraints',
-      'relationLayers.repairConstraints',
-      'relationLayers.setConstraints',
-    ],
-  );
-  const remediable = ruleFor(raw).filter((r) => r.type === 'same-ancestor');
-  assert.deepEqual(
-    made[0].args,
-    [layerId, remediable],
-    'the rules with a remedy are checked first',
-  );
-  assert.deepEqual(made[1].args, [layerId, remediable]);
-  assert.deepEqual(made[2].args, [layerId, 'umr', ruleFor(raw), undefined, { expected: null }]);
-  assert.deepEqual(result, { findings: [], rulesDeclared: true });
-  assert.equal(reloads(), 1, 'read again after core repaired the project');
-  assert.match(
-    doc.describeReconcile(result),
-    /set up the rule that a relation stays inside its sentence$/,
-  );
-  assert.ok(
-    calls.some((c) => c.name === 'operation' && c.args[0] === 'Set up layer rules'),
-    'the declaration is one labelled operation',
-  );
-});
-
-// REV-FX-CORE F5: UMR no longer asks core for `acyclic` (the canvas and the
-// services hold the cycle rule). A layer an earlier open declared it on has
-// it taken off by a maintainer's open, once.
-test('the rule is same-ancestor alone, and a declared acyclic is taken off once', async () => {
-  const probe = load();
-  assert.deepEqual(
-    ruleFor(probe.raw).map((r) => r.type),
-    ['same-ancestor'],
-  );
-  const old = [
+  const acyclic = [
     ...ruleFor(probe.raw),
     { type: 'acyclic', exceptValues: [':quote', ':modal-predicate'] },
   ];
-  const { doc, calls, raw } = load({ stored: old, broken: false });
-  const result = await doc._reconcile();
-  const set = constraintCalls(calls).filter((c) => c.name === 'relationLayers.setConstraints');
-  assert.equal(set.length, 1);
-  assert.deepEqual(set[0].args, [
-    relationLayerOf(raw).id,
-    'umr',
-    ruleFor(raw),
-    undefined,
-    { expected: old },
-  ]);
-  assert.deepEqual(result.findings, []);
-  const again = load({ stored: ruleFor(raw) });
-  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
-  assert.deepEqual(constraintCalls(again.calls), []);
-});
-
-// H9-FIRST-OPEN-3: a repair holds the write lock over the whole layer.
-test('an open by a maintainer declares the rule on clean data with no repair', async () => {
-  const { doc, calls } = load({ broken: false });
-  const result = await doc._reconcile();
-  assert.deepEqual(
-    constraintCalls(calls).map((c) => c.name),
-    ['relationLayers.checkConstraints', 'relationLayers.setConstraints'],
-  );
-  assert.deepEqual(result, { findings: [], rulesDeclared: true });
-});
-
-test('an open by a writer who is not a maintainer repairs the document opened and declares nothing', async () => {
-  const { doc, calls, raw, reloads } = load({ user: WRITER });
-  const result = await doc._reconcile();
-  assert.deepEqual(result, { findings: [] });
-  assert.deepEqual(constraintCalls(calls), [
-    {
-      name: 'relationLayers.repairConstraints',
-      args: [relationLayerOf(raw).id, ruleFor(raw), undefined, { document: doc.id }],
-    },
-  ]);
-  assert.equal(reloads(), 0, 'nothing was repaired, so nothing is read again');
-});
-
-test('an open by a writer once the rule is declared asks for nothing', async () => {
-  const probe = load();
-  const { doc, calls } = load({ user: WRITER, stored: ruleFor(probe.raw) });
-  assert.deepEqual(await doc._reconcile(), { findings: [] });
-  assert.deepEqual(constraintCalls(calls), []);
-});
-
-test('a declaration the stored data refuses becomes one warning', async () => {
-  const { doc } = load({ declare: refusal(2) });
-  const result = await doc._reconcile();
-  assert.equal(result.findings.length, 1);
-  const [finding] = result.findings;
-  assert.equal(finding.severity, 'warning');
-  assert.equal(finding.code, 'layer-rules-not-in-force');
-  assert.equal(
-    finding.message,
-    'The same-ancestor rules of "UMR relations" are not in force: 2 stored relations break them.',
-  );
-  assert.equal(result.rulesDeclared, undefined);
-});
-
-test('a failed declaration fails the repair, which is tried again on the next open', async () => {
-  const lost = Object.assign(new Error('HTTP 500 boom'), { status: 500 });
-  const { doc } = load({ declare: lost });
-  const result = await doc._reconcile();
-  assert.equal(result.error, lost);
+  for (const options of [
+    {},
+    { stored: acyclic },
+    { stored: ruleFor(probe.raw) },
+    { user: WRITER },
+    { user: WRITER, stored: acyclic },
+  ]) {
+    const { doc, calls, reloads } = load(options);
+    const result = await doc._reconcile();
+    assert.deepEqual(result, { findings: [] });
+    assert.deepEqual(constraintCalls(calls), []);
+    assert.equal(reloads(), 0);
+    assert.equal(doc.describeReconcile(result), null);
+  }
 });
 
 // ----- the resend rechecks -----

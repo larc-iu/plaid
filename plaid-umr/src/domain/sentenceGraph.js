@@ -15,12 +15,11 @@
 //   edge   = a relation in the relation layer, value = role,
 //            metadata.umr = { order }
 //   triple = a relation in the document-graph layer, value = the relation,
-//            metadata.umr = { group, sentences? } where `group` is temporal,
-//            modal or coref. A triple between two constants belongs to no
-//            sentence by itself: the records of the sentences whose blocks
-//            write it list it (`triples` below), and one just made lists
-//            those sentences by number (`sentences`) until reconcile puts it
-//            in their records
+//            metadata.umr = { group } where `group` is temporal, modal or
+//            coref. A triple between two constants belongs to no sentence by
+//            itself: the records of the sentences whose blocks write it list
+//            it (`triples` below), and every writer puts it there as it makes
+//            it
 //   record = a token in the UMR node layer that carries metadata.umr (an
 //            anchor carries none) = { snt?, text?, ilg?, meta?, rawGraph?,
 //            rawAlignment?, held?, triples? }: what a sentence's file block
@@ -165,37 +164,6 @@ function recordsFollowTheirGraphs(sentences, slice, tokensById) {
     Object.assign(s, recordFields(next && tokensById.get(next), s, slice));
     s.otherRecords = rest;
   });
-}
-
-/**
- * The sentence a stored sentence number now names, for a triple between two
- * constants that lists the sentences whose blocks write it by number. A
- * number is a position when it was written, so after another app adds or
- * removes a sentence before it, it names the sentence whose variables still
- * carry it. A number no sentence's variables carry, and every number in a
- * document numbered by its file, is read as it is.
- *
- * @returns {(n: number) => number}
- */
-export function sentenceNumberReader(sentences) {
-  if (numberedByFile(sentences)) return (n) => n;
-  // Each number, the sentences whose variables carry it: two sentences
-  // joined in IGT carry both numbers, and a number two sentences carry (one
-  // split in two) says nothing about where it went.
-  const holders = new Map();
-  sentences.forEach((s) =>
-    s.nodes.forEach((node) => {
-      const m = NUMBERED_VARIABLE.exec(node.var || '');
-      if (!m) return;
-      const n = Number(m[1]);
-      if (!holders.has(n)) holders.set(n, new Set());
-      holders.get(n).add(s.index);
-    }),
-  );
-  return (n) => {
-    const at = holders.get(n);
-    return at?.size === 1 ? [...at][0] : n;
-  };
 }
 
 // A raw span's anchor pieces, as token objects, in text order.
@@ -406,10 +374,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
 
   // Document-level triples, attached to the LATER of the two sentences
   // involved: the one whose block the file writes them in. A triple between
-  // two constants belongs to the sentences whose records list it, and to
-  // those its own metadata lists by the number each had when it was written
-  // (sentenceNumberReader), until reconcile puts it in their records.
-  const numberNow = sentenceNumberReader(sentences);
+  // two constants belongs to the sentences whose records list it.
   docRelations.forEach((rel) => {
     const source = nodesById.get(rel.source);
     const target = nodesById.get(rel.target);
@@ -429,9 +394,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     if (later > 0) {
       sentences[later - 1].triples.push(triple);
     } else if (source.constant && target.constant) {
-      const blocks = new Set(listedIn.get(rel.id) || []);
-      (meta.sentences || []).forEach((n) => blocks.add(numberNow(n)));
-      [...blocks].sort((a, b) => a - b).forEach((n) => sentences[n - 1]?.triples.push(triple));
+      [...(listedIn.get(rel.id) || [])]
+        .sort((a, b) => a - b)
+        .forEach((n) => sentences[n - 1].triples.push(triple));
     }
   });
 

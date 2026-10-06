@@ -19,9 +19,6 @@ import {
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
-import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
-import { canEditProject, canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
-import { constraintFindings, wantedConstraints } from './umrConstraints.js';
 import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
@@ -44,11 +41,8 @@ import { editScopes, resendableBySentence } from './umrRebase.js';
 import {
   describeUmrReconcile,
   planEntryUnlink,
-  planRecordHome,
   planRecordExtents,
   planRenumber,
-  planStrayTokens,
-  planTripleRecords,
   planUnalignedHeal,
   planWordSplits,
   unalignedStretch,
@@ -94,12 +88,6 @@ const partlyApplied = (stage, withNodes) => {
   const saved = withNodes ? 'deletions, changes and new nodes' : 'deletions and changes';
   return `Partly applied. Saved: ${saved}. ${missing}: new edges.`;
 };
-
-// How long a bare anchor token is taken to be an add still under way rather
-// than one an interrupted add left (_leftoverTokens). An add's requests
-// follow each other within a second or two, and the margin covers a slow
-// connection and a browser clock a little off the server's.
-const STRAY_GRACE_MS = 2 * 60 * 1000;
 
 /**
  * The project's vocabularies as the lexicon buildLexicon makes, with the
@@ -504,9 +492,9 @@ export class UmrDocument extends DocumentModel {
 
   // ----- reconcile on open -----
 
-  // What another app's edit, or an edit cut off, left in the document
-  // (umrReconcile.js), put right in ONE batch, so the audit entry names one
-  // repair. History keeps what was removed.
+  // What another app's edit left in the document (umrReconcile.js), put
+  // right in ONE batch, so the audit entry names one repair. History keeps
+  // what was removed.
   //
   // - A node aligned to no word: a node whose sentence token is gone is bound
   //   to the sentence it stands in, an anchor that no longer covers its
@@ -514,81 +502,31 @@ export class UmrDocument extends DocumentModel {
   //   goes.
   // - A node whose words were deleted (in IGT) becomes an ordinary unaligned
   //   node, named in the entry.
-  // - An anchor token no node stands on, what an add cut off after its first
-  //   request left, is removed.
   // - A variable whose sentence number no longer matches its sentence (IGT
   //   added or removed a sentence before it) is renumbered.
   // - A sentence's record (its file number, gloss and metadata lines, held
-  //   relations) left on new text IGT split off before it moves to it, and a
-  //   triple between two constants listed by sentence number goes into the
-  //   records of those sentences.
-  // - A record still on a sentence token, where UMR kept it before records
-  //   had tokens of their own, moves to a record token over its sentence,
-  //   in a batch of its own before the rest is planned.
+  //   relations) left on new text IGT split off before it moves to it, and
+  //   one left over part of its sentence is put back over its share.
+  // - A node over a word IGT split in two is put on one half.
   // - A node picked from a vocabulary entry that was deleted forgets it.
-  //
-  // First, for a maintainer, the rule core holds on UMR relations (a relation
-  // stays inside its sentence, umrConstraints.js) is declared when the layer
-  // does not hold it yet, after core deletes the relations that break it,
-  // project-wide. Data that keeps it from being declared is reported as a
-  // finding. The document is read again when core deleted anything.
   //
   // NOT stamped, deliberately: a repair that runs on open decides nothing
   // and vouches for nothing, so it leaves provenance exactly as it found it
   // (the same rule igt's morpheme heal follows).
   async _reconcile() {
     // A service holding the document's lock is part way through rewriting
-    // it: an anchor it has just made looks like one an interrupted add left,
-    // and every write here would be refused (423). The document is repaired
-    // the next time it is opened.
+    // it, and every write here would be refused (423). The document is
+    // repaired the next time it is opened.
     if (await this._lockedByAService()) return { findings: [], deferred: true };
-    let rules;
-    try {
-      rules = await ensureLayerConstraints(this._client, wantedConstraints(this.layerInfo), {
-        canManage: canManageProject(this._project, this._user),
-        canWrite: canEditProject(this._project, this._user),
-        documentId: this.id,
-      });
-    } catch (error) {
-      if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
-      return { findings: [], error };
-    }
-    const ruled = { findings: constraintFindings(rules.pending, this.layerInfo) };
-    if (rules.changed) ruled.rulesDeclared = true;
-    if (rules.repaired) ruled.rulesRepaired = true;
-    // A declaration follows core's repair of the whole project, which may
-    // have deleted relations of this document.
-    if (rules.repaired || rules.changed) {
-      try {
-        await this._reload();
-      } catch (refreshError) {
-        return { ...ruled, refreshError };
-      }
-    }
-    let homed;
-    try {
-      homed = await this._recordsHome();
-    } catch (error) {
-      if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
-      return { findings: [], error };
-    }
-    if (homed) {
-      try {
-        await this._reload();
-      } catch (refreshError) {
-        return { ...ruled, recordsHomed: homed, refreshError };
-      }
-    }
+    const ruled = { findings: [] };
     const graph = this.graph;
     const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
-    const strays = await this._leftoverTokens(planStrayTokens(this.layerInfo));
     const removed = new Set(remove);
     // A graph kept as text still names its variables, and a renumbered node
     // must not take one of them.
     const keptNames = keptVariables(graph);
     const renumber = planRenumber(graph, removed, keptNames);
     const recordMoves = planRecordExtents(graph);
-    const tripleRecords = planTripleRecords(graph, UMR_NAMESPACE);
     const wordSplits = planWordSplits(graph, UMR_NAMESPACE).filter((w) => !removed.has(w.nodeId));
     // An entry counts as deleted only when the vocabulary the node picked it
     // from was read and lacks it (planEntryUnlink). The vocabularies are read
@@ -606,13 +544,11 @@ export class UmrDocument extends DocumentModel {
       !rebind.length &&
       !resize.length &&
       !unanchor.length &&
-      !strays.length &&
       !renumber.length &&
       !recordMoves.length &&
-      !tripleRecords.triples.length &&
       !wordSplits.length &&
       !unlink.length;
-    if (nothing) return homed ? { ...ruled, recordsHomed: homed } : ruled;
+    if (nothing) return ruled;
     const unanchored = new Set(unanchor.map((u) => u.nodeId));
     // A node that lost its word is named as it is called from now on.
     const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
@@ -621,14 +557,11 @@ export class UmrDocument extends DocumentModel {
       removed: remove.length,
       rebound: rebind.length,
       resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
-      strays: strays.length,
       unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
       renumbered: renumber.length,
       unlinked: unlink.length,
       recordsMoved: recordMoves.filter((r) => r.moved).length,
       recordsFitted: recordMoves.filter((r) => !r.moved).length,
-      recordsHomed: homed,
-      triplesMoved: tripleRecords.triples.length,
       wordSplits: new Set(wordSplits.map((w) => w.nodeId)).size,
     };
     // The History entry takes its label from the first write, so the label
@@ -639,10 +572,7 @@ export class UmrDocument extends DocumentModel {
     const group = this._client.operationGroup;
     if (group?.depth === 1) group.message = describeUmrReconcile(tally);
     try {
-      const tokenIds = [
-        ...strays,
-        ...remove.flatMap((id) => this.node(id).pieces.map((p) => p.id)),
-      ];
+      const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
       // Every metadata change of one node in one patch.
       const metaOf = new Map();
       const change = (id, changes) => metaOf.set(id, { ...metaOf.get(id), ...changes });
@@ -661,35 +591,11 @@ export class UmrDocument extends DocumentModel {
       wordSplits.forEach(({ nodeId, words }) => change(nodeId, { words }));
       unlink.forEach((nodeId) => change(nodeId, entryRecord(null)));
       const heldRenamed = this._heldRenamed(renumber);
-      // Every metadata change of one record in one patch.
-      const recordOf = new Map(heldRenamed.map(([id, held]) => [id, { held }]));
-      tripleRecords.records.forEach((triples, id) =>
-        recordOf.set(id, { ...recordOf.get(id), triples }),
-      );
-      const info = this.layerInfo;
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
         recordMoves.forEach(({ id, begin, end }) => b.tokens.update(id, begin, end));
         wordSplits.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));
-        if (tripleRecords.newRecords.length) {
-          b.tokens.bulkCreate(
-            tripleRecords.newRecords.map((r) => ({
-              id: pendingId(),
-              tokenLayerId: info.nodeTokenLayer.id,
-              text: info.textLayer.text.id,
-              begin: r.begin,
-              end: r.end,
-              metadata: { [UMR_NAMESPACE]: { triples: r.triples } },
-            })),
-          );
-        }
-        tripleRecords.triples.forEach(({ relationId, sentences }) =>
-          b.relations.patchMetadata(
-            relationId,
-            umrOps({ sentences: sentences.length ? sentences : undefined }),
-          ),
-        );
-        recordOf.forEach((changes, id) => b.tokens.patchMetadata(id, umrOps(changes)));
+        heldRenamed.forEach(([id, held]) => b.tokens.patchMetadata(id, umrOps({ held })));
         metaOf.forEach((changes, nodeId) => b.spans.patchMetadata(nodeId, umrOps(changes)));
         resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
           b.tokens.update(pieceId, begin, end);
@@ -713,32 +619,6 @@ export class UmrDocument extends DocumentModel {
       return { ...tally, refreshError };
     }
     return tally;
-  }
-
-  // The anchor tokens no node stands on that an interrupted add LEFT, rather
-  // than one an add is making now: the canvas writes the anchor, then the
-  // node on it, then its edge, and takes no lock, so another person opening
-  // the document between those requests sees the fresh anchor bare. An id
-  // says nothing of when a token was made (UUIDv7 orders only across
-  // milliseconds), so the document's audit log is asked: while it records a
-  // token made in the last STRAY_GRACE_MS, every bare anchor is left for a
-  // later open. A log that cannot be read leaves them too. The window is
-  // measured on the server's clock, which stamped the log (the lock check
-  // just before is a response that sets it): a browser clock minutes fast
-  // would otherwise ask about a window after the add.
-  async _leftoverTokens(ids) {
-    if (!ids.length) return ids;
-    try {
-      const now = this._client.serverNow().getTime();
-      const recent = await this._client.documents.auditPage(this.id, {
-        startTime: new Date(now - STRAY_GRACE_MS).toISOString(),
-        opTypes: ['token/create', 'token/bulk-create'],
-        limit: 1,
-      });
-      return recent?.entries?.length ? [] : ids;
-    } catch {
-      return [];
-    }
   }
 
   // Whether someone holds the document's lock, which only a service run or a
@@ -776,36 +656,6 @@ export class UmrDocument extends DocumentModel {
       }
     });
     return out;
-  }
-
-  // The records still on sentence tokens (umrReconcile.js planRecordHome),
-  // each moved to a record token over its sentence in one batch. Resolves to
-  // how many moved.
-  async _recordsHome() {
-    const info = this.layerInfo;
-    const moves = planRecordHome(info, UMR_NAMESPACE);
-    if (!moves.length) return 0;
-    await this._client.batched(async (b) => {
-      b.tokens.bulkCreate(
-        moves.map((m) => ({
-          id: pendingId(),
-          tokenLayerId: info.nodeTokenLayer.id,
-          text: info.textLayer.text.id,
-          begin: m.begin,
-          end: m.end,
-          metadata: { [UMR_NAMESPACE]: m.record },
-        })),
-      );
-      b.tokens.bulkUpdate(
-        moves.map((m) => ({
-          id: m.tokenId,
-          metadata: m.keep
-            ? [{ op: 'set', path: [UMR_NAMESPACE], value: m.keep }]
-            : [{ op: 'delete', path: [UMR_NAMESPACE] }],
-        })),
-      );
-    });
-    return moves.length;
   }
 
   describeReconcile(result) {
@@ -1022,61 +872,6 @@ export class UmrDocument extends DocumentModel {
         tokens.forEach((t, k) => ids.set(t.id, made[k]));
       },
     };
-  }
-
-  // A send that makes anchor pieces and then needs more requests to stand
-  // nodes on them (a Text mode apply past one request's ops, whose later
-  // requests cannot name its pieces by ref). When a later step fails,
-  // the pieces it made are deleted again, and a node already on them with
-  // them (the server's cascade), inside the same operation, so no token
-  // nobody can see is left and History holds no add that half happened. Best
-  // effort: a connection that is gone takes this request too, and reconcile
-  // on the next open removes what is left (planStrayTokens). `ids` holds the
-  // pieces' server ids.
-  //
-  // The delete carries no document version. It names only tokens this edit
-  // made, so no one else's edit can be overwritten by it, and the version the
-  // client holds is the one before the failed step, whose answer may have been
-  // lost after the server stored it: stamped, the delete would be refused and
-  // leave the node the user was told had failed. Tokens already gone (404)
-  // leave nothing to undo. Only for an edit whose later steps put its own new
-  // entities on the pieces: a node add and a re-anchor are one batch each,
-  // and have nothing to undo. The error thrown carries `anchorsRemoved`: true
-  // when the pieces, and whatever stood on them, are known to be gone.
-  async _undoPiecesOnFailure(tokens, ids, work) {
-    try {
-      return await work();
-    } catch (error) {
-      // An answer that was lost is not a failure: the edit is sent again from
-      // the top under the same keys, and the pieces it made are what the
-      // resend finishes.
-      if (isUnknownOutcome(error)) throw error;
-      const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
-      let removed = true;
-      if (made.length) {
-        await this._unversioned(() => this._client.tokens.bulkDelete(made)).catch((err) => {
-          if (err?.status === 404) return;
-          removed = false;
-          console.warn('Could not remove the anchors of an edit that failed:', err);
-        });
-      }
-      if (error && typeof error === 'object') error.anchorsRemoved = removed;
-      throw error;
-    }
-  }
-
-  // One request sent without the strict-mode version claim. The client stamps a
-  // request synchronously when it is made (before its first await), so strict
-  // mode is off for exactly that call.
-  _unversioned(send) {
-    const client = this._client;
-    const strict = client.strictModeDocumentId;
-    client.strictModeDocumentId = null;
-    try {
-      return send();
-    } finally {
-      client.strictModeDocumentId = strict;
-    }
   }
 
   // Whether `sentence`, as an edit saw it, and its words `wordIds` stand in
@@ -2237,9 +2032,15 @@ export class UmrDocument extends DocumentModel {
     if (!this._canWrite(failed)) return false;
     const meta = { group: g };
     // A triple between two constants belongs to no sentence by itself: the
-    // one whose block it was made from writes it.
-    const block = isConst(source) && isConst(target) ? this.sentence(sentenceIndex ?? 1) : null;
-    if (isConst(source) && isConst(target)) meta.sentences = [sentenceIndex ?? 1];
+    // one whose block it was made from writes it, so that sentence's record
+    // lists it, in the same batch. A sentence with no record yet gets one
+    // over its share of the sentence (umrReconcile.js planRecordExtents).
+    const constantsOnly = isConst(source) && isConst(target);
+    const block = constantsOnly ? this.sentence(sentenceIndex ?? 1) : null;
+    if (constantsOnly && !block) return false;
+    const newRecord =
+      block && !block.recordToken ? { id: pendingId(), ...this._recordShare(block) } : null;
+    const recordId = block ? (block.recordToken ?? newRecord.id) : null;
     const stamp = this.writer.createStamp;
     // A constant no triple has used yet is made here, the way the importer
     // makes one: a zero-width token at the text's start and a span marked
@@ -2261,6 +2062,26 @@ export class UmrDocument extends DocumentModel {
         value: rel,
         metadata: { ...stamp, [UMR_NAMESPACE]: meta },
       });
+      if (!block) return;
+      const tokens = infoNext.nodeTokenLayer.tokens;
+      const record = tokens.find((x) => x.id === recordId);
+      if (record) {
+        const had = umrOf(record).triples;
+        const list = Array.isArray(had) ? had : [];
+        if (!list.includes(tripleId)) {
+          record.metadata = applyMetadataOps(
+            record.metadata,
+            umrOps({ triples: [...list, tripleId] }),
+          );
+        }
+      } else if (newRecord) {
+        tokens.push({
+          id: newRecord.id,
+          begin: newRecord.begin,
+          end: newRecord.end,
+          metadata: { [UMR_NAMESPACE]: { triples: [tripleId] } },
+        });
+      }
     });
     const ids = new Map();
     const ok = await this._queueWrite(
@@ -2289,6 +2110,7 @@ export class UmrDocument extends DocumentModel {
             { id: tripleId },
           );
           tripleAt = b.ref().$ref;
+          if (block) this._queueRecordTriples(b, recordId, newRecord);
         });
         reads.forEach((read) => read(results, ids));
         ids.set(tripleId, createdId(results[tripleAt]));
@@ -2310,12 +2132,47 @@ export class UmrDocument extends DocumentModel {
             !!now &&
             settledId(now.tokenId) === settledId(block.tokenId) &&
             now.begin === block.begin &&
-            now.end === block.end
+            now.end === block.end &&
+            settledId(now.recordToken ?? '') === settledId(block.recordToken ?? '')
           );
         },
       },
     );
     return ok ? settledId(tripleId) : false;
+  }
+
+  // Where a new record of `sentence` stands: from where the sentence begins
+  // up to the first record waiting in it (a sentence joined to the one
+  // before), or to its end, as reconcile fits one (planRecordExtents).
+  _recordShare(sentence) {
+    const next = (this.graph.records || [])
+      .filter((r) => r.sentence === sentence.index && r.begin > sentence.begin)
+      .reduce((min, r) => Math.min(min, r.begin), sentence.end);
+    return { begin: sentence.begin, end: next };
+  }
+
+  // Queue on batch `b` the triples list of record `recordId` as the screen
+  // shows it now (the edit's own patch included): the whole list on a
+  // record there is, or the record itself when `newRecord` makes it.
+  _queueRecordTriples(b, recordId, newRecord) {
+    const info = this.layerInfo;
+    const record = (info.nodeTokenLayer?.tokens || []).find((x) => x.id === recordId);
+    const listed = umrOf(record).triples;
+    const triples = (Array.isArray(listed) ? listed : []).map(settledId);
+    if (newRecord) {
+      b.tokens.bulkCreate([
+        {
+          id: newRecord.id,
+          tokenLayerId: info.nodeTokenLayer.id,
+          text: info.textLayer.text.id,
+          begin: newRecord.begin,
+          end: newRecord.end,
+          metadata: { [UMR_NAMESPACE]: { triples } },
+        },
+      ]);
+    } else {
+      b.tokens.patchMetadata(settledId(recordId), umrOps({ triples }));
+    }
   }
 
   async setTripleRelation(id, rel) {
@@ -2915,7 +2772,7 @@ export class UmrDocument extends DocumentModel {
         const ids = new Map();
         const pieces = newNodes.flatMap((n) => n.pieces);
         const nodeAt = new Map(newNodes.map((n, i) => [n.id, i]));
-        // What changes or removes what is there, then the new nodes' anchors.
+        // What changes or removes what is there.
         const queueChanges = (b) => {
           spanOps.forEach(([id, ops]) => b.spans.patchMetadata(settledId(id), ops));
           if (deletedTokens.length) b.tokens.bulkDelete(deletedTokens.map(settledId));
@@ -2925,7 +2782,11 @@ export class UmrDocument extends DocumentModel {
             if (stampOps.length) b.spans.patchMetadata(settledId(id), stampOps);
           });
           relationOps.forEach(([id, ops]) => b.relations.patchMetadata(settledId(id), ops));
-          if (!pieces.length) return null;
+        };
+        // The new nodes' anchors, then the nodes on them by ref, always in
+        // one request: no anchor is ever stored without its node.
+        const queueNodes = (b) => {
+          if (!newNodes.length) return { pieceOp: null, nodeOp: null };
           b.tokens.bulkCreate(
             pieces.map((p) => ({
               id: p.id,
@@ -2935,22 +2796,18 @@ export class UmrDocument extends DocumentModel {
               end: p.end,
             })),
           );
-          return b.ref().$ref;
-        };
-        // The new nodes, each on its pieces: `pieceId(k)` names the k-th of
-        // `pieces`, by ref in the batch that makes it or by the id it got.
-        const queueNodes = (b, pieceId) => {
+          const pieceOp = b.ref().$ref;
           let k = 0;
           b.spans.bulkCreate(
             newNodes.map((n) => ({
               id: n.id,
               spanLayerId: info.conceptLayer.id,
-              tokens: n.pieces.map(() => pieceId(k++)),
+              tokens: n.pieces.map(() => b.ref(pieceOp, k++)),
               value: n.value,
               metadata: n.metadata,
             })),
           );
-          return b.ref().$ref;
+          return { pieceOp, nodeOp: b.ref().$ref };
         };
         // The new edges, the held relations made real, and the sentences
         // that held them, together: a held relation leaves its sentence only
@@ -3009,13 +2866,12 @@ export class UmrDocument extends DocumentModel {
         if (opCount <= MAX_BATCH_OPS) {
           let at = {};
           const results = await client.batched((b) => {
-            const pieceOp = queueChanges(b);
-            const nodeOp = newNodes.length ? queueNodes(b, (k) => b.ref(pieceOp, k)) : null;
+            queueChanges(b);
+            const made = queueNodes(b);
             at = {
-              pieceOp,
-              nodeOp,
+              ...made,
               ...queueEdges(b, (id) =>
-                nodeAt.has(id) ? b.ref(nodeOp, nodeAt.get(id)) : settledId(id),
+                nodeAt.has(id) ? b.ref(made.nodeOp, nodeAt.get(id)) : settledId(id),
               ),
             };
           });
@@ -3027,27 +2883,21 @@ export class UmrDocument extends DocumentModel {
         }
 
         // Past one request's ops, it goes in three, and the refs cannot
-        // cross from one to the next. A failure after the first says what
+        // cross from one to the next: the changes, then the new nodes with
+        // their anchors, then the edges. A failure after the first says what
         // stands.
         const serverId = (id) => ids.get(id) || settledId(id);
         let stage = 'changes';
         try {
-          let pieceOp = null;
-          const firstPass = await client.batched((b) => {
-            pieceOp = queueChanges(b);
-          });
+          await client.batched((b) => queueChanges(b));
           stage = 'nodes';
-          adopt(firstPass, pieceOp, pieces, 'anchor');
-          // Should the nodes fail, their anchors are removed again: nobody
-          // could see or delete them.
           if (newNodes.length) {
-            let nodeOp = null;
-            const secondPass = await this._undoPiecesOnFailure(pieces, ids, () =>
-              client.batched((b) => {
-                nodeOp = queueNodes(b, (k) => ids.get(pieces[k].id));
-              }),
-            );
-            adopt(secondPass, nodeOp, newNodes, 'node');
+            let made = {};
+            const secondPass = await client.batched((b) => {
+              made = queueNodes(b);
+            });
+            adopt(secondPass, made.pieceOp, pieces, 'anchor');
+            adopt(secondPass, made.nodeOp, newNodes, 'node');
           }
           stage = 'edges';
           if (newEdges.length || heldTriples.length || recordOps.length) {

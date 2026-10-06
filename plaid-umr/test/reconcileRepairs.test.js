@@ -1,8 +1,8 @@
 // What reconcile on open puts right beyond the unaligned nodes' anchors
 // (the owner's rulings of 2026-09-28), on a document as the storage model
-// holds it: a node whose word IGT deleted, an add cut off after its first
-// request, and variables whose sentence number moved. Each is one audited
-// repair, unstamped, and a second pass finds nothing.
+// holds it: a node whose word IGT deleted, and variables whose sentence
+// number moved. Each is one audited repair, unstamped, and a second pass
+// finds nothing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
@@ -183,19 +183,15 @@ test('a node whose word was deleted becomes an ordinary unaligned node, named in
   );
 });
 
-test('a node-layer token with no node on it, left by an add cut off, is removed', async () => {
-  const loaded = load((raw, L) => {
-    L.nodes.tokens.push({ id: 'stray', begin: 0, end: 10 });
+// Every writer makes a node's anchor in the request that makes the node, so
+// an open has no anchor of an interrupted add to remove, and one under way
+// in another person's tab is never taken from under it.
+test('an open leaves a node-layer token with no node on it alone', async () => {
+  const { doc, calls } = load((raw, L) => {
+    L.nodes.tokens.push({ id: 'bare', begin: 0, end: 10 });
   });
-  const { result, label } = await twice(loaded);
-  assert.equal(result.strays, 1);
-  assert.equal(label, 'Repaired: removed 1 empty node an interrupted add left');
-  assert.deepEqual(
-    loaded.calls.filter((c) => c.name === 'tokens.bulkDelete').map((c) => c.args[0]),
-    [['stray']],
-  );
-  // Nothing is stamped or patched.
-  assert.equal(loaded.calls.filter((c) => c.name.endsWith('patchMetadata')).length, 0);
+  assert.deepEqual(await doc._reconcile(), { findings: [] });
+  assert.equal(calls.length, 0);
 });
 
 test('variables renumbered when a sentence before them went, as one repair', async () => {

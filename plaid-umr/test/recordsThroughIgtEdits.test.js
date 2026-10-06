@@ -13,8 +13,6 @@
 // - A triple between two constants written in two sentences' blocks, as
 //   `(root :modal author)` is, comes back in both after a join, an open and
 //   a split.
-// - A document whose records are still on its sentence tokens has them moved
-//   to record tokens on open, with nothing lost, once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -166,60 +164,6 @@ s${n}a: 1-1
   const export1 = new UmrDocument({ raw: structuredClone(raw) }).toUmr();
   assert.equal(export1.match(/\(root :modal author\)/g).length, 3);
   assert.ok(await openWritesNothing(raw));
-});
-
-// ----- records on sentence tokens, moved on open -----
-
-// The same document as UMR stored it before records had tokens of their own:
-// each record on its sentence token, and each triple between two constants
-// listing its sentences by number.
-function onSentenceTokens(raw) {
-  const out = structuredClone(raw);
-  const L = layersOf(out);
-  const sentences = sentencesOf(out);
-  const where = (t) => sentences.findIndex((s) => s.begin <= t.begin && t.begin < s.end);
-  const numbers = new Map();
-  L.nodes.tokens
-    .filter((t) => t.metadata?.umr)
-    .forEach((t) => {
-      const { triples = [], ...record } = t.metadata.umr;
-      const i = where(t);
-      sentences[i].metadata = { umr: record };
-      triples.forEach((id) => numbers.set(id, [...(numbers.get(id) || []), i + 1]));
-    });
-  L.nodes.tokens = L.nodes.tokens.filter((t) => !t.metadata?.umr);
-  L.triples.relations.forEach((r) => {
-    if (numbers.has(r.id)) r.metadata.umr.sentences = numbers.get(r.id);
-  });
-  return out;
-}
-
-test('records on sentence tokens move to record tokens on open, with nothing lost, once', async () => {
-  for (const name of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
-    const fresh = fixture(name);
-    const raw = onSentenceTokens(fresh);
-    // What the same document exports once opened, as a first open renames
-    // the variables of a file whose numbers do not match its sentences.
-    await openInUmr(fresh);
-    const exported = new UmrDocument({ raw: structuredClone(fresh) }).toUmr();
-    const result = await openInUmr(raw);
-    assert.equal(result.recordsHomed, sentencesOf(fresh).length, name);
-    assert.equal(
-      sentencesOf(raw).filter((s) => s.metadata?.umr).length,
-      0,
-      `${name}: no record is left on a sentence token`,
-    );
-    assert.equal(new UmrDocument({ raw: structuredClone(raw) }).toUmr(), exported, name);
-    assert.ok(await openWritesNothing(raw), name);
-  }
-});
-
-test('a comparison row stays on its sentence token when the record moves', async () => {
-  const raw = onSentenceTokens(fixture('english_umr-0001.umr'));
-  const [first] = sentencesOf(raw);
-  first.metadata.umr.adjudication = { index: 1 };
-  await openInUmr(raw);
-  assert.deepEqual(sentencesOf(raw)[0].metadata, { umr: { adjudication: { index: 1 } } });
 });
 
 // ----- a record kept over its whole share of its sentence (REV-FX-UMR2 F1) -----

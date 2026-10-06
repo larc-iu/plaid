@@ -33,18 +33,12 @@ const load = () => {
   const plan = planImport(parseUmrFile(text).sentences, []);
   const { client, calls, requests } = recordingClient();
   client.strictModeDocumentId = 'doc-1';
-  const stamps = [];
-  const bulkDelete = client.tokens.bulkDelete;
-  client.tokens.bulkDelete = (ids) => {
-    stamps.push(client.strictModeDocumentId);
-    return bulkDelete(ids);
-  };
   const doc = new UmrDocument({ raw: rawFromPlan(plan), client });
   doc._reload = async () => {};
   const errors = [];
   doc.onError = (msg, err) => errors.push({ msg, err });
   const release = doc.hold();
-  return { doc, client, calls, requests, stamps, errors, release };
+  return { doc, client, calls, requests, errors, release };
 };
 
 // Batch number `k` (from 1) fails with `error`, the rest go through.
@@ -136,7 +130,6 @@ const big = async () => {
   assert.ok(await doc.applyPenman(1, first));
   loaded.calls.length = 0;
   loaded.requests.length = 0;
-  loaded.stamps.length = 0;
   const text = `(s1l / landslide-01\n${kids('plural').join('\n')}\n    :mod (s1zz / big))`;
   const plan = doc.planPenman(1, text);
   assert.equal(plan.create.length, 1);
@@ -144,8 +137,24 @@ const big = async () => {
   return { ...loaded, text };
 };
 
+// What each `batched` call queued, by operation name.
+const perRequest = (client, calls) => {
+  const batched = client.batched;
+  const sent = [];
+  client.batched = async (fn) => {
+    const from = calls.length;
+    try {
+      return await batched(fn);
+    } finally {
+      sent.push(calls.slice(from).map((c) => c.name));
+    }
+  };
+  return sent;
+};
+
 test('an apply past one request goes as three, and lands whole when all three do', async () => {
-  const { doc, text, requests, release } = await big();
+  const { doc, client, calls, text, requests, release } = await big();
+  const sent = perRequest(client, calls);
   assert.ok(await doc.applyPenman(1, text));
   // The first is split past MAX_BATCH_OPS by the client itself, so it is
   // one `batched` here, then the nodes, then the edges.
@@ -153,16 +162,20 @@ test('an apply past one request goes as three, and lands whole when all three do
     requests.map((r) => r.name),
     ['batch', 'batch', 'batch'],
   );
+  // The new nodes' anchors go in the request that makes the nodes, so no
+  // anchor is ever stored without its node.
+  assert.ok(!sent[0].includes('tokens.bulkCreate'));
+  assert.deepEqual(sent[1], ['tokens.bulkCreate', 'spans.bulkCreate']);
   assert.ok(doc.node([...doc.graph.nodesById.values()].find((x) => x.concept === 'big').id));
   release();
 });
 
-test('past one request, a failed node request deletes its anchors without a version claim and says what stands', async () => {
-  const { doc, client, calls, stamps, errors, text, release } = await big();
+test('past one request, a failed node request leaves no anchor and says what stands', async () => {
+  const { doc, client, calls, errors, text, release } = await big();
   failBatch(client, 2, refused());
   assert.equal(await doc.applyPenman(1, text), false);
-  assert.equal(calls.filter((c) => c.name === 'tokens.bulkDelete').length, 1);
-  assert.deepEqual(stamps, [null]);
+  assert.equal(calls.filter((c) => c.name === 'tokens.bulkCreate').length, 0);
+  assert.equal(calls.filter((c) => c.name === 'tokens.bulkDelete').length, 0);
   assert.equal(client.strictModeDocumentId, 'doc-1');
   assert.equal(errors.length, 1);
   assert.match(
