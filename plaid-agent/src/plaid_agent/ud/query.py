@@ -23,7 +23,10 @@ THIS PROJECT'S LAYERS, and how UD sits on them:
   multi-word token, and every one of them covers the whole token.
   annotation layers (spans covering a word): {fields}
   A DEPENDENCY is a relation on the {deprel} layer whose source and target are the LEMMA SPANS of
-  two words, not the words themselves. The root is a relation from a lemma span to itself.
+  two words, not the words themselves. The SOURCE is the HEAD's lemma span and the TARGET the
+  DEPENDENT's: a word's own relation (its DEPREL) is the one whose target is its lemma span, and the
+  relations whose source is its lemma span are those of the words that depend on it.
+  The root is a relation from a lemma span to itself.
   provenance metadata on machine-made values: {{"prov": "inferred", "provSource": "...", "provConfirmed": true|absent}}
 
 Examples for this project:
@@ -34,6 +37,9 @@ Examples for this project:
   {{"find": ["?w"], "where": [["span","?u",{{"layer":"upos","value":"VERB"}}], ["covers","?u","?w"],
    ["span","?hl",{{"layer":"lemma"}}], ["covers","?hl","?w"],
    ["relation","?r",{{"layer":"{deprel}","value":"nsubj","source":"?hl"}}]], "return": "entities"}}
+  # words whose own relation (DEPREL) is not case: the word's lemma span is the TARGET
+  {{"find": ["?w"], "where": [["span","?wl",{{"layer":"lemma"}}], ["covers","?wl","?w"],
+   ["relation","?r",{{"layer":"{deprel}","target":"?wl"}}], ["!=","?r.value","case"]], "return": "entities"}}
   # how many words per document
   {{"where": [["token","?w",{{"layer":"words","doc":{{"var":"?d"}}}}]],
    "return": {{"group": ["?d"], "aggregates": [["count"]]}}}}

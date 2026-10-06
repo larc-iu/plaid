@@ -93,6 +93,16 @@ def test_the_help_says_where_UD_annotations_actually_live(ws):
     assert 'upos' in help_text and 'lemma' in help_text
 
 
+def test_the_help_says_the_source_of_a_dependency_is_its_head(ws):
+    """A model asking for a word's own relation joined the word's lemma span
+    as the SOURCE and so read its dependents' relations, five times in five
+    (A2-UD-4). The help names which end is the head and shows the query for
+    a word's own DEPREL."""
+    help_text = call_tool(ws, 'query_help', {})
+    assert "The SOURCE is the HEAD's lemma span and the TARGET the\n  DEPENDENT's" in help_text
+    assert '"target":"?wl"}], ["!=","?r.value","case"]' in help_text
+
+
 def test_the_help_carries_the_language_itself(ws):
     help_text = call_tool(ws, 'query_help', {})
     for clause in ('["span"', '["token"', '["covers"', '["precedes"', '["within"'):
