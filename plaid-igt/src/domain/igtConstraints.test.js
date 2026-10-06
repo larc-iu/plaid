@@ -5,7 +5,6 @@ import {
   igtFields,
   queueFieldDeclarations,
   tagsetRefusal,
-  rulesNotInForce,
   valueSetsAllow,
   wantedConstraints,
 } from './igtConstraints.js';
@@ -227,31 +226,5 @@ describe('a tagset save the stored values refuse', () => {
     });
     expect(tagsetRefusal(e)).toBe('3 values in POS are not in the tagset: XYZ, ABC.');
     expect(tagsetRefusal(new Error('x'))).toBeNull();
-  });
-});
-
-describe('rules not in force', () => {
-  it('names the layer and how many stored values break them', () => {
-    const findings = rulesNotInForce(
-      [
-        {
-          layerId: 'g',
-          kind: 'span',
-          namespace: 'igt',
-          constraints: ['value-set'],
-          violationCount: 3,
-        },
-      ],
-      { spanLayers: { morpheme: [{ id: 'g', name: 'Gloss' }] } },
-    );
-    expect(findings).toEqual([
-      {
-        severity: 'warning',
-        code: 'layer-rules-not-in-force',
-        message: 'The value-set rules of "Gloss" are not in force: 3 stored values break them.',
-        context: expect.objectContaining({ layerId: 'g' }),
-      },
-    ]);
-    expect(rulesNotInForce([], {})).toEqual([]);
   });
 });

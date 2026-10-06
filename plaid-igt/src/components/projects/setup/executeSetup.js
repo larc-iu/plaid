@@ -38,7 +38,7 @@ import {
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
 import { getIgtLayerInfo } from '../../../domain/layerInfo.js';
 import { wantedConstraints } from '../../../domain/igtConstraints.js';
-import { sameConstraints } from '../../../../../plaid-ui/src/lib/layerConstraints.js';
+import { ensureLayerConstraints } from '../../../../../plaid-ui/src/lib/layerConstraints.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
@@ -521,29 +521,19 @@ async function executeProjectSetupImpl({
   // Step 9b: the layer rules (domain/igtConstraints.js), in force from the
   // start: one annotation per token in each field, one vocabulary link per
   // word and morpheme, morphemes as wide as their word, a closed tagset's
-  // list. A layer this setup adopted may hold data a rule forbids, which the
-  // server refuses to declare over (422): the first open by a maintainer
-  // repairs that data and declares then, so it is not a failed step.
+  // list. A layer this setup adopted may hold data a rule forbids: the
+  // server repairs what it can first, and a rule the data still breaks (an
+  // off-list value) is left out, which is not a failed step. Nothing
+  // declares it later on its own.
   updateProgress(85, 'Setting up annotation rules…');
   try {
     const project = await client.projects.get(currentProjectId);
-    const bundle = { token: 'tokenLayers', span: 'spanLayers', relation: 'relationLayers' };
-    for (const w of wantedConstraints(getIgtLayerInfo(project), project?.config)) {
-      if (sameConstraints(w.stored, w.constraints)) continue;
-      try {
-        await client[bundle[w.kind]].setConstraints(
-          w.layerId,
-          w.namespace,
-          w.constraints,
-          undefined,
-          {
-            expected: w.stored ?? null,
-          },
-        );
-      } catch (ruleError) {
-        if (ruleError?.status !== 422 && ruleError?.status !== 409) throw ruleError;
-      }
-    }
+    const rules = await ensureLayerConstraints(
+      client,
+      wantedConstraints(getIgtLayerInfo(project), project?.config),
+      { canManage: true },
+    );
+    if (rules.pending.length) console.warn('Annotation rules not in force:', rules.pending);
   } catch (rulesError) {
     console.warn('Failed to set up the annotation rules:', rulesError);
     failures.push(`The annotation rules could not be set up: ${rulesError.message}`);

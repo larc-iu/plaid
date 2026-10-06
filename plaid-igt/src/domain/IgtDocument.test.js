@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { applyMetadataOps, metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { planMorphTypeSync } from './igtReconcile.js';
 import { clearSentencesFits, TOO_MANY_SENTENCES } from './mutations/sentences.js';
 
 // Build a doc wired to a fake client. `raw`/`project`/`vocabularies` overridable.
@@ -17,6 +16,16 @@ function makeDoc({ raw, project, vocabularies, client } = {}) {
     projectId: 'proj-1',
   });
 }
+
+// The morphemes whose cached morph type is not their entry's.
+const staleCaches = (sentences) =>
+  sentences.flatMap((s) =>
+    s.tokens.flatMap((t) =>
+      t.morphemes.filter(
+        (m) => typeof m.entryMorphType === 'string' && m.metadata?.morphType !== m.entryMorphType,
+      ),
+    ),
+  );
 
 // Pull the call kinds in order (to assert batch ordering).
 const kinds = (client) => client.calls.map((c) => c.kind);
@@ -345,76 +354,80 @@ describe('morph type from the linked lexicon entry', () => {
     expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('suffix');
   });
 
-  it('reconcileOnOpen re-syncs a drifted cache from the entry', async () => {
-    const doc = linkedDoc('enclitic');
-    const res = await doc.reconcileOnOpen();
-    expect(res.syncedMorphTypes).toBe(1);
-    const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(call.args).toEqual(['m-2', [{ op: 'set', path: ['morphType'], value: 'enclitic' }]]);
-    expect(doc.sentences[0].tokens[0].morphemes[1].metadata.morphType).toBe('enclitic');
-    // idempotent
-    doc.client.calls.length = 0;
-    const again = await doc.reconcileOnOpen();
-    expect(again.syncedMorphTypes).toBe(0);
-    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
-  });
-
-  // Every write has landed, and bringing the screen up to date after them
-  // fails: the repair is whole, so History names it, and the screen is what
-  // is out of date.
-  it('a repair that lands and then fails to update the screen keeps the label naming it', async () => {
-    const doc = linkedDoc('enclitic');
-    const lost = new Error('the screen could not take it');
-    doc._applyRawPatch = () => {
-      throw lost;
+  // A writer of the project who maintains its lexicon, and the server's
+  // answer to the query of the morphemes linked to an entry: m-2 here, and
+  // m-9 in another document.
+  const typedDoc = (itemType) => {
+    const doc = linkedDoc(itemType);
+    const project = {
+      id: 'proj-1',
+      vocabs: [{ id: 'v1' }],
+      config: { plaid: {} },
+      writers: ['me'],
     };
-    const res = await doc.reconcileOnOpen();
-    expect(doc.client.calls.some((c) => c.kind === 'tokens.patchMetadata')).toBe(true);
-    expect(res.syncedMorphTypes).toBe(1);
-    expect(res.refreshError).toBe(lost);
-    expect(res.error).toBeUndefined();
-    expect(res.findings).toEqual([]);
-    const relabel = doc.client.calls.find((c) => c.kind === 'operationGroups.update');
-    expect(relabel.args[1]).toBe(doc.describeReconcile(res));
-    expect(relabel.args[1]).not.toBe('Repair on open (interrupted)');
-  });
-
-  it('a repair whose write fails is still labeled as interrupted', async () => {
-    const doc = linkedDoc('enclitic');
-    const run = doc.client.batched.bind(doc.client);
-    doc.client.batched = async (fn) => {
-      await run(fn);
-      throw Object.assign(new Error('refused'), { status: 500 });
+    doc._user = { id: 'me' };
+    doc.client.projects.list = async () => [project, { id: 'proj-2', vocabs: [{ id: 'v1' }] }];
+    doc.client.query = async (body) => {
+      doc.client.calls.push({ kind: 'query', args: [body] });
+      return {
+        results: [
+          ['m-2', 'i1', 'suffix', 1],
+          ['m-9', 'i1', 'suffix', 1],
+        ],
+      };
     };
-    const res = await doc.reconcileOnOpen();
-    expect(res.error).toBeTruthy();
-    expect(res.refreshError).toBeUndefined();
-    const relabel = doc.client.calls.find((c) => c.kind === 'operationGroups.update');
-    expect(relabel.args[1]).toBe('Repair on open (interrupted)');
-  });
+    return doc;
+  };
 
-  it('setVocabItemMorphType patches the entry AND the linked morphemes in one batch', async () => {
-    const doc = linkedDoc('enclitic');
+  it('setVocabItemMorphType writes the entry and every morpheme of the project linked to it', async () => {
+    const doc = typedDoc('enclitic');
     const ok = await doc.setVocabItemMorphType('v1', 'i1', 'proclitic');
     expect(ok).toBe(true);
+    // Only the project this writer can write is read.
+    const queries = doc.client.calls.filter((c) => c.kind === 'query');
+    expect(queries.map((q) => q.args[0].scope)).toEqual([{ projectIds: ['proj-1'] }]);
     const k = kinds(doc.client);
-    expect(k).toContain('vocabItems.patchMetadata');
-    const tokPatch = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(tokPatch.args).toEqual([
-      'm-2',
-      [{ op: 'set', path: ['morphType'], value: 'proclitic' }],
+    const updates = doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate');
+    // The other document's first, then this one's in the entry's batch.
+    expect(updates.map((u) => u.args[0].map((e) => e.id))).toEqual([['m-9'], ['m-2']]);
+    expect(updates[0].args[0][0].metadata).toEqual([
+      { op: 'set', path: ['morphType'], value: 'proclitic' },
     ]);
-    expect(k.indexOf('batch.submit')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
+    expect(k.indexOf('vocabItems.patchMetadata')).toBeGreaterThan(k.indexOf('tokens.bulkUpdate'));
+    expect(k.lastIndexOf('batch.submit')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
     const m = doc.sentences[0].tokens[0].morphemes[1];
     expect(m.morphType).toBe('proclitic');
+    expect(m.metadata.morphType).toBe('proclitic');
     expect(m.vocabItem.metadata.morphType).toBe('proclitic');
     expect(doc.vocabularies.v1.items[0].metadata.morphType).toBe('proclitic');
   });
 
+  // The 2026-10-06 survey: a headword's type change left the morphemes
+  // linked to its senses with the old type until someone opened them.
+  it("a headword's type reaches the morphemes of the senses that go by it", async () => {
+    const doc = typedDoc('enclitic');
+    const v = doc.vocabularies.v1;
+    v.items = [
+      { id: 'h1', form: 'c', metadata: { morphType: 'enclitic' } },
+      { id: 'i1', form: 'c', metadata: { parent: 'h1' } },
+    ];
+    await doc.setVocabItemMorphType('v1', 'h1', 'proclitic');
+    const [query] = doc.client.calls.filter((c) => c.kind === 'query');
+    expect(query.args[0].where[0]).toEqual(['link', '?l', { item: ['h1', 'i1'] }]);
+    const written = doc.client.calls
+      .filter((c) => c.kind === 'tokens.bulkUpdate')
+      .flatMap((c) => c.args[0].map((e) => [e.id, e.metadata[0].value]));
+    expect(written).toEqual([
+      ['m-9', 'proclitic'],
+      ['m-2', 'proclitic'],
+    ]);
+  });
+
   it('clearing the entry type stops overriding and leaves the cache alone', async () => {
-    const doc = linkedDoc('enclitic');
+    const doc = typedDoc('enclitic');
     await doc.setVocabItemMorphType('v1', 'i1', null);
-    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate')).toHaveLength(0);
+    expect(doc.client.calls.filter((c) => c.kind === 'query')).toHaveLength(0);
     const m = doc.sentences[0].tokens[0].morphemes[1];
     expect(m.vocabItem.metadata.morphType).toBeUndefined();
     expect(m.morphType).toBe('suffix');
@@ -1187,7 +1200,7 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     // One operation, so one audit entry rather than a link now and a repair later.
     expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
     // And reconcile has nothing left to do.
-    expect(planMorphTypeSync(doc.sentences)).toEqual([]);
+    expect(staleCaches(doc.sentences)).toEqual([]);
   });
 
   it('linkVocab leaves a WORD alone, since a word has no morph type', async () => {
@@ -1240,7 +1253,7 @@ describe('vocab links (read path must reflect optimistic write)', () => {
       .flatMap((c) => c.args[0])
       .map((e) => e.id);
     expect(patched.sort()).toEqual(['m-1', 'm-2']);
-    expect(planMorphTypeSync(doc.sentences)).toEqual([]);
+    expect(staleCaches(doc.sentences)).toEqual([]);
   });
 
   it('unlinkVocab removes the vocab item from the token', async () => {

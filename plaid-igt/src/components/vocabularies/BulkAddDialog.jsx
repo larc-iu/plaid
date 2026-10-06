@@ -8,7 +8,7 @@
 // write goes out.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { metadataOps } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { Upload, FileText, X, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
@@ -23,6 +23,12 @@ import { cn } from '@ui/lib/utils';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { CHUNK } from '@/domain/bulk';
 import { readVocabulary } from '@/domain/vocabCache';
+import {
+  planEntryChange,
+  plannedOnce,
+  retypedRoots,
+  sendMorphTypeCaches,
+} from '@/domain/morphTypeCaches';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
@@ -329,6 +335,9 @@ export const BulkAddDialog = ({
   tagsetFor = NO_TAGSETS,
   existingItems,
   client,
+  // The signed-in user, for the projects whose morphemes an update that
+  // types an entry rewrites (morphTypeCaches.js).
+  user = null,
   // `send(label, write, tags)` runs the import's writes in their turn behind the
   // entry saves (see VocabularyItems' sendPlanned).
   send,
@@ -483,6 +492,9 @@ export const BulkAddDialog = ({
     let created = 0;
     let updated = 0;
     setProgress({ done: 0, total, phase: creates.length ? 'adding' : 'updating' });
+    // The morph type caches an update that types an entry calls for
+    // (morphTypeCaches.js), planned on the first send only.
+    let caches = null;
     const { landed, error } = await send(
       `Bulk add to ${vocabularyName || 'vocabulary'}`,
       async (setMessage) => {
@@ -501,6 +513,26 @@ export const BulkAddDialog = ({
           refuses,
         });
         if (planWrites(now) !== planWrites(plan)) throw new ChangedSinceReview();
+        if (!caches) {
+          const before = fresh?.items || [];
+          const patchOf = new Map(updates.map((u) => [settledId(u.id), u.patch]));
+          const after = before.map((it) =>
+            patchOf.has(it.id)
+              ? { ...it, metadata: mergeMetadata(it.metadata, patchOf.get(it.id)) }
+              : it,
+          );
+          const roots = retypedRoots(before, after);
+          caches = roots.length
+            ? plannedOnce(() =>
+                planEntryChange(client, {
+                  user,
+                  vocabId: vocabularyId,
+                  items: after,
+                  rootIds: roots,
+                }),
+              )
+            : () => [];
+        }
         for (let i = 0; i < creates.length; i += CHUNK) {
           const chunk = creates.slice(i, i + CHUNK);
           await client.vocabItems.bulkCreate(
@@ -523,6 +555,7 @@ export const BulkAddDialog = ({
           updated += chunk.length;
           setProgress({ done: created + updated, total, phase: 'updating' });
         }
+        await sendMorphTypeCaches(client, await caches());
         setMessage(
           `Bulk add: ${created} entr${created === 1 ? 'y' : 'ies'} added, ${updated} updated`,
         );

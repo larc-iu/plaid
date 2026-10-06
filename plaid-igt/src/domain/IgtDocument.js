@@ -5,7 +5,7 @@ import {
   metadataOps,
   writerPolicy,
 } from '@larc-iu/plaid-client';
-import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
 import { followIds, pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
@@ -14,9 +14,6 @@ import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
-import { ensureLayerConstraints } from '@ui/lib/layerConstraints.js';
-import { rulesNotInForce, wantedConstraints } from './igtConstraints.js';
-import { planMorphTypeSync, describeReconcile as describeIgtReconcile } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
 
@@ -567,108 +564,24 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  // Reconcile-on-open: make sure the server holds IGT's layer rules, repair
-  // what the rules leave to an app, then validate what remains.
-  //  - Layer rules (igtConstraints.js), maintainers only: a morpheme matching
-  //    no word, a second annotation in one field on one token, a second
-  //    vocabulary link on one token, a value outside a closed tagset. The
-  //    server applies them inside every write, whoever writes, so what IGT
-  //    used to heal here (an orphan morpheme, a doubled annotation or link
-  //    after another app's word merge) never reaches storage. A project whose
-  //    layers do not hold them yet gets the server's repair of its stored
-  //    data first, then the declaration. A rule the data still breaks (an
-  //    off-list value) is not put in force, and a finding says so.
-  //  - Morph types cached on morphemes that drifted from their lexicon entry.
-  // Then run validateIgtDocument over the healed state: residual heal failures
-  // and un-healable app-contract violations come back as `findings` for the
-  // caller to log + toast. Loud + recoverable. Deliberately NOT via _queueWrite
-  // (a heal failure must not reload-and-revert the freshly loaded document).
-  // Every heal write folds under ONE audit entry, relabelled by
-  // `describeReconcile` to name the repair that ran (no entry at all when
-  // nothing needed healing, since groups are created lazily by the first
-  // write).
-  describeReconcile(result) {
-    return describeIgtReconcile(result);
-  }
-
+  // Validate on open: nothing is written. The layer rules (igtConstraints.js)
+  // are declared at setup and by the settings that change them, and the
+  // server applies them inside every write, whoever writes. A morph type
+  // cached on a morpheme is written by the writes that change it
+  // (morphTypeCaches.js). What is left is reading the document against the
+  // app's contract: validateIgtDocument's findings come back for the caller
+  // to log and toast.
   async _reconcile() {
-    const ZERO = {
-      rulesDeclared: false,
-      rulesRepaired: false,
-      syncedMorphTypes: 0,
-      findings: [],
-    };
-    // Single-flight: a concurrent re-entry (StrictMode double-invoke, a rapid
-    // re-open) must not double-create morphemes.
-    if (this._reconciling) return ZERO;
-    this._reconciling = true;
-    let tally = null;
-    let landed = false;
     try {
-      let info = this.layerInfo;
-      const rules = await ensureLayerConstraints(
-        this._client,
-        wantedConstraints(info, this._project?.config),
-        {
-          canManage: canManageProject(this._project, this._user),
-          canWrite: canEditProject(this._project, this._user),
-          documentId: this.id,
-        },
-      );
-      // The server's repair changed stored rows this screen shows.
-      if (rules.repaired) {
-        await this._reload();
-        info = this.layerInfo;
-      }
-      const typePlans = planMorphTypeSync(this.sentences);
-      tally = {
-        rulesDeclared: rules.changed,
-        rulesRepaired: rules.repaired,
-        syncedMorphTypes: typePlans.length,
-      };
-
-      if (typePlans.length) {
-        // Cached morph types that drifted from their lexicon entry's.
-        await this._client.batched(async (b) => {
-          typePlans.forEach((p) => {
-            b.tokens.patchMetadata(p.morphemeId, [
-              { op: 'set', path: ['morphType'], value: p.morphType },
-            ]);
-          });
-        });
-      }
-      // Every write has landed: the repair is whole, and a failure from here
-      // on leaves only the screen behind it.
-      landed = true;
-      if (typePlans.length) {
-        const byId = new Map(typePlans.map((p) => [p.morphemeId, p.morphType]));
-        this._applyRawPatch((next, infoNext) => {
-          (infoNext.morphemeTokenLayer?.tokens || []).forEach((m) => {
-            if (byId.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: byId.get(m.id) };
-          });
-        });
-      }
-
-      // Validate AFTER healing — whether or not anything was healed — so a heal
-      // that silently failed, or an un-healable app-contract violation, still
-      // surfaces. validate is pure + read-only; the caller logs + toasts.
-      const findings = [
-        ...validateIgtDocument(this.layerInfo, this.alignmentTokens, {
+      return {
+        findings: validateIgtDocument(this.layerInfo, this.alignmentTokens, {
           sentences: this.sentences,
           vocabularies: this._vocabularies,
         }),
-        ...rulesNotInForce(rules.pending, info),
-      ];
-
-      return { ...tally, findings };
+      };
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
-      // Findings read off a screen the repair did not reach would describe
-      // the document as it was before it, so there are none.
-      if (landed) return { ...ZERO, ...tally, refreshError: err };
-      return { ...ZERO, error: err };
-    } finally {
-      this._reconciling = false;
+      return { findings: [], error: err };
     }
   }
 

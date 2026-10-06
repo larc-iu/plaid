@@ -35,8 +35,23 @@ const stub = (project, tokenLayerShapes = {}) => {
     (calls.constraints ??= []).push({ kind, id: layerId, ns, constraints, options });
     return { constraints: { [ns]: constraints } };
   };
+  // The stored data a check finds breaking each layer's rules, by layer id
+  // (none unless a test says).
+  const broken = (calls.broken ??= {});
+  const checkConstraints = async (layerId) => ({
+    violations: [],
+    violationCount: broken[layerId] ?? 0,
+  });
+  const repairConstraints = async (layerId, constraints) => {
+    (calls.repaired ??= []).push({ id: layerId, constraints });
+    return { repaired: broken[layerId] ? [layerId] : [] };
+  };
   const client = {
     withOperation: (_label, fn) => fn(),
+    batched: async (fn) => {
+      await fn(client);
+      return [];
+    },
     projects: {
       get: async () => project,
       create: make('project'),
@@ -48,12 +63,16 @@ const stub = (project, tokenLayerShapes = {}) => {
       create: make('token'),
       setConfig: setConfig('token'),
       setConstraints: setConstraints('token'),
+      checkConstraints,
+      repairConstraints,
       get: async (layerId) => tokenLayerShapes[layerId],
     },
     spanLayers: {
       create: make('span'),
       setConfig: setConfig('span'),
       setConstraints: setConstraints('span'),
+      checkConstraints,
+      repairConstraints,
       shift: async (layerId, direction) => calls.shifted.push({ id: layerId, direction }),
     },
     vocabLayers: {
@@ -479,6 +498,20 @@ describe('a resumed setup, field order', () => {
         options: { expected: null },
       },
     ]);
+  });
+
+  // Nothing declares IGT's rules on open any more (2026-10-06), so a setup
+  // over layers that already hold annotations repairs what the rules forbid
+  // and declares then, itself.
+  it('repairs an adopted layer whose annotations a rule forbids, then declares its rules', async () => {
+    const { client, calls } = stub(
+      project([{ id: 'sl-gloss', name: 'Gloss', config: { [IGT_NAMESPACE]: { scope: 'Word' } } }]),
+    );
+    calls.broken['sl-gloss'] = 2;
+    const result = await setUp(client);
+    expect(result.failures).toEqual([]);
+    expect(calls.repaired).toEqual([{ id: 'sl-gloss', constraints: [{ type: 'single-span' }] }]);
+    expect(calls.constraints.map((c) => c.id)).toContain('sl-gloss');
   });
 
   it('moves nothing when the fields are already in order', async () => {

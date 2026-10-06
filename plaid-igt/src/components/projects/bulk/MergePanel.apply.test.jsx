@@ -30,10 +30,16 @@ const ITEMS = [
 // [document, link, word]. By default one link on dog₂, in one document.
 const LINKS = { d2: [['doc1', 'l1', 't1']] };
 
-const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
+// `morphemes`: the rows the query of the morphemes linked to entries answers
+// ([morpheme, entry, cached type]), in the one project this person writes.
+const makeClient = ({ merged, refuse = null, links = LINKS, morphemes = null } = {}) => {
   const client = {
     items: ITEMS,
     reads: 0,
+    written: [],
+    projects: {
+      list: async () => (morphemes ? [{ id: 'p1', vocabs: [{ id: 'v1' }], writers: ['u1'] }] : []),
+    },
     vocabLayers: {
       get: async (id, withItems) => {
         if (withItems) client.reads += 1;
@@ -48,6 +54,10 @@ const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
       },
     },
     query: async (q) => {
+      if (q.where[0][0] === 'link') {
+        const asked = new Set(q.where[0][2].item);
+        return { results: (morphemes || []).filter((r) => asked.has(r[1])).map((r) => [...r, 1]) };
+      }
       const id = q.where.find((c) => c[0] === '=' && c[1] === '?v.id')[2];
       return { results: (links[id] || []).map((row) => [...row, 1]) };
     },
@@ -58,6 +68,12 @@ const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
         vocabItems: {
           bulkUpdate: (u) => ops.push(['bulkUpdate', u]),
           merge: (s, l) => ops.push(['merge', s, l]),
+        },
+        tokens: {
+          bulkUpdate: (u) => {
+            ops.push(['tokens', u]);
+            client.written.push(...u);
+          },
         },
       });
       if (refuse) throw refuse;
@@ -102,6 +118,30 @@ const apply = async (view) => {
 };
 
 describe('Merge', () => {
+  // The morphemes linked to the entry merged away go by the survivor's type
+  // from then on, and the cache they hold is written in the merge's batch.
+  it("writes the survivor's type on the merged entry's morphemes", async () => {
+    const client = makeClient({
+      merged: { moved: 1, duplicates: 0, removed: ['d2'] },
+      morphemes: [
+        ['m1', 'd2', 'stem'],
+        ['m2', 'd1', 'suffix'],
+      ],
+    });
+    client.items = [
+      { id: 'd1', form: 'dog', metadata: { morphType: 'suffix' } },
+      { id: 'd2', form: 'dog', metadata: { morphType: 'stem' } },
+      { id: 'c1', form: 'cat' },
+    ];
+    const view = await mount(client);
+    await previewDogs(view);
+    await apply(view);
+    expect(client.written).toEqual([
+      { id: 'm1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+    ]);
+    await view.unmount();
+  });
+
   it('names entries spelled alike by their subscript number, and counts links', async () => {
     const client = makeClient({ merged: { moved: 1, duplicates: 0, removed: ['d2'] } });
     const view = await mount(client);

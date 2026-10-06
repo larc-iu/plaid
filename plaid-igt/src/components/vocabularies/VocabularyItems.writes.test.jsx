@@ -83,6 +83,7 @@ const stub = (initial) => {
         get: async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: structuredClone(items) }),
       },
       projects: { list: async () => [] },
+      tokens: { bulkUpdate: write('tokens.bulkUpdate', () => ({})) },
       vocabItems: {
         create: write('create', (_layer, form, metadata) => {
           items.push({ id: 'server-1', form, metadata: metadata ?? {} });
@@ -100,7 +101,7 @@ const stub = (initial) => {
   };
 };
 
-const mount = async (client, at, writes = new WriteQueue()) => {
+const mount = async (client, at, writes = new WriteQueue(), fields = FIELDS) => {
   auth.client = client;
   const view = await renderComponent(
     <MemoryRouter initialEntries={[at]}>
@@ -108,7 +109,7 @@ const mount = async (client, at, writes = new WriteQueue()) => {
         vocabularyId="v1"
         vocabulary={{ id: 'v1' }}
         client={client}
-        fields={FIELDS}
+        fields={fields}
         writes={writes}
       />
     </MemoryRouter>,
@@ -926,6 +927,56 @@ describe('usage counts', () => {
     client.query = vi.fn(async () => ({ results: [] }));
     const view = await mount(client, '/vocabularies/v1?item=a');
     expect(concordanceQueries(client).length).toBeGreaterThan(0);
+    await view.unmount();
+  });
+});
+
+// The type an entry goes by is cached on every morpheme linked to it, and to
+// the senses under it that go by it, in every project the writer can write.
+// Nothing rewrites a stale copy later, so the save writes it.
+describe('a type changed on the entry form', () => {
+  it("is written on the morphemes of the entry's senses in the same operation", async () => {
+    const { client, calls } = stub([
+      { id: 'h', form: 'kai', metadata: { morphType: 'stem' } },
+      { id: 's', form: 'kai', metadata: { parent: 'h' } },
+    ]);
+    client.projects.list = async () => [{ id: 'p1', vocabs: [{ id: 'v1' }] }];
+    client.query = async (q) =>
+      q.where[0][0] === 'link'
+        ? {
+            results: [
+              ['m1', 's', 'stem', 1],
+              ['m2', 'h', 'stem', 1],
+            ],
+          }
+        : { results: [] };
+    const operations = [];
+    client.withOperation = (label, fn) => {
+      operations.push(label);
+      return fn(() => {});
+    };
+    const view = await mount(client, '/vocabularies/v1?item=h', new WriteQueue(), [
+      { name: 'gloss', type: 'text' },
+      { name: 'morphType', type: 'text' },
+    ]);
+    const select = document.querySelector('select[id$="-field-1"]');
+    await view.step(() => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(
+        select,
+        'suffix',
+      );
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await view.step(async () => {
+      button('Save').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    const written = calls.filter(([kind]) => kind === 'tokens.bulkUpdate').flatMap(([, u]) => u);
+    expect(written).toEqual([
+      { id: 'm1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+      { id: 'm2', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+    ]);
+    expect(operations).toEqual(['Edit entry "kai"']);
     await view.unmount();
   });
 });

@@ -71,10 +71,8 @@ const unapprovedStamp = (word) =>
  *
  * A morpheme linked to a typed entry has to carry that type in its own
  * metadata: `derive` reads the entry over the token cache, but the cache is
- * what unlinked morphemes and consumers that never load the lexicon read, and
- * a morpheme that leaves it empty is a repair reconcile-on-open performs on the
- * next open. Writing it here costs nothing, since the morpheme is being created
- * anyway.
+ * what consumers that never load the lexicon read, and nothing writes it
+ * later (domain/morphTypeCaches.js).
  */
 const senseMorphTypes = (lexicon) => {
   const out = new Map();
@@ -724,12 +722,12 @@ async function importDocument({
         const metadata = { ...unapprovedStamp(w) };
         const form = m.forms?.[config.baselineWs] ?? pickEn(m.forms);
         if (form != null) metadata.form = form;
-        // The interlinear's own type wins; the entry it links to fills in for
-        // the (common) analysis that names a sense but no morph type.
-        if (m.morphType != null) metadata.morphType = m.morphType;
-        else if (m.senseGuid && senseTypes?.get(m.senseGuid)) {
-          metadata.morphType = senseTypes.get(m.senseGuid);
-        }
+        // A morpheme linked to an entry goes by the entry's type, and the
+        // cache holds it (domain/morphTypeCaches.js). The interlinear's own
+        // type is kept for a morpheme whose entry has none.
+        const entryType = m.senseGuid ? senseTypes?.get(m.senseGuid) : null;
+        if (entryType) metadata.morphType = entryType;
+        else if (m.morphType != null) metadata.morphType = m.morphType;
         morphSpecs.push({
           wordIndex: wi,
           morpheme: m,

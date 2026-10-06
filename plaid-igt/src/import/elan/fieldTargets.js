@@ -20,6 +20,7 @@ import {
   IGT_NAMESPACE,
 } from '../../domain/igtConfig.js';
 import { parseFieldName } from '../../domain/fieldNames.js';
+import { fieldConstraints } from '../../domain/igtConstraints.js';
 
 /** The annotation scopes a span layer can carry, in the order they are shown. */
 const SCOPES = ['Sentence', 'Word', 'Morpheme'];
@@ -122,6 +123,15 @@ export async function createFields(client, project, fields, onProgress = null) {
     if (field.lang) {
       await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'lang', field.lang);
     }
+    // Its rules, as Settings declares them for a field it adds: one
+    // annotation per token. A new field has no tagset.
+    await client.spanLayers.setConstraints(
+      layer.id,
+      IGT_NAMESPACE,
+      fieldConstraints({ [IGT_NAMESPACE]: { scope: field.scope } }, project?.config),
+      undefined,
+      { expected: null },
+    );
     created.push({ ...field, id: layer.id ?? layer });
   }
   return created;

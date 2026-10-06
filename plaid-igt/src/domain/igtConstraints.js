@@ -15,7 +15,6 @@ import { MODES, resolveTagset } from './tagsets.js';
 import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 import {
   queueRepairOfBareLayer,
-  rulesNotInForce as findingsFor,
   sameConstraints,
   storedConstraints,
 } from '../../../plaid-ui/src/lib/layerConstraints.js';
@@ -208,11 +207,3 @@ export const applyMergeRules = (infoNext, vocabs, survivorId, beginOf, own, scop
     }
   }
 };
-
-/** The findings for the layers whose rules are not in force (plaid-ui's). */
-export const rulesNotInForce = (pending, layerInfo) =>
-  findingsFor(pending, [
-    layerInfo?.morphemeTokenLayer,
-    layerInfo?.primaryTokenLayer,
-    ...Object.values(layerInfo?.spanLayers || {}).flat(),
-  ]);

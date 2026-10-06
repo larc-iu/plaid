@@ -243,16 +243,18 @@ try {
     .some((m) => (m.metadata?.morphType ?? '').includes('clitic'));
   console.log(`  (clitic morphemes present in this document: ${anyClitic})`);
 
-  // the IGT invariant should hold without healing
+  // the IGT invariant holds as imported: no findings on open, and every
+  // morpheme linked to a typed entry caches the entry's type (nothing writes
+  // it later)
   const heal = await doc.reconcileOnOpen();
-  // Every counter it reports, and no findings: `heal.created` was asked for
-  // here long after reconcileOnOpen stopped returning one, so the check could
-  // only ever fail.
-  check(
-    !heal.rulesRepaired && heal.syncedMorphTypes === 0 && (heal.findings ?? []).length === 0,
-    'reconcileOnOpen heals nothing',
-    JSON.stringify(heal),
-  );
+  check((heal.findings ?? []).length === 0, 'reconcileOnOpen finds nothing', JSON.stringify(heal));
+  const stale = sentences
+    .flatMap((s) => s.tokens)
+    .flatMap((t) => t.morphemes ?? [])
+    .filter(
+      (m) => typeof m.entryMorphType === 'string' && m.metadata?.morphType !== m.entryMorphType,
+    );
+  check(stale.length === 0, 'every linked morpheme caches its entry type', `${stale.length} stale`);
 
   // every imported vocab link is provenance-confirmed
   const links = doc.layerInfo?.primaryTokenLayer ? null : null; // links live under vocabs in raw

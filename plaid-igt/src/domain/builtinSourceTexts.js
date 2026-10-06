@@ -27,6 +27,9 @@ import s20 from '@ui/domain/morphemes.js?raw';
 import s21 from '@ui/domain/pendingIds.js?raw';
 import s23 from '@ui/domain/setupGuard.js?raw';
 import s25 from '@ui/domain/glossCase.js?raw';
+import s27 from './bulk.js?raw';
+import s28 from './morphTypeCaches.js?raw';
+import s29 from '@ui/domain/permissions.js?raw';
 
 export const SOURCE_TEXTS = {
   'plaid-client-js/src/ids.js': s24,
@@ -35,8 +38,10 @@ export const SOURCE_TEXTS = {
   'plaid-igt/src/domain/analysisMemory.js': s2,
   'plaid-igt/src/domain/autoLink.js': s3,
   'plaid-igt/src/domain/autoPass.js': s4,
+  'plaid-igt/src/domain/bulk.js': s27,
   'plaid-igt/src/domain/fieldNames.js': s6,
   'plaid-igt/src/domain/igtConfig.js': s7,
+  'plaid-igt/src/domain/morphTypeCaches.js': s28,
   'plaid-igt/src/domain/mutations/analysisCopy.js': s9,
   'plaid-igt/src/domain/mutations/vocab.js': s10,
   'plaid-igt/src/domain/mwe.js': s11,
@@ -52,5 +57,6 @@ export const SOURCE_TEXTS = {
   'plaid-ui/src/domain/glossCase.js': s25,
   'plaid-ui/src/domain/morphemes.js': s20,
   'plaid-ui/src/domain/pendingIds.js': s21,
+  'plaid-ui/src/domain/permissions.js': s29,
   'plaid-ui/src/domain/setupGuard.js': s23,
 };

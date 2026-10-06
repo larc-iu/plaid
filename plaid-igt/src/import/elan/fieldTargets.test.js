@@ -123,9 +123,28 @@ describe('createFields', () => {
         setConfig: async (id, ns, key, value) => {
           calls.push({ kind: 'setConfig', id, ns, key, value });
         },
+        setConstraints: async (id, ns, constraints, _audit, options) => {
+          calls.push({ kind: 'setConstraints', id, ns, constraints, options });
+        },
       },
     };
   };
+
+  // Nothing declares a field's rules on open any more (2026-10-06): the
+  // field an import adds holds them from the start, as one Settings adds does.
+  it("declares each new field's rules", async () => {
+    const client = fakeClient();
+    await createFields(client, PROJECT, [{ name: 'Gloss', scope: 'Morpheme' }]);
+    expect(client.calls.filter((c) => c.kind === 'setConstraints')).toEqual([
+      {
+        kind: 'setConstraints',
+        id: 'new-Gloss',
+        ns: 'igt',
+        constraints: [{ type: 'single-span' }],
+        options: { expected: null },
+      },
+    ]);
+  });
 
   it('creates each field under the token layer its scope belongs to', async () => {
     const client = fakeClient();

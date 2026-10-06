@@ -78,8 +78,8 @@ export const grid = {
   _tokenCol(token, ctx, sctx) {
     // Ignored tokens (punctuation, per the project's ignored-tokens config) are
     // real word tokens but carry no annotation — no orthographies, no gloss, no
-    // lexicon link, and no morpheme is healed onto them (see igtReconcile). They
-    // render like a gap: in the text, but plainly not glossed.
+    // lexicon link, and no morpheme. They render like a gap: in the text, but
+    // plainly not glossed.
     if (isTokenIgnored(token.content, ctx.ignoredCfg)) {
       // Still a column a multi-word expression may run across: it draws the
       // lines' pieces, never a label.

@@ -18,6 +18,7 @@ import { readIgnoredTokens } from '@/domain/igtConfig';
 import { chunk } from '@/domain/bulk';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { readVocabulary } from '@/domain/vocabCache';
+import { sendMorphTypeCaches } from '@/domain/morphTypeCaches';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
 import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
@@ -601,12 +602,20 @@ export async function planMerge(client, vocabId, loserIds, survivorId = null) {
 // losers. One batch, so a refusal leaves everything as it was, and a repeated
 // merge changes nothing. `refUpdates` is `[{id, metadata}]` where the
 // metadata is a list of metadata ops, as `metadataUpdates` builds it from
-// planMergeRefs' whole maps. Returns what the server did.
-export async function applyMerge(client, { refUpdates = [] }, { survivorId, loserIds, label }) {
+// planMergeRefs' whole maps. `caches` are the morph type cache writes the
+// merge calls for (morphTypeCaches.js). Returns what the server did.
+export async function applyMerge(
+  client,
+  { refUpdates = [], caches = [] },
+  { survivorId, loserIds, label },
+) {
   let merged = null;
   await writeAcrossDocuments(client, label, 'merge', async () => {
-    const results = await client.batched((b) => {
+    const results = await client.batched(async (b) => {
       for (const part of chunk(refUpdates)) b.vocabItems.bulkUpdate(part);
+      // The morph type cached on the morphemes whose entry the merge changes
+      // (morphTypeCaches.js `mergeTargets`).
+      await sendMorphTypeCaches(b, caches);
       b.vocabItems.merge(survivorId, loserIds);
     });
     merged = results.at(-1)?.body ?? null;

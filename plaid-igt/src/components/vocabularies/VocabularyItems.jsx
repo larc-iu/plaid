@@ -91,6 +91,12 @@ import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { readVocabulary } from '@/domain/vocabCache';
+import {
+  planEntryChange,
+  plannedOnce,
+  retypedRoots,
+  sendMorphTypeCaches,
+} from '@/domain/morphTypeCaches';
 import { EntryRestoreDialog } from './EntryRestoreDialog';
 import { countOf } from '@ui/lib/plural.js';
 
@@ -506,14 +512,44 @@ export const VocabularyItems = ({
   // against what it has just fetched. Ids the server has answered for since
   // go out as the server's.
   // `to` is the client, or a batch the repoints ride in.
+  // A patch that moves an entry under another headword, or changes the type
+  // it goes by, writes the type cached on the morphemes linked to it and to
+  // the senses below it in the same operation (morphTypeCaches.js). Planned
+  // once per list of patches, so a send again after a lost answer sends the
+  // same requests.
   const bulkRepoint = async (patches, metaById, to = client) => {
     const updates = metadataUpdates(patches, metaById).map(({ id, metadata }) => ({
       id: settledId(id),
       metadata: followIds(metadata),
     }));
+    const caches = cachePlanOf(patches, metaById);
     for (let i = 0; i < updates.length; i += CHUNK) {
       await to.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
     }
+    if (caches) await sendMorphTypeCaches(to, await caches());
+  };
+  const cachePlans = useRef(new WeakMap());
+  const cachePlanOf = (patches, metaById) => {
+    if (cachePlans.current.has(patches)) return cachePlans.current.get(patches);
+    const before = [...metaById].map(([id, metadata]) => ({ id, metadata }));
+    const byId = new Map(patches.map((p) => [p.id, p.metadata]));
+    const after = before.map((it) => (byId.has(it.id) ? { ...it, metadata: byId.get(it.id) } : it));
+    const roots = retypedRoots(before, after);
+    const plan = roots.length
+      ? plannedOnce(() =>
+          planEntryChange(client, {
+            user,
+            vocabId: vocabularyId,
+            items: after.map((it) => ({
+              id: settledId(it.id),
+              metadata: followIds(it.metadata || {}),
+            })),
+            rootIds: roots.map(settledId),
+          }),
+        )
+      : null;
+    cachePlans.current.set(patches, plan);
+    return plan;
   };
   const metadataNow = (list) => new Map((list || []).map((it) => [it.id, it.metadata]));
   const foldPatches = (patches) => {
@@ -902,6 +938,8 @@ export const VocabularyItems = ({
     // Only the keys the save changes are sent, so one written elsewhere
     // since this entry was loaded stays.
     const ops = metadataPatchTo(item.metadata, metadata);
+    // A changed type is written on the morphemes linked to the entry too.
+    const caches = cachePlanOf([{ id: item.id, metadata }], metadataNow(items));
     sendInTurn(
       `Edit entry "${form}"`,
       async () => {
@@ -911,6 +949,7 @@ export const VocabularyItems = ({
           ...(ops.length ? { metadata: followIds(ops) } : {}),
         };
         if (Object.keys(update).length > 1) await client.vocabItems.bulkUpdate([update]);
+        if (caches) await sendMorphTypeCaches(client, await caches());
       },
       'Failed to save the entry',
     );
@@ -1504,6 +1543,7 @@ export const VocabularyItems = ({
         tagsetFor={tagsetFor}
         existingItems={items}
         client={client}
+        user={user}
         send={sendPlanned}
         onImported={handleImported}
       />
@@ -1537,6 +1577,7 @@ export const VocabularyItems = ({
           label={itemLabel(selectedItem, numbers)}
           fields={fields}
           onRestored={afterRestore}
+          user={user}
         />
       )}
 

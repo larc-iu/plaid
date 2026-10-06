@@ -394,6 +394,12 @@ export function makeFakeClient(opts = {}) {
     ...bundles(null),
     projects: {
       get: async () => opts.project ?? { id: 'proj-1', vocabs: [] },
+      list: async () => opts.projects ?? [opts.project ?? { id: 'proj-1', vocabs: [] }],
+    },
+    // A query answers what `opts.query(body)` gives, else no rows.
+    query: async (body) => {
+      record('query', [body]);
+      return (await opts.query?.(body)) ?? { results: [] };
     },
     vocabLayers: {
       // Mirrors the real endpoint: returns the layer + items but NOT vocab-links
