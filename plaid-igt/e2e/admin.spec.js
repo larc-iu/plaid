@@ -281,14 +281,13 @@ test('an assistant conversation opens whoever had it', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: 'All conversations' })).toBeVisible();
   await expect(page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
-  // Rendered as the conversation, not as the record: both sides are named.
-  // `exact`, because getByRole matches the accessible name by SUBSTRING, and
-  // the title heading right above happened to contain the word "you" — so
-  // without it this passed against a transcript that rendered nothing at all.
-  const speaker = (name) =>
-    page.locator('.prose').getByRole('heading', { name, exact: true, level: 2 });
-  await expect(speaker('You').first()).toBeVisible({ timeout: 15000 });
-  await expect(speaker('Assistant').first()).toBeVisible();
+  // Rendered as the conversation, as the chat draws it: the question and the
+  // reply each show, with no way to answer or approve from here.
+  await expect(page.getByText('How many documents are there?', { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.getByText('There is one.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /message/i })).toHaveCount(0);
 });
 
 test('the activity feed reads newest first and can be searched', async ({ page }) => {
