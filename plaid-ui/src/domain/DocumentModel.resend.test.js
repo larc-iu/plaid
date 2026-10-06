@@ -408,3 +408,37 @@ describe('an edit not opted in to the rule by entity', () => {
     expect(server.sent).toEqual(['add t1 DEF', 'add t2 CANINE']);
   });
 });
+
+describe('edits waiting behind an edit sent again by itself', () => {
+  it('are each judged with the edits ahead of them shown, so a value typed twice goes twice', async () => {
+    const { server, doc, errors } = openDoc();
+    server.spans.push({ id: 'e1', tokens: ['t2'], value: 'old' });
+    doc._raw = server.raw();
+    server.elsewhere('t1', 'HOUND');
+    const first = doc.gloss('t3', 'RUN');
+    const second = doc.regloss('e1', 'x');
+    const third = doc.regloss('e1', 'y');
+    expect(await first.done).toBe(true);
+    expect(await second).toBe(true);
+    expect(await third).toBe(true);
+    expect(errors).toEqual([]);
+    expect(server.spans.find((s) => s.id === 'e1').value).toBe('y');
+    expect(server.sent).toEqual(['add t3 RUN', 'add t3 RUN', 'patch e1 x', 'patch e1 y']);
+  });
+
+  it('are still refused when what changed elsewhere touches them', async () => {
+    const { server, doc } = openDoc();
+    server.spans.push({ id: 'e1', tokens: ['t2'], value: 'old' });
+    doc._raw = server.raw();
+    server.spans[0].value = 'THEIRS';
+    server.version += 1;
+    const first = doc.gloss('t3', 'RUN');
+    const second = doc.regloss('e1', 'x');
+    const third = doc.regloss('e1', 'y');
+    expect(await first.done).toBe(true);
+    expect(await second).toBe(false);
+    expect(await third).toBe(false);
+    expect(server.spans.find((s) => s.id === 'e1').value).toBe('THEIRS');
+    expect(server.sent).toEqual(['add t3 RUN', 'add t3 RUN']);
+  });
+});

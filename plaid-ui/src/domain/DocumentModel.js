@@ -950,8 +950,7 @@ export class DocumentModel {
     }
     // The edits waiting behind it were made on the old version as well, and
     // go after it on this one: each is checked as it was.
-    this._keepUntouched(shown);
-    this._showUnsent(shown, { recheck: true });
+    this._showUnsent(shown, { recheck: true, keep: true });
     return 'resend';
   }
 
@@ -966,22 +965,6 @@ export class DocumentModel {
       this._untouched(unsent, updated);
     } catch (err) {
       console.error('Reading the document after a refusal failed:', err);
-    }
-  }
-
-  // Keeps waiting only the edits that nothing changed between the document
-  // each was checked against and `now` touches (rebase.js). The rest are
-  // refused like a conflict when their turn comes, without being sent.
-  _keepUntouched(now) {
-    const waiting = this._unsent;
-    this._unsent = [];
-    for (const u of waiting) {
-      if (this._untouched(u, now)) this._unsent.push(u);
-      else {
-        u.stale = true;
-        // Its own reason for the refusal, when it has one.
-        this._recheck(u, now);
-      }
     }
   }
 
@@ -1179,9 +1162,22 @@ export class DocumentModel {
   // With `recheck`, each edit that carries a `recheck` is asked it first, on
   // what was read with the edits ahead of it shown, and one that fails it is
   // refused unsent, like a conflict, and not shown.
-  _showUnsent(updated, { recheck = false } = {}) {
+  //
+  // With `keep` (after a conflict), each is kept waiting only when nothing
+  // that changed between the document it was checked against and what was
+  // read, with the edits ahead of it shown, touches it (`_untouched`). The
+  // edits ahead of it are what it was made on, so the second of two values
+  // typed into one cell is not taken for a change made elsewhere. The rest
+  // are refused like a conflict when their turn comes, without being sent.
+  _showUnsent(updated, { recheck = false, keep = false } = {}) {
     let raw = updated;
     for (const u of this._unsent) {
+      if (keep && !this._untouched(u, raw)) {
+        u.stale = true;
+        // Its own reason for the refusal, when it has one.
+        this._recheck(u, raw);
+        continue;
+      }
       if (recheck && !this._recheck(u, raw)) {
         u.stale = true;
         continue;
@@ -1194,7 +1190,7 @@ export class DocumentModel {
         }
       }
     }
-    if (recheck) this._unsent = this._unsent.filter((u) => !u.stale);
+    if (recheck || keep) this._unsent = this._unsent.filter((u) => !u.stale);
     this._swapRaw(raw);
   }
 
@@ -1303,8 +1299,7 @@ export class DocumentModel {
     if (conflict && this._client.strictModeDocumentId === this.id) {
       // Only those that what changed elsewhere touches (rebase.js). The rest
       // are shown again and sent in turn, each checked on its own.
-      this._keepUntouched(updated);
-      this._showUnsent(updated, { recheck: true });
+      this._showUnsent(updated, { recheck: true, keep: true });
       return;
     }
     this._showUnsent(updated);
