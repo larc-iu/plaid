@@ -71,7 +71,10 @@
    ["/:id"
     {:parameters {:path [:map [:id string?]]}}
     [""
-     {:get {:summary "Get a user by ID"
+     {;; A delegated token reads its own user here and nothing else
+      ;; (`pra/own-user-token-scope`).
+      :plaid/token-scope pra/own-user-token-scope
+      :get {:summary "Get a user by ID"
             :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
                        (let [user (user/get db id)]
                          (if (some? user)

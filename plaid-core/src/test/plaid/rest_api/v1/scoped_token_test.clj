@@ -112,7 +112,9 @@
     (doseq [[method path body] [[:get "/api/v1/projects"]
                                 [:post "/api/v1/projects" {:name "another"}]
                                 [:get "/api/v1/users"]
-                                [:get "/api/v1/users/admin@example.com"]
+                                [:get "/api/v1/users/user2@example.com"]
+                                [:patch "/api/v1/users/admin@example.com" {:display-name "Renamed"}]
+                                [:delete "/api/v1/users/admin@example.com"]
                                 [:post "/api/v1/users" {:email "x@example.com" :password "password123" :is-admin true}]
                                 [:post "/api/v1/users/admin@example.com/tokens" {:name "forever"}]
                                 [:get "/api/v1/users/admin@example.com/tokens"]
@@ -126,6 +128,21 @@
         (is (= 403 (:status resp)) (str (name method) " " path " answered " (:status resp)))))
     (testing "the admin's session is untouched: the logout above was refused"
       (is (= 200 (:status (call admin-request :get "/api/v1/users")))))))
+
+(deftest a-scoped-token-reads-its-own-user-record
+  ;; How a service acting for the user learns that core counts them a
+  ;; maintainer in the projects in scope (A1-IGT-2): an admin who maintains no
+  ;; lexicon was told only a maintainer may merge, which core allows.
+  (let [{:keys [p]} (world!)
+        admin (scoped "admin@example.com" p)
+        user2 (scoped "user2@example.com" p)]
+    (let [resp (call admin :get "/api/v1/users/admin@example.com")]
+      (is (= 200 (:status resp)))
+      (is (true? (-> resp :body :user/is-admin))))
+    (let [resp (call user2 :get "/api/v1/users/user2@example.com")]
+      (is (= 200 (:status resp)))
+      (is (false? (-> resp :body :user/is-admin))))
+    (is (= 403 (:status (call user2 :get "/api/v1/users/admin@example.com"))) "another user's record")))
 
 (deftest a-role-counts-only-on-a-project-in-scope
   ;; user2 reads P and writes Q, and v-pq is linked to both. Scoped to P,

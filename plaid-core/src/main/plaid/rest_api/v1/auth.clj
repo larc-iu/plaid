@@ -309,7 +309,8 @@
 ;;   route, refuses the request unless one of those gates passed it, or the
 ;;   route names its own check under `:plaid/token-scope` (the query, the
 ;;   user's private data, the batch, relabelling an operation group the
-;;   token's own writes created). So a route with no project behind it
+;;   token's own writes created, reading the token's own user record). So a
+;;   route with no project behind it
 ;;   (admin screens, users, tokens, invites, project creation, listings) is
 ;;   refused without having to be listed.
 ;; - A route that acts on a vocabulary as a whole carries
@@ -403,6 +404,21 @@
     (when-not (and (= :patch (:request-method request))
                    (some? created-by)
                    (= created-by (:token-key scope)))
+      scope-refusal)))
+
+(defn own-user-token-scope
+  "`:plaid/token-scope` for `/users/:id`: a scoped token may read its own
+  user's record, and nothing else there. A service acting for a user is told
+  who they are with every request, and their record is how it learns what
+  core lets them do in the projects in scope (an administrator counts as a
+  maintainer there), so it refuses honestly rather than plan what core would
+  refuse, or the other way round. Another user's record, and every change
+  to one's own, stay refused."
+  [request scope]
+  (let [id (-> request :parameters :path :id)]
+    (when-not (and (= :get (:request-method request))
+                   (string? id)
+                   (= (str/lower-case id) (str/lower-case (str (:user-id scope)))))
       scope-refusal)))
 
 (defn each-operation-token-scope
