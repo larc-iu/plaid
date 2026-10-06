@@ -9,6 +9,7 @@ This is the last module in the app to be imported: it reads every tool module,
 so nothing here may be imported back by one of them.
 """
 
+import inspect
 from typing import Any, Dict, List
 
 from ..core import sandbox as _sandbox
@@ -354,7 +355,23 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
         ws, args = route(ws, name, args)
     except ToolError as e:
         return f'Error: {e}'
-    return run_tool(ws, name, fn, args)
+    return run_tool(ws, name, fn, entry_form_named_form(fn, args))
+
+
+def entry_form_named_form(fn, args: Dict[str, Any]) -> Dict[str, Any]:
+    """``form`` read as ``entry_form`` by a tool that names an entry and takes
+    no form of its own. analyses_of and concordance call it form, so a model
+    asking about an entry reaches for the same word: lexicon_entry(form="kai")
+    was refused six times on the prod copy (R1-EXTRACT). The name is resolved
+    exactly as entry_form is, homographs and all, so nothing is guessed."""
+    if not isinstance(args, dict) or 'form' not in args or 'entry_form' in args:
+        return args
+    params = inspect.signature(fn).parameters
+    if 'entry_form' not in params or 'form' in params:
+        return args
+    out = dict(args)
+    out['entry_form'] = out.pop('form')
+    return out
 
 
 _ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},

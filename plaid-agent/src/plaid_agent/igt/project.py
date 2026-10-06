@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
+from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Dict, List, Optional, Tuple
 
@@ -109,6 +110,12 @@ def _unique_field_names(entries):
     return out
 
 
+#: The words a model puts beside a field's name to say its scope.
+SCOPE_WORDS = {'word': 'Word', 'words': 'Word', 'morpheme': 'Morpheme', 'morphemes': 'Morpheme',
+               'morph': 'Morpheme', 'sentence': 'Sentence', 'sentences': 'Sentence'}
+_NAME_SPLIT = re.compile(r'[\s._:/()\-]+')
+
+
 @dataclass
 class IgtProject:
     id: str
@@ -152,7 +159,34 @@ class IgtProject:
         qualified = [f for f in self.fields.values() if f'{f.base_name} ({f.scope})'.lower() == key]
         if len(qualified) == 1:
             return qualified[0]
+        scoped = self._scoped(key)
+        if scoped is not None:
+            return scoped
         raise ValueError(f'No field named "{name}". Fields: ' + self.field_list())
+
+    def fields_sharing_name(self, name: str) -> List[Field]:
+        """The fields a bare layer name stands for when it stands for several
+        (a "Gloss" on words and one on morphemes), else []. For a read that
+        can answer about each of them instead of asking which."""
+        key = (name or '').strip().lower()
+        if any(f.name.lower() == key for f in self.fields.values()):
+            return []
+        base = [f for f in self.fields.values() if f.base_name.lower() == key]
+        return base if len(base) > 1 else []
+
+    def _scoped(self, key: str) -> Optional[Field]:
+        """A field named with its scope in words a model writes it in: "word
+        gloss", "Gloss word", "morpheme.gloss", "Gloss/Morpheme". One scope
+        word and the rest the layer's name, or nothing."""
+        parts = [p for p in _NAME_SPLIT.split(key) if p]
+        scopes = {SCOPE_WORDS[p] for p in parts if p in SCOPE_WORDS}
+        rest = ' '.join(p for p in parts if p not in SCOPE_WORDS)
+        if len(scopes) != 1 or not rest:
+            return None
+        scope = scopes.pop()
+        hits = [f for f in self.fields.values()
+                if f.scope == scope and ' '.join(p for p in _NAME_SPLIT.split(f.base_name.lower()) if p) == rest]
+        return hits[0] if len(hits) == 1 else None
 
     def field_list(self) -> str:
         """The fields by scope, spelled the way they must be passed back."""
@@ -587,33 +621,89 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
 
 # --- addressing -------------------------------------------------------------
 
-REF_RE = re.compile(r'^\s*s(\d+)(?:\.w(\d+)(?:\.m(\d+))?)?\s*$')
+BAD_REF = 'use s<n>, s<n>.w<n>, or s<n>.w<n>.m<n> (e.g. s3.w2.m1), or s<n>."form" for the word spelled so'
+#: The affix markers a model may write around a morpheme's form, which the
+#: form a morpheme stores leaves to its type.
+MARKERS = '-=~.'
 
 
 def parse_ref(ref: str):
-    """'s3' -> (3, None, None); 's3.w2' -> (3, 2, None); 's3.w2.m1' -> (3, 2, 1)."""
-    m = REF_RE.match(ref or '')
-    if not m:
-        raise ValueError(f'Bad reference "{ref}": use s<n>, s<n>.w<n>, or s<n>.w<n>.m<n> (e.g. s3.w2.m1)')
-    return tuple(int(g) if g is not None else None for g in m.groups())
+    """'s3' -> (3, None, None); 's3.w2' -> (3, 2, None); 's3.w2.m1' -> (3, 2, 1).
+    Read as :mod:`core.refs` reads one, so ``S3:2:1`` is ``s3.w2.m1``. A word
+    named by its form has no numbers until :func:`resolve` finds it."""
+    r = read_ref(ref, 'wm')
+    if r is None or r.by_form:
+        raise ValueError(f'Bad reference "{ref}": {BAD_REF}')
+    return (r.sentence,) + r.parts
+
+
+def words_listing(s: 'Sentence', limit: int = 12) -> str:
+    """A sentence's words as a refusal names them: ``w1 "kwa", w2 "tha"``."""
+    out = [f'w{w.index} "{clip(w.surface)}"' for w in s.words]
+    if len(out) > limit:
+        out = out[:limit - 1] + ['…', out[-1]]
+    return ', '.join(out)
+
+
+def _has_words(s: 'Sentence', lead: str) -> str:
+    n = len(s.words)
+    return f'{lead} s{s.index} has {n} word{"s" if n != 1 else ""}: {words_listing(s)}'
+
+
+def _example(doc: 'IgtDoc') -> str:
+    for s in doc.sentences:
+        for w in s.words[1:2] or s.words[:1]:
+            return f' In "{doc.name}", s{s.index}.w{w.index} is "{clip(w.surface)}".'
+    return ''
+
+
+def _word_by_form(s: 'Sentence', ref: str, r) -> 'Word':
+    words = [w for w in s.words if same_form(r.form, w.surface)]
+    if r.nth is not None:
+        if 1 <= r.nth <= len(words):
+            return words[r.nth - 1]
+        raise ValueError(f'{ref}: s{s.index} has {len(words)} word(s) spelled "{clip(r.form)}", '
+                         f'so there is no #{r.nth}. {_has_words(s, "Sentence")}.')
+    if len(words) == 1:
+        return words[0]
+    if not words:
+        raise ValueError(f'{ref}: s{s.index} has no word "{clip(r.form)}". {_has_words(s, "Sentence")}.')
+    raise ValueError(f'{ref}: s{s.index} has {len(words)} words spelled "{clip(r.form)}": '
+                     + ', '.join(f's{s.index}.w{w.index}' for w in words) + '. Name one by its number.')
 
 
 def resolve(doc: IgtDoc, ref: str):
-    """-> Sentence | Word | Morpheme for a positional reference into `doc`."""
-    si, wi, mi = parse_ref(ref)
+    """-> Sentence | Word | Morpheme for a positional reference into `doc`.
+    A form given beside the number has to be the one there: a reference whose
+    number and form disagree is refused, never read as either."""
+    r = read_ref(ref, 'wm')
+    if r is None:
+        raise ValueError(f'Bad reference "{ref}": {BAD_REF}.' + _example(doc))
+    si, (wi, mi) = r.sentence, r.parts
     if not 1 <= si <= len(doc.sentences):
         raise ValueError(f'{ref}: document "{doc.name}" has {len(doc.sentences)} sentences')
     s = doc.sentences[si - 1]
+    if r.by_form:
+        return _word_by_form(s, ref, r)
     if wi is None:
         return s
     if not 1 <= wi <= len(s.words):
-        raise ValueError(f'{ref}: sentence s{si} has {len(s.words)} words')
+        raise ValueError(f'{ref}: {_has_words(s, "sentence")}.')
     w = s.words[wi - 1]
     if mi is None:
+        if r.form and not same_form(r.form, w.surface):
+            where = [f's{si}.w{x.index}' for x in s.words if same_form(r.form, x.surface)]
+            raise ValueError(f'{ref}: s{si}.w{wi} is "{clip(w.surface)}", not "{clip(r.form)}"'
+                             + (f' ("{clip(r.form)}" is {", ".join(where)})' if where else '')
+                             + '. Name the word by its number, as read_document shows it.')
         return w
     if not 1 <= mi <= len(w.morphemes):
         raise ValueError(f'{ref}: word s{si}.w{wi} "{w.surface}" has {len(w.morphemes)} morphemes')
-    return w.morphemes[mi - 1]
+    m = w.morphemes[mi - 1]
+    if r.form and not same_form(r.form, m.form, MARKERS):
+        raise ValueError(f'{ref}: s{si}.w{wi}.m{mi} is "{clip(m.form)}", not "{clip(r.form)}". The word is '
+                         + ' '.join(f'm{x.index} "{clip(x.form)}"' for x in w.morphemes) + '.')
+    return m
 
 
 # --- rendering ---------------------------------------------------------------

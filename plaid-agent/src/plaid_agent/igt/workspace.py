@@ -23,6 +23,7 @@ from plaid_client import uuid7
 from ..core import docload, opkind
 from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
+from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
@@ -35,8 +36,8 @@ ENTRY_REMOVALS = ('rename_entry', 'delete_entry')
 MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can rename, delete or merge its entries, '
                     'and the person you are acting for does not maintain it. Nothing was planned. '
                     'Tell them a maintainer of that lexicon has to make this change.')
-from .project import (IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual, load_document, render_document,
-                      resolve)
+from .project import (BAD_REF, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
+                      load_document, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 
@@ -85,6 +86,14 @@ def _sentence_linking(doc, entry_id: str) -> Optional[str]:
                     return s.id
     return None
 
+
+#: A headword number as the app shows it (a subscript) or as a reference
+#: field writes it ("kai 1"), read after the subscripts are made digits.
+NUMBERED_FORM = re.compile(r'(.+?)\s*(\d+(?:\.\d+)*)', re.S)
+#: Without a subscript the number has to stand apart: "ma1" is a form a
+#: tone-numbered orthography spells, not "ma" number 1.
+SPACED_NUMBER = re.compile(r'(.+?)\s+(\d+(?:\.\d+)*)', re.S)
+SUBSCRIPTS = str.maketrans('₀₁₂₃₄₅₆₇₈₉', '0123456789')
 
 class Workspace(BaseWorkspace):
     """One turn's view of an interlinear project: what it has loaded, the
@@ -406,10 +415,23 @@ class Workspace(BaseWorkspace):
                 # of them is what the form names, so the refusal stays as it is.
                 if len(was) == 1:
                     return 'existing', was[0]
+            # The number as the app shows it ("kai₁") or writes it in a
+            # reference field ("kai 1") says what "kai#1" says. Read only when
+            # the form as given names nothing, so an entry really spelled that
+            # way is still the one it names.
+            if suffix is None:
+                digits = form.translate(SUBSCRIPTS)
+                numbered = (NUMBERED_FORM if digits != form else SPACED_NUMBER).fullmatch(digits)
+                if numbered and numbered.group(1).strip():
+                    return self.find_entry(f'{numbered.group(1).strip()}#{numbered.group(2)}', lexicon,
+                                           None, gloss)
             hint = ''
             if suffix is not None and any(self.view(v).tree_has_form(form) for v in vocabs):
                 hint = (f' Headword "{form}" has no sense {suffix}; lexicon_entry shows the senses '
                         'it has.')
+            close = self.spelled_close(form, vocabs)
+            if close:
+                hint += ' Spelled close to it: ' + ', '.join(f'entry_form "{a}"' for a in close) + '.'
             raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
                             + '.' + hint + ' Use read_lexicon to look, or create_entry to add one.')
         lines = [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one '
@@ -422,6 +444,21 @@ class Workspace(BaseWorkspace):
         for k, e in news:
             lines.append(f'  id={k} {e["form"]} (new in this plan)')
         raise ToolError('\n'.join(lines))
+
+    def spelled_close(self, form: str, vocabs, limit: int = 6) -> List[str]:
+        """The entries spelled as ``form`` is once affix markers, case and
+        Unicode composition are set aside, as their entry_form: "-ka" for
+        "ka". Offered in a refusal, never taken in its place, since a suffix
+        and a root can be spelled alike and be two entries."""
+        out = []
+        for v in vocabs:
+            view = self.view(v)
+            for it in view.items:
+                if same_form(form, it.get('form'), MARKERS) and (it.get('form') or '') != form:
+                    addr = view.address(it['id'])
+                    if addr not in out:
+                        out.append(addr)
+        return out[:limit]
 
     def vocab_of_item(self, item_id: str) -> Optional[dict]:
         """The lexicon an existing entry belongs to."""
@@ -828,20 +865,31 @@ def op_target(op: Dict[str, Any]):
 
 # --- reading what the model wrote --------------------------------------------
 
-_REF_TOKEN = re.compile(r's\d+(?:\.w\d+(?:\.m\d+)?)?')
+# One reference among several in a string, in any spelling core.refs reads
+# ("S3:2" as well as "s3.w2"), with no form after it.
+_REF_TOKEN = re.compile(r's\s*\d+(?:\s*(?:[.:/]\s*w?|w)\s*\d+(?:\s*(?:[.:/]\s*m?|m)\s*\d+)?)?', re.I)
+# The document name a read tool prints before a reference.
+_DOC_PREFIX = re.compile(r'^\s*(?:"[^"]*"|“[^”]*”)\s+(?=s\s*\d)', re.I)
 
 
 def _refs(refs) -> List[str]:
     """References as the model passes them: a list or a string, possibly
-    prefixed with the document name the read tools print ('"Text 1" s3.w2')."""
+    prefixed with the document name the read tools print ('"Text 1" s3.w2').
+    An item that is one reference is kept whole, so a form written beside it
+    ('s3.w2 "kwa"') reaches `resolve` and is checked there rather than
+    dropped; a string holding several is split into them."""
     if refs is None:
         return []
     items = [refs] if isinstance(refs, str) else [str(r) for r in refs]
     out: List[str] = []
     for item in items:
+        bare = _DOC_PREFIX.sub('', item, count=1)
+        if read_ref(bare, 'wm') is not None:
+            out.append(bare.strip())
+            continue
         found = _REF_TOKEN.findall(item)
         if not found and item.strip():
-            raise ToolError(f'Bad reference "{item.strip()}": use sN, sN.wN, or sN.wN.mN')
+            raise ToolError(f'Bad reference "{item.strip()}": {BAD_REF}')
         out.extend(found)
     return out
 

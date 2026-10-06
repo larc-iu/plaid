@@ -20,10 +20,11 @@ from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, confirm_preview, labelled
 from ..core.provenance import unmark
+from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
-from .project import (IgtDoc, Sentence, Word, Morpheme, Link, parse_ref, resolve, mwe_ref, REVIEWABLE,
+from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref, REVIEWABLE,
                       join_morphemes, project_new_words, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
 from .reads import t_plan_status
@@ -440,6 +441,11 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
         raise ToolError(f'{ref}: the analysis this plan gives "{w.surface}" has {len(chain)} '
                         f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
                         f'sN.wN.mN names while it is in the plan)')
+    # A form written beside the number is a check, here as in `resolve`.
+    given = read_ref(ref, 'wm').form
+    if given and not same_form(given, chain[mi - 1].get('form'), MARKERS):
+        raise ToolError(f'{ref}: in the analysis this plan gives "{w.surface}", m{mi} is '
+                        f'"{chain[mi - 1].get("form")}", not "{given}".')
     # The analysis keeps its own first stored morpheme (``existing[0]``) as
     # its first and deletes the rest, so that one is what m1 names, and
     # every later place is a new morpheme with no link yet. Found by the id

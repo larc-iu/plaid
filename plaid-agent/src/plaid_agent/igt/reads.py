@@ -21,7 +21,7 @@ from .project import (Word, Morpheme, document_lines, joiner_between, render_ove
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
-from .workspace import Workspace, _matcher, _meta_of
+from .workspace import Workspace, _hits_in, _matcher, _meta_of
 
 
 # --- read tools ---------------------------------------------------------------
@@ -58,15 +58,48 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
     return truncate('\n'.join(lines))
 
 
+#: What a model writes for each kind of ``where`` a read takes besides a
+#: field's name. Only words that cannot mean the other kinds: "form" could be
+#: a word's or a morpheme's.
+WHERE_WORDS = {'baseline': ('baseline', 'word', 'words', 'wordform', 'wordforms', 'word form', 'word forms',
+                            'surface'),
+               'morpheme': ('morpheme', 'morphemes', 'morph', 'morphs', 'morpheme form', 'morpheme forms'),
+               'lexicon': ('lexicon', 'entries', 'entry', 'vocabulary', 'vocab', 'dictionary')}
+WHERE_SAYS = {'baseline': '"baseline" (word forms)', 'morpheme': '"morpheme" (morpheme forms)',
+              'lexicon': '"lexicon" (entries)'}
+
+
+def _where(ws: Workspace, where: Optional[str], default: str, kinds) -> str:
+    """``where`` as one of ``kinds`` when it says one of them in other words
+    ("words", "morphemes"), else as given (a field name). A field really
+    called that keeps its name."""
+    name = (where or default).strip()
+    if name.lower().startswith('field:'):
+        return name[6:].strip()
+    low = name.lower()
+    if any(low in (f.name.lower(), f.base_name.lower()) for f in ws.project.fields.values()):
+        return name
+    return next((k for k in kinds if low in WHERE_WORDS[k]), name)
+
+
+def _field_or_where(ws: Workspace, name: str, kinds):
+    """The field ``name`` names, or a refusal that offers the other kinds of
+    ``where`` beside the fields."""
+    try:
+        return ws.project.field(name)
+    except ValueError as e:
+        if 'names several' in str(e):
+            raise
+        raise ToolError(f'{e}. Or where = ' + ', '.join(WHERE_SAYS[k] for k in kinds) + '.') from None
+
+
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
              regex: bool = False, limit: Optional[int] = None, case_sensitive: bool = False) -> str:
     if not pattern:
         raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
     match = _matcher(pattern, bool(regex), bool(case_sensitive))
     limit = clamp_limit(limit, *READ_LIMITS['search'])
-    where_name = (where or 'baseline').strip()
-    if where_name.lower().startswith('field:'):
-        where_name = where_name[6:].strip()
+    where_name = _where(ws, where, 'baseline', ('baseline', 'morpheme', 'lexicon'))
     where_l = where_name.lower()
     out: List[str] = []
     total = 0
@@ -83,7 +116,13 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
 
     field = None
     if where_l not in ('baseline', 'morpheme'):
-        field = ws.project.field(where_name)
+        # A name several fields share ("Gloss" on words and on morphemes) is
+        # a question about each: answered for each, under its full name.
+        alike = ws.project.fields_sharing_name(where_name)
+        if alike:
+            return '\n\n'.join(f'{f.name}: ' + t_search(ws, pattern, f.name, document, regex, limit, case_sensitive)
+                               for f in alike)
+        field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
     if not ws.use_scan(document):
         from .queries import q_search
         out, total = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
@@ -191,10 +230,11 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     if not pattern:
         raise ToolError('Give a pattern.')
     limit = clamp_limit(limit, 60, 300)
-    where_l = (where or 'morpheme').lower()
+    where = _where(ws, where, 'morpheme', ('baseline', 'morpheme'))
+    where_l = where.lower()
     field = None
     if where_l not in ('baseline', 'morpheme'):
-        field = ws.project.field(where)
+        field = _field_or_where(ws, where, ('baseline', 'morpheme'))
         if field.scope == 'Sentence':
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
     if not ws.use_scan(document):
@@ -350,10 +390,49 @@ def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
     return '\n'.join(lines)
 
 
+#: The most entries spelled alike that lexicon_entry shows in full at once.
+ALIKE_IN_FULL = 4
+
+
+def _spelled_alike(ws: Workspace, form: str, lexicon: Optional[str]):
+    """When ``form`` names several existing entries and nothing this plan
+    adds, a function writing them out; else None, and the lookup goes on as
+    for any other name (so a planned entry spelled the same is still the
+    workspace's refusal to make)."""
+    vocabs = [ws.project.vocab(lexicon)] if lexicon else ws.project.vocabs
+    hits = [(v, it) for v in vocabs for it in _hits_in(ws, v, form, None, lambda meta, view=None: True)]
+    if len(hits) < 2 or any(e['form'].lower() == form.lower() for e in ws.new_entries.values()):
+        return None
+
+    def write(examples):
+        head = (f'{len(hits)} entries are spelled "{form}". Pass the entry_form shown with one to name it '
+                f'in a change.')
+        if len(hits) <= ALIKE_IN_FULL:
+            return '\n\n'.join([head] + [t_lexicon_entry(ws, entry_id=it['id'], examples=examples)
+                                         for _v, it in hits])
+        lines = [head]
+        for v, it in hits:
+            view = ws.view(v)
+            lines.append(f'  entry_form "{view.address(it["id"])}" {entry_line(it, view)} ({v["name"]})')
+        lines.append('lexicon_entry with one of those entry_forms shows it in full.')
+        return '\n'.join(lines)
+    return write
+
+
 def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
                     entry_id: Optional[str] = None, examples: int = 3, entry_gloss: Optional[str] = None) -> str:
     """One lexicon entry in full: every field, where it is linked (words vs
-    morphemes, how many), and example occurrences."""
+    morphemes, how many), and example occurrences.
+
+    A bare form that several entries share is answered with all of them
+    rather than refused: this is a read, so showing each is the answer to
+    the question asked, and each comes with the entry_form that names it in
+    a change."""
+    if isinstance(entry_form, str) and entry_form.strip() and '#' not in entry_form \
+            and not entry_id and not entry_gloss:
+        several = _spelled_alike(ws, entry_form.strip(), lexicon)
+        if several:
+            return several(examples)
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'new':
         e = ws.new_entries[target]

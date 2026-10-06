@@ -224,7 +224,7 @@ _PROGRESS = {
     'read_lexicon': lambda a: 'Reading the lexicon…',
     'concordance': lambda a: f'Concordancing "{a.get("pattern", "")}"…',
     'analyses_of': lambda a: f'Tallying analyses of "{a.get("form", "")}"…',
-    'lexicon_entry': lambda a: f'Looking up "{a.get("entry_form") or a.get("entry_id") or ""}"…',
+    'lexicon_entry': lambda a: f'Looking up "{a.get("entry_form") or a.get("form") or a.get("entry_id") or ""}"…',
     'check_consistency': lambda a: f'Checking {a.get("field", "")} consistency…',
     'recent_changes': lambda a: 'Reading the change history…',
     'comments': lambda a: 'Reading the comments…',
