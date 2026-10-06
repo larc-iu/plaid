@@ -79,8 +79,9 @@ def test_a_turn_is_written_to_the_record_before_it_is_reported(monkeypatch):
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
-    real_save = store.save
-    monkeypatch.setattr(ConversationStore, 'save', lambda self, *a: (order.append('saved'), real_save(*a)))
+    real_write = ConversationStore.write
+    monkeypatch.setattr(ConversationStore, 'write',
+                        lambda self, *a, **k: (order.append('saved'), real_write(self, *a, **k))[1])
     helper = Helper()
     helper.complete = lambda data=None: (order.append('completed'), helper.done.append(data))
     _service().process_request(_request(client), helper)

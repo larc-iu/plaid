@@ -79,8 +79,8 @@ from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCanc
 from .files import Attachments, FileKeeper
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
-                           find_plan, partial_note, partial_tally, proposed_changes, prune, record_budget,
-                           replace_undecided, settle_plan)
+                           find_plan, partial_note, partial_tally, pending_kept, plan_settling,
+                           proposed_changes, prune, record_budget, turn_ending)
 from .opkind import ROW
 from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, drawable,
                    forget_held, held_from, holding, outcome_unknown)
@@ -493,14 +493,22 @@ class BaseAssistantService(BaseService):
                   for label, p in zip(labels[1:], reach.others)]
         return shared_prompt.other_projects(labels[0], briefs, [u['name'] for u in reach.unavailable])
 
-    def _write(self, store: ConversationStore, conv_id: str, conv: dict, meta: dict, request_id) -> bool:
-        """Write the outcome, unless the conversation moved on meanwhile (its
-        pending marker names another request, or it was deleted): then the
-        outcome is dropped rather than written over what the user did."""
-        if not store.owned_by(conv_id, request_id):
+    def _write(self, store: ConversationStore, conv_id: str, change, request_id, model: Optional[str] = None,
+               pending: Optional[dict] = None) -> bool:
+        """Write the outcome, ``change`` made on the record as it is stored
+        (`ConversationStore.write`), and the sidebar entry with ``pending``
+        (none: the request is over), unless the conversation moved on
+        meanwhile (its pending marker names another request, a newer question
+        follows, or it was deleted): then the outcome is dropped rather than
+        written over what the user did."""
+        model = model or self.cfg.model
+
+        def meta_of(conv, prev):
+            return build_meta(prev, conv_id, conv, self.service_id, model,
+                              pending=pending_kept(prev, request_id, pending), version=self.version)
+        if not store.write(conv_id, change, meta_of, request_id):
             print(f'Conversation {conv_id} moved on; the outcome of request {request_id} is not written.')
             return False
-        store.save(conv_id, conv, meta)
         return True
 
     def _turn(self, client, project, store, conv_id, conv, meta, request_id, response_helper,
@@ -575,6 +583,10 @@ class BaseAssistantService(BaseService):
             # What every call of the next turn sends besides the transcript, taken
             # off the window before the transcript is held to its share of it.
             overhead = (system, self.kit.tools_for(ws))
+
+        def fit(record):
+            """The record held to its budget (`prune`)."""
+            return prune(record, record_budget(client), self.transcript_budget(model, overhead))
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
@@ -589,14 +601,12 @@ class BaseAssistantService(BaseService):
             # send it twice) and stays on screen with what happened. What the
             # turn did before it stopped stays on the item, for the record.
             steps, calls = turn_trace(e)
-            stopped = prune({'messages': transcript[:-1],
-                             'display': conv['display'] + [error_item('Stopped.', stopped=True, model=model,
-                                                                      version=self.version,
-                                                                      service=self.service_id,
-                                                                      steps=steps, calls=calls)]},
-                            record_budget(client), self.transcript_budget(model, overhead))
-            self._write(store, conv_id, stopped,
-                        build_meta(meta, conv_id, stopped, self.service_id, model, version=self.version), request_id)
+            self._write(store, conv_id,
+                        turn_ending(conv, transcript[:-1],
+                                    error_item('Stopped.', stopped=True, model=model, version=self.version,
+                                               service=self.service_id, steps=steps, calls=calls),
+                                    fit=fit),
+                        request_id, model)
             response_helper.complete({'kind': 'stopped'})
             return
         except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
@@ -605,13 +615,12 @@ class BaseAssistantService(BaseService):
             traceback.print_exc()
             line = self.turn_failure_line(e)
             steps, calls = turn_trace(e)
-            failed = prune({'messages': transcript[:-1],
-                            'display': conv['display'] + [error_item(line, model=model, version=self.version,
-                                                                   service=self.service_id,
-                                                                   steps=steps, calls=calls)]},
-                           record_budget(client), self.transcript_budget(model, overhead))
-            self._write(store, conv_id, failed,
-                        build_meta(meta, conv_id, failed, self.service_id, model, version=self.version), request_id)
+            self._write(store, conv_id,
+                        turn_ending(conv, transcript[:-1],
+                                    error_item(line, model=model, version=self.version,
+                                               service=self.service_id, steps=steps, calls=calls),
+                                    fit=fit),
+                        request_id, model)
             response_helper.error(line)
             return
         self._release(ws)
@@ -645,13 +654,11 @@ class BaseAssistantService(BaseService):
         # A new plan replaces any still waiting: the model restates what still
         # applies in the plan it stages, so the older card is not left
         # approvable beside it.
-        earlier = replace_undecided(conv['display']) if item.get('plan') else conv['display']
-        done = prune({'messages': transcript + turn.messages, 'display': earlier + [item]},
-                     record_budget(client), self.transcript_budget(model, overhead))
         try:
-            written = self._write(store, conv_id, done,
-                                  build_meta(meta, conv_id, done, self.service_id, model, version=self.version),
-                                  request_id)
+            written = self._write(store, conv_id,
+                                  turn_ending(conv, transcript, item, turn.messages,
+                                              replaces=bool(item.get('plan')), fit=fit),
+                                  request_id, model)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it
             # This write is the LAST thing a turn does, and a refused save (too
             # large, a server error, a network blip) must not lose the answer
@@ -729,13 +736,14 @@ class BaseAssistantService(BaseService):
             return
         plan = item['plan']
 
-        def settled(next_conv=None):
-            """Clear the pending marker (with the conversation as it stands, or
-            as given) so the card is decidable again. False when the record
-            refused the write, which `_write` reports rather than raising."""
-            c = next_conv or conv
-            return self._write(store, conv_id, c,
-                               build_meta(meta, conv_id, c, self.service_id, model, version=self.version), request_id)
+        def settled(status=None, note=None, **fields):
+            """Clear the pending marker so the card is decidable again, and
+            settle the plan as ``status`` when given (`plan_settling`). False
+            when the conversation moved on, which `_write` reports rather than
+            raising."""
+            return self._write(store, conv_id,
+                               plan_settling(plan_id, status, note, documents=plan.get('documents'), **fields),
+                               request_id, model)
 
         # A plan that stopped partway is settled: finishing it is a new plan.
         if item.get('status') == 'partial':
@@ -770,7 +778,7 @@ class BaseAssistantService(BaseService):
         # creates are drawn from (`core.plan.Minter`).
         if not item.get('service') or not drawable(plan_id):
             said = 'This plan was made by an earlier version of the assistant.'
-            settled(settle_plan(conv, index, 'stale', f'(note) The plan was not applied: {said} Nothing was written.'))
+            settled('stale', f'(note) The plan was not applied: {said} Nothing was written.')
             response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return
         ops = plan.get('ops') or []
@@ -802,11 +810,10 @@ class BaseAssistantService(BaseService):
         # makes while the block runs, the record's too, which would leave the
         # card pending over a plan that stopped partway.
         def remember():
-            """Write the record as it stands, the approval still pending."""
-            return self._write(store, conv_id, conv,
-                               build_meta(meta, conv_id, conv, self.service_id, model,
-                                          pending=(meta or {}).get('pending'), version=self.version),
-                               request_id)
+            """Write the plan's documents as the run holds them, the approval
+            still pending."""
+            return self._write(store, conv_id, plan_settling(plan_id, documents=plan.get('documents')),
+                               request_id, model, pending=(meta or {}).get('pending'))
 
         try:
             with holding(client, self.documents_to_lock(ops, documents)):
@@ -848,7 +855,7 @@ class BaseAssistantService(BaseService):
         outcome = {'as_human': as_human, **({'contributed': True} if contributor else {}),
                    **({'apply_notes': notes} if notes else {}),
                    **({'unwritten': unwritten} if unwritten else {})}
-        if not settled(settle_plan(conv, index, 'applied', note, **outcome)):
+        if not settled('applied', note, **outcome):
             response_helper.error(
                 'The changes were applied, but this conversation was changed elsewhere and does not '
                 'show it. Do not approve this plan again.')
@@ -878,8 +885,7 @@ class BaseAssistantService(BaseService):
             said = ' '.join(_sentence(s) for s in reasons)
 
             def refuse():
-                settled(settle_plan(conv, index, 'stale',
-                                    f'(note) The plan was not applied: {said} Nothing was written.'))
+                settled('stale', f'(note) The plan was not applied: {said} Nothing was written.')
                 response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return refuse
 
@@ -973,7 +979,7 @@ class BaseAssistantService(BaseService):
                 fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {})}
                 said = (f'Partly applied: {outcome} '
                         + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
-                if not settled(settle_plan(conv, index, 'partial', note, **fields)):
+                if not settled('partial', note, **fields):
                     said += ' This conversation was changed elsewhere and does not show it.'
                 response_helper.complete({'kind': 'applied', 'partial': True, 'applied': written_n,
                                           'counts': [], 'message': said})

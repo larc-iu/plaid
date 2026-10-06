@@ -643,7 +643,7 @@ def test_a_turn_whose_reply_the_store_refuses_keeps_what_the_answer_names(monkey
         raise ValueError('too large')
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
-    monkeypatch.setattr(ConversationStore, 'save', refuse)
+    monkeypatch.setattr(ConversationStore, 'write', refuse)
     helper = Helper()
     _service().process_request(_request(client), helper)
     [done] = helper.done

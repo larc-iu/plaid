@@ -101,8 +101,8 @@ def test_a_conversation_save_whose_answer_was_lost_is_sent_again():
     real = client.user_data.put
     failures = [_lost('PUT', '/api/v1/users/u@x/data/k')]
 
-    def put(user_id, key, value):
-        real(user_id, key, value)
+    def put(user_id, key, value, version=None):
+        real(user_id, key, value, version=version)
         if failures:
             raise failures.pop()
 
@@ -124,11 +124,11 @@ def test_a_save_while_the_server_restarts_waits_for_it(monkeypatch):
     real_put, real_get = client.user_data.put, client.user_data.get
     away = {'put': 3, 'get': 2}
 
-    def put(user_id, key, value):
+    def put(user_id, key, value, version=None):
         if away['put']:
             away['put'] -= 1
             raise PlaidAPIError('HTTP 502 Bad Gateway', status=502, method='PUT')
-        return real_put(user_id, key, value)
+        return real_put(user_id, key, value, version=version)
 
     def get(user_id, key):
         if away['get']:
@@ -149,7 +149,7 @@ def test_a_server_away_for_good_is_given_up_on(monkeypatch):
     client = FakeClient()
     store = ConversationStore(client, 'u@x', 'p1', 'igt')
 
-    def put(user_id, key, value):
+    def put(user_id, key, value, version=None):
         raise PlaidAPIError('HTTP 504 Gateway Timeout', status=504, method='PUT')
 
     client.user_data.put = put
@@ -163,7 +163,7 @@ def test_a_refused_conversation_save_is_not_sent_again():
     store = ConversationStore(client, 'u@x', 'p1', 'igt')
     calls = []
 
-    def put(user_id, key, value):
+    def put(user_id, key, value, version=None):
         calls.append(key)
         raise PlaidAPIError('HTTP 413 Too large', status=413, method='PUT')
 
@@ -181,7 +181,7 @@ def test_a_save_that_failed_says_so_with_one_period(monkeypatch):
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
-    monkeypatch.setattr(ConversationStore, 'save', lambda self, *a: (_ for _ in ()).throw(
+    monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
         PlaidAPIError('HTTP 413 The value is too large.', status=413, method='PUT')))
     helper = Helper()
     _service().process_request(_request(client), helper)
@@ -190,7 +190,7 @@ def test_a_save_that_failed_says_so_with_one_period(monkeypatch):
     assert done['warning'] == ('The conversation could not be saved: HTTP 413 The value is too large. '
                                'This answer is not in the record.')
 
-    monkeypatch.setattr(ConversationStore, 'save', lambda self, *a: (_ for _ in ()).throw(
+    monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
         _lost('PUT', '/api/v1/users/u@x/data/k')))
     helper = Helper()
     _service().process_request(_request(client), helper)
@@ -210,7 +210,7 @@ def test_a_failed_final_save_ends_the_request_once_with_the_answer(monkeypatch):
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
-    monkeypatch.setattr(ConversationStore, 'save', lambda self, *a: (_ for _ in ()).throw(
+    monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
         PlaidAPIError('HTTP 500 Internal error', status=500, method='PUT')))
     helper = Helper()
     _service().process_request(_request(client), helper)

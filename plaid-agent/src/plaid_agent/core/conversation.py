@@ -25,6 +25,7 @@ Keys are snake_case here and camelCase in the browser. The clients recase
 them on the wire, so both sides read one record.
 """
 
+import copy
 import json
 import time
 from datetime import datetime, timezone
@@ -104,15 +105,41 @@ class MissingConversation(Exception):
     """No record under the conversation's keys (never saved, or deleted)."""
 
 
+class RecordMoved(Exception):
+    """The record kept changing under a write that was made again on it each
+    time, more times than :data:`WRITE_TRIES`."""
+
+
+# How many times a write of the record is made again on what is stored when
+# another writer's write landed first (a 409 on the version it was made from).
+# Each try reads the record again, so only a writer racing every one of them
+# runs out.
+WRITE_TRIES = 8
+
+
+def _moved(e: PlaidAPIError) -> bool:
+    return e.status == 409
+
+
 class ConversationStore:
     """Read and write one user's conversations on a project, under one app's
-    key prefix."""
+    key prefix.
+
+    The record has two writers, the browser and the service, and each keeps a
+    copy. A write names the version of the entry it was made from
+    (``user_data.put(..., version=)``), so a write from a copy that another
+    write overtook is refused (409) rather than putting back what was there
+    before it. :meth:`write` then reads the record again and makes its change
+    on what it finds. The store remembers, per conversation, the version and
+    the value of each key as this request last read or wrote them."""
 
     def __init__(self, client, user_id: str, project_id: str, app: str):
         self.client = client
         self.user_id = user_id
         self.project_id = project_id
         self.app = app
+        #: key -> (version, value) as last read or written here
+        self._seen: Dict[str, Tuple[int, Any]] = {}
 
     def load(self, conv_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """(conversation, meta). Raises :class:`MissingConversation`."""
@@ -120,8 +147,7 @@ class ConversationStore:
         meta = self._get(meta_key(self.app, self.project_id, conv_id))
         if conv is None or meta is None:
             raise MissingConversation(conv_id)
-        return ({'messages': list(conv.get('messages') or []), 'display': list(conv.get('display') or [])},
-                dict(meta))
+        return _record(conv), dict(meta)
 
     def meta(self, conv_id: str) -> Optional[Dict[str, Any]]:
         return self._get(meta_key(self.app, self.project_id, conv_id))
@@ -130,27 +156,108 @@ class ConversationStore:
         """Whether this request may still write the conversation: its meta
         exists (the conversation was not deleted meanwhile) and its pending
         marker names this request or none (the user did not move on)."""
-        meta = self.meta(conv_id)
-        if meta is None:
-            return False
-        pending = meta.get('pending') or {}
-        marked = pending.get('request_id') if isinstance(pending, dict) else None
-        return not marked or not request_id or marked == request_id
+        return _owns(self.meta(conv_id), request_id)
 
     def save(self, conv_id: str, conv: Dict[str, Any], meta: Dict[str, Any]) -> None:
         """The transcript first, then the sidebar entry: a reader takes the
-        entry as the signal that the transcript is complete."""
+        entry as the signal that the transcript is complete. Written whatever
+        is stored, as a script or a test sets a record up. A turn writes with
+        :meth:`write`."""
         self._put(conv_key(self.app, self.project_id, conv_id),
                   {'messages': conv['messages'], 'display': conv['display']})
         self._put(meta_key(self.app, self.project_id, conv_id), meta)
 
-    def _put(self, key: str, value: Any) -> None:
+    def write(self, conv_id: str, change: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]],
+              meta_of: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]],
+              request_id: Optional[str] = None) -> bool:
+        """Write ``change`` of the conversation, made on the record as it is
+        stored, and then the sidebar entry ``meta_of(conversation, meta as
+        stored)``. False, writing nothing, when the conversation was deleted,
+        when its pending marker names another request (the user moved on), or
+        when ``change`` answers None. ``change`` answering the record it was
+        given unchanged writes the sidebar entry alone.
+
+        Each write names the version this request last read or wrote. When
+        another write landed first (409) both keys are read again and
+        ``change`` is made again on them, so ``change`` must find its own
+        work already there (a lost answer to a write that landed is sent
+        again and refused the same way) and leave it as it is. A sidebar
+        entry refused that way is rebuilt from what is stored, over the
+        transcript this request wrote. Raises :class:`RecordMoved` after
+        :data:`WRITE_TRIES` refusals in a row."""
+        ckey = conv_key(self.app, self.project_id, conv_id)
+        mkey = meta_key(self.app, self.project_id, conv_id)
+        # The sidebar entry is read afresh (it is small): it says whether the
+        # user moved on while this request worked.
+        self._forget(mkey)
+        for _ in range(WRITE_TRIES):
+            conv, meta = self._latest(ckey), self._latest(mkey)
+            if not isinstance(conv, dict) or not isinstance(meta, dict) or not _owns(meta, request_id):
+                return False
+            current = _record(conv)
+            new = change(current)
+            if new is None:
+                return False
+            if new is not current:
+                try:
+                    self._put(ckey, {'messages': new['messages'], 'display': new['display']},
+                              guarded=True)
+                except PlaidAPIError as e:
+                    if not _moved(e):
+                        raise
+                    self._forget(ckey, mkey)
+                    continue
+            break
+        else:
+            raise RecordMoved(conv_id)
+        for _ in range(WRITE_TRIES):
+            try:
+                self._put(mkey, meta_of(new, meta), guarded=True)
+                return True
+            except PlaidAPIError as e:
+                if not _moved(e):
+                    raise
+            # Another writer wrote the entry since: built again on its entry,
+            # and on the transcript as it now stands (it may hold that
+            # writer's message too).
+            self._forget(ckey, mkey)
+            meta = self._latest(mkey)
+            if not isinstance(meta, dict):
+                return False
+            stored = self._latest(ckey)
+            if isinstance(stored, dict):
+                new = _record(stored)
+        raise RecordMoved(conv_id)
+
+    def _latest(self, key: str) -> Any:
+        """The value as this request last saw it, read when it has not."""
+        if key not in self._seen:
+            self.read(key)
+        return self._seen.get(key, (0, None))[1]
+
+    def _forget(self, *keys: str) -> None:
+        for key in keys:
+            self._seen.pop(key, None)
+
+    def _put(self, key: str, value: Any, guarded: bool = False) -> None:
         """One value, sent again while the server is away (`_patiently`).
         Without this a lost answer to the transcript's put left the sidebar
         entry unwritten, and the turn read as unfinished although it was
         stored, so Retry asked the model the same question twice. And a turn
-        that ended while the server restarted lost its answer."""
-        _patiently(lambda: self.client.user_data.put(self.user_id, key, value))
+        that ended while the server restarted lost its answer.
+
+        ``guarded`` names the version this request last read or wrote
+        (0 when it saw no entry), so the write is refused (409) when another
+        landed since. A write sent again after its answer was lost is refused
+        the same way when the first one landed, and :meth:`write` finds its
+        own change in the record."""
+        version = self._seen.get(key, (0, None))[0] if guarded else None
+        answer = _patiently(lambda: self.client.user_data.put(self.user_id, key, value, version=version))
+        stored = (answer or {}).get('version') if isinstance(answer, dict) else None
+        if isinstance(stored, int):
+            self._seen[key] = (stored, json.loads(json.dumps(value)))
+        else:
+            self._forget(key)
 
     def read(self, key: str) -> Any:
         """One value under this user's keys, whatever JSON it is, or None when
@@ -161,13 +268,48 @@ class ConversationStore:
             entry = _patiently(lambda: self.client.user_data.get(self.user_id, key))
         except PlaidAPIError as e:
             if e.status == 404:
+                self._seen[key] = (0, None)
                 return None
             raise
-        return (entry or {}).get('value')
+        value = (entry or {}).get('value')
+        version = (entry or {}).get('version')
+        if isinstance(version, int):
+            self._seen[key] = (version, value)
+        return value
 
     def _get(self, key: str) -> Optional[Dict[str, Any]]:
         value = self.read(key)
         return value if isinstance(value, dict) else None
+
+
+def _record(conv: Dict[str, Any]) -> Dict[str, Any]:
+    """A copy of a stored conversation for a caller to change: the store
+    keeps the value as stored, which a change made in place must not touch
+    (an approval writes the versions it holds onto its plan's documents)."""
+    return copy.deepcopy({'messages': conv.get('messages') or [], 'display': conv.get('display') or []})
+
+
+def _owns(meta: Optional[Dict[str, Any]], request_id: Optional[str]) -> bool:
+    """Whether a request may write a conversation whose sidebar entry is
+    ``meta``: it exists, and its pending marker names this request or none."""
+    if not isinstance(meta, dict):
+        return False
+    pending = meta.get('pending') or {}
+    marked = pending.get('request_id') if isinstance(pending, dict) else None
+    return not marked or not request_id or marked == request_id
+
+
+def pending_kept(prev: Optional[Dict[str, Any]], request_id: Optional[str],
+                 pending: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """The pending marker a write by ``request_id`` leaves: ``pending`` when
+    it sets one, and when it clears its own (``pending`` None), the stored
+    entry's ``prev`` when that names another request, which is the user's
+    newer work and is kept."""
+    if pending is not None:
+        return pending
+    marked = (prev or {}).get('pending') if isinstance(prev, dict) else None
+    other = marked.get('request_id') if isinstance(marked, dict) else None
+    return marked if other and other != request_id else None
 
 
 # --- items ----------------------------------------------------------------------
@@ -412,6 +554,98 @@ def replace_undecided(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         else d
         for d in display
     ]
+
+
+# --- what a request writes, made on the record as it is stored --------------------
+#
+# A request writes the record at its end, minutes after it read it, and the
+# browser may have written it meanwhile (settled the turn as unanswered after
+# a server restart, discarded a plan, sent a question from another tab). Each
+# write is therefore a change made on the stored record
+# (`ConversationStore.write`), never a copy of the one this request read.
+
+def _same_item(a: Any, b: Any) -> bool:
+    """Whether two display items are the same one: an item is not edited
+    after it is written, apart from its plan, so its kind, time and text say
+    which it is."""
+    return (isinstance(a, dict) and isinstance(b, dict)
+            and all(a.get(k) == b.get(k) for k in ('kind', 'created_at', 'text')))
+
+
+def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[str, Any],
+                added: Sequence[Dict[str, Any]] = (), replaces: bool = False,
+                fit: Callable[[Dict[str, Any]], Dict[str, Any]] = lambda c: c):
+    """The change that ends a turn with ``item`` (its reply, or the error
+    item of a turn that failed or was stopped), for :meth:`ConversationStore.write`.
+
+    ``base`` is the record as the turn read it, whose last display item is
+    the question. ``asked`` is what the model transcript holds up to the
+    answer (the question as the turn stamped it, or nothing of it for a turn
+    that ended without an answer) and ``added`` what the turn adds after it.
+    ``replaces``: the reply stages a plan, so every plan still waiting is
+    marked replaced (`replace_undecided`). ``fit`` holds the result to the
+    record's budget (`prune`).
+
+    Made on the stored record: the items before the question are taken as
+    stored (a plan discarded meanwhile stays discarded), an unanswered or
+    stopped line the browser wrote for this question gives way to the
+    outcome, and a note the browser added to the transcript is kept. Nothing
+    is written when the question is no longer there (the conversation was
+    rewound or replaced) or a newer question follows it (the user moved on),
+    and the record is left as it is when it already holds ``item``."""
+    n = len(base['display'])
+    question = base['display'][n - 1] if n else None
+    known = base['messages']
+
+    def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        shown = stored['display']
+        if len(shown) < n or (n and not _same_item(shown[n - 1], question)):
+            return None
+        after = shown[n:]
+        if any(_same_item(d, item) for d in after):
+            return stored
+        if any(isinstance(d, dict) and d.get('kind') == 'user' for d in after):
+            return None
+        kept = [d for d in after if not (isinstance(d, dict) and d.get('kind') == 'error')]
+        earlier = replace_undecided(shown[:n]) if replaces else list(shown[:n])
+        held = stored['messages']
+        notes = held[len(known):] if held[:len(known)] == known else []
+        return fit({'messages': list(asked) + notes + list(added), 'display': earlier + kept + [item]})
+    return change
+
+
+# The outcomes of a plan that wrote to the project.
+WROTE = ('applied', 'partial')
+
+
+def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str] = None,
+                  documents: Optional[List[Dict[str, Any]]] = None, **fields):
+    """The change an approval writes on the plan ``plan_id``: ``status``
+    (with ``note`` for the model and ``fields`` on the card, `settle_plan`),
+    or with no status, the plan's ``documents`` as the run holds them (the
+    versions it held them at, `plan.held_from`) while it is undecided. A plan
+    already settled (see `WROTE` for the one exception), or one that is gone,
+    leaves the record as it is."""
+    def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        index, item = find_plan(stored, plan_id)
+        if item is None:
+            return stored
+        if status is not None:
+            was = item.get('status')
+            # A plan settled meanwhile keeps that outcome, unless this run
+            # wrote (applied, partial) and the outcome there says it did not
+            # (discarded in another tab while the run held the documents).
+            if was == status or (was is not None and (status not in WROTE or was in WROTE)):
+                return stored
+            return settle_plan(stored, index, status, note, **fields)
+        plan = item.get('plan') or {}
+        if documents is None or item.get('status') is not None or 'documents' not in plan \
+                or plan.get('documents') == documents:
+            return stored
+        display = list(stored['display'])
+        display[index] = {**item, 'plan': {**plan, 'documents': json.loads(json.dumps(documents))}}
+        return {'messages': stored['messages'], 'display': display}
+    return change
 
 
 def partial_tally(written_n: int, total: int, partly_n: int = 0, were: bool = False) -> str:
