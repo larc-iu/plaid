@@ -1312,6 +1312,7 @@ Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore**.
 Everything in the document goes back to how it was at that moment: the name, the text, the sentences, words and morphemes, the time alignment, the annotations, the vocabulary links, the metadata, and any layers another app keeps in the same project.
 Before anything is written, a dialog lists what will change, and the restore lands in the history as one more entry, so the state just before it can be restored in turn.
+A morpheme the restore brings back takes the type its lexicon entry goes by now, as one more entry.
 The dialog lists the changes under **Removed** (made since that moment), **Brought back** (deleted since) and **Changed back**.
 A restore never changes the recording. When it was added or replaced since, the dialog says `The recording is not changed.`, and when it was deleted since, `The deleted recording cannot come back.`
 The message that confirms a restore offers **Undo**, which brings that state back.
