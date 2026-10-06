@@ -343,9 +343,9 @@ def _link_planned_morpheme(ctx: Context, op) -> None:
 
 
 def _cache_morph_type(ctx: Context, morpheme_id: str, morph_type: str) -> None:
-    """The morpheme's cached type, written with the link that gives it, so
-    nothing is left for a repair on the next open (``morph_type``, noted at
-    staging)."""
+    """The morpheme's cached type, written with the link that gives it, as
+    the app writes it, since nothing writes it later (``morph_type``, noted
+    at staging)."""
     ctx.b.update('tokens', morpheme_id, metadata=metadata_ops({'morphType': morph_type}))
 
 

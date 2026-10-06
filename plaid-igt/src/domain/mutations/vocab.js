@@ -21,6 +21,7 @@ import {
   entryTypeTargets,
   planEntryChange,
   plannedOnce,
+  revertedCaches,
   sendMorphTypeCaches,
 } from '../morphTypeCaches.js';
 
@@ -35,11 +36,9 @@ const REPLACE_CHUNK = 400;
  * A morpheme linked to a lexicon entry goes by the ENTRY's type (its own, else
  * its headword's), and `derive` reads the entry over the token's cached
  * `metadata.morphType`. The cache is what unlinked morphemes and consumers that
- * never load the lexicon read, so a link that leaves it stale is a repair
- * waiting to happen: reconcile-on-open syncs it the next time anyone opens the
- * document, under a label that says nothing about what changed. Writing it with
- * the link is the same move `setVocabItemMorphType` already makes when an
- * entry's type changes.
+ * never load the lexicon read, and nothing writes it later, so a link writes
+ * it. It is the same move `setVocabItemMorphType` makes when an entry's type
+ * changes.
  *
  * `planned` are morphemes an edit is making (pending, see pending.js), which
  * count as morphemes with no type yet.
@@ -542,17 +541,32 @@ export const vocabMutations = {
       // a refusal there leaves the entry as it was.
       const elsewhere = plans.filter((p) => !here.has(p.morphemeId));
       if (elsewhere.length) await this._sendUnversioned((c) => sendMorphTypeCaches(c, elsewhere));
-      await this._client.batched(async (b) => {
-        b.vocabItems.patchMetadata(settledId(itemId), [
-          morphType == null
-            ? { op: 'delete', path: ['morphType'] }
-            : { op: 'set', path: ['morphType'], value: morphType },
-        ]);
-        await sendMorphTypeCaches(
-          b,
-          plans.filter((p) => here.has(p.morphemeId)),
-        );
-      });
+      try {
+        await this._client.batched(async (b) => {
+          b.vocabItems.patchMetadata(settledId(itemId), [
+            morphType == null
+              ? { op: 'delete', path: ['morphType'] }
+              : { op: 'set', path: ['morphType'], value: morphType },
+          ]);
+          await sendMorphTypeCaches(
+            b,
+            plans.filter((p) => here.has(p.morphemeId)),
+          );
+        });
+      } catch (err) {
+        // Refused (a 4xx answer): the other documents get back what they
+        // held, so no copy there names a type the entry does not have. A
+        // lost answer is sent again whole under the same keys, and is left
+        // alone.
+        if (elsewhere.length && err?.status >= 400 && err.status < 500) {
+          try {
+            await this._sendUnversioned((c) => sendMorphTypeCaches(c, revertedCaches(elsewhere)));
+          } catch (undoErr) {
+            console.error('Putting back the morpheme types of other documents failed:', undoErr);
+          }
+        }
+        throw err;
+      }
     });
   },
 

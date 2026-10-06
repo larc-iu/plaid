@@ -167,11 +167,13 @@ export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = fa
         // Effective morph type: a linked lexicon entry's type (its own, else
         // its headword's) overrides the token's own metadata.morphType (the
         // token copy is a cache for unlinked morphemes and for consumers that
-        // don't see the lexicon; reconcile-on-open keeps it in sync while the
-        // entry has a type). Read THIS everywhere in the app — joiners,
-        // exports, the popover's Type row, the stem chip.
+        // don't see the lexicon, written by every change of the type an
+        // entry goes by: morphTypeCaches.js). Read THIS everywhere in the
+        // app — joiners, exports, the popover's Type row, the stem chip.
+        // It also hides a copy left stale in a project the writer of the
+        // entry could only read.
         morphType: effectiveMorphType(m.metadata, vocabItem, entryTypes),
-        // The entry's side of that alone, for reconcile's cache sync.
+        // The entry's side of that alone.
         entryMorphType: entryMorphType(vocabItem, entryTypes),
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);

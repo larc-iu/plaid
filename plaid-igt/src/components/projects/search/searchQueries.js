@@ -251,8 +251,8 @@ const ANY_VALUE = { regex: '.' };
  * morpheme its morph type, and by its form, because a tagset reads a
  * suffix's gloss otherwise than a stem's (glossReadingOf). The grid takes a
  * morpheme's type from its linked lexicon entry (the entry's own, else its
- * headword's) and falls back to the token's cached metadata.morphType, which
- * is refreshed only when a document is opened. The query language has no
+ * headword's) and falls back to the token's cached metadata.morphType, the
+ * type of a morpheme linked to none. The query language has no
  * left join, so a morpheme field takes three queries: the linked morphemes,
  * rows [value, entry type, entry parent, cached type, form, count], the
  * unlinked ones, rows [value, cached type, form, count], and the morphemes

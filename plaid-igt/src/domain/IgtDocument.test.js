@@ -402,6 +402,21 @@ describe('morph type from the linked lexicon entry', () => {
     expect(doc.vocabularies.v1.items[0].metadata.morphType).toBe('proclitic');
   });
 
+  // The other documents are written before the entry's batch, which the
+  // server can still refuse: their copies then get back what they held.
+  it('a refused entry write puts back the types written in other documents', async () => {
+    const doc = typedDoc('enclitic');
+    doc.client.batched = async () => {
+      throw Object.assign(new Error('HTTP 422'), { status: 422 });
+    };
+    expect(await doc.setVocabItemMorphType('v1', 'i1', 'proclitic')).toBe(false);
+    const updates = doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate');
+    expect(updates.map((u) => u.args[0])).toEqual([
+      [{ id: 'm-9', metadata: [{ op: 'set', path: ['morphType'], value: 'proclitic' }] }],
+      [{ id: 'm-9', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] }],
+    ]);
+  });
+
   // The 2026-10-06 survey: a headword's type change left the morphemes
   // linked to its senses with the old type until someone opened them.
   it("a headword's type reaches the morphemes of the senses that go by it", async () => {

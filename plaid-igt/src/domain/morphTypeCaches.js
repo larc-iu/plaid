@@ -83,9 +83,9 @@ const linkedMorphemesQuery = (projectId, itemIds) => ({
 
 /**
  * The cache writes `targets` (entry id -> type) call for in `projectIds`:
- * each morpheme linked to one of those entries whose cached type is another.
- * Reads only.
- * @returns {Promise<Array<{projectId: string, morphemeId: string, morphType: string}>>}
+ * each morpheme linked to one of those entries whose cached type is another,
+ * with the type it caches now (`was`, null for none). Reads only.
+ * @returns {Promise<Array<{projectId: string, morphemeId: string, morphType: string, was: string|null}>>}
  */
 export const planMorphTypeCaches = async (client, projectIds, targets) => {
   const ids = [...(targets?.keys() || [])];
@@ -105,7 +105,7 @@ export const planMorphTypeCaches = async (client, projectIds, targets) => {
     for (const [morphemeId, itemId, cached] of res?.results || []) {
       const morphType = targets.get(itemId);
       if (isType(morphType) && cached !== morphType) {
-        out.push({ projectId, morphemeId, morphType });
+        out.push({ projectId, morphemeId, morphType, was: cached ?? null });
       }
     }
   };
@@ -117,7 +117,8 @@ export const planMorphTypeCaches = async (client, projectIds, targets) => {
 
 /**
  * Write `plans` on `to` (a client, or a batch), one bulk update per project
- * and chunk: a bulk token update takes the documents of one project.
+ * and chunk: a bulk token update takes the documents of one project. A plan
+ * whose `morphType` is null takes the cache away.
  */
 export const sendMorphTypeCaches = async (to, plans) => {
   const byProject = new Map();
@@ -130,12 +131,20 @@ export const sendMorphTypeCaches = async (to, plans) => {
       await to.tokens.bulkUpdate(
         list.slice(i, i + CHUNK).map((p) => ({
           id: p.morphemeId,
-          metadata: [{ op: 'set', path: ['morphType'], value: p.morphType }],
+          metadata: [
+            p.morphType == null
+              ? { op: 'delete', path: ['morphType'] }
+              : { op: 'set', path: ['morphType'], value: p.morphType },
+          ],
         })),
       );
     }
   }
 };
+
+/** The writes that put back what `plans` changed. */
+export const revertedCaches = (plans) =>
+  (plans || []).map((p) => ({ ...p, morphType: p.was, was: p.morphType }));
 
 /**
  * The cache writes for a change to the entries of vocabulary `vocabId` that

@@ -5,6 +5,7 @@ import {
   mergeTargets,
   planMorphTypeCaches,
   retypedRoots,
+  revertedCaches,
   sendMorphTypeCaches,
 } from './morphTypeCaches.js';
 
@@ -89,14 +90,33 @@ describe('planning and sending', () => {
     const plans = await planMorphTypeCaches(client, projects, entryTypeTargets(items, ['h']));
     expect(queries[0].where[0]).toEqual(['link', '?l', { item: ['h', 's1', 's2'] }]);
     expect(plans).toEqual([
-      { projectId: 'p1', morphemeId: 'm1', morphType: 'suffix' },
-      { projectId: 'p4', morphemeId: 'm3', morphType: 'enclitic' },
+      { projectId: 'p1', morphemeId: 'm1', morphType: 'suffix', was: 'stem' },
+      { projectId: 'p4', morphemeId: 'm3', morphType: 'enclitic', was: null },
     ]);
     const sent = [];
     await sendMorphTypeCaches({ tokens: { bulkUpdate: async (u) => sent.push(u) } }, plans);
     expect(sent).toEqual([
       [{ id: 'm1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] }],
       [{ id: 'm3', metadata: [{ op: 'set', path: ['morphType'], value: 'enclitic' }] }],
+    ]);
+  });
+});
+
+describe('revertedCaches', () => {
+  it('puts back what each plan held, taking away a cache that was not there', async () => {
+    const sent = [];
+    await sendMorphTypeCaches(
+      { tokens: { bulkUpdate: async (u) => sent.push(u) } },
+      revertedCaches([
+        { projectId: 'p1', morphemeId: 'm1', morphType: 'suffix', was: 'stem' },
+        { projectId: 'p1', morphemeId: 'm2', morphType: 'suffix', was: null },
+      ]),
+    );
+    expect(sent).toEqual([
+      [
+        { id: 'm1', metadata: [{ op: 'set', path: ['morphType'], value: 'stem' }] },
+        { id: 'm2', metadata: [{ op: 'delete', path: ['morphType'] }] },
+      ],
     ]);
   });
 });
