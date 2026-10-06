@@ -26,6 +26,15 @@
   client-supplied label)."
   nil)
 
+(def ^:dynamic *credential*
+  "What kind of credential signed the current request: \"login\" (a session
+  from signing in with a password), \"named-token\", \"service\" (a named
+  token holding a service connection) or \"delegated\" (a scoped token minted
+  for a service's requester), nil when no request is being served. Bound by
+  `wrap-api-token-id` from the VALIDATED token and persisted onto the
+  operations row as `credential`."
+  nil)
+
 (def ^:dynamic *scoped-token-key*
   "The `:jti` of the scoped (delegated) token that authenticated the current
   request, or nil for any other credential. Bound by `wrap-api-token-id`
@@ -84,7 +93,7 @@
   nil)
 
 (defn- insert-operation-row!
-  [tx {:keys [id type project document description user token-id batch-id group-id ts]}]
+  [tx {:keys [id type project document description user token-id credential batch-id group-id ts]}]
   (psc/execute!
    tx
    {:insert-into :operations
@@ -97,6 +106,7 @@
               :group_id group-id
               :user_id user
               :token_id token-id
+              :credential credential
               :ts ts}]}))
 
 (defn- ensure-group-row!
@@ -532,6 +542,8 @@
                                          ;; Server-authoritative: bound from the
                                          ;; validated JWT claim by wrap-api-token-id.
                                          :token-id (or (:token-id op-attrs) *token-id*)
+                                         ;; Likewise: the kind of credential that signed it.
+                                         :credential (or (:credential op-attrs) *credential*)
                                          ;; Client-supplied (templated) audit message
                                          ;; overrides the auto-generated description.
                                          ;; See *custom-description* / wrap-audit-message.

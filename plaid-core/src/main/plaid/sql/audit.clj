@@ -116,6 +116,10 @@
     :audit/batch-id  when the unit is an unlabeled atomic batch
     :audit/api-token present iff the head op ran under a named API token
                      (server-authoritative; absence marks session activity)
+    :audit/credential what kind of credential signed the head op: login,
+                     named-token, service or delegated (absent on
+                     operations older than the column). Each op carries
+                     its own as :op/credential
     :audit/op-count  how many members the unit has in this read. More than
                      `:audit/ops` holds when `ops-limit` cut the list
 
@@ -143,6 +147,7 @@
                                 :op/time (:ts row)
                                 :op/end-time (end-time row)
                                 :op/user (some-> (:user_id row) users select-user)}
+                         (:credential row) (assoc :op/credential (:credential row))
                          proj (assoc :op/project proj)
                          doc (assoc :op/document doc)
                          (:batch_id row) (assoc :op/batch-id (:batch_id row)))))]
@@ -176,7 +181,8 @@
                 (:kind group) (assoc :audit/kind (:kind group))
                 (:ref group) (assoc :audit/ref (:ref group))
                 (and (not (:group_id head)) (:batch_id head)) (assoc :audit/batch-id unit)
-                token (assoc :audit/api-token token))))
+                token (assoc :audit/api-token token)
+                (:credential head) (assoc :audit/credential (:credential head)))))
           units)))
 
 (defn- ts-where

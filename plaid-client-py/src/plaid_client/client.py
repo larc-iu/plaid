@@ -2281,7 +2281,11 @@ class DocumentsResource(_Resource):
         """Get audit log for a document.
 
         Transparently follows server-side pagination cursors and returns the
-        full flat list of audit entries.
+        full flat list of audit entries. Each entry, and each of its ``ops``,
+        says what kind of credential made it as ``credential``: ``login``,
+        ``named-token``, ``service`` or ``delegated`` (absent on older
+        operations), beside ``api_token`` (the named token's id and name)
+        when there was one.
 
         Args:
             document_id: The document ID
@@ -2758,7 +2762,11 @@ class ProjectsResource(_Resource):
         """Get audit log for a project.
 
         Transparently follows server-side pagination cursors and returns the
-        full flat list of audit entries.
+        full flat list of audit entries. Each entry, and each of its ``ops``,
+        says what kind of credential made it as ``credential``: ``login``,
+        ``named-token``, ``service`` or ``delegated`` (absent on older
+        operations), beside ``api_token`` (the named token's id and name)
+        when there was one.
 
         Args:
             project_id: The project ID

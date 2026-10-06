@@ -231,6 +231,32 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 # Luke G, 2025-07-09T20:27:59.611Z: Merge morphemes (4 writes)
 ----
 
+=== Which credential made a change
+
+Each entry names the user who made it (`user`) and, when the write was signed with a named API token, that token's id and name (`api_token`, `apiToken` in JavaScript).
+It also says what kind of credential signed the write, as `credential` on the entry (its first write) and on each operation in `ops`:
+
+[cols="1,3"]
+|===
+|`credential` |What signed the write
+
+|`login`
+|A session from signing in with a password: the apps, or a script that signs in.
+
+|`named-token`
+|A named API token, such as a script run on its owner's token.
+
+|`service`
+|A named API token that held a service connection when it wrote (see <<Services>>).
+
+|`delegated`
+|The short-lived token a service is handed to act for the person who asked it (a delegating service, such as an assistant).
+|===
+
+So a script run on a person's named token is told apart from that person's own edits in the browser, although both are theirs.
+The server sets it from the token it validated, never from anything the client sends, and the log holds a token's id, never the token.
+Operations written before this was recorded (2026-10-06) have no `credential`, and neither do the server's own writes.
+
 === Logical operations
 
 Each entry in the log is a **logical unit**, not necessarily a single write. Many user-meaningful actions are implemented as a run of low-level writes: "merge two morphemes" deletes tokens, creates one, moves spans, and so on. To keep the log readable, a client can declare the run as one **operation** with a human label. Every write made while the operation is open is tagged with it, and the audit endpoints fold the tagged writes into ONE entry whose `message` is your label and whose `ops` are the individual writes (each with its own auto-generated `description`):
@@ -597,7 +623,7 @@ The differences:
 
 | Extra fields
 | None.
-| `op/time`, `op/end-time`, `op/user`, `op/batch-id`, and `audit/api-token`.
+| `op/time`, `op/end-time`, `op/user`, `op/batch-id`, `op/credential`, `audit/api-token` and `audit/credential`.
 |===
 
 If you need the enriched form, treat the event as a trigger and read the endpoint, matching on `id`.

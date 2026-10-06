@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.middleware
-  (:require [plaid.server.log-buffer :as log-buffer]
+  (:require [plaid.server.events :as events]
+            [plaid.server.log-buffer :as log-buffer]
             [reitit.coercion :as reitit-coercion]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -631,10 +632,25 @@
         :else
         (handler request)))))
 
+(defn request-credential
+  "What kind of credential signed `request`, as `plaid.sql.operation/*credential*`
+  records it: \"delegated\" for a scoped token, \"service\" for a named token
+  that holds a service channel, \"named-token\" for any other named token,
+  \"login\" for a session, nil when the request is not signed."
+  [request]
+  (let [token-id (:api-token/id request)]
+    (cond
+      (:auth/token-scope request) "delegated"
+      token-id (if (events/service-token? token-id) "service" "named-token")
+      (:user/id request) "login"
+      :else nil)))
+
 (defn wrap-api-token-id
   "Bind the request's validated API-token id (set by `wrap-read-jwt` from the
   `:token/id` JWT claim, nil for session logins) to
-  `plaid.sql.operation/*token-id*` so it lands on the operations row, and a
+  `plaid.sql.operation/*token-id*` so it lands on the operations row, the
+  kind of credential (`request-credential`) to
+  `plaid.sql.operation/*credential*` likewise, and a
   scoped token's `:jti` to `plaid.sql.operation/*scoped-token-key*` so it
   lands on an operation group the request creates. Must run
   INSIDE `wrap-read-jwt` — it depends on the `:api-token/id` that middleware
@@ -642,6 +658,7 @@
   [handler]
   (fn [request]
     (binding [op/*token-id* (:api-token/id request)
+              op/*credential* (request-credential request)
               op/*scoped-token-key* (-> request :auth/token-scope :token-key)]
       (handler request))))
 
