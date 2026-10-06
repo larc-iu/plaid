@@ -133,3 +133,36 @@ def test_an_old_database_reads_no_credential():
     assert credential_column(db) == 'NULL'
     db.execute('ALTER TABLE operations ADD COLUMN credential TEXT')
     assert credential_column(db) == 'o.credential'
+
+
+def test_a_turn_names_the_other_projects_it_read():
+    # A4-CROSS-5: a turn that read another project looked like a home-only one.
+    from plaid_agent.research.records import Conversations
+    p = Pseudonyms(b'k' * 32)
+    conv = Conversations(p)
+    record = {'messages': [], 'display': [
+        {'kind': 'user', 'text': 'q', 'projects': [{'id': 'p2', 'name': 'Lamkang'}, {'id': 'p3', 'name': 'Gone'}]},
+        {'kind': 'assistant', 'text': 'a', 'unavailable-projects': [{'id': 'p3', 'name': 'Gone'}]},
+        {'kind': 'user', 'text': 'q2'},
+        {'kind': 'assistant', 'text': 'a2'}]}
+    conv.add('u@x', 'igt', 'p1', 'c1', record, None, 10, None)
+    first, second = conv.turns
+    assert first['other_project_ids'] == ['p2'] and first['other_projects'] == [p.project('p2')]
+    assert first['unavailable_projects'] == 1
+    assert second['other_project_ids'] == [] and second['other_projects'] == []
+    assert 'Lamkang' not in repr(conv.turns), 'names are not written'
+
+
+def test_units_by_credential_counts_units():
+    # A4-CROSS-6: one applied plan of four delegated rows read `delegated: 4`.
+    from plaid_agent.research.extract import summarize
+    from plaid_agent.research.fates import Fates
+    from plaid_agent.research.records import Conversations
+    units = [{'kind': 'assistant-plan', 'credentials': {'delegated': 4}, 'plan_record': 'found'},
+             {'kind': 'service-run', 'credentials': {'service': 2, 'login': 1}, 'plan_record': None}]
+    fates = Fates.__new__(Fates)
+    fates.writes = []
+    s = summarize(Conversations(Pseudonyms(b'k' * 32)), fates, units,
+                  {'never_used': [], 'not_in_inventory': []}, [])
+    assert s['units_by_credential'] == {'delegated': 1, 'service': 1, 'login': 1}
+    assert s['writes_by_credential'] == {'delegated': 4, 'service': 2, 'login': 1}

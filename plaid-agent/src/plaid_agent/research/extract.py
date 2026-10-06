@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '2'
+EXTRACTOR_VERSION = '3'
 HERE = Path(__file__).parent
 
 
@@ -354,7 +354,8 @@ def summarize(conv: Conversations, fates: F.Fates, units: List[Dict[str, Any]], 
         'deletion_credential': {k: dict(Counter(f'{w["deletion"]["actor_class"]}:{w["deletion"]["credential"]}'
                                                 for w in fates.writes if w['unit_kind'] == k and w['deletion']))
                                 for k in w_by_kind},
-        'units_by_credential': dict(sum((Counter(u['credentials']) for u in units), Counter())),
+        'units_by_credential': dict(Counter(c for u in units for c in u['credentials'])),
+        'writes_by_credential': dict(sum((Counter(u['credentials']) for u in units), Counter())),
         'plan_operations_by_record': dict(Counter(u['plan_record'] for u in units if u['kind'] == 'assistant-plan')),
         'plans_by_comment_link': dict(Counter(str(p.get('comment_link')) for p in plans)),
         'turns_dated': sum(1 for t in conv.turns if t['created_at']),

@@ -96,6 +96,7 @@ One row per reply or error (one per turn).
 | where_kind, where_id | where the user was when asking (a document) |
 | files_attached, files_stored | files the user attached to the question, and that the turn stored |
 | unavailable_projects | other projects asked for that the turn could not read |
+| other_project_ids, other_projects | the other projects the question was sent with that the turn could read, by id and pseudonym (empty for a turn that read only its own project) |
 
 ### tool_calls.jsonl
 
@@ -273,7 +274,7 @@ One row per client event (`client_events`), only in projects that switched telem
 
 ### manifest.json
 
-The extractor version, the database file name, the horizon, the options, how plans were linked to their operations (`linking`: by reference, by label, by their comments, applied plans with no operation found, those whose writes outside the log cannot be recovered, plan operations with no plan in any record and those whose conversation was deleted), and `summary`, the aggregate counts.
+The extractor version, the database file name, the horizon, the options, how plans were linked to their operations (`linking`: by reference, by label, by their comments, applied plans with no operation found, those whose writes outside the log cannot be recovered, plan operations with no plan in any record and those whose conversation was deleted), and `summary`, the aggregate counts. In it `units_by_credential` counts the units that hold a write made with each kind of credential (a unit with two kinds counts under both), and `writes_by_credential` counts their audit rows.
 
 ### PRIVATE_text.jsonl (only with `--include-text`)
 

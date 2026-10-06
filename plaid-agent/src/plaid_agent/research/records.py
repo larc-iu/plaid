@@ -260,6 +260,16 @@ class Conversations:
                 'files_stored': len(item.get('files') or []),
                 'unavailable_projects': len(item.get('unavailable_projects') or []),
             }
+            # The other projects the question was sent with that the turn
+            # could open: what a cross-project turn read besides its own.
+            # Ids and pseudonyms only, as for the home project.
+            unavailable = {u.get('id') for u in item.get('unavailable_projects') or [] if isinstance(u, dict)}
+            others = [pr.get('id') for pr in asked.get('projects') or []
+                      if isinstance(pr, dict) and isinstance(pr.get('id'), str)
+                      and pr.get('id') not in unavailable and pr.get('id') != project_id]
+            others = list(dict.fromkeys(others))
+            turn['other_project_ids'] = others
+            turn['other_projects'] = [self.p.project(pid) for pid in others]
             if kind == 'error':
                 # A failed or stopped turn keeps what its calls were sent and
                 # answered on its own item, not in the transcript.
