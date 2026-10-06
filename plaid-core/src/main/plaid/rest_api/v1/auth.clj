@@ -417,8 +417,7 @@
   [request scope]
   (let [id (-> request :parameters :path :id)]
     (when-not (and (= :get (:request-method request))
-                   (string? id)
-                   (= (str/lower-case id) (str/lower-case (str (:user-id scope)))))
+                   (= id (:user-id scope)))
       scope-refusal)))
 
 (defn each-operation-token-scope

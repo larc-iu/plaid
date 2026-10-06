@@ -142,7 +142,9 @@
     (let [resp (call user2 :get "/api/v1/users/user2@example.com")]
       (is (= 200 (:status resp)))
       (is (false? (-> resp :body :user/is-admin))))
-    (is (= 403 (:status (call user2 :get "/api/v1/users/admin@example.com"))) "another user's record")))
+    (is (= 403 (:status (call user2 :get "/api/v1/users/admin@example.com"))) "another user's record")
+    (is (= 403 (:status (call user2 :get "/api/v1/users/USER2@example.com")))
+        "ids are exact, so another case is another user")))
 
 (deftest a-role-counts-only-on-a-project-in-scope
   ;; user2 reads P and writes Q, and v-pq is linked to both. Scoped to P,
