@@ -256,6 +256,12 @@ class Fates:
         tracked = {uid: u for uid, u in units.items() if u.cls in self.track}
         if not tracked:
             return
+        # What each unit deleted here, to tell a deletion that came with the
+        # token or span under an entity (a cascade) from one of the entity.
+        self._deleted: Dict[str, set] = defaultdict(set)
+        for r in rows:
+            if r.change == 'delete':
+                self._deleted[r.unit].add(r.target)
         for uid, u in tracked.items():
             self._unit_row(u)
         # Each tracked unit's rows, by target, in order.
@@ -368,6 +374,9 @@ class Fates:
             actor = ACTOR.get(units[r.unit].cls, 'person')
             if r.change == 'delete':
                 ev = self._event(unit, last.ts, r, units)
+                under = set((prev or {}).get('tokens') or []) | {
+                    (prev or {}).get(k) for k in ('source_span_id', 'target_span_id')} - {None}
+                ev['cascade'] = bool(under & self._deleted.get(r.unit, set()))
                 by[f'{actor}.delete'] += 1
                 out['deletion'] = ev
                 out['first_event'] = out['first_event'] or {**ev, 'category': 'delete'}

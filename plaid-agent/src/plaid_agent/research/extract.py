@@ -241,6 +241,10 @@ def summarize(conv: Conversations, fates: F.Fates, units: List[Dict[str, Any]], 
         'writes_by_kind': {k: sum(c.values()) for k, c in w_by_kind.items()},
         'fates_by_kind': {k: dict(c) for k, c in w_by_kind.items()},
         'first_edit_delay_s': {k: _dist(v) for k, v in edit_delay.items()},
+        'deletions_by_kind': {k: dict(Counter(f'{w["deletion"]["actor_class"]}'
+                                              f'{":cascade" if w["deletion"]["cascade"] else ""}'
+                                              for w in fates.writes if w['unit_kind'] == k and w['deletion']))
+                              for k in w_by_kind},
         'first_edit_actor_prov': {k: dict(c) for k, c in edit_prov.items()},
         'plan_change_fates': dict(Counter(str(c['fate']) for c in conv.plan_changes if c['plan_status'] in
                                           ('applied', 'partial'))),

@@ -109,6 +109,7 @@ def world(tmp_path_factory):
     other.spans.set_tokens(ids['m1'], [toks[13]])                # reshaped
     other.spans.update(ids['adopted'], 'G2')                     # an adopted guess corrected
     other.spans.delete(ids['untagged'])                          # an untagged run's output removed
+    other.tokens.delete(toks[3])                                 # m3 goes with its word
 
     # The conversation, written with the service's own functions.
     tracer = tracer_for((), {'set_field'}, lambda n, a: n, {})
@@ -226,6 +227,8 @@ def test_every_fate(world):
     assert w[ids['m0']]['prov_written'] == 'machine'
     assert fate['m1'] == 'reshaped'
     assert fate['m2'] == 'unchanged'
+    assert fate['m3'] == 'deleted_by_person' and w[ids['m3']]['deletion']['cascade'] is True
+    assert w[ids['a7']]['deletion']['cascade'] is False
     assert fate['run_deleted'] == 'deleted_by_run'
     assert fate['adopted'] == 'edited_by_person' and w[ids['adopted']]['unit_kind'] == 'guess-adoption'
     assert fate['untagged'] == 'deleted_by_person' and w[ids['untagged']]['unit_kind'] == 'untagged-machine'

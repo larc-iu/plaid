@@ -223,6 +223,7 @@ An event (`first_event`, `first_edit`, `first_review`, `deletion`) has:
 | category | `value`, `metadata`, `extent`, `structure`, `provenance` |
 | fields | the fields that changed (`metadata.<key>` for metadata) |
 | prov_after, source_after, value_after | the entity's provenance, provSource and value after the change |
+| cascade | for a deletion: the same unit deleted a token or span the entity sat on, so it went with the structure under it (a word deleted or re-split), not as a judgment of its value |
 
 Who counts as a person or a machine is read from the unit that made the change: its kind, else (before kinds) whether it wrote machine provenance. A person's change made through a script with their API token counts as a person's, and `via_token` says so.
 
