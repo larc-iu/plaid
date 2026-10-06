@@ -211,7 +211,7 @@ describe("an edit the app checks against the whole document (D21's recheck)", ()
 });
 
 describe('an edit to what is kept beside the document (REV-F-NET D-3b)', () => {
-  it('is not sent again after a refusal, since no read shows what it changed', async () => {
+  it('is not sent again after a refusal when the subclass has no rule for it', async () => {
     const { server, doc, errors } = openDoc();
     server.elsewhere('t1', 'DEF');
     const { done } = doc.gloss('t2', 'CANINE', { besideToo: true });
@@ -224,6 +224,120 @@ describe('an edit to what is kept beside the document (REV-F-NET D-3b)', () => {
     const { server, doc } = openDoc();
     server.elsewhere('t1', 'DEF');
     expect(await doc.gloss('t2', 'CANINE').done).toBe(true);
+  });
+});
+
+// A document whose subclass judges what it keeps beside by a rule of its own
+// (igt's lexicon links, D8-PRODLOG-2): `judge(unsent, now)` answers it.
+class BesideDoc extends GlossDoc {
+  constructor(args) {
+    super(args);
+    this.judged = [];
+    this.adopted = 0;
+    this.judge = () => true;
+  }
+  _besideState() {
+    return this.beside;
+  }
+  async _adoptReload() {
+    this.adopted += 1;
+  }
+  _besideUntouched(unsent, now) {
+    this.judged.push({
+      base: unsent.besideBase,
+      made: unsent.besideMade,
+      checked: unsent.besideChecked,
+      adopted: this.adopted,
+      now,
+    });
+    return this.judge(unsent, now);
+  }
+  // An edit to what is kept beside only, nothing in the document.
+  besideOnly(value) {
+    this._applyRawPatch((raw, beside) => beside.push(value));
+    return this._queueWrite('Failed to accept link', () =>
+      this._client.write(`beside ${value}`, () => {}),
+    );
+  }
+}
+
+const openBesideDoc = () => {
+  const { server, client } = docServer();
+  const doc = new BesideDoc({ raw: server.raw(), client });
+  doc._server = server;
+  const errors = [];
+  doc.onError = (msg, err, label) => errors.push({ msg, err, label });
+  return { server, doc, errors };
+};
+
+describe("an edit to what is kept beside, judged by the subclass's rule (D8-PRODLOG-2)", () => {
+  it('goes again when the rule passes it, judged after what is beside was read again', async () => {
+    const { server, doc, errors } = openBesideDoc();
+    doc.beside = ['a'];
+    server.elsewhere('t1', 'DEF');
+    expect(await doc.besideOnly('b')).toBe(true);
+    expect(server.sent).toEqual(['beside b', 'beside b']);
+    expect(errors).toEqual([]);
+    expect(doc.judged).toHaveLength(1);
+    const [j] = doc.judged;
+    expect(j.base).toEqual(['a']);
+    expect(j.made).toEqual(['a', 'b']);
+    expect(j.checked).toEqual(['a']);
+    // Read again before it was judged.
+    expect(j.adopted).toBe(1);
+    expect(j.now.version).toBe(2);
+  });
+
+  it("is refused with the rule's own refusal, a notice with no banner, when it fails", async () => {
+    const { server, doc, errors } = openBesideDoc();
+    server.elsewhere('t1', 'DEF');
+    doc.judge = (unsent) => {
+      unsent.refusal = Object.assign(new Error('b changed this link.'), {
+        changedElsewhere: true,
+        notice: true,
+      });
+      return false;
+    };
+    expect(await doc.besideOnly('b')).toBe(false);
+    expect(server.sent).toEqual(['beside b']);
+    expect(errors.map((e) => [e.msg, e.label])).toEqual([
+      ['b changed this link.', 'Failed to accept link'],
+    ]);
+    expect(doc.error).toBe('');
+  });
+
+  it('an edit to the document and beside goes again only when both rules pass', async () => {
+    const { server, doc } = openBesideDoc();
+    // A gloss on the word someone else glossed: the rule by entity refuses
+    // it whatever the subclass says.
+    server.elsewhere('t2', 'DEF');
+    const { done } = doc.gloss('t2', 'CANINE', { besideToo: true });
+    expect(await done).toBe(false);
+    expect(doc.judged).toEqual([]);
+    expect(server.sent).toEqual(['add t2 CANINE']);
+  });
+
+  it('an edit to the document and beside goes again when both pass', async () => {
+    const { server, doc } = openBesideDoc();
+    server.elsewhere('t1', 'DEF');
+    const { done } = doc.gloss('t2', 'CANINE', { besideToo: true });
+    expect(await done).toBe(true);
+    expect(doc.judged).toHaveLength(1);
+    expect(server.spans.map((x) => x.value)).toEqual(['DEF', 'CANINE']);
+  });
+
+  it('an edit waiting behind a refused one is judged by the rule too', async () => {
+    const { server, doc, errors } = openBesideDoc();
+    server.elsewhere('t1', 'DEF');
+    const first = doc.besideOnly('b');
+    const second = doc.besideOnly('c');
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    expect(doc.judged).toHaveLength(2);
+    // Judged on what was read, with the edit ahead of it shown.
+    expect(doc.judged[1].checked).toEqual(['b']);
+    expect(server.sent).toEqual(['beside b', 'beside b', 'beside c']);
+    expect(errors).toEqual([]);
   });
 });
 

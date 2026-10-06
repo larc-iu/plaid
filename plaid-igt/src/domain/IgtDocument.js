@@ -29,6 +29,8 @@ import { documentMutations } from './mutations/document.js';
 import { alignmentMutations } from './mutations/alignment.js';
 import { analysisCopyMutations } from './mutations/analysisCopy.js';
 import { pendingMutations } from './mutations/pending.js';
+import { linkFootprint, linksUntouched, tokenIdsOf } from './linkRebase.js';
+import { linkChangedTo } from '@ui/lib/cellConflict.js';
 
 // A patch's own copy of the vocabularies. Everything but the entry lists is
 // copied whole: this document's links and the vocabulary's settings, which
@@ -382,9 +384,9 @@ export class IgtDocument extends DocumentModel {
     this._vocabularies = keepUnchangedLists(nextVocabs, this._vocabularies);
   }
   // A link, an entry or a vocabulary's settings: kept beside the document, so
-  // an edit that changed one is never sent again by itself after a refusal.
-  // Another user's link on the same morpheme is not in the document read,
-  // and a link sent again over it left the morpheme with two.
+  // an edit that changed one is judged after a refusal by the links' own
+  // rule (`_besideUntouched`): a link sent again over another user's link on
+  // the same morpheme left the morpheme with two.
   _changesBeside([, nextVocabs]) {
     const was = this._vocabularies || {};
     const now = nextVocabs || {};
@@ -394,6 +396,45 @@ export class IgtDocument extends DocumentModel {
       if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) return true;
       if (Array.isArray(before) !== Array.isArray(after)) return true;
       if (Array.isArray(after) && !sameItems(before, after)) return true;
+    }
+    return false;
+  }
+
+  // Each patch puts a new vocabularies object in place (`_afterPatch`).
+  _besideState() {
+    return this._vocabularies;
+  }
+
+  // A link edit refused because the document moved on goes again when what
+  // it changes is as it was (linkRebase.js): Accept on a proposed link while
+  // an assistant wrote elsewhere in the document. A real conflict is refused
+  // with what changed, which the screen says as a notice. Not judged when
+  // the vocabularies could not be read again: refused as before.
+  _besideUntouched(unsent, now) {
+    if (this._vocabsUnread) return false;
+    unsent.linkFootprint ??= linkFootprint(unsent.besideBase, unsent.besideMade);
+    const current = this._vocabularies;
+    const { ok, conflict } = linksUntouched(
+      unsent.linkFootprint,
+      unsent.besideChecked,
+      current,
+      tokenIdsOf(now),
+      (id) =>
+        (getIgtLayerInfo(now).morphemeTokenLayer?.tokens || []).some((m) => settledId(m.id) === id)
+          ? 'morpheme'
+          : 'word',
+    );
+    if (ok) {
+      unsent.besideChecked = current;
+      return true;
+    }
+    if (conflict) {
+      const since = (unsent.origin ?? unsent.base)?.timeModified ?? null;
+      unsent.refusal = Object.assign(new Error(linkChangedTo(null, conflict)), {
+        changedElsewhere: true,
+        notice: true,
+        linkConflict: { ...conflict, since },
+      });
     }
     return false;
   }
@@ -476,6 +517,9 @@ export class IgtDocument extends DocumentModel {
   // cannot be: the user is told the links may be stale rather than shown old
   // ones silently.
   async _adoptReload(updated) {
+    // Until read here, what is kept beside is what this page showed, not
+    // what is stored: no link edit is judged on it (`_besideUntouched`).
+    this._vocabsUnread = true;
     if (!this._project) return;
     const at = this._asOf || undefined;
     try {
@@ -487,6 +531,7 @@ export class IgtDocument extends DocumentModel {
       // raw swap, and the minute's read would then find nothing new.
       this._takeProject(project);
       this._vocabularies = mergeRawVocabLinks(updated, reloaded);
+      this._vocabsUnread = failedCount > 0;
       if (failedCount > 0 && this.onError) {
         this.onError(
           `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Linked entries may show old values until the page is reloaded.`,

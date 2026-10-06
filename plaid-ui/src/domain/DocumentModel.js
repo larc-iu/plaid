@@ -11,7 +11,13 @@
 // relative path, where no alias and no package resolves. Errors leave through
 // `onError`.
 
-import { isChangedElsewhere, isIdTaken, isUnknownOutcome, statusOf } from '../lib/errors.js';
+import {
+  isChangedElsewhere,
+  isGone,
+  isIdTaken,
+  isUnknownOutcome,
+  statusOf,
+} from '../lib/errors.js';
 import {
   AUTO,
   LTR,
@@ -25,7 +31,14 @@ import { WriteQueue } from './WriteQueue.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
 import { sameConfig } from './configCells.js';
 import { DOCUMENT_DELETED, asDeletedDocument } from './permissions.js';
-import { createdIdsOf, footprintOf, namesAnyOf, pendingIdsOf, resendable } from './rebase.js';
+import {
+  changesEntities,
+  createdIdsOf,
+  footprintOf,
+  namesAnyOf,
+  pendingIdsOf,
+  resendable,
+} from './rebase.js';
 
 // A copy of a document read from the server, which is plain JSON. A walk
 // rather than a JSON round trip, which took five times as long on a document
@@ -214,6 +227,9 @@ export class DocumentModel {
     // what the subclass keeps beside the document (`_changesBeside`).
     this._patchBase = null;
     this._patchesBeside = false;
+    // What the subclass kept beside the document before that first patch
+    // (`_besideState`).
+    this._patchBesideBase = null;
     // The pending ids of rows made by edits that were refused: the server
     // never made them, and an edit that names one is refused unsent.
     this._refusedIds = new Set();
@@ -689,6 +705,15 @@ export class DocumentModel {
       this._handledCause = err;
       return;
     }
+    // A refusal that names what changed elsewhere (igt's link conflicts):
+    // the screen says it as a notice, as it says a cell's conflict, with no
+    // banner.
+    if (err?.notice === true) {
+      this._dropError();
+      this._handledCause = err;
+      if (this.onError) this.onError(err.message, err, label);
+      return;
+    }
     this._handledCause = null;
     this._error = `${label}: ${err.message || 'Unknown error'}`;
     this._errorCause = err;
@@ -776,8 +801,14 @@ export class DocumentModel {
       ids: undefined,
       created: undefined,
       // It changed what the subclass keeps beside the document (igt's
-      // links), which no read of the document shows: never sent again.
+      // links), which the rule by layer or entity does not read: sent again
+      // only when the subclass's own rule passes it too
+      // (`_besideUntouched`). What it kept there before the edit and after,
+      // and what the edit was last checked against there.
       beside: this._patchesBeside,
+      besideBase: null,
+      besideMade: null,
+      besideChecked: null,
       recheck,
       // Opted in to the rule by entity (`resendsByEntity`).
       byEntity: this._byEntity,
@@ -787,9 +818,15 @@ export class DocumentModel {
       keys: this._client?.keySeed?.() ?? null,
     };
     if (unsent.base) unsent.made = this._raw;
+    if (unsent.base && unsent.beside) {
+      unsent.besideBase = this._patchBesideBase;
+      unsent.besideMade = this._besideState();
+      unsent.besideChecked = unsent.besideBase;
+    }
     this._patches = [];
     this._patchBase = null;
     this._patchesBeside = false;
+    this._patchBesideBase = null;
     if (!this._canWrite(label)) return Promise.resolve(false);
     const cell = this._cellScope ? { error: null } : null;
     this._cellScope?.push(cell);
@@ -826,6 +863,10 @@ export class DocumentModel {
           const nothingLanded = before != null && this._checkedVersion() === before;
           const next =
             statusOf(err) === 409 && nothingLanded ? await this._afterConflict(unsent) : null;
+          // What it changes beside the document was removed meanwhile (a
+          // link deleted elsewhere): never sent again, but refused with what
+          // the subclass's rule finds changed, when it words it.
+          if (next === null && isGone(err) && unsent.beside) await this._besideRefusal(unsent);
           if (next !== 'resend') throw unsent.refusal ?? err;
           unsent.keys = this._client?.keySeed?.() ?? null;
           await run();
@@ -880,7 +921,7 @@ export class DocumentModel {
   // - Otherwise null, leaving everything as it was, for the refusal to take
   //   its course.
   async _afterConflict(unsent) {
-    if (!unsent.base || unsent.beside) return null;
+    if (!unsent.base) return null;
     let updated;
     try {
       updated = await this._fetch();
@@ -888,6 +929,9 @@ export class DocumentModel {
       console.error('Reading the document after a refusal failed:', err);
       return null;
     }
+    // An edit to what the subclass keeps beside the document is judged on
+    // that as read now, so it is read before.
+    if (unsent.beside) await this._adoptReload(updated);
     if (!this._untouched(unsent, updated)) {
       // Refused all the same, with the edit's own reason when it has one.
       this._recheck(unsent, updated);
@@ -895,7 +939,7 @@ export class DocumentModel {
     }
     // What the subclass keeps beside the document is read again first, so
     // the edit is shown again on top of it, as `_showUnsent` does.
-    await this._adoptReload(updated);
+    if (!unsent.beside) await this._adoptReload(updated);
     if (!this._recheck(unsent, updated)) return null;
     let shown = updated;
     try {
@@ -909,6 +953,20 @@ export class DocumentModel {
     this._keepUntouched(shown);
     this._showUnsent(shown, { recheck: true });
     return 'resend';
+  }
+
+  // An edit to what is kept beside the document refused because what it
+  // names is gone: what is there is read, and the subclass's rule asked only
+  // for its words (`unsent.refusal`), never to send it again.
+  async _besideRefusal(unsent) {
+    if (!unsent.base || unsent.refusal) return;
+    try {
+      const updated = await this._fetch();
+      await this._adoptReload(updated);
+      this._untouched(unsent, updated);
+    } catch (err) {
+      console.error('Reading the document after a refusal failed:', err);
+    }
   }
 
   // Keeps waiting only the edits that nothing changed between the document
@@ -988,12 +1046,24 @@ export class DocumentModel {
   // checked against and `now` touches what it writes, by layer or, when it
   // was opted in, by entity (rebase.js `resendable`). From then on it is
   // checked against `now`.
+  //
+  // An edit that changed what the subclass keeps beside the document is
+  // judged there by the subclass's own rule (`_besideUntouched`), and in the
+  // document by this one only when it changed the document as well (a link
+  // that also sets a morpheme's cached type). One that changed only what is
+  // beside (a link accepted) has nothing in the document to judge.
   _untouched(unsent, now) {
-    if (!unsent.base || unsent.beside) return false;
+    if (!unsent.base) return false;
     const { footprint } = this._summary(unsent);
     // Both read against the base the edit was made on, which this replaces.
     this._created(unsent);
-    if (!this._resendable(unsent, footprint, now)) return false;
+    if (unsent.beside) {
+      unsent.writesDocument ??=
+        footprint !== null || changesEntities(unsent.origin ?? unsent.base, unsent.made);
+    }
+    const judged = !unsent.beside || unsent.writesDocument;
+    if (judged && !this._resendable(unsent, footprint, now)) return false;
+    if (unsent.beside && !this._besideUntouched(unsent, now)) return false;
     unsent.origin ??= unsent.base;
     unsent.base = now;
     return true;
@@ -1032,11 +1102,34 @@ export class DocumentModel {
   }
   // Whether a patch changed what the subclass keeps beside the document,
   // handed the context `_patchContext` made for it, before `_afterPatch`
-  // takes it in. An edit that did is never sent again by itself after a
-  // refusal: no read of the document shows what it changed, so nothing can
-  // tell whether someone else changed the same.
+  // takes it in. An edit that did is sent again by itself after a refusal
+  // only when `_besideUntouched` passes it.
   _changesBeside(context) {
     void context;
+    return false;
+  }
+
+  // What the subclass keeps beside the document now, as a value no later
+  // patch changes (each patch puts a new one in its place): what an edit
+  // that changed it is judged by after a refusal (`_besideUntouched`). Null
+  // for a subclass that keeps nothing beside.
+  _besideState() {
+    return null;
+  }
+
+  // Whether nothing that changed elsewhere touches what `unsent` changed
+  // beside the document, so it may go again on `now`. Asked after
+  // `_adoptReload` has read what is kept beside again, so `_besideState()`
+  // is what is there now, with the edits ahead of `unsent` shown on it.
+  // `unsent.besideBase` and `unsent.besideMade` are what was kept beside
+  // before the edit and after it, `unsent.besideChecked` what it was last
+  // checked against, which a subclass that passes it moves on to
+  // `_besideState()`. A refusal with words of its own goes in
+  // `unsent.refusal`. False, never sent again, unless a subclass knows
+  // better.
+  _besideUntouched(unsent, now) {
+    void unsent;
+    void now;
     return false;
   }
 
@@ -1047,16 +1140,19 @@ export class DocumentModel {
   // value relies on.
   _applyRawPatch(producer) {
     const base = this._raw;
+    const besideBase = this._patches.length === 0 ? this._besideState() : null;
     const seen = { beside: false };
     this._raw = this._patched(this._raw, producer, seen);
     this._dataVersion++;
     this._emit();
     if (this._patches.length === 0) {
       this._patchBase = base;
+      this._patchBesideBase = besideBase;
       queueMicrotask(() => {
         this._patches = [];
         this._patchBase = null;
         this._patchesBeside = false;
+        this._patchBesideBase = null;
       });
     }
     this._patches.push(producer);

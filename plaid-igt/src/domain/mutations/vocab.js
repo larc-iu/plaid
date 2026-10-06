@@ -293,31 +293,36 @@ export const vocabMutations = {
 
     // One batch: the morpheme an unanalyzed word needs, the link that
     // replaces its old one, and the type cache land together or not at all.
-    return this._queueWrite(label, async () => {
-      const ids = new Map();
-      let morphemes;
-      let linkAt;
-      const results = await this._client.batched(async (b) => {
-        morphemes = this._queueMorphemes(b, creates);
-        if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-        b.vocabLinks.create(
-          settledId(vocabItemId),
-          [morphemes.tokenRef(targetTokenId)],
-          stamp || undefined,
-          undefined,
-          { id: linkId },
-        );
-        linkAt = b.ref().$ref;
-        if (patchType) {
-          b.tokens.patchMetadata(settledId(targetTokenId), [
-            { op: 'set', path: ['morphType'], value: cachedType },
-          ]);
-        }
-      });
-      morphemes.read(results, ids);
-      ids.set(linkId, createdId(results[linkAt]));
-      this._settle(ids);
-    });
+    // What it writes in the document (that morpheme, the cache) is a value
+    // on a token that leaves the token as it is, judged by entity after a
+    // refusal, as a gloss is (DocumentModel.resendsByEntity).
+    return this.resendsByEntity(() =>
+      this._queueWrite(label, async () => {
+        const ids = new Map();
+        let morphemes;
+        let linkAt;
+        const results = await this._client.batched(async (b) => {
+          morphemes = this._queueMorphemes(b, creates);
+          if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+          b.vocabLinks.create(
+            settledId(vocabItemId),
+            [morphemes.tokenRef(targetTokenId)],
+            stamp || undefined,
+            undefined,
+            { id: linkId },
+          );
+          linkAt = b.ref().$ref;
+          if (patchType) {
+            b.tokens.patchMetadata(settledId(targetTokenId), [
+              { op: 'set', path: ['morphType'], value: cachedType },
+            ]);
+          }
+        });
+        morphemes.read(results, ids);
+        ids.set(linkId, createdId(results[linkAt]));
+        this._settle(ids);
+      }),
+    );
   },
 
   // Link several tokens to one entry in one operation: "every other ‹roa›
@@ -339,18 +344,21 @@ export const vocabMutations = {
     const plan = this._planLinkMany(tokenIds, targetVocab, vocabItem);
     if (!plan.links.length) return false;
     this._applyRawPatch((next, info, vocabs) => this._showLinkMany(info, vocabs, plan));
-    return this._queueWrite(label, async () => {
-      const ids = new Map();
-      let morphemes;
-      let readLinks;
-      const results = await this._client.batched(async (b) => {
-        morphemes = this._queueMorphemes(b, plan.creates);
-        readLinks = this._queueLinkMany(b, plan, settledId(plan.item.id), morphemes.tokenRef);
-      });
-      morphemes.read(results, ids);
-      readLinks(results, ids);
-      this._settle(ids);
-    });
+    // By entity after a refusal, as linkVocab's.
+    return this.resendsByEntity(() =>
+      this._queueWrite(label, async () => {
+        const ids = new Map();
+        let morphemes;
+        let readLinks;
+        const results = await this._client.batched(async (b) => {
+          morphemes = this._queueMorphemes(b, plan.creates);
+          readLinks = this._queueLinkMany(b, plan, settledId(plan.item.id), morphemes.tokenRef);
+        });
+        morphemes.read(results, ids);
+        readLinks(results, ids);
+        this._settle(ids);
+      }),
+    );
   },
 
   // Linking several tokens to one entry, in three parts so a
@@ -883,35 +891,38 @@ export const vocabMutations = {
 
     // One batch: the morphemes unanalyzed words need, the entry, and every
     // link to it name one another by the batch's stand-ins for their ids, so
-    // a refused link leaves no entry behind.
-    return this._queueWrite(label, async () => {
-      const ids = new Map();
-      let morphemes;
-      let readOthers;
-      let itemAt;
-      let linkAt;
-      const results = await this._client.batched(async (b) => {
-        morphemes = this._queueMorphemes(b, [...creates, ...others.creates]);
-        b.vocabItems.create(vocabId, form, metadataArg, undefined, { id: newItem.id });
-        const itemRef = b.ref();
-        itemAt = itemRef.$ref;
-        if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-        b.vocabLinks.create(itemRef, [morphemes.tokenRef(targetTokenId)], stamp, undefined, {
-          id: linkId,
+    // a refused link leaves no entry behind. By entity after a refusal, as
+    // linkVocab's.
+    return this.resendsByEntity(() =>
+      this._queueWrite(label, async () => {
+        const ids = new Map();
+        let morphemes;
+        let readOthers;
+        let itemAt;
+        let linkAt;
+        const results = await this._client.batched(async (b) => {
+          morphemes = this._queueMorphemes(b, [...creates, ...others.creates]);
+          b.vocabItems.create(vocabId, form, metadataArg, undefined, { id: newItem.id });
+          const itemRef = b.ref();
+          itemAt = itemRef.$ref;
+          if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+          b.vocabLinks.create(itemRef, [morphemes.tokenRef(targetTokenId)], stamp, undefined, {
+            id: linkId,
+          });
+          linkAt = b.ref().$ref;
+          if (patchType) {
+            b.tokens.patchMetadata(settledId(targetTokenId), [
+              { op: 'set', path: ['morphType'], value: cachedType },
+            ]);
+          }
+          readOthers = this._queueLinkMany(b, others, itemRef, morphemes.tokenRef);
         });
-        linkAt = b.ref().$ref;
-        if (patchType) {
-          b.tokens.patchMetadata(settledId(targetTokenId), [
-            { op: 'set', path: ['morphType'], value: cachedType },
-          ]);
-        }
-        readOthers = this._queueLinkMany(b, others, itemRef, morphemes.tokenRef);
-      });
-      morphemes.read(results, ids);
-      ids.set(newItem.id, createdId(results[itemAt]));
-      ids.set(linkId, createdId(results[linkAt]));
-      readOthers(results, ids);
-      this._settle(ids);
-    });
+        morphemes.read(results, ids);
+        ids.set(newItem.id, createdId(results[itemAt]));
+        ids.set(linkId, createdId(results[linkAt]));
+        readOthers(results, ids);
+        this._settle(ids);
+      }),
+    );
   },
 };

@@ -75,6 +75,50 @@ export const changedTo = (who, stored) =>
     : `${who || 'Someone'} cleared this.`;
 
 /**
+ * The notice for a lexicon link edit refused because someone else changed
+ * what it changes first. `conflict.kind` says what: `changed` (the link),
+ * `removed` (the link), `linked` (another link on the same word or words,
+ * to the entry `conflict.form`), `token` (the word or morpheme itself,
+ * `conflict.unit`), `entry` (the entry changed) or `entryGone`.
+ */
+export const linkChangedTo = (who, conflict = {}) => {
+  const by = who || 'Someone';
+  switch (conflict.kind) {
+    case 'removed':
+      return `${by} removed this link.`;
+    case 'linked':
+      return conflict.form ? `${by} linked this to ${closed(conflict.form)}` : `${by} linked this.`;
+    case 'token':
+      return `${by} changed this ${conflict.unit || 'word'}.`;
+    case 'entry':
+      return `${by} changed this entry.`;
+    case 'entryGone':
+      return `${by} deleted this entry.`;
+    default:
+      return `${by} changed this link.`;
+  }
+};
+
+/**
+ * Says a refused link edit's conflict (`err.linkConflict`, see
+ * `linkChangedTo`) as `warn(message)`, once the audit log has said who, as
+ * `announceCells` says a cell's. `context` as `announceCells`'s.
+ */
+export const announceLinkConflict = (context) => (conflict) =>
+  Promise.resolve()
+    .then(() =>
+      whoChanged(
+        context.client,
+        context.documentId,
+        (conflict.ids ?? []).filter(Boolean).map(settledId),
+        context.me,
+        conflict.since,
+      ),
+    )
+    .catch(() => null)
+    .then((who) => context.warn(linkChangedTo(who, conflict)));
+
+/**
  * The message for a cell edit refused as a conflict that is not the cell's
  * own (another change came first elsewhere), when the value waits in its
  * cell, drawn or not, to be sent again.

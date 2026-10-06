@@ -5,7 +5,8 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
-import { notifyError, humanizeError } from '@/utils/feedback';
+import { notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
+import { announceLinkConflict } from '@ui/lib/cellConflict.js';
 import { isGone } from '@ui/lib/errors.js';
 import { History } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -264,7 +265,18 @@ const DocumentEditor = () => {
         if (cancelled) return;
         // A refusal the document makes before anything is sent (a guard, a
         // check) comes without a label: nothing was written, which is the fact.
-        d.onError = (msg, err, label) => notifyError(err ?? msg, label ?? 'Not changed');
+        // A link edit refused because someone changed what it changes first
+        // is said as a cell's conflict is: who, and what.
+        const linkConflict = announceLinkConflict({
+          client: d.client,
+          documentId,
+          me: user?.id,
+          warn: (message) => notifyWarning(message),
+        });
+        d.onError = (msg, err, label) =>
+          err?.linkConflict
+            ? linkConflict(err.linkConflict)
+            : notifyError(err ?? msg, label ?? 'Not changed');
         setLiveDoc(d);
       } catch (e) {
         if (cancelled) return;

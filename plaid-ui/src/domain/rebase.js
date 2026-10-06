@@ -269,6 +269,13 @@ function reshapes(changed, a, b) {
   return false;
 }
 
+// Whether an edit changed any entity at all, from the document before its
+// patch and after it. `footprintOf` answers null both for an edit that
+// changed none and for one that changed a holder's own fields.
+export function changesEntities(before, after) {
+  return changedIds(indexEntities(before), indexEntities(after)).size > 0;
+}
+
 // Every entity id in `raw`, read as `indexEntities` reads them, without the
 // cost of reading each one's fields.
 function entityIdsOf(raw) {
