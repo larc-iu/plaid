@@ -94,6 +94,28 @@ def test_an_interlinear_example_keeps_its_columns_and_its_small_capitals():
         assert forms.index(form) == glosses.index(gloss), (form, gloss)
 
 
+def test_a_small_capital_tag_alone_in_its_column_reads_in_capitals():
+    """A gloss line's NEG alone in its cell touches no full-size run. PDFium
+    hands it on its own, and it read "neg" where the browser read "NEG"
+    (A4-CROSS-4). A lone small-capitals word in running text is one too."""
+    text = pdftext.extract(fixture('smallcaps.pdf')).text
+    glosses = next(line for line in text.split('\n') if 'sleep-NEG' in line)
+    assert glosses.split() == ['3SG', 'NEG', 'sleep-NEG']
+    assert 'A question takes Q at the end.' in text
+    assert 'A negated clause is given in (2).' in text
+
+
+def test_a_smaller_lower_case_word_on_a_line_of_its_size_stays_as_it_is():
+    """Nothing on the line is bigger, so nothing says the letters are small
+    capitals: a footnote line in a smaller size keeps its case."""
+    runs = [{'text': 'see', 'x0': 50, 'x1': 60, 'y': 100, 'size': 8},
+            {'text': 'also', 'x0': 70, 'x1': 85, 'y': 100, 'size': 8}]
+    assert pdftext.layout(runs).split() == ['see', 'also']
+    raised = [{'text': 'Word', 'x0': 50, 'x1': 70, 'y': 100, 'size': 10},
+              {'text': 'a', 'x0': 80, 'x1': 84, 'y': 104, 'size': 7}]
+    assert pdftext.layout(raised).split() == ['Word', 'a'], 'a superscript is raised, not small capitals'
+
+
 def test_arabic_reads_in_reading_order_as_letters():
     assert 'اللغة العربية لغة سامية' in SAMPLE.text
 
@@ -572,7 +594,9 @@ def test_a_turn_whose_reply_is_dropped_takes_back_what_it_stored(monkeypatch):
     assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') == []
 
 
-def test_a_turn_whose_reply_the_store_refuses_takes_back_what_it_stored(monkeypatch):
+def test_a_turn_whose_reply_the_store_refuses_keeps_what_the_answer_names(monkeypatch):
+    """The answer goes back whole for the page to write into the record
+    (A2-UD-2), and it names what the turn stored, so that stays."""
     from test_service_flow import Helper, _request, _seed, _service
     from plaid_agent.core import service as service_mod
     from plaid_agent.core.agent import TurnResult
@@ -591,5 +615,8 @@ def test_a_turn_whose_reply_the_store_refuses_takes_back_what_it_stored(monkeypa
     monkeypatch.setattr(ConversationStore, 'save', refuse)
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert helper.errors
-    assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') == []
+    [done] = helper.done
+    assert done['warning'] and not helper.errors
+    [kept] = done['item']['files']
+    assert kept['name'] == 'g.pdf'
+    assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') != []

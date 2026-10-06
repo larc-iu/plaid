@@ -139,7 +139,7 @@ def test_both_sides_lay_out_clean_and_mark_alike():
 def test_a_fixture_reads_the_same_with_pdfium_and_with_pdfjs():
     if not os.path.exists(PDFJS):
         pytest.skip('pdfjs-dist is not installed in plaid-igt')
-    names = ['sample.pdf', 'scan.pdf']
+    names = ['sample.pdf', 'scan.pdf', 'smallcaps.pdf']
     js = _run_js([{'kind': 'file', 'path': os.path.join(FIXTURES, n)} for n in names])
     for name, theirs in zip(names, js):
         with open(os.path.join(FIXTURES, name), 'rb') as f:

@@ -217,21 +217,19 @@ def _small_caps(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     A word processor or a browser makes small capitals by setting lower-case
     letters in capital shapes at a smaller size, and the PDF says the letters
-    are the lower-case ones, so "3SG" comes out as "3sg". Lower-case
-    letters set smaller than the run they touch, on the same baseline, are
-    such letters. A superscript is smaller too, but raised, and a word in a
-    smaller font on its own touches nothing.
+    are the lower-case ones, so "3SG" comes out as "3sg". A run of
+    lower-case letters set smaller than another run of its line, on the same
+    baseline, is such letters, whether it touches that run or stands alone
+    in its column (a tag such as NEG). A superscript is smaller too, but
+    raised, and a line all in the smaller size has nothing to be smaller
+    than.
     """
     out = [dict(r) for r in runs]
     for i, r in enumerate(out):
         if not _SMALL_CAPS_RE.match(r['text']):
             continue
-        for j in (i - 1, i + 1):
-            if not 0 <= j < len(runs):
-                continue
-            n = runs[j]
-            gap = r['x0'] - n['x1'] if j < i else n['x0'] - r['x1']
-            if (r['size'] < 0.85 * n['size'] and gap < JOIN_GAP * n['size']
+        for j, n in enumerate(runs):
+            if (j != i and r['size'] < 0.85 * n['size']
                     and abs(r['y'] - n['y']) <= 0.15 * n['size']):
                 r['text'] = r['text'].upper()
                 break

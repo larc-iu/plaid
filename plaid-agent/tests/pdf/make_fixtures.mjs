@@ -2,7 +2,10 @@
 // Run from plaid-igt (whose node_modules has Playwright), then add_outline.py
 // gives sample.pdf its bookmarks and page labels:
 //
-//   cd plaid-igt && node ../plaid-agent/tests/pdf/make_fixtures.mjs
+//   cd plaid-igt && node ../plaid-agent/tests/pdf/make_fixtures.mjs [name.pdf ...]
+//
+// Names limit the run to those fixtures (sample.pdf is written as
+// sample-raw.pdf), so adding one leaves the others' bytes alone.
 //   python ../plaid-agent/tests/pdf/add_outline.py   (needs pypdf)
 //
 // The fixtures are committed, so neither step runs in a test. They are small
@@ -51,6 +54,17 @@ const sample = `<!doctype html><html><head><meta charset="utf-8"><style>${style}
 <div class="turned">DRAFT</div></div>
 </body></html>`;
 
+// Small capitals alone in their column, as a gloss line of tags (NEG, PFV, Q)
+// often has them: neither side has a full-size run touching "neg", and both
+// must read it in capitals.
+const smallcaps = `<!doctype html><html><head><meta charset="utf-8"><style>${style}</style></head><body>
+<p>A negated clause is given in (2).</p>
+<table class="igt"><tr><td>(2)</td><td>ia</td><td>tak</td><td>mena-tak</td></tr>
+<tr><td></td><td><span class="sc">3sg</span></td><td><span class="sc">neg</span></td><td>sleep-<span class="sc">neg</span></td></tr>
+<tr><td></td><td colspan="3">‘She does not sleep.’</td></tr></table>
+<p>A question takes <span class="sc">q</span> at the end.</p>
+</body></html>`;
+
 // No text layer at all: what a scanned grammar is.
 const scan = `<!doctype html><html><head><meta charset="utf-8"><style>@page { size: A5; margin: 18mm; }</style></head><body>
 <svg width="300" height="200"><rect x="10" y="10" width="280" height="40" fill="#999"/><rect x="10" y="70" width="200" height="40" fill="#999"/></svg>
@@ -61,10 +75,13 @@ const scan = `<!doctype html><html><head><meta charset="utf-8"><style>@page { si
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
+  const only = process.argv.slice(2);
   for (const [name, html] of [
     ['sample-raw.pdf', sample],
     ['scan.pdf', scan],
+    ['smallcaps.pdf', smallcaps],
   ]) {
+    if (only.length && !only.includes(name.replace('-raw', ''))) continue;
     await page.setContent(html);
     await page.pdf({ path: path.join(here, name), preferCSSPageSize: true });
   }

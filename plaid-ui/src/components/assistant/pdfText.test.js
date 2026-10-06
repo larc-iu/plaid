@@ -84,6 +84,13 @@ describe('a PDF read in the browser', () => {
     }
   });
 
+  it('reads a small-capital tag alone in its column in capitals', async () => {
+    const { text } = await pdfText(await open('smallcaps.pdf'));
+    const glosses = text.split('\n').find((l) => l.includes('sleep-NEG'));
+    expect(glosses.trim().split(/\s+/)).toEqual(['3SG', 'NEG', 'sleep-NEG']);
+    expect(text).toContain('A question takes Q at the end.');
+  });
+
   it('reads Arabic in reading order, as letters rather than shaped forms', async () => {
     const { text } = await pdfText(await open('sample.pdf'));
     expect(text).toContain('اللغة العربية لغة سامية');
