@@ -233,14 +233,16 @@
           (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
           ;; The JavaScript client: the entry, its types, and every module the
           ;; entry reaches by relative import, each byte for byte the source.
-          (let [fetch (fn [path src]
-                        (let [r (p/sh ["curl" "-sf" "-D" "-" (str base path)])]
+          (let [body  (str (fs/path tmp "client-body"))
+                fetch (fn [path src]
+                        (let [r (p/sh ["curl" "-sf" "-o" body "-w" "%{content_type}" (str base path)])]
                           (when-not (and (zero? (:exit r))
-                                         (str/includes? (str/lower-case (:out r))
-                                                        (if (str/ends-with? path ".js")
-                                                          "content-type: text/javascript"
-                                                          "content-type: text/plain"))
-                                         (str/ends-with? (:out r) (slurp src)))
+                                         (str/starts-with? (:out r)
+                                                           (if (str/ends-with? path ".js")
+                                                             "text/javascript"
+                                                             "text/plain"))
+                                         (java.util.Arrays/equals (fs/read-all-bytes body)
+                                                                  (fs/read-all-bytes src)))
                             (throw (ex-info (str path " did not serve " src " from the jar") {:path path})))))]
             (fetch "/client/plaid-client.js" "plaid-client-js/src/index.js")
             (fetch "/client/plaid-client.d.ts" "plaid-client-js/index.d.ts")

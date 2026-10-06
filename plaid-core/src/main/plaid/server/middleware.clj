@@ -252,31 +252,56 @@
             (when-not (= module "index")
               (str "src/" module ".js")))))
 
+(defn- client-js-entry
+  "The bytes of the client file `rel` and an ETag that is their SHA-256, read
+  from `dev-dir` when it is set and from the classpath otherwise, or nil."
+  [dev-dir rel]
+  (when-let [^bytes body (if dev-dir
+                           (let [f (io/file dev-dir rel)]
+                             (when (.isFile f) (Files/readAllBytes (.toPath f))))
+                           (when-let [url (io/resource (str client-js-resource-root rel))]
+                             (with-open [in (io/input-stream url)] (.readAllBytes in))))]
+    {:body body
+     :etag (str "\""
+                (.formatHex (java.util.HexFormat/of)
+                            (.digest (java.security.MessageDigest/getInstance "SHA-256") body))
+                "\"")}))
+
 (defn wrap-client-js
   "Serve the JavaScript client that matches this core's version at
   /client/plaid-client.js, with its types at /client/plaid-client.d.ts.
   Unauthenticated, like the bundled SPAs. `Cache-Control: no-cache` makes a
-  browser revalidate on each load (a 304 while unchanged), since the files
-  change with every release at the same path. Misses fall through."
+  browser revalidate on each load, since the files change with every release
+  at the same path. The validator is an ETag of the content, not a
+  Last-Modified date: a jar's resources carry the jar file's date, so a
+  rollback to an older jar would answer 304 to a browser holding the newer
+  client. HEAD answers the same headers. Misses fall through."
   [handler]
-  (let [dev-dir (not-empty (System/getProperty client-js-dir-property))]
+  (let [dev-dir (not-empty (System/getProperty client-js-dir-property))
+        ;; A jar's files never change while it runs. The working tree's do.
+        entry (if dev-dir
+                (fn [rel] (client-js-entry dev-dir rel))
+                (let [cache (atom {})]
+                  (fn [rel]
+                    (or (get @cache rel)
+                        (when-let [e (client-js-entry nil rel)]
+                          (swap! cache assoc rel e)
+                          e)))))]
     (when dev-dir
       (log/info (format "Serving the JavaScript client at /client/ from `%s`" dev-dir)))
     (fn [{:keys [uri request-method] :as request}]
-      (if-let [rel (and (= :get request-method)
+      (if-let [rel (and (#{:get :head} request-method)
                         (str/starts-with? uri "/client/")
                         (client-js-file uri))]
-        (let [resp (if dev-dir
-                     (let [f (io/file dev-dir rel)]
-                       (when (.isFile f) (response/file-response (.getPath f))))
-                     (response/resource-response (str client-js-resource-root rel)))]
-          (if resp
-            (-> resp
-                (response/content-type (if (str/ends-with? rel ".js")
-                                         "text/javascript; charset=utf-8"
-                                         "text/plain; charset=utf-8"))
-                (response/header "Cache-Control" "no-cache"))
-            (handler request)))
+        (if-let [{:keys [body etag]} (entry rel)]
+          {:status 200
+           :headers {"Content-Type" (if (str/ends-with? rel ".js")
+                                      "text/javascript; charset=utf-8"
+                                      "text/plain; charset=utf-8")
+                     "Cache-Control" "no-cache"
+                     "ETag" etag}
+           :body (when (= :get request-method) body)}
+          (handler request))
         (handler request)))))
 
 (def ^:private root-landing-html

@@ -5,15 +5,13 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [plaid.server.middleware :as middleware]))
+            [plaid.server.middleware :as middleware]
+            [ring.middleware.not-modified :refer [wrap-not-modified]]))
 
 (def ^:private client-dir "../plaid-client-js")
 
 (defn- body-str [{:keys [body]}]
-  (cond
-    (instance? java.io.File body) (slurp body)
-    (string? body) body
-    (some? body) (slurp body)))
+  (when (some? body) (slurp body)))
 
 (defn- with-client-handler [f]
   (let [prop middleware/client-js-dir-property
@@ -75,3 +73,29 @@
         (is (= "fallthrough" (:body (get-uri handler uri))) uri))
       (is (= "fallthrough" (:body (handler {:request-method :post
                                             :uri "/client/plaid-client.js"})))))))
+
+(deftest revalidates-by-content
+  (testing "a browser holding the same bytes gets a 304, whatever the dates say"
+    (with-client-handler
+      (fn [handler]
+        (let [h (wrap-not-modified handler)
+              r (h {:request-method :get :uri "/client/http.js"})
+              etag (get-in r [:headers "ETag"])]
+          (is (re-matches #"\"[0-9a-f]{64}\"" etag))
+          (is (nil? (get-in r [:headers "Last-Modified"]))
+              "a jar answers with its file date, so a rollback would look unmodified")
+          (is (= 304 (:status (h {:request-method :get :uri "/client/http.js"
+                                  :headers {"if-none-match" etag}}))))
+          (is (= 200 (:status (h {:request-method :get :uri "/client/http.js"
+                                  :headers {"if-none-match" "\"other\""}}))))
+          (is (not= etag (get-in (h {:request-method :get :uri "/client/ids.js"})
+                                 [:headers "ETag"]))))))))
+
+(deftest head-answers-the-headers
+  (with-client-handler
+    (fn [handler]
+      (let [g (get-uri handler "/client/plaid-client.js")
+            r (handler {:request-method :head :uri "/client/plaid-client.js"})]
+        (is (= 200 (:status r)))
+        (is (nil? (:body r)))
+        (is (= (:headers g) (:headers r)))))))
