@@ -4429,7 +4429,8 @@ export {
 // result. See ./created.js.
 export { createdId, createdIds } from "./created.js";
 // UUIDv7 ids for what a client creates. See ./ids.js and the manual,
-// "Retrying a write".
-export { uuidv7 } from "./ids.js";
+// "Retrying a write". uuidv4 works where crypto.randomUUID does not (a page
+// served over plain HTTP from any host but localhost).
+export { uuidv4, uuidv7 } from "./ids.js";
 export { wasReplayed } from "./replayed.js";
 export { MAX_BATCH_OPS };

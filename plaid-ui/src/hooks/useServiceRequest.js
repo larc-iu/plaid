@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '../lib/notify.js';
 import { humanizeError } from '../lib/errors.js';
+import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
 
 // One service request, from discovery to result, with the progress contract
 // every run in every app wears.
@@ -159,7 +160,7 @@ export const useServiceRequest = (client) => {
         inOperation = false,
       } = options;
 
-      const requestId = crypto.randomUUID();
+      const requestId = uuidv4();
       inFlight.current = { projectId, requestId };
       onRequestId?.(requestId);
 

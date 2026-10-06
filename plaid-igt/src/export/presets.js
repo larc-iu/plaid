@@ -4,6 +4,7 @@
 // NOT part of a preset.
 
 import { statusOf } from '@ui/lib/errors.js';
+import { uuidv4 } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE } from '../domain/igtConfig.js';
 import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
@@ -116,7 +117,7 @@ export function defaultFieldMap(layers) {
  * seeds the .flextext writing-system tags so the same fact is not typed twice.
  */
 export function newPreset(format, layers, name = 'New preset', languages = null) {
-  const base = { id: crypto.randomUUID(), name, format, includeVocabularies: false };
+  const base = { id: uuidv4(), name, format, includeVocabularies: false };
   if (format === 'plaid-igt-json') {
     // Lossless archive: vocabularies are always included (runExport forces
     // this regardless of the flag); the only option is media embedding.

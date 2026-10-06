@@ -21,6 +21,7 @@
 
 import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
 import { pdfText } from './pdfText.js';
+import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 
 // What can be attached. Text, in the sense that a person could open it in an
 // editor and read it: the assistant reads a table as rows and everything else
@@ -189,10 +190,7 @@ export const lineCount = (text) => {
   return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
 };
 
-const newId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `f${Date.now()}${Math.random().toString(16).slice(2)}`;
+const newId = uuidv4;
 
 // A file the browser cannot read as UTF-8. Excel on Windows writes CSV as
 // cp1252 unless "CSV UTF-8" is picked, and `file.text()` decodes leniently:

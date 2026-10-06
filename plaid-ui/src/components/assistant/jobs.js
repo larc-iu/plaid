@@ -4,6 +4,7 @@ import { deleteConversationFiles } from './attachments.js';
 import { lastProjects } from './projectReach.js';
 import { compactPlan } from './planRecord.js';
 import { itemTime } from './itemTime.js';
+import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and starting, watching,
@@ -82,13 +83,7 @@ export const readMetas = async (store, { allProjects = false } = {}) => {
 
 // A UUID: request ids must be one (the server checks), and conversation ids
 // share the generator.
-const newId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-      });
+const newId = uuidv4;
 
 const titleFrom = (text) => {
   const t = text.replace(/\s+/g, ' ').trim();
