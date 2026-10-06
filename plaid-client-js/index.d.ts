@@ -422,6 +422,8 @@ interface UsersBundle {
 interface UserDataEntry {
   key: string;
   updatedAt: string;
+  /** Raised by one on every write of the entry. A new entry is 1. */
+  version: number;
   value?: any;
 }
 
@@ -446,11 +448,18 @@ interface UserDataBundle {
     opts?: UserDataOptions & { pageSize?: number },
   ): AsyncGenerator<UserDataEntry[]>;
   get(userId: string, key: string): Promise<UserDataEntry & { value: any }>;
+  /**
+   * `version`: write only when the entry is still at this version (0: only
+   * when there is none). Refused with 409, `error: "version-mismatch"` and the
+   * stored `version` and `updatedAt` on the error's `responseData`, when
+   * another write landed since.
+   */
   put(
     userId: string,
     key: string,
     value: any,
-  ): Promise<{ key: string; updatedAt: string }>;
+    opts?: { version?: number },
+  ): Promise<{ key: string; updatedAt: string; version: number }>;
   delete(userId: string, key: string): Promise<any>;
 }
 

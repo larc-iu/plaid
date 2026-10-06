@@ -602,8 +602,20 @@ def test_the_user_data_store_answers_as_the_real_one_does():
     assert got['value'] == {'snake_key': 1, 'kebab_key': 2, 'camelKey': 3, 'k': 4,
                             '0199_abcd': 5, 'metadata': {'a-b': 1}}
     assert got['updated_at'] == put['updated_at']
-    assert c.user_data.list('u') == [{'key': 'k', 'updated_at': put['updated_at']}]
-    assert c.user_data.list_page('u')['entries'] == [{'key': 'k', 'updated_at': put['updated_at']}]
+    assert c.user_data.list('u') == [{'key': 'k', 'updated_at': put['updated_at'], 'version': 1}]
+    assert c.user_data.list_page('u')['entries'] == [{'key': 'k', 'updated_at': put['updated_at'],
+                                                      'version': 1}]
+    # Every write raises the version, and one naming a version the entry is
+    # no longer at is refused with 409 and the stored one.
+    assert put['version'] == 1 and got['version'] == 1
+    assert c.user_data.put('u', 'k', {'n': 2}, version=1)['version'] == 2
+    with pytest.raises(PlaidAPIError) as e:
+        c.user_data.put('u', 'k', {'n': 3}, version=1)
+    assert e.value.status == 409 and e.value.response_data['version'] == 2
+    with pytest.raises(PlaidAPIError) as e:
+        c.user_data.put('u', 'new', {}, version=1)
+    assert e.value.response_data['version'] == 0
+    assert c.user_data.put('u', 'new', {}, version=0)['version'] == 1
     c.user_data.delete('u', 'k')
     with pytest.raises(PlaidAPIError) as e:
         c.user_data.delete('u', 'k')

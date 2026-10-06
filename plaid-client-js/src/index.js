@@ -1474,7 +1474,7 @@ class PlaidClient {
           query: { prefix, pattern, "include-values": includeValues },
         }),
       /**
-       * Read one private data entry ({key, updatedAt, value}); 404 if absent.
+       * Read one private data entry ({key, updatedAt, version, value}); 404 if absent.
        * @param {string} userId
        * @param {string} key
        */
@@ -1492,17 +1492,28 @@ class PlaidClient {
        * value whose keys are camelCase round-trips unchanged while one keyed
        * by arbitrary strings does not. Put such a map under a `metadata` key,
        * which both clients pass through untouched.
+       *
+       * Every write raises the entry's `version` by one, and reads answer it.
+       * With `version`, the write lands only when the entry is still at that
+       * version (0: only when there is no entry), and is otherwise refused with
+       * 409, `error: "version-mismatch"`, and the stored `version` and
+       * `updatedAt` on the error's `responseData`: read it again and make the
+       * change on what is there.
        * @param {string} userId
        * @param {string} key
        * @param {*} value
+       * @param {object} [opts]
+       * @param {number} [opts.version] - The version this write was made from
+       * @returns {Promise<{key: string, updatedAt: string, version: number}>}
        */
-      put: (userId, key, value) =>
+      put: (userId, key, value, { version } = {}) =>
         this._request(
           "PUT",
           `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
           {
             body: value,
             noBatch: true,
+            queryParams: { version },
           },
         ),
       /**

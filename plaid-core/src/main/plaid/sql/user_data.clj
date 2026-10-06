@@ -25,13 +25,14 @@
 (defn- row->entry [row include-value?]
   (when row
     (cond-> {:key (:key row)
-             :updated-at (:updated_at row)}
+             :updated-at (:updated_at row)
+             :version (:version row)}
       include-value? (assoc :value (json/read-str (:value row))))))
 
 (defn get
-  "The entry {:key :updated-at :value} for `user-id`/`key`, or nil."
+  "The entry {:key :updated-at :version :value} for `user-id`/`key`, or nil."
   [db user-id key]
-  (row->entry (first (psc/q db {:select [:key :value :updated_at]
+  (row->entry (first (psc/q db {:select [:key :value :updated_at :version]
                                 :from :user_data
                                 :where [:and [:= :user_id user-id] [:= :key key]]}))
               true))
@@ -52,11 +53,11 @@
     (seq pattern) (conj [:glob pattern :key])))
 
 (def ^:private select-cols
-  {true [:user_id :key :value :updated_at]
-   false [:user_id :key :updated_at]})
+  {true [:user_id :key :value :updated_at :version]
+   false [:user_id :key :updated_at :version]})
 
 (defn list
-  "One page of the user's entries ({:key :updated-at}, plus :value when
+  "One page of the user's entries ({:key :updated-at :version}, plus :value when
   `include-values?`), ordered by key. Keyset paginated by (user-id, key), the
   table's primary key: both columns are TEXT NOT NULL, so the page order is
   total and walking it is index-backed. The same order and the same cursor
@@ -88,20 +89,59 @@
                     :cursor-vals cursor-vals
                     :row->entity #(row->entry % include-values?)}))
 
+(defn- current
+  "{:version :updated-at} of the entry as it is stored, version 0 when there
+  is none."
+  [db user-id key]
+  (let [row (first (psc/q db {:select [:version :updated_at]
+                              :from :user_data
+                              :where [:and [:= :user_id user-id] [:= :key key]]}))]
+    {:version (or (:version row) 0) :updated-at (:updated_at row)}))
+
 (defn put!
   "Upsert `value` (any JSON-able Clojure data) under `key`. Returns
-  {:key :updated-at}, or {:error :too-large} when the JSON exceeds
-  `max-value-bytes`."
-  [db user-id key value]
-  (let [text (json/write-str value)]
-    (if (> (count (.getBytes ^String text "UTF-8")) max-value-bytes)
-      {:error :too-large}
-      (let [now (psc/now-iso)]
-        (psc/execute! db {:insert-into :user_data
-                          :values [{:user_id user-id :key key :value text :updated_at now}]
-                          :on-conflict [:user_id :key]
-                          :do-update-set [:value :updated_at]})
-        {:key key :updated-at now}))))
+  {:key :updated-at :version}, or {:error :too-large} when the JSON exceeds
+  `max-value-bytes`.
+
+  Every write bumps the entry's `version` (a new entry is 1). With
+  `expected-version` the write lands only when the entry is at that version
+  (0: only when there is no entry yet), checked by the statement that writes
+  it, and otherwise answers {:error :version-mismatch :current {:version
+  :updated-at}}: the version as it is stored, 0 when there is no entry."
+  ([db user-id key value] (put! db user-id key value nil))
+  ([db user-id key value expected-version]
+   (let [text (json/write-str value)]
+     (if (> (count (.getBytes ^String text "UTF-8")) max-value-bytes)
+       {:error :too-large}
+       (let [now (psc/now-iso)
+             fresh {:user_id user-id :key key :value text :updated_at now :version 1}
+             row (psc/execute-returning-one!
+                  db
+                  (cond
+                    (nil? expected-version)
+                    {:insert-into :user_data
+                     :values [fresh]
+                     :on-conflict [:user_id :key]
+                     :do-update-set {:value :excluded.value
+                                     :updated_at :excluded.updated_at
+                                     :version [:+ :user_data.version 1]}
+                     :returning [:version]}
+
+                    (zero? expected-version)
+                    {:insert-into :user_data
+                     :values [fresh]
+                     :on-conflict [:user_id :key]
+                     :do-nothing []
+                     :returning [:version]}
+
+                    :else
+                    {:update :user_data
+                     :set {:value text :updated_at now :version [:+ :version 1]}
+                     :where [:and [:= :user_id user-id] [:= :key key] [:= :version expected-version]]
+                     :returning [:version]}))]
+         (if row
+           {:key key :updated-at now :version (:version row)}
+           {:error :version-mismatch :current (current db user-id key)}))))))
 
 (defn delete!
   "Remove an entry. Returns the number of rows deleted (0 or 1)."

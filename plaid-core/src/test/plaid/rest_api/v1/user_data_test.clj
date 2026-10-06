@@ -179,3 +179,62 @@
       (is (= [key] (mapv :key (:entries (:body (api-call admin-request
                                                          {:method :get
                                                           :path (str "/api/v1/admin/user-data?prefix=" prefix)})))))))))
+
+(deftest a-version-precondition-refuses-a-write-from-an-older-read
+  ;; An assistant conversation has two writers, the page and the service, and
+  ;; each used to write its own copy over the other's: a page that read the
+  ;; record before the service wrote an answer put back the record without it.
+  ;; A write that names the version it read is refused once another landed.
+  (let [k "igt:assistant:p1:conv:c1"
+        put (fn [body & [version]]
+              (api-call user1-request {:method :put
+                                       :path (str (path u1 k) (when version (str "?version=" version)))
+                                       :body body}))
+        stored #(:body (api-call user1-request {:method :get :path (path u1 k)}))]
+    (testing "0 creates only when there is no entry, and a new entry is version 1"
+      (let [{:keys [status body]} (put {:n 1} 0)]
+        (is (= 200 status))
+        (is (= 1 (:version body))))
+      (let [{:keys [status body]} (put {:n "again"} 0)]
+        (is (= 409 status))
+        (is (= "version-mismatch" (:error body)))
+        (is (= 1 (:version body)))
+        (is (string? (:updated-at body))))
+      (is (= {"n" 1} (:value (stored)))))
+    (testing "reads answer the version, and a write at it lands and bumps it"
+      (is (= 1 (:version (stored))))
+      (is (= [1] (mapv :version (listed u1 "?prefix=igt:assistant:p1:conv:"))))
+      (let [{:keys [status body]} (put {:n 2} 1)]
+        (is (= 200 status))
+        (is (= 2 (:version body)))))
+    (testing "a write from the older read is refused with the stored version, and nothing changes"
+      (let [{:keys [status body]} (put {:n "stale"} 1)]
+        (is (= 409 status))
+        (is (= 2 (:version body))))
+      (is (= {"n" 2} (:value (stored))))
+      (is (= 2 (:version (stored)))))
+    (testing "a write without a version always lands, and bumps it too"
+      (is (= 3 (:version (:body (put {:n 3})))))
+      (is (= 3 (:version (stored)))))
+    (testing "a version for an entry that is gone is refused with version 0"
+      (api-call user1-request {:method :delete :path (path u1 k)})
+      (let [{:keys [status body]} (put {:n 4} 3)]
+        (is (= 409 status))
+        (is (= 0 (:version body))))
+      (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 k)})))))
+    (testing "a version that is not a whole number at least 0 is a 400"
+      (is (= 400 (:status (put {:n 5} -1))))
+      (is (= 400 (:status (put {:n 5} "x")))))))
+
+(deftest a-version-precondition-lets-one-of-two-racing-writers-through
+  (let [k "igt:assistant:p1:conv:race"]
+    (api-call user1-request {:method :put :path (path u1 k) :body {:n 0}})
+    (let [results (->> (range 8)
+                       (mapv (fn [i] (future (:status (api-call user1-request
+                                                                {:method :put
+                                                                 :path (str (path u1 k) "?version=1")
+                                                                 :body {:n i}})))))
+                       (mapv deref))]
+      (is (= 1 (count (filter #{200} results))))
+      (is (= 7 (count (filter #{409} results))))
+      (is (= 2 (:version (:body (api-call user1-request {:method :get :path (path u1 k)}))))))))

@@ -1392,20 +1392,29 @@ class UserDataResource(_Resource):
                                  'include-values': include_values or None})
 
     def get(self, user_id: str, key: str) -> Any:
-        """Read one entry ({key, updated_at, value}); 404 if absent."""
+        """Read one entry ({key, updated_at, version, value}); 404 if absent."""
         return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
 
-    def put(self, user_id: str, key: str, value: Any) -> Any:
+    def put(self, user_id: str, key: str, value: Any, version: int | None = None) -> Any:
         """Create or replace one entry. ``value`` is any JSON (up to 1 MB).
+        Answers ``{key, updated_at, version}``.
 
         The server stores it verbatim, but this client recases object keys on
         the way out and back like any other body (``my_key`` <-> ``my-key``),
         so a value whose keys are snake_case round-trips unchanged while one
         keyed by arbitrary strings does not. Put such a map under a
         ``metadata`` key, which both clients pass through untouched.
+
+        Every write raises the entry's ``version`` by one, and reads answer
+        it. With ``version``, the write lands only when the entry is still at
+        that version (0: only when there is no entry), and is otherwise
+        refused with 409, ``error: "version-mismatch"``, and the stored
+        ``version`` and ``updated_at`` on the error's ``response_data``: read
+        it again and make the change on what is there.
         """
         return self._request('PUT', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
-                             body=value, no_batch=True)
+                             body=value, no_batch=True,
+                             **({'query_params': {'version': version}} if version is not None else {}))
 
     def delete(self, user_id: str, key: str) -> Any:
         """Delete one entry; 404 if absent."""
