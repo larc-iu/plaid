@@ -501,8 +501,28 @@ The modules below are `igt/` unless they say otherwise.
   or reads the finished reply from the record. Stop cancels the request; the
   service checks between model calls and tool calls.
 
+## Research dataset
+
+`plaid_agent.research` extracts a pseudonymized dataset for studying how
+people respond to what the assistants and other machine writers put in a
+project: every plan and its status, every write an approved plan, a service
+run or an adopted guess made and what happened to it afterwards in the audit
+log, the assistants' tool use per turn, and the client telemetry. It reads a
+database file read-only, never a live server:
+
+```sh
+python -m plaid_agent.research.extract plaid.db out/ --salt-file ../salt
+```
+
+`src/plaid_agent/research/DATASET.md` describes every field and what the
+records cannot say, and is copied into the dataset as its README.
+
 ## Tests
 
 ```sh
 pytest
 ```
+
+`tests/test_research_extract_live.py` runs the extractor on a database a
+real core wrote, and needs `PLAID_TEST_URL` and `PLAID_TEST_DB` (the core's
+database file).

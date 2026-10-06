@@ -1,0 +1,364 @@
+"""Reading the assistants' conversation records into dataset rows.
+
+A conversation is two values in its owner's user data (see
+:mod:`plaid_agent.core.conversation`): the sidebar entry (``meta``) and the
+record (``conv``: ``messages``, the model transcript, and ``display``, what
+the person sees). The store keeps them with their keys in kebab case, as the
+clients send them. Everything here reads them with the keys in snake case.
+
+What the record does NOT keep, and so no row here can say:
+
+* a turn's start time. A plan's id is a UUIDv7 minted when its turn staged
+  it, so a plan's proposal time is read off its id. A turn with no plan has
+  only its duration (``elapsed_ms``, newer records).
+* a conversation the user deleted, and every value the record was pruned of:
+  old tool results (``DROPPED``), old steps and citations, a settled plan's
+  ``ops`` (compacted, only ``proposed`` stays, and only on plans staged since
+  ``proposed`` was recorded).
+* the record's earlier states. User data is not in the audit log, so only
+  the latest version of a record exists.
+"""
+
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+from .pseudo import Pseudonyms, clip
+
+DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
+KEY_RE = re.compile(r'^(?P<app>[^:]+):assistant:(?P<project>[^:]+):(?P<what>conv|meta):(?P<conv>[^:]+)$')
+
+# What the loop appends to a reply that ended some other way than an answer
+# (plaid_agent.core.agent). Matched on the end of the text, which is never
+# exported by default.
+STOPPED_REPEAT = re.compile(r'\*\(Stopped after the same step (failed|was repeated) \d+ times\.\)\*\s*$')
+STEP_LIMIT = re.compile(r'\*\(Stopped at the step limit\.\)\*\s*$')
+CUT_AT_LENGTH = re.compile(r"\*\(The reply was cut off at the model's output limit\.\)\*\s*$")
+EMPTY_REPLY = '(The model returned an empty reply.)'
+
+# A tool's refusal, by what it says. The first that matches wins, and the
+# order matters: a query the server refused also says "rejected".
+ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for name, rx in (
+    ('query_rejected', r'^Query rejected'),
+    ('tool_fault', r'which is a fault in the tool'),
+    ('code_exception', r'^Traceback'),
+    ('bad_arguments', r'cannot be called with those arguments|has the wrong type|unexpected keyword|'
+                      r'not valid JSON|^Give |must be (a|an|one of|given)|is not a (number|whole number|list)'),
+    ('ambiguous', r'names several|several \w+ match|more than one'),
+    ('plan_limit', r'more than the [\d,]+ one plan may hold'),
+    ('unavailable', r'is connected to this project|not configured|not available|is offline'),
+    ('server_refused', r'could not be read'),
+    ('not_found', r'^No |has no |has \d+ words?\b|not found|does not exist|no such|is not in '),
+    ('plan_conflict', r'^This plan |already|discard_plan first|cannot be planned|would (delete|replace|lose)'),
+)]
+
+
+def snake(value: Any) -> Any:
+    """``value`` with every dict key in snake case, as the Python client
+    reads the store. Keys of metadata content are opaque elsewhere, and
+    nothing here reads them."""
+    if isinstance(value, dict):
+        return {(k.replace('-', '_') if isinstance(k, str) else k): snake(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [snake(v) for v in value]
+    return value
+
+
+def uuid7_time(value: Optional[str]) -> Optional[str]:
+    """The millisecond a UUIDv7 was minted, as ISO 8601, or None for any
+    other id."""
+    try:
+        u = uuid.UUID(str(value))
+    except (ValueError, TypeError):
+        return None
+    if u.version != 7:
+        return None
+    ms = int(u.hex[:12], 16)
+    return iso_ms(ms)
+
+
+def iso_ms(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat(timespec='milliseconds').replace(
+        '+00:00', 'Z')
+
+
+def parse_ts(ts: Optional[str]) -> Optional[datetime]:
+    """An ISO 8601 instant from the record or the audit log (which has
+    nanoseconds), or None."""
+    if not isinstance(ts, str) or not ts:
+        return None
+    t = ts.strip().replace('Z', '+00:00')
+    m = re.match(r'^(.*T\d\d:\d\d:\d\d)(\.\d+)?(.*)$', t)
+    if m:
+        frac = (m.group(2) or '')[:7]
+        t = m.group(1) + frac + (m.group(3) or '+00:00')
+    try:
+        d = datetime.fromisoformat(t)
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def seconds_between(a: Optional[str], b: Optional[str]) -> Optional[float]:
+    da, db = parse_ts(a), parse_ts(b)
+    if not da or not db:
+        return None
+    return round((db - da).total_seconds(), 3)
+
+
+def error_class(text: Optional[str]) -> str:
+    """What kind of refusal a tool's ``Error: ...`` answer was."""
+    if not isinstance(text, str):
+        return 'unknown'
+    body = text[len('Error:'):].strip() if text.startswith('Error:') else text.strip()
+    for name, rx in ERROR_CLASSES:
+        if rx.search(body):
+            return name
+    return 'other'
+
+
+def turn_end(item: Dict[str, Any]) -> str:
+    """How a turn ended: an answer, or which of the ways it can stop."""
+    if item.get('kind') == 'error':
+        return 'stopped' if item.get('stopped') else 'failed'
+    text = item.get('text') or ''
+    if STOPPED_REPEAT.search(text):
+        return 'stopped_repeat'
+    if STEP_LIMIT.search(text):
+        return 'step_limit'
+    if text.strip().startswith(EMPTY_REPLY):
+        return 'empty_reply'
+    if CUT_AT_LENGTH.search(text):
+        return 'cut_at_length'
+    return 'answered'
+
+
+_PROPOSED_KEYS: Dict[str, Any] = {}
+
+
+def proposed_keys(app: str):
+    """The app's ``proposed_keys`` (what a change targets, its value and its
+    other end), read from its service class, or None for an app this
+    package does not have."""
+    if app in _PROPOSED_KEYS:
+        return _PROPOSED_KEYS[app]
+    keys = None
+    try:
+        import importlib
+        mod = importlib.import_module(f'plaid_agent.{app}.service')
+        for obj in vars(mod).values():
+            if isinstance(obj, type) and getattr(obj, 'APP', None) == app and getattr(obj, 'proposed_keys', None):
+                keys = obj.proposed_keys
+                break
+    except Exception:  # noqa: BLE001 - an app this checkout cannot load derives nothing
+        keys = None
+    _PROPOSED_KEYS[app] = keys
+    return keys
+
+
+def derive_proposed(app: str, ops: List[Dict[str, Any]]) -> Optional[Tuple[List[list], int]]:
+    """What the turn would have recorded as ``proposed`` for a plan staged
+    before it did, from the ops the record still holds (an undecided plan,
+    or one settled before compaction)."""
+    keys = proposed_keys(app)
+    if not keys:
+        return None
+    from plaid_agent.core.conversation import proposed_changes
+    return proposed_changes(ops, *keys)
+
+
+class Conversations:
+    """Every row the conversation records give, built by :meth:`add`."""
+
+    def __init__(self, pseudo: Pseudonyms, include_text: bool = False):
+        self.p = pseudo
+        self.include_text = include_text
+        self.conversations: List[Dict[str, Any]] = []
+        self.turns: List[Dict[str, Any]] = []
+        self.tool_calls: List[Dict[str, Any]] = []
+        self.plans: List[Dict[str, Any]] = []
+        self.plan_changes: List[Dict[str, Any]] = []
+        self.private: List[Dict[str, Any]] = []
+        # Kept for linking plans to the audit log, never written out.
+        self.owner_of_plan: Dict[str, str] = {}
+        self.summary_of_plan: Dict[str, str] = {}
+
+    def add(self, user_id: str, app: str, project_id: str, conv_id: str,
+            conv: Optional[Dict[str, Any]], meta: Optional[Dict[str, Any]],
+            record_bytes: int, updated_at: Optional[str]) -> None:
+        conv = snake(conv or {})
+        meta = snake(meta or {})
+        user = self.p.user(user_id)
+        messages = [m for m in conv.get('messages') or [] if isinstance(m, dict)]
+        display = [d for d in conv.get('display') or [] if isinstance(d, dict)]
+        results = {m.get('tool_call_id'): m.get('content') for m in messages if m.get('role') == 'tool'}
+        base = {'conversation_id': conv_id, 'app': app, 'project_id': project_id,
+                'project': self.p.project(project_id), 'user': user}
+
+        n_user = 0
+        models, services = set(), set()
+        n_plans = 0
+        for index, item in enumerate(display):
+            kind = item.get('kind')
+            if kind == 'user':
+                n_user += 1
+                if self.include_text:
+                    self.private.append({**base, 'item_index': index, 'kind': 'user', 'text': item.get('text')})
+                continue
+            if kind not in ('assistant', 'error'):
+                continue
+            if item.get('model'):
+                models.add(item['model'])
+            if item.get('service'):
+                services.add(item['service'])
+            asked = next((d for d in reversed(display[:index]) if d.get('kind') == 'user'), {})
+            where = asked.get('where') if isinstance(asked.get('where'), dict) else None
+            steps = [s for s in item.get('steps') or [] if isinstance(s, dict)]
+            usage = item.get('usage') if isinstance(item.get('usage'), dict) else None
+            total = (usage or {}).get('total') if isinstance((usage or {}).get('total'), dict) else None
+            plan = item.get('plan') if isinstance(item.get('plan'), dict) else None
+            turn = {
+                **base, 'item_index': index, 'turn': n_user, 'end': turn_end(item),
+                'model': item.get('model'), 'version': item.get('version'), 'service': item.get('service'),
+                'elapsed_ms': item.get('elapsed_ms'),
+                'sent_tokens': (usage or {}).get('sent'), 'received_tokens': (usage or {}).get('received'),
+                'window_tokens': (usage or {}).get('window'),
+                'total_sent_tokens': (total or {}).get('sent'), 'total_received_tokens': (total or {}).get('received'),
+                'model_calls': (total or {}).get('calls'),
+                'n_steps': len(steps), 'n_failed_steps': 0,
+                'n_citations': len(item.get('citations') or []),
+                'plan_id': (plan or {}).get('id'),
+                'where_kind': (where or {}).get('kind'), 'where_id': (where or {}).get('id'),
+                'files_attached': len(asked.get('files') or []),
+                'files_stored': len(item.get('files') or []),
+                'unavailable_projects': len(item.get('unavailable_projects') or []),
+            }
+            failed_steps = self._steps(base, index, n_user, steps, results)
+            turn['n_failed_steps'] = failed_steps
+            self.turns.append(turn)
+            if self.include_text:
+                self.private.append({**base, 'item_index': index, 'kind': kind, 'text': item.get('text')})
+            if plan:
+                n_plans += 1
+                self._plan(base, app, index, n_user, item, plan, user_id)
+
+        dropped = sum(1 for m in messages if m.get('role') == 'tool' and m.get('content') == DROPPED)
+        self.conversations.append({
+            **base,
+            'created_at': meta.get('created_at'), 'updated_at': meta.get('updated_at') or updated_at,
+            'has_meta': bool(meta), 'turns': n_user, 'items': len(display), 'plans': n_plans,
+            'models': sorted(models), 'services': sorted(services), 'version': meta.get('version'),
+            'pending': bool(meta.get('pending')), 'record_bytes': record_bytes,
+            'transcript_messages': len(messages),
+            'tool_results_kept': sum(1 for m in messages if m.get('role') == 'tool' and m.get('content') != DROPPED),
+            'tool_results_dropped': dropped,
+            'about_document': (meta.get('about') or {}).get('id') if isinstance(meta.get('about'), dict) else None,
+        })
+
+    def _steps(self, base, index, turn, steps, results) -> int:
+        failed_n = 0
+        rows = []
+        for i, s in enumerate(steps):
+            legacy = 'args' in s or 'result' in s or 'error' in s
+            if legacy:
+                text = s.get('result') if isinstance(s.get('result'), str) else None
+                failed = bool(s.get('error')) or (isinstance(text, str) and text.startswith('Error'))
+                kept = text is not None
+            else:
+                text = results.get(s.get('id'))
+                kept = isinstance(text, str) and text != DROPPED
+                failed = bool(s.get('failed'))
+                if not failed and kept and text.startswith('Error'):
+                    failed = True
+            failed_n += failed
+            row = {**base, 'item_index': index, 'turn': turn, 'step': i, 'tool': s.get('name'),
+                   'step_kind': s.get('kind'), 'failed': failed,
+                   'error_class': (error_class(text) if kept else 'unknown') if failed else None,
+                   'result_kept': kept, 'planned': s.get('planned') or 0,
+                   'document_read': bool(s.get('document')), 'legacy_shape': legacy}
+            if self.include_text and failed and kept:
+                self.private.append({**base, 'item_index': index, 'kind': 'tool_error', 'step': i,
+                                     'tool': s.get('name'), 'text': text[:500]})
+            rows.append(row)
+        for i, row in enumerate(rows):
+            row['recovered_in_turn'] = (any(r['tool'] == row['tool'] and not r['failed'] for r in rows[i + 1:])
+                                        if row['failed'] else None)
+        self.tool_calls.extend(rows)
+        return failed_n
+
+    def _plan(self, base, app, index, turn, item, plan, user_id) -> None:
+        plan_id = plan.get('id')
+        status = item.get('status') or 'undecided'
+        proposed, count, source = plan.get('proposed'), plan.get('proposed_count'), 'record'
+        if proposed is None and isinstance(plan.get('ops'), list):
+            derived = derive_proposed(app, plan['ops'])
+            if derived:
+                proposed, count = derived
+                source = 'derived_from_ops'
+        if proposed is None:
+            source = 'none'
+        proposed_at = uuid7_time(plan_id)
+        settled_at = item.get('settled_at')
+        op_count = plan.get('op_count')
+        if op_count is None and isinstance(plan.get('ops'), list):
+            op_count = len(plan['ops'])
+        row = {
+            **base, 'plan_id': plan_id, 'item_index': index, 'turn': turn, 'status': status,
+            'interrupted': bool(item.get('interrupted')),
+            'model': item.get('model'), 'version': item.get('version'), 'service': item.get('service'),
+            'proposed_at': proposed_at, 'settled_at': settled_at,
+            'settled_at_source': 'record' if settled_at else None,
+            'seconds_to_settle': seconds_between(proposed_at, settled_at),
+            'proposed_count': count, 'proposed_kept': len(proposed or []), 'proposed_source': source,
+            'op_count': op_count, 'rows': len(plan.get('labels') or []),
+            'as_human': item.get('as_human'), 'contributed': bool(item.get('contributed')),
+            'partly_applied': status == 'partial', 'rows_written': len(item.get('written') or []),
+            'outcome_unknown': bool(item.get('unknown')),
+            'apply_notes': len(item.get('apply_notes') or []), 'unwritten_rows': len(item.get('unwritten') or []),
+            'kinds': sorted({str(c[0]) for c in proposed or [] if isinstance(c, list) and c}),
+            # Filled in by linking (extract.py).
+            'group_id': None, 'group_link': None, 'writes': None,
+        }
+        self.plans.append(row)
+        self.owner_of_plan[plan_id] = user_id
+        self.summary_of_plan[plan_id] = plan.get('summary') or ''
+        for i, c in enumerate(proposed or []):
+            if not isinstance(c, list):
+                continue
+            self.plan_changes.append({
+                **base, 'plan_id': plan_id, 'change': i, 'plan_status': status,
+                'kind': c[0] if len(c) > 0 else None, 'target': c[1] if len(c) > 1 else None,
+                'value': clip(c[2]) if len(c) > 2 else None, 'other': c[3] if len(c) > 3 else None,
+                'source': source,
+                # Filled in by linking: what the plan's writes and later edits did to this target.
+                'target_written': None, 'matched_writes': None, 'fate': None, 'fates': None,
+            })
+
+
+def iter_records(rows: Iterable[Tuple[str, str, str, str]]):
+    """``(user_id, app, project_id, conv_id, conv, meta, bytes, updated_at)``
+    for every conversation in the user-data rows ``(user_id, key, value,
+    updated_at)``, with the values parsed. A conversation with a record and
+    no sidebar entry (a write cut off between the two) is still read."""
+    import json
+    found: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for user_id, key, value, updated_at in rows:
+        m = KEY_RE.match(key)
+        if not m:
+            continue
+        slot = found.setdefault((user_id, key.rsplit(':', 2)[0] + ':' + m['conv']),
+                                {'user_id': user_id, 'app': m['app'], 'project': m['project'], 'conv_id': m['conv']})
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            parsed = None
+        slot[m['what']] = parsed
+        if m['what'] == 'conv':
+            slot['bytes'] = len(value.encode('utf-8'))
+            slot['updated_at'] = updated_at
+    for slot in found.values():
+        if 'conv' not in slot:
+            continue
+        yield (slot['user_id'], slot['app'], slot['project'], slot['conv_id'], slot.get('conv'), slot.get('meta'),
+               slot.get('bytes') or 0, slot.get('updated_at'))
