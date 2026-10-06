@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react';
+import { uuidv7 } from '@larc-iu/plaid-client';
 import { FieldsManager } from './FieldsManager';
 import { fieldKey } from '@/domain/fieldNames';
 import { notifyError } from '@/utils/feedback';
@@ -110,9 +111,8 @@ export const FieldsSettings = ({
     return run;
   };
 
-  // Save changes to the API. A new field's layer is made first, one request
-  // for the layer and one for its scope, since the rest needs its id. Every
-  // other write of the save is one batch, so it lands whole or not at all.
+  // Save changes to the API. Every write of the save, a new field's layer and
+  // its rules included, is one batch, so it lands whole or not at all.
   // A refusal is thrown to the manager, which puts the table back, and
   // handleError reads the project again so the table shows what landed.
   const handleSaveChanges = (data) => inTurn(() => saveNow(data));
@@ -139,7 +139,8 @@ export const FieldsSettings = ({
     // deletes below so the tagset sync at the end can find every field.
     const layerIds = new Map(managed.map((l) => [layerKey(l), l.id]));
 
-    // Create a span layer for each field added here that has none yet.
+    // The parent of each field added here that has no layer yet.
+    const toCreate = [];
     for (const field of change.added) {
       if (layerIds.has(fieldKey(field))) continue;
       // Choose parent layer based on field scope (Morpheme fields used to
@@ -155,12 +156,21 @@ export const FieldsSettings = ({
           notSetUp(`No ${field.scope.toLowerCase()} token layer found for field ${field.name}`),
         );
       }
-      const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-      await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
-      layerIds.set(fieldKey(field), spanLayer.id);
+      toCreate.push({ field, parentLayerId });
     }
 
-    await client.batched((b) => queueRest(b, data, change, layers, layerIds, fresh?.config));
+    // One batch: each new field's layer with its scope, then the rest, its
+    // rules included. A refusal of any of it leaves no layer without its
+    // rules.
+    await client.batched((b) => {
+      for (const { field, parentLayerId } of toCreate) {
+        const id = uuidv7();
+        b.spanLayers.create(parentLayerId, field.name, undefined, { id });
+        b.spanLayers.setConfig(id, IGT_NAMESPACE, 'scope', field.scope);
+        layerIds.set(fieldKey(field), id);
+      }
+      queueRest(b, data, change, layers, layerIds, fresh?.config);
+    });
     // The Tagsets section above reads which fields point at which tagset off
     // the project, and that is what gates its "Add values used in this
     // project" button. Without this, pointing a field at a tagset here left
@@ -218,7 +228,7 @@ export const FieldsSettings = ({
         // A field this page showed and someone else removed since.
         if (!layerId) throw changedElsewhere();
         const next = valueOf(field);
-        // A layer created a moment ago has nothing stored yet.
+        // A layer this batch makes has nothing stored yet.
         const layer = layerOf.get(key);
         const stored = layer ? read(layer.config) : null;
         if (next === stored) continue;

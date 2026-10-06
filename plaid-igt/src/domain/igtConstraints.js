@@ -10,6 +10,7 @@
 
 // Relative imports only: project setup (executeSetup.js) runs this from plain
 // node too.
+import { uuidv7 } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE } from './igtConfig.js';
 import { MODES, resolveTagset } from './tagsets.js';
 import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
@@ -47,6 +48,34 @@ export const fieldConstraints = (spanLayerConfig, projectConfig) => {
   return constraints;
 };
 
+/** The rules on the morpheme layer: as wide as a word, one vocabulary link. */
+export const morphemeLayerConstraints = () => [{ type: 'coextensive' }, { type: 'single-link' }];
+
+/** The rules on the word layer: one vocabulary link. */
+export const wordLayerConstraints = () => [{ type: 'single-link' }];
+
+/**
+ * Queue on batch `b` a new field's span layer under `parentLayerId`, with its
+ * scope, its language when `field.lang` says one, and its rules. The layer is
+ * new and empty, so no data can refuse the rules, and since they go in the
+ * batch that makes it, no failure after it leaves the field without them.
+ * Returns the new layer's id.
+ */
+export const queueNewField = (b, parentLayerId, field, projectConfig) => {
+  const id = uuidv7();
+  b.spanLayers.create(parentLayerId, field.name, undefined, { id });
+  b.spanLayers.setConfig(id, IGT_NAMESPACE, 'scope', field.scope);
+  if (field.lang) b.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', field.lang);
+  b.spanLayers.setConstraints(
+    id,
+    IGT_NAMESPACE,
+    fieldConstraints({ [IGT_NAMESPACE]: { scope: field.scope } }, projectConfig),
+    undefined,
+    { expected: null },
+  );
+  return id;
+};
+
 /**
  * Every rule IGT wants on this project's layers, as `ensureLayerConstraints`
  * takes them (plaid-ui/src/lib/layerConstraints.js):
@@ -61,12 +90,10 @@ export const fieldConstraints = (spanLayerConfig, projectConfig) => {
 export const wantedConstraints = (layerInfo, projectConfig) => {
   const out = [];
   if (layerInfo?.morphemeTokenLayer?.id) {
-    out.push(
-      tokenEntry(layerInfo.morphemeTokenLayer, [{ type: 'coextensive' }, { type: 'single-link' }]),
-    );
+    out.push(tokenEntry(layerInfo.morphemeTokenLayer, morphemeLayerConstraints()));
   }
   if (layerInfo?.primaryTokenLayer?.id) {
-    out.push(tokenEntry(layerInfo.primaryTokenLayer, [{ type: 'single-link' }]));
+    out.push(tokenEntry(layerInfo.primaryTokenLayer, wordLayerConstraints()));
   }
   for (const scope of ['word', 'morpheme', 'sentence']) {
     for (const sl of layerInfo?.spanLayers?.[scope] || []) {

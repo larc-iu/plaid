@@ -475,7 +475,15 @@ describe('a resumed setup, field order', () => {
     );
     const result = await setUp(client);
     expect(result.failures).toEqual([]);
-    expect(calls.constraints).toEqual([
+    // POS and Note, made here, hold theirs from the batch that made them.
+    const made = madeOf(calls, 'span').map((c) => c.name);
+    expect(made).toEqual(['POS', 'Note']);
+    expect(calls.constraints.slice(0, 2).map((c) => [c.constraints, c.options])).toEqual([
+      [[{ type: 'single-span' }], { expected: null }],
+      [[{ type: 'single-span' }], { expected: null }],
+    ]);
+    // Then the layers it found.
+    expect(calls.constraints.slice(2)).toEqual([
       {
         kind: 'token',
         id: 'tk-morph',
@@ -524,5 +532,78 @@ describe('a resumed setup, field order', () => {
     );
     await setUp(client);
     expect(calls.shifted).toEqual([]);
+  });
+});
+
+// Nothing declares IGT's rules on open any more (2026-10-06). A setup whose
+// rules step failed after the layers were made left them bare for good.
+describe('a setup whose rules step fails', () => {
+  const FIELDS = {
+    ...SETUP_DATA,
+    vocabulary: { vocabularies: [] },
+    fields: { fields: [{ name: 'Gloss', scope: 'Word', lang: 'en' }] },
+  };
+
+  it('leaves every layer it made holding its rules, from the batch that made it', async () => {
+    const { client, calls } = stub(null);
+    // Which batch each create and each declaration went in.
+    let batchNo = 0;
+    let open = null;
+    const inBatch = [];
+    client.batched = async (fn) => {
+      open = ++batchNo;
+      try {
+        await fn(client);
+      } finally {
+        open = null;
+      }
+      return [];
+    };
+    for (const kind of ['tokenLayers', 'spanLayers']) {
+      const create = client[kind].create;
+      client[kind].create = async (...args) => {
+        const opts = args[kind === 'tokenLayers' ? 5 : 3];
+        inBatch.push({ what: 'create', id: opts?.id, batch: open });
+        return create(...args);
+      };
+      const declare = client[kind].setConstraints;
+      client[kind].setConstraints = async (...args) => {
+        inBatch.push({ what: 'declare', id: args[0], batch: open });
+        return declare(...args);
+      };
+    }
+    // The project read the rules step makes is lost.
+    client.projects.get = async () => {
+      throw Object.assign(new Error('Network error'), { status: 0 });
+    };
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: null,
+      setupData: FIELDS,
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual(['The annotation rules could not be set up: Network error']);
+    const declared = new Map((calls.constraints || []).map((c) => [c.id, c]));
+    const roleOf = (role) =>
+      calls.config.find((c) => c.kind === 'token' && c.key === ROLE_KEY && c.value === role)?.id;
+    const word = roleOf(ROLES.WORD);
+    const morph = roleOf(ROLES.MORPHEME);
+    const gloss = calls.config.find((c) => c.kind === 'span' && c.key === 'scope')?.id;
+    expect(declared.get(word)?.constraints).toEqual([{ type: 'single-link' }]);
+    expect(declared.get(morph)?.constraints).toEqual([
+      { type: 'coextensive' },
+      { type: 'single-link' },
+    ]);
+    expect(declared.get(gloss)?.constraints).toEqual([{ type: 'single-span' }]);
+    for (const id of [word, morph, gloss]) {
+      expect(declared.get(id).options).toEqual({ expected: null });
+      const create = inBatch.find((c) => c.what === 'create' && c.id === id);
+      const declare = inBatch.find((c) => c.what === 'declare' && c.id === id);
+      expect(create?.batch).toBeTruthy();
+      expect(declare?.batch).toBe(create.batch);
+    }
+    // The field's scope and language went in that batch too.
+    expect(calls.config.filter((c) => c.id === gloss).map((c) => c.key)).toEqual(['scope', 'lang']);
   });
 });

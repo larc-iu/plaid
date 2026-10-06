@@ -20,7 +20,7 @@ import {
   IGT_NAMESPACE,
 } from '../../domain/igtConfig.js';
 import { parseFieldName } from '../../domain/fieldNames.js';
-import { fieldConstraints } from '../../domain/igtConstraints.js';
+import { queueNewField } from '../../domain/igtConstraints.js';
 
 /** The annotation scopes a span layer can carry, in the order they are shown. */
 const SCOPES = ['Sentence', 'Word', 'Morpheme'];
@@ -109,31 +109,29 @@ export async function createFields(client, project, fields, onProgress = null) {
     Word: findWordTokenLayer(tokenLayers)?.id,
     Morpheme: findMorphemeTokenLayer(tokenLayers)?.id,
   };
-  const created = [];
-  for (const field of fields) {
+  const planned = fields.map((field) => {
     const parentLayerId = parentFor[field.scope];
     if (!parentLayerId) {
       throw new Error(`This project has no ${field.scope.toLowerCase()} layer to add a field to.`);
     }
-    onProgress?.(`Adding field ${field.name} (${field.scope})`);
-    const layer = await client.spanLayers.create(parentLayerId, field.name);
-    await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'scope', field.scope);
-    // A tier name says what language it is in; record it rather than leave the
-    // next reader to parse the name again (see readFieldLang).
-    if (field.lang) {
-      await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'lang', field.lang);
+    return { field, parentLayerId };
+  });
+  if (!planned.length) return [];
+  // One batch: each field's layer with its scope, its language (a tier name
+  // says what language it is in, see readFieldLang) and its rules, as Settings
+  // makes a field it adds. A new field has no tagset, and no failure leaves a
+  // field without its rules.
+  onProgress?.(
+    fields.length === 1
+      ? `Adding field ${fields[0].name} (${fields[0].scope})`
+      : `Adding ${fields.length} fields`,
+  );
+  const created = [];
+  await client.batched((b) => {
+    for (const { field, parentLayerId } of planned) {
+      created.push({ ...field, id: queueNewField(b, parentLayerId, field, project?.config) });
     }
-    // Its rules, as Settings declares them for a field it adds: one
-    // annotation per token. A new field has no tagset.
-    await client.spanLayers.setConstraints(
-      layer.id,
-      IGT_NAMESPACE,
-      fieldConstraints({ [IGT_NAMESPACE]: { scope: field.scope } }, project?.config),
-      undefined,
-      { expected: null },
-    );
-    created.push({ ...field, id: layer.id ?? layer });
-  }
+  });
   return created;
 }
 

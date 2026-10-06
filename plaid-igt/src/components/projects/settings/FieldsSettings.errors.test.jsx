@@ -37,7 +37,7 @@ const project = () => ({
 });
 
 // A client whose writes are recorded, on the wire or in a batch.
-const fakeClient = ({ refuseCreate = false } = {}) => {
+const fakeClient = ({ refuseCreate = false, refuseBatch = false } = {}) => {
   const calls = [];
   const bundles = (sink) => ({
     tokenLayers: { setConfig: (...a) => sink('tokenLayers.setConfig', a) },
@@ -46,6 +46,7 @@ const fakeClient = ({ refuseCreate = false } = {}) => {
       deleteConfig: (...a) => sink('spanLayers.deleteConfig', a),
       delete: (...a) => sink('spanLayers.delete', a),
       setConstraints: (...a) => sink('spanLayers.setConstraints', a),
+      create: (...a) => sink('spanLayers.create', a),
     },
   });
   const wire = async (kind, args) => calls.push([kind, ...args]);
@@ -56,7 +57,11 @@ const fakeClient = ({ refuseCreate = false } = {}) => {
     batched: async (fn) => {
       const ops = [];
       fn(bundles((kind, args) => ops.push([kind, ...args])));
-      calls.push(['batch', ops.map(([k]) => k)]);
+      calls.push(['batch', ops.map(([k]) => k), ops]);
+      if (refuseCreate && ops.some(([k]) => k === 'spanLayers.create')) {
+        throw Object.assign(new Error('HTTP 500 boom'), { status: 500 });
+      }
+      if (refuseBatch) throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
       return [];
     },
   };
@@ -115,8 +120,8 @@ describe('Settings > Fields when a save is refused', () => {
     expect(notifySuccess).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledTimes(1);
     expect(onProjectUpdate).toHaveBeenCalled();
-    // Nothing after the refused create went out.
-    expect(client.calls.map(([k]) => k)).toEqual(['spanLayers.create']);
+    // The create went in the one batch, and nothing after it went out.
+    expect(client.calls.map(([k]) => k)).toEqual(['batch']);
     await unmount();
   });
 
@@ -130,10 +135,35 @@ describe('Settings > Fields when a save is refused', () => {
     });
     expect(notifySuccess).toHaveBeenCalledTimes(1);
     expect(rowNames(container).some((t) => t.includes('Note2'))).toBe(true);
-    expect(client.calls.map(([k]) => k)).toEqual([
-      'spanLayers.create',
-      'spanLayers.setConfig',
-      'batch',
+    expect(client.calls.map(([k]) => k)).toEqual(['batch']);
+    await unmount();
+  });
+
+  // Nothing declares a field's rules on open any more (2026-10-06). A save
+  // whose layer was made in a request of its own and whose batch was then
+  // refused left the field with no rules until a later Tagsets save.
+  it('sends a new field\u2019s layer, scope and rules in one batch, so a refusal leaves none of them', async () => {
+    const client = fakeClient({ refuseBatch: true });
+    const { step, unmount } = await mount(client);
+    await step(() => typeInto(nameBox(), 'Note2'));
+    await step(async () => {
+      addButton().click();
+      await settle();
+    });
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    // No write went out on its own: every one was in the refused batch.
+    expect(client.calls.map(([k]) => k)).toEqual(['batch']);
+    const ops = client.calls[0][2];
+    const [, parent, name, , { id }] = ops.find(([k]) => k === 'spanLayers.create');
+    expect([parent, name]).toEqual(['word', 'Note2']);
+    expect(ops).toContainEqual(['spanLayers.setConfig', id, 'igt', 'scope', 'Word']);
+    expect(ops).toContainEqual([
+      'spanLayers.setConstraints',
+      id,
+      'igt',
+      [{ type: 'single-span' }],
+      undefined,
+      { expected: null },
     ]);
     await unmount();
   });
@@ -175,12 +205,16 @@ describe('Settings > Fields with a save still on its way', () => {
     const held = new Promise((r) => (release = r));
     const client = fakeClient();
     client.projects.get = async () => structuredClone(server);
-    client.spanLayers.create = async (parent, name) => {
-      client.calls.push(['spanLayers.create', parent, name]);
-      if (name === 'Note2') await held;
-      const layer = { id: `layer-${name}`, name, config: { igt: { scope: 'Word' } } };
-      word.spanLayers.push(layer);
-      return layer;
+    const batched = client.batched;
+    client.batched = async (fn) => {
+      await batched(fn);
+      const ops = client.calls.at(-1)[2];
+      for (const [k, , name, , { id } = {}] of ops) {
+        if (k !== 'spanLayers.create') continue;
+        if (name === 'Note2') await held;
+        word.spanLayers.push({ id, name, config: { igt: { scope: 'Word' } } });
+      }
+      return [];
     };
     const { step, unmount } = await mount(client);
     await step(() => typeInto(nameBox(), 'Note2'));
@@ -197,7 +231,9 @@ describe('Settings > Fields with a save still on its way', () => {
       release();
       await settle();
     });
-    const made = client.calls.filter(([k]) => k === 'spanLayers.create').map((c) => c[2]);
+    const made = client.calls
+      .filter(([k]) => k === 'batch')
+      .flatMap(([, , ops]) => ops.filter(([k]) => k === 'spanLayers.create').map((op) => op[2]));
     expect(made).toEqual(['Note2', 'Note3']);
     await unmount();
   });

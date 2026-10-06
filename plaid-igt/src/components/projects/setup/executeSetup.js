@@ -21,6 +21,7 @@ import {
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
+  uuidv7,
 } from '@larc-iu/plaid-client';
 // Relative (not @/) import keeps this module loadable from plain-node e2e
 // scripts, which drive the real setup against the live core.
@@ -37,7 +38,12 @@ import {
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
 import { getIgtLayerInfo } from '../../../domain/layerInfo.js';
-import { wantedConstraints } from '../../../domain/igtConstraints.js';
+import {
+  morphemeLayerConstraints,
+  queueNewField,
+  wantedConstraints,
+  wordLayerConstraints,
+} from '../../../domain/igtConstraints.js';
 import { ensureLayerConstraints } from '../../../../../plaid-ui/src/lib/layerConstraints.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
@@ -45,9 +51,11 @@ import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 // so it is also what identifies one this setup made before it was tagged.
 const BASELINE_LAYER_NAME = 'Main Text';
 
-// ONE RULE FOR "COMPLETE". Everything setup makes takes two requests: a
-// create, and a write that says what the thing is (the role tag on a text or
-// token layer, the link on a vocabulary). A lost response between the two
+// ONE RULE FOR "COMPLETE". A text layer and a vocabulary take two requests: a
+// create, and a write that says what the thing is (the role tag on the text
+// layer, the link on a vocabulary). A token or span layer is made in one batch
+// with its tag and its rules, but an earlier run may have made one in two
+// requests the same way. A lost response between the two
 // leaves something no later look for the finished shape can see, and a resume
 // that only looks for the finished shape makes a second one and strands the
 // first. So every kind is looked for twice: first as finished, then as
@@ -214,11 +222,25 @@ async function executeProjectSetupImpl({
       parentId,
       pct,
       msg,
+      rules = null,
     ) => {
       let layer = found || (await untagged(name, overlapMode, parentId));
       if (!layer) {
+        // A layer made here is made in one batch with its role, what a split
+        // keeps, and IGT's rules for it. It is empty, so no data can refuse
+        // the rules, and no failure after the batch leaves it without them.
         updateProgress(pct, msg);
-        layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
+        const id = uuidv7();
+        const plaid = { [ROLE_KEY]: role, [PRESERVE_ON_SPLIT_KEY]: [...PROVENANCE_KEYS] };
+        await client.batched((b) => {
+          b.tokenLayers.create(textLayerId, name, overlapMode, parentId, undefined, { id });
+          b.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
+          b.tokenLayers.setConfig(id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [...PROVENANCE_KEYS]);
+          if (rules) {
+            b.tokenLayers.setConstraints(id, IGT_NAMESPACE, rules, undefined, { expected: null });
+          }
+        });
+        layer = { id, name, config: { [PLAID_NAMESPACE]: plaid } };
         resources[resourceKey] = layer;
       }
       const config = layer.config?.[PLAID_NAMESPACE] || {};
@@ -259,6 +281,7 @@ async function executeProjectSetupImpl({
       sentenceTokenLayerId,
       32,
       'Creating token layer…',
+      wordLayerConstraints(),
     );
 
     morphemeLayerId = await ensureTokenLayer(
@@ -270,6 +293,7 @@ async function executeProjectSetupImpl({
       tokenLayerId,
       35,
       'Creating morpheme layer…',
+      morphemeLayerConstraints(),
     );
 
     await ensureTokenLayer(
@@ -333,19 +357,25 @@ async function executeProjectSetupImpl({
           const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
             (sl) => sl.name === field.name,
           );
-          const spanLayer = existing ?? (await client.spanLayers.create(parentLayerId, field.name));
-          if (!existing) {
-            siblings.set(parentLayerId, [...(siblings.get(parentLayerId) || []), spanLayer.id]);
-          }
-          fieldIndexOf.set(spanLayer.id, fieldIndexOf.size);
-
-          await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
           // What language its values are in, when the caller knows. An importer
           // reading a format that says so (FLEx writing systems, ELAN tier
           // names) is the only one that does.
-          if (field.lang) {
-            await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'lang', field.lang);
+          let spanLayer = existing;
+          if (existing) {
+            await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, 'scope', field.scope);
+            if (field.lang) {
+              await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, 'lang', field.lang);
+            }
+          } else {
+            // Made in one batch with its scope, language and rules.
+            let id;
+            await client.batched((b) => {
+              id = queueNewField(b, parentLayerId, field, existingProject?.config);
+            });
+            spanLayer = { id, name: field.name };
+            siblings.set(parentLayerId, [...(siblings.get(parentLayerId) || []), id]);
           }
+          fieldIndexOf.set(spanLayer.id, fieldIndexOf.size);
           createdSpanLayers.push(spanLayer);
         } catch (fieldError) {
           console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
@@ -518,13 +548,14 @@ async function executeProjectSetupImpl({
     enabledFields.map((field) => ({ name: field.name })),
   );
 
-  // Step 9b: the layer rules (domain/igtConstraints.js), in force from the
-  // start: one annotation per token in each field, one vocabulary link per
-  // word and morpheme, morphemes as wide as their word, a closed tagset's
-  // list. A layer this setup adopted may hold data a rule forbids: the
-  // server repairs what it can first, and a rule the data still breaks (an
-  // off-list value) is left out, which is not a failed step. Nothing
-  // declares it later on its own.
+  // Step 9b: the layer rules (domain/igtConstraints.js) on the layers this
+  // setup found: one annotation per token in each field, one vocabulary link
+  // per word and morpheme, morphemes as wide as their word, a closed tagset's
+  // list. The layers it made hold theirs from the batch that made them, so
+  // nothing is written for those here. A layer it adopted may hold data a
+  // rule forbids: the server repairs what it can first, and a rule the data
+  // still breaks (an off-list value) is left out, which is not a failed step.
+  // Nothing declares it later on its own.
   updateProgress(85, 'Setting up annotation rules…');
   try {
     const project = await client.projects.get(currentProjectId);
