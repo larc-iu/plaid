@@ -3,9 +3,12 @@ writes the outcome back before reporting, so the reply lands whether or not
 the requester is still listening; a cancelled turn and a moved-on
 conversation are settled the same way."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from fixtures import FakeClient
+from plaid_client import CancelScope, ServiceCancelled
 
 from plaid_agent.core import service as service_mod
 from plaid_agent.core.agent import ModelConfig, TurnCancelled, TurnResult
@@ -15,13 +18,23 @@ from plaid_agent.igt.toolkit import tools_for as igt_tools_for
 
 
 class Helper:
+    """plaid_client's ResponseHelper as a turn meets it: ``progress`` is a
+    cancellation checkpoint that raises ServiceCancelled once ``cancelled`` is
+    set, except inside ``critical()``, as the real one does. A helper whose
+    progress never raised hid a stop that landed inside a tool (A2-UD-1)."""
+
     def __init__(self, request_id='r1', requester_id='u@x'):
         self.request_id = request_id
         self.requester_id = requester_id
         self.cancelled = False
+        self._scope = CancelScope(lambda: self.cancelled)
         self.progress_log, self.done, self.errors = [], [], []
 
+    def critical(self):
+        return self._scope.critical()
+
     def progress(self, pct, msg='', **extra):
+        self._scope.raise_if_cancelled()
         self.progress_log.append((pct, msg))
         self.extras = extra
 
@@ -104,6 +117,99 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
                     'service': 'igt:assist:fake'}
     assert conv['messages'] == [], 'the unanswered message leaves the transcript so a retry sends it once'
     assert meta['pending'] is None
+
+
+def test_a_stop_seen_while_a_tool_reports_progress_is_recorded_as_a_stop(monkeypatch):
+    """A2-UD-1: the reader presses Stop while a tool walks the corpus. The
+    tool's next progress line is the client's checkpoint, which raises
+    ServiceCancelled (not an Exception). The record gets the Stopped item with
+    the steps made before it, the question leaves the transcript, and the
+    request ends as stopped rather than escaping to the client."""
+    from plaid_agent.core import agent
+    from plaid_agent.core.agent import Toolkit
+    from plaid_agent.core.trace import READ, Tracer
+
+    client = FakeClient()
+    store = _seed(client)
+    helper = Helper()
+    calls = [SimpleNamespace(id=f'c{i}', type='function',
+                             function=SimpleNamespace(name='search', arguments=f'{{"q": "{i}"}}'))
+             for i in (1, 2)]
+    resp = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=None, tool_calls=calls),
+                                                    finish_reason='tool_calls')], usage=None)
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **k: resp)
+
+    def call_tool(ws, name, args):
+        if args['q'] == '2':
+            helper.cancelled = True  # Stop, while this tool reads its next document
+            ws.on_progress('Reading "doc 2"…')
+        return 'found it'
+
+    svc = _service()
+    svc.kit = Toolkit(tools_for=lambda ws: [], call_tool=call_tool,
+                      tracer=Tracer(kind=lambda n: READ, describe=lambda n, a: 'Searched',
+                                    progress=lambda n, a: 'Searching…'))
+    svc.cfg = agent.ModelConfig(model='fake/model', stream=False)
+    svc.process_request(_request(client), helper)
+
+    assert helper.done == [{'kind': 'stopped'}] and not helper.errors
+    conv, meta = store.load('c1')
+    assert [d['kind'] for d in conv['display']] == ['user', 'error']
+    item = conv['display'][-1]
+    assert item['stopped'] is True and item['text'] == 'Stopped.'
+    assert [c['id'] for c in item['calls']] == ['c1'] and len(item['steps']) == 1
+    assert conv['messages'] == []
+    assert meta['pending'] is None
+
+
+def test_a_stop_while_the_turn_is_set_up_is_recorded_at_its_first_check(monkeypatch):
+    """A progress line sent while the turn is set up (a document or another
+    project loading) does not end the request with nothing recorded: the stop
+    is held off there and seen by the turn itself."""
+    client = FakeClient()
+    store = _seed(client)
+    helper = Helper()
+    svc = _service()
+    real = svc.make_workspace
+
+    def make_workspace(client, project, on_progress):
+        ws = real(client, project, on_progress)
+        helper.cancelled = True
+        on_progress('Loading…')
+        return ws
+
+    svc.make_workspace = make_workspace
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        assert cancelled() is True
+        raise TurnCancelled()
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    svc.process_request(_request(client), helper)
+    assert helper.done == [{'kind': 'stopped'}]
+    conv, meta = store.load('c1')
+    assert conv['display'][-1]['stopped'] is True and meta['pending'] is None
+
+
+def test_a_stop_after_the_answer_was_written_still_reports_the_answer(monkeypatch):
+    client = FakeClient()
+    store = _seed(client)
+    helper = Helper()
+    real_save = store.save
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
+
+    def save(self, *a):
+        real_save(*a)
+        helper.cancelled = True  # Stop lands as the record is written
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(ConversationStore, 'save', save)
+    _service().process_request(_request(client), helper)
+    assert helper.done[0]['kind'] == 'turn' and helper.done[0]['message'] == 'Two words.'
+    conv, _meta = store.load('c1')
+    assert conv['display'][-1]['kind'] == 'assistant'
 
 
 def test_a_failed_turn_is_written_as_an_error_item(monkeypatch):

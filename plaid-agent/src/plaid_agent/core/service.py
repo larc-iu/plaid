@@ -51,6 +51,7 @@ working assistant service.
 """
 
 import argparse
+import contextlib
 import hashlib
 import importlib.metadata
 import json
@@ -62,7 +63,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
 
-from plaid_client import BaseService, DocumentLockLost, TASKS, service_source
+from plaid_client import BaseService, DocumentLockLost, ServiceCancelled, TASKS, service_source
 from plaid_client.http import PlaidAPIError
 from plaid_client.provenance import is_reviewed
 from plaid_client.service import requester_message
@@ -135,6 +136,14 @@ def agent_version(texts: List[str], tools: List[Dict[str, Any]],
     text = json.dumps([list(texts), list(tools), [list(s) for s in sources]],
                       sort_keys=True, ensure_ascii=False)
     return f'{AGENT_VERSION}+{hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]}'
+
+
+def _held(response_helper):
+    """The client's hold on cancellation (``ResponseHelper.critical``), or
+    nothing for a helper that has none: a progress line sent inside it does
+    not raise, and the stop is seen at the next checkpoint after it."""
+    hold = getattr(response_helper, 'critical', None)
+    return hold() if callable(hold) else contextlib.nullcontext()
 
 
 class BaseAssistantService(BaseService):
@@ -523,48 +532,57 @@ class BaseAssistantService(BaseService):
         def cancelled() -> bool:
             return bool(getattr(response_helper, 'cancelled', False))
 
-        ws = self.make_workspace(client, project, send)
-        ws.requester_id = store.user_id
-        # What the user attached to this conversation, and the note in front of
-        # the message it came on. The note is written BEFORE the place stamp,
-        # because that one has to stay at the very start of the message: it is
-        # found again by matching there (see `stamped`).
-        ws.files = Attachments.of(store, conv_id, conv['display'])
-        # What read_url fetches is stored beside the conversation as a file.
-        ws.keeper = FileKeeper(store, conv_id)
-        last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
-        transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
-        # The other projects the user added to the conversation, read from their
-        # own message and nowhere else, and only those the requester's token
-        # reaches (the server scoped it to them). Stamped onto the question when the set
-        # changed, after the files note and before the place stamp, which has to
-        # stay first on the line.
-        reach = self.open_reach(client, ws, (last_user or {}).get('projects'),
-                                (request_data or {}).get('delegated_projects') or ())
-        transcript = projects_stamped(transcript, reach.labels() if reach else [project.name])
-        # Where this question was asked from, stamped onto the question itself.
-        # The panel outlives the screen it was opened from, so one thread can
-        # hold questions asked from several places, and the system note below
-        # only ever describes the LAST of them. Without the stamp the model
-        # reads turn 1's "this sentence" as being about turn 5's document.
-        where = self.place(ws, (request_data or {}).get('where'))
-        transcript = stamped(transcript, where[:2] if where else None)
-        if self.web_cfg is not None:
-            ws.web = session_for(self.web_cfg, transcript)
-        system = self.system_prompt(project, web=ws.web is not None)
-        if reach is not None:
-            system = f'{system}\n\n{self.other_projects_note(reach)}'
-        # Asked from inside a screen that is about one thing: say which, so an
-        # unqualified question is about it. Nothing is taken away.
-        if where and where[2]:
-            system = f'{system}\n\n{where[2]}'
-        # What every call of the next turn sends besides the transcript, taken
-        # off the window before the transcript is held to its share of it.
-        overhead = (system, self.kit.tools_for(ws))
+        # A stop asked for while the turn is being set up (the progress
+        # lines sent while a document or another project loads are the
+        # client's cancellation checkpoints) takes effect at the turn's first
+        # check, where it is recorded with everything else a stop records.
+        with _held(response_helper):
+            ws = self.make_workspace(client, project, send)
+            ws.requester_id = store.user_id
+            # What the user attached to this conversation, and the note in front of
+            # the message it came on. The note is written BEFORE the place stamp,
+            # because that one has to stay at the very start of the message: it is
+            # found again by matching there (see `stamped`).
+            ws.files = Attachments.of(store, conv_id, conv['display'])
+            # What read_url fetches is stored beside the conversation as a file.
+            ws.keeper = FileKeeper(store, conv_id)
+            last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
+            transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
+            # The other projects the user added to the conversation, read from their
+            # own message and nowhere else, and only those the requester's token
+            # reaches (the server scoped it to them). Stamped onto the question when the set
+            # changed, after the files note and before the place stamp, which has to
+            # stay first on the line.
+            reach = self.open_reach(client, ws, (last_user or {}).get('projects'),
+                                    (request_data or {}).get('delegated_projects') or ())
+            transcript = projects_stamped(transcript, reach.labels() if reach else [project.name])
+            # Where this question was asked from, stamped onto the question itself.
+            # The panel outlives the screen it was opened from, so one thread can
+            # hold questions asked from several places, and the system note below
+            # only ever describes the LAST of them. Without the stamp the model
+            # reads turn 1's "this sentence" as being about turn 5's document.
+            where = self.place(ws, (request_data or {}).get('where'))
+            transcript = stamped(transcript, where[:2] if where else None)
+            if self.web_cfg is not None:
+                ws.web = session_for(self.web_cfg, transcript)
+            system = self.system_prompt(project, web=ws.web is not None)
+            if reach is not None:
+                system = f'{system}\n\n{self.other_projects_note(reach)}'
+            # Asked from inside a screen that is about one thing: say which, so an
+            # unqualified question is about it. Nothing is taken away.
+            if where and where[2]:
+                system = f'{system}\n\n{where[2]}'
+            # What every call of the next turn sends besides the transcript, taken
+            # off the window before the transcript is held to its share of it.
+            overhead = (system, self.kit.tools_for(ws))
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
-        except TurnCancelled as e:
+        except (TurnCancelled, ServiceCancelled) as e:
+            # Seen by the turn between its steps (TurnCancelled), or by the
+            # client when a tool reported progress (ServiceCancelled, which
+            # the client would otherwise end the request on, with nothing in
+            # the record and the question left unanswered in the transcript).
             self._release(ws)
             ws.keeper.discard()
             # The user's message leaves the model transcript (a retry must not
@@ -606,6 +624,10 @@ class BaseAssistantService(BaseService):
             if window:
                 usage['window'] = window
         plan = ws.plan_payload()
+        if plan and reach is not None:
+            # The project the plan writes in, which the card names wherever
+            # the conversation reads other projects too (A4-CROSS-1).
+            plan['project'] = reach.plan_project()
         if plan:
             plan['proposed'], plan['proposed_count'] = proposed_changes(plan.get('ops') or [],
                                                                         *self.proposed_keys)
@@ -631,34 +653,34 @@ class BaseAssistantService(BaseService):
                                   build_meta(meta, conv_id, done, self.service_id, model, version=self.version),
                                   request_id)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it
-            # This write is the LAST thing a turn does, and it sat outside the
-            # try that catches everything else, so a refused save (too large,
-            # a network blip) threw here: the finished reply never reached the
-            # record and the pending marker was never cleared, which leaves
-            # the card undecidable. The answer is already computed, so hand it
-            # over and say the record did not take it.
+            # This write is the LAST thing a turn does, and a refused save (too
+            # large, a server error, a network blip) must not lose the answer
+            # that is already computed. The request ends ONCE: the server
+            # finishes a request on its first terminal event, so an error sent
+            # before the answer took the answer down with it. The answer goes
+            # out as the result, whole (`item`, as the record would have held
+            # it), with a line saying the record did not take it, and the page
+            # that asked writes it into the record itself. What this turn
+            # stored beside the conversation is kept, since that item names it.
             traceback.print_exc()
             if outcome_unknown(e):
-                said = ('The answer is ready, but saving the conversation got no answer. '
-                        'It is below, and this turn may not be in the record.')
+                said = 'Saving the conversation got no answer, so this answer may not be in the record.'
             else:
-                # The reply that names what this turn stored is not in the
-                # record, so nothing would ever read or delete it.
-                ws.keeper.discard()
-                said = (f'The answer is ready but the conversation could not be saved: '
+                said = (f'The conversation could not be saved: '
                         f'{requester_message(e, secrets=self.REQUEST_SECRETS).rstrip(".")}. '
-                        f'It is below, and this turn is not in the record.')
-            response_helper.error(said)
-            response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': None,
-                                      'citations': item['citations'], 'steps': turn.steps,
-                                      'steps_summary': turn.summary})
+                        f'This answer is not in the record.')
+            response_helper.complete({'kind': 'turn', 'message': turn.text, 'warning': said, 'item': item})
             return
         if not written:
             # The conversation moved on (stopped, resent or deleted), so the
             # reply was dropped, and with it the only reference to what this
             # turn stored.
             ws.keeper.discard()
-        response_helper.progress(100, 'Done')
+        try:
+            response_helper.progress(100, 'Done')
+        except ServiceCancelled:
+            # Stopped after the answer was written: it is the outcome all the same.
+            pass
         response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
                                   'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})
 

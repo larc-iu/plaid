@@ -41,13 +41,18 @@ def counted_phrase(n: int) -> str:
 def entities(obj: Any, path: tuple = ()) -> Iterable[Tuple[str, Any]]:
     """(id, metadata) for every parsed thing in ``obj`` that has both, which
     is every thing that can carry provenance: a span, a relation, a link, a
-    token. A field declared ``compare=False`` is a cache and is not walked."""
+    token. A field declared ``compare=False`` is a cache and is not walked.
+
+    A thing whose ``value`` is empty is a placeholder (a field nobody has
+    filled), so filling it replaces nobody's work, whoever made the empty
+    slot: it is left out."""
     if obj is None or isinstance(obj, (str, int, float, bool)) or id(obj) in path:
         return
     path = path + (id(obj),)
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         names = {f.name for f in dataclasses.fields(obj)}
-        if 'id' in names and 'metadata' in names and isinstance(obj.id, str):
+        empty = 'value' in names and obj.value in ('', None)
+        if 'id' in names and 'metadata' in names and isinstance(obj.id, str) and not empty:
             yield obj.id, obj.metadata
         for f in dataclasses.fields(obj):
             if f.compare:

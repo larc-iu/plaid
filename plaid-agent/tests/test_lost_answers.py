@@ -112,6 +112,52 @@ def test_a_conversation_save_whose_answer_was_lost_is_sent_again():
     assert meta == {'id': 'c1', 'pending': None}
 
 
+def test_a_save_while_the_server_restarts_waits_for_it(monkeypatch):
+    """A1-IGT-1: a turn that ended while the server restarted saved into a
+    proxy's 502 and lost the answer, though the server was back fifteen
+    seconds later. Reads and writes of the record wait the restart out."""
+    from plaid_agent.core import conversation as conversation_mod
+    waited = []
+    monkeypatch.setattr(conversation_mod, '_pause', waited.append)
+    client = FakeClient()
+    store = ConversationStore(client, 'u@x', 'p1', 'igt')
+    real_put, real_get = client.user_data.put, client.user_data.get
+    away = {'put': 3, 'get': 2}
+
+    def put(user_id, key, value):
+        if away['put']:
+            away['put'] -= 1
+            raise PlaidAPIError('HTTP 502 Bad Gateway', status=502, method='PUT')
+        return real_put(user_id, key, value)
+
+    def get(user_id, key):
+        if away['get']:
+            away['get'] -= 1
+            raise PlaidAPIError('HTTP 503 Unavailable', status=503, method='GET')
+        return real_get(user_id, key)
+
+    client.user_data.put, client.user_data.get = put, get
+    store.save('c1', {'messages': [], 'display': []}, {'id': 'c1', 'pending': None})
+    assert store.load('c1')[1] == {'id': 'c1', 'pending': None}
+    assert waited == [1.0, 2.0, 4.0, 1.0, 2.0]
+
+
+def test_a_server_away_for_good_is_given_up_on(monkeypatch):
+    from plaid_agent.core import conversation as conversation_mod
+    waited = []
+    monkeypatch.setattr(conversation_mod, '_pause', waited.append)
+    client = FakeClient()
+    store = ConversationStore(client, 'u@x', 'p1', 'igt')
+
+    def put(user_id, key, value):
+        raise PlaidAPIError('HTTP 504 Gateway Timeout', status=504, method='PUT')
+
+    client.user_data.put = put
+    with pytest.raises(PlaidAPIError):
+        store.save('c1', {'messages': [], 'display': []}, {'id': 'c1'})
+    assert sum(waited) >= conversation_mod.SERVER_AWAY_S and len(waited) < 20
+
+
 def test_a_refused_conversation_save_is_not_sent_again():
     client = FakeClient()
     store = ConversationStore(client, 'u@x', 'p1', 'igt')
@@ -139,17 +185,41 @@ def test_a_save_that_failed_says_so_with_one_period(monkeypatch):
         PlaidAPIError('HTTP 413 The value is too large.', status=413, method='PUT')))
     helper = Helper()
     _service().process_request(_request(client), helper)
-    [said] = helper.errors
-    assert '..' not in said
-    assert said == ('The answer is ready but the conversation could not be saved: HTTP 413 The '
-                    'value is too large. It is below, and this turn is not in the record.')
+    [done] = helper.done
+    assert '..' not in done['warning']
+    assert done['warning'] == ('The conversation could not be saved: HTTP 413 The value is too large. '
+                               'This answer is not in the record.')
 
     monkeypatch.setattr(ConversationStore, 'save', lambda self, *a: (_ for _ in ()).throw(
         _lost('PUT', '/api/v1/users/u@x/data/k')))
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert helper.errors == ['The answer is ready, but saving the conversation got no answer. '
-                             'It is below, and this turn may not be in the record.']
+    assert helper.done[0]['warning'] == ('Saving the conversation got no answer, so this answer may not '
+                                         'be in the record.')
+
+
+def test_a_failed_final_save_ends_the_request_once_with_the_answer(monkeypatch):
+    """A2-UD-2: the server finishes a request on its first terminal event, so
+    an error sent before the answer refused the answer that followed it. The
+    request now ends once, with the answer whole (the item the record would
+    have held, plan and all) for the page to write, and no error."""
+    client = FakeClient()
+    _seed(client)
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(ConversationStore, 'save', lambda self, *a: (_ for _ in ()).throw(
+        PlaidAPIError('HTTP 500 Internal error', status=500, method='PUT')))
+    helper = Helper()
+    _service().process_request(_request(client), helper)
+    assert helper.errors == []
+    [done] = helper.done
+    assert done['kind'] == 'turn' and done['message'] == 'Two words.'
+    item = done['item']
+    assert item['kind'] == 'assistant' and item['text'] == 'Two words.' and item['created_at']
+    assert item['service'] == 'igt:assist:fake' and 'plan' in item
 
 
 def test_a_plan_over_one_document_writes_at_the_version_it_had_once_held(spec):

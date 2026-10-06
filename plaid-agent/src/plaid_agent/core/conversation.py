@@ -26,6 +26,7 @@ them on the wire, so both sides read one record.
 """
 
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -54,6 +55,33 @@ CONVERSATION_BUDGET = 700_000
 RECORD_HEADROOM = 0.9
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 TITLE_MAX = 60
+
+
+# How long a read or a write of the record waits out a server that is away,
+# in seconds: restarting (a proxy's 502, 503 or 504) or not answering at all.
+# A turn that ends while the server restarts is minutes of work, and its
+# answer is written only here: a save that gave up at once lost it although
+# the server was back fifteen seconds later.
+SERVER_AWAY_S = 120
+_AWAY = (None, 0, 502, 503, 504)
+_pause = time.sleep
+
+
+def _patiently(call):
+    """``call()``, tried again while the server is away, up to
+    :data:`SERVER_AWAY_S`. Any other refusal is raised at once. A put
+    replaces the whole value, so sending it again stores what sending it once
+    does."""
+    waited, delay = 0.0, 1.0
+    while True:
+        try:
+            return call()
+        except PlaidAPIError as e:
+            if e.status not in _AWAY or waited >= SERVER_AWAY_S:
+                raise
+        _pause(delay)
+        waited += delay
+        delay = min(delay * 2, 15.0)
 
 
 def conv_key(app: str, project_id: str, conv_id: str) -> str:
@@ -117,17 +145,12 @@ class ConversationStore:
         self._put(meta_key(self.app, self.project_id, conv_id), meta)
 
     def _put(self, key: str, value: Any) -> None:
-        """One value, sent again once when its answer was lost. A put replaces
-        the whole value, so sending it twice stores what sending it once
-        does. Without this a lost answer to the transcript's put left the
-        sidebar entry unwritten, and the turn read as unfinished although it
-        was stored, so Retry asked the model the same question twice."""
-        try:
-            self.client.user_data.put(self.user_id, key, value)
-        except PlaidAPIError as e:
-            if e.status:
-                raise
-            self.client.user_data.put(self.user_id, key, value)
+        """One value, sent again while the server is away (`_patiently`).
+        Without this a lost answer to the transcript's put left the sidebar
+        entry unwritten, and the turn read as unfinished although it was
+        stored, so Retry asked the model the same question twice. And a turn
+        that ended while the server restarted lost its answer."""
+        _patiently(lambda: self.client.user_data.put(self.user_id, key, value))
 
     def read(self, key: str) -> Any:
         """One value under this user's keys, whatever JSON it is, or None when
@@ -135,7 +158,7 @@ class ConversationStore:
         thing stored under its own prefix: the files attached to it are stored
         beside it (see :mod:`.files`), as plain strings rather than objects."""
         try:
-            entry = self.client.user_data.get(self.user_id, key)
+            entry = _patiently(lambda: self.client.user_data.get(self.user_id, key))
         except PlaidAPIError as e:
             if e.status == 404:
                 return None

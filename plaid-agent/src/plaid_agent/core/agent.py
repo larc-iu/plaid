@@ -22,6 +22,7 @@ import litellm
 # What passes, what a timeout is and how a call is tried again are the model
 # services' own (one loop for every caller of a model). RETRIES and
 # TIMEOUT_RETRIES are imported for the docstrings and tests that name them.
+from plaid_client import ServiceCancelled
 from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
 from .tools import truncate
@@ -589,12 +590,15 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     when a new model call starts).
 
     A turn that ends with an exception (failed, or stopped) carries the tool
-    calls it made on it, for the record (:func:`turn_trace`)."""
+    calls it made on it, for the record (:func:`turn_trace`). A stop seen by
+    the client's own checkpoint (a progress line sent from inside a tool
+    raises :class:`ServiceCancelled`, which is not an ``Exception``) carries
+    them too."""
     trace: List[Dict[str, Any]] = []
     calls: List[Dict[str, Any]] = []
     try:
         return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, calls)
-    except Exception as e:
+    except (Exception, ServiceCancelled) as e:
         try:
             e.turn_steps, e.turn_calls = trace, calls
         except AttributeError:  # an exception type that takes no attributes keeps none

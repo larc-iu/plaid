@@ -191,3 +191,14 @@ def test_ud_a_head_that_replaces_a_persons_relation_is_flagged():
     ws, run = _ud(_stamped(ud_fx.document_raw(), 'r-4', MACHINE))
     run('set_head', ref='s1.w5', head=4, deprel='punct')
     assert _flags(ws) == [False]
+
+
+def test_ud_filling_an_empty_lemma_a_person_left_replaces_nothing():
+    """A2-UD polish: the arcs of an LVC sample hang on lemma spans whose value
+    is "" with no machine provenance. Filling one is not replacing anyone's
+    work, so its row is not flagged."""
+    raw = copy.deepcopy(ud_fx.document_raw())
+    _find(raw, 'sp-l1')['value'] = ''
+    ws, run = _ud(raw)
+    run('set_field', refs=['s1.w1'], field='lemma', value='irse')
+    assert _flags(ws) == [False]
