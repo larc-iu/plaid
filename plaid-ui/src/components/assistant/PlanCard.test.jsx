@@ -319,3 +319,33 @@ describe('a plan a later one replaced', () => {
     expect(md).toContain('(Replaced by a later plan.)');
   });
 });
+
+describe('a plan read by someone other than its owner', () => {
+  // The admin area draws a person's conversation with the chat's own card.
+  it('shows the status and the changes and offers no decision, in every state', async () => {
+    for (const [status, interrupted] of [
+      [null, false],
+      [null, true],
+      ['stale', false],
+    ]) {
+      const view = await mount(plan([{ label: 's1 Gloss = "x"' }]), {
+        status,
+        interrupted,
+        readOnly: true,
+      });
+      expect(view.container.textContent).toContain('s1 Gloss = "x"');
+      expect(all(view.container, 'button')).toEqual([]);
+      expect(view.container.querySelector('input[type=checkbox]')).toBeNull();
+      expect(view.container.textContent).not.toContain('Ask again');
+      await view.unmount();
+    }
+  });
+
+  it('says a row as the adapter words it', async () => {
+    const view = await mount(plan([{ label: 's2.w1 lemma = kitab', change: 'lemma = kitab' }]), {
+      adapter: { ...adapter, rowText: (row) => row.label },
+    });
+    expect(view.container.textContent).toContain('s2.w1 lemma = kitab');
+    await view.unmount();
+  });
+});

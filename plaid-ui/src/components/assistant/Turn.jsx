@@ -151,6 +151,8 @@ export const Turn = ({
   // The project a plan on this reply writes in, when the conversation reads
   // others at this turn (PlanCard `planProject`).
   planProject = null,
+  // Drawn for someone other than its owner: a plan offers no decision.
+  readOnly = false,
 }) => {
   if (item.kind === 'user') {
     return (
@@ -322,6 +324,7 @@ export const Turn = ({
             onDiscard={onDiscard}
             onOpen={onOpenPlan}
             planProject={planProject}
+            readOnly={readOnly}
           />
         )}
       </div>

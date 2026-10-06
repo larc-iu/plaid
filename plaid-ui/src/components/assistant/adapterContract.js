@@ -41,6 +41,8 @@ export const ADAPTER_MEMBERS = [
   // behind the panel instead of navigating.
   'parseCitationHref',
 ];
+// Optional: `rowText(row)`, what a plan row says beside its place, where the
+// default (`change`, else `label`) does not fit (PLAIN_ASSISTANT).
 
 export const missingFromAdapter = (adapter) =>
   adapter ? ADAPTER_MEMBERS.filter((k) => adapter[k] == null) : ADAPTER_MEMBERS;

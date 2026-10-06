@@ -8,10 +8,16 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError, humanizeError } from '@/utils/feedback';
-import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
-import { conversationToMarkdown } from '@ui/components/assistant/exportMarkdown.js';
+import { Turn } from '@ui/components/assistant/Turn.jsx';
+import { RetryLine } from '@ui/components/assistant/RetryLine.jsx';
+import { UsageMeter } from '@ui/components/assistant/UsageMeter.jsx';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { ExportMenu } from '@ui/components/assistant/ConversationList.jsx';
+import { hidesStopped, retryNote } from '@ui/components/assistant/resume.js';
+import { toolResults, turnContext } from '@ui/components/assistant/transcript.js';
+import { latestUsage, totalSpend } from '@ui/components/assistant/usage.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
-import { PLAIN_CITATIONS } from '@ui/components/assistant/plainCitations.js';
+import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
 import { textIncludes } from '@ui/domain/collation.js';
 
 // Every assistant conversation on the instance. A conversation is private to
@@ -50,32 +56,30 @@ const parseKey = (key) => {
 
 const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:conv:${convId}`;
 
+// The conversation as its owner sees it in the chat, drawn by the chat's own
+// `Turn`, and read-only: a plan shows its status and changes and offers no
+// decision, there is no composer and no Retry, and nothing here writes to the
+// owner's record or watches it (no settling, no pending clears, no polling).
+// One read of the transcript when it opens, and that is all.
+//
+// Another app's conversation is drawn with PLAIN_ASSISTANT: its citations as
+// the plain place they name, its plan rows by their stored labels, and no
+// links into an editor this app cannot address.
 const ConversationDetail = ({ client, row, onBack }) => {
-  const [markdown, setMarkdown] = useState(null);
+  const [conv, setConv] = useState(null);
   const [error, setError] = useState(null);
+  const adapter = row.app === OWN_APP ? IGT_ASSISTANT : PLAIN_ASSISTANT;
 
   useEffect(() => {
     let live = true;
-    setMarkdown(null);
+    setConv(null);
     setError(null);
     client.userData
       .get(row.userId, convKeyFor(row.app, row.projectId, row.convId))
       .then((entry) => {
         if (!live) return;
         const value = entry?.value || {};
-        // The same rendering the owner's own export produces, so what an
-        // operator reads is what the person had. `origin` is empty because
-        // these links stay inside the app.
-        setMarkdown(
-          conversationToMarkdown({ display: value.display || [] }, row.meta, {
-            origin: '',
-            projectId: row.projectId,
-            projectName: row.projectName,
-            // Another app's citations are shown as the reference they
-            // name: this app cannot draw its grid or link into its editor.
-            adapter: row.app === OWN_APP ? IGT_ASSISTANT : PLAIN_CITATIONS,
-          }),
-        );
+        setConv({ id: row.convId, messages: value.messages || [], display: value.display || [] });
       })
       .catch((err) => {
         if (!live) return;
@@ -89,6 +93,16 @@ const ConversationDetail = ({ client, row, onBack }) => {
       live = false;
     };
   }, [client, row]);
+
+  const display = conv?.display || [];
+  const results = useMemo(() => toolResults(conv?.messages), [conv?.messages]);
+  const usage = useMemo(() => latestUsage(conv?.display), [conv?.display]);
+  const spend = useMemo(() => totalSpend(conv?.display), [conv?.display]);
+  // The chat's own rule for the line under a turn with no answer, except that
+  // a turn still marked as running is not called unanswered: its owner's page
+  // may be waiting on it, and this one does not ask.
+  const lastKind = display.at(-1)?.kind;
+  const unanswered = !row.meta?.pending && (lastKind === 'user' || lastKind === 'error');
 
   return (
     <div className="flex flex-col gap-4">
@@ -112,23 +126,58 @@ const ConversationDetail = ({ client, row, onBack }) => {
           )}
           <span>·</span>
           <span title={fullTimestamp(row.updatedAt)}>{timeAgo(row.updatedAt)}</span>
-          {row.model && (
-            <>
-              <span>·</span>
-              <span>{row.model}</span>
-            </>
-          )}
         </p>
       </div>
 
       {error ? (
         <p className="text-sm text-muted-foreground">{error}</p>
-      ) : markdown === null ? (
+      ) : conv === null ? (
         <Loading className="p-0" />
       ) : (
-        <div className="rounded-lg border bg-card p-4">
-          <AssistantMarkdown>{markdown}</AssistantMarkdown>
-        </div>
+        <section className="flex min-w-0 flex-col rounded-lg border bg-card">
+          <header className="flex min-h-14 flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
+            <AssistantMark className="h-4 w-4 shrink-0" />
+            {row.model && <span className="font-medium">{row.model}</span>}
+            <div className="ml-auto flex items-center gap-2">
+              <UsageMeter usage={usage} spend={spend} />
+              {display.length > 0 && (
+                <ExportMenu
+                  conv={conv}
+                  meta={row.meta}
+                  projectId={row.projectId}
+                  projectName={row.projectName}
+                  adapter={adapter}
+                />
+              )}
+            </div>
+          </header>
+          <div className="px-4 py-4">
+            <div className="mx-auto flex max-w-3xl flex-col gap-5">
+              {display.length === 0 && (
+                <p className="text-sm text-muted-foreground">No messages.</p>
+              )}
+              {display.map((d, i) =>
+                unanswered && hidesStopped(display, i) ? null : (
+                  <Turn
+                    key={i}
+                    item={d}
+                    projectId={row.projectId}
+                    adapter={adapter}
+                    results={results}
+                    {...turnContext(display, i)}
+                    homeName={row.projectName}
+                    canWrite={false}
+                    busy={false}
+                    interrupted={!!d.interrupted}
+                    applying={false}
+                    readOnly
+                  />
+                ),
+              )}
+              {unanswered && <RetryLine note={retryNote(display, null)} />}
+            </div>
+          </div>
+        </section>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { movedHere } from './jobs.js';
+import { movedHere } from './transcript.js';
 
 // The panel stays open across a whole session, so one thread can hold questions
 // asked from several documents. Each question is marked with where it came

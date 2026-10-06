@@ -15,10 +15,7 @@ import {
   couldNotOpen,
   lastProjects,
   notServedThere,
-  planProjectAt,
-  projectNamesAt,
   projectsToSend,
-  reachChanged,
   servedThere,
 } from './projectReach.js';
 import {
@@ -33,7 +30,10 @@ import {
 import { assertAdapter } from './adapterContract.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { DisclosureButton, DisclosureNotice } from './AssistantDisclosure.jsx';
-import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
+import { latestUsage, totalSpend } from './usage.js';
+import { UsageMeter } from './UsageMeter.jsx';
+import { RetryLine } from './RetryLine.jsx';
+import { toolResults, turnContext } from './transcript.js';
 import { Turn } from './Turn.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { useAssistantChoice } from './useAssistantChoice.js';
@@ -46,8 +46,6 @@ import {
   jobFor,
   newConversation,
   persistConv,
-  movedHere,
-  previousModel,
   readConv,
   recordAhead,
   settle,
@@ -94,34 +92,6 @@ import {
 // Discard. Approving submits the plan's id back; the service applies it under
 // the user's own account (it delegates, so Plaid mints the user a short-lived
 // token per request) and settles the plan in the record.
-
-// How full the conversation is, in the header beside the model that fills it.
-// A bar as well as a number: the number answers "how full" and the bar answers
-// "should I care", which is the question someone glancing at it is asking.
-const UsageMeter = ({ usage, spend }) => {
-  const label = usageLabel(usage);
-  if (!label) return null;
-  const f = fullness(usage);
-  return (
-    <span
-      className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-      title={usageTitle(usage, spend)}
-    >
-      {f !== null && (
-        <span className="h-1.5 w-8 overflow-hidden rounded-full bg-muted">
-          <span
-            className={cn(
-              'block h-full rounded-full',
-              f >= NEARLY_FULL ? 'bg-warning' : 'bg-primary/50',
-            )}
-            style={{ width: `${Math.max(2, Math.round(f * 100))}%` }}
-          />
-        </span>
-      )}
-      {label}
-    </span>
-  );
-};
 
 export const AssistantChat = ({
   projectId,
@@ -867,17 +837,8 @@ export const AssistantChat = ({
     else if (replyLanded(turnSeen.current, { busy, id, display: items })) setLanded('Reply ready');
     turnSeen.current = { busy, id, length: items.length };
   }, [busy, active?.id, active?.display]);
-  // A step's output, looked up by the tool call it belongs to. The transcript
-  // is where it is stored, so the trace does not carry a second copy.
-  const results = useMemo(
-    () =>
-      new Map(
-        (active?.messages || [])
-          .filter((m) => m.role === 'tool' && m.toolCallId)
-          .map((m) => [m.toolCallId, String(m.content ?? '')]),
-      ),
-    [active?.messages],
-  );
+  // A step's output, looked up by the tool call it belongs to.
+  const results = useMemo(() => toolResults(active?.messages), [active?.messages]);
   // A list of conversations puts an unsent one at the top, so a new
   // conversation is a real place to be rather than a blank screen. It belongs
   // to the project on screen, like every other row: nothing in a list of
@@ -1001,15 +962,8 @@ export const AssistantChat = ({
                   adapter={adapter}
                   onFocusHere={subject?.onFocusHere}
                   results={results}
-                  fromAnotherModel={
-                    !!d.model &&
-                    !!previousModel(display, i) &&
-                    d.model !== previousModel(display, i)
-                  }
-                  movedHere={movedHere(display, i)}
-                  reachChanged={reachChanged(display, i)}
+                  {...turnContext(display, i)}
                   homeName={projectName}
-                  citeNames={d.citations?.length ? projectNamesAt(display, i) : null}
                   canWrite={canWrite}
                   contributor={contributor}
                   busy={!!busy}
@@ -1017,7 +971,6 @@ export const AssistantChat = ({
                   applying={!!d.plan && applyingPlanId === d.plan.id}
                   onApprove={(opts) => approve(d.plan, opts)}
                   onDiscard={() => discard(i)}
-                  planProject={planProjectAt(display, i)}
                   onOpenPlan={() =>
                     client.events?.record?.('plan.opened', {
                       projectId,
@@ -1038,18 +991,11 @@ export const AssistantChat = ({
               </div>
             )}
             {canRetryTurn && (
-              <div className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                <span className="flex-1">{retryNote(display, stoppedHere)}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={retryTurn}
-                  disabled={!canSend}
-                >
-                  <RotateCcw className="h-4 w-4" /> Retry
-                </Button>
-              </div>
+              <RetryLine
+                note={retryNote(display, stoppedHere)}
+                onRetry={retryTurn}
+                disabled={!canSend}
+              />
             )}
             {/* What the turn has done so far, then the reply as it is being
                 written, then what it is doing now: the same order the turn

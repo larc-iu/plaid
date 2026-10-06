@@ -58,6 +58,9 @@ export const PlanCard = ({
   // Called when the card is expanded to show every change (research
   // telemetry's `plan.opened`, recorded by the chat around it).
   onOpen,
+  // A transcript read by someone other than its owner: the card shows what
+  // the plan is and how it ended, and offers no decision.
+  readOnly = false,
 }) => {
   const allRows = useMemo(() => planRows(plan), [plan]);
   const groups = useMemo(
@@ -241,7 +244,7 @@ export const PlanCard = ({
           <ChevronDown className="h-3 w-3" /> Show all {allRows.length}
         </button>
       )}
-      {stale && !dismissed && (
+      {stale && !dismissed && !readOnly && (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
             Changed since this plan was made. Ask again to plan on the current version.
@@ -256,7 +259,7 @@ export const PlanCard = ({
           </div>
         </>
       )}
-      {undecided && (
+      {undecided && !readOnly && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {canWrite ? (
             <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
@@ -360,7 +363,8 @@ const ChangeRow = ({ row, projectId, adapter, written, nothingWritten = false })
             Accepted
           </Badge>
         )}
-        {row.change ?? row.label}
+        {/* An adapter that draws no place may say the row its own way. */}
+        {adapter.rowText ? adapter.rowText(row) : (row.change ?? row.label)}
         {nothingWritten && <span className="ml-1.5">(nothing written)</span>}
       </td>
     </tr>

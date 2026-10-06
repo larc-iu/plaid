@@ -139,8 +139,11 @@ export const linkifyCitations = (adapter, text, byKey, { origin, projectId, onCi
       if (!c) return citePlain(m);
       onCited?.(m, c);
       // A citation into another project the conversation reads carries that
-      // project's id, and links there.
-      return `[${linkLabel(adapter.citationTitle(c))}](${adapter.citationHref(origin, c.projectId ?? projectId, c)})`;
+      // project's id, and links there. One with nowhere to link (another
+      // app's, PLAIN_CITATIONS) is its title in bold, as its card is.
+      const label = linkLabel(adapter.citationTitle(c));
+      const href = adapter.citationHref(origin, c.projectId ?? projectId, c);
+      return href ? `[${label}](${href})` : `**${label}**`;
     });
   const lines = (text || '').split('\n');
   const fenced = fencedLines(lines);

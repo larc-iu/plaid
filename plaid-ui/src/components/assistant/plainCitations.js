@@ -1,4 +1,4 @@
-// A citation renderer that belongs to no app.
+// A citation renderer, and a whole adapter, that belong to no app.
 //
 // The admin area lists every assistant conversation across every app, so it
 // reads records whose app it is not. It cannot draw those citations the way
@@ -8,6 +8,7 @@
 // unresolved one has always shown.
 
 import { markdownText } from './citations.js';
+import { PlainCitationCard } from './PlainCitationCard.jsx';
 
 // A cite tag of any app, plus the older brace form. Deliberately looser than
 // either app's: it matches the syntax, not the addressing inside it.
@@ -21,4 +22,32 @@ export const PLAIN_CITATIONS = {
   citationHref: () => '',
   citationToMarkdown: (c) =>
     `**${markdownText(`${c.documentName || 'document'}, sentence ${c.sentence}`)}**`,
+};
+
+// Everything `Turn` reads from an adapter (adapterContract.js), for a
+// conversation of an app this one is not. Citations as above, and a plan's
+// changes filed under the document each names (`where.documentId` and
+// `documentName` are the vocabulary every app's service shares), each row
+// its stored label with no link.
+export const PLAIN_ASSISTANT = {
+  ...PLAIN_CITATIONS,
+  app: '',
+  command: '',
+  intro: '',
+  examples: [],
+  textName: 'the text',
+  convHref: () => '',
+  ExampleCard: PlainCitationCard,
+  groupOf: (_projectId, where) =>
+    where?.documentId
+      ? {
+          key: `doc:${where.documentId}`,
+          title: where.documentName || where.documentId,
+          href: null,
+        }
+      : { key: 'other', title: 'Other changes', href: null },
+  changePlace: () => null,
+  // `change` is worded to sit beside a place, and none is drawn here.
+  rowText: (row) => row.label,
+  parseCitationHref: () => null,
 };

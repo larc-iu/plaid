@@ -152,10 +152,8 @@ describe('AdminAssistant', () => {
     const body = container.textContent;
     expect(body).toContain('How many words are unglossed?');
     expect(body).toContain('Fourteen, across three documents.');
-    // Both sides are labelled, so an operator can tell who said what.
-    expect(texts(container, 'h2')).toEqual(
-      expect.arrayContaining(['Which words are unglossed?', 'You', 'Assistant']),
-    );
+    // Drawn as the chat draws it: the question in its own bubble.
+    expect(texts(container, '.bg-primary.rounded-2xl')).toEqual(['How many words are unglossed?']);
     await unmount();
   });
 

@@ -966,28 +966,3 @@ export const newConversation = () => ({
   draft: true,
   rev: { conv: 0, meta: 0 },
 });
-
-// The model that wrote the reply before this one. A conversation keeps the
-// assistant it started with, but that one can go offline and another answer
-// in its place, and then the transcript should say where each reply came from.
-export const previousModel = (display, i) => {
-  for (let k = i - 1; k >= 0; k--) {
-    if (display[k].kind === 'assistant') return display[k].model || null;
-  }
-  return null;
-};
-
-// Whether the question at `i` was asked from somewhere new. Marking every
-// message with where it was asked from says the same thing over and over in a
-// thread that never moved; marking the CHANGES says the one thing a reader of
-// an old thread cannot otherwise recover. The service's stamp on the model's
-// own copy follows the same rule, for the same reason.
-export const movedHere = (display, i) => {
-  const here = display[i]?.where;
-  if (!here) return false;
-  for (let k = i - 1; k >= 0; k--) {
-    const was = display[k].kind === 'user' ? display[k].where : null;
-    if (was) return was.kind !== here.kind || was.id !== here.id;
-  }
-  return true;
-};
