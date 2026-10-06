@@ -85,15 +85,85 @@ export const fencedBlock = (text) => {
   return [fence, body, fence];
 };
 
+// A line that opens or closes a fenced code block: up to three spaces, then
+// three or more backticks or tildes.
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+
+// Which of `lines` are code: inside a fenced block, the fences included. A
+// fence closes at a line of the same character at least as long, with nothing
+// after it, and one never closed runs to the end, as Markdown reads them.
+export const fencedLines = (lines) => {
+  let open = null;
+  return lines.map((line) => {
+    const m = FENCE_RE.exec(line);
+    if (open) {
+      if (m && m[1][0] === open[0] && m[1].length >= open.length && !line.slice(m[0].length).trim())
+        open = null;
+      return true;
+    }
+    if (m && !(m[1][0] === '`' && line.slice(m[0].length).includes('`'))) {
+      open = m[1];
+      return true;
+    }
+    return false;
+  });
+};
+
+// Where the inline code spans of `text` are, as [start, end) offsets: a run
+// of backticks up to the next run of the same length, unless a blank line
+// comes first. A run that is never closed is plain backticks.
+const codeSpans = (text) => {
+  const spans = [];
+  const runs = [...text.matchAll(/(?<!\\)`+/g)];
+  for (let i = 0; i < runs.length; i += 1) {
+    const open = runs[i];
+    const close = runs.findIndex((r, k) => k > i && r[0].length === open[0].length);
+    if (close < 0) continue;
+    const end = runs[close].index + runs[close][0].length;
+    if (/\n[ \t]*\n/.test(text.slice(open.index, end))) continue;
+    spans.push([open.index, end]);
+    i = close;
+  }
+  return spans;
+};
+
 // Text with every citation replaced: a resolved one by a Markdown link to the
 // place in the editor (`onCited` sees each, for listing the cards), an
-// unresolved one by its plain reference.
-export const linkifyCitations = (adapter, text, byKey, { origin, projectId, onCited } = {}) =>
-  (text || '').replace(adapter.CITE_RE, (m) => {
-    const c = byKey.get(m);
-    if (!c) return citePlain(m);
-    onCited?.(m, c);
-    // A citation into another project the conversation reads carries that
-    // project's id, and links there.
-    return `[${linkLabel(adapter.citationTitle(c))}](${adapter.citationHref(origin, c.projectId ?? projectId, c)})`;
+// unresolved one by its plain reference. Code is left as it is written: a
+// reference the model put in backticks or in a fenced block stays code,
+// where a link would show as its raw Markdown.
+export const linkifyCitations = (adapter, text, byKey, { origin, projectId, onCited } = {}) => {
+  const linkify = (part) =>
+    part.replace(adapter.CITE_RE, (m) => {
+      const c = byKey.get(m);
+      if (!c) return citePlain(m);
+      onCited?.(m, c);
+      // A citation into another project the conversation reads carries that
+      // project's id, and links there.
+      return `[${linkLabel(adapter.citationTitle(c))}](${adapter.citationHref(origin, c.projectId ?? projectId, c)})`;
+    });
+  const lines = (text || '').split('\n');
+  const fenced = fencedLines(lines);
+  const out = [];
+  let prose = [];
+  const flush = () => {
+    if (!prose.length) return;
+    const part = prose.join('\n');
+    let at = 0;
+    let done = '';
+    for (const [a, b] of codeSpans(part)) {
+      done += linkify(part.slice(at, a)) + part.slice(a, b);
+      at = b;
+    }
+    out.push(done + linkify(part.slice(at)));
+    prose = [];
+  };
+  lines.forEach((line, i) => {
+    if (fenced[i]) {
+      flush();
+      out.push(line);
+    } else prose.push(line);
   });
+  flush();
+  return out.join('\n');
+};

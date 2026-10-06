@@ -27,6 +27,7 @@ import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { jobFor } from './jobs.js';
+import { useConfirm } from '../shared/ConfirmProvider.jsx';
 
 // The conversation rail: one row per conversation, the assistant picker, and
 // the export menu.
@@ -95,7 +96,9 @@ export const AllProjectsSwitch = ({ checked, onCheckedChange, className }) => (
 // two apart.
 //
 // `onDelete` is handed the WHOLE row, because a row from another project is
-// deleted under that project's keys and only the row knows which.
+// deleted under that project's keys and only the row knows which. It is asked
+// first, naming the conversation: a delete takes its plans' record with it and
+// cannot be undone, and the icon sits beside the row a reader means to open.
 export const ConversationRows = ({
   rows,
   activeId,
@@ -107,6 +110,15 @@ export const ConversationRows = ({
   onPick = null,
   onDelete,
 }) => {
+  const confirm = useConfirm();
+  const askDelete = async (m) => {
+    const ok = await confirm({
+      title: `Delete “${m.title || 'New conversation'}”?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) onDelete(m);
+  };
   if (loading && !rows.length) return <Loading className="px-2 py-3 text-xs" />;
   if (!rows.length)
     return <div className="px-2 py-3 text-xs text-muted-foreground">No conversations yet.</div>;
@@ -141,7 +153,7 @@ export const ConversationRows = ({
         {!m.draft && (
           <button
             type="button"
-            onClick={() => onDelete(m)}
+            onClick={() => askDelete(m)}
             title="Delete conversation"
             className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
           >

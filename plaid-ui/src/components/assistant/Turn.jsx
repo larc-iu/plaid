@@ -12,7 +12,7 @@ import {
 import { cn } from '../../lib/utils.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
-import { linkifyCitations } from './citations.js';
+import { fencedLines, linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
 import { PlanCard } from './PlanCard.jsx';
 import { homeOnly, namedCitations } from './projectReach.js';
@@ -51,9 +51,12 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
     if (buf.length) segments.push({ md: buf.join('\n') });
     buf = [];
   };
-  for (const line of (text || '').split('\n')) {
+  const lines = (text || '').split('\n');
+  // A line inside a fenced block is code, whatever it holds.
+  const fenced = fencedLines(lines);
+  for (const [i, line] of lines.entries()) {
     const key = line.trim();
-    if (byKey.has(key)) {
+    if (byKey.has(key) && !fenced[i]) {
       flush();
       segments.push({ card: byKey.get(key) });
       shown.add(key);
@@ -145,6 +148,9 @@ export const Turn = ({
   onApprove,
   onDiscard,
   onOpenPlan,
+  // The project a plan on this reply writes in, when the conversation reads
+  // others at this turn (PlanCard `planProject`).
+  planProject = null,
 }) => {
   if (item.kind === 'user') {
     return (
@@ -314,6 +320,7 @@ export const Turn = ({
             onApprove={onApprove}
             onDiscard={onDiscard}
             onOpen={onOpenPlan}
+            planProject={planProject}
           />
         )}
       </div>

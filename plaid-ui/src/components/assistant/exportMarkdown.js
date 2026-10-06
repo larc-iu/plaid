@@ -3,7 +3,7 @@
 // with their changes and outcome, and errors. Tool traces are summarized in
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
-import { linkifyCitations, markdownText } from './citations.js';
+import { fencedLines, linkifyCitations, markdownText } from './citations.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
   couldNotOpen,
@@ -12,6 +12,7 @@ import {
   reachChanged,
   withProjects,
   homeOnly,
+  planProjectAt,
 } from './projectReach.js';
 
 // A citation's card, linked into the project it cites: another project the
@@ -26,7 +27,11 @@ export const replyToMarkdown = (text, citations, ctx) => {
   const byKey = new Map((citations || []).map((c) => [c.key, c]));
   const inline = [];
   const shown = new Set();
-  const lines = (text || '').split('\n').map((line) => {
+  const raw = (text || '').split('\n');
+  // A line inside a fenced block is code, whatever it holds.
+  const fenced = fencedLines(raw);
+  const lines = raw.map((line, i) => {
+    if (fenced[i]) return line;
     const key = line.trim();
     if (byKey.has(key)) {
       shown.add(key);
@@ -47,7 +52,7 @@ export const replyToMarkdown = (text, citations, ctx) => {
 // A plan that stopped partway says how much was written in the service's own
 // count (`outcome` on the record), which counts each change a folded row
 // stands for, as the card's message did.
-const planToMarkdown = (plan, status, interrupted, outcome) => {
+const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
   const said =
     status === 'applied'
       ? 'Approved and applied.'
@@ -62,10 +67,25 @@ const planToMarkdown = (plan, status, interrupted, outcome) => {
               : interrupted
                 ? 'Approved, but applying did not finish.'
                 : 'Not yet approved.';
-  const lines = [`**Proposed changes:** ${plan.summary || ''} (${said})`, ''];
+  const where = inProject ? ` in ${markdownText(inProject)}` : '';
+  const lines = [`**Proposed changes${where}:** ${plan.summary || ''} (${said})`, ''];
   (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
   return lines.join('\n');
 };
+
+// The files on an item, as the chips under it name them: what was attached to
+// a question, and what a reply fetched (linked to where it came from, when
+// that is a web address).
+const WEB = /^https?:\/\//i;
+const filesLine = (label, files) =>
+  `*${label}: ${files
+    .map((f) => {
+      const name = markdownText(f.name || 'file');
+      return f.source && WEB.test(f.source)
+        ? `[${name}](<${String(f.source).replace(/[<>\s]/g, encodeURIComponent)}>)`
+        : name;
+    })
+    .join(', ')}*`;
 
 export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName, adapter }) => {
   const ctx = { origin, projectId, adapter };
@@ -84,6 +104,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
         out.push(`*${markdownText(line)}*`, '');
       }
       out.push(d.text || '', '');
+      if (d.files?.length) out.push(filesLine('Attached', d.files), '');
     } else if (d.kind === 'error') {
       out.push(`> **Error:** ${d.text || ''}`, '');
     } else {
@@ -94,6 +115,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       if (typeof d.elapsedMs === 'number')
         out.push(`*Answered in ${formatElapsed(d.elapsedMs)}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');
+      if (d.files?.length) out.push(filesLine('Fetched', d.files), '');
       if (d.unavailableProjects?.length)
         out.push(`*${markdownText(couldNotOpen(d.unavailableProjects))}*`, '');
       if (d.text) {
@@ -101,7 +123,17 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
         const cited = namedCitations(d.citations, projectId, projectNamesAt(display, i));
         out.push(replyToMarkdown(d.text, cited, ctx), '');
       }
-      if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted, d.outcome), '');
+      if (d.plan)
+        out.push(
+          planToMarkdown(
+            d.plan,
+            d.status,
+            !!d.interrupted,
+            d.outcome,
+            planProjectAt(display, i, projectName),
+          ),
+          '',
+        );
     }
   });
   return (

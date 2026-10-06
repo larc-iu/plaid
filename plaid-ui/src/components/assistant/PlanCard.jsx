@@ -1,5 +1,14 @@
 import { Fragment, useMemo, useState } from 'react';
-import { RotateCcw, Check, X, Loader2, ChevronDown, PenLine, UserCheck } from 'lucide-react';
+import {
+  RotateCcw,
+  Check,
+  X,
+  Loader2,
+  ChevronDown,
+  PenLine,
+  UserCheck,
+  FolderOpen,
+} from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
@@ -39,6 +48,9 @@ export const PlanCard = ({
   onDiscard,
   contributor = false,
   projectId,
+  // The project the plan writes in, named when the conversation reads other
+  // projects too, so a reader never takes a plan for one of theirs.
+  planProject = null,
   adapter,
   // Called when the card is expanded to show every change (research
   // telemetry's `plan.opened`, recorded by the chat around it).
@@ -129,6 +141,14 @@ export const PlanCard = ({
           </Badge>
         )}
       </div>
+      {planProject && (
+        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <FolderOpen className="h-3 w-3 shrink-0" />
+          <span className="min-w-0 truncate">
+            In <bdi className="font-medium text-foreground">{planProject}</bdi>
+          </span>
+        </div>
+      )}
       {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
       {partial && (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -219,11 +239,19 @@ export const PlanCard = ({
         </button>
       )}
       {stale && (
-        <div className="mt-2">
-          <Button type="button" size="sm" disabled>
-            <Check className="h-4 w-4" /> Approve and apply
-          </Button>
-        </div>
+        <>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Changed since this plan was made. Ask again to plan on the current version.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" disabled>
+              <Check className="h-4 w-4" /> Approve and apply
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
+              <X className="h-4 w-4" /> Discard
+            </Button>
+          </div>
+        </>
       )}
       {undecided && (
         <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -13,4 +13,26 @@ describe('conversationToMarkdown', () => {
     ]);
     expect(oneTool).toContain('*1 step*');
   });
+
+  // A4-CROSS-3: "What does section 4.2 of this grammar say" no longer said
+  // which grammar. The export names the files as the chips on screen do.
+  it('names the files attached to a question and the ones a reply fetched', () => {
+    const out = md([
+      {
+        kind: 'user',
+        text: 'What does 4.2 say?',
+        files: [{ id: 'f1', name: 'tolemi_grammar.pdf' }],
+      },
+      {
+        kind: 'assistant',
+        text: 'It says so.',
+        files: [
+          { id: 'f2', name: 'g.pdf', source: 'https://r.example/a b/g.pdf' },
+          { id: 'f3', name: 'notes.txt', source: 'javascript:alert(1)' },
+        ],
+      },
+    ]);
+    expect(out).toContain('*Attached: tolemi\\_grammar.pdf*');
+    expect(out).toContain('*Fetched: [g.pdf](<https://r.example/a%20b/g.pdf>), notes.txt*');
+  });
 });

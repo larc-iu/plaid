@@ -35,12 +35,23 @@ const mount = (p, props = {}) =>
   );
 
 describe('a plan refused as out of date', () => {
-  it('reads "Out of date" and offers only a disabled Approve', async () => {
-    const view = await mount(plan([{ label: 's1b: :aspect state' }]), { status: 'stale' });
+  // A2-UD polish: the card dropped Discard and said nothing about what next.
+  it('reads "Out of date", says what to do, and offers a disabled Approve and Discard', async () => {
+    let discarded = 0;
+    const view = await mount(plan([{ label: 's1b: :aspect state' }]), {
+      status: 'stale',
+      onDiscard: () => {
+        discarded += 1;
+      },
+    });
     expect(byText(view.container, 'span, div', 'Out of date')).not.toBeNull();
+    expect(byText(view.container, 'p', 'Ask again to plan on the current version.')).not.toBeNull();
     const buttons = all(view.container, 'button');
-    expect(buttons.map((b) => b.textContent.trim())).toEqual(['Approve and apply']);
+    expect(buttons.map((b) => b.textContent.trim())).toEqual(['Approve and apply', 'Discard']);
     expect(buttons[0].disabled).toBe(true);
+    expect(buttons[1].disabled).toBe(false);
+    await view.step(() => buttons[1].click());
+    expect(discarded).toBe(1);
     expect(view.container.querySelector('input[type=checkbox]')).toBeNull();
     await view.unmount();
   });

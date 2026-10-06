@@ -15,6 +15,7 @@ import {
   couldNotOpen,
   lastProjects,
   notServedThere,
+  planProjectAt,
   projectNamesAt,
   projectsToSend,
   reachChanged,
@@ -48,6 +49,7 @@ import {
   movedHere,
   previousModel,
   readConv,
+  recordAhead,
   settle,
   startApply,
   startTurn,
@@ -206,6 +208,9 @@ export const AssistantChat = ({
   const activeRef = useRef(active);
   activeRef.current = active;
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
+  // A send or retry reading the record before it writes: a second press in
+  // that moment is the same send, not another one.
+  const sendingRef = useRef(false);
 
   const list = useConversationList({
     client,
@@ -472,7 +477,9 @@ export const AssistantChat = ({
         if (j.unsent && j.result.conv.display.at(-1)?.kind !== 'user') {
           setInput((typed) => typed || j.unsent);
         }
-        inputRef.current?.focus();
+        // An answer that landed late (after the page stopped waiting for it)
+        // arrives while the reader may be typing somewhere else.
+        if (!j.late) inputRef.current?.focus();
       } else {
         showJob(j);
       }
@@ -544,14 +551,39 @@ export const AssistantChat = ({
   const send = async (textOverride, files = null, projects = null) => {
     const retry = files !== null;
     const typed = (textOverride ?? input).trim();
-    if (!typed || !canSend) return;
+    if (!typed || !canSend || sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await sendNow(typed, retry, files, projects);
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+  const sendNow = async (typed, retry, files, projects) => {
     setStopped(null);
     // The chip is the reference the question is about, said the way the
     // assistant addresses one. A question that already names it is left alone.
     const text = !retry && focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
     // Sending is what turns a draft into a saved conversation, so the flag
     // does not travel with it.
-    const base = activeRef.current ?? newConversation();
+    let base = activeRef.current ?? newConversation();
+    // The record may hold an answer this page never saw (it gave up waiting,
+    // and the service wrote it later). The message goes after it, rather than
+    // writing the page's older copy over it. A retry has read it already.
+    if (!retry) {
+      const ahead = await recordAhead(
+        store,
+        base,
+        list.rows.find((m) => m.id === base.id),
+      );
+      if (activeRef.current?.id !== base.id) return;
+      if (ahead) {
+        base = ahead.conv;
+        activeRef.current = ahead.conv;
+        setActive(ahead.conv);
+        applyMeta(ahead.meta);
+      }
+    }
     const pending = retry ? [] : attachments;
     if (pending.length) {
       // The files before anything else: a file that cannot be stored stops the
@@ -701,10 +733,36 @@ export const AssistantChat = ({
   // Send the user's last message again, whether the turn was lost (its
   // request went away with the server or the service), failed or was stopped.
   // The attempt stays in the conversation above the message sent again.
-  const retryTurn = () => {
-    const conv = activeRef.current;
-    if (!conv || !canSend) return;
-    const rewound = rewindForRetry(conv, { stopped: !!stoppedIn(stopped, conv.id) });
+  //
+  // The record is read first. An answer the service wrote after this page
+  // stopped waiting for it (a server restart lost the request, not the turn)
+  // is shown instead of asking again, and is never written over.
+  const retryTurn = async () => {
+    let conv = activeRef.current;
+    if (!conv || !canSend || sendingRef.current) return;
+    sendingRef.current = true;
+    let ahead;
+    try {
+      ahead = await recordAhead(
+        store,
+        conv,
+        list.rows.find((m) => m.id === conv.id),
+      );
+    } finally {
+      sendingRef.current = false;
+    }
+    if (activeRef.current?.id !== conv.id) return;
+    if (ahead) {
+      conv = ahead.conv;
+      activeRef.current = conv;
+      setActive(conv);
+      applyMeta(ahead.meta);
+      const last = conv.display.at(-1)?.kind;
+      if (last !== 'user' && last !== 'error') return;
+    }
+    const rewound = rewindForRetry(conv, {
+      stopped: !ahead && !!stoppedIn(stopped, conv.id),
+    });
     if (!rewound) return;
     activeRef.current = rewound.conv;
     send(rewound.text, rewound.files, rewound.projects);
@@ -906,6 +964,7 @@ export const AssistantChat = ({
                   applying={!!d.plan && applyingPlanId === d.plan.id}
                   onApprove={(opts) => approve(d.plan, opts)}
                   onDiscard={() => discard(i)}
+                  planProject={planProjectAt(display, i, projectName)}
                   onOpenPlan={() =>
                     client.events?.record?.('plan.opened', {
                       projectId,

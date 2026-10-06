@@ -131,3 +131,15 @@ export const chipRemoveLabels = (projects) => {
     return `Remove ${p.name} (${n})`;
   });
 };
+
+// The project a plan on the reply at `i` writes in, named only where the
+// conversation reads other projects: the plan record says so (`project`, set
+// by a turn that read others), and a plan from before it did is named the
+// same way where its question carried other projects, with the home project,
+// which is where every plan writes.
+export const planProjectAt = (display, i, homeName) => {
+  const plan = display?.[i]?.plan;
+  if (!plan) return null;
+  if (plan.project?.name) return plan.project.name;
+  return lastProjects(display.slice(0, i)).length ? homeName || null : null;
+};
