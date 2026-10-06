@@ -98,10 +98,10 @@ def test_a_form_that_names_nothing_offers_the_entries_spelled_close_to_it():
     never taken, since a root and a suffix can be spelled alike."""
     w = ws()
     out = call_tool(w, 'lexicon_entry', {'entry_form': 'di'})
-    assert out == ('Error: No lexicon entry "di". Spelled close to it: entry_form "-di". Use read_lexicon to '
+    assert out == ('Error: No lexicon entry "di". Spelled close to it: entry_form "-di" (suffix). Use read_lexicon to '
                    'look, or create_entry to add one.')
     out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w1.m2'], 'entry_form': 'di'})
-    assert out.startswith('Error: No lexicon entry "di". Spelled close to it: entry_form "-di".')
+    assert out.startswith('Error: No lexicon entry "di". Spelled close to it: entry_form "-di" (suffix).')
     assert not w.ops
 
 

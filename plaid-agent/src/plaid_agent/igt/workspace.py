@@ -16,7 +16,7 @@ text the way the editor does.
 import copy
 import re
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import uuid7
 
@@ -30,18 +30,53 @@ from ..core.workspace import BaseWorkspace
 from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, analysed_morphemes,
                    planned_morpheme, removed_entries, settle_merges)
 
-# What only a maintainer of the lexicon may do to its entries (a merge deletes
-# the entry it folds away), and what a tool says to anyone else.
-ENTRY_REMOVALS = ('rename_entry', 'delete_entry')
-MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can rename, delete or merge its entries, '
-                    'and the person you are acting for does not maintain it. Nothing was planned. '
-                    'Tell them a maintainer of that lexicon has to make this change.')
+# What only a maintainer of the lexicon may do to its entries, and what a tool
+# says to anyone else. The app's own screens are the rule (ruling A1-IGT-6):
+# a writer creates entries and links words to them, and every change to an
+# entry that exists (its fields, its type, its senses, examples and homograph
+# order, its form) is in the entry editor and the sense tree, which only a
+# maintainer may use. Adding a sense is a change to the entry it sits under.
+# Core is looser, so the assistant must not be the way around the app.
+MAINTAINER_KINDS = ('rename_entry', 'delete_entry', 'set_entry_field', 'set_entry_metadata')
+MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can change its existing entries (their '
+                    'fields, type, senses, examples or homograph order) or rename, delete or merge them, and '
+                    'the person you are acting for does not maintain it. Nothing was planned. They can '
+                    'still create new entries (not senses) and link words to entries. Tell them a '
+                    'maintainer of that lexicon has to make this change.')
 from .project import (BAD_REF, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 
 MAX_DOCS_PER_SEARCH = 1000
+
+# The entry types an affix marker on a form names, as the app's morph types.
+_SUFFIXES = frozenset({'suffix', 'suffixing interfix'})
+_PREFIXES = frozenset({'prefix', 'prefixing interfix'})
+_INFIXES = frozenset({'infix', 'infixing interfix'})
+AFFIX_TYPES = _SUFFIXES | _PREFIXES | _INFIXES | frozenset({'circumfix', 'simulfix', 'suprafix', 'clitic',
+                                                            'enclitic', 'proclitic'})
+
+
+def marked_types(form: str) -> frozenset:
+    """The morph types the markers on ``form`` name ("-ka" a suffix, "ka-" a
+    prefix, "-ka-" an infix, "=ka" an enclitic, "ka=" a proclitic), or the
+    empty set for a bare form."""
+    f = (form or '').strip()
+    lead, trail = f[:1], f[-1:]
+    if len(f) < 2:
+        return frozenset()
+    if lead == '-' and trail == '-':
+        return _INFIXES
+    if lead == '-':
+        return _SUFFIXES
+    if trail == '-':
+        return _PREFIXES
+    if lead == '=':
+        return frozenset({'enclitic', 'clitic'})
+    if trail == '=':
+        return frozenset({'proclitic', 'clitic'})
+    return frozenset()
 
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ('A corpus-wide replace or respell counts as one change, and so does a whole '
@@ -94,6 +129,7 @@ NUMBERED_FORM = re.compile(r'(.+?)\s*(\d+(?:\.\d+)*)', re.S)
 #: tone-numbered orthography spells, not "ma" number 1.
 SPACED_NUMBER = re.compile(r'(.+?)\s+(\d+(?:\.\d+)*)', re.S)
 SUBSCRIPTS = str.maketrans('₀₁₂₃₄₅₆₇₈₉', '0123456789')
+TO_SUBSCRIPT = str.maketrans('0123456789', '₀₁₂₃₄₅₆₇₈₉')
 
 class Workspace(BaseWorkspace):
     """One turn's view of an interlinear project: what it has loaded, the
@@ -246,6 +282,15 @@ class Workspace(BaseWorkspace):
 
     def load_doc(self, doc_id: str) -> IgtDoc:
         return load_document(self.client, self.project, doc_id)
+
+    def resolve_document_id(self, document: str) -> str:
+        """As every app resolves a name, refusing first what is not text: the
+        code's ``load()`` handed the ``{"id", "name"}`` pair ``documents()``
+        returns, and was answered with a Python error about ``lower``."""
+        if document is not None and not isinstance(document, str):
+            raise ToolError('document must be a document\'s name or id, as text. For an entry of documents(), '
+                            'pass its "id".')
+        return super().resolve_document_id(document)
 
     def doc(self, document: str) -> IgtDoc:
         did = self.resolve_document_id(document)
@@ -429,9 +474,10 @@ class Workspace(BaseWorkspace):
             if suffix is not None and any(self.view(v).tree_has_form(form) for v in vocabs):
                 hint = (f' Headword "{form}" has no sense {suffix}; lexicon_entry shows the senses '
                         'it has.')
-            close = self.spelled_close(form, vocabs)
+            close, more = self.spelled_close(form, vocabs)
             if close:
-                hint += ' Spelled close to it: ' + ', '.join(f'entry_form "{a}"' for a in close) + '.'
+                hint += (' Spelled close to it: ' + ', '.join(close)
+                         + (f', and {more} more (read_lexicon lists them)' if more else '') + '.')
             raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
                             + '.' + hint + ' Use read_lexicon to look, or create_entry to add one.')
         lines = [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one '
@@ -445,20 +491,54 @@ class Workspace(BaseWorkspace):
             lines.append(f'  id={k} {e["form"]} (new in this plan)')
         raise ToolError('\n'.join(lines))
 
-    def spelled_close(self, form: str, vocabs, limit: int = 6) -> List[str]:
-        """The entries spelled as ``form`` is once affix markers, case and
-        Unicode composition are set aside, as their entry_form: "-ka" for
-        "ka". Offered in a refusal, never taken in its place, since a suffix
-        and a root can be spelled alike and be two entries."""
-        out = []
+    def spelled_close(self, form: str, vocabs, limit: int = 6) -> Tuple[List[str], int]:
+        """``(offered, more)``: the headwords spelled as ``form`` is once affix
+        markers, case and Unicode composition are set aside, as their
+        entry_form with their type ('entry_form "ka#2" (suffix)'), and how
+        many more there are past ``limit``. Offered in a refusal, never taken
+        in its place, since a suffix and a root can be spelled alike and be
+        two entries.
+
+        Headwords only (a sense is offered by its headword), and those whose
+        type the marker names first: "-ka" is a suffix, "ka-" a prefix, "=ka"
+        and "ka=" clitics. A FLEx lexicon stores its affixes unmarked, so
+        eleven entries spelled "lam" offered roots and senses first and cut
+        the suffix that was meant."""
+        wanted = marked_types(form)
+        hits = []
         for v in vocabs:
             view = self.view(v)
-            for it in view.items:
+            for it in view.tree.roots:
                 if same_form(form, it.get('form'), MARKERS) and (it.get('form') or '') != form:
-                    addr = view.address(it['id'])
-                    if addr not in out:
-                        out.append(addr)
-        return out[:limit]
+                    t = morph_type_of(view.tree, it['id']) or ''
+                    hits.append((t not in wanted if wanted else bool(t) and t in AFFIX_TYPES,
+                                 view.address(it['id']), t))
+        hits.sort(key=lambda h: h[0])  # stable: stored order within each group
+        out = []
+        for _, addr, t in hits:
+            shown = f'entry_form "{addr}"' + (f' ({t})' if t else '')
+            if shown not in out:
+                out.append(shown)
+        return out[:limit], max(0, len(out) - limit)
+
+    def entry_shown(self, item_id: Optional[str], form: str) -> str:
+        """An entry as a plan card row names it: ``form`` with the number the
+        app shows after it, as the app shows it (a subscript, "kai₁", a sense
+        "kai₂.₁"), where the form alone does not say which entry it is: a
+        sense, or a headword spelled like another. A relink between two of
+        them read "kai" → "kai" before, and the card is what is approved.
+        Anything else, a new entry and one the plan's lexicon no longer
+        holds included, is its form."""
+        v = self.vocab_of_item(item_id) if item_id else None
+        view = self.view(v) if v is not None else None
+        if view is None or item_id not in view.tree.by_id:
+            return form
+        sense = view.is_sense(item_id)
+        num = view.number(item_id) if sense or item_id in view.shared else ''
+        if not num:
+            return form
+        head = view.head_of(item_id) if sense else (view.tree.by_id[item_id].get('form') or form)
+        return head + num.translate(TO_SUBSCRIPT)
 
     def vocab_of_item(self, item_id: str) -> Optional[dict]:
         """The lexicon an existing entry belongs to."""
@@ -468,10 +548,11 @@ class Workspace(BaseWorkspace):
         return None
 
     def can_manage_vocab(self, v: dict) -> bool:
-        """Whether the user the turn acts for may rename, delete or merge
-        entries of lexicon ``v``: a maintainer of it or an administrator. The
-        server refuses anyone else (a writer of a project that links it adds
-        entries and edits their fields, and no more)."""
+        """Whether the user the turn acts for may change the entries of
+        lexicon ``v`` once they exist (see :data:`MAINTAINER_KINDS`): a
+        maintainer of it or an administrator. A writer of a project that
+        links it creates entries and links words to them, and no more, as in
+        the app."""
         if self.requester_id is None:
             return True
         return self.requester_id in (v.get('maintainers') or []) or self.requester_is_admin()
@@ -489,11 +570,24 @@ class Workspace(BaseWorkspace):
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
         self.guard_morpheme_change(op, replacing=replacing)
-        item = op.get('remove_id') if op.get('kind') == 'merge_entries' else (
-            op.get('item_id') if op.get('kind') in ENTRY_REMOVALS else None)
-        v = self.vocab_of_item(item) if item else None
+        v = self.lexicon_maintained_by(op)
         if v is not None and not self.can_manage_vocab(v):
             raise ToolError(MAINTAINERS_ONLY.format(lexicon=v['name']))
+
+    def lexicon_maintained_by(self, op: Dict[str, Any]) -> Optional[dict]:
+        """The lexicon whose maintainers alone may make ``op``, or None for an
+        op anyone who may write may make: a change to an entry that exists,
+        a merge (it deletes the entry it folds away), and a new sense, which
+        changes the entry it is added under. An entry this same plan creates
+        is the writer's own until it exists, so a field set on it is not."""
+        kind = op.get('kind')
+        if kind == 'create_entry':
+            if not (op.get('metadata') or {}).get(PARENT_KEY):
+                return None
+            return next((v for v in self.project.vocabs if v['id'] == op.get('vocab_id')), None)
+        item = op.get('remove_id') if kind == 'merge_entries' else (
+            op.get('item_id') if kind in MAINTAINER_KINDS else None)
+        return self.vocab_of_item(item) if item else None
 
     # --- plan --------------------------------------------------------------
 

@@ -38,7 +38,7 @@ def test_own_link_tools_leave_the_expression_alone():
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-gam'})
     assert 'Planned 1 change' in out and 's1.w2 stays inside "gam akuna"' in out
     assert w.ops[-1] == {'kind': 'link', 'token_id': 'w-2', 'item_id': 'vi-gam', 'new_entry_key': None,
-                         'existing_link_id': None, 'entry_form': 'gam', 'label': 'Text 1 s1.w2 "gam": link "gam"'}
+                         'existing_link_id': None, 'entry_form': 'gam', 'label': 'Text 1 s1.w2 "gam": link "gam₁"'}
     # Unlinking a member that has no link of its own is refused, pointing at unlink_phrase.
     out = call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w3']})
     assert out.startswith('Error:') and 'member of the multi-word expression "gam akuna" (w2+w3)' in out and 'unlink_phrase' in out

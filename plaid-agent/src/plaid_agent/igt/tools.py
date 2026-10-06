@@ -348,6 +348,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     doc = ws.doc(document)
     kind, target = _entry_named(ws, entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
+    shown = ws.entry_shown(target['id'], form) if kind == 'existing' else form
     staged: List[Dict[str, Any]] = []
     inside: List[str] = []
     # Links back to the entry a thing is already linked to: whatever the plan
@@ -357,7 +358,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     for ref in _refs(refs):
         place = _planned_place(ws, doc, ref)
         if place is not None:
-            op = _planned_link_op(ws, doc, ref, place, kind, target, form)
+            op = _planned_link_op(ws, doc, ref, place, kind, target, form, shown)
             if op.get('existing_link_id') and kind == 'existing' and place.kept.link.item_id == target['id']:
                 back.append((ref, ws.op_target(op)))
             else:
@@ -379,7 +380,8 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                        'item_id': target['id'] if kind == 'existing' else None,
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None, 'entry_form': form,
-                       'label': f'{ws.doc_label(doc.id)} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{what}": link '
+                                + (f'"{_linked(ws, obj.link)}" → ' if obj.link else '') + f'"{shown}"'})
     with ws.staging():
         taken = _take_out(ws, [key for _, key in back])
         ws.add_ops(staged)
@@ -466,8 +468,15 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
     return _Place(w, analysis, mi, kept)
 
 
-def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: str, target, form: str):
-    """The link op for a morpheme of a planned analysis (see _planned_place)."""
+def _linked(ws: Workspace, link: Link) -> str:
+    """The entry a stored link names, as a card row shows it."""
+    return ws.entry_shown(link.item_id, link.form)
+
+
+def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: str, target, form: str,
+                     shown: str):
+    """The link op for a morpheme of a planned analysis (see _planned_place).
+    ``shown`` is the entry as the card names it (``Workspace.entry_shown``)."""
     old = place.kept.link if place.kept is not None else None
     m = place.morpheme
     return {'kind': 'link', 'token_id': None, 'analysis_word_id': place.word.id, 'morpheme_index': place.index,
@@ -477,7 +486,7 @@ def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: 
             'new_entry_key': target if kind == 'new' else None,
             'existing_link_id': old.id if old else None, 'entry_form': form,
             **labelled(f'{ws.doc_label(doc.id)} {ref} "{m["form"]}"',
-                       'link ' + (f'"{old.form}" → ' if old else '') + f'"{form}"')}
+                       'link ' + (f'"{_linked(ws, old)}" → ' if old else '') + f'"{shown}"')}
 
 
 _UNSET = object()
@@ -579,7 +588,7 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
             if kept is not None and kept.link:
                 staged.append({'kind': 'unlink', 'link_id': kept.link.id, 'token_id_hint': kept.id,
                                'label': f'{ws.doc_label(doc.id)} {ref} "{place.morpheme["form"]}": '
-                                        f'unlink "{kept.link.form}"'})
+                                        f'unlink "{_linked(ws, kept.link)}"'})
             else:
                 planned.append((ref, ws.op_target({'kind': 'link', 'token_id': None, 'analysis_word_id': place.word.id,
                                                    'morpheme_index': place.index,
@@ -596,7 +605,7 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
         staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
-                       'label': f'{ws.doc_label(doc.id)} {ref} "{what}": unlink "{obj.link.form}"'})
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{what}": unlink "{_linked(ws, obj.link)}"'})
     if only_mwe and not staged and not planned:
         raise ToolError('; '.join(only_mwe))
     with ws.staging():
@@ -648,7 +657,8 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
                    'new_entry_key': target if kind == 'new' else None,
                    'existing_link_id': existing.id if existing is not None else None, 'entry_form': form,
                    'label': f'{ws.doc_label(doc.id)} s{s.index} {where} "{surfaces}": link phrase '
-                            + (f'"{existing.form}" → ' if existing is not None else '') + f'"{form}"'})
+                            + (f'"{_linked(ws, existing)}" → ' if existing is not None else '')
+                            + '"' + (ws.entry_shown(target['id'], form) if kind == 'existing' else form) + '"'})
     return ws.planned_note(1)
 
 
@@ -678,7 +688,8 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
                         + '. Name a member set that belongs to just one of them.')
     l = full[0]
     ws.add_op({'kind': 'unlink', 'link_id': l.id, 'token_id_hint': l.tokens[0], 'token_ids': list(l.tokens),
-               'label': f'{ws.doc_label(doc.id)} s{s.index} {mwe_ref(l, s.index)}: unlink phrase "{l.form}"'})
+               'label': f'{ws.doc_label(doc.id)} s{s.index} {mwe_ref(l, s.index)}: unlink phrase '
+                        f'"{_linked(ws, l)}"'})
     return ws.planned_note(1)
 
 
