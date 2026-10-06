@@ -122,3 +122,29 @@
     (assert-status 200 (batch! [{:path (str "/api/v1/tokens/" sentence "/split")
                                  :method "post" :body {:position 13}}]))
     (is (= [nil] (rule-op-groups doc)))))
+
+(deftest a-batch-naming-two-groups-leaves-the-rule-deletion-ungrouped
+  ;; Which of the two the deletion belongs to cannot be told, so it joins
+  ;; neither, as before (REV-FX9-RM).
+  (let [{:keys [sentence deps rels doc sl]} (setup!)
+        g1 (random-uuid)
+        g2 (random-uuid)]
+    (assert-status 200 (declare! deps sl))
+    (assert-status 200 (batch! [{:path (str "/api/v1/tokens/" sentence "/split?group-id=" g1)
+                                 :method "post" :body {:position 13}}
+                                {:path (str "/api/v1/relations/" (:other-sat-ran rels) "?group-id=" g2)
+                                 :method "patch" :body {:value "x"}}]))
+    (is (not (exists? (:sat-dogs rels))))
+    (is (= [nil] (rule-op-groups doc)))))
+
+(deftest a-batch-with-its-own-group-puts-the-rule-deletion-there
+  ;; A group named on the batch itself binds every write in it, the remedy
+  ;; included, whatever its sub-requests name.
+  (let [{:keys [sentence deps rels doc sl]} (setup!)
+        g (random-uuid)]
+    (assert-status 200 (declare! deps sl))
+    (assert-status 200 (api-call admin-request {:method :post :path (str "/api/v1/batch?group-id=" g)
+                                                :body [{:path (str "/api/v1/tokens/" sentence "/split")
+                                                        :method "post" :body {:position 13}}]}))
+    (is (not (exists? (:sat-dogs rels))))
+    (is (= [g] (map #(some-> % str parse-uuid) (rule-op-groups doc))))))
