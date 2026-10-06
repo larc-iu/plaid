@@ -334,12 +334,19 @@ class BaseWorkspace:
         document when it is approved, so it is pinned to all of it."""
         if opkind.resolver(self.KIND, op):
             return None
+        # A place in the text the plan cannot read again from its token when
+        # it is applied would land wherever an edit before it moved the text.
+        if not fp.offsets_follow(self.KIND, op):
+            return None
         whole = {doc.id, getattr(doc, 'text_id', None)} - {None}
         return fp.sentences_of_op(op, self.sentence_index(doc), whole, self.NOT_CONTENT_KEYS)
 
     def sentence_print(self, doc, sentence) -> str:
-        """The fingerprint of one parsed sentence: everything it holds."""
-        return fp.fingerprint(sentence)
+        """The fingerprint of one parsed sentence: everything it holds, its
+        offsets counted from its own start, so typing in an earlier sentence
+        leaves it as it was (``fp.rebase_offsets`` moves what the plan
+        creates to match)."""
+        return fp.fingerprint(sentence, origin=sentence.begin)
 
     def pinned(self, entry: Dict[str, Any], doc, ops: List[Dict[str, Any]]) -> Dict[str, Any]:
         """A touched document's record, with the fingerprint of each sentence

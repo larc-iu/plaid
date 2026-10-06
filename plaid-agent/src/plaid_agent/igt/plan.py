@@ -85,6 +85,7 @@ Each also carries a human ``label`` for the approval UI.
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
+from ..core import fingerprint as fp
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
@@ -96,7 +97,7 @@ from plaid_client.workflows.igt.new_words import words_refused
 from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, confirm_note, ConfirmRows, expand_ops)
-from .project import is_virtual, virtual_morpheme_id
+from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
 from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -206,6 +207,22 @@ def _token(ctx: Context, op, token_id: str, metadata: Optional[Dict[str, Any]] =
     ctx.b.add(lambda batch: batch.tokens.create(at['layer_id'], at['text_id'], at['begin'], at['end'],
                                                 precedence=1, metadata=meta or None, id=made))
     return made
+
+
+def _anchors(op) -> List[tuple]:
+    """Where in the text a change holds a place, and the word it was read
+    from (``core.fingerprint.offset_anchors``): a new analysis's morphemes
+    over its word, and the derived morpheme of an unsegmented word made over
+    it (``virtual_at``). Each is read from the word when the plan is applied,
+    so an edit before its sentence does not leave it where the word was."""
+    out = []
+    if op.get('kind') == 'set_analysis' and op.get('word_id'):
+        out.append((None, op['word_id']))
+    if isinstance(op.get('virtual_at'), dict):
+        virtual = next((op[k] for k in ('token_id', 'morpheme_id') if is_virtual(op.get(k))), None)
+        if virtual:
+            out.append(('virtual_at', virtual[len(VIRTUAL_PREFIX):]))
+    return out
 
 
 def _apply_set_span(ctx: Context, op) -> int:
@@ -681,12 +698,13 @@ KIND = ok.registry([
     OpKind('set_span', ('field value', 'field values'), required=('layer_id', 'token_id'),
            apply=_apply_set_span, target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id',), deletes=_set_span_deletes,
-           compact_each=('token_id', 'span_id', 'value', 'doc', 'virtual_at')),
+           compact_each=('token_id', 'span_id', 'value', 'doc', 'virtual_at'), extra={'anchors': _anchors}),
     OpKind('set_analysis', ('analysis', 'analyses'),
            required=('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
            apply=_apply_set_analysis, target=lambda op: ('analysis', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=ANALYSIS,
-           deletes=_set_analysis_deletes, deletes_tokens=_set_analysis_deletes_tokens),
+           deletes=_set_analysis_deletes, deletes_tokens=_set_analysis_deletes_tokens,
+           extra={'anchors': _anchors}),
     OpKind('set_orthography', ('orthography value', 'orthography values'), required=('word_id', 'key'),
            apply=_apply_set_orthography, target=lambda op: ('orth', op.get('word_id'), op.get('key')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',),
@@ -706,7 +724,8 @@ KIND = ok.registry([
            # The entry as well as the word: a link to an entry the plan removes
            # is written and then taken away with it.
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id', 'analysis_word_id', 'item_id'),
-           deletes=lambda op: [op.get('existing_link_id')], extra={'names_entry': ('item_id',)}),
+           deletes=lambda op: [op.get('existing_link_id')],
+           extra={'names_entry': ('item_id',), 'anchors': _anchors}),
     OpKind('unlink', ('unlink', 'unlinks'), required=('link_id',), apply=_apply_unlink,
            # A multi-word expression's link is its own target: unlinking it
            # never displaces a member word's own link.
@@ -771,10 +790,10 @@ KIND = ok.registry([
     OpKind('set_morpheme_form', ('morpheme form', 'morpheme forms'), required=('morpheme_id', 'form'),
            apply=_apply_set_morpheme_form, target=lambda op: ('morph_form', op.get('morpheme_id')),
            at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',),
-           compact_each=('morpheme_id', 'form', 'doc', 'virtual_at')),
+           compact_each=('morpheme_id', 'form', 'doc', 'virtual_at'), extra={'anchors': _anchors}),
     OpKind('set_morph_type', ('morpheme type', 'morpheme types'), required=('morpheme_id',),
            apply=_apply_set_morph_type, target=lambda op: ('morph_type', op.get('morpheme_id')),
-           at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',)),
+           at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',), extra={'anchors': _anchors}),
     OpKind('split_word', ('split word', 'split words'), required=('word_id', 'position'),
            apply=_apply_split_word, target=lambda op: ('word_shape', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=WORD_SHAPE,
@@ -1302,6 +1321,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     ids = Minter(seed or uuid7())
     ops = expand_ops(ops)
     validate_ops(ops)
+    ops = fp.rebase_offsets(client, KIND, ops)
     ops = resolve_scopes(client, project, ops, requester)
     ops, notes = normalize_ops(ops)
     check_entries(client, ops, project)

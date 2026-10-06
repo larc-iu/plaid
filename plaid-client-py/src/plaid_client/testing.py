@@ -960,6 +960,7 @@ class FakeClient:
             self.vocab_layers = FakeClient._VocabLayers(self)
         for name in self.RESOURCES:
             setattr(self, name, Resource(self, name))
+        self.tokens = FakeClient._Tokens(self)
         self.vocab_items = FakeClient._VocabItems(self)
         #: what ``server.limits()`` answers, GET /info's limits (none given:
         #: the fake reports none, as an older server would)
@@ -1395,6 +1396,34 @@ class FakeClient:
                     if item.get('id') == id:
                         return copy.deepcopy({**item, 'layer': vid})
             raise _refusal(root, 404, 'Vocab item not found', 'GET', f'/api/v1/vocab-items/{id}')
+
+    class _Tokens(Resource):
+        """One token read by id, answered from the documents as the fixture
+        holds them now: the document a read would answer (the last one read,
+        for a list), else any project's. A token no document holds is the
+        server's 404. Writes record like any resource's, and queue when made
+        on a batch."""
+
+        def __init__(self, writer):
+            super().__init__(writer, 'tokens')
+            self._root = _root(writer)
+
+        def get(self, token_id):
+            root = self._root
+            root.fail_if_asked('tokens.get')
+            for spec in [root._home(), *(root.other_projects or {}).values()]:
+                documents = spec['documents']
+                if isinstance(documents, dict):
+                    trees = list(documents.values())
+                else:
+                    trees = [documents[max(0, min(len(root.reads) - 1, len(documents) - 1))]] if documents else []
+                for tree in trees:
+                    for layer in (kl for tl in tree.get('text_layers') or []
+                                  for kl in tl.get('token_layers') or []):
+                        for token in layer.get('tokens') or []:
+                            if token.get('id') == token_id:
+                                return copy.deepcopy({**token, 'token_layer': layer.get('id')})
+            raise _refusal(root, 404, 'Token not found', 'GET', f'/api/v1/tokens/{token_id}')
 
     class _Comments:
         """The project's comments, read from the fixture. A comment posted is

@@ -6,8 +6,10 @@ safe only when every change that could make the plan wrong lands in a sentence
 the plan pinned, or pins the whole document. Each case here is one way a
 document can change under a pending plan without the planned sentence's own
 annotations changing, in each app where it exists: an edge or document-level
-relation written from another sentence, a text edit that shifts offsets, an
+relation written from another sentence, an
 alignment, the vocabulary a planned link names, the glosses the UMR model read.
+A text edit before the planned sentence moves its offsets and nothing else, so
+it does not refuse the plan (test_stale_offsets.py).
 """
 
 import copy
@@ -59,8 +61,9 @@ def test_umr_an_alignment_change_in_the_planned_sentence_refuses():
     assert _refused(_approve(spec, client, plan))
 
 
-def test_umr_a_text_edit_before_the_planned_sentence_refuses():
-    """Three characters typed into sentence 1 move every offset of sentence 2."""
+def test_umr_a_text_edit_before_the_planned_sentence_does_not_refuse():
+    """Four characters typed into sentence 1 move every offset of sentence 2,
+    which its fingerprint counts from its own start (A3-UMR-1)."""
     spec = UMR()
     client = spec['client']()
     plan, _ = _plan(spec, client, tool=_umr_sentence_2_plan())
@@ -75,7 +78,8 @@ def test_umr_a_text_edit_before_the_planned_sentence_refuses():
                 if t['end'] > 4 or t['id'] == 'ms-1':
                     t['end'] += 4
     _edit(client, spec, insert)
-    assert _refused(_approve(spec, client, plan))
+    helper = _approve(spec, client, plan)
+    assert not helper.errors, helper.errors
 
 
 def test_umr_a_gloss_the_model_read_changing_in_the_planned_sentence_refuses():
@@ -103,7 +107,7 @@ def test_umr_a_gloss_changing_in_another_sentence_does_not_refuse():
 IGT = APPS['igt']
 
 
-def test_igt_a_text_edit_before_the_planned_sentence_refuses():
+def test_igt_a_text_edit_before_the_planned_sentence_does_not_refuse():
     spec = IGT()
     client = spec['client']()
     plan, _ = _plan(spec, client, tool=('set_field', {'document': 'd1', 'refs': ['s2.w1'],
@@ -120,7 +124,8 @@ def test_igt_a_text_edit_before_the_planned_sentence_refuses():
                 if t['end'] > 7:
                     t['end'] += 4
     _edit(client, spec, insert)
-    assert _refused(_approve(spec, client, plan))
+    helper = _approve(spec, client, plan)
+    assert not helper.errors, helper.errors
 
 
 def _links(raw):
@@ -179,7 +184,7 @@ def test_igt_a_planned_link_pins_one_sentence_already_linking_its_entry():
 UD = APPS['ud']
 
 
-def test_ud_a_text_edit_before_the_planned_sentence_refuses():
+def test_ud_a_text_edit_before_the_planned_sentence_does_not_refuse():
     spec = UD()
     client = spec['client']()
     plan, _ = _plan(spec, client)   # a lemma in sentence 2
@@ -191,4 +196,5 @@ def test_ud_a_text_edit_before_the_planned_sentence_refuses():
                 t['begin'] += 2
                 t['end'] += 2
     _edit(client, spec, shift)
-    assert _refused(_approve(spec, client, plan))
+    helper = _approve(spec, client, plan)
+    assert not helper.errors, helper.errors

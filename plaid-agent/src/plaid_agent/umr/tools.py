@@ -69,7 +69,7 @@ class Workspace(BaseWorkspace):
         ids = {sentence.id} | {w.id for w in sentence.words} | {m.id for m in sentence.morphemes}
         gloss = {layer: {t: v for t, v in values.items() if t in ids}
                  for layer, values in (doc.gloss or {}).items()}
-        return fp.fingerprint({'sentence': sentence, 'gloss': gloss})
+        return fp.fingerprint({'sentence': sentence, 'gloss': gloss}, origin=sentence.begin)
 
     def comment_anchor(self, doc: 'UmrDoc', ref: str) -> str:
         # A sentence's comments hang off its token, as in the other apps.

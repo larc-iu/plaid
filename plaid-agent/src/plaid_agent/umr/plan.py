@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import metadata_ops, uuid7
 
+from ..core import fingerprint as fp
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
@@ -111,6 +112,15 @@ def _apply_set_edge_order(ctx: Context, op) -> int:
     ctx.b.update('relations', op['relation_id'],
                  metadata=[{'op': 'set', 'path': [UMR, 'order'], 'value': op['order']}])
     return 1
+
+
+def _node_anchors(op) -> List[Tuple[Optional[str], str]]:
+    """A new node's anchor is its sentence's extent, read from the sentence
+    when the plan is applied. A constant's point at the text's start belongs
+    to no sentence."""
+    if op.get('constant') or not op.get('sentence_id'):
+        return []
+    return [(None, op['sentence_id'])]
 
 
 def _apply_create_node(ctx: Context, op) -> int:
@@ -376,7 +386,10 @@ KIND = ok.registry([
            apply=_apply_create_node,
            target=lambda op: ('new-node', op.get('document_id'), op.get('var')),
            compact_each=('var', 'concept', 'attrs', 'begin', 'end', 'root', 'ref', 'label'),
-           compact_label=_kind_label('add', ('node', 'nodes'), drop='add ')),
+           compact_label=_kind_label('add', ('node', 'nodes'), drop='add '),
+           # A node of a sentence stands over the whole of it, wherever an
+           # edit before it has moved it since (core.fingerprint).
+           extra={'anchors': _node_anchors}),
     OpKind('create_edge', _EDGE, stage=LINKS, required=('relation_layer_id', 'role'),
            apply=_apply_create_edge,
            target=lambda op: ('new-edge', op.get('document_id'), op.get('source_var'),
@@ -501,6 +514,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     ids = Minter(seed or uuid7())
     ops = expand_ops(ops)
     validate_ops(ops)
+    ops = fp.rebase_offsets(client, KIND, ops)
     ops, notes = resolve_scopes(client, project, ops)
     ops, superseded = normalize_ops(ops)
     notes += superseded

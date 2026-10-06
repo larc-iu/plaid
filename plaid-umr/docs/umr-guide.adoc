@@ -512,8 +512,8 @@ When the people running the site's assistant have said, the panel shows their st
 Otherwise, ask the site's administrators.
 
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
-An edit to another sentence does not stop it, and an edit to a sentence's glosses in Plaid IGT counts as an edit to that sentence.
-A change to every node of a concept is refused after any edit to its document.
+An edit to another sentence does not stop it, even one that adds or removes letters before the plan's sentences, and an edit to a sentence's glosses in Plaid IGT counts as an edit to that sentence.
+A change to every node of a concept, and a plan that adds a document-level constant such as `author`, are refused after any edit to their document.
 Approving a plan on a document that another run (Draft, a parser) is writing to is refused with nothing written. Approve again once the run has finished.
 A plan approved in two tabs at once is applied once. The other tab shows it applied when the first has finished.
 

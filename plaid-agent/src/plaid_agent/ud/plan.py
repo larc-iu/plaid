@@ -21,6 +21,7 @@ and the relations go in the next.
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
+from ..core import fingerprint as fp
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
@@ -470,7 +471,10 @@ KIND = ok.registry([
     OpKind('set_words', ('reshaped token', 'reshaped tokens'), apply=_apply_set_words, shape=WORD_SHAPE,
            required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),
            deletes_tokens=lambda op: list(op.get('existing_word_ids') or []),
-           deletes=lambda op: list(op.get('relation_ids') or [])),
+           deletes=lambda op: list(op.get('relation_ids') or []),
+           # The new words cover their token, wherever an edit before it has
+           # moved it since (core.fingerprint).
+           extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
            required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
            deletes=lambda op: (list(op.get('relation_ids') or [])
@@ -675,6 +679,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     ids = Minter(seed or uuid7())
     ops = expand_ops(ops)
     validate_ops(ops)
+    ops = fp.rebase_offsets(client, KIND, ops)
     ops, notes = resolve_scopes(client, project, ops)
     ops, superseded = normalize_ops(ops)
     notes += superseded

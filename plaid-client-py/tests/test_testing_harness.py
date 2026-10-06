@@ -138,9 +138,24 @@ def test_only_a_write_the_real_client_has_is_recorded():
     # an error, never a write that answers {}.
     c = _project_client()
     for resource, method in [('tokens', 'bulk_crate'), ('documents', 'get_many'),
-                             ('tokens', 'get'), ('spans', 'list')]:
+                             ('relations', 'get'), ('spans', 'list')]:
         with pytest.raises(AttributeError):
             getattr(getattr(c, resource), method)
+    assert c.writes == []
+
+
+def test_a_token_is_read_from_the_documents_as_they_are_now():
+    # An assistant's plan reads again where a token is when it is applied
+    # (plaid-agent core.fingerprint.rebase_offsets).
+    doc = {'id': 'd', 'text_layers': [{'id': 'tl', 'token_layers': [
+        {'id': 'kl', 'tokens': [{'id': 't1', 'begin': 3, 'end': 5}]}]}]}
+    c = testing.FakeClient({'d': doc})
+    assert c.tokens.get('t1') == {'id': 't1', 'begin': 3, 'end': 5, 'token_layer': 'kl'}
+    doc['text_layers'][0]['token_layers'][0]['tokens'][0]['begin'] = 4
+    assert c.tokens.get('t1')['begin'] == 4
+    with pytest.raises(PlaidAPIError) as e:
+        c.tokens.get('gone')
+    assert e.value.status == 404
     assert c.writes == []
 
 
