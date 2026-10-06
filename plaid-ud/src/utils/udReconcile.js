@@ -4,30 +4,20 @@
 // word, no cycle, one Form, Lemma, UPOS and XPOS per word, syntactic words as
 // wide as their word) are held by the server as layer rules and applied in
 // every write (udConstraints.js). What is planned here is what the rules do
-// not cover: a bare word's first syntactic word, a suppressor left over a pair
-// with no relation, and the screen's copy of what a sentence split removes.
+// not cover: a bare word's first syntactic word, and the screen's copy of
+// what a sentence split removes.
 
 import { dependencyRelationLayers } from './udLayerUtils.js';
-import { danglingSuppressorIds } from '../domain/enhancedGraph.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 // The audit label for a reconcile pass, naming what it actually changed, and
 // the console's record of it. Terse on purpose: a row in a drawer. Null when
 // nothing was written, which leaves the pass its plain label and, since a
 // group is created lazily by its first write, usually no entry at all.
-export const describeReconcile = ({
-  createdSyntacticWords = 0,
-  rulesRepaired = false,
-  rulesDeclared = false,
-} = {}) => {
-  const parts = [];
-  if (createdSyntacticWords)
-    parts.push(`added ${countOf(createdSyntacticWords, 'word', 'words')} to the annotation grid`);
-  if (rulesRepaired) parts.push('fixed annotations the annotation rules forbid');
-  if (rulesDeclared) parts.push('applied the annotation rules');
-  if (!parts.length) return null;
-  return `Repaired: ${parts.join(', ')}`;
-};
+export const describeReconcile = ({ createdSyntacticWords = 0 } = {}) =>
+  createdSyntacticWords
+    ? `Repaired: added ${countOf(createdSyntacticWords, 'word', 'words')} to the annotation grid`
+    : null;
 
 // The rule is about dependency relations as such, so it is asked of the
 // enhanced layer's rows as well as the tree's. A suppressor lies over the same
@@ -71,23 +61,6 @@ export const relationsCrossing = (layerInfo, charPos) => {
     })
     .map((rel) => rel.id);
 };
-
-/**
- * Enhanced-layer suppressors that no longer suppress anything. A suppressor
- * says the enhanced graph leaves out the basic relation over the same head and
- * dependent, and nothing that writes a basic relation knows it is there: a
- * re-pointed head, a re-parse and a rewrite rule all delete that relation and
- * leave the suppressor lying over a pair with no relation on it. It means
- * nothing in that state, so it is deleted (see domain/enhancedGraph.js).
- *
- * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
- * @returns {string[]} relation ids to delete
- */
-export const staleSuppressorIds = (layerInfo) =>
-  danglingSuppressorIds(
-    layerInfo?.relationLayer?.relations,
-    layerInfo?.enhancedRelationLayer?.relations,
-  );
 
 /**
  * Extents of words that lack a full-width syntactic-word ("morpheme") token.

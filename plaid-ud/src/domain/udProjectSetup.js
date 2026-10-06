@@ -301,8 +301,8 @@ export const adoptSubstrate = (client, page) =>
 
     // UD's layer rules (utils/udConstraints.js). The layers adopted may hold
     // another app's data, which the server repairs first where a rule has a
-    // repair. A rule the data still breaks is left for a maintainer's open
-    // to report.
+    // repair. A rule the data still breaks is left undeclared, and the rest
+    // are in force.
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
   });

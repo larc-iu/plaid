@@ -203,8 +203,8 @@ def _suppressors(ctx: Context, op) -> None:
     it quietly suppresses the next relation drawn over the same pair, which a
     person then sees born faded with nothing on screen saying why. The editor
     clears them at the same two moments (plaid-ud ``ConlluDocument``,
-    ``createRelation`` and ``deleteRelation``); reconcile-on-open is what
-    catches whatever anyone else leaves, and it only runs on an OPEN.
+    ``createRelation`` and ``deleteRelation``, through ``suppressorIdsOver``),
+    and nothing clears them later: an open no longer does.
     """
     if op.get('relation_id') and ctx.removed_by_others(op, op['relation_id']):
         return  # its relation goes with another op's delete, and they with it

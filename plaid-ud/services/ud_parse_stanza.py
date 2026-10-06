@@ -131,9 +131,10 @@ def is_suppressor(relation):
     """An enhanced-layer row saying the enhanced graph leaves out the basic
     relation it lies over (plaid-ud src/domain/enhancedGraph.js). It carries no
     provenance, which reads as a person's work, but it is a note about a
-    relation and not an annotation of these words: it protects nothing. One
-    left over a relation this parse replaces is cleared by the editor's
-    reconcile-on-open."""
+    relation and not an annotation of these words: it protects nothing. A
+    parse strands none: it deletes a sentence's syntactic words, and the
+    server deletes every relation on their lemma spans with them, suppressors
+    included."""
     return (relation.get("metadata") or {}).get("suppress") is True
 
 

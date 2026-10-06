@@ -1,10 +1,9 @@
-// The layer rules UD declares, on open, at setup and with a settings save.
+// The layer rules UD declares at setup and with a settings save, and never on an open.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   queueDeclarations,
   queueRuleChanges,
-  rulesNotInForce,
   wantedConstraints,
   withConfigWrites,
 } from '../src/utils/udConstraints.js';
@@ -135,47 +134,32 @@ test('queueDeclarations declares what differs, naming what each layer holds', ()
   assert.deepEqual(queued, []);
 });
 
-test('a layer the data breaks becomes one warning', () => {
-  const info = { relationLayer: { id: 'r', name: 'Dependency Relations' } };
-  const [f] = rulesNotInForce(
-    [
-      {
-        layerId: 'r',
-        kind: 'relation',
-        namespace: 'ud',
-        constraints: ['max-in-degree'],
-        violationCount: 2,
-      },
-    ],
-    info,
-  );
-  assert.equal(f.code, 'layer-rules-not-in-force');
-  assert.equal(f.severity, 'warning');
-  assert.match(f.message, /"Dependency Relations"/);
-});
-
-test("a maintainer's open repairs, then declares UD's rules, a writer's repairs the document opened, and a reader's does nothing", async () => {
+// R3-UD: the rules are declared at setup, adopt and a settings save, and a
+// one-off script declared them on the projects made before. An open of a
+// project whose layers hold none, whose word layer lacks splitOnSpace and
+// whose enhanced layer holds a suppressor over no relation writes none of it,
+// for a maintainer, a writer or a reader.
+test('an open declares no rule, repairs nothing, sets no key and deletes no suppressor', async () => {
   const run = async (user, maintainers, writers = []) => {
     const calls = [];
+    const record =
+      (name) =>
+      async (...a) => {
+        calls.push([name, ...a]);
+        return name.endsWith('checkConstraints') ? { violations: [], violationCount: 0 } : {};
+      };
     const bundle = (name) => ({
-      setConfig: async () => {},
-      setConstraints: async (...a) => calls.push([`${name}.setConstraints`, ...a]),
-      // The stored data breaks a rule with a remedy, so the open repairs.
-      checkConstraints: async (...a) => {
-        calls.push([`${name}.checkConstraints`, ...a]);
-        return { violations: [{ constraint: a[1][0]?.type }], violationCount: 1 };
-      },
-      repairConstraints: async (...a) => {
-        calls.push([`${name}.repairConstraints`, ...a]);
-        return { repaired: [] };
-      },
+      setConfig: record(`${name}.setConfig`),
+      setConstraints: record(`${name}.setConstraints`),
+      checkConstraints: record(`${name}.checkConstraints`),
+      repairConstraints: record(`${name}.repairConstraints`),
     });
     const client = withOps({
       tokenLayers: bundle('tokenLayers'),
       spanLayers: bundle('spanLayers'),
       relationLayers: bundle('relationLayers'),
-      relations: { delete: async () => {} },
-      tokens: { bulkCreate: async () => {} },
+      relations: { delete: record('relations.delete') },
+      tokens: { bulkCreate: record('tokens.bulkCreate') },
     });
     const doc = new ConlluDocument({
       raw: rawDocFromConllu(INPUT, 'e', { enhanced: true }),
@@ -183,23 +167,26 @@ test("a maintainer's open repairs, then declares UD's rules, a writer's repairs 
       project: { maintainers, writers },
       user: { id: user },
     });
+    const info = doc.layerInfo;
+    assert.equal(info.wordTokenLayer.config?.plaid?.splitOnSpace, undefined);
+    assert.equal(info.relationLayer.constraints, undefined);
+    // A suppressor over the pair the tree's nsubj joins the other way round:
+    // it lies over no relation.
+    const nsubj = info.relationLayer.relations.find((r) => r.source !== r.target);
+    info.enhancedRelationLayer.relations = [
+      {
+        id: 'x1',
+        source: nsubj.target,
+        target: nsubj.source,
+        value: null,
+        metadata: { suppress: true },
+      },
+    ];
     const result = await doc._reconcile();
-    return { calls, result };
+    assert.equal(result.error, undefined);
+    return calls;
   };
-  const reader = await run('r@x.org', ['m@x.org']);
-  assert.deepEqual(reader.calls, []);
-  // A writer's open repairs the document opened, and declares nothing.
-  const writer = await run('w@x.org', ['m@x.org'], ['w@x.org']);
-  assert.ok(writer.calls.length > 0);
-  assert.ok(writer.calls.every((c) => c[0].endsWith('.repairConstraints')));
-  assert.ok(writer.calls.every((c) => c[4]?.document === 'e-id'));
-  const { calls, result } = await run('m@x.org', ['m@x.org']);
-  const kinds = calls.map((c) => c[0]);
-  assert.ok(kinds.indexOf('relationLayers.repairConstraints') >= 0);
-  assert.ok(
-    kinds.indexOf('relationLayers.setConstraints') >
-      kinds.lastIndexOf('spanLayers.repairConstraints'),
-  );
-  assert.equal(result.rulesDeclared, true);
-  assert.equal(result.error, undefined);
+  assert.deepEqual(await run('r@x.org', ['m@x.org']), []);
+  assert.deepEqual(await run('w@x.org', ['m@x.org'], ['w@x.org']), []);
+  assert.deepEqual(await run('m@x.org', ['m@x.org']), []);
 });

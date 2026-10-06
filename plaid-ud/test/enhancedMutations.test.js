@@ -383,44 +383,6 @@ test("a sentence split leaves the edges it cuts to the server's rule, and takes 
   );
 });
 
-test('reconcile deletes a suppressor whose basic relation another writer removed', async () => {
-  const raw = rawDocFromConllu(INPUT, 'e', { enhanced: true });
-  const layer = raw.textLayers[0].tokenLayers[2].spanLayers[1].relationLayers;
-  const obj = layer[0].relations.find((r) => r.value === 'obj');
-  layer[1].relations.push({
-    id: 'stale',
-    source: obj.source,
-    target: obj.target,
-    value: null,
-    metadata: { suppress: true },
-  });
-  layer[1].relations.push({
-    id: 'live',
-    source: layer[0].relations.find((r) => r.value === 'cc').source,
-    target: layer[0].relations.find((r) => r.value === 'cc').target,
-    value: null,
-    metadata: { suppress: true },
-  });
-  // Another writer re-parsed: the basic `obj` is gone, its suppressor is not.
-  layer[0].relations = layer[0].relations.filter((r) => r.id !== obj.id);
-
-  const deleted = [];
-  const after = structuredClone(raw);
-  const afterLayers = after.textLayers[0].tokenLayers[2].spanLayers[1].relationLayers;
-  afterLayers[1].relations = afterLayers[1].relations.filter((r) => r.id !== 'stale');
-  const client = withOps({
-    relations: { delete: async (id) => deleted.push(id) },
-    documents: { get: async () => after },
-    tokenLayers: { setConfig: async () => {} },
-  });
-  const doc = new ConlluDocument({ raw, client });
-  const result = await doc._reconcile();
-
-  assert.deepEqual(deleted, ['stale']);
-  // Housekeeping, not a loss: nothing is reported to the annotator.
-  assert.equal(doc.describeReconcile(result), null);
-});
-
 test('an enhanced edge and the suppressor it lays are created under the ids they were shown under', async () => {
   const sent = [];
   const client = withOps({

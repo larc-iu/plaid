@@ -16,19 +16,22 @@
 // each. A sentence with no rows at all has an enhanced graph equal to its
 // tree, which is what a project that never touches this exports.
 //
-// Everything that writes a BASIC relation stays ignorant of all this, and that
-// is the point of keeping both kinds of row in the enhanced layer. A re-pointed
-// head is a delete and a create, a parser rewrites a whole tree, a Grew rule
-// moves an edge: none of them has a flag to carry across. What a moved basic
-// relation leaves behind is a suppressor over a pair that no longer has a
-// basic relation, which is DETECTABLE, so reconcile-on-open removes it
-// (`danglingSuppressorIds`). An extra edge left behind is simply still drawn.
+// A suppressor belongs to the basic relation under it. A re-pointed head is a
+// delete and a create, a Grew rule moves an edge, a parser rewrites a whole
+// tree: every writer that deletes or moves a basic relation deletes the
+// suppressor over it in the same batch (`suppressorIdsOver`, and its twin in
+// plaid-agent's ud planner). A parser that replaces a sentence's syntactic
+// words needs nothing more, since the server deletes every relation on their
+// lemma spans, suppressors included. Left behind, a suppressor would lie over
+// a pair with no basic relation (`danglingSuppressorIds`) and quietly
+// suppress the next relation drawn over it. An extra edge left behind is
+// simply still drawn.
 //
 // A root is a relation from a word to itself in both layers, as the basic
 // tree already has it.
 //
-// Pure. Read by the export, the import, the tree and reconcile, so that the
-// rule is written once.
+// Pure. Read by the export, the import, the tree and every writer, so that
+// the rule is written once.
 
 export const SUPPRESS_KEY = 'suppress';
 
@@ -121,8 +124,20 @@ export const sentenceArcs = (sentence) => [
 ];
 
 /**
+ * The suppressors lying over these pairs, each given as a basic relation or as
+ * a bare `{source, target}`: the ones a write that deletes or moves those
+ * basic relations deletes with them, in the same batch. A write that creates a
+ * basic relation deletes the one over the pair it creates too, so a suppressor
+ * a writer outside this app left behind never fades a new arc.
+ */
+export const suppressorIdsOver = (pairs, rows) => {
+  if (!rows?.length) return [];
+  return [...new Set(pairs.map((rel) => suppressorFor(rel, rows)?.id).filter(Boolean))];
+};
+
+/**
  * Suppressors that suppress nothing: the basic relation they lay over has
- * been deleted or re-pointed since. Reconcile deletes these.
+ * been deleted or re-pointed since, by a writer that left them.
  */
 export const danglingSuppressorIds = (basic, rows) => {
   const basicPairs = new Set((basic || []).map((rel) => pairKey(rel.source, rel.target)));

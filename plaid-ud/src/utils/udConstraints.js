@@ -3,13 +3,13 @@
 // a dependency relation left crossing a sentence boundary by a split made in
 // another app is deleted in the split's own transaction, a syntactic word
 // left without a word of its extent goes with the text save that did it, a
-// second head, a cycle or a value outside a closed list is refused. What UD
-// used to heal on open is gone.
+// second head, a cycle or a value outside a closed list is refused. They are
+// declared when the layers are made or adopted and when a settings save
+// changes a closed list, never on an open.
 
 import { MODES, valueSetRule } from './udVocabMode.js';
 import {
   queueRepairOfBareLayer,
-  rulesNotInForce as findingsFor,
   sameConstraints,
 } from '../../../plaid-ui/src/lib/layerConstraints.js';
 
@@ -107,18 +107,6 @@ export const queueRuleChanges = (b, before, after) => {
   }
   return n;
 };
-
-/** The findings for the layers whose rules are not in force (plaid-ui's). */
-export const rulesNotInForce = (pending, info) =>
-  findingsFor(pending, [
-    info?.morphemeTokenLayer,
-    info?.formLayer,
-    info?.lemmaLayer,
-    info?.uposLayer,
-    info?.xposLayer,
-    info?.relationLayer,
-    info?.enhancedRelationLayer,
-  ]);
 
 /**
  * A copy of `project` with each of `writes` ({entity, key, value}, a config

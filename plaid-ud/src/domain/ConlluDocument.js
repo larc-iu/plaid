@@ -9,20 +9,14 @@ import {
   isReviewed,
   mergeMetadata,
   metadataOps,
-  PLAID_NAMESPACE,
   PROV,
   isReservedMetadataKey,
-  SPLIT_ON_SPACE_KEY,
   applyTextOps,
   gapsToOps,
   stampInferred,
   wasReplayed,
   writerPolicy,
 } from '@larc-iu/plaid-client';
-// By its real path rather than through `@ui`: this file is loaded by the
-// `node --test` suite, where no alias exists. It is the same file the alias
-// resolves to, and it imports nothing itself, which is what lets node load it.
-import { canEditProject, canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import {
   getUdLayerInfo,
@@ -30,12 +24,11 @@ import {
   readProjectLanguage,
   dependencyRelationLayers,
 } from '../utils/udLayerUtils.js';
-import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
+import { SUPPRESS_KEY, isSuppressor, suppressorFor, suppressorIdsOver } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
 import { sendTextPlan } from '../../../plaid-ui/src/lib/textSave.js';
-import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
@@ -47,11 +40,8 @@ import {
   hasOwnContent,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from './otherLoss.js';
-import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
-import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
 import {
   relationsCrossing,
-  staleSuppressorIds,
   wordsNeedingSyntacticWord,
   describeReconcile as describeUdReconcile,
 } from '../utils/udReconcile.js';
@@ -740,21 +730,13 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
-  // Reconcile-on-open: make sure the server holds UD's layer rules, repair
-  // what the rules leave to an app, then validate what remains.
-  //   1. Layer rules (utils/udConstraints.js), maintainers only: a relation
-  //      inside one sentence, one head per word, no cycle, one Form, Lemma,
-  //      UPOS and XPOS per word, syntactic words as wide as their word, a
-  //      closed list's values. The server applies them in every write,
-  //      whoever writes. A project whose layers do not hold them yet gets the
-  //      server's repair of its stored data first, then the declaration. A
-  //      rule the data still breaks (two heads, a cycle, an off-list value) is
-  //      not put in force, and a finding says so.
-  //   2. Seed a default full-width syntactic-word for every word that lacks one
-  //      (another app, e.g. IGT, can leave words bare — UD annotations live on
-  //      the syntactic-word layer, so a bare word is invisible/unannotatable).
-  //   3. Delete enhanced-layer suppressors whose basic relation has gone (see
-  //      enhancedGraph.js).
+  // Reconcile-on-open: seed what UD's grid needs, then validate what remains.
+  // UD's layer rules (utils/udConstraints.js) are declared at setup, adopt
+  // and a settings save, and the server applies them in every write, so an
+  // open neither repairs nor declares them.
+  //   Seed a default full-width syntactic-word for every word that lacks one
+  //   (another app, e.g. IGT, can leave words bare — UD annotations live on
+  //   the syntactic-word layer, so a bare word is invisible/unannotatable).
   // Then run validateConlluDocument over the reloaded state: residual heal
   // failures come back as `findings` for the caller to log + toast.
   // Deliberately NOT a queued write: this runs once on a freshly loaded doc,
@@ -769,56 +751,15 @@ export class ConlluDocument extends DocumentModel {
     return describeUdReconcile(result);
   }
 
-  // A space typed inside a word splits it: `splitOnSpace` on the word layer.
-  // A project made before the key existed picks it up here, for a
-  // maintainer, naming what this page read. A failure is let go: the next
-  // open tries again.
-  async _backfillSplitOnSpace(info) {
-    const layer = info?.wordTokenLayer;
-    if (!canManageProject(this._project, this._user) || !layer?.id) return;
-    if (layer.config?.[PLAID_NAMESPACE]?.[SPLIT_ON_SPACE_KEY] === true) return;
-    try {
-      await this._client.tokenLayers.setConfig(
-        layer.id,
-        PLAID_NAMESPACE,
-        SPLIT_ON_SPACE_KEY,
-        true,
-        undefined,
-        expectStored(layer, PLAID_NAMESPACE, SPLIT_ON_SPACE_KEY),
-      );
-    } catch (err) {
-      if (!isConfigConflict(err))
-        console.error('Could not declare splitOnSpace on the words:', err);
-    }
-  }
-
   async _reconcile() {
-    const ZERO = {
-      createdSyntacticWords: 0,
-      rulesDeclared: false,
-      rulesRepaired: false,
-      findings: [],
-    };
+    const ZERO = { createdSyntacticWords: 0, findings: [] };
     if (this._reconciling) return ZERO;
     // A project UD has not adopted is only looked at: a link straight to one
-    // of its documents writes nothing, not even the back-fills, which would
-    // change how another app's shared word layer splits.
+    // of its documents writes nothing.
     if (!this.layerInfo.isConfigured) return ZERO;
     this._reconciling = true;
     try {
-      let info = this.layerInfo;
-      await this._backfillSplitOnSpace(info);
-      const rules = await ensureLayerConstraints(this._client, wantedConstraints(info), {
-        canManage: canManageProject(this._project, this._user),
-        canWrite: canEditProject(this._project, this._user),
-        documentId: this.id,
-      });
-      // The server's repair changed stored rows this screen shows.
-      if (rules.repaired) {
-        await this._reload();
-        info = this.layerInfo;
-      }
-      const staleIds = staleSuppressorIds(info);
+      const info = this.layerInfo;
       const { morphemeTokenLayer, textLayer } = info;
       const textId = textLayer?.text?.id;
       const canHeal = Boolean(morphemeTokenLayer?.id && textId);
@@ -840,43 +781,20 @@ export class ConlluDocument extends DocumentModel {
         createdSyntacticWords = seedExtents.length;
       }
 
-      // Suppressors left over a pair with no relation. A concurrent open may
-      // have deleted them already, so a not-found is success.
-      if (staleIds.length) {
-        try {
-          await this._client.batched(async (b) => {
-            staleIds.forEach((id) => b.relations.delete(id));
-          });
-        } catch (err) {
-          if (err?.status !== 404) throw err;
-        }
-      }
-
-      // Re-read only when a heal actually wrote. The batches above land
-      // server-side and this instance knows nothing about them, so a heal has
+      // Re-read only when a heal actually wrote. The batch above lands
+      // server-side and this instance knows nothing about it, so a heal has
       // to refetch — but a clean pass has nothing to refetch, and its in-memory
       // state IS the server state. This runs behind a blocking spinner on every
       // Annotate open now, so an unconditional reload would make the ordinary
       // case (nothing to repair) pay a full document fetch for the rare one.
-      const healed = createdSyntacticWords + staleIds.length > 0;
-      const tally = {
-        createdSyntacticWords,
-        rulesDeclared: rules.changed,
-        rulesRepaired: rules.repaired,
-      };
+      const tally = { createdSyntacticWords };
       // Every write has landed: the repair is whole, and a failure from here
       // on leaves only the screen behind it. Its findings would describe the
       // document as it was before the repair, so there are none.
       try {
-        if (healed) await this._reload();
+        if (createdSyntacticWords > 0) await this._reload();
         // Validate the true server state — even when nothing healed.
-        return {
-          ...tally,
-          findings: [
-            ...validateConlluDocument(this.layerInfo),
-            ...rulesNotInForce(rules.pending, this.layerInfo),
-          ],
-        };
+        return { ...tally, findings: validateConlluDocument(this.layerInfo) };
       } catch (refreshError) {
         console.error('reconcileOnOpen could not re-read the repaired document:', refreshError);
         return { ...tally, findings: [], refreshError };
@@ -1592,17 +1510,11 @@ export class ConlluDocument extends DocumentModel {
     }
   }
 
-  // Suppressors lying over these pairs, each given as a basic relation or as a
-  // bare `{source, target}`. A suppressor says the enhanced graph leaves out
-  // the basic relation over its pair, so it goes when that relation goes. Left
-  // behind it would suppress nothing, and would quietly suppress the next
-  // relation drawn over the same pair. Reconcile clears the ones another
-  // writer leaves, at the next open; this clears them at both moments a
-  // relation over the pair changes hands.
+  // Suppressors lying over these pairs (enhancedGraph.js, suppressorIdsOver).
+  // A suppressor says the enhanced graph leaves out the basic relation over
+  // its pair, so it goes when that relation goes, in the same batch.
   _suppressorIdsOver(info, pairs) {
-    const rows = info.enhancedRelationLayer?.relations || [];
-    if (rows.length === 0) return [];
-    return pairs.map((rel) => suppressorFor(rel, rows)?.id).filter(Boolean);
+    return suppressorIdsOver(pairs, info.enhancedRelationLayer?.relations);
   }
 
   // Create (or replace) a dependency relation between two lemma spans.
@@ -1648,21 +1560,14 @@ export class ConlluDocument extends DocumentModel {
     );
     // Every suppressor this write makes meaningless: the ones over the
     // incoming relations it REPLACES, and any already lying over the pair it
-    // CREATES. The second is one guard covering every stale source, not just
-    // this editor's own: an agent `set_head`, a script, the Python client
-    // each move a basic relation and leave a suppressor over the pair they
-    // left, and only reconcile-on-OPEN sweeps those. A person with the
-    // document open when one runs would otherwise redraw that very arc and
-    // see it born faded, with no enhanced head and nothing on screen saying
-    // why.
-    const staleSuppressors = [
-      ...new Set(
-        this._suppressorIdsOver(info, [
-          ...incomingRelations,
-          { source: resolvedSourceId, target: resolvedTargetId },
-        ]),
-      ),
-    ];
+    // CREATES. The second guards against a writer outside this app (a script
+    // on the Python client, say) that moved a basic relation and left its
+    // suppressor: a person redrawing that very arc would otherwise see it
+    // born faded, with no enhanced head and nothing on screen saying why.
+    const staleSuppressors = this._suppressorIdsOver(info, [
+      ...incomingRelations,
+      { source: resolvedSourceId, target: resolvedTargetId },
+    ]);
     const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
     // A re-pointed head is a person's relation: it carries the writer's
     // create stamp (null for a verifier, so a verifier's stays plain).

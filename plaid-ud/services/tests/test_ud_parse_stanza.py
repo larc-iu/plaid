@@ -445,6 +445,31 @@ def test_a_suppressor_protects_nothing_but_an_enhanced_edge_does():
     assert 'Lemma/Enhanced Dependencies: 1' in refusal
 
 
+def test_a_reparse_takes_a_suppressor_with_the_words_it_lies_on():
+    """A suppressor belongs to the basic relation under it, and a writer that
+    deletes or moves that relation deletes it too. A parse never deletes a
+    relation as such: it deletes the sentence's syntactic words, and the
+    server deletes every relation on their lemma spans, the suppressor with
+    the basic relation, so none is left over a pair with no relation."""
+    machine = {'prov': 'inferred', 'provSource': SOURCE}
+    lemmas = [{'id': 'l0', 'tokens': ['m0'], 'value': 'the', 'metadata': machine},
+              {'id': 'l1', 'tokens': ['m1'], 'value': 'dog', 'metadata': machine}]
+    basic = {'id': 'b1', 'source': 'l1', 'target': 'l0', 'value': 'det', 'metadata': machine}
+    suppressor = {'id': 'x1', 'source': 'l1', 'target': 'l0', 'value': None,
+                  'metadata': {'suppress': True}}
+    doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)],
+                    morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)],
+                    spans={'lemmaL': lemmas}, relations=[basic],
+                    enhanced_relations=[suppressor])
+    service = _service(documents=[doc])
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    [deleted] = service.client.payloads('tokens.bulk_delete')
+    assert {'m0', 'm1'} <= set(deleted)
+    assert not [k for k in service.client.kinds if k.startswith('relations.') and 'create' not in k]
+
+
 def test_the_tree_is_found_by_its_flag_and_never_by_position():
     """Lemma holds two relation layers. With the flag gone from the tree's, a
     lookup by position would hand back the enhanced layer."""

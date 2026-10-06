@@ -10,6 +10,7 @@ import {
   suppressedBasicIds,
   suppressorFor,
   danglingSuppressorIds,
+  suppressorIdsOver,
   parseDeps,
   planEnhancedRow,
   serializeDeps,
@@ -69,6 +70,21 @@ test('a suppressor whose basic relation has moved is dangling', () => {
   // The head was re-pointed: a delete and a create, so the pair is new.
   assert.deepEqual(danglingSuppressorIds([rel('b9', 's5', 's1', 'nmod')], rows), ['x1']);
   assert.deepEqual(danglingSuppressorIds([], rows), ['x1']);
+});
+
+test('the suppressors a write over these pairs takes with it, each once', () => {
+  const rows = [
+    suppressor('x1', 's2', 's1'),
+    rel('e1', 's2', 's1', 'nmod:of'),
+    suppressor('x2', 's3', 's3'),
+  ];
+  const b1 = rel('b1', 's2', 's1', 'nmod');
+  assert.deepEqual(suppressorIdsOver([b1], rows), ['x1']);
+  // A bare pair, as a write that creates a relation names it, and the same
+  // pair twice.
+  assert.deepEqual(suppressorIdsOver([{ source: 's2', target: 's1' }, b1], rows), ['x1']);
+  assert.deepEqual(suppressorIdsOver([{ source: 's1', target: 's2' }], rows), []);
+  assert.deepEqual(suppressorIdsOver([b1], undefined), []);
 });
 
 test('parseDeps reads heads and relations, colons and all', () => {
