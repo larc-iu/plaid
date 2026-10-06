@@ -130,7 +130,13 @@ const UD_CONV = {
         changes: [
           {
             label: 's2.w1 lemma = kitab',
-            where: { kind: 'token', documentId: 'd9', documentName: 'dev', ref: 's2.w1' },
+            where: {
+              kind: 'token',
+              documentId: 'd9',
+              documentName: 'dev',
+              ref: 's2.w1',
+              surface: 'kitab',
+            },
           },
         ],
       },
@@ -277,6 +283,10 @@ describe('the admin transcript of another app', () => {
     expect(container.textContent).toContain('kitab parhi');
     expect(container.textContent).toContain('s2.w1 lemma = kitab');
     expect(container.textContent).not.toMatch(/<cite/);
+    // A row names the word and reference it changes, unlinked, then its label.
+    const row = all(container, 'tbody tr').find((tr) => tr.textContent.includes('lemma = kitab'));
+    expect(texts(row, 'td span span')).toEqual(['kitab', 's2.w1']);
+    expect(texts(row, 'td')[1]).toBe('s2.w1 lemma = kitab');
     // The inline one is its title, not a link to nowhere.
     expect(texts(container, 'strong')).toContain('dev, sentence 2');
     // Nothing links into an editor this app cannot address.

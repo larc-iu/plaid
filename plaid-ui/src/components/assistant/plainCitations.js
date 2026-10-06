@@ -28,7 +28,8 @@ export const PLAIN_CITATIONS = {
 // conversation of an app this one is not. Citations as above, and a plan's
 // changes filed under the document each names (`where.documentId` and
 // `documentName` are the vocabulary every app's service shares), each row
-// its stored label with no link.
+// its word and reference where the service gave them, then its stored label,
+// with no link.
 export const PLAIN_ASSISTANT = {
   ...PLAIN_CITATIONS,
   app: '',
@@ -46,8 +47,15 @@ export const PLAIN_ASSISTANT = {
           href: null,
         }
       : { key: 'other', title: 'Other changes', href: null },
-  changePlace: () => null,
-  // `change` is worded to sit beside a place, and none is drawn here.
+  // The word a change lands on and its reference, as the service located it,
+  // unlinked, so rows that change the same thing in different places are told
+  // apart.
+  changePlace: (_projectId, where) => {
+    const name = where?.surface || where?.ref;
+    if (!name) return null;
+    return { href: null, title: '', name, detail: where.surface ? where.ref || null : null };
+  },
+  // The stored label, which says the whole change.
   rowText: (row) => row.label,
   parseCitationHref: () => null,
 };
