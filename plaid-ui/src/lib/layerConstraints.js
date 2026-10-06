@@ -1,18 +1,15 @@
 // The declaration of an app's layer rules (plaid-core's layer constraints),
 // shared by every app. Each app builds the list it wants for each layer it
-// owns from its layer info (a pure `wantedConstraints`), and a maintainer's
-// open hands it here: a layer whose stored list differs is checked, repaired
-// first when the check finds data its rules with a remedy would change (the
-// same deletions the old open-time heals made, once, project-wide), then
-// declared. A rule the stored data still breaks (one with no remedy: two
-// heads on a word, a cycle, an off-list value, or a repair a lock held off)
-// is refused by the server. The layer is then declared with the rest of its
-// list, and the refused rules are returned under `pending` for the app's
-// validator to report. A later open checks only those rules, and declares
-// them once the data no longer breaks them.
-//
-// A writer's open of a layer that holds none of the app's rules yet repairs
-// the document being opened, as the old heals did, and declares nothing.
+// owns from its layer info (a pure `wantedConstraints`), and its setup (or a
+// one-off script, as administrator) hands it here: a layer whose stored list
+// differs is checked, repaired first when the check finds data its rules with
+// a remedy would change, then declared. A rule the stored data still breaks
+// (one with no remedy: two heads on a word, a cycle, an off-list value, or a
+// repair a lock held off) is refused by the server. The layer is then
+// declared with the rest of its list, and the refused rules are returned
+// under `pending`. A later call checks only those rules, and declares them
+// once the data no longer breaks them. No app calls this when a document
+// opens.
 
 import { isConstraintViolation, statusOf } from './errors.js';
 import { violationsOf } from '../../../plaid-client-js/src/constraints.js';
@@ -44,7 +41,7 @@ const sameRule = (a, b) => sameConstraints([a], [b]);
 /**
  * Queue on batch `b`, ahead of a settings save's declaration on a layer that
  * holds none of the app's rules yet, the repair of what core can repair (a
- * doubled annotation, say), as a maintainer's open would have done. Then only
+ * doubled annotation, say), as the declaration would have. Then only
  * a violation with no remedy refuses the save. True when it queued one.
  */
 export const queueRepairOfBareLayer = (b, { kind, layerId, constraints, stored }) => {
@@ -63,7 +60,7 @@ const typesOf = (violations) => [...new Set((violations || []).map((v) => v.cons
 
 /**
  * The rules of `entry` still out when its layer holds part of the list it
- * wants (an earlier open declared the rest), else null.
+ * wants (an earlier call declared the rest), else null.
  */
 const stillOut = (entry) => {
   const stored = entry.stored || [];
@@ -73,11 +70,11 @@ const stillOut = (entry) => {
 };
 
 /**
- * What a maintainer's open does for one entry: the list to declare, the list
+ * What a declaration does for one entry: the list to declare, the list
  * to repair first, and the rules left pending. Reads only: the rules with a
  * remedy are repaired only when a check finds the stored data breaks them
  * (H9-FIRST-OPEN-3: a repair holds the write lock for the whole layer, and
- * clean data is the rule). The rules an earlier open left out that have no
+ * clean data is the rule). The rules an earlier call left out that have no
  * remedy are checked for `pending`.
  */
 const planOf = async (client, entry) => {
@@ -106,36 +103,6 @@ const planOf = async (client, entry) => {
   };
 };
 
-/** The code of the finding for rules the stored data keeps out. */
-export const RULES_NOT_IN_FORCE = 'layer-rules-not-in-force';
-
-// What a rule of a layer of each kind is kept on, for the finding.
-const ROW_WORDS = {
-  token: ['token', 'tokens'],
-  span: ['value', 'values'],
-  relation: ['relation', 'relations'],
-};
-
-/**
- * One validator finding per layer whose rules are not in force (`pending`
- * from ensureLayerConstraints): the server refused the declaration because
- * stored data breaks a rule it has no repair for. `layers` are the app's
- * layer reads, for their names. Written for the console and the copied
- * details, like every finding.
- */
-export const rulesNotInForce = (pending, layers) =>
-  (pending || []).map((p) => {
-    const name = (layers || []).find((l) => l?.id === p.layerId)?.name ?? p.layerId;
-    const n = p.violationCount;
-    const [one, many] = ROW_WORDS[p.kind] ?? ['row', 'rows'];
-    return {
-      severity: 'warning',
-      code: RULES_NOT_IN_FORCE,
-      message: `The ${p.constraints.join(' and ')} rules of "${name}" are not in force: ${n} stored ${n === 1 ? `${one} breaks` : `${many} break`} them.`,
-      context: p,
-    };
-  });
-
 const pendingEntry = (entry, constraints, violationCount) => ({
   layerId: entry.layerId,
   kind: entry.kind,
@@ -150,24 +117,15 @@ const pendingEntry = (entry, constraints, violationCount) => ({
  * @param {object} client - a PlaidClient
  * @param {Array<{kind: 'token'|'span'|'relation', layerId: string, namespace: string,
  *   constraints: Array<object>, stored: Array<object>|null}>} wanted
- * @param {{canManage?: boolean, canWrite?: boolean, documentId?: string}} options -
- *   a maintainer declares. A writer, given the document being opened,
- *   repairs it for the layers that hold none of the rules yet.
+ * @param {{canManage?: boolean}} options - only a maintainer declares.
  * @returns {Promise<{changed: boolean, repaired: boolean, pending: Array<object>}>}
  *   `changed` when a list was declared, `repaired` when stored data was
  *   changed (the caller reloads), `pending` for each layer with rules left
  *   undeclared, naming them.
  */
-export async function ensureLayerConstraints(
-  client,
-  wanted,
-  { canManage = false, canWrite = false, documentId = null } = {},
-) {
+export async function ensureLayerConstraints(client, wanted, { canManage = false } = {}) {
   const result = { changed: false, repaired: false, pending: [] };
-  if (!canManage) {
-    if (canWrite && documentId) result.repaired = await repairDocument(client, wanted, documentId);
-    return result;
-  }
+  if (!canManage) return result;
   const differs = wanted.filter((w) => !sameConstraints(w.stored, w.constraints));
   if (!differs.length) return result;
 
@@ -233,7 +191,7 @@ export async function ensureLayerConstraints(
                 list = next;
               } else if (statusOf(e) === 409) {
                 // Another maintainer declared meanwhile. Theirs stands, and
-                // this open does not write over it.
+                // this call does not write over it.
                 await client[BUNDLE[w.kind]].get(w.layerId);
                 break;
               } else {
@@ -251,24 +209,4 @@ export async function ensureLayerConstraints(
     if (held) result.pending.push(pendingEntry(p.entry, held.constraints, held.violationCount));
   }
   return result;
-}
-
-/**
- * A writer's open: repair document `documentId` for every layer in `wanted`
- * that holds none of its rules yet. Answers whether anything was changed.
- */
-async function repairDocument(client, wanted, documentId) {
-  const bare = wanted.filter(
-    (w) => !w.stored?.length && w.constraints.some((c) => REMEDIABLE.has(c.type)),
-  );
-  if (!bare.length) return false;
-  // One batch, so History shows the repairs as one step.
-  const answers = await client.batched((b) =>
-    bare.forEach((w) =>
-      b[BUNDLE[w.kind]].repairConstraints(w.layerId, w.constraints, undefined, {
-        document: documentId,
-      }),
-    ),
-  );
-  return (answers || []).some((a) => (a?.body ?? a)?.repaired?.length > 0);
 }

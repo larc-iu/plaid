@@ -1,7 +1,6 @@
 import { toast } from 'sonner';
 
 import { appName } from './uiConfig.js';
-import { RULES_NOT_IN_FORCE } from './layerConstraints.js';
 
 // Saying that a loaded document did not come back the way it should have.
 //
@@ -15,12 +14,6 @@ import { RULES_NOT_IN_FORCE } from './layerConstraints.js';
 // document is a standing fact, not an event.
 
 const TOAST_ID = 'plaid-integrity-findings';
-
-// A layer rule the stored data keeps out (layerConstraints.js) is no damage:
-// the rule is held for every new edit by the app, and the data that breaks
-// it is the data as it was. It is said once, in the finding's own words,
-// and the notice goes by itself.
-const RULES_TOAST_ID = 'plaid-rules-not-in-force';
 
 export const INTEGRITY_DESCRIPTION =
   'This document has problems that could not be repaired. Copy the details for a bug report.';
@@ -50,17 +43,8 @@ export const reportIntegrityFindings = (findings, { documentId } = {}) => {
   // The findings themselves are written for a developer ("3 orphan
   // morpheme(s) remain after auto-repair"), so the toast says one generic line
   // and the findings go to the console and to Copy details.
-  const rules = findings.filter((f) => f.code === RULES_NOT_IN_FORCE);
-  if (rules.length) {
-    toast.info('Layer rules not in force', {
-      id: RULES_TOAST_ID,
-      description: rules.map((f) => f.message).join('\n'),
-    });
-  }
-  const damage = findings.filter((f) => f.code !== RULES_NOT_IN_FORCE);
-  if (!damage.length) return;
-  const errors = damage.filter((f) => f.severity === 'error');
-  const detail = formatFindingsForClipboard(damage, { documentId });
+  const errors = findings.filter((f) => f.severity === 'error');
+  const detail = formatFindingsForClipboard(findings, { documentId });
 
   const show = errors.length ? toast.error : toast.warning;
   show('Data integrity issue detected', {
@@ -81,5 +65,4 @@ export const reportIntegrityFindings = (findings, { documentId } = {}) => {
  */
 export const dismissIntegrityFindings = () => {
   toast.dismiss(TOAST_ID);
-  toast.dismiss(RULES_TOAST_ID);
 };

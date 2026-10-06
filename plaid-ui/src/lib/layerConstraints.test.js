@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  ensureLayerConstraints,
-  rulesNotInForce,
-  sameConstraints,
-  storedConstraints,
-} from './layerConstraints.js';
+import { ensureLayerConstraints, sameConstraints, storedConstraints } from './layerConstraints.js';
 import { humanizeError, isChangedElsewhere, isConstraintViolation } from './errors.js';
 
 // A client with the four bundle methods, a batch that queues them, and a
@@ -260,7 +255,7 @@ describe('a layer the data breaks for some of its rules', () => {
     expect(c.calls.filter((x) => x[0] === 'setConstraints').at(-1)[3]).toEqual([ud[2]]);
   });
 
-  it('on a later open, checks only the rules still out, and writes nothing while the data still breaks them', async () => {
+  it('on a later call, checks only the rules still out, and writes nothing while the data still breaks them', async () => {
     const c = fakeClient({
       'checkConstraints:R': { violations: [{ constraint: 'max-in-degree' }], violationCount: 2 },
     });
@@ -295,40 +290,6 @@ describe('a layer the data breaks for some of its rules', () => {
   });
 });
 
-describe("a writer's open of a layer with no rules declared", () => {
-  it('repairs the document being opened, and declares nothing', async () => {
-    const c = fakeClient({ 'repairConstraints:L': { repaired: [{ document: 'D', deleted: 1 }] } });
-    const out = await ensureLayerConstraints(
-      c,
-      [
-        entry('L', [{ type: 'single-span' }]),
-        entry('V', [{ type: 'value-set', values: ['N'] }]),
-        entry('K', [{ type: 'single-span' }], [{ type: 'single-span' }]),
-        entry(
-          'P',
-          [{ type: 'single-span' }, { type: 'value-set', values: ['N'] }],
-          [{ type: 'single-span' }],
-        ),
-      ],
-      { canWrite: true, documentId: 'D' },
-    );
-    expect(out).toEqual({ changed: false, repaired: true, pending: [] });
-    // Only a layer holding no rules is repaired: once declared, the server
-    // keeps them.
-    expect(c.calls).toEqual([
-      ['batch', 1],
-      ['repairConstraints', 'L', [{ type: 'single-span' }], undefined, { document: 'D' }],
-    ]);
-  });
-
-  it('does nothing without a document, or for a reader', async () => {
-    const c = fakeClient();
-    await ensureLayerConstraints(c, [entry('L', [{ type: 'single-span' }])], { canWrite: true });
-    await ensureLayerConstraints(c, [entry('L', [{ type: 'single-span' }])], { documentId: 'D' });
-    expect(c.calls).toEqual([]);
-  });
-});
-
 describe('a refusal by a layer rule', () => {
   it('is its own kind of error, not a conflict, and reads as the server words it', () => {
     const e = refused([{ constraint: 'max-in-degree' }]);
@@ -343,28 +304,11 @@ describe('a refusal by a layer rule', () => {
   });
 });
 
-// R2-DEBT-APPS-10: one copy of the comparison and of the finding, for every app.
+// R2-DEBT-APPS-10: one copy of the comparison, for every app.
 describe('the helpers every app shares', () => {
   it('compares lists by content, absent and empty alike', () => {
     expect(sameConstraints(null, [])).toBe(true);
     expect(sameConstraints([{ a: 1, b: 2 }], [{ b: 2, a: 1 }])).toBe(true);
     expect(sameConstraints([{ type: 'x' }], [])).toBe(false);
-  });
-
-  it('words a finding per layer by what its rows are', () => {
-    const pending = [
-      { layerId: 'R', kind: 'relation', constraints: ['acyclic'], violationCount: 1 },
-      { layerId: 'S', kind: 'span', constraints: ['value-set'], violationCount: 3 },
-    ];
-    const found = rulesNotInForce(pending, [{ id: 'R', name: 'Deps' }]);
-    expect(found.map((f) => f.message)).toEqual([
-      'The acyclic rules of "Deps" are not in force: 1 stored relation breaks them.',
-      'The value-set rules of "S" are not in force: 3 stored values break them.',
-    ]);
-    expect(found[0]).toMatchObject({
-      severity: 'warning',
-      code: 'layer-rules-not-in-force',
-      context: pending[0],
-    });
   });
 });
