@@ -70,6 +70,14 @@ def test_apply_penman_says_what_a_node_delete_takes_with_it():
     assert 'It removes: remove (s2t / thing) and 1 document-level relation' in out, out
 
 
+def test_a_concept_named_remove_is_not_a_removal():
+    ws = umr_ws()
+    out = _call(ws, 'apply_penman', document='Story', sentence=2,
+                text=umr_fx.SENTENCE_2_PENMAN[:-1] + ' :ARG2 (s2x / remove-01))')
+    assert out.startswith('Planned'), out
+    assert 'It removes' not in out, out
+
+
 def test_a_settled_set_attrs_keeps_the_line_it_set():
     ws = umr_ws(_with_fragment())
     _call(ws, 'set_attributes', document='Story', sentence=2, var='s2a', line=':aspect state')

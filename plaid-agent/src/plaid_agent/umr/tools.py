@@ -444,6 +444,16 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
             f'({what}).' + _removals(diff.ops) + kept)
 
 
+def _removes(op: Dict[str, Any]) -> bool:
+    """Whether a staged change takes something away: a node or a relation
+    deleted, or an attribute a node's new line drops (``attrs_change`` says
+    "removes :rel"). Asked of the change, not of its label's words, which
+    hold concepts such as remove-01."""
+    if op.get('kind') in ('delete_node', 'delete_edge'):
+        return True
+    return op.get('kind') == 'set_attrs' and 'removes :' in str(op.get('label'))
+
+
 # How many of a plan's removals a tool result names before it counts the rest.
 REMOVALS_SHOWN = 20
 
@@ -454,8 +464,7 @@ def _removals(ops: List[Dict[str, Any]]) -> str:
     an attribute a node's new line drops. The count of changes alone left the
     model telling the user it had added an attribute where the card said it
     removed another one."""
-    gone = [str(op.get('label')) for op in ops
-            if op.get('label') and 'remove' in str(op.get('label'))]
+    gone = [str(op.get('label')) for op in ops if op.get('label') and _removes(op)]
     if not gone:
         return ''
     shown = gone[:REMOVALS_SHOWN]
