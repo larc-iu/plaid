@@ -22,10 +22,15 @@ THIS PROJECT'S LAYERS, and how UMR sits on them:
   A graph NODE is a SPAN on the `concepts` layer whose value is the concept. Its variable, its
   attributes and whether it is the sentence root are in the span's METADATA under "umr", which the
   engine does not index by value: read the document for those.
-  A node's anchor is one token per contiguous piece on the `nodes` layer, zero-width when the node
-  is not aligned to any word.
+  A node's anchor is one token per contiguous piece on the `nodes` layer, over its whole sentence
+  when the node is not aligned to any word (a constant such as author: a point at the text's start).
   A sentence-level RELATION is on the `relations` layer, source and target being two concept spans.
+  The SOURCE is the PARENT node's span and the TARGET the CHILD's: in
+  (s1x / see-01 :ARG0 (s1p / person)), :ARG0 goes from see-01 to person. A node's own role is the
+  relation whose target is its span, and the relations whose source is its span are its children's.
   A document-level relation (temporal, modal, coreference) is on `documentGraph`, over the same spans.
+  Its SOURCE is the first node of the triple and its TARGET the last: (s2e :before s1e) goes from
+  s2e to s1e.
 
 Examples for this project:
   # every node whose concept is a -91 roleset
