@@ -10,6 +10,7 @@ Everything is addressed positionally (``s3.w2``), never by id: see
 """
 
 import copy
+import re
 from typing import Any, Dict, List, Optional
 
 from plaid_client import uuid7
@@ -21,12 +22,13 @@ from ..core.history import doc_label
 from ..core.plan import by_document, confirm_preview
 from ..core.workspace import BaseWorkspace
 from ..core.provenance import unmark
+from ..core.refs import clip, read_ref
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_clears)
 from .project import (FEATURES, VIRTUAL_REFUSAL, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
                       feature_refusal, load_document, normalize_feature, render_document, resolve,
-                      word_ref)
+                      word_ref, words_listing)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      left_phrase, per_field)
 
@@ -181,9 +183,11 @@ class Workspace(BaseWorkspace):
         takes with it are worth naming: the registry's own wording says only
         that one change writes to what another deletes."""
         if (killer or {}).get('kind') in RESHAPES_TOKEN:
+            forms = ' + '.join(f'"{clip(f)}"' for f in killer.get('forms') or [])
             return ('This plan both reshapes a token and writes to one of its words, and the '
-                    'reshape deletes that word. Keep one of the two (plan_status, drop_planned), '
-                    'or plan them in separate turns.')
+                    'reshape deletes that word'
+                    + (f' and makes {forms} in its place' if forms else '') + '. '
+                    + PLANNED_WORDS_LATER + ' Or keep one of the two (plan_status, drop_planned).')
         return super().clash_message(victim, killer)
 
     def refuse_reshape_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
@@ -414,6 +418,61 @@ def _guards(ws: Workspace, doc: UdDoc) -> None:
     _no_restore_planned(ws)
 
 
+#: What to do about a word a planned reshape makes, said by every refusal that
+#: meets one. A plan names words by the ids they have now, and these have none
+#: until the plan runs.
+PLANNED_WORDS_LATER = ('A plan cannot write to words it is still making: once the user approves this '
+                       'plan they are ordinary words, so annotate them in the next plan.')
+
+
+def _planned_words(ws: Workspace, doc: UdDoc, s: Sentence) -> List[str]:
+    """The forms the words of ``s`` will have once this plan's reshapes run,
+    or [] when the plan reshapes none of its tokens."""
+    ops = {}
+    for op in ws.ops:
+        if op.get('kind') in RESHAPES_TOKEN and op.get('document_id') == doc.id and op.get('forms'):
+            for wid in op.get('existing_word_ids') or []:
+                ops[wid] = op
+    if not any(w.id in ops for w in s.words):
+        return []
+    out, done = [], set()
+    for w in s.words:
+        op = ops.get(w.id)
+        if op is None:
+            out.append(w.form)
+        elif id(op) not in done:
+            done.add(id(op))
+            out.extend(op['forms'])
+    return out
+
+
+def planned_word_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref: str) -> Optional[str]:
+    """The refusal for word ``index`` of ``s`` where only this plan makes it."""
+    planned = _planned_words(ws, doc, s)
+    if not planned or not len(s.words) < index <= len(planned):
+        return None
+    listed = [f'w{i} "{clip(f)}"' for i, f in enumerate(planned, 1)]
+    if len(listed) > 12:
+        listed = listed[:11] + ['…', listed[-1]]
+    return (f'{ref} does not exist yet: s{s.index} has {len(s.words)} word'
+            f'{"s" if len(s.words) != 1 else ""} now, and this plan\'s set_words makes its words '
+            + ', '.join(listed) + '. ' + PLANNED_WORDS_LATER)
+
+
+def resolve_in(ws: Workspace, doc: UdDoc, ref: str):
+    """:func:`resolve`, with the refusal a word this plan is still making
+    calls for instead of a count that does not say why."""
+    try:
+        return resolve(doc, ref)
+    except ValueError:
+        r = read_ref(ref, 'w', ranged=True)
+        if r is not None and r.parts[0] and 1 <= r.sentence <= len(doc.sentences):
+            note = planned_word_refusal(ws, doc, doc.sentences[r.sentence - 1], r.until or r.parts[0], ref)
+            if note:
+                raise ToolError(note) from None
+        raise
+
+
 def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
     """The words a list of references names, with a readable failure when one
     of them names a sentence or a multi-word token instead."""
@@ -424,7 +483,7 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
         raise ToolError('Name at least one word, as a list of references like ["s1.w2"].')
     out = []
     for ref in refs:
-        thing = resolve(doc, str(ref))
+        thing = resolve_in(ws, doc, str(ref))
         if isinstance(thing, Sentence):
             raise ToolError(f'{ref} is a sentence. Name its words (s{thing.index}.w1 and so on): '
                             f'an annotation sits on a word.')
@@ -621,21 +680,40 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
     return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed)
 
 
-def _head_id(head) -> int:
+def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = None) -> int:
     """The head argument as a word number.
 
     Every other argument in this module is a reference, so a model reaches for
-    one ("w3", "s3.w3") before it reaches for a bare number, and int() answered
-    that with its own error text. `core.args.whole` is the one reader of a
-    number a model wrote: it refuses a fraction rather than truncating it (2.7
-    is not word 2), refuses True, and refuses "\u00b2", which `isdigit` calls a
-    digit and `int` then complains about in Python's own words.
+    one ("w3", "s3.w3") before it reaches for a bare number. Either names one
+    word of the dependent's own sentence, so either is read as that word's
+    number; a reference into another sentence is refused, since a relation
+    never crosses one. A plain number goes through `core.args.whole`, the one
+    reader of a number a model wrote: it refuses a fraction rather than
+    truncating it (2.7 is not word 2), refuses True, and refuses "\u00b2",
+    which `isdigit` calls a digit and `int` then complains about in Python's
+    own words.
     """
     try:
         return whole(head, 'head')
     except ValueError:
-        raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
-                        '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.') from None
+        pass
+    text = str(head).strip() if isinstance(head, str) else ''
+    if text and sentence is not None and doc is not None:
+        if re.match(r'(?i)w\s*\d', text):
+            text = f's{sentence.index}.{text}'
+        r = read_ref(text, 'w', ranged=True)
+        if r is not None and (r.parts[0] or r.by_form):
+            if r.sentence != sentence.index:
+                raise ToolError(f'"{head}" is in s{r.sentence}, and a head is a word of the same sentence '
+                                f'(s{sentence.index}). Give its number there: {words_listing(sentence)}.')
+            thing = resolve(doc, text)
+            if isinstance(thing, Word):
+                return thing.index
+            raise ToolError(f'"{head}" is a multi-word token. A head is one of its words: '
+                            + ', '.join(f'{w.index} ("{clip(w.form)}")' for w in thing.words) + '.')
+    raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
+                    '(1, 2, 3 …), or 0 for the root.'
+                    + (f' s{sentence.index} has: {words_listing(sentence)}.' if sentence is not None else ''))
 
 
 def _other_roots(ws: Workspace, sentence: Sentence, word: Word) -> List[Word]:
@@ -659,7 +737,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
     doc = ws.doc(document)
     word = _words(ws, doc, [ref])[0]
     sentence = ws.sentence_of(doc, word)
-    if head is not None and _head_id(head) == 0:
+    if head is not None and _head_id(head, doc, sentence) == 0:
         # A sentence has one root. A second is never staged: the old root
         # takes the head the model names for it, in the same plan and after
         # the new root (so the tree's cycle rule sees the new root first), or
@@ -679,7 +757,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
             old = others[0]
             if not (old_root_deprel or '').strip():
                 raise ToolError('Give old_root_deprel: the relation the old root takes to its new head.')
-            if _head_id(old_root_head) == 0:
+            if _head_id(old_root_head, doc, sentence) == 0:
                 raise ToolError('old_root_head is the old root\'s new head word, not 0: a sentence has one root.')
             with ws.staging():
                 note = _stage_head(ws, doc, word, sentence, head, deprel)
@@ -697,9 +775,11 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     refuse_virtual(word, ref)
     if head is None:
         raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
-    head = _head_id(head)
+    head = _head_id(head, doc, sentence)
     if head and sentence.word(head) is None:
-        raise ToolError(f'Sentence s{sentence.index} has no word {head}. Its words are 1 to {len(sentence.words)}.')
+        raise ToolError(planned_word_refusal(ws, doc, sentence, head, f's{sentence.index}.w{head}')
+                        or f'Sentence s{sentence.index} has no word {head}. Its words: '
+                        f'{words_listing(sentence)}.')
     if head == word.index:
         raise ToolError(f'A word cannot be its own head. Use head 0 to make {ref} the root of s{sentence.index}.')
     deprel = unmark(deprel or '', 'deprel').strip()

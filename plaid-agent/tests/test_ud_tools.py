@@ -354,13 +354,32 @@ def test_a_head_that_is_not_a_number_reads_as_english(ws):
     """Every other argument here is a reference, so a model reaches for one
     before it reaches for a bare number, and int() answered that with its own
     error text. A number with a fraction is refused rather than truncated."""
-    for bad in ('w1', 's2.w1', 'root', None, 2.7, True, [1]):
+    for bad in ('root', None, 2.7, True, [1]):
         out = run(ws, 'set_head', document='Viaje', ref='s2.w2', head=bad, deprel='punct')
-        assert 'is a plain number, not a reference' in out or 'Give head:' in out, (bad, out)
+        assert 'is not a head. Give the number' in out or 'Give head:' in out, (bad, out)
     assert not ws.ops
     # A whole number in either shape still lands.
     assert 'punct of' in run(ws, 'set_head', document='Viaje', ref='s2.w2', head='1', deprel='punct')
     assert 'punct of' in run(ws, 'set_head', document='Viaje', ref='s2.w2', head=1.0, deprel='punct')
+
+
+def test_a_head_given_as_a_reference_in_its_own_sentence_is_that_word(ws):
+    """R2-TOOLS: "w1" and "s2.w1" name one word of the dependent's sentence,
+    so each is read as its number. One in another sentence is refused, since
+    a relation never crosses a sentence, and the refusal lists the words."""
+    for head in ('w1', 's2.w1', 'S2:1', 's2.w1 "Corre"', 's2."Corre"'):
+        ws.ops.clear()
+        out = run(ws, 'set_head', document='Viaje', ref='s2.w2', head=head, deprel='punct')
+        assert out == 'Planned s2.w2 (".") as punct of word 1 ("Corre").', (head, out)
+    ws.ops.clear()
+    out = run(ws, 'set_head', document='Viaje', ref='s2.w2', head='s1.w1', deprel='punct')
+    assert out == ('Error: "s1.w1" is in s1, and a head is a word of the same sentence (s2). '
+                   'Give its number there: w1 "Corre", w2 ".".')
+    out = run(ws, 'set_head', document='Viaje', ref='s2.w2', head='s2.w1 "mar"', deprel='punct')
+    assert out.startswith('Error: s2.w1 "mar": s2.w1 is "Corre", not "mar".')
+    out = run(ws, 'set_head', document='Viaje', ref='s2.w2', head=7, deprel='punct')
+    assert out == 'Error: Sentence s2 has no word 7. Its words: w1 "Corre", w2 ".".'
+    assert not ws.ops
 
 
 def test_del_relation_says_when_there_is_no_head_to_remove(ws):

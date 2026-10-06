@@ -33,8 +33,9 @@ cut. One whose head points nowhere is left alone rather than guessed at.
 from typing import Any, Dict, List, Optional
 
 from ..core.loss import other_layers_crossing
+from ..core.refs import clip
 from .project import Sentence, UdDoc, Word, resolve, word_ref
-from .tools import ToolError, Workspace
+from .tools import ToolError, Workspace, resolve_in
 
 
 def _sentence_of(doc: UdDoc, thing) -> Sentence:
@@ -141,13 +142,30 @@ def crossing_suppressors(doc: UdDoc, sentence: Sentence, char_pos: int) -> List[
     return out
 
 
+def _starts_already(doc, sentence, ref: str) -> str:
+    """The refusal for a cut where a sentence already begins, saying where the
+    sentence CAN be cut, or that it cannot be at all."""
+    out = f'{ref} already starts sentence s{sentence.index}, so a boundary is there already.'
+    later = sentence.tokens[1:]
+    if not later:
+        out += (f' s{sentence.index} is one token ("{clip(sentence.tokens[0].surface)}"), and a sentence '
+                f'begins only where a token does, so it cannot be cut.')
+    else:
+        t = later[0]
+        out += (f' To cut s{sentence.index} in two, name the word the second part starts at, e.g. '
+                f's{sentence.index}.w{t.words[0].index} ("{clip(t.words[0].form)}").')
+    if sentence.index > 1:
+        out += f' To join s{sentence.index} onto s{sentence.index - 1} instead, use merge_sentences.'
+    return out
+
+
 def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> str:
     """PLAN: start a new sentence at the named word."""
     doc = ws.doc(document)
     from .tools import _boundary_can_still_move, _guards
     _guards(ws, doc)
     _boundary_can_still_move(ws, doc)
-    thing = resolve(doc, ref)
+    thing = resolve_in(ws, doc, ref)
     if not isinstance(thing, Word):
         raise ToolError(f'{ref} names a sentence or a multi-word token. Name the WORD the new '
                         f'sentence should start at, like "s3.w5".')
@@ -159,8 +177,7 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
     # plus a renumber of everything after it. Identity is what the question
     # actually asks.
     if thing.token is sentence.tokens[0]:
-        raise ToolError(f'{ref} already starts sentence s{sentence.index}. Name a word inside a '
-                        f'sentence, not the first one.')
+        raise ToolError(_starts_already(doc, sentence, ref))
     # Every word of a multi-word token shares that token's begin (the
     # full-width rule), so a cut "before w3" of the token w2-3 really falls
     # before w2. Planning it would renumber the document against a description

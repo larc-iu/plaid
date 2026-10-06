@@ -25,12 +25,12 @@ multi-word token that a later read cannot tell apart.
 from typing import Any, Dict, List
 
 
-from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, resolve, word_ref
-from .tools import ToolError, Workspace
+from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, word_ref
+from .tools import ToolError, Workspace, resolve_in
 
 
 def _token_of(ws: Workspace, doc: UdDoc, ref: str) -> Token:
-    thing = resolve(doc, ref)
+    thing = resolve_in(ws, doc, ref)
     if isinstance(thing, Token):
         return thing
     if isinstance(thing, Word):

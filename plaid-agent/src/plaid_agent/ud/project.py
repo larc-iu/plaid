@@ -38,6 +38,7 @@ from plaid_client.workflows.messages import setup_incomplete
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
+from ..core.refs import clip, read_ref, same_form
 
 UD = 'ud'
 MISSING = '_'
@@ -667,36 +668,113 @@ def deps_of(w: Word) -> str:
 
 # --- addressing -------------------------------------------------------------
 
-REF_RE = re.compile(r'^\s*s(\d+)(?:\.w(\d+)(?:-(\d+))?)?\s*$')
+BAD_REF = ('use s<n> for a sentence, s<n>.w<n> for a word (its CoNLL-U id within the sentence), '
+           's<n>.w<n>-<n> for a multi-word token, or s<n>."form" for the word spelled so')
 
 
 def parse_ref(ref: str) -> Tuple[int, Optional[int], Optional[int]]:
-    """``s3`` -> (3, None, None); ``s3.w2`` -> (3, 2, None); ``s3.w1-2`` -> (3, 1, 2)."""
-    m = REF_RE.match(ref or '')
-    if not m:
-        raise ValueError(f'Bad reference "{ref}": use s<n> for a sentence, s<n>.w<n> for a word, '
-                         f'or s<n>.w<n>-<n> for a multi-word token (e.g. s3.w2, s3.w1-2)')
-    si, a, b = m.groups()
-    return int(si), int(a) if a else None, int(b) if b else None
+    """``s3`` -> (3, None, None); ``s3.w2`` -> (3, 2, None); ``s3.w1-2`` -> (3, 1, 2).
+    Read as :mod:`core.refs` reads one, so ``S3:2`` is ``s3.w2``. A word named
+    by its form has no numbers until :func:`resolve` finds it."""
+    r = read_ref(ref, 'w', ranged=True)
+    if r is None or r.by_form:
+        raise ValueError(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2)')
+    return r.sentence, r.parts[0], r.until
+
+
+def words_listing(s: 'Sentence', limit: int = 12) -> str:
+    """A sentence's words as a refusal names them, each with the address a
+    tool takes: ``w1 "Vamos", w2-3 "al" (w2 "a", w3 "el"), w4 "mar"``."""
+    out = []
+    for t in s.tokens:
+        if len(t.words) > 1:
+            out.append(f'{t.ref_range} "{clip(t.surface)}" ('
+                       + ', '.join(f'w{w.index} "{clip(w.form)}"' for w in t.words) + ')')
+        else:
+            out.extend(f'w{w.index} "{clip(w.form)}"' for w in t.words)
+    if len(out) > limit:
+        out = out[:limit - 1] + ['…', out[-1]]
+    return ', '.join(out)
+
+
+def has_words(s: 'Sentence', lead: str = 'sentence') -> str:
+    n = len(s.words)
+    return f'{lead} s{s.index} has {n} word{"s" if n != 1 else ""}: {words_listing(s)}'
+
+
+def example_ref(doc: 'UdDoc') -> str:
+    """A reference into ``doc`` that names a real word, for a refusal to show."""
+    for s in doc.sentences:
+        for w in s.words[1:2] or s.words[:1]:
+            return f' In "{doc.name}", s{s.index}.w{w.index} is "{clip(w.form)}".'
+    return ''
+
+
+def _by_form(s: 'Sentence', ref: str, r) -> Any:
+    words = [w for w in s.words if same_form(r.form, w.form)]
+    if not words:
+        words = [t for t in s.tokens if len(t.words) > 1 and same_form(r.form, t.surface)]
+    if r.nth is not None:
+        if 1 <= r.nth <= len(words):
+            return words[r.nth - 1]
+        raise ValueError(f'{ref}: s{s.index} has {len(words)} word(s) spelled "{clip(r.form)}", '
+                         f'so there is no #{r.nth}. {has_words(s, "Sentence")}.')
+    if len(words) == 1:
+        return words[0]
+    if not words:
+        raise ValueError(f'{ref}: s{s.index} has no word "{clip(r.form)}". '
+                         f'{has_words(s, "Sentence")}.')
+    addrs = [f's{s.index}.{x.ref_range}' if isinstance(x, Token) else f's{s.index}.w{x.index}' for x in words]
+    raise ValueError(f'{ref}: s{s.index} has {len(words)} words spelled "{clip(r.form)}": '
+                     + ', '.join(addrs) + '. Name one by its number.')
+
+
+def _check_form(s: 'Sentence', ref: str, thing, form: str) -> None:
+    """The form given beside a number has to be the one there. A word inside
+    a multi-word token answers to its token's text too: "s1.w2 (al)" says the
+    same as "s1.w2"."""
+    if isinstance(thing, Token):
+        if same_form(form, thing.surface) or any(same_form(form, w.form) for w in thing.words):
+            return
+        have = thing.surface
+    else:
+        if same_form(form, thing.form) or (len(thing.token.words) > 1 and same_form(form, thing.token.surface)):
+            return
+        have = thing.form
+    where = [f's{s.index}.w{w.index}' for w in s.words if same_form(form, w.form)]
+    raise ValueError(f'{ref}: s{s.index}.{thing.ref_range if isinstance(thing, Token) else "w" + str(thing.index)} '
+                     f'is "{clip(have)}", not "{clip(form)}"'
+                     + (f' ("{clip(form)}" is {", ".join(where)})' if where else '')
+                     + '. Name the word by its number, as read_document shows it.')
 
 
 def resolve(doc: UdDoc, ref: str):
     """-> Sentence | Word | Token for a positional reference into ``doc``."""
-    si, a, b = parse_ref(ref)
+    r = read_ref(ref, 'w', ranged=True)
+    if r is None:
+        raise ValueError(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2).' + example_ref(doc))
+    si, a, b = r.sentence, r.parts[0], r.until
     if not 1 <= si <= len(doc.sentences):
         raise ValueError(f'{ref}: document "{doc.name}" has {len(doc.sentences)} sentences')
     s = doc.sentences[si - 1]
+    if r.by_form:
+        return _by_form(s, ref, r)
     if a is None:
         return s
-    if b is None:
+    if b is None or b == a:
         w = s.word(a)
         if w is None:
-            raise ValueError(f'{ref}: sentence s{si} has {len(s.words)} words')
+            raise ValueError(f'{ref}: {has_words(s)}.')
+        if r.form:
+            _check_form(s, ref, w, r.form)
         return w
     for t in s.tokens:
         if t.words and t.words[0].index == a and t.words[-1].index == b:
+            if r.form:
+                _check_form(s, ref, t, r.form)
             return t
-    raise ValueError(f'{ref}: sentence s{si} has no multi-word token spanning words {a} to {b}')
+    raise ValueError(f'{ref}: sentence s{si} has no multi-word token spanning words {a} to {b}. '
+                     f'Its words: {words_listing(s)}.')
 
 
 # --- rendering ---------------------------------------------------------------
