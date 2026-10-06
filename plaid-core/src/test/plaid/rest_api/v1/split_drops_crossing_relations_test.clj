@@ -94,3 +94,31 @@
   (let [{:keys [sentence rels]} (setup!)]
     (assert-status 201 (split! sentence {:position 13 :drop-crossing-relations [(random-uuid)]}))
     (is (every? exists? (vals rels)))))
+
+(defn- batch! [ops]
+  (api-call admin-request {:method :post :path "/api/v1/batch" :body ops}))
+
+(defn- rule-op-groups [doc]
+  (map :group_id (psc/q db {:select [:group_id] :from :operations
+                            :where [:and [:= :op_type "layer/apply-constraints"] [:= :document_id (str doc)]]})))
+
+(deftest a-batched-split-puts-the-rule-deletion-in-its-operation-group
+  ;; An assistant plan splits a sentence through a batch whose sub-requests
+  ;; name one group. The relation the rules delete belongs to that group, so
+  ;; History shows one entry and the plan's unit holds the deletion (A2-UD-3).
+  (let [{:keys [sentence deps rels doc sl]} (setup!)
+        gid (random-uuid)
+        q (str "?group-id=" gid "&group-kind=assistant-plan&group-ref=conv%3Ax%2Fplan%3Ay&group-message=Assistant")]
+    (assert-status 200 (declare! deps sl))
+    (assert-status 200 (batch! [{:path (str "/api/v1/tokens/" sentence "/split" q)
+                                 :method "post" :body {:position 13}}]))
+    (is (not (exists? (:sat-dogs rels))))
+    (is (= [gid] (map #(some-> % str parse-uuid) (rule-op-groups doc)))
+        "the rule's operation carries the batch's group")))
+
+(deftest a-batch-naming-no-group-leaves-the-rule-deletion-ungrouped
+  (let [{:keys [sentence deps doc sl]} (setup!)]
+    (assert-status 200 (declare! deps sl))
+    (assert-status 200 (batch! [{:path (str "/api/v1/tokens/" sentence "/split")
+                                 :method "post" :body {:position 13}}]))
+    (is (= [nil] (rule-op-groups doc)))))

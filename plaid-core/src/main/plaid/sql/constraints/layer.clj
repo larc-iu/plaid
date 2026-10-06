@@ -1460,9 +1460,26 @@
                      (throw (ex-info "Layer rules left violations after their remedies." {:code 500})))
                    bumped))))))))))
 
+(defn- batch-group
+  "The operation group every grouped operation of the current batch names,
+  or nil when they name none or several. Each sub-request binds its own
+  `?group-id=` and unbinds it when it returns, so the remedies run after
+  them would otherwise land outside the group the batch's writes are in."
+  [tx]
+  (when op/*current-batch-id*
+    (let [gs (psc/q tx {:select-distinct [:group_id]
+                        :from :operations
+                        :where [:and [:= :batch_id op/*current-batch-id*]
+                                [:<> :group_id nil]]})]
+      (when (= 1 (count gs))
+        (some-> (:group_id (first gs)) str parse-uuid)))))
+
 (defn check-batch!
   "The atomic batch handler's hook: run `f` (the batch's operations) with the
-  collector bound, then `finish!` before the transaction commits. A refusal
+  collector bound, then `finish!` before the transaction commits. The
+  remedies' operations join the operation group the batch's operations
+  name, when they all name one (an assistant plan's split and the relation
+  it leaves crossing are one entry in History). A refusal
   becomes the batch's 422 answer. When a remedy bumped documents, the
   answer's X-Document-Versions is read again, so a strict client's next
   write is not refused for a version its own batch moved past."
@@ -1470,7 +1487,8 @@
   (binding [psaw/*pending* (atom {})]
     (let [response (f)
           bumped (try
-                   (finish! tx user)
+                   (binding [op/*current-group-id* (or op/*current-group-id* (batch-group tx))]
+                     (finish! tx user))
                    (catch ExceptionInfo e
                      (if-let [vs (:violations (ex-data e))]
                        (throw (ex-info "batch-failed"
