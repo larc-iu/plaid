@@ -7,12 +7,20 @@ operation seen from two sides, so they are built from it rather than beside it.
 
 **A dependency relation never spans a sentence.** This app declares that as a
 layer rule on both relation layers (the relation's ends lie in one sentence),
-and the server keeps it: a split deletes every relation it would leave across
-the new boundary, in the split's own transaction, whoever makes the split and
-just as silently as the editor's. So the plan writes only the split. The
+and where the rule is declared the server keeps it: a split deletes every
+relation it would leave across the new boundary, in the split's own
+transaction, whoever makes the split and just as silently as the editor's. The
 alternative, listing them for approval, was considered and turned down: the
 editor does it without asking and two answers to the same gesture is worse
 than one. What is found here is what the card counts.
+
+**Where the rule is not declared yet** (a project the app has not opened since
+the rules existed), nothing on the server deletes them, and the card would
+promise what the plan does not do. So the plan deletes, in the split's own
+batch and before it, the crossing rows of each relation layer that declares no
+rule keeping its relations inside a sentence, and leaves the rest to the
+server. The plan does not declare the rule itself: a plan changes the
+document, never the project's configuration.
 
 **In BOTH relation layers.** An edge across two sentences is invalid data
 whichever layer holds it, and the editor asks the same question of both (its
@@ -32,7 +40,7 @@ cut. One whose head points nowhere is left alone rather than guessed at.
 
 from typing import Any, Dict, List, Optional
 
-from ..core.loss import other_layers_crossing
+from ..core.loss import _ancestor_layer, _token_layers, other_layers_crossing
 from ..core.refs import clip
 from .project import Sentence, UdDoc, Word, resolve, word_ref
 from .tools import ToolError, Workspace, resolve_in
@@ -142,6 +150,22 @@ def crossing_suppressors(doc: UdDoc, sentence: Sentence, char_pos: int) -> List[
     return out
 
 
+def keeps_inside(raw: Dict[str, Any], relation_layer_id: Optional[str], sentence_layer_id: str) -> bool:
+    """Whether the relation layer ``relation_layer_id`` declares, under any
+    namespace, a rule keeping its relations inside one sentence: then the
+    server deletes what a split leaves across the cut, and otherwise nothing
+    does. Read off the document as the server returns it, which carries each
+    layer's rules."""
+    for tl in _token_layers(raw):
+        for sl in tl.get('span_layers') or []:
+            for rl in sl.get('relation_layers') or []:
+                if rl.get('id') == relation_layer_id:
+                    return any(_ancestor_layer(c) == sentence_layer_id
+                               for lst in (rl.get('constraints') or {}).values()
+                               if isinstance(lst, list) for c in lst)
+    return False
+
+
 def _starts_already(doc, sentence, ref: str) -> str:
     """The refusal for a cut where a sentence already begins, saying where the
     sentence CAN be cut, or that it cannot be at all."""
@@ -188,7 +212,10 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
                         f'sentence cannot begin inside one. The nearest place a sentence can '
                         f'start is before "{first.form}" (w{first.index}).')
 
-    losing = crossing_relations(sentence, thing.token.begin)
+    basic = [w.relation_id for w in _crossing_words(sentence, thing.token.begin)]
+    extras = _crossing_extras(sentence, thing.token.begin)
+    suppressors = crossing_suppressors(doc, sentence, thing.token.begin)
+    losing = basic + extras
     # What the same cut takes on the document's other layers, which this
     # assistant does not read: core's rule deletes those relations in the
     # split's own transaction, and the card names them, as the Text Editor's
@@ -196,6 +223,12 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
     full = ws.client.documents.get(doc.id, include_body=True)
     others = other_layers_crossing(full, ws.project.sentence_layer_id, sentence.id,
                                    thing.token.begin, skip_layer_ids=(ws.project.word_layer_id,))
+    # The crossing rows of a layer with no rule declared against them, which
+    # nothing but the plan deletes.
+    sent_layer = ws.project.sentence_layer_id
+    own = [] if keeps_inside(full, ws.project.relation_layer_id, sent_layer) else list(basic)
+    if not keeps_inside(full, ws.project.enhanced_relation_layer_id, sent_layer):
+        own += extras + suppressors
     ws.add_op({
         'kind': 'split_sentence',
         'document_id': doc.id,
@@ -208,7 +241,10 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         'relation_ids': losing,
         # A suppressor is no arc of its own, so it is not counted: it stands
         # over one of `losing` and goes with it.
-        'suppressor_ids': crossing_suppressors(doc, sentence, thing.token.begin),
+        'suppressor_ids': suppressors,
+        # Those of them on a layer that declares no rule keeping relations
+        # inside a sentence: the plan deletes these itself.
+        'delete_relation_ids': own,
         # The other layers' relations the cut deletes, which the card counts
         # as annotations, naming no layer.
         'other_relation_ids': others,
@@ -304,13 +340,22 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root
 
 
 def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
-    """The split alone. The relations it leaves across the new boundary (and
-    so the suppressors over them, which are rows of the enhanced layer) are
-    the server's to delete, in the split's own transaction, read from what is
-    stored when the split runs, so one drawn after the plan was made goes too.
-    A delete of them here would find them gone and fail the batch.
-    ``relation_ids`` and ``suppressor_ids`` are what the card counts.
+    """The split, after the crossing rows of any layer that declares no rule
+    against them (``delete_relation_ids``). The relations it leaves across the
+    new boundary on a layer that does declare one (and so the suppressors over
+    them, which are rows of the enhanced layer) are the server's to delete, in
+    the split's own transaction, read from what is stored when the split runs,
+    so one drawn after the plan was made goes too. ``relation_ids`` and
+    ``suppressor_ids`` are what the card counts.
+
+    The plan's own deletes go first and in bulk. First, so a rule declared
+    between the plan and its approval finds nothing left to delete rather
+    than deleting a row the plan deletes after it. In bulk, because a bulk
+    delete skips an id already gone, where a single delete of one fails the
+    whole batch.
     """
+    if op.get('delete_relation_ids'):
+        b.add(lambda batch, ids=list(op['delete_relation_ids']): batch.relations.bulk_delete(ids))
     b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos'], id=b.new_id()))
 
 

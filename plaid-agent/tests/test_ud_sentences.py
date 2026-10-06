@@ -5,6 +5,8 @@ the two things it does that nothing enforces: a relation never spans a
 sentence, and a boundary renumbers everything after it.
 """
 
+import copy
+
 import pytest
 
 from plaid_agent.ud.plan import execute_plan, validate_ops
@@ -154,6 +156,31 @@ def test_a_boundary_in_ANOTHER_document_is_fine():
     validate_ops(ops)
 
 
+def declared(raw, layers=None):
+    """``raw`` with the rule plaid-ud declares on its dependency layers (the
+    relation's ends lie in one sentence) on each of ``layers``, both by
+    default. A layer with no rows in ``raw`` is added empty, as the server
+    returns one."""
+    from ud_fixtures import DEPREL, ENHANCED, LEMMA, SENT_LAYER
+    raw = copy.deepcopy(raw)
+    lemma = next(sl for tl in raw['text_layers'][0]['token_layers'] for sl in tl.get('span_layers') or []
+                 if sl['id'] == LEMMA)
+    for layer_id in layers or (DEPREL, ENHANCED):
+        rl = next((rl for rl in lemma['relation_layers'] if rl['id'] == layer_id), None)
+        if rl is None:
+            rl = {'id': layer_id, 'relations': []}
+            lemma['relation_layers'].append(rl)
+        rl['constraints'] = {'ud': [{'type': 'same-ancestor', 'token-layer': SENT_LAYER}]}
+    return raw
+
+
+def _split(client, ws):
+    [split] = client.payloads('tokens.split')
+    args = split['args'] if isinstance(split, dict) else split
+    assert set(split['kwargs']) == {'id'}, 'nothing but the id the right half is made under'
+    assert list(args[:2]) == [ws.ops[-1]['sentence_id'], ws.ops[-1]['char_pos']]
+
+
 def _split_drops_both_layers(client, ws):
     """The split goes alone, with no option naming relation layers: the core
     drops what crosses it in the split's own transaction, by the layer rule
@@ -161,11 +188,21 @@ def _split_drops_both_layers(client, ws):
     drawn after the plan was made goes too. Nothing is deleted by the ids the
     plan read, since a delete of a relation the core already took would fail
     the batch."""
-    [split] = client.payloads('tokens.split')
-    args = split['args'] if isinstance(split, dict) else split
-    assert set(split['kwargs']) == {'id'}, 'nothing but the id the right half is made under'
-    assert list(args[:2]) == [ws.ops[-1]['sentence_id'], ws.ops[-1]['char_pos']]
+    _split(client, ws)
     assert client.payloads('relations.delete') == []
+    assert client.payloads('relations.bulk_delete') == []
+
+
+def _split_deletes(client, ws, ids):
+    """Where no rule is declared the plan deletes the crossing rows itself, in
+    one bulk delete (a gone id is skipped, not a failed batch) BEFORE the
+    split (a rule declared since the plan then finds nothing to delete)."""
+    _split(client, ws)
+    assert client.payloads('relations.delete') == []
+    [gone] = client.payloads('relations.bulk_delete')
+    assert sorted(gone if isinstance(gone, list) else gone['args'][0]) == sorted(ids)
+    kinds = [k for k in client.kinds if k in ('relations.bulk_delete', 'tokens.split')]
+    assert kinds == ['relations.bulk_delete', 'tokens.split']
 
 
 def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
@@ -177,7 +214,7 @@ def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
     saying why. The editor deletes them with the split (its `relationsCrossing`
     asks the enhanced layer's rows too), and reconcile-on-open only runs on an
     OPEN, which a plan against an open document does not cause."""
-    client = ud_client(documents={'ud1': with_enhanced([suppressor('e-1', 'sp-l1', 'sp-l4')])})
+    client = ud_client(documents={'ud1': declared(with_enhanced([suppressor('e-1', 'sp-l1', 'sp-l4')]))})
     ws = Workspace(client, load_project(client, PID))
     out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
     op = ws.ops[-1]
@@ -196,11 +233,11 @@ def test_a_split_takes_the_enhanced_extra_edges_that_would_cross_it():
     unlike a suppressor it is counted in what the card says goes."""
     from plaid_agent.ud.plan import summarize
 
-    client = ud_client(documents={'ud1': with_enhanced([
+    client = ud_client(documents={'ud1': declared(with_enhanced([
         # An extra edge from "mar" (w4) to the punct (w5), which a cut before
         # w5 leaves spanning the two sentences.
         {'id': 'e-x', 'source': 'sp-l3', 'target': 'sp-l4', 'value': 'nsubj'},
-        suppressor('e-1', 'sp-l1', 'sp-l4')])})
+        suppressor('e-1', 'sp-l1', 'sp-l4')]))})
     ws = Workspace(client, load_project(client, PID))
     out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
     op = ws.ops[-1]
@@ -247,9 +284,9 @@ def test_a_split_sweeps_a_dangling_suppressor_that_crosses_it():
     other way round, and nothing heads "." but "Vamos"). The cut before w5
     falls between the ends of the first and leaves both ends of the second
     behind it."""
-    client = ud_client(documents={'ud1': with_enhanced([
+    client = ud_client(documents={'ud1': declared(with_enhanced([
         suppressor('e-d', 'sp-l3', 'sp-l4'),
-        suppressor('e-same-side', 'sp-l2a', 'sp-l3')])})
+        suppressor('e-same-side', 'sp-l2a', 'sp-l3')]))})
     ws = Workspace(client, load_project(client, PID))
     out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
     op = ws.ops[-1]
@@ -524,3 +561,67 @@ def test_a_split_names_what_it_takes_on_the_other_layers():
     assert op['other_relation_ids'] == ['x-cut', 'x-whole']
     assert 'and 2 annotation(s) of other layers' in out
     assert summarize(ws.ops) == '4 removed dependencies, 2 removed annotations, 1 sentence split'
+
+
+# --- a project whose dependency layers declare no rule yet ----------------------
+#
+# Prod's Saraiki: the app had not opened the project since the rules existed,
+# so nothing on the server deleted the crossing relation, and the card's
+# "1 removed dependency" was a promise the approved plan did not keep. The
+# next open of the document repaired it as a Repair of its own, outside the
+# plan. The plan now does what its card says either way.
+
+def test_a_split_where_no_rule_is_declared_deletes_what_crosses_it_itself():
+    from plaid_agent.ud.plan import summarize
+
+    client = ud_client(documents={'ud1': with_enhanced([
+        {'id': 'e-x', 'source': 'sp-l3', 'target': 'sp-l4', 'value': 'nsubj'},
+        suppressor('e-1', 'sp-l1', 'sp-l4')])})
+    ws = Workspace(client, load_project(client, PID))
+    out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    op = ws.ops[-1]
+    assert op['delete_relation_ids'] == ['r-4', 'e-x', 'e-1']
+    assert summarize(ws.ops) == '2 removed dependencies, 1 sentence split', 'the card is unchanged'
+    assert 'dropping 2 dependency relation(s)' in out
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    _split_deletes(client, ws, ['r-4', 'e-x', 'e-1'])
+
+
+def test_a_split_deletes_only_the_rows_of_the_layer_with_no_rule():
+    """The tree's layer declares the rule and the enhanced layer does not: the
+    server takes the tree's relation, the plan the enhanced layer's rows."""
+    from ud_fixtures import DEPREL
+
+    client = ud_client(documents={'ud1': declared(with_enhanced([
+        {'id': 'e-x', 'source': 'sp-l3', 'target': 'sp-l4', 'value': 'nsubj'},
+        suppressor('e-1', 'sp-l1', 'sp-l4')]), layers=(DEPREL,))})
+    ws = Workspace(client, load_project(client, PID))
+    call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    assert ws.ops[-1]['delete_relation_ids'] == ['e-x', 'e-1']
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    _split_deletes(client, ws, ['e-x', 'e-1'])
+
+
+def test_a_split_that_crosses_nothing_deletes_nothing_even_with_no_rule(ws):
+    # s2 is tokenized and has no relations yet.
+    run(ws, 'split_sentence', document='Viaje', ref='s2.w2')
+    assert ws.ops[-1]['delete_relation_ids'] == []
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert ws.client.payloads('relations.bulk_delete') == []
+    _split(ws.client, ws)
+
+
+def test_a_rule_under_another_namespace_counts_too():
+    """The server enforces every namespace's rules, so whoever declared it,
+    the server deletes what crosses."""
+    raw = declared(with_enhanced([]))
+    for tl in raw['text_layers'][0]['token_layers']:
+        for sl in tl.get('span_layers') or []:
+            for rl in sl.get('relation_layers') or []:
+                if 'constraints' in rl:
+                    rl['constraints'] = {'other': rl['constraints']['ud']}
+    client = ud_client(documents={'ud1': raw})
+    ws = Workspace(client, load_project(client, PID))
+    call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    assert ws.ops[-1]['relation_ids'] == ['r-4']
+    assert ws.ops[-1]['delete_relation_ids'] == []
