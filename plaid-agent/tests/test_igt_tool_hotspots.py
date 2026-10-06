@@ -192,3 +192,35 @@ def test_search_and_concordance_read_where_in_plain_words():
     w = ws(project=p)
     assert 'Words=Ali' in call_tool(w, 'search', {'pattern': 'Ali', 'where': 'Words'})
     assert call_tool(w, 'search', {'pattern': 'zzz', 'where': 'Words'}) == 'No hits.'
+
+
+# --- REV-R2-TOOLS -------------------------------------------------------------------
+
+def test_a_string_of_words_with_a_number_is_not_a_reference():
+    """"words 1" read as "s 1" once the list reader took a space after the s:
+    a sentence translation landed on s1 from a string naming no sentence."""
+    from plaid_agent.igt.workspace import _refs
+    w = ws()
+    for bad in ('words 1', 'sentences 1-2', 'Analysis 2', 'is 2.1'):
+        out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': bad, 'field': 'Translation', 'value': 'x'})
+        assert out.startswith(f'Error: Bad reference "{bad}"'), out
+    assert not w.ops
+    # A list in one string is cut where each reference begins, and each
+    # keeps the form written beside it, so the form is still checked.
+    assert _refs('s1.w1 (Ali-di), s1.w2 (gam)') == ['s1.w1 (Ali-di)', 's1.w2 (gam)']
+    assert _refs('"Text 1" s1.w2, "Text 1" s1.w3 and s2.w1') == ['s1.w2', 's1.w3', 's2.w1']
+    assert _refs('s1.w2+s1.w3') == ['s1.w2', 's1.w3']
+    out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': 's1.w1 (Ali-di), s1.w2 (akuna)',
+                                     'field': 'Gloss', 'value': 'x'})
+    assert out.startswith('Error: s1.w2 (akuna): s1.w2 is "gam", not "akuna" ("akuna" is s1.w3)'), out
+    assert not w.ops
+
+
+def test_a_word_named_by_its_form_reaches_the_link_tools():
+    """s1."gam" is a word, never a place in a planned analysis: link_entry
+    said it was a bad reference while the refusal offered that spelling."""
+    w = ws()
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1."gam"'], 'entry_form': 'gam#1'})
+    assert 'Error' not in out and len(w.ops) == 1, out
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1."kwa"'], 'entry_form': 'gam#1'})
+    assert out.startswith('Error: s1."kwa": s1 has no word "kwa"'), out

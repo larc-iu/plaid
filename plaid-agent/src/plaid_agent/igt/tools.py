@@ -429,7 +429,12 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
     morpheme once the analysis has minted it (``plan.planned_morpheme``).
     ``sN.wN.mN`` of such a word means the PLANNED chain: it is the one the
     model just wrote, and the chain as stored is on its way out."""
-    si, wi, mi = parse_ref(ref)
+    r = read_ref(ref, 'wm')
+    # A word named by its form is a word, never a place in an analysis. What
+    # is not a reference at all is `resolve`'s to refuse.
+    if r is None or r.by_form:
+        return None
+    si, (wi, mi) = r.sentence, r.parts
     if mi is None or wi is None:
         return None
     w = _need(resolve(doc, f's{si}.w{wi}'), Word, ref)
@@ -442,7 +447,7 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
                         f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
                         f'sN.wN.mN names while it is in the plan)')
     # A form written beside the number is a check, here as in `resolve`.
-    given = read_ref(ref, 'wm').form
+    given = r.form
     if given and not same_form(given, chain[mi - 1].get('form'), MARKERS):
         raise ToolError(f'{ref}: in the analysis this plan gives "{w.surface}", m{mi} is '
                         f'"{chain[mi - 1].get("form")}", not "{given}".')
@@ -545,7 +550,8 @@ def _resolve_for_link(doc: IgtDoc, ref: str):
     try:
         return resolve(doc, ref)
     except ValueError as e:
-        if parse_ref(ref)[2] is None:
+        r = read_ref(ref, 'wm')
+        if r is None or r.by_form or r.parts[1] is None:
             raise
         raise ToolError(f'{e}. To link a morpheme the word does not have yet, plan its analysis first '
                         '(set_analysis), then link sN.wN.mN in the same plan.') from None

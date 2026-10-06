@@ -865,11 +865,14 @@ def op_target(op: Dict[str, Any]):
 
 # --- reading what the model wrote --------------------------------------------
 
-# One reference among several in a string, in any spelling core.refs reads
-# ("S3:2" as well as "s3.w2"), with no form after it.
-_REF_TOKEN = re.compile(r's\s*\d+(?:\s*(?:[.:/]\s*w?|w)\s*\d+(?:\s*(?:[.:/]\s*m?|m)\s*\d+)?)?', re.I)
+# Where a reference starts among several in a string: an "s" that does not
+# end a word ("words 3" and "Analysis 2" hold none), then its number.
+_REF_START = re.compile(r'(?<![^\W_])s\d+', re.I)
 # The document name a read tool prints before a reference.
 _DOC_PREFIX = re.compile(r'^\s*(?:"[^"]*"|“[^”]*”)\s+(?=s\s*\d)', re.I)
+# What separates one reference from the next in a list written as a string,
+# with the next one's document name when the list was copied from a read.
+_SEPARATOR = re.compile(r'(?:[,;+&|]|\b(?:and|or)\b)\s*(?:"[^"]*"|“[^”]*”)?\s*$|\s+$', re.I)
 
 
 def _refs(refs) -> List[str]:
@@ -877,7 +880,9 @@ def _refs(refs) -> List[str]:
     prefixed with the document name the read tools print ('"Text 1" s3.w2').
     An item that is one reference is kept whole, so a form written beside it
     ('s3.w2 "kwa"') reaches `resolve` and is checked there rather than
-    dropped; a string holding several is split into them."""
+    dropped. A string holding several is cut where each begins, and each
+    piece, form and all, must read as one reference: "s3.w2 to s3.w5" is
+    refused rather than read as two words."""
     if refs is None:
         return []
     items = [refs] if isinstance(refs, str) else [str(r) for r in refs]
@@ -887,10 +892,22 @@ def _refs(refs) -> List[str]:
         if read_ref(bare, 'wm') is not None:
             out.append(bare.strip())
             continue
-        found = _REF_TOKEN.findall(item)
-        if not found and item.strip():
-            raise ToolError(f'Bad reference "{item.strip()}": {BAD_REF}')
-        out.extend(found)
+        starts = [m.start() for m in _REF_START.finditer(item)]
+        if not starts:
+            if item.strip():
+                raise ToolError(f'Bad reference "{item.strip()}": {BAD_REF}')
+            continue
+        for a, b in zip(starts, starts[1:] + [len(item)]):
+            piece = item[a:b]
+            while True:
+                cut = _SEPARATOR.sub('', piece)
+                if cut == piece:
+                    break
+                piece = cut
+            if read_ref(piece, 'wm') is None:
+                raise ToolError(f'Bad reference "{piece.strip()}" in "{item.strip()}": {BAD_REF}. '
+                                'Several references go in a list: ["s3.w2", "s3.w4"].')
+            out.append(piece.strip())
     return out
 
 

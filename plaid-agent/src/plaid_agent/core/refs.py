@@ -24,6 +24,10 @@ _TAIL_RE = re.compile(r'''^\s*(?:"([^"]*)"|“([^”]*)”|'([^']*)'|‘([^’]*
                       r'''|[=:]\s*(\S.*?)|\s(\S.*?))\s*$''', re.S)
 # A word named by its form: "s3.casa", "s3:'casa'", "s3.casa#2".
 _BY_FORM_RE = re.compile(r'^\s*[.:/]\s*(?P<form>.+?)(?:\s*#\s*(?P<nth>\d+))?\s*$', re.S)
+# Another reference inside what would be read as a form: two references
+# in one string are a list written wrong ("s3.w2 (casa), s3.w4"), not a
+# form to check.
+_ANOTHER = re.compile(r'(?<![^\W_])s\s*\d', re.I)
 _QUOTED = re.compile(r'''^(?:"(.*)"|“(.*)”|'(.*)'|‘(.*)’|«(.*)»|\((.*)\))$''', re.S)
 
 
@@ -80,15 +84,14 @@ def read_ref(ref, letters: Sequence[str], ranged: bool = False) -> Optional[Ref]
         if not by:
             return None
         form = unquote(by.group('form'))
-        if not form or read_ref(form, letters, ranged) is not None:
+        if not form or _ANOTHER.search(form):
             return None
         return Ref(sentence, parts, None, form, int(by.group('nth')) if by.group('nth') else None, True)
     t = _TAIL_RE.match(tail)
     if not t:
         return None
     form = next((g for g in t.groups() if g is not None), '').strip()
-    # Two references in one string are a list written wrong, not a form.
-    if not form or read_ref(form, letters, ranged) is not None:
+    if not form or _ANOTHER.search(form):
         return None
     return Ref(sentence, parts, until, form)
 
