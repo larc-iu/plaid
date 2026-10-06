@@ -106,10 +106,11 @@ TOOLS = [
         'head, so this replaces whatever head it had. A sentence has one root: making a word the root '
         'when another word is the root needs old_root_head and old_root_deprel, where the old root goes.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The dependent word, e.g. "s3.w2".'},
-         'head': {'type': 'integer', 'description': 'The head word\'s CoNLL-U id, or 0 for the root.'},
+         'head': {'type': ['integer', 'string'],
+                  'description': 'The head word\'s CoNLL-U id (or its reference, e.g. "s3.w5"), or 0 for the root.'},
          'deprel': {'type': 'string', 'description': 'The relation label, e.g. nsubj, obj, det.'},
-         'old_root_head': {'type': 'integer', 'description': 'With head 0 only: the CoNLL-U id of the '
-                                                             'current root\'s new head.'},
+         'old_root_head': {'type': ['integer', 'string'],
+                           'description': 'With head 0 only: the CoNLL-U id of the current root\'s new head.'},
          'old_root_deprel': {'type': 'string', 'description': 'With head 0 only: the current root\'s '
                                                               'relation to its new head.'}},
         ['document', 'ref', 'head']),

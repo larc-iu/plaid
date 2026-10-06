@@ -78,7 +78,7 @@ def test_a_word_set_words_is_still_making_is_refused_with_why_and_what_to_do(ws)
     for refs in (['s1.w2'], ['s1.w3', 's1.w4'], 's1.w4'):
         out = run(ws, 'set_field', document='Linea', refs=refs, field='upos', value='NOUN')
         assert out.startswith('Error: s1.w') and 'does not exist yet: s1 has 1 word now' in out, out
-        assert ('set_words makes its words w1 "Vamos", w2 "a", w3 "el", w4 "mar". A plan cannot write '
+        assert ('set_words runs its words are w1 "Vamos", w2 "a", w3 "el", w4 "mar". A plan cannot write '
                 'to words it is still making: once the user approves this plan they are ordinary words, '
                 'so annotate them in the next plan.') in out
     assert [op['kind'] for op in ws.ops] == ['set_words']
@@ -213,3 +213,53 @@ def test_a_stub_models_turn_reads_why_and_stops_asking(ws, monkeypatch):
     assert results[0].startswith('Planned "Vamosalmar" in s1 as 4 words')
     assert all('does not exist yet' in r and 'annotate them in the next plan' in r for r in results[1:]), results
     assert [op['kind'] for op in ws.ops] == ['set_words']
+
+
+# --- REV-R2-TOOLS: a number this plan's reshape renumbers ------------------------------
+
+@pytest.fixture
+def ws2():
+    docs = {'ud1': document_raw(),
+            'ud2': build_doc([['Vamosalmar', 'hoy'], ['la', ('del', ['de', 'el']), 'mesa']])}
+    client = ud_client(documents=docs)
+    return Workspace(client, load_project(client, PID))
+
+
+def test_a_number_set_words_renumbers_is_refused_and_a_form_says_which(ws2):
+    """After set_words makes four words of "Vamosalmar", s1.w2 is "hoy" now
+    and "a" once the plan runs. The refusal of the planned words teaches the
+    model the planned numbers, so a bare s1.w2 may mean either: it is
+    refused, and the form beside it settles which."""
+    ws = ws2
+    run(ws, 'set_words', document='Linea', ref='s1.w1', forms=['Vamos', 'a', 'el', 'mar'])
+    out = run(ws, 'set_field', document='Linea', refs=['s1.w2'], field='upos', value='ADP')
+    assert out == ('Error: s1.w2 is "hoy" now, but this plan\'s set_words renumbers s1: once it is applied, '
+                   '"hoy" is w5 and w2 is "a". A plan names words by their numbers now, so add the form to '
+                   'say which you mean: s1.w2 "hoy". A plan cannot write to words it is still making: once '
+                   'the user approves this plan they are ordinary words, so annotate them in the next plan.'), out
+    out = run(ws, 'set_head', document='Linea', ref='s1.w2 "hoy"', head=2, deprel='obl')
+    assert out.startswith('Error: Head 2 is "hoy" now'), out
+    # The planned number of a word that exists now names it as it is now.
+    out = run(ws, 'set_field', document='Linea', refs=['s1.w5'], field='upos', value='ADV')
+    assert out.endswith('A plan names words by their numbers now: "hoy" is s1.w2.'), out
+    assert [op['kind'] for op in ws.ops] == ['set_words']
+    for refs in (['s1.w2 "hoy"'], ['s1."hoy"']):
+        out = run(ws, 'set_field', document='Linea', refs=refs, field='upos', value='ADV')
+        assert out.startswith('Planned upos = "ADV" on 1 word(s): s1.w2'), out
+    # A word before the reshape keeps its number: s2 has no reshape at all.
+    assert run(ws, 'set_field', document='Linea', refs=['s2.w4'], field='upos', value='NOUN').startswith('Planned')
+
+
+def test_a_reshape_that_joins_words_renumbers_the_words_after_it(ws2):
+    ws = ws2
+    run(ws, 'set_words', document='Linea', ref='s2.w2-3', forms=['del'])
+    out = run(ws, 'set_field', document='Linea', refs=['s2.w4'], field='upos', value='NOUN')
+    assert out.startswith('Error: s2.w4 is "mesa" now, but this plan\'s set_words renumbers s2: once it is '
+                          'applied, "mesa" is w3. '), out
+    assert 'next plan' not in out
+    out = run(ws, 'set_head', document='Linea', ref='s2.w1', head=4, deprel='det')
+    assert out.startswith('Error: Head 4 is "mesa" now'), out
+    out = run(ws, 'set_head', document='Linea', ref='s2.w1', head='s2.w4 "mesa"', deprel='det')
+    assert out.startswith('Planned s2.w1 ("la") as det of word 4 ("mesa")'), out
+    # The word before the reshaped token keeps its number.
+    assert run(ws, 'set_field', document='Linea', refs=['s2.w1'], field='upos', value='DET').startswith('Planned')

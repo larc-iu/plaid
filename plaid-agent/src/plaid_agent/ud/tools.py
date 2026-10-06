@@ -425,9 +425,10 @@ PLANNED_WORDS_LATER = ('A plan cannot write to words it is still making: once th
                        'plan they are ordinary words, so annotate them in the next plan.')
 
 
-def _planned_words(ws: Workspace, doc: UdDoc, s: Sentence) -> List[str]:
-    """The forms the words of ``s`` will have once this plan's reshapes run,
-    or [] when the plan reshapes none of its tokens."""
+def _after_plan(ws: Workspace, doc: UdDoc, s: Sentence) -> List[tuple]:
+    """The words of ``s`` once this plan's reshapes run, in order, each as
+    ``(form, word)`` with ``word`` the word it is now, or None for one a
+    reshape makes. [] when the plan reshapes none of its tokens."""
     ops = {}
     for op in ws.ops:
         if op.get('kind') in RESHAPES_TOKEN and op.get('document_id') == doc.id and op.get('forms'):
@@ -439,31 +440,65 @@ def _planned_words(ws: Workspace, doc: UdDoc, s: Sentence) -> List[str]:
     for w in s.words:
         op = ops.get(w.id)
         if op is None:
-            out.append(w.form)
+            out.append((w.form, w))
         elif id(op) not in done:
             done.add(id(op))
-            out.extend(op['forms'])
+            out.extend((f, None) for f in op['forms'])
     return out
 
 
-def planned_word_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref: str) -> Optional[str]:
-    """The refusal for word ``index`` of ``s`` where only this plan makes it."""
-    planned = _planned_words(ws, doc, s)
-    if not planned or not len(s.words) < index <= len(planned):
-        return None
-    listed = [f'w{i} "{clip(f)}"' for i, f in enumerate(planned, 1)]
+def _listing_after(after: List[tuple]) -> str:
+    listed = [f'w{i} "{clip(f)}"' for i, (f, _w) in enumerate(after, 1)]
     if len(listed) > 12:
         listed = listed[:11] + ['…', listed[-1]]
-    return (f'{ref} does not exist yet: s{s.index} has {len(s.words)} word'
-            f'{"s" if len(s.words) != 1 else ""} now, and this plan\'s set_words makes its words '
-            + ', '.join(listed) + '. ' + PLANNED_WORDS_LATER)
+    return ', '.join(listed)
+
+
+def planned_word_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref: str) -> Optional[str]:
+    """The refusal for word ``index`` of ``s`` where there is one only once
+    this plan's reshapes run."""
+    after = _after_plan(ws, doc, s)
+    if not after or not len(s.words) < index <= len(after):
+        return None
+    form, now = after[index - 1]
+    out = (f'{ref} does not exist yet: s{s.index} has {len(s.words)} word'
+           f'{"s" if len(s.words) != 1 else ""} now, and once this plan\'s set_words runs its words are '
+           + _listing_after(after) + '. ')
+    if now is not None:
+        return out + (f'A plan names words by their numbers now: "{clip(form)}" is '
+                      f's{s.index}.w{now.index}.')
+    return out + PLANNED_WORDS_LATER
+
+
+def renumbered_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref: str) -> Optional[str]:
+    """The refusal for word ``index`` of ``s`` named by its number alone when
+    this plan's reshape of an earlier token renumbers it: the number names
+    one word now and another once the plan runs, and a model that has just
+    read what set_words makes may mean either. None when the number is the
+    same before and after, or names a word the reshape itself replaces (the
+    clash refusal says that)."""
+    word = s.word(index)
+    after = _after_plan(ws, doc, s)
+    new = next((i for i, (_f, w) in enumerate(after, 1) if w is word), None) if word is not None else None
+    if new is None or new == index:
+        return None
+    form = clip(word.form)
+    then = f' and w{index} is "{clip(after[index - 1][0])}"' if index <= len(after) else ''
+    out = (f'{ref} is "{form}" now, but this plan\'s set_words renumbers s{s.index}: once it is applied, '
+           f'"{form}" is w{new}{then}. A plan names words by their numbers now, so add the form to say '
+           f'which you mean: s{s.index}.w{index} "{form}".')
+    if index <= len(after) and after[index - 1][1] is None:
+        out += ' ' + PLANNED_WORDS_LATER
+    return out
 
 
 def resolve_in(ws: Workspace, doc: UdDoc, ref: str):
     """:func:`resolve`, with the refusal a word this plan is still making
-    calls for instead of a count that does not say why."""
+    calls for instead of a count that does not say why, and a refusal for a
+    bare number this plan's reshape renumbers (no write lands on a word the
+    model may not have meant)."""
     try:
-        return resolve(doc, ref)
+        thing = resolve(doc, ref)
     except ValueError:
         r = read_ref(ref, 'w', ranged=True)
         if r is not None and r.parts[0] and 1 <= r.sentence <= len(doc.sentences):
@@ -471,6 +506,13 @@ def resolve_in(ws: Workspace, doc: UdDoc, ref: str):
             if note:
                 raise ToolError(note) from None
         raise
+    r = read_ref(ref, 'w', ranged=True)
+    if isinstance(thing, (Word, Token)) and not r.form and not r.by_form:
+        first = thing if isinstance(thing, Word) else (thing.words or [None])[0]
+        note = first and renumbered_refusal(ws, doc, doc.sentences[r.sentence - 1], first.index, ref)
+        if note:
+            raise ToolError(note)
+    return thing
 
 
 def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
@@ -680,7 +722,8 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
     return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed)
 
 
-def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = None) -> int:
+def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = None,
+             ws: Optional[Workspace] = None) -> int:
     """The head argument as a word number.
 
     Every other argument in this module is a reference, so a model reaches for
@@ -706,7 +749,7 @@ def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = N
             if r.sentence != sentence.index:
                 raise ToolError(f'"{head}" is in s{r.sentence}, and a head is a word of the same sentence '
                                 f'(s{sentence.index}). Give its number there: {words_listing(sentence)}.')
-            thing = resolve(doc, text)
+            thing = resolve_in(ws, doc, text) if ws is not None else resolve(doc, text)
             if isinstance(thing, Word):
                 return thing.index
             raise ToolError(f'"{head}" is a multi-word token. A head is one of its words: '
@@ -737,7 +780,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
     doc = ws.doc(document)
     word = _words(ws, doc, [ref])[0]
     sentence = ws.sentence_of(doc, word)
-    if head is not None and _head_id(head, doc, sentence) == 0:
+    if head is not None and _head_id(head, doc, sentence, ws) == 0:
         # A sentence has one root. A second is never staged: the old root
         # takes the head the model names for it, in the same plan and after
         # the new root (so the tree's cycle rule sees the new root first), or
@@ -757,7 +800,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
             old = others[0]
             if not (old_root_deprel or '').strip():
                 raise ToolError('Give old_root_deprel: the relation the old root takes to its new head.')
-            if _head_id(old_root_head, doc, sentence) == 0:
+            if _head_id(old_root_head, doc, sentence, ws) == 0:
                 raise ToolError('old_root_head is the old root\'s new head word, not 0: a sentence has one root.')
             with ws.staging():
                 note = _stage_head(ws, doc, word, sentence, head, deprel)
@@ -775,11 +818,23 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     refuse_virtual(word, ref)
     if head is None:
         raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
-    head = _head_id(head, doc, sentence)
+    given = head
+    head = _head_id(head, doc, sentence, ws)
     if head and sentence.word(head) is None:
         raise ToolError(planned_word_refusal(ws, doc, sentence, head, f's{sentence.index}.w{head}')
                         or f'Sentence s{sentence.index} has no word {head}. Its words: '
                         f'{words_listing(sentence)}.')
+    # A head given as a plain number names a word by its number now, as a
+    # reference does, and is refused the same way where this plan renumbers
+    # it. One given as a reference was read by `resolve_in` already.
+    try:
+        whole(given, 'head')
+        plain = True
+    except ValueError:
+        plain = False
+    note = plain and head and renumbered_refusal(ws, doc, sentence, head, f'Head {head}')
+    if note:
+        raise ToolError(note)
     if head == word.index:
         raise ToolError(f'A word cannot be its own head. Use head 0 to make {ref} the root of s{sentence.index}.')
     deprel = unmark(deprel or '', 'deprel').strip()

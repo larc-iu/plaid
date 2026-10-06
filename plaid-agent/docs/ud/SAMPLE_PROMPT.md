@@ -143,9 +143,9 @@ PLAN: give one word its head and its relation to it. head is the CoNLL-U id of a
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The dependent word, e.g. "s3.w2".
-- `head` (integer, required): The head word's CoNLL-U id, or 0 for the root.
+- `head` (integer or string, required): The head word's CoNLL-U id (or its reference, e.g. "s3.w5"), or 0 for the root.
 - `deprel` (string): The relation label, e.g. nsubj, obj, det.
-- `old_root_head` (integer): With head 0 only: the CoNLL-U id of the current root's new head.
+- `old_root_head` (integer or string): With head 0 only: the CoNLL-U id of the current root's new head.
 - `old_root_deprel` (string): With head 0 only: the current root's relation to its new head.
 
 ### del_relation
