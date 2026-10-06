@@ -540,8 +540,10 @@ export const vocabMutations = {
       // The other documents' first: they carry no version of this one, and
       // a refusal there leaves the entry as it was.
       const elsewhere = plans.filter((p) => !here.has(p.morphemeId));
-      if (elsewhere.length) await this._sendUnversioned((c) => sendMorphTypeCaches(c, elsewhere));
       try {
+        if (elsewhere.length) {
+          await this._sendUnversioned((c) => sendMorphTypeCaches(c, elsewhere));
+        }
         await this._client.batched(async (b) => {
           b.vocabItems.patchMetadata(settledId(itemId), [
             morphType == null
@@ -554,10 +556,10 @@ export const vocabMutations = {
           );
         });
       } catch (err) {
-        // Refused (a 4xx answer): the other documents get back what they
-        // held, so no copy there names a type the entry does not have. A
-        // lost answer is sent again whole under the same keys, and is left
-        // alone.
+        // Refused (a 4xx answer), there or here: the other documents get
+        // back what they held, so no copy there names a type the entry does
+        // not have. A lost answer is sent again whole under the same keys,
+        // and is left alone.
         if (elsewhere.length && err?.status >= 400 && err.status < 500) {
           try {
             await this._sendUnversioned((c) => sendMorphTypeCaches(c, revertedCaches(elsewhere)));

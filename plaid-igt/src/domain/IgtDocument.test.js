@@ -431,6 +431,23 @@ describe('morph type from the linked lexicon entry', () => {
     ]);
   });
 
+  it('a refusal in another document puts back what was written there and writes no entry', async () => {
+    const doc = typedDoc('enclitic');
+    const sent = [];
+    let first = true;
+    doc.client.tokens.bulkUpdate = async (u) => {
+      sent.push(u);
+      if (first) {
+        first = false;
+        throw Object.assign(new Error('HTTP 404'), { status: 404 });
+      }
+      return { count: u.length };
+    };
+    expect(await doc.setVocabItemMorphType('v1', 'i1', 'proclitic')).toBe(false);
+    expect(sent.map((u) => u[0].metadata[0].value)).toEqual(['proclitic', 'suffix']);
+    expect(doc.client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
+  });
+
   // The 2026-10-06 survey: a headword's type change left the morphemes
   // linked to its senses with the old type until someone opened them.
   it("a headword's type reaches the morphemes of the senses that go by it", async () => {
