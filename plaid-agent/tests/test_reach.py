@@ -348,3 +348,70 @@ def test_the_module_names_one_place_for_the_set():
     src = pathlib.Path(reach_mod.__file__).parent
     callers = [p.name for p in src.rglob('*.py') if 'reachable(' in p.read_text()]
     assert callers == ['reach.py']
+
+
+# --- a plan tool in a turn that reads other projects (A4-CROSS-1) -----------------
+
+@pytest.mark.parametrize('app,name,base,override', _write_cases(),
+                         ids=[f'{c[0]}-{c[1]}' for c in _write_cases()])
+def test_a_plan_tool_named_for_another_project_is_refused_before_it_runs(app, name, base, override):
+    """Every plan tool of every app, once the turn's tools are offered, is
+    refused for another project with the read-only sentence, whatever its
+    arguments: before, a tool that reads its target first answered about
+    the other project ("No field named ...") and the model never learnt that
+    the project was the problem."""
+    args = _args_for(app, name, base, override)
+    svc, c, ws, r = reached(app)
+    kit = svc.toolkit()
+    kit.tools_for(ws)
+    c.reads.clear()
+    out = kit.call_tool(ws, name, {**args, 'project': OTHER_NAME})
+    assert out == (f'Error: This conversation plans changes in "{ws.project.name}" only. Tell the user '
+                   f'what you would change in "{OTHER_NAME}" and let them make it there.'), (name, out)
+    assert _staged(ws, r) == 0 and not reads_in(c, OTHER_ID)
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_a_plan_tool_says_which_project_it_planned_in(app):
+    """With or without ``project``, a change planned in a turn that reads
+    other projects is answered with the project it is planned in."""
+    for _, name, base, override in [c for c in _write_cases() if c[0] == app]:
+        for named in (False, True):
+            svc, c, ws, r = reached(app)
+            kit = svc.toolkit()
+            kit.tools_for(ws)
+            head = f'Project "{ws.project.name}" (changes are planned here only):\n'
+            args = _args_for(app, name, base, override)
+            out = kit.call_tool(ws, name, {**args, 'project': ws.project.name} if named else args)
+            assert out.startswith('Error: ' if out.startswith('Error: ') else head), (name, out)
+            assert not ws.ops or out.startswith(head), (name, out)
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_a_one_project_turn_answers_as_before(app):
+    c = client(app)
+    svc, ws = home_workspace(app, c)
+    kit = svc.toolkit()
+    kit.tools_for(ws)
+    _, name, base, override = next(x for x in _write_cases() if x[0] == app and x[1] == 'add_guideline')
+    out = kit.call_tool(ws, name, _args_for(app, name, base, override))
+    assert ws.ops and out.startswith('Planned'), out
+
+
+def test_the_plan_record_names_the_home_project():
+    svc, c, ws, r = reached('igt')
+    assert r.plan_project() == {'id': ws.project.id, 'name': ws.project.name}
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_the_codes_plan_for_another_project_gets_the_same_refusal(app):
+    import importlib
+    sb = importlib.import_module(f'plaid_agent.{app}.sandbox')
+    svc, c, ws, r = reached(app)
+    svc.toolkit().tools_for(ws)
+    api = sb.api(ws)
+    out = api['plan']('add_guideline', project=OTHER_NAME, title='New', body='a note')
+    assert out.startswith(f'Error: This conversation plans changes in "{ws.project.name}" only.'), out
+    out = api['plan']('add_guideline', title='New', body='a note')
+    assert out.startswith(f'Project "{ws.project.name}"'), out
+    assert len(ws.ops) == 1 and _staged(ws, r) == 1

@@ -66,7 +66,7 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
                 + ', '.join(params) + '.')
     try:
         out = truncate(fn_(*bound.args, **bound.kwargs))
-        return after(out) if after else out
+        return planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
         return f'Error: {e}'
     except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
@@ -113,34 +113,62 @@ def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools,
     reach = getattr(ws, 'reach', None)
     if reach is None or not reach.others:
         return offered
-    return [with_project(t, reach) if reads_a_project(t, web_tools, code_tools, file_tools) else t
+    # The plan tools of this turn, which route() refuses for another project
+    # before they run and run_tool() answers for with the project they
+    # planned in.
+    reach.writers = frozenset(t['function']['name'] for t in offered if plans(t))
+    return [with_project(t, reach, plan=plans(t))
+            if plans(t) or reads_a_project(t, web_tools, code_tools, file_tools) else t
             for t in offered]
+
+
+def plans(tool: Dict[str, Any]) -> bool:
+    """Whether a tool stages a change: its description says so in its first
+    word, which is what makes it a plan tool in every app."""
+    return tool['function']['description'].startswith('PLAN:')
 
 
 def reads_a_project(tool: Dict[str, Any], *local) -> bool:
     """Whether a tool reads the project it is handed, and so takes ``project``
-    in a turn that may read several. Not a plan tool, since a plan changes
-    the conversation's own project only, not a tool that acts on the plan,
-    not a reference text, and not one that reads the web, the attached files
-    or runs code, which are the turn's rather than a project's."""
+    in a turn that may read several. Not a plan tool (:func:`plans` decides
+    those), not a tool that acts on the plan, not a reference text, and not
+    one that reads the web, the attached files or runs code, which are the
+    turn's rather than a project's."""
     from .reach import PLAN_TOOLS
-    f = tool['function']
-    name = f['name']
-    if f['description'].startswith('PLAN:') or name in PLAN_TOOLS or name.endswith('_help'):
+    name = tool['function']['name']
+    if plans(tool) or name in PLAN_TOOLS or name.endswith('_help'):
         return False
     return not any(name in names for names in local)
 
 
-def with_project(tool: Dict[str, Any], reach) -> Dict[str, Any]:
+def with_project(tool: Dict[str, Any], reach, plan: bool = False) -> Dict[str, Any]:
     """A copy of ``tool`` that also takes ``project``: one of the projects this
-    turn may read, named as :meth:`core.reach.Reach.labels` names them."""
+    turn may read, named as :meth:`core.reach.Reach.labels` names them.
+
+    A plan tool takes it too. Without it, a change the model meant for
+    another project went to the home project whenever a field of that name
+    was there as well, and nothing said so. Named, the change for another
+    project is refused as read-only (see :func:`core.reach.route`)."""
     labels = reach.labels()
     f = tool['function']
     params = f['parameters']
-    prop = {'type': 'string', 'enum': labels,
-            'description': f'Which project to read. Leave it out for "{labels[0]}".'}
+    what = (f'Which project the change is for. Changes are planned in "{labels[0]}" only. Leave it out '
+            f'for "{labels[0]}".' if plan else
+            f'Which project to read. Leave it out for "{labels[0]}".')
+    prop = {'type': 'string', 'enum': labels, 'description': what}
     return {**tool, 'function': {**f, 'parameters': {
         **params, 'properties': {**params.get('properties', {}), 'project': prop}}}}
+
+
+def planned_where(ws, name: str, out: str) -> str:
+    """A plan tool's answer in a turn that reads other projects, headed with
+    the project it planned in. The model reads several projects in such a
+    turn, and a result that named none let it tell the user a change was
+    planned in the project it had just read when it was planned at home."""
+    reach = getattr(ws, 'reach', None)
+    if reach is None or not reach.others or name not in getattr(reach, 'writers', ()):
+        return out
+    return f'Project "{reach.labels()[0]}" (changes are planned here only):\n{out}'
 
 
 def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) -> str:

@@ -38,7 +38,10 @@ def test_a_turn_on_one_project_is_offered_exactly_todays_tools(app):
 
 
 @pytest.mark.parametrize('app', APPS)
-def test_read_tools_take_the_project_and_plan_tools_do_not(app):
+def test_read_and_plan_tools_take_the_project_and_the_rest_do_not(app):
+    """A plan tool takes ``project`` as a read does (A4-CROSS-1): a change
+    the model means for another project is then named so, and refused,
+    rather than planned at home without a word."""
     svc, c, ws, r = reached(app)
     kit = svc.toolkit()
     import importlib
@@ -47,15 +50,21 @@ def test_read_tools_take_the_project_and_plan_tools_do_not(app):
     takes = {t['function']['name'] for t in offered if 'project' in t['function']['parameters']['properties']}
     names = {t['function']['name'] for t in offered}
     assert takes, 'some read tool takes the project'
-    assert not takes & write and not takes & set(PLAN_TOOLS) and not takes & LOCAL_TOOLS
+    assert names & write <= takes, 'every plan tool offered takes the project'
+    assert r.writers == names & write
+    assert not takes & set(PLAN_TOOLS) and not takes & LOCAL_TOOLS
     assert not {n for n in takes if n.endswith('_help')}
     for must in ('project_overview', 'list_documents', 'read_document', 'read_guideline', 'query'):
         assert must in takes, must
-    assert names - takes >= write
     one = next(t for t in offered if t['function']['name'] == 'read_document')
     prop = one['function']['parameters']['properties']['project']
     assert prop['enum'] == [ws.project.name, OTHER_NAME]
     assert prop['description'] == f'Which project to read. Leave it out for "{ws.project.name}".'
+    plan = next(t for t in offered if t['function']['name'] in write)
+    prop = plan['function']['parameters']['properties']['project']
+    assert prop['enum'] == [ws.project.name, OTHER_NAME]
+    assert prop['description'] == (f'Which project the change is for. Changes are planned in '
+                                   f'"{ws.project.name}" only. Leave it out for "{ws.project.name}".')
     # The module's own table is untouched: the next single-project turn sees today's tools.
     c1 = client(app)
     _, ws1 = home_workspace(app, c1)

@@ -98,6 +98,8 @@ class Reach:
         self._workspaces: Dict[str, Any] = {}
         #: [{'id', 'name'}] of the projects that could not be opened this turn.
         self.unavailable: List[Dict[str, str]] = []
+        #: The names of the plan tools offered this turn (core.tools.tools_for).
+        self.writers: frozenset = frozenset()
         allowed, refused = reachable(home_ws.project.id, joined, token_reaches)
         self.unavailable.extend(refused)
         for entry in allowed:
@@ -129,6 +131,13 @@ class Reach:
         names = [(p.name or '').casefold() for p in projects]
         return [p.name if p.name and names.count((p.name or '').casefold()) == 1 else p.id
                 for p in projects]
+
+    def plan_project(self) -> Dict[str, str]:
+        """The project a plan made in this turn changes, as ``{id, name}``
+        for the plan record, so the card can name it where the conversation
+        reads other projects. Always the home project."""
+        p = self.home_project
+        return {'id': p.id, 'name': p.name or p.id}
 
     def resolve(self, project: Any):
         """The project a tool was asked about: by id, exact name, or a unique
@@ -220,4 +229,10 @@ def route(ws, name: str, args: Any) -> Tuple[Any, Any]:
     rest = {k: v for k, v in args.items() if k != 'project'}
     if name in LOCAL_TOOLS or name in PLAN_TOOLS:
         return reach.home, rest
-    return reach.workspace(args['project']), rest
+    there = reach.workspace(args['project'])
+    if name in reach.writers:
+        # Refused before the tool runs, not only where it stages: a tool
+        # that reads its target first answered about the other project's
+        # fields ("No field named ...") and never reached the refusal.
+        there.refuse_read_only()
+    return there, rest
