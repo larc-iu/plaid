@@ -60,7 +60,7 @@ EXTENT_FIELDS = ('begin', 'end_', 'precedence', 'tokens')
 
 ROW_SQL = """
 SELECT w.ts, w.seq, w.target_table, w.target_id, w.change_type, w.post_image, w.document_id, w.vocab_layer_id,
-       o.id, o.user_id, o.token_id, o.group_id, o.batch_id, o.project_id,
+       o.id, o.user_id, o.token_id, {credential}, o.group_id, o.batch_id, o.project_id,
        g.kind, g.ref, g.message, g.user_id, g.created_at
 FROM audit_writes w
 JOIN operations o ON o.id = w.op_id
@@ -144,14 +144,21 @@ def change_category(table: str, prev: Optional[Dict[str, Any]], cur: Optional[Di
     return 'none', changed
 
 
+def credential_column(db) -> str:
+    """What ROW_SQL reads for an operation's credential: the column, or NULL
+    in a database from before operations recorded it (2026-10-06)."""
+    cols = {r[1] for r in db.execute('PRAGMA table_info(operations)')}
+    return 'o.credential' if 'credential' in cols else 'NULL'
+
+
 class Row:
     __slots__ = ('ts', 'seq', 'table', 'target', 'change', 'raw', '_image', 'document_id', 'vocab_layer_id',
-                 'op_id', 'user_id', 'token_id', 'group_id', 'batch_id', 'project_id', 'kind', 'ref', 'message',
-                 'group_user', 'group_created', 'unit', 'state')
+                 'op_id', 'user_id', 'token_id', 'credential', 'group_id', 'batch_id', 'project_id', 'kind', 'ref',
+                 'message', 'group_user', 'group_created', 'unit', 'state')
 
     def __init__(self, r):
         (self.ts, self.seq, self.table, self.target, self.change, self.raw, self.document_id, self.vocab_layer_id,
-         self.op_id, self.user_id, self.token_id, self.group_id, self.batch_id, self.project_id,
+         self.op_id, self.user_id, self.token_id, self.credential, self.group_id, self.batch_id, self.project_id,
          self.kind, self.ref, self.message, self.group_user, self.group_created) = r
         self._image = None
         self.unit = self.group_id or self.batch_id or self.op_id
@@ -188,6 +195,7 @@ class Unit:
         self.counts: Counter = Counter()
         self.documents = set()
         self.via_token = False
+        self.credentials: Counter = Counter()
 
     def take(self, row: Row) -> None:
         self.last_ts = row.ts
@@ -196,6 +204,8 @@ class Unit:
             self.documents.add(row.document_id)
         if row.token_id:
             self.via_token = True
+        if row.credential:
+            self.credentials[row.credential] += 1
         if row.project_id and not self.project_id:
             self.project_id = row.project_id
         if row.change != 'delete':
@@ -307,7 +317,8 @@ class Fates:
                 'conversation_id': None, 'plan_id': None, 'service': None,
                 'requester': self.p.user(u.user_id), 'project_id': u.project_id,
                 'project': self.p.project(u.project_id), 'started_at': u.first_ts, 'ended_at': u.last_ts,
-                'via_token': u.via_token, 'documents': set(), 'counts': Counter(), 'sources': Counter(),
+                'via_token': u.via_token, 'credentials': Counter(),
+                'documents': set(), 'counts': Counter(), 'sources': Counter(),
                 '_user_id': u.user_id, '_message': u.message,
             }
             if u.cls == 'assistant-plan' and isinstance(u.ref, str):
@@ -328,6 +339,7 @@ class Fates:
         row['documents'] |= u.documents
         row['counts'] += u.counts
         row['sources'] += u.sources
+        row['credentials'] += u.credentials
 
     def _event(self, unit: Unit, written_at: str, r: Row, units: Dict[str, Unit], category=None, fields=None):
         other = units[r.unit]
@@ -335,7 +347,7 @@ class Fates:
               'actor_class': ACTOR.get(other.cls, 'person'), 'actor_kind': other.cls,
               'actor': self.p.user(other.user_id),
               'by_requester': bool(other.user_id and other.user_id == unit.user_id),
-              'via_token': bool(r.token_id), 'unit_id': other.id}
+              'via_token': bool(r.token_id), 'credential': r.credential, 'unit_id': other.id}
         if r.change != 'delete':
             meta = (r.state or {}).get('metadata') or {}
             ev.update({'category': category, 'fields': fields, 'prov_after': prov_state(meta),
@@ -418,6 +430,7 @@ class Fates:
             r = {k: v for k, v in row.items() if not k.startswith('_')}
             r['documents'] = len(row['documents'])
             r['counts'] = dict(row['counts'])
+            r['credentials'] = dict(row['credentials'])
             r['sources'] = {self.p.source(k): v for k, v in row['sources'].items()}
             r['writes'] = sum(row['counts'].values())
             out.append(r)
@@ -438,9 +451,11 @@ def project_streams(db, project_ids: List[str]) -> Tuple[List[str], List[str]]:
 
 
 def run(db, fates: Fates, documents: List[str], vocabs: List[str], progress=None) -> None:
+    credential = credential_column(db)
     for n, doc in enumerate(documents):
-        fates.stream(db.execute(ROW_SQL.format(where='w.document_id = ?'), (doc,)))
+        fates.stream(db.execute(ROW_SQL.format(where='w.document_id = ?', credential=credential), (doc,)))
         if progress:
             progress(f'document {n + 1}/{len(documents)}')
     for vocab in vocabs:
-        fates.stream(db.execute(ROW_SQL.format(where='w.vocab_layer_id = ? AND w.document_id IS NULL'), (vocab,)))
+        fates.stream(db.execute(ROW_SQL.format(where='w.vocab_layer_id = ? AND w.document_id IS NULL',
+                                               credential=credential), (vocab,)))

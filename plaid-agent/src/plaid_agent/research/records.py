@@ -8,9 +8,12 @@ clients send them. Everything here reads them with the keys in snake case.
 
 What the record does NOT keep, and so no row here can say:
 
-* a turn's start time. A plan's id is a UUIDv7 minted when its turn staged
-  it, so a plan's proposal time is read off its id. A turn with no plan has
-  only its duration (``elapsed_ms``, newer records).
+* when an item was written, before items carried ``created_at``
+  (2026-10-06). A plan's id is a UUIDv7 minted when its turn staged it, so a
+  plan's proposal time is read off its id. A turn with no plan has only its
+  duration (``elapsed_ms``, since 2026-10-05).
+* the tool calls of a failed or stopped turn, before such a turn kept them on
+  its error item (``steps`` and ``calls``, 2026-10-06).
 * a conversation the user deleted, and every value the record was pruned of:
   old tool results (``DROPPED``), old steps and citations, a settled plan's
   ``ops`` (compacted, only ``proposed`` stays, and only on plans staged since
@@ -19,6 +22,7 @@ What the record does NOT keep, and so no row here can say:
   the latest version of a record exists.
 """
 
+import json
 import re
 import uuid
 from datetime import datetime, timezone
@@ -118,6 +122,22 @@ def error_class(text: Optional[str]) -> str:
     return 'other'
 
 
+def arg_names(args: Any) -> Optional[List[str]]:
+    """The names of the arguments a tool call was given (never their values),
+    each clipped, or None when the record no longer holds them. Arguments
+    that were not a JSON object are ``['(not an object)']``."""
+    if args is None:
+        return None
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except ValueError:
+            return ['(not an object)']
+    if not isinstance(args, dict):
+        return ['(not an object)']
+    return sorted(clip(str(k)) for k in args)
+
+
 def turn_end(item: Dict[str, Any]) -> str:
     """How a turn ended: an answer, or which of the ways it can stop."""
     if item.get('kind') == 'error':
@@ -193,6 +213,9 @@ class Conversations:
         messages = [m for m in conv.get('messages') or [] if isinstance(m, dict)]
         display = [d for d in conv.get('display') or [] if isinstance(d, dict)]
         results = {m.get('tool_call_id'): m.get('content') for m in messages if m.get('role') == 'tool'}
+        arguments = {c.get('id'): (c.get('function') or {}).get('arguments')
+                     for m in messages if m.get('role') == 'assistant'
+                     for c in m.get('tool_calls') or [] if isinstance(c, dict)}
         base = {'conversation_id': conv_id, 'app': app, 'project_id': project_id,
                 'project': self.p.project(project_id), 'user': user}
 
@@ -221,6 +244,7 @@ class Conversations:
             turn = {
                 **base, 'item_index': index, 'turn': n_user, 'end': turn_end(item),
                 'model': item.get('model'), 'version': item.get('version'), 'service': item.get('service'),
+                'asked_at': asked.get('created_at'), 'created_at': item.get('created_at'),
                 'elapsed_ms': item.get('elapsed_ms'),
                 'sent_tokens': (usage or {}).get('sent'), 'received_tokens': (usage or {}).get('received'),
                 'window_tokens': (usage or {}).get('window'),
@@ -234,7 +258,16 @@ class Conversations:
                 'files_stored': len(item.get('files') or []),
                 'unavailable_projects': len(item.get('unavailable_projects') or []),
             }
-            failed_steps = self._steps(base, index, n_user, steps, results)
+            if kind == 'error':
+                # A failed or stopped turn keeps what its calls were sent and
+                # answered on its own item, not in the transcript.
+                own = [c for c in item.get('calls') or [] if isinstance(c, dict)]
+                step_results = {**results, **{c.get('id'): c.get('result') for c in own}}
+                step_arguments = {**arguments, **{c.get('id'): c.get('arguments') for c in own}}
+            else:
+                step_results, step_arguments = results, arguments
+            failed_steps = self._steps(base, index, n_user, steps, step_results, step_arguments,
+                                       turn['end'])
             turn['n_failed_steps'] = failed_steps
             self.turns.append(turn)
             if self.include_text:
@@ -256,7 +289,7 @@ class Conversations:
             'about_document': (meta.get('about') or {}).get('id') if isinstance(meta.get('about'), dict) else None,
         })
 
-    def _steps(self, base, index, turn, steps, results) -> int:
+    def _steps(self, base, index, turn, steps, results, arguments, end) -> int:
         failed_n = 0
         rows = []
         for i, s in enumerate(steps):
@@ -265,18 +298,21 @@ class Conversations:
                 text = s.get('result') if isinstance(s.get('result'), str) else None
                 failed = bool(s.get('error')) or (isinstance(text, str) and text.startswith('Error'))
                 kept = text is not None
+                args = s.get('args')
             else:
                 text = results.get(s.get('id'))
                 kept = isinstance(text, str) and text != DROPPED
                 failed = bool(s.get('failed'))
                 if not failed and kept and text.startswith('Error'):
                     failed = True
+                args = arguments.get(s.get('id'))
             failed_n += failed
-            row = {**base, 'item_index': index, 'turn': turn, 'step': i, 'tool': s.get('name'),
+            row = {**base, 'item_index': index, 'turn': turn, 'turn_end': end, 'step': i, 'tool': s.get('name'),
                    'step_kind': s.get('kind'), 'failed': failed,
                    'error_class': (error_class(text) if kept else 'unknown') if failed else None,
                    'result_kept': kept, 'planned': s.get('planned') or 0,
-                   'document_read': bool(s.get('document')), 'legacy_shape': legacy}
+                   'document_read': bool(s.get('document')), 'arg_names': arg_names(args),
+                   'legacy_shape': legacy}
             if self.include_text and failed and kept:
                 self.private.append({**base, 'item_index': index, 'kind': 'tool_error', 'step': i,
                                      'tool': s.get('name'), 'text': text[:500]})
@@ -319,6 +355,7 @@ class Conversations:
             'kinds': sorted({str(c[0]) for c in proposed or [] if isinstance(c, list) and c}),
             # Filled in by linking (extract.py).
             'group_id': None, 'group_link': None, 'writes': None,
+            'comments_written': None, 'comment_link': None,
         }
         self.plans.append(row)
         self.owner_of_plan[plan_id] = user_id

@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '1'
+EXTRACTOR_VERSION = '2'
 HERE = Path(__file__).parent
 
 
@@ -108,9 +108,22 @@ def link_plans(conv: Conversations, fates: F.Fates) -> Dict[str, Any]:
             plan['settled_at'] = unit['started_at']
             plan['settled_at_source'] = 'audit_group_start'
             plan['seconds_to_settle'] = seconds_between(plan['proposed_at'], plan['settled_at'])
+    # An applied plan's operation whose plan no record holds: its
+    # conversation was deleted, which deletes its plans (the person's choice).
+    # The operation keeps its kind and reference.
+    conversations = {c['conversation_id'] for c in conv.conversations}
     for u in units.values():
-        if u['kind'] == 'assistant-plan':
-            u.setdefault('plan_found', False)
+        if u['kind'] != 'assistant-plan':
+            continue
+        u.setdefault('plan_found', False)
+        if u['plan_found']:
+            u['plan_record'] = 'found'
+        elif u.get('conversation_id') and u['conversation_id'] in conversations:
+            u['plan_record'] = 'missing'
+        else:
+            u['plan_record'] = 'deleted'
+    for u in units.values():
+        u.setdefault('plan_record', None)
     # Each proposed change: whether the plan's operation wrote it, and what
     # became of that write. A change names what it targets (a word, a
     # span), and a write is matched when it is that entity or is about it
@@ -134,7 +147,96 @@ def link_plans(conv: Conversations, fates: F.Fates) -> Dict[str, Any]:
             'applied_unlinked': sum(1 for p in conv.plans
                                     if p['status'] in ('applied', 'partial') and not p['group_id']),
             'operations_without_plan': sum(1 for u in units.values()
-                                           if u['kind'] == 'assistant-plan' and not u.get('plan_found'))}
+                                           if u['kind'] == 'assistant-plan' and not u.get('plan_found')),
+            'operations_plan_deleted': sum(1 for u in units.values() if u.get('plan_record') == 'deleted')}
+
+
+def _v7_at(value: Any) -> Optional[int]:
+    """A UUIDv7's millisecond and counter as one number (as
+    ``plaid_client.ids.drawn_uuid7`` counts them), else None."""
+    import uuid
+    try:
+        u = uuid.UUID(str(value))
+    except ValueError:
+        return None
+    if u.version != 7:
+        return None
+    top = u.int >> 64
+    return ((top >> 16) << 12) + (top & 0xFFF)
+
+
+# How many ids after its own a plan's creates may reach: far more than the
+# largest plan (MAX ops) draws.
+DRAWN_MAX = 1 << 20
+
+
+def link_comments(db, conv: Conversations, project_ids: List[str]) -> Dict[str, Any]:
+    """The comments each approved plan wrote, found by their ids.
+
+    Comments are not in the audit log (by design), so a plan's comments
+    leave no operation. Since 2026-09-30 a plan draws the id of every row
+    it creates from its own id (``plaid_client.ids.drawn_uuid7``), so a
+    comment the plan wrote is recognized by its id alone: the nth id after
+    the plan's. A plan made before then has no such ids, and what it
+    commented is not recoverable (``comment_link: unrecoverable``, set
+    when such a plan was applied and no operation of it was found).
+
+    Returns the comment rows (no text: the entity, the document, when it was
+    written and edited, whether it is still there) for ``comments.jsonl``."""
+    from plaid_client.ids import drawn_uuid7
+    from .records import seconds_between
+    plans = [p for p in conv.plans if p['status'] in ('applied', 'partial') or p['interrupted']]
+    approved = {p['plan_id'] for p in plans}
+    seeds = [(at, p) for p in plans if (at := _v7_at(p['plan_id'])) is not None]
+    rows: List[Dict[str, Any]] = []
+    if seeds and project_ids:
+        q = ','.join('?' * len(project_ids))
+        found = db.execute(
+            f'SELECT c.id, c.project_id, c.document_id, c.vocab_layer_id, c.entity_type, c.entity_id, c.author_id, '
+            f'c.created_at, c.updated_at FROM comments c '
+            f'WHERE c.project_id IN ({q}) OR c.vocab_layer_id IN '
+            f'(SELECT vocab_layer_id FROM project_vocabs WHERE project_id IN ({q}))',
+            project_ids + project_ids).fetchall()
+        for cid, pid, did, vid, etype, eid, author, created, updated in found:
+            at = _v7_at(cid)
+            if at is None:
+                continue
+            for seed_at, p in seeds:
+                n = at - seed_at - 1
+                if 0 <= n < DRAWN_MAX and drawn_uuid7(p['plan_id'], n) == str(cid):
+                    rows.append({'plan_id': p['plan_id'], 'conversation_id': p['conversation_id'], 'app': p['app'],
+                                 'project_id': p['project_id'], 'project': p['project'], 'comment_id': str(cid),
+                                 'entity_type': etype, 'entity_id': eid, 'document_id': did,
+                                 'vocab_layer_id': vid, 'created_at': created,
+                                 'edited_after_s': (seconds_between(created, updated)
+                                                    if updated and updated != created else None),
+                                 'author_is_requester': author == conv.owner_of_plan.get(p['plan_id'])})
+                    break
+    by_plan: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        by_plan[r['plan_id']].append(r)
+    for p in conv.plans:
+        mine = by_plan.get(p['plan_id'])
+        p['comments_written'] = len(mine) if mine else 0
+        if mine:
+            p['comment_link'] = 'minted_id'
+        elif p['plan_id'] in approved and not p['group_id'] and _v7_at(p['plan_id']) is None:
+            p['comment_link'] = 'unrecoverable'
+        else:
+            p['comment_link'] = None
+    for c in conv.plan_changes:
+        mine = by_plan.get(c['plan_id'])
+        if c['kind'] != 'add_comment' or not mine:
+            continue
+        hits = [r for r in mine if r['entity_id'] == c['target']]
+        c['target_written'] = bool(hits)
+        c['matched_writes'] = len(hits)
+        fates = ['comment_edited' if r['edited_after_s'] is not None else 'comment_kept' for r in hits]
+        c['fate'] = fates[0] if fates else None
+        c['fates'] = dict(Counter(fates))
+    return {'comments': rows,
+            'plans_with_comments': len(by_plan),
+            'plans_unrecoverable': sum(1 for p in conv.plans if p.get('comment_link') == 'unrecoverable')}
 
 
 def tool_inventory(apps: List[str]) -> Dict[str, List[str]]:
@@ -246,6 +348,17 @@ def summarize(conv: Conversations, fates: F.Fates, units: List[Dict[str, Any]], 
                                               for w in fates.writes if w['unit_kind'] == k and w['deletion']))
                               for k in w_by_kind},
         'first_edit_actor_prov': {k: dict(c) for k, c in edit_prov.items()},
+        'first_edit_credential': {k: dict(Counter(f'{w["first_edit"]["actor_class"]}:{w["first_edit"]["credential"]}'
+                                                  for w in fates.writes if w['unit_kind'] == k and w['first_edit']))
+                                  for k in w_by_kind},
+        'deletion_credential': {k: dict(Counter(f'{w["deletion"]["actor_class"]}:{w["deletion"]["credential"]}'
+                                                for w in fates.writes if w['unit_kind'] == k and w['deletion']))
+                                for k in w_by_kind},
+        'units_by_credential': dict(sum((Counter(u['credentials']) for u in units), Counter())),
+        'plan_operations_by_record': dict(Counter(u['plan_record'] for u in units if u['kind'] == 'assistant-plan')),
+        'plans_by_comment_link': dict(Counter(str(p.get('comment_link')) for p in plans)),
+        'turns_dated': sum(1 for t in conv.turns if t['created_at']),
+        'failed_or_stopped_turn_steps': sum(t['n_steps'] for t in conv.turns if t['end'] in ('failed', 'stopped')),
         'plan_change_fates': dict(Counter(str(c['fate']) for c in conv.plan_changes if c['plan_status'] in
                                           ('applied', 'partial'))),
         'plan_changes_target_written': dict(Counter(str(c['target_written']) for c in conv.plan_changes
@@ -296,6 +409,9 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
     docs, vocabs = F.project_streams(db, scope) if scope else ([], [])
     F.run(db, fates, docs, vocabs)
     link = link_plans(conv, fates)
+    commented = link_comments(db, conv, scope)
+    link['linked_by_comments'] = commented['plans_with_comments']
+    link['applied_unrecoverable'] = commented['plans_unrecoverable']
     units = fates.unit_rows()
     log(f'{len(units)} machine unit(s), {len(fates.writes)} write(s) followed')
 
@@ -325,6 +441,7 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
     write_jsonl(out / 'units.jsonl', units)
     write_jsonl(out / 'writes.jsonl', [{k: v for k, v in w.items() if k != '_anchors'} for w in fates.writes])
     write_jsonl(out / 'telemetry.jsonl', events)
+    write_jsonl(out / 'comments.jsonl', commented['comments'])
     (out / 'tool_inventory.json').write_text(json.dumps(
         {'inventory': inventory, **tools}, indent=1, default=_default, sort_keys=True), encoding='utf-8')
     private = out / 'PRIVATE_text.jsonl'

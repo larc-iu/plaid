@@ -82,3 +82,36 @@ def test_pseudonyms_and_the_salt(tmp_path):
     assert p.user('a@b.com') == p.user('a@b.com') != Pseudonyms(b'x' * 32).user('a@b.com')
     assert 'a@b.com' not in p.user('a@b.com') and p.source('user:a@b.com').startswith('user:u-')
     assert p.source('service:polygloss') == 'service:polygloss'
+
+
+def test_a_failed_turns_calls_are_read_off_its_own_item():
+    from plaid_agent.research.records import Conversations, arg_names
+    conv = Conversations(Pseudonyms(b'k' * 32))
+    record = {'messages': [{'role': 'user', 'content': 'q'}], 'display': [
+        {'kind': 'user', 'text': 'q', 'created-at': '2026-10-06T01:00:00.000Z'},
+        {'kind': 'error', 'text': 'failed', 'created-at': '2026-10-06T01:00:09.000Z',
+         'steps': [{'id': 'c1', 'name': 'search', 'kind': 'read', 'label': 'Searched'},
+                   {'id': 'c2', 'name': 'read_lexicon', 'kind': 'read', 'label': 'Read', 'failed': True}],
+         'calls': [{'id': 'c1', 'name': 'search', 'arguments': '{"pattern": "x"}', 'result': '1 hit'},
+                   {'id': 'c2', 'name': 'read_lexicon', 'arguments': '{"form": "x"}',
+                    'result': 'Error: read_lexicon cannot be called with those arguments.'}]}]}
+    conv.add('u@x', 'igt', 'p1', 'c1', record, None, 10, None)
+    turn = conv.turns[0]
+    assert turn['end'] == 'failed' and turn['n_steps'] == 2 and turn['n_failed_steps'] == 1
+    assert turn['asked_at'] == '2026-10-06T01:00:00.000Z' and turn['created_at'] == '2026-10-06T01:00:09.000Z'
+    first, second = conv.tool_calls
+    assert first['result_kept'] and not first['failed'] and first['arg_names'] == ['pattern']
+    assert second['error_class'] == 'bad_arguments' and second['arg_names'] == ['form']
+    assert {c['turn_end'] for c in conv.tool_calls} == {'failed'}
+    assert arg_names(None) is None and arg_names('not json') == ['(not an object)']
+    assert arg_names({'x' * 40: 1}) == ['x' * 23 + '…']
+
+
+def test_an_old_database_reads_no_credential():
+    import sqlite3
+    from plaid_agent.research.fates import credential_column
+    db = sqlite3.connect(':memory:')
+    db.execute('CREATE TABLE operations (id TEXT, token_id TEXT)')
+    assert credential_column(db) == 'NULL'
+    db.execute('ALTER TABLE operations ADD COLUMN credential TEXT')
+    assert credential_column(db) == 'o.credential'

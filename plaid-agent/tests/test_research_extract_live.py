@@ -34,8 +34,10 @@ def world(tmp_path_factory):
     from plaid_client import PlaidClient
     from plaid_client.ids import uuid7
     from plaid_client.provenance import confirmed_inferred, stamp_inferred as inferred
+    from plaid_client.ids import drawn_uuid7
     from plaid_agent.core.conversation import (assistant_item, conv_key, error_item, meta_key, build_meta,
-                                               proposed_changes, replace_undecided, settle_plan, DROPPED)
+                                               proposed_changes, replace_undecided, settle_plan, user_item,
+                                               DROPPED)
     from plaid_agent.core.trace import tracer_for, trace_step
     from plaid_agent.research.records import proposed_keys
 
@@ -110,6 +112,30 @@ def world(tmp_path_factory):
     other.spans.update(ids['adopted'], 'G2')                     # an adopted guess corrected
     other.spans.delete(ids['untagged'])                          # an untagged run's output removed
     other.tokens.delete(toks[3])                                 # m3 goes with its word
+    # A script on the other person's named token: their edit, told apart
+    # from what they did in the browser.
+    script_token = other.api_tokens.create(other_email, 'pipeline')['token']
+    script = PlaidClient(URL, script_token)
+    script.spans.update(ids['m4'], 'scripted')                   # edited by a person's script
+
+    # An applied plan whose conversation was then deleted: its operation
+    # keeps its kind and reference, and no record holds the plan.
+    gone_conv, gone_plan = str(uuid.uuid4()), uuid7()
+    with admin.operation('Assistant: gloss 1 word', kind='assistant-plan',
+                         ref=f'conv:{gone_conv}/plan:{gone_plan}/{source}'):
+        ids['gone'] = admin.spans.create(gloss, [toks[2]], 'gone',
+                                         metadata=confirmed_inferred(source, detail=detail))['id']
+
+    # Two applied plans of comments. Comments are not audited, so neither
+    # leaves an operation. The newer one drew its comment's id from its own
+    # (as `execute_plan` does), the older one predates that.
+    comment_plan = uuid7()
+    comment_ops = [{'kind': 'add_comment', 'entity_type': 'token', 'entity_id': toks[4], 'body': 'check this',
+                    'label': 'comment on w4'}]
+    ids['comment'] = admin.comments.create('token', toks[4], 'check this',
+                                           id=drawn_uuid7(comment_plan, 0))['id']
+    old_comment_plan = str(uuid.uuid4())
+    admin.comments.create('token', toks[5], 'older note')
 
     # The conversation, written with the service's own functions.
     tracer = tracer_for((), {'set_field'}, lambda n, a: n, {})
@@ -140,8 +166,13 @@ def world(tmp_path_factory):
                 {'role': 'tool', 'tool_call_id': 'c2', 'content': '3 rows'},
                 {'role': 'tool', 'tool_call_id': 'c3', 'content': DROPPED},
                 {'role': 'tool', 'tool_call_id': 'c4', 'content': 'Planned.'}]
+    failed_steps = [trace_step(tracer, 'f1', 'search', {'query_text': 'kai'}),
+                    trace_step(tracer, 'f2', 'lexicon_entry', {'form': 'kai'}, failed=True)]
+    failed_calls = [{'id': 'f1', 'name': 'search', 'arguments': '{"query_text": "kai"}', 'result': '3 words'},
+                    {'id': 'f2', 'name': 'lexicon_entry', 'arguments': '{"form": "kai"}',
+                     'result': 'Error: lexicon_entry cannot be called with those arguments.'}]
     conv = {'messages': messages, 'display': [
-        {'kind': 'user', 'text': 'please gloss', 'where': {'kind': 'document', 'id': doc, 'name': 'Doc'}},
+        {**user_item('please gloss'), 'where': {'kind': 'document', 'id': doc, 'name': 'Doc'}},
         item(with_proposed(plan_payload(plan_id, ops)), steps1),
         {'kind': 'user', 'text': 'and the legacy one'},
         # A plan from an older service: a UUIDv4 id, no `proposed`, no service.
@@ -157,13 +188,20 @@ def world(tmp_path_factory):
         item(with_proposed(plan_payload(uuid7(), ops[:3]))),
         {'kind': 'user', 'text': 'stop'},
         error_item('Stopped.', stopped=True, model='stub-model', service=service),
-        {'kind': 'user', 'text': 'fail'},
-        error_item('The model did not answer.', model='stub-model', service=service),
+        user_item('fail'),
+        error_item('The model did not answer.', model='stub-model', service=service,
+                   steps=failed_steps, calls=failed_calls),
         {'kind': 'user', 'text': 'loop'},
         item(None, [trace_step(tracer, 'c5', 'lexicon_entry', {}, failed=True)] * 3,
              text='Found some.\n\n*(Stopped after the same step failed 3 times.)*'),
+        {'kind': 'user', 'text': 'comment'},
+        item(with_proposed(plan_payload(comment_plan, comment_ops, '1 comment'))),
+        {'kind': 'user', 'text': 'older comment'},
+        {**assistant_item('ok', plan_payload(old_comment_plan, comment_ops, '1 comment'), [], [], '',
+                          'stub-model'), 'status': 'applied'},
         {'kind': 'user', 'text': 'newest'},
     ]}
+    conv = settle_plan(conv, 19, 'applied', '(note) applied')
     conv = settle_plan(conv, 1, 'applied', '(note) applied', as_human=False)
     conv = settle_plan(conv, 5, 'discarded', '(note) discarded')
     conv = settle_plan(conv, 7, 'stale', '(note) stale')
@@ -192,13 +230,16 @@ def world(tmp_path_factory):
     for w in rows('writes.jsonl'):
         writes.setdefault(w['target_id'], w)
     return {'out': out, 'root': root, 'manifest': manifest, 'rows': rows, 'ids': ids, 'writes': writes,
-            'plan_id': plan_id, 'legacy_id': legacy_id, 'emails': [me, other_email], 'pid': pid}
+            'plan_id': plan_id, 'legacy_id': legacy_id, 'emails': [me, other_email], 'pid': pid,
+            'gone_plan': gone_plan, 'comment_plan': comment_plan, 'old_comment_plan': old_comment_plan,
+            'script_token': script_token}
 
 
 def test_plans_and_their_statuses(world):
     plans = world['rows']('plans.jsonl')
     by_status = sorted(p['status'] for p in plans)
-    assert by_status == ['applied', 'applied', 'discarded', 'partial', 'replaced', 'stale', 'undecided']
+    assert by_status == ['applied', 'applied', 'applied', 'applied', 'discarded', 'partial', 'replaced', 'stale',
+                         'undecided']
     tagged = next(p for p in plans if p['plan_id'] == world['plan_id'])
     assert tagged['group_link'] == 'ref' and tagged['proposed_count'] == 6 and tagged['proposed_source'] == 'record'
     assert tagged['proposed_at'] and tagged['settled_at_source'] == 'record'
@@ -209,7 +250,8 @@ def test_plans_and_their_statuses(world):
     assert legacy['proposed_at'] is None and legacy['settled_at_source'] == 'audit_group_start'
     partial = next(p for p in plans if p['status'] == 'partial')
     assert partial['partly_applied'] and partial['rows_written'] == 1
-    assert world['manifest']['linking']['applied_unlinked'] == 1  # the partial plan wrote nothing here
+    # The partial plan wrote nothing here, and the two comment plans have no operation.
+    assert world['manifest']['linking']['applied_unlinked'] == 3
 
 
 def test_every_fate(world):
@@ -296,3 +338,57 @@ def test_include_text_is_opt_in_and_separate(world):
     text = (out / 'PRIVATE_text.jsonl').read_text()
     assert 'please gloss' in text and 'Query rejected' in text
     assert 'please gloss' not in (out / 'turns.jsonl').read_text()
+
+
+# --- the holes R1 found, closed 2026-10-06 (R2-HOLES) ------------------------
+
+def test_every_turn_is_dated(world):
+    turns = world['rows']('turns.jsonl')
+    assert turns and all(t['created_at'] for t in turns), 'every reply and error item carries its time'
+    fail = next(t for t in turns if t['end'] == 'failed')
+    assert fail['asked_at'] and fail['asked_at'] <= fail['created_at']
+
+
+def test_a_failed_turn_keeps_its_tool_calls(world):
+    fail = next(t for t in world['rows']('turns.jsonl') if t['end'] == 'failed')
+    assert fail['n_steps'] == 2 and fail['n_failed_steps'] == 1
+    calls = [c for c in world['rows']('tool_calls.jsonl') if c['item_index'] == fail['item_index']]
+    assert [c['tool'] for c in calls] == ['search', 'lexicon_entry']
+    assert all(c['turn_end'] == 'failed' and c['result_kept'] for c in calls)
+    assert calls[1]['error_class'] == 'bad_arguments' and calls[1]['arg_names'] == ['form']
+    assert calls[0]['arg_names'] == ['query_text']
+
+
+def test_a_script_on_a_named_token_is_told_from_the_browser(world):
+    w = world['writes'][world['ids']['m4']]
+    assert w['fate'] == 'edited_by_person'
+    assert w['first_edit']['credential'] == 'named-token' and w['first_edit']['via_token'] is True
+    a5 = world['writes'][world['ids']['a5']]['first_edit']
+    assert a5['credential'] == 'login' and a5['via_token'] is False
+    units = world['rows']('units.jsonl')
+    assert all(set(u['credentials']) <= {'login', 'named-token', 'service', 'delegated'} for u in units)
+    assert any(u['credentials'] for u in units)
+    for f in world['out'].iterdir():
+        assert world['script_token'] not in f.read_text(encoding='utf-8'), f'{f.name} holds a token'
+
+
+def test_an_operation_whose_conversation_was_deleted_says_so(world):
+    units = world['rows']('units.jsonl')
+    gone = next(u for u in units if u['plan_id'] == world['gone_plan'])
+    assert gone['kind'] == 'assistant-plan' and gone['plan_record'] == 'deleted' and not gone['plan_found']
+    found = next(u for u in units if u['plan_id'] == world['plan_id'])
+    assert found['plan_record'] == 'found'
+    assert world['manifest']['linking']['operations_plan_deleted'] == 1
+
+
+def test_comment_plans_are_read_from_the_comments_they_wrote(world):
+    plans = {p['plan_id']: p for p in world['rows']('plans.jsonl')}
+    new, old = plans[world['comment_plan']], plans[world['old_comment_plan']]
+    assert new['comment_link'] == 'minted_id' and new['comments_written'] == 1
+    assert old['comment_link'] == 'unrecoverable' and old['comments_written'] == 0
+    comments = world['rows']('comments.jsonl')
+    assert [c['comment_id'] for c in comments] == [world['ids']['comment']]
+    assert comments[0]['entity_type'] == 'token' and comments[0]['author_is_requester'] is True
+    change = next(c for c in world['rows']('plan_changes.jsonl') if c['plan_id'] == world['comment_plan'])
+    assert change['target_written'] is True and change['fate'] == 'comment_kept'
+    assert 'check this' not in (world['out'] / 'comments.jsonl').read_text()
