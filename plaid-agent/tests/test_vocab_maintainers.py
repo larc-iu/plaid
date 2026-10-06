@@ -97,16 +97,64 @@ def test_a_writer_cannot_restructure_or_edit_an_entry_that_exists():
         assert 'Planned' in call_tool(mine, name, args) and mine.ops, name
 
 
-def test_a_writer_still_creates_entries_and_links_words_to_them():
+FORM_ONLY = 'so an entry they create has its form and nothing else (a phrase entry also its type)'
+
+
+def test_a_writer_still_creates_entries_by_their_form_and_links_words_to_them():
+    """The link popover's Create sends the form alone (ruled 2026-10-06)."""
     w = _ws(['owner@x.org'])
-    out = call_tool(w, 'create_entry', {'form': 'kai', 'fields': {'gloss': 'go'}})
+    out = call_tool(w, 'create_entry', {'form': 'kai'})
     assert 'Planned' in out
     key = out.split('entry_id: ')[1].split()[0]
-    assert 'Planned' in call_tool(w, 'set_entry_field', {'entry_id': key, 'field': 'pos', 'value': 'V'})
     assert 'Planned' in call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w3'], 'entry_id': key})
     assert 'Planned' in call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w3'],
                                                     'entry_form': 'gam', 'entry_gloss': 'net'})
     assert REFUSED not in ' '.join(op.get('label', '') for op in w.ops)
+    [made] = [op for op in w.ops if op['kind'] == 'create_entry']
+    assert made['metadata'] == {}
+
+
+def test_a_writers_new_phrase_entry_takes_its_type_as_the_app_gives_it():
+    w = _ws(['owner@x.org'])
+    for t in ('phrase', 'discontiguous phrase'):
+        assert 'Planned' in call_tool(w, 'create_entry', {'form': 'gam akuna', 'type': t})
+    out = call_tool(w, 'create_entry', {'form': 'gam akuna', 'type': 'phrase', 'fields': {'gloss': 'x'}})
+    assert FORM_ONLY in out, out
+
+
+def test_a_writers_new_entry_takes_no_field_or_type():
+    w = _ws(['owner@x.org'])
+    for args in ({'form': 'kai', 'fields': {'gloss': 'go'}}, {'form': 'kai', 'type': 'suffix'}):
+        out = call_tool(w, 'create_entry', args)
+        assert FORM_ONLY in out and 'Nothing was planned' in out, out
+        assert w.ops == [] and w.new_entries == {}, out
+    key = call_tool(w, 'create_entry', {'form': 'kai'}).split('entry_id: ')[1].split()[0]
+    out = call_tool(w, 'set_entry_field', {'entry_id': key, 'field': 'gloss', 'value': 'go'})
+    assert FORM_ONLY in out, out
+    assert [op['metadata'] for op in w.ops if op['kind'] == 'create_entry'] == [{}]
+    assert w.new_entries[key]['metadata'] == {}
+
+
+def test_a_maintainer_and_an_administrator_give_a_new_entry_its_fields():
+    for w in (_ws(['writer@x.org']), _ws([], admin=True)):
+        out = call_tool(w, 'create_entry', {'form': 'kai', 'fields': {'gloss': 'go'}, 'type': 'suffix'})
+        assert 'Planned' in out, out
+        key = out.split('entry_id: ')[1].split()[0]
+        assert 'Planned' in call_tool(w, 'set_entry_field', {'entry_id': key, 'field': 'pos', 'value': 'V'})
+        [made] = [op for op in w.ops if op['kind'] == 'create_entry']
+        assert made['metadata'].get('gloss') == 'go' and made['metadata'].get('pos') == 'V'
+
+
+def test_the_codes_plan_gets_the_same_refusal():
+    """The code's plan() goes through the same funnel as the tools."""
+    w = _ws(['owner@x.org'])
+    try:
+        w.add_op({'kind': 'create_entry', 'vocab_id': VOCAB, 'form': 'kai', 'metadata': {'gloss': 'go'},
+                  'key': 'new:x:kai#1', 'label': 'x'})
+    except Exception as e:  # noqa: BLE001
+        assert FORM_ONLY in str(e)
+    else:
+        raise AssertionError('a writer planned a new entry with a field')
 
 
 def test_every_plan_tool_holds_the_line():
@@ -131,5 +179,5 @@ def test_every_plan_tool_holds_the_line():
         out = call_tool(w, name, args)
         # Refused, or (a respelling) planned without what it may not do.
         assert not any(w.lexicon_maintained_by(op) for op in w.ops), (name, out)
-        assert REFUSED in out or w.ops, (name, out)
+        assert REFUSED in out or FORM_ONLY in out or w.ops, (name, out)
     assert reached >= 6, reached

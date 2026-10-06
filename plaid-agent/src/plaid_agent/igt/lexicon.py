@@ -167,6 +167,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
     f = lexicon_field(vocab, field) if vocab else {**_FREE_FIELD, 'name': field}
     if kind == 'new':
         e = ws.new_entries[target]
+        ws.guard_new_entry_field(e.get('vocab_id'))
         if vocab and f['scope'] == SCOPE_ENTRY and parent_of(e):
             raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense.')
         # The pending entry and the op that creates it carry the same fields,

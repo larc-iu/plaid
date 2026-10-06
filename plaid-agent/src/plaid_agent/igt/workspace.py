@@ -32,17 +32,26 @@ from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, a
 
 # What only a maintainer of the lexicon may do to its entries, and what a tool
 # says to anyone else. The app's own screens are the rule (ruling A1-IGT-6):
-# a writer creates entries and links words to them, and every change to an
-# entry that exists (its fields, its type, its senses, examples and homograph
-# order, its form) is in the entry editor and the sense tree, which only a
-# maintainer may use. Adding a sense is a change to the entry it sits under.
-# Core is looser, so the assistant must not be the way around the app.
+# a writer creates entries by their form alone (the link popover's Create
+# sends nothing else) and links words to them, and every change to an entry
+# that exists (its fields, its type, its senses, examples and homograph order,
+# its form) is in the entry editor and the sense tree, which only a maintainer
+# may use. Adding a sense is a change to the entry it sits under, and a new
+# entry's fields and type are what the entry editor would set (ruled
+# 2026-10-06). Core is looser, so the assistant must not be the way around the
+# app.
 MAINTAINER_KINDS = ('rename_entry', 'delete_entry', 'set_entry_field', 'set_entry_metadata')
 MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can change its existing entries (their '
                     'fields, type, senses, examples or homograph order) or rename, delete or merge them, and '
                     'the person you are acting for does not maintain it. Nothing was planned. They can '
-                    'still create new entries (not senses) and link words to entries. Tell them a '
-                    'maintainer of that lexicon has to make this change.')
+                    'still create new entries by their form alone (not senses) and link words to entries. '
+                    'Tell them a maintainer of that lexicon has to make this change.')
+# The types the app's Create gives a new entry over several words.
+PHRASE_TYPES = frozenset({'phrase', 'discontiguous phrase'})
+NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexicon "{lexicon}", so an entry '
+                       'they create has its form and nothing else (a phrase entry also its type), as in the '
+                       'app. Its fields and its type are for a maintainer of that lexicon to fill in. Nothing was planned. Create the '
+                       'entry with its form alone, and tell them a maintainer has to add the rest.')
 from .project import (BAD_REF, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
@@ -563,17 +572,31 @@ class Workspace(BaseWorkspace):
         self.guard_morpheme_change(op, replacing=replacing)
         v = self.lexicon_maintained_by(op)
         if v is not None and not self.can_manage_vocab(v):
+            if op.get('kind') == 'create_entry' and not (op.get('metadata') or {}).get(PARENT_KEY):
+                raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']))
             raise ToolError(MAINTAINERS_ONLY.format(lexicon=v['name']))
+
+    def guard_new_entry_field(self, vocab_id: Optional[str]) -> None:
+        """Refuse a field set on an entry this plan creates when the user
+        the turn acts for may give a new entry its form alone (see
+        :meth:`lexicon_maintained_by`). The field is written onto the create
+        in place, past :meth:`guard_op`, so it is asked here."""
+        v = next((x for x in self.project.vocabs if x['id'] == vocab_id), None)
+        if v is not None and not self.can_manage_vocab(v):
+            raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']))
 
     def lexicon_maintained_by(self, op: Dict[str, Any]) -> Optional[dict]:
         """The lexicon whose maintainers alone may make ``op``, or None for an
         op anyone who may write may make: a change to an entry that exists,
-        a merge (it deletes the entry it folds away), and a new sense, which
-        changes the entry it is added under. An entry this same plan creates
-        is the writer's own until it exists, so a field set on it is not."""
+        a merge (it deletes the entry it folds away), a new sense, which
+        changes the entry it is added under, and a new entry that carries
+        anything but its form (a field or a type), which the app's Create
+        never sends. A phrase entry's type is the exception: the app's Create
+        over several words sends it (``mweMorphType``)."""
         kind = op.get('kind')
         if kind == 'create_entry':
-            if not (op.get('metadata') or {}).get(PARENT_KEY):
+            meta = op.get('metadata') or {}
+            if not meta or (set(meta) == {'morphType'} and meta['morphType'] in PHRASE_TYPES):
                 return None
             return next((v for v in self.project.vocabs if v['id'] == op.get('vocab_id')), None)
         item = op.get('remove_id') if kind == 'merge_entries' else (
