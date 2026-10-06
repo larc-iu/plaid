@@ -1105,7 +1105,8 @@ class FakeClient:
         where = body.get('where') or []
         group = (body.get('return') or {}).get('group') if isinstance(body.get('return'), dict) else None
         if group == ['?t', '?v', '?t.metadata.morphType'] and where[:1] and where[0][:1] == ['link']:
-            return self._linked_morphemes(where[0][2].get('item'), body.get('limit'))
+            scope = (body.get('scope') or {}).get('project_ids') or [None]
+            return self._linked_morphemes(where[0][2].get('item'), body.get('limit'), scope[0])
         if not (len(where) == 1 and where[0][:1] == ['link'] and len(where[0]) == 3
                 and set(where[0][2]) == {'item'} and group == [f'{where[0][1]}.id']):
             raise _refusal(self, 400, 'The fake client runs no such query', 'POST', '/api/v1/query')
@@ -1124,16 +1125,19 @@ class FakeClient:
         return {'return': 'aggregate', 'columns': ['l_id', 'count'], 'results': rows,
                 'count': len(rows), 'truncated': False}
 
-    def _linked_morphemes(self, items, limit=None):
+    def _linked_morphemes(self, items, limit=None, project_id=None):
         """The second query the fake runs: the morphemes (tokens of a layer
-        whose role is ``morpheme``) linked to the entries ``items``, as
+        whose role is ``morpheme``) linked to the entries ``items`` in the
+        project the query is scoped to (this one when the fake knows one), as
         ``[token id, entry id, cached morphType, 1]`` rows, the shape of the
         apps' ``linkedMorphemesQuery``."""
         wanted = set(items if isinstance(items, list) else [items])
         # A document's layers carry no config: the role is the project's.
         morpheme_layers = {layer['id'] for _, layers in self._fixture_token_layers()
                            for layer in layers if _role(layer) == 'morpheme'}
-        docs = self._documents.values() if isinstance(self._documents, dict) else self._documents[-1:]
+        held = (self._project(project_id, '/api/v1/query')['documents']
+                if self.other_projects is not None and project_id is not None else self._documents)
+        docs = held.values() if isinstance(held, dict) else held[-1:]
         rows = []
         for doc in docs:
             for text_layer in doc.get('text_layers') or []:

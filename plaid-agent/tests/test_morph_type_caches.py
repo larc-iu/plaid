@@ -62,3 +62,49 @@ def test_a_plan_that_types_no_entry_reads_nothing_for_it():
                  source='s', label='l', project=load_project(c, 'p1'))
     assert not any('morphType' in str(q) for q in c.queries)
     assert VOCAB  # the fixture's lexicon id, for the reader
+
+
+def test_other_projects_using_the_lexicon_are_written_where_the_requester_writes():
+    """The app writes the type in every project the writer can write that uses
+    the lexicon (morphTypeCaches.js ``cacheProjectIds``), and so does the
+    assistant. A project the requester only reads keeps what it holds."""
+    from multi_fixtures import other_project
+
+    c0 = _client('enclitic')
+    home = c0.project
+    docs = {'d1': c0._documents['d1']}
+    writes = other_project(home, docs, 'px2', 'Writes')
+    writes['project']['writers'] = ['u@x']
+    reads = other_project(home, docs, 'px3', 'Reads')
+    reads['project']['readers'] = ['u@x']
+    elsewhere = other_project(home, docs, 'px4', 'Other lexicon')
+    elsewhere['project']['writers'] = ['u@x']
+    elsewhere['project']['vocabs'] = [{'id': 'v-other', 'name': 'Other'}]
+    c = FakeClient(documents=docs, lexicon=c0._lexicon,
+                   projects={'px2': writes, 'px3': reads, 'px4': elsewhere})
+    execute_plan(c, [{'kind': 'set_entry_field', 'item_id': 'vi-head', 'field': 'morphType',
+                      'value': 'enclitic', 'label': ''}],
+                 source='s', label='l', project=load_project(c, 'p1'), requester='u@x')
+    asked = [q['scope']['project_ids'][0] for q in c.queries if 'morphType' in str(q)]
+    assert asked == ['p1', 'px2']
+    # m-1b once in this project and once in px2, the copy of its document.
+    assert [m for m, _ in _written(c)] == ['m-1b', 'm-1b']
+
+
+def test_an_answer_too_long_is_asked_for_in_halves():
+    c = _client('enclitic')
+    real = c.query
+    asked = []
+
+    def query(body):
+        items = body['where'][0][2]['item']
+        asked.append(list(items))
+        if len(items) > 1:
+            return {'results': [], 'truncated': True}
+        return real(body)
+    c.query = query
+    execute_plan(c, [{'kind': 'set_entry_field', 'item_id': 'vi-head', 'field': 'morphType',
+                      'value': 'enclitic', 'label': ''}],
+                 source='s', label='l', project=load_project(c, 'p1'))
+    assert asked == [['vi-head', 'vi-sense'], ['vi-head'], ['vi-sense']]
+    assert _written(c) == [('m-1b', [{'op': 'set', 'path': ['morphType'], 'value': 'enclitic'}])]

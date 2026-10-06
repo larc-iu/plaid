@@ -1333,7 +1333,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
                                                   counts=counts, notes=notes, stamps=stamps,
-                                                  tracker=tracker, ids=ids))
+                                                  tracker=tracker, ids=ids, requester=requester))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]],
@@ -1361,7 +1361,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None,
-             ids: Optional[Minter] = None) -> Dict[str, int]:
+             ids: Optional[Minter] = None, requester: Optional[str] = None) -> Dict[str, int]:
     # An unknown kind, one that should have been resolved away, or one staged
     # for a pass this executor does not run refuses before the first batch
     # opens rather than being written as nothing under a label saying it was
@@ -1479,7 +1479,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         # Last, once every write stands: the morph type cached on the
         # morphemes whose entry the plan retyped, placed under another
         # headword, or merged into another, as the app writes it.
-        sync_morph_type_caches(client, project, ops)
+        sync_morph_type_caches(client, project, ops, requester)
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
@@ -1529,23 +1529,67 @@ def linked_morphemes_query(project_id: str, item_ids: List[str]) -> Dict[str, An
             'limit': 100000}
 
 
-def sync_morph_type_caches(client, project, ops: List[Dict[str, Any]]) -> int:
-    """Write on every morpheme of the project linked to an entry the plan
-    retyped (``_retyped_roots`` and the entries below them) the type that
-    entry goes by now, its own or its headword's, where the morpheme caches
-    another. The app writes the same with every change of an entry's type
-    (morphTypeCaches.js), and nothing writes it later. An entry that goes by
-    no type leaves its morphemes as they are. Read after the plan's writes,
-    so what the plan wrote is what is read. Returns how many it wrote."""
+def _cache_project_ids(client, project, vocab_id: str, requester: Optional[str]) -> List[str]:
+    """The projects whose morphemes linked to entries of lexicon ``vocab_id``
+    a plan's change of their type is written on: the plan's own, and every
+    other project using that lexicon which ``requester`` can write (a
+    maintainer, a writer, or an administrator), as the app's
+    ``cacheProjectIds``. A project they only read keeps what it holds."""
+    out = [project.id]
+    if requester is None:
+        return out
+    admin = None
+    for p in client.projects.list() or []:
+        pid = p.get('id')
+        if pid == project.id or not any(v.get('id') == vocab_id for v in p.get('vocabs') or []):
+            continue
+        if requester in (p.get('maintainers') or []) or requester in (p.get('writers') or []):
+            out.append(pid)
+            continue
+        if admin is None:
+            try:
+                admin = bool((client.users.get(requester) or {}).get('is_admin'))
+            except Exception:  # noqa: BLE001 - a failed read writes only where they are named
+                admin = False
+        if admin:
+            out.append(pid)
+    return out
+
+
+def _linked_morphemes(client, project_id: str, item_ids: List[str]) -> List[list]:
+    """``linked_morphemes_query``'s rows for ``item_ids``, asked in halves
+    when one answer cannot hold them all, as the app does."""
+    res = client.query(linked_morphemes_query(project_id, item_ids)) or {}
+    if res.get('truncated'):
+        if len(item_ids) == 1:
+            raise PlanError('Too many morphemes are linked to one entry to read.')
+        half = (len(item_ids) + 1) // 2
+        return (_linked_morphemes(client, project_id, item_ids[:half])
+                + _linked_morphemes(client, project_id, item_ids[half:]))
+    return list(res.get('results') or [])
+
+
+def sync_morph_type_caches(client, project, ops: List[Dict[str, Any]],
+                           requester: Optional[str] = None) -> int:
+    """Write on every morpheme linked to an entry the plan retyped
+    (``_retyped_roots`` and the entries below them) the type that entry goes
+    by now, its own or its headword's, where the morpheme caches another: in
+    the plan's project and in every other project using the lexicon that
+    ``requester`` can write (``_cache_project_ids``). The app writes the same
+    with every change of an entry's type (morphTypeCaches.js), and nothing
+    writes it later. An entry that goes by no type leaves its morphemes as
+    they are. Read after the plan's writes, so what the plan wrote is what is
+    read. Returns how many it wrote."""
     roots = _retyped_roots(ops)
     if not roots or project is None:
         return 0
-    targets: Dict[str, str] = {}
+    written = 0
     for vocab in getattr(project, 'vocabs', None) or []:
         if not vocab.get('id'):
             continue
         items = (client.vocab_layers.get(vocab['id'], include_items=True) or {}).get('items') or []
         tree = build_sense_tree(items)
+        targets: Dict[str, str] = {}
 
         def visit(item_id):
             if item_id in targets or item_id not in tree.by_id:
@@ -1557,26 +1601,29 @@ def sync_morph_type_caches(client, project, ops: List[Dict[str, Any]]) -> int:
                 visit(child['id'])
         for root in roots:
             visit(root)
-    if not targets:
-        return 0
-    ids = list(targets)
-    plans = []
-    for i in range(0, len(ids), CACHE_CHUNK):
-        res = client.query(linked_morphemes_query(project.id, ids[i:i + CACHE_CHUNK]))
-        for morpheme_id, item_id, cached, *_ in (res or {}).get('results') or []:
-            t = targets.get(item_id)
-            if t and cached != t:
-                plans.append({'id': morpheme_id,
-                              'metadata': [{'op': 'set', 'path': ['morphType'], 'value': t}]})
-    # The morphemes lie in any document of the project, so no one document's
-    # version is claimed for them.
-    held, client.strict_mode_document_id = client.strict_mode_document_id, None
-    try:
-        for i in range(0, len(plans), CACHE_CHUNK):
-            client.tokens.bulk_update(plans[i:i + CACHE_CHUNK])
-    finally:
-        client.strict_mode_document_id = held
-    return len(plans)
+        if not targets:
+            continue
+        ids = list(targets)
+        for project_id in _cache_project_ids(client, project, vocab['id'], requester):
+            plans = []
+            for i in range(0, len(ids), CACHE_CHUNK):
+                for morpheme_id, item_id, cached, *_ in _linked_morphemes(
+                        client, project_id, ids[i:i + CACHE_CHUNK]):
+                    t = targets.get(item_id)
+                    if t and cached != t:
+                        plans.append({'id': morpheme_id,
+                                      'metadata': [{'op': 'set', 'path': ['morphType'], 'value': t}]})
+            # The morphemes lie in any document of the project, so no one
+            # document's version is claimed for them. A bulk update takes the
+            # documents of one project.
+            held, client.strict_mode_document_id = client.strict_mode_document_id, None
+            try:
+                for i in range(0, len(plans), CACHE_CHUNK):
+                    client.tokens.bulk_update(plans[i:i + CACHE_CHUNK])
+            finally:
+                client.strict_mode_document_id = held
+            written += len(plans)
+    return written
 
 
 def _document_of_text(ops) -> Optional[str]:
