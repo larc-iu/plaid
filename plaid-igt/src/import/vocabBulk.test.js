@@ -152,7 +152,15 @@ describe('column guessing', () => {
     expect(matchHeader('sources', fields, label)).toBe('source');
     expect(matchHeader('English gloss', fields, label)).toBe('gloss');
     expect(matchHeader('en_gloss', fields, label)).toBe('gloss');
-    expect(matchHeader('phonetic', fields, label)).toBe('phoneticTranscription');
+    expect(matchHeader('Phonetic transcription (IPA)', fields, label)).toBe(
+      'phoneticTranscription',
+    );
+    // A header is never read as a longer field it is only part of: a Morph
+    // column holds morphs, not morph types.
+    expect(matchHeader('phonetic', fields, label)).toBe(null);
+    expect(matchHeader('Morph', ['morphType'], (f) => 'Morph Type')).toBe(null);
+    // Whole words only.
+    expect(matchHeader('Glossary', fields, label)).toBe(null);
     // An alias is a whole header, never a part of one.
     expect(matchHeader('Example sentence in English', fields, label)).toBe(null);
     // Short names are never matched by containment.
@@ -828,6 +836,33 @@ describe("an entry's values read by its morph type", () => {
     });
     expect(p.updates).toEqual([{ id: 's1', patch: { gloss: '3' } }]);
     expect(p.decisions[0].rejected).toBeUndefined();
+  });
+});
+
+describe('column guessing on real-world tables', () => {
+  it('reads a word list whose glosses include a field alias as data, not as a header', () => {
+    const { rows } = parseTable('perro\tdog\ngato\tcat\ntipo\ttype\ncasa\thouse\n');
+    expect(guessColumns(rows, FIELDS, humanize)).toMatchObject({ skip: 0, hasHeader: false });
+    expect(guessColumns(rows, FIELDS, humanize).mapping[0]).toBe(FORM);
+  });
+
+  it('skips a one-cell title naming a field and finds the header under it', () => {
+    const { rows } = parseTable('Kukama glossary\nForm\tGloss\tPOS\nperro\tdog\tN\n');
+    expect(guessColumns(rows, FIELDS, humanize)).toEqual({
+      skip: 1,
+      hasHeader: true,
+      mapping: [FORM, 'gloss', 'pos'],
+    });
+  });
+
+  it('gives a field to a full column over an empty one that claimed it first', () => {
+    const { rows } = parseTable('Form\tgloss_en\tgloss_es\nperro\t\tperro\ngato\t\tgato\n');
+    expect(guessColumns(rows, FIELDS, humanize).mapping).toEqual([FORM, IGNORE, 'gloss']);
+  });
+
+  it('gives a field to the column named for it over one that only mentions it', () => {
+    const { rows } = parseTable('Form\tExample gloss\tGloss\nperro\tthe dog\tdog\n');
+    expect(guessColumns(rows, FIELDS, humanize).mapping).toEqual([FORM, IGNORE, 'gloss']);
   });
 });
 

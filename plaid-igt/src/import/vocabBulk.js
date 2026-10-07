@@ -230,15 +230,32 @@ const FIELD_ALIASES = {
 // Columns our own export emits that must never be read back in as data.
 const EXPORT_ONLY = new Set(['uses', 'id'].map(normalizeHeader));
 
+// A header's words: split at anything that is not a letter or digit, and at a
+// camelCase boundary, so "en_gloss", "English Gloss" and "phoneticTranscription"
+// all come apart into words.
+const headerWords = (s) =>
+  String(s ?? '')
+    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+const containsRun = (words, run) =>
+  run.length > 0 && words.some((_, at) => run.every((w, k) => words[at + k] === w));
+
+// How good a match is, best first. A column that matches a field better takes
+// it from one that matches it worse, wherever the two stand in the row.
+const EXACT = 0;
+const ALIAS = 1;
+const PLURAL = 2;
+const CONTAINS = 3;
+
 /**
- * Match one header cell to a mapping target: FORM, a field name, or null when
+ * Match one header cell to a mapping target, and say how good the match is:
+ * `{target, rank}` with target FORM, IGNORE or a field name, or null when
  * nothing recognizes it.
- *
- * @param {string} cell - the header cell
- * @param {string[]} fieldNames - the vocabulary's field names
- * @param {(name: string) => string} humanize - field name → display label
  */
-export const matchHeader = (cell, fieldNames, humanize = (n) => n) => {
+const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
   const n = normalizeHeader(cell);
   if (!n) return null;
   // A field the vocabulary actually declares comes first: "lexemeForm" is a
@@ -247,42 +264,55 @@ export const matchHeader = (cell, fieldNames, humanize = (n) => n) => {
   // columns our export adds, too: a vocabulary whose own field is called ID
   // or Uses had that column thrown away.
   for (const field of fieldNames) {
-    if (n === normalizeHeader(field) || n === normalizeHeader(humanize(field))) return field;
+    if (n === normalizeHeader(field) || n === normalizeHeader(humanize(field)))
+      return { target: field, rank: EXACT };
   }
-  if (EXPORT_ONLY.has(n)) return IGNORE;
-  if (FORM_ALIASES.has(n)) return FORM;
+  if (EXPORT_ONLY.has(n)) return { target: IGNORE, rank: ALIAS };
+  if (FORM_ALIASES.has(n)) return { target: FORM, rank: ALIAS };
   for (const field of fieldNames) {
-    if ((FIELD_ALIASES[field] || []).some((a) => normalizeHeader(a) === n)) return field;
+    if ((FIELD_ALIASES[field] || []).some((a) => normalizeHeader(a) === n))
+      return { target: field, rank: ALIAS };
   }
-  // Looser readings, only where they name ONE field: a plural ("sources" for
-  // Source), or a name either containing the other ("English gloss" for
-  // Gloss, "phonetic" for Phonetic Transcription). Short names are left out of
-  // the containment, since "pos" is in "position" and "type" in "prototype".
-  // The aliases take part in the plural only: "english" for Gloss is fine as
-  // a whole header, but "Example sentence in English" is not a gloss.
-  const names = (field) => [field, humanize(field)].map(normalizeHeader);
-  const spellings = (field) => [
-    ...names(field),
-    ...(FIELD_ALIASES[field] || []).map(normalizeHeader),
-  ];
-  const unique = (of, test) => {
-    const hits = fieldNames.filter((f) => of(f).some(test));
+  // Looser readings, only where they name ONE field. A plural ("sources" for
+  // Source), or a header whose words include a field's name as whole words
+  // ("English gloss" and "en_gloss" for Gloss, but not "Glossary"). The
+  // aliases take part in the plural only: "english" for Gloss is fine as a
+  // whole header, but "Example sentence in English" is not a gloss. A name
+  // shorter than five letters is never looked for inside a header, since
+  // "pos" and "type" turn up in too much.
+  const unique = (test) => {
+    const hits = fieldNames.filter(test);
     return hits.length === 1 ? hits[0] : null;
   };
   const singular = n.endsWith('s') ? n.slice(0, -1) : null;
-  return (
-    (singular && unique(spellings, (sp) => sp === singular)) ||
-    unique(
-      names,
-      (sp) =>
-        (sp.length >= MIN_CONTAINED && n.includes(sp)) ||
-        (n.length >= MIN_CONTAINED && sp.includes(n)),
-    )
+  const plural =
+    singular &&
+    unique((f) =>
+      [f, humanize(f), ...(FIELD_ALIASES[f] || [])].some((sp) => normalizeHeader(sp) === singular),
+    );
+  if (plural) return { target: plural, rank: PLURAL };
+  const words = headerWords(cell);
+  const contained = unique((f) =>
+    [f, humanize(f)].some((name) => {
+      const run = headerWords(name);
+      return run.join('').length >= MIN_CONTAINED && containsRun(words, run);
+    }),
   );
+  return contained ? { target: contained, rank: CONTAINS } : null;
 };
 
-// The shortest name a header may be matched by containing it, or by being
-// contained in it.
+/**
+ * Match one header cell to a mapping target: FORM, a field name, or null when
+ * nothing recognizes it.
+ *
+ * @param {string} cell - the header cell
+ * @param {string[]} fieldNames - the vocabulary's field names
+ * @param {(name: string) => string} humanize - field name → display label
+ */
+export const matchHeader = (cell, fieldNames, humanize = (n) => n) =>
+  rankHeader(cell, fieldNames, humanize)?.target ?? null;
+
+// The shortest field name looked for inside a header.
 const MIN_CONTAINED = 5;
 
 /** Column 0 is the form, the rest follow the vocabulary's field order. */
@@ -307,28 +337,44 @@ export const columnsAt = (rows, skip, fieldNames, humanize = (n) => n) => {
   if (!colCount) return { hasHeader: false, mapping: [] };
 
   const first = rows[skip]?.cells ?? [];
-  const matches = first.map((c) => matchHeader(c, fieldNames, humanize));
+  const ranked = first.map((c) => rankHeader(c, fieldNames, humanize));
   const nonBlank = first.filter((c) => String(c).trim() !== '').length;
-  const matched = matches.filter((m) => m !== null).length;
-  const hasHeader = matched > 0 && matched * 2 >= nonBlank;
+  const matched = ranked.filter(Boolean).length;
+  // A lone cell is a title, not a header, when the table has more columns.
+  // Below the first row the bar is higher still: a word list whose glosses
+  // happen to include "type" or "meaning" has a row that reads as a header,
+  // and taking it would drop the rows above it. So a header found lower down
+  // names the form column and at least one other.
+  const hasHeader =
+    matched > 0 &&
+    matched * 2 >= nonBlank &&
+    (nonBlank > 1 || colCount === 1) &&
+    (skip === 0 || (matched >= 2 && ranked.some((m) => m?.target === FORM)));
 
   const mapping = hasHeader
-    ? Array.from({ length: colCount }, (_, i) => matches[i] ?? IGNORE)
+    ? Array.from({ length: colCount }, (_, i) => ranked[i]?.target ?? IGNORE)
     : positionalMapping(colCount, fieldNames);
-  // A field claimed twice keeps only its first column. The later one is left
-  // out rather than silently overwriting.
-  const used = new Set();
-  for (let i = 0; i < mapping.length; i++) {
-    if (mapping[i] === IGNORE) continue;
-    if (used.has(mapping[i])) mapping[i] = IGNORE;
-    else used.add(mapping[i]);
-  }
+  // A column empty in every row is not imported, whatever its name. Before a
+  // field claimed twice is settled, so an empty column never keeps a field
+  // from a full one.
   const body = rows.slice(skip + (hasHeader ? 1 : 0));
   if (body.length) {
     for (let i = 0; i < mapping.length; i++) {
       if (mapping[i] === FORM) continue;
       if (body.every((r) => String(r.cells[i] ?? '').trim() === '')) mapping[i] = IGNORE;
     }
+  }
+  // A field claimed twice keeps the column that matches it best, and of
+  // those the first. The other is left out rather than silently overwriting.
+  const rankOf = (i) => (hasHeader ? (ranked[i]?.rank ?? CONTAINS) : 0);
+  const keeper = new Map();
+  for (let i = 0; i < mapping.length; i++) {
+    const t = mapping[i];
+    if (t === IGNORE) continue;
+    if (!keeper.has(t) || rankOf(i) < rankOf(keeper.get(t))) keeper.set(t, i);
+  }
+  for (let i = 0; i < mapping.length; i++) {
+    if (mapping[i] !== IGNORE && keeper.get(mapping[i]) !== i) mapping[i] = IGNORE;
   }
   return { hasHeader, mapping };
 };

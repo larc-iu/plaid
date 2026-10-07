@@ -398,11 +398,17 @@ export const BulkAddDialog = ({
     setMapping(guess.mapping);
   }, [raw, rows, fieldNames]);
 
+  // What is typed in the start-row box, applied on Enter or when it loses
+  // focus. Applied on every keystroke, "12" went through row 1 on the way.
+  const [startDraft, setStartDraft] = useState('1');
+  useEffect(() => setStartDraft(String(skip + 1)), [skip]);
+
   // Another first row is another header, so the columns are read again.
   const startAt = (row) => {
     const next = Math.max(0, Math.min(row, rows.length - 1));
     const at = columnsAt(rows, next, fieldNames, humanizeFieldName);
     setSkip(next);
+    setStartDraft(String(next + 1));
     setHasHeader(at.hasHeader);
     setMapping(at.mapping);
   };
@@ -712,10 +718,15 @@ export const BulkAddDialog = ({
               type="number"
               min={1}
               max={Math.max(1, rows.length)}
-              value={skip + 1}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                if (Number.isFinite(v)) startAt(v - 1);
+              value={startDraft}
+              onChange={(e) => setStartDraft(e.target.value)}
+              onBlur={() => {
+                const v = parseInt(startDraft, 10);
+                if (Number.isFinite(v) && v - 1 !== skip) startAt(v - 1);
+                else setStartDraft(String(skip + 1));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
               }}
               className="h-7 w-20"
             />

@@ -84,7 +84,12 @@ describe('Bulk Add', () => {
     expect(button('Add 2')).toBeTruthy();
     // Told the table starts on the first row, it reads that row as data.
     await view.step(() => button('Back').click());
-    await view.step(() => setValue(document.querySelector('input[type="number"]'), '1'));
+    const box = () => document.querySelector('input[type="number"]');
+    // Typed digits wait for Enter or a click elsewhere.
+    await view.step(() => setValue(box(), ''));
+    expect(document.body.textContent).toContain('left out');
+    await view.step(() => setValue(box(), '1'));
+    await view.step(() => box().dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
     expect(document.body.textContent).not.toContain('left out');
   });
 
