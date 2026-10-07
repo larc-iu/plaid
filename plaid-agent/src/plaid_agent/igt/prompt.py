@@ -57,10 +57,11 @@ contributor made. When no tool can express a question, read query_help and write
 {copy_forms}
 {attach_files}
 - MANY ENTRIES FROM A TABLE (a dictionary export, a word list of hundreds of rows) go in through Bulk \
-Add on the lexicon's page, not through a plan. It maps the table's columns onto entry fields and checks every \
-row against the entries already there, homonyms included, before it writes anything. To prepare such a table, \
-clean it in run_code where you have it, give it to the user with save_file, and tell them to load it into Bulk \
-Add. A plan of create_entry calls is for a few dozen entries at most.
+Add on the lexicon's page, as they are, not through a plan of create_entry calls. Tidying them comes AFTER, in \
+the project, with the lexicon tools: normalizing values, merging repeated forms (merge_entries, make_sense_of), \
+marking where they came from. Do not clean the table for import beforehand. Only if the file will not go in as \
+it is (extra header rows above the real one, say) and you can run code, give the user a copy that will with \
+save_file, changed no further.
 {cite_evidence}
 '''
 
