@@ -68,28 +68,69 @@ def test_files_are_read_only_when_a_letter_is_in_doubt():
     assert 'Egyptian' in refusal({'value': GARBLED}, Seen(), more)
 
 
-# --- in a plan ----------------------------------------------------------------------
+# --- in a plan ---------------------------------------------------------------------
+# What is checked is what the model HANDS a plan tool, never the op: an op also
+# carries the label and old values a tool read from the project.
 
-def test_a_garbled_form_is_not_staged():
+def test_a_garbled_form_is_refused():
     w = _ws(('words.csv', f'form,meaning\n{WANCHO},bamboo\n'))
-    out = _stage(w, GARBLED)
-    assert out.startswith('Error') and 'Egyptian' in out and 'copy it in run_code' in out
-    assert w.ops == []
+    why = w.garbled({'value': GARBLED})
+    assert why and 'Egyptian' in why and 'copy it in run_code' in why
 
 
-def test_a_form_from_an_attached_file_is_staged():
+def test_a_form_from_an_attached_file_is_not_refused():
     w = _ws(('words.csv', f'form,meaning\n{WANCHO},bamboo\n'))
-    assert not _stage(w, WANCHO).startswith('Error')
-    assert len(w.ops) == 1
+    assert w.garbled({'value': WANCHO}) is None
 
 
 def test_a_rare_script_found_nowhere_is_refused():
+    assert _ws().garbled({'value': WANCHO})
+
+
+def test_a_file_the_assistant_made_vouches_for_nothing():
     w = _ws()
-    assert _stage(w, WANCHO).startswith('Error') and w.ops == []
+    made = _file('mine.csv', WANCHO)
+    made.made = True
+    w.files.items.append(made)
+    assert w.garbled({'value': WANCHO})
+
+
+def _wancho_doc_ws():
+    from fixtures import document_raw
+    d = document_raw()
+    d['text_layers'][0]['text']['body'] = 'Ali-di ' + WANCHO + '\U0001E2C7 akuna. Gam-ar.'
+    d['text_layers'][0]['token_layers'][1]['span_layers'][0]['spans'].append(
+        {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2']})
+    return scan_ws(FakeClient(documents={'d1': d}))
+
+
+def test_a_change_to_a_word_in_a_rare_script_is_staged_when_the_model_typed_none_of_it():
+    w = _wancho_doc_ws()
+    assert not _stage(w, 'net').startswith('Error')
+    assert not call_tool(w, 'replace_in_field',
+                         {'field': 'Gloss', 'pattern': 'fish', 'replacement': 'net'}).startswith('Error')
+
+
+def test_the_turn_refuses_a_garbled_plan_call_before_the_tool_runs(monkeypatch):
+    import json
+    from test_turn_failures import Script, _call, _kit, _resp
+    from plaid_agent.core import agent
+    from plaid_agent.core.agent import ModelConfig, run_turn
+    w = _ws()
+    ran = []
+
+    def tool(ws, name, args):
+        ran.append(args)
+        return 'Planned.'
+    script = Script(_resp(calls=[_call(1, 'plan_a', json.dumps({'value': GARBLED}))]), _resp('Done.'))
+    monkeypatch.setattr(agent.litellm, 'completion', script)
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), _kit(tool), w, 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    assert ran == [] and turn.steps[0].get('failed')
 
 
 @require_sandbox()
-def test_a_form_copied_in_code_from_a_file_is_staged():
+def test_a_form_copied_in_code_from_a_file_is_staged_and_a_typed_one_is_not():
     w = _ws(('words.csv', f'form,meaning\n{WANCHO},bamboo\n'))
     w.files.items[0].table = lambda: (['form', 'meaning'], [{'form': WANCHO, 'meaning': 'bamboo'}])
     # The file's text is out of reach, so only what the code read can vouch for the form.
@@ -100,7 +141,26 @@ print(plan("set_field", document="Text 1", refs=["s1.w2"], field="Gloss", value=
 '''
     out = call_tool(w, 'run_code', {'code': code})
     assert 'Planned' in out, out
-    assert len(w.ops) == 1
+    typed = call_tool(w, 'run_code', {'code': f'print(plan("set_field", document="Text 1", refs=["s1.w1"], '
+                                              f'field="Gloss", value="{GARBLED}"))'})
+    assert 'Egyptian' in typed and len(w.ops) == 1
+
+
+# --- what a turn starts out able to copy from ----------------------------------------
+
+def test_the_seed_keeps_what_the_user_pasted_and_drops_what_a_call_only_echoed():
+    import json
+    from plaid_agent.core.garble import seed
+    transcript = [
+        {'role': 'user', 'content': f'Add {WANCHO} meaning bamboo'},
+        {'role': 'assistant', 'content': f'I planned {WANCHO}.', 'tool_calls': [
+            {'id': 'x', 'function': {'name': 'read_lexicon', 'arguments': json.dumps({'form': GARBLED})}}]},
+        {'role': 'tool', 'tool_call_id': 'x', 'content': f'No entry matches "{GARBLED}".'},
+    ]
+    seen = Seen()
+    seed(seen, 'system', transcript)
+    # The arguments arrive escaped (json.dumps), and still hide nothing.
+    assert seen.scripts == {'WANCHO'}
 
 
 # --- save_file ----------------------------------------------------------------------
@@ -160,3 +220,42 @@ def test_one_reply_carries_at_most_a_few_files():
         raise AssertionError('a sixth file was saved')
     keeper.discard()
     assert keeper.refs == []
+
+
+def test_save_file_refuses_garbled_content():
+    from plaid_agent.core.filetools import save_api
+    w = _ws(('words.csv', f'form,meaning\n{WANCHO},bamboo\n'))
+    try:
+        save_api(w)['save_file']('entries.csv', f'form,meaning\n{GARBLED},bamboo\n')
+    except ValueError as e:
+        assert 'Egyptian' in str(e)
+    else:
+        raise AssertionError('a garbled table was saved')
+    assert w.keeper.refs == []
+
+
+def test_saving_again_under_the_name_it_was_given_replaces_the_file():
+    from plaid_agent.core.filetools import save_api
+    w = _ws(('words.csv', 'a,b\n1,2\n'))
+    save = save_api(w)['save_file']
+    assert '"words (2).csv"' in save('words.csv', 'a,b\n3,4\n')
+    save('words (2).csv', 'a,b\n5,6\n')
+    assert [r['name'] for r in w.keeper.refs] == ['words (2).csv']
+    assert sorted(a.name for a in w.files) == ['words (2).csv', 'words.csv']
+    assert w.files.get('words (2).csv').text() == 'a,b\n5,6\n'
+
+
+def test_a_replacement_that_cannot_be_stored_leaves_the_earlier_file():
+    keeper = FileKeeper(Store(), 'c1')
+    files = Attachments([])
+    keeper.save(files, 'a.txt', 'one')
+    put = keeper.store.client.user_data.put
+    keeper.store.client.user_data.put = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('down'))
+    try:
+        keeper.save(files, 'a.txt', 'two')
+    except RuntimeError:
+        pass
+    keeper.store.client.user_data.put = put
+    assert [a.name for a in files] == ['a.txt'] and files.get('a.txt').text() == 'one'
+    assert len(keeper.refs) == 1
+

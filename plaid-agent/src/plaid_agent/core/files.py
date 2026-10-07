@@ -192,6 +192,8 @@ class Attachment:
         # Where the file came from when a turn fetched it rather than the user
         # attaching it: text from the web, read as such.
         self.source = str(meta.get('source') or '')
+        # Made by the assistant (save_file) rather than given to it.
+        self.made = bool(meta.get('made'))
         self._read_part = read_part
         self._text: Optional[str] = None
         self._table: Optional[Tuple[List[str], List[Dict[str, Any]]]] = None
@@ -476,16 +478,29 @@ class FileKeeper:
         """Store ``text`` as a file this turn MADE for the user (``save_file``),
         which the reply carries for them to download and later turns read like
         an attachment. Saving a name this turn already saved replaces that
-        file, so code run again after a fix leaves one file, not two."""
-        earlier = self._made.pop(name.casefold(), None)
-        if earlier is not None:
-            self._drop(files, earlier)
-        if len(self._made) >= MAX_SAVED:
+        file, so code run again after a fix leaves one file, not two. The name
+        is the one asked for or the one it was saved as, which differ when it
+        clashed with an attachment."""
+        earlier = self._made.get(name.casefold())
+        if earlier is None and len({id(a) for a in self._made.values()}) >= MAX_SAVED:
             raise ValueError(f'One reply can carry {MAX_SAVED} files, and this one already has '
                              f'{MAX_SAVED}. Put what is left in one of them.')
-        a = self.keep(files, name, text)
+        # The earlier file steps aside so the new one takes its name, and comes
+        # back if the new one cannot be stored.
+        if earlier is not None:
+            files.items = [b for b in files.items if b is not earlier]
+        try:
+            a = self.keep(files, name, text)
+        except Exception:
+            if earlier is not None:
+                files.items.append(earlier)
+            raise
+        if earlier is not None:
+            self._drop(files, earlier)
+        a.made = True
         self.refs[-1]['made'] = True
         self._made[name.casefold()] = a
+        self._made[a.name.casefold()] = a
         return a
 
     def _drop(self, files: 'Attachments', a: Attachment) -> None:
@@ -498,6 +513,7 @@ class FileKeeper:
             self._keys.remove(key)
         self.refs = [r for r in self.refs if r['id'] != a.id]
         files.items = [b for b in files.items if b is not a]
+        self._made = {k: v for k, v in self._made.items() if v is not a}
 
     def discard(self) -> None:
         for key in self._keys:

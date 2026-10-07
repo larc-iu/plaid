@@ -248,6 +248,9 @@ def plan_proxy(ws, call_tool, write_tools) -> Callable[..., str]:
     def plan(tool: str, **args) -> str:
         if tool not in write_tools:
             return f'Error: "{tool}" is not a plan tool. One of: ' + ', '.join(sorted(write_tools))
+        why = ws.garbled(args) if hasattr(ws, 'garbled') else None
+        if why:
+            return f'Error: {why}'
         return call_tool(ws, tool, args)
     return plan
 

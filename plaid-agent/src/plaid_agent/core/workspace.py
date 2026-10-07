@@ -517,7 +517,6 @@ class BaseWorkspace:
         self.refuse_read_only()
         if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
             raise ToolError(WEB_READ_REFUSAL)
-        self.refuse_garbled(op)
         at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)
         self.guard_op(op, replacing=at)
@@ -555,15 +554,20 @@ class BaseWorkspace:
             for op in ops:
                 self.add_op(op)
 
-    def refuse_garbled(self, op: Dict[str, Any]) -> None:
-        """Nothing is staged with a letter the model cannot have meant: a broken
-        character, or a rare script the turn never saw (see core.garble)."""
-        why = garble.refusal(op, self.seen, self._file_texts)
-        if why:
-            raise ToolError(why)
+    def garbled(self, args: Any) -> Optional[str]:
+        """Why the values the model gave a plan tool, or plan() in run_code,
+        may not be staged: a broken character, or a rare script the turn never
+        saw (see core.garble). Asked of the arguments and not of the op, since
+        an op also carries the label and old values a tool read from the
+        project, which the model never typed."""
+        return garble.refusal(args, self.seen, self._file_texts)
 
     def _file_texts(self):
+        # A file this conversation's assistant saved vouches for nothing: what
+        # it holds may have been typed.
         for a in self.files or ():
+            if getattr(a, 'made', False):
+                continue
             try:
                 yield a.text()
             except Exception:  # noqa: BLE001 - a file that cannot be read was not copied from

@@ -12,7 +12,8 @@ decode to U+FFFD.
 
 A value copied in code from what the project or a file holds never passes through
 the model's writing, so it is never garbled this way. A value the model TYPES can
-be. This module is the check a plan makes of what is staged: a broken character,
+be. This module is the check made of what the model hands a plan tool, or
+plan() and save_file() in run_code: a broken character,
 or a letter outside the Basic Multilingual Plane from a script that appears nowhere
 the turn could have copied it from. Only those planes are checked because the
 common scripts are in the BMP and have tokens of their own, so a model writes them
@@ -131,3 +132,34 @@ def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] 
                     'and stage the change from there. If it really is new text the user gave you, ask '
                     'them to paste it into the chat.')
     return None
+
+
+def seed(seen: Seen, system: str, transcript: Iterable[dict]) -> None:
+    """Note what a turn starts out able to copy from: the system prompt, every
+    message of the user's, and every tool answer of earlier turns, each less
+    what its own call asked (as :meth:`Seen.add` takes it live). What the model
+    itself wrote is not a source: it may be garbled already."""
+    seen.add(system)
+    asked = {}
+    for m in transcript:
+        if m.get('role') == 'assistant':
+            for c in m.get('tool_calls') or m.get('tool-calls') or []:
+                asked[c.get('id')] = (c.get('function') or {}).get('arguments')
+    for m in transcript:
+        role = m.get('role')
+        if role == 'user':
+            seen.add(m.get('content'))
+        elif role == 'tool':
+            seen.add(m.get('content'), unless=_parsed(asked.get(m.get('tool_call_id') or m.get('tool-call-id'))))
+
+
+def _parsed(arguments: Any) -> Any:
+    """A call's arguments as the model wrote them, decoded: a provider may send
+    them with every letter past ASCII escaped, which hides their script."""
+    if isinstance(arguments, str):
+        import json
+        try:
+            return json.loads(arguments)
+        except ValueError:
+            return arguments
+    return arguments

@@ -22,7 +22,6 @@ from typing import Any, Callable, Dict, List, Optional
 from . import pdftext
 from .args import clamp_limit, whole
 from .files import FileGone, PREVIEW_ROWS
-from .garble import REPLACEMENT
 from .limits import MAX_RESULT_CHARS, READ_LIMITS
 from .tools import ToolError, limit_arg, truncate
 
@@ -440,10 +439,11 @@ def save_api(ws) -> Dict[str, Callable]:
             text = _table_text(name, list(content))
         else:
             raise ValueError('content is text, or for a .csv or .tsv a list of rows.')
-        if REPLACEMENT in text:
-            raise ValueError('The content has a broken character in it (\ufffd), which is what a letter of '
-                             'a rare script becomes when it is typed out and comes out wrong. Copy the '
-                             'values from the data in code instead of typing them.')
+        # What it holds is checked like a plan's values: the user takes this
+        # file elsewhere, and a garbled form in it goes with them.
+        why = ws.garbled(text) if hasattr(ws, 'garbled') else None
+        if why:
+            raise ValueError(why)
         size = len(text.encode('utf-8'))
         if size > MAX_FILE_BYTES:
             raise ValueError(f'The file would be {size:,} bytes, over the {MAX_FILE_BYTES:,} a file may '
