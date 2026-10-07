@@ -695,6 +695,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 on_progress(min(85, 8 + rounds * 5), kit.tracer.progress(name, args))
                 planned_before = len(ws.ops)
                 result = kit.call_tool(ws, name, args)
+                # What the answer holds is text the turn can copy from, less
+                # what it only echoes of the call (see core.garble).
+                if getattr(ws, 'seen', None) is not None:
+                    ws.seen.add(result, unless=raw)
                 planned = len(ws.ops) - planned_before
                 if planned:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))

@@ -16,11 +16,13 @@ reads a file that the model did not ask for, except the first few lines that
 go into the note.
 """
 
+import json
 from typing import Any, Callable, Dict, List, Optional
 
 from . import pdftext
 from .args import clamp_limit, whole
 from .files import FileGone, PREVIEW_ROWS
+from .garble import REPLACEMENT
 from .limits import MAX_RESULT_CHARS, READ_LIMITS
 from .tools import ToolError, limit_arg, truncate
 
@@ -356,3 +358,100 @@ def api(ws) -> Dict[str, Callable]:
         return text
 
     return {'files': files, 'file_rows': file_rows, 'file_text': file_text}
+
+
+# What save_file writes. Text only, the same family the composer takes, so a
+# saved file is one the user can attach again and the app's import screens read.
+SAVE_SUFFIXES = ('.csv', '.tsv', '.txt', '.md', '.json')
+
+SAVE_HELP = '''
+GIVING THE USER A FILE
+  save_file(name, content)    -> stores a file on your reply, for the user to download with one click.
+                                 name ends in {suffixes}. content is the text, or for a .csv or .tsv a
+                                 list of dicts (one per row, the columns in the order the keys first
+                                 appear) or of lists (the first one the header), which is written out
+                                 for you, quoting included. A .json takes any value. Saving a name again
+                                 in the same reply replaces that file. Returns the name it was saved as.
+  Use it for anything the user will take elsewhere: a cleaned table to import, a list to check by hand.
+  Copy the values from the data in code; never type a form into the content yourself. Say in your reply
+  what the file holds. Later replies read it as file_rows(name) or file_text(name).
+
+  rows = [{{"form": r["form"], "meaning": r["meaning"].strip()}} for r in file_rows("words.csv")]
+  save_file("words cleaned.csv", rows)
+'''
+
+
+def save_help(ws) -> str:
+    """The save_file half of code_help, where the turn can store a file."""
+    if getattr(ws, 'keeper', None) is None:
+        return ''
+    return SAVE_HELP.format(suffixes=', '.join(SAVE_SUFFIXES))
+
+
+def _table_text(name: str, rows: List[Any]) -> str:
+    """Rows as the text of a .csv or .tsv, quoted by the standard library."""
+    import csv
+    import io
+    if rows and all(isinstance(r, dict) for r in rows):
+        columns: List[str] = []
+        for r in rows:
+            for k in r:
+                if str(k) not in columns:
+                    columns.append(str(k))
+        table = [columns] + [[r.get(c, '') for c in columns] for r in rows]
+    elif all(isinstance(r, (list, tuple)) for r in rows):
+        table = [list(r) for r in rows]
+    else:
+        raise ValueError('A table is a list of dicts, one per row, or a list of lists with the header '
+                         'first. Not a mix of the two.')
+    out = io.StringIO()
+    writer = csv.writer(out, delimiter='\t' if name.lower().endswith('.tsv') else ',', lineterminator='\n')
+    for row in table:
+        writer.writerow(['' if v is None else v for v in row])
+    return out.getvalue()
+
+
+def save_api(ws) -> Dict[str, Callable]:
+    """``save_file`` for run_code, or nothing where the turn cannot store one.
+
+    The text goes beside the conversation as an attachment's does, and its
+    reference rides on the reply, which the panel draws as a file to download
+    (see :meth:`.files.FileKeeper.save`). Writing it out of rows is done here,
+    because the sandbox has no csv module and a cell with a comma in it is the
+    first thing a hand-written join gets wrong.
+    """
+    from .files import MAX_FILE_BYTES, Attachments
+    keeper = getattr(ws, 'keeper', None)
+    if keeper is None:
+        return {}
+
+    def save_file(name: str, content: Any) -> str:
+        name = ' '.join(str(name or '').split())
+        if not name or '/' in name or '\\' in name or len(name) > 120:
+            raise ValueError('Give the file a plain name, with no folder, such as "words cleaned.csv".')
+        lower = name.lower()
+        if not lower.endswith(SAVE_SUFFIXES):
+            raise ValueError('A saved file ends in one of ' + ', '.join(SAVE_SUFFIXES) + '.')
+        if isinstance(content, str):
+            text = content
+        elif lower.endswith('.json'):
+            text = json.dumps(content, ensure_ascii=False, indent=1)
+        elif lower.endswith(('.csv', '.tsv')) and isinstance(content, (list, tuple)):
+            text = _table_text(name, list(content))
+        else:
+            raise ValueError('content is text, or for a .csv or .tsv a list of rows.')
+        if REPLACEMENT in text:
+            raise ValueError('The content has a broken character in it (\ufffd), which is what a letter of '
+                             'a rare script becomes when it is typed out and comes out wrong. Copy the '
+                             'values from the data in code instead of typing them.')
+        size = len(text.encode('utf-8'))
+        if size > MAX_FILE_BYTES:
+            raise ValueError(f'The file would be {size:,} bytes, over the {MAX_FILE_BYTES:,} a file may '
+                             'hold. Split it in two.')
+        if ws.files is None:
+            ws.files = Attachments([])
+        a = keeper.save(ws.files, name, text)
+        return (f'Saved "{a.name}" ({a.lines:,} lines). It is on your reply for the user to download: '
+                'say in your reply what it holds.')
+
+    return {'save_file': save_file}

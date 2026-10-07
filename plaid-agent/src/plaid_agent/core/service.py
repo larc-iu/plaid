@@ -583,6 +583,11 @@ class BaseAssistantService(BaseService):
             # What every call of the next turn sends besides the transcript, taken
             # off the window before the transcript is held to its share of it.
             overhead = (system, self.kit.tools_for(ws))
+            # What the turn was given is text a value can be copied from, but
+            # not what the model wrote in it, which may be garbled already
+            # (see core.garble).
+            ws.seen.add([system] + [m.get('content') for m in transcript if m.get('role') != 'assistant'],
+                        unless=[m for m in transcript if m.get('role') == 'assistant'])
 
         def fit(record):
             """The record held to its budget (`prune`)."""

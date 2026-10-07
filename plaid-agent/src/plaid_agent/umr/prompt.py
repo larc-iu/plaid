@@ -64,6 +64,7 @@ read the part you need. search, find_nodes and frequency_list ask the whole proj
 and worklist says which sentences are unfinished.
 {read_budget}
 {be_concise}
+{copy_forms}
 {attach_files}
 {cite_evidence}
 '''
@@ -87,6 +88,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'final_message': shared.final_message('nodes'),
     'read_budget': shared.read_budget('find_nodes or frequency_list'),
     'be_concise': shared.be_concise(),
+    'copy_forms': shared.copy_forms(),
     'attach_files': shared.attach_files('.umr'),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, shown_as='sentence with its graph', never_paste='a PENMAN graph',

@@ -56,6 +56,9 @@ MAX_FILE_BYTES = 4_000_000
 # left under the cap for the key and the store's own rounding. The composer
 # cuts with the same two figures.
 VALUE_BYTES = 1_000_000
+
+# The files one reply may carry for the user to download (save_file).
+MAX_SAVED = 5
 VALUE_HEADROOM = 1024
 
 
@@ -435,6 +438,8 @@ class FileKeeper:
         self.budget = budget
         self.refs: List[Dict[str, Any]] = []
         self._keys: List[str] = []
+        # What this turn saved with save_file, by name folded for case.
+        self._made: Dict[str, Attachment] = {}
 
     def keep(self, files: 'Attachments', name: str, text: str, source: str = '') -> Attachment:
         """Store ``text`` as a file of this conversation and add it to
@@ -467,6 +472,33 @@ class FileKeeper:
         self.refs.append({**ref, 'name': name})
         return a
 
+    def save(self, files: 'Attachments', name: str, text: str) -> Attachment:
+        """Store ``text`` as a file this turn MADE for the user (``save_file``),
+        which the reply carries for them to download and later turns read like
+        an attachment. Saving a name this turn already saved replaces that
+        file, so code run again after a fix leaves one file, not two."""
+        earlier = self._made.pop(name.casefold(), None)
+        if earlier is not None:
+            self._drop(files, earlier)
+        if len(self._made) >= MAX_SAVED:
+            raise ValueError(f'One reply can carry {MAX_SAVED} files, and this one already has '
+                             f'{MAX_SAVED}. Put what is left in one of them.')
+        a = self.keep(files, name, text)
+        self.refs[-1]['made'] = True
+        self._made[name.casefold()] = a
+        return a
+
+    def _drop(self, files: 'Attachments', a: Attachment) -> None:
+        prefix = file_key(self.store.app, self.store.project_id, self.conv_id, a.id) + ':part:'
+        for key in [k for k in self._keys if k.startswith(prefix)]:
+            try:
+                self.store.client.user_data.delete(self.store.user_id, key)
+            except Exception:  # noqa: BLE001 - what is left goes with the conversation
+                pass
+            self._keys.remove(key)
+        self.refs = [r for r in self.refs if r['id'] != a.id]
+        files.items = [b for b in files.items if b is not a]
+
     def discard(self) -> None:
         for key in self._keys:
             try:
@@ -475,3 +507,4 @@ class FileKeeper:
                 pass
         self._keys = []
         self.refs = []
+        self._made = {}

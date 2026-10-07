@@ -54,7 +54,13 @@ never on a field. In what the reads print, a trailing ~ marks a value a machine 
 contributor made. When no tool can express a question, read query_help and write a query.
 {read_budget}
 {be_concise}
+{copy_forms}
 {attach_files}
+- MANY ENTRIES FROM A TABLE (a dictionary export, a word list of hundreds of rows) go in through Bulk \
+Add on the lexicon's page, not through a plan. It maps the table's columns onto entry fields and checks every \
+row against the entries already there, homonyms included, before it writes anything. To prepare such a table, \
+clean it in run_code where you have it, give it to the user with save_file, and tell them to load it into Bulk \
+Add. A plan of create_entry calls is for a few dozen entries at most.
 {cite_evidence}
 '''
 
@@ -84,6 +90,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'final_message': shared.final_message('items'),
     'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
+    'copy_forms': shared.copy_forms(),
     'attach_files': shared.attach_files('.flextext, .eaf, .lift'),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, aside=_CITE_ASIDE, shown_as='full interlinear example',

@@ -70,6 +70,15 @@ references). Say so when the data does not settle a question, and mark guesses a
 a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which \
 tool did it.'''
 
+# A model writes a letter of a rare script as two tokens and can get the first
+# one wrong, so a Wancho word came out as Egyptian hieroglyphs (see
+# core/garble.py, which refuses such a value in a plan). Said in every app,
+# since every app holds language data in whatever script it is written in.
+COPY_FORMS = '''- COPY FORMS, NEVER RETYPE THEM. A word in a script you rarely saw in training can come out of your \
+typing as different letters, or in another script entirely, and nothing tells you that it did. So a form that \
+goes into a plan or a saved file is copied from the data in code (load, query, file_rows), never typed. In a \
+reply, name such a word by what it means rather than writing it out.'''
+
 # Said in every turn, attachment or none: the file tools and the note arrive
 # only with a file, so a model told nothing else answers "I can't accept file
 # uploads" to a user asking whether it can. ``{formats}`` are the app's own
@@ -99,8 +108,9 @@ own definition, examples that match a compound condition, or anything gathered a
 of documents. If you have called read_document or search three times for one question, switch to run_code. \
 Do not use it for what {outright} answer outright, and inside it use query() for a count the \
 engine can make.
-- What the code sees: documents(), load(document), query(q) and plan(tool, ...), and nothing else. code_help \
-gives their shapes, a template to start from, and worked examples. Print a summary (counts, a few refs with \
+- What the code sees: documents(), load(document), query(q) and plan(tool, ...), and nothing else, and it \
+can hand the user a file to download with save_file(name, content): a cleaned table to import, a list to \
+check. code_help gives their shapes, a template to start from, and worked examples. Print a summary (counts, a few refs with \
 their sentence text), never every row: output is capped. Loading every document of a large corpus takes about \
 a minute, which is fine for one call.
 - Code can stage changes through plan(...) and nothing else: the same guards apply, and nothing is written \
@@ -179,6 +189,11 @@ def final_message(noun: str) -> str:
 def be_concise() -> str:
     """Answer with the evidence, mark a guess as one, and never name a tool."""
     return BE_CONCISE
+
+
+def copy_forms() -> str:
+    """Copy a form from the data rather than typing it."""
+    return COPY_FORMS
 
 
 def attach_files(formats: str) -> str:

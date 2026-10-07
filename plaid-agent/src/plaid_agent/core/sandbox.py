@@ -204,9 +204,11 @@ OTHER PROJECTS
 def help_text(app_half: str, extra: str = '', ws=None) -> str:
     """The shared half, the app's half, and whatever this conversation adds to
     both: the files the user attached (see :func:`.filetools.code_help`),
+    the files the turn can give the user (:func:`.filetools.save_help`),
     and the other projects the turn may read, when there are any."""
-    out = HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX,
-                      turn_seconds=TURN_EXEC_SECONDS) + app_half + extra
+    from . import filetools
+    out = (HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX, turn_seconds=TURN_EXEC_SECONDS)
+           + app_half + extra + filetools.save_help(ws))
     reach = getattr(ws, 'reach', None)
     if reach is not None and reach.others:
         labels = reach.labels()
@@ -322,7 +324,27 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
 
     return {'documents': documents, 'load': load, 'query': query,
             'plan': plan_proxy(ws, call_tool, write_tools),
-            **filetools.api(ws)}
+            **filetools.api(ws), **filetools.save_api(ws)}
+
+
+# The host functions whose answers stage or store something rather than read
+# the project, so are not text a value could be copied from.
+_WRITERS = ('plan', 'save_file')
+
+
+def noted(ws, api: Dict[str, Callable]) -> Dict[str, Callable]:
+    """``api`` with every read's answer noted as text the code could copy a
+    value from (see core.garble), which a document loaded in code and never
+    printed is."""
+    seen = getattr(ws, 'seen', None)
+    if seen is None:
+        return api
+
+    def wrap(f):
+        def read(*args, **kwargs):
+            return seen.add(f(*args, **kwargs), unless=[args, kwargs])
+        return read
+    return {name: (f if name in _WRITERS else wrap(f)) for name, f in api.items()}
 
 
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]]) -> str:
@@ -332,6 +354,6 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]])
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
     try:
-        return run(code, api(ws), session=ws.code)
+        return run(code, noted(ws, api(ws)), session=ws.code)
     except CodeError as e:
         raise ToolError(str(e))

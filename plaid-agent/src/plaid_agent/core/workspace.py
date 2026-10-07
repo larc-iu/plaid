@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
 
-from . import docload, fingerprint as fp, opkind, work
+from . import docload, fingerprint as fp, garble, opkind, work
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
 from .tools import ToolError
@@ -125,6 +125,9 @@ class BaseWorkspace:
         # files.FileKeeper), set by the service. None where nothing can be
         # stored, and then a PDF is not read.
         self.keeper = None
+        # The scripts of the rare letters this turn could have copied a value
+        # from, which a staged value is checked against (see core.garble).
+        self.seen = garble.Seen()
         # The turn's code worker (core.sandbox.Session), opened by the first
         # run_code call and released by close().
         self.code = None
@@ -514,6 +517,7 @@ class BaseWorkspace:
         self.refuse_read_only()
         if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
             raise ToolError(WEB_READ_REFUSAL)
+        self.refuse_garbled(op)
         at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)
         self.guard_op(op, replacing=at)
@@ -550,6 +554,20 @@ class BaseWorkspace:
         with self.staging():
             for op in ops:
                 self.add_op(op)
+
+    def refuse_garbled(self, op: Dict[str, Any]) -> None:
+        """Nothing is staged with a letter the model cannot have meant: a broken
+        character, or a rare script the turn never saw (see core.garble)."""
+        why = garble.refusal(op, self.seen, self._file_texts)
+        if why:
+            raise ToolError(why)
+
+    def _file_texts(self):
+        for a in self.files or ():
+            try:
+                yield a.text()
+            except Exception:  # noqa: BLE001 - a file that cannot be read was not copied from
+                continue
 
     def refuse_read_only(self) -> None:
         """Nothing is staged on a workspace that may only be read: another
