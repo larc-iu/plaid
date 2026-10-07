@@ -60,8 +60,7 @@ contributor made. When no tool can express a question, read query_help and write
 Add on the lexicon's page, as they are, not through a plan of create_entry calls. Tidying them comes AFTER, in \
 the project, with the lexicon tools: normalizing values, merging repeated forms (merge_entries, make_sense_of), \
 marking where they came from. Do not clean the table for import beforehand. Only if the file will not go in as \
-it is (extra header rows above the real one, say) and you can run code, give the user a copy that will with \
-save_file, changed no further.
+it is and you can run code, give the user a copy that will with save_file, changed no further.
 {cite_evidence}
 '''
 
