@@ -280,4 +280,45 @@ describe('Turn and what a reply kept', () => {
     expect(link.textContent).toContain('130 KB');
     await view.unmount();
   });
+
+  const made = {
+    kind: 'assistant',
+    text: 'The cleaned table is attached.',
+    files: [{ id: 'f2', name: 'words cleaned.csv', bytes: 2048, lines: 40, chunks: 1, made: true }],
+  };
+
+  it('offers a file the reply made for download', async () => {
+    const asked = [];
+    const view = await renderComponent(
+      <Turn
+        item={made}
+        projectId="pA"
+        adapter={adapter}
+        results={new Map()}
+        movedHere={false}
+        onDownloadFile={(f) => asked.push(f.name)}
+      />,
+    );
+    const button = view.container.querySelector('button[title="Download words cleaned.csv"]');
+    expect(button.textContent).toContain('words cleaned.csv');
+    await view.step(() => button.click());
+    expect(asked).toEqual(['words cleaned.csv']);
+    await view.unmount();
+  });
+
+  it('only names a made file where it cannot be read, as in the admin viewer', async () => {
+    const view = await renderComponent(
+      <Turn
+        item={made}
+        projectId="pA"
+        adapter={adapter}
+        results={new Map()}
+        movedHere={false}
+        readOnly
+      />,
+    );
+    expect(view.container.querySelector('button[title^="Download"]')).toBeNull();
+    expect(view.container.textContent).toContain('words cleaned.csv');
+    await view.unmount();
+  });
 });

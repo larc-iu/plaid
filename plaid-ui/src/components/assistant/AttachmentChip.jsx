@@ -7,7 +7,12 @@ import { fileSize } from './attachments.js';
 // file is in (a table of so many rows, under these columns) is the service's
 // answer, made by the same parser that will read it, and it is said in the
 // reply rather than guessed at twice.
-export const AttachmentChip = ({ file, onRemove = null, className = '' }) => (
+export const AttachmentChip = ({
+  file,
+  onRemove = null,
+  className = '',
+  icon: Icon = FileText,
+}) => (
   <span
     className={cn(
       'inline-flex max-w-full items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 text-xs',
@@ -15,7 +20,7 @@ export const AttachmentChip = ({ file, onRemove = null, className = '' }) => (
       className,
     )}
   >
-    <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
+    <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
     <span dir="auto" className="truncate font-medium">
       {file.name}
     </span>

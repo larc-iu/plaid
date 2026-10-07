@@ -337,6 +337,37 @@ export const uploadAttachments = async (store, convId, pending) => {
   }
 };
 
+// A file a reply made for the user (the assistant's save_file), read back whole.
+// Its parts are where an attachment's are, and its reference rides on the reply
+// with `made: true`.
+export const readStoredFile = async (store, convId, file) => {
+  const { client, userId, app, projectId } = store;
+  const parts = [];
+  for (let n = 0; n < Math.max(1, file.chunks || 1); n += 1) {
+    const got = await client.userData.get(userId, partKey(app, projectId, convId, file.id, n));
+    if (typeof got?.value !== 'string') throw new Error(`${file.name} is no longer stored.`);
+    parts.push(got.value);
+  }
+  return parts.join('');
+};
+
+const MIME = {
+  '.csv': 'text/csv',
+  '.tsv': 'text/tab-separated-values',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+};
+
+// The file as the browser should save it. A table gets a byte-order mark, since
+// Excel reads a CSV without one in the system's legacy encoding and every
+// non-Latin form in it comes out as mojibake. The app's own table readers drop
+// the mark.
+export const blobOf = (name, text) => {
+  const suffix = suffixOf(name);
+  const marked = suffix === '.csv' || suffix === '.tsv' ? `\uFEFF${text}` : text;
+  return new Blob([marked], { type: `${MIME[suffix] || 'text/plain'};charset=utf-8` });
+};
+
 // Every key a conversation's files are stored under. Listed rather than worked
 // out from the record, so a file whose reference never reached the record (a
 // send that failed between the two writes) is still found and still deleted.

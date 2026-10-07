@@ -4,6 +4,7 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  Download,
   FolderOpen,
   MapPin,
   Quote,
@@ -153,6 +154,9 @@ export const Turn = ({
   planProject = null,
   // Drawn for someone other than its owner: a plan offers no decision.
   readOnly = false,
+  // Saves a file this reply made for the user. Absent where the viewer cannot
+  // read the owner's store, and then the file is only named.
+  onDownloadFile = null,
 }) => {
   if (item.kind === 'user') {
     return (
@@ -261,11 +265,25 @@ export const Turn = ({
           </div>
         )}
         {/* What this reply fetched and kept with the conversation (a PDF from
-            the web), which later replies read as they read an attachment. */}
+            the web), or made for the user to download (a cleaned table), which
+            later replies read as they read an attachment. */}
         {item.files?.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {item.files.map((f) =>
-              f.source ? (
+              f.made && onDownloadFile ? (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDownloadFile(f);
+                  }}
+                  title={`Download ${f.name}`}
+                  className="max-w-full rounded-full"
+                >
+                  <AttachmentChip file={f} icon={Download} className="hover:bg-muted" />
+                </button>
+              ) : f.source ? (
                 <a key={f.id} href={f.source} target="_blank" rel="noreferrer" title={f.source}>
                   <AttachmentChip file={f} className="hover:bg-muted" />
                 </a>

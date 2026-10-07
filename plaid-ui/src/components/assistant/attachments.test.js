@@ -5,7 +5,9 @@ import {
   chunk,
   convOfFileKey,
   lineCount,
+  blobOf,
   readAttachment,
+  readStoredFile,
   refOf,
   refuse,
   resetSweep,
@@ -223,5 +225,36 @@ describe('sweepOrphanFiles', () => {
     await sweepOrphanFiles(s, []);
     await sweepOrphanFiles(s, []);
     expect(s.client.userData.list).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a file a reply made', () => {
+  const store = (values) => ({
+    app: 'igt',
+    projectId: 'p1',
+    userId: 'u@x',
+    client: {
+      userData: { get: vi.fn(async (_, key) => (key in values ? { value: values[key] } : null)) },
+    },
+  });
+  const key = (n) => `igt:assistant:p1:file:c1:f1:part:${n}`;
+
+  it('is read back whole from its parts, in order', async () => {
+    const s = store({ [key(0)]: 'form,meaning\n', [key(1)]: 'a,b\n' });
+    const text = await readStoredFile(s, 'c1', { id: 'f1', name: 'w.csv', chunks: 2 });
+    expect(text).toBe('form,meaning\na,b\n');
+  });
+
+  it('says so when a part is gone', async () => {
+    const s = store({ [key(0)]: 'x' });
+    await expect(readStoredFile(s, 'c1', { id: 'f1', name: 'w.csv', chunks: 2 })).rejects.toThrow(
+      /w\.csv is no longer stored/,
+    );
+  });
+
+  it('is saved with a byte-order mark when it is a table, so Excel reads it as UTF-8', async () => {
+    expect(await blobOf('w.csv', 'a').text()).toBe('\uFEFFa');
+    expect(blobOf('w.csv', 'a').type).toBe('text/csv;charset=utf-8');
+    expect(await blobOf('notes.md', 'a').text()).toBe('a');
   });
 });

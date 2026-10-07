@@ -20,7 +20,9 @@ import {
 } from './projectReach.js';
 import {
   MAX_FILES,
+  blobOf,
   readAttachment,
+  readStoredFile,
   refOf,
   refuse,
   sweepOrphanFiles,
@@ -730,6 +732,29 @@ export const AssistantChat = ({
     });
   }, [list.loaded, list.rows, store, userId, projectId]);
 
+  // A file a reply made (the assistant's save_file), saved to the user's disk.
+  const downloadFile = useCallback(
+    async (file) => {
+      const convId = active?.id;
+      if (!convId) return;
+      try {
+        const url = URL.createObjectURL(
+          blobOf(file.name, await readStoredFile(store, convId, file)),
+        );
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        notifyError(humanizeError(e, `Failed to download ${file.name}.`));
+      }
+    },
+    [store, active?.id],
+  );
+
   // Send the user's last message again, whether the turn was lost (its
   // request went away with the server or the service), failed or was stopped.
   // The attempt stays in the conversation above the message sent again.
@@ -969,6 +994,7 @@ export const AssistantChat = ({
                   busy={!!busy}
                   interrupted={!!d.interrupted}
                   applying={!!d.plan && applyingPlanId === d.plan.id}
+                  onDownloadFile={downloadFile}
                   onApprove={(opts) => approve(d.plan, opts)}
                   onDiscard={() => discard(i)}
                   onOpenPlan={() =>
