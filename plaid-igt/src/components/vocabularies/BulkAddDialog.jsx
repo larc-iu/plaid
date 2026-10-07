@@ -9,8 +9,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
-import { Upload, FileText, X, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
+import {
+  Upload,
+  FileText,
+  X,
+  ArrowLeft,
+  Download,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
 import { Textarea } from '@ui/components/ui/textarea';
 import {
   Dialog,
@@ -43,6 +53,7 @@ import {
   targetedAnswer,
   parseTable,
   delimiterName,
+  columnsAt,
   guessColumns,
   rowsToEntries,
   planVocabImport,
@@ -81,7 +92,7 @@ const STEPS = {
 };
 const WIZARD_STEPS = Object.keys(STEPS).length;
 
-const PREVIEW_ROWS = 25;
+const PAGE_ROWS = 50;
 // Entries sharing a form, beyond which the list just says how many more.
 const MAX_MATCHES = 4;
 const SAMPLE_VALUES = 3;
@@ -356,15 +367,19 @@ export const BulkAddDialog = ({
   const [step, setStep] = useState('source');
   const [pasted, setPasted] = useState('');
   const [file, setFile] = useState(null); // { name, text }
+  // Rows above the table (a title, a second header line), left out.
+  const [skip, setSkip] = useState(0);
   const [hasHeader, setHasHeader] = useState(false);
   const [mapping, setMapping] = useState([]);
+  // field -> the value every row gets for it.
+  const [constants, setConstants] = useState({});
   const [caseInsensitive, setCaseInsensitive] = useState(false);
   const [strategies, setStrategies] = useState(DEFAULT_STRATEGIES);
   // One row's own answer, keyed by source line, overriding its bucket's.
   const [overrides, setOverrides] = useState({});
   // null until the user picks a view, so the default can follow the plan.
   const [filterChoice, setFilterChoice] = useState(null);
-  const [shownRows, setShownRows] = useState(PREVIEW_ROWS);
+  const [page, setPage] = useState(0);
   const [progress, setProgress] = useState(null); // { done, total, phase }
   const [failure, setFailure] = useState(null); // { message, created, updated }
   // Set when Import found the entries changed since the review, which then
@@ -378,13 +393,23 @@ export const BulkAddDialog = ({
   // edits to the mapping live on until then.
   useEffect(() => {
     const guess = guessColumns(rows, fieldNames, humanizeFieldName);
+    setSkip(guess.skip);
     setHasHeader(guess.hasHeader);
     setMapping(guess.mapping);
   }, [raw, rows, fieldNames]);
 
+  // Another first row is another header, so the columns are read again.
+  const startAt = (row) => {
+    const next = Math.max(0, Math.min(row, rows.length - 1));
+    const at = columnsAt(rows, next, fieldNames, humanizeFieldName);
+    setSkip(next);
+    setHasHeader(at.hasHeader);
+    setMapping(at.mapping);
+  };
+
   const entries = useMemo(
-    () => rowsToEntries(rows, mapping, { hasHeader, normalizeValue }),
-    [rows, mapping, hasHeader, normalizeValue],
+    () => rowsToEntries(rows, mapping, { skip, hasHeader, normalizeValue, constants }),
+    [rows, mapping, skip, hasHeader, normalizeValue, constants],
   );
   const plan = useMemo(
     () =>
@@ -406,7 +431,7 @@ export const BulkAddDialog = ({
   const filter = filterChoice ?? (needsDecision ? 'decide' : 'changes');
   const setFilter = (key) => {
     setFilterChoice(key);
-    setShownRows(PREVIEW_ROWS);
+    setPage(0);
   };
 
   // A value is refused as a row is read (by the row's own morph type) or as
@@ -432,10 +457,11 @@ export const BulkAddDialog = ({
     setPasted('');
     setFile(null);
     setCaseInsensitive(false);
+    setConstants({});
     setStrategies(DEFAULT_STRATEGIES);
     setOverrides({});
     setFilterChoice(null);
-    setShownRows(PREVIEW_ROWS);
+    setPage(0);
     setProgress(null);
     setFailure(null);
     setReplanned(false);
@@ -582,6 +608,9 @@ export const BulkAddDialog = ({
       return;
     }
     console.error('Bulk add failed:', error);
+    // What landed is in the vocabulary now, and the review, if it is opened
+    // again, shows it as already present.
+    if (created || updated) await onImported();
     setFailure({
       message: humanizeError(error, 'The server rejected the import.'),
       created,
@@ -650,8 +679,8 @@ export const BulkAddDialog = ({
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            One entry per line, columns separated by tabs. The first row may be a header naming the
-            columns, which you confirm next.
+            One entry per line, columns separated by tabs, commas or semicolons. The first row may
+            be a header naming the columns, which you confirm next.
             {rows.length > 0 && (
               <>
                 {' '}
@@ -667,18 +696,56 @@ export const BulkAddDialog = ({
   );
 
   const renderColumns = () => {
-    const sampleRows = rows.slice(hasHeader ? 1 : 0, (hasHeader ? 1 : 0) + SAMPLE_VALUES);
+    const top = skip + (hasHeader ? 1 : 0);
+    const sampleRows = rows.slice(top, top + SAMPLE_VALUES);
     const usedFields = mapping.filter((m) => m !== FORM && m !== IGNORE);
+    // A field no column supplies can still be given one value for every row.
+    const unmapped = fieldNames.filter((f) => !usedFields.includes(f));
+    const constantFields = Object.keys(constants).filter((f) => unmapped.includes(f));
+    const addable = unmapped.filter((f) => !(f in constants));
     return (
       <div className="flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={hasHeader}
-            onChange={(e) => setHasHeader(e.target.checked)}
-          />
-          The first row names the columns (don't import it)
-        </label>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <label className="flex items-center gap-2">
+            The table starts at row
+            <Input
+              type="number"
+              min={1}
+              max={Math.max(1, rows.length)}
+              value={skip + 1}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v)) startAt(v - 1);
+              }}
+              className="h-7 w-20"
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={hasHeader}
+              onChange={(e) => setHasHeader(e.target.checked)}
+            />
+            That row names the columns (don't import it)
+          </label>
+        </div>
+        {skip > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {n(skip)} row{skip === 1 ? '' : 's'} above it {skip === 1 ? 'is' : 'are'} left out:{' '}
+            <span dir="auto" className="font-mono">
+              {rows
+                .slice(0, Math.min(skip, 2))
+                .map((r) =>
+                  r.cells
+                    .filter((c) => String(c).trim() !== '')
+                    .slice(0, 4)
+                    .join(' · '),
+                )
+                .join(' / ')}
+              {skip > 2 ? ' / …' : ''}
+            </span>
+          </p>
+        )}
 
         <div className="max-h-64 overflow-y-auto rounded-md border">
           <table className="w-full text-sm">
@@ -702,7 +769,7 @@ export const BulkAddDialog = ({
                   <td className="px-2 py-1.5">
                     <span className="text-xs text-muted-foreground">{i + 1}.</span>{' '}
                     {hasHeader ? (
-                      <span className="font-medium">{rows[0]?.cells?.[i] || '(blank)'}</span>
+                      <span className="font-medium">{rows[skip]?.cells?.[i] || '(blank)'}</span>
                     ) : (
                       <span className="text-muted-foreground">(no header)</span>
                     )}
@@ -743,6 +810,65 @@ export const BulkAddDialog = ({
           </p>
         )}
 
+        {(constantFields.length > 0 || addable.length > 0) && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm">The same value on every row</p>
+            {constantFields.map((f) => (
+              <div key={f} className="flex items-center gap-2">
+                <span className="w-40 shrink-0 truncate text-sm">{humanizeFieldName(f)}</span>
+                <Input
+                  dir="auto"
+                  value={constants[f]}
+                  onChange={(e) => setConstants((prev) => ({ ...prev, [f]: e.target.value }))}
+                  className="h-7 flex-1"
+                  aria-label={`${humanizeFieldName(f)} on every row`}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Remove"
+                  onClick={() =>
+                    setConstants((prev) => {
+                      const next = { ...prev };
+                      delete next[f];
+                      return next;
+                    })
+                  }
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            {addable.length > 0 && (
+              <select
+                className={cn(selectClass, 'w-fit')}
+                value=""
+                onChange={(e) => {
+                  const f = e.target.value;
+                  if (f) setConstants((prev) => ({ ...prev, [f]: '' }));
+                }}
+              >
+                <option value="">Add a field…</option>
+                {addable.map((f) => (
+                  <option key={f} value={f}>
+                    {humanizeFieldName(f)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={caseInsensitive}
+            onChange={(e) => setCaseInsensitive(e.target.checked)}
+          />
+          Match forms ignoring capitalization
+        </label>
+
         <div className="rounded-md border bg-muted/30 p-3">
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Legend
@@ -769,7 +895,9 @@ export const BulkAddDialog = ({
 
   const renderReview = () => {
     const rows = plan.decisions.filter(FILTERS[filter].match);
-    const visible = rows.slice(0, shownRows);
+    const pages = Math.max(1, Math.ceil(rows.length / PAGE_ROWS));
+    const at = Math.min(page, pages - 1);
+    const visible = rows.slice(at * PAGE_ROWS, (at + 1) * PAGE_ROWS);
     // Columns are shared by every row on screen, so the same field sits in the
     // same place all the way down. Fields nobody on screen uses are left out.
     const has = (values, f) => String(values?.[f] ?? '').trim() !== '';
@@ -873,14 +1001,36 @@ export const BulkAddDialog = ({
             </div>
           )}
 
-          {rows.length > visible.length && (
-            <button
-              type="button"
-              className="w-full border-t py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
-              onClick={() => setShownRows((v) => v + PREVIEW_ROWS)}
-            >
-              Showing {n(visible.length)} of {n(rows.length)}. Show more
-            </button>
+          {pages > 1 && (
+            <div className="flex items-center justify-between border-t px-2 py-1 text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                Rows {n(at * PAGE_ROWS + 1)}–{n(at * PAGE_ROWS + visible.length)} of{' '}
+                {n(rows.length)}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  disabled={at === 0}
+                  onClick={() => setPage(at - 1)}
+                >
+                  <ChevronLeft className="h-3 w-3" /> Previous
+                </Button>
+                <span className="tabular-nums">
+                  Page {n(at + 1)} of {n(pages)}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  disabled={at >= pages - 1}
+                  onClick={() => setPage(at + 1)}
+                >
+                  Next <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -923,15 +1073,6 @@ export const BulkAddDialog = ({
             ),
           )}
         </div>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={caseInsensitive}
-            onChange={(e) => setCaseInsensitive(e.target.checked)}
-          />
-          Match forms ignoring capitalization
-        </label>
       </div>
     );
   };
@@ -944,8 +1085,8 @@ export const BulkAddDialog = ({
           {failure.message}
         </p>
         <p className="text-sm text-muted-foreground">
-          {n(failure.created)} added and {n(failure.updated)} updated before it stopped. On a second
-          run of the same import, what already landed shows as already present.
+          {n(failure.created)} added and {n(failure.updated)} updated before it stopped. Back in the
+          review, what landed shows as already present.
         </p>
       </div>
     ) : (
@@ -1028,9 +1169,19 @@ export const BulkAddDialog = ({
             </>
           )}
           {step === 'running' && failure && (
-            <Button variant="outline" onClick={close}>
-              Close
-            </Button>
+            <>
+              <Button variant="outline" onClick={close}>
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  setFailure(null);
+                  setStep('review');
+                }}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to review
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>

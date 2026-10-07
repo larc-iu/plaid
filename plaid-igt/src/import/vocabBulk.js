@@ -254,33 +254,67 @@ export const matchHeader = (cell, fieldNames, humanize = (n) => n) => {
   for (const field of fieldNames) {
     if ((FIELD_ALIASES[field] || []).some((a) => normalizeHeader(a) === n)) return field;
   }
-  return null;
+  // Looser readings, only where they name ONE field: a plural ("sources" for
+  // Source), or a name either containing the other ("English gloss" for
+  // Gloss, "phonetic" for Phonetic Transcription). Short names are left out of
+  // the containment, since "pos" is in "position" and "type" in "prototype".
+  // The aliases take part in the plural only: "english" for Gloss is fine as
+  // a whole header, but "Example sentence in English" is not a gloss.
+  const names = (field) => [field, humanize(field)].map(normalizeHeader);
+  const spellings = (field) => [
+    ...names(field),
+    ...(FIELD_ALIASES[field] || []).map(normalizeHeader),
+  ];
+  const unique = (of, test) => {
+    const hits = fieldNames.filter((f) => of(f).some(test));
+    return hits.length === 1 ? hits[0] : null;
+  };
+  const singular = n.endsWith('s') ? n.slice(0, -1) : null;
+  return (
+    (singular && unique(spellings, (sp) => sp === singular)) ||
+    unique(
+      names,
+      (sp) =>
+        (sp.length >= MIN_CONTAINED && n.includes(sp)) ||
+        (n.length >= MIN_CONTAINED && sp.includes(n)),
+    )
+  );
 };
+
+// The shortest name a header may be matched by containing it, or by being
+// contained in it.
+const MIN_CONTAINED = 5;
 
 /** Column 0 is the form, the rest follow the vocabulary's field order. */
 export const positionalMapping = (colCount, fieldNames) =>
   Array.from({ length: colCount }, (_, i) => (i === 0 ? FORM : (fieldNames[i - 1] ?? IGNORE)));
 
+// How far down a file the header row is looked for. Exports put a title, a
+// date or a second header line above the real one, but not pages of them.
+const HEADER_SCAN = 10;
+
 /**
- * Guess whether row 0 is a header and what each column holds. A header is
- * recognized when at least half of its non-blank cells name something we know,
- * so `Form<TAB>Gloss` is a header but `perro<TAB>dog` is data.
+ * What each column holds when row `skip` is the header (`hasHeader`), or when
+ * the rows from `skip` on are all data. A header is recognized when at least
+ * half of its non-blank cells name something we know, so `Form<TAB>Gloss` is a
+ * header but `perro<TAB>dog` is data. A column empty in every row below is not
+ * imported, whatever its name.
  *
  * @returns {{hasHeader: boolean, mapping: string[]}}
  */
-export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
-  const first = rows[0]?.cells ?? [];
-  const colCount = Math.max(0, ...rows.slice(0, 50).map((r) => r.cells.length));
+export const columnsAt = (rows, skip, fieldNames, humanize = (n) => n) => {
+  const colCount = Math.max(0, ...rows.slice(skip, skip + 50).map((r) => r.cells.length));
   if (!colCount) return { hasHeader: false, mapping: [] };
 
+  const first = rows[skip]?.cells ?? [];
   const matches = first.map((c) => matchHeader(c, fieldNames, humanize));
   const nonBlank = first.filter((c) => String(c).trim() !== '').length;
   const matched = matches.filter((m) => m !== null).length;
   const hasHeader = matched > 0 && matched * 2 >= nonBlank;
 
-  if (!hasHeader) return { hasHeader: false, mapping: positionalMapping(colCount, fieldNames) };
-
-  const mapping = Array.from({ length: colCount }, (_, i) => matches[i] ?? IGNORE);
+  const mapping = hasHeader
+    ? Array.from({ length: colCount }, (_, i) => matches[i] ?? IGNORE)
+    : positionalMapping(colCount, fieldNames);
   // A field claimed twice keeps only its first column. The later one is left
   // out rather than silently overwriting.
   const used = new Set();
@@ -289,7 +323,29 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
     if (used.has(mapping[i])) mapping[i] = IGNORE;
     else used.add(mapping[i]);
   }
-  return { hasHeader: true, mapping };
+  const body = rows.slice(skip + (hasHeader ? 1 : 0));
+  if (body.length) {
+    for (let i = 0; i < mapping.length; i++) {
+      if (mapping[i] === FORM) continue;
+      if (body.every((r) => String(r.cells[i] ?? '').trim() === '')) mapping[i] = IGNORE;
+    }
+  }
+  return { hasHeader, mapping };
+};
+
+/**
+ * Guess where the table starts and what each column holds: the first of the
+ * top rows that reads as a header, with what is above it skipped, or all of
+ * it as data when none does.
+ *
+ * @returns {{skip: number, hasHeader: boolean, mapping: string[]}}
+ */
+export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
+  for (let skip = 0; skip < Math.min(HEADER_SCAN, rows.length); skip++) {
+    const at = columnsAt(rows, skip, fieldNames, humanize);
+    if (at.hasHeader) return { skip, ...at };
+  }
+  return { skip: 0, ...columnsAt(rows, 0, fieldNames, humanize) };
 };
 
 // ---------------------------------------------------------------------------
@@ -305,10 +361,22 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
  * per entry as `rejected` rather than stored. It is told the row's form and
  * its morph type once cleaned, whichever column holds them.
  *
+ * `skip` rows above the table are left out, and then the header when there is
+ * one. `constants` gives a field the same value on every row.
+ *
  * @returns {{line: number, form: string, values: object, rejected: {field, value}[]}[]}
  */
-export const rowsToEntries = (rows, mapping, { hasHeader = false, normalizeValue = null } = {}) => {
-  const body = hasHeader ? rows.slice(1) : rows;
+export const rowsToEntries = (
+  rows,
+  mapping,
+  { skip = 0, hasHeader = false, normalizeValue = null, constants = {} } = {},
+) => {
+  const body = rows.slice(skip + (hasHeader ? 1 : 0));
+  // A value given for every row, as if the file had a column of it. A field a
+  // column already supplies is the column's.
+  const given = Object.entries(constants).filter(
+    ([field, value]) => String(value ?? '').trim() !== '' && !mapping.includes(field),
+  );
   const clean = (target, raw, entry) => (normalizeValue ? normalizeValue(target, raw, entry) : raw);
   return body.map(({ cells, line }) => {
     const cellOf = (i) => String(cells[i] ?? '').trim();
@@ -316,6 +384,9 @@ export const rowsToEntries = (rows, mapping, { hasHeader = false, normalizeValue
     const form = formAt < 0 ? '' : cellOf(formAt);
     // The morph type the row ends up with: the last column that gives a usable one.
     let morphType = null;
+    for (const [field, raw] of given) {
+      if (field === 'morphType') morphType = clean(field, String(raw).trim(), {}) || null;
+    }
     mapping.forEach((target, i) => {
       if (target === 'morphType' && cellOf(i))
         morphType = clean(target, cellOf(i), {}) || morphType;
@@ -330,6 +401,11 @@ export const rowsToEntries = (rows, mapping, { hasHeader = false, normalizeValue
       if (value) values[target] = value;
       else rejected.push({ field: target, value: raw });
     });
+    for (const [field, raw] of given) {
+      const value = clean(field, String(raw).trim(), { morphType, form });
+      if (value) values[field] = value;
+      else rejected.push({ field, value: String(raw).trim() });
+    }
     return { line, form, values, rejected };
   });
 };

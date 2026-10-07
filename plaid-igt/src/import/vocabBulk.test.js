@@ -10,6 +10,7 @@ import {
   parseDelimited,
   parseTable,
   matchHeader,
+  columnsAt,
   guessColumns,
   positionalMapping,
   rowsToEntries,
@@ -91,6 +92,7 @@ describe('column guessing', () => {
   it('recognizes a header row and maps by name', () => {
     const { rows } = parseTable('Form\tGloss\tPOS\nperro\tdog\tN\n');
     expect(guessColumns(rows, FIELDS, humanize)).toEqual({
+      skip: 0,
       hasHeader: true,
       mapping: [FORM, 'gloss', 'pos'],
     });
@@ -112,9 +114,51 @@ describe('column guessing', () => {
   it('treats a data first row as data and falls back to column order', () => {
     const { rows } = parseTable('perro\tdog\nchat\tcat\n');
     expect(guessColumns(rows, ['gloss', 'pos'], humanize)).toEqual({
+      skip: 0,
       hasHeader: false,
       mapping: [FORM, 'gloss'],
     });
+  });
+
+  it('finds a header below a title and a second header line, and skips what is above it', () => {
+    const { rows } = parseTable(
+      'Column1\tColumn2\tColumn3\nWord list, 2026\t\t\nform\tgloss\tpos\nperro\tdog\tN\n',
+    );
+    expect(guessColumns(rows, FIELDS, humanize)).toEqual({
+      skip: 2,
+      hasHeader: true,
+      mapping: [FORM, 'gloss', 'pos'],
+    });
+    const [entry] = rowsToEntries(rows, [FORM, 'gloss', 'pos'], { skip: 2, hasHeader: true });
+    expect(entry).toMatchObject({ form: 'perro', values: { gloss: 'dog', pos: 'N' } });
+  });
+
+  it('reads the columns again from another first row', () => {
+    const { rows } = parseTable('notes\t\nForm\tGloss\nperro\tdog\n');
+    expect(columnsAt(rows, 1, FIELDS, humanize)).toEqual({
+      hasHeader: true,
+      mapping: [FORM, 'gloss'],
+    });
+  });
+
+  it('leaves out a column that is empty in every row', () => {
+    const { rows } = parseTable('Form\tGloss\tPOS\nperro\tdog\t\nchat\tcat\t\n');
+    expect(guessColumns(rows, FIELDS, humanize).mapping).toEqual([FORM, 'gloss', IGNORE]);
+  });
+
+  it('matches a plural, and a name that contains a field or is contained in one, when only one field fits', () => {
+    const fields = ['gloss', 'source', 'phoneticTranscription'];
+    const label = (f) => (f === 'phoneticTranscription' ? 'Phonetic Transcription' : f);
+    expect(matchHeader('sources', fields, label)).toBe('source');
+    expect(matchHeader('English gloss', fields, label)).toBe('gloss');
+    expect(matchHeader('en_gloss', fields, label)).toBe('gloss');
+    expect(matchHeader('phonetic', fields, label)).toBe('phoneticTranscription');
+    // An alias is a whole header, never a part of one.
+    expect(matchHeader('Example sentence in English', fields, label)).toBe(null);
+    // Short names are never matched by containment.
+    expect(matchHeader('position', ['pos'], (f) => f)).toBe(null);
+    // Two fields fit, so neither is guessed.
+    expect(matchHeader('gloss notes', ['gloss', 'glossNotes2', 'notes'], (f) => f)).toBe(null);
   });
 
   it('leaves a repeated field on its first column only', () => {
@@ -784,5 +828,37 @@ describe("an entry's values read by its morph type", () => {
     });
     expect(p.updates).toEqual([{ id: 's1', patch: { gloss: '3' } }]);
     expect(p.decisions[0].rejected).toBeUndefined();
+  });
+});
+
+describe('a value on every row', () => {
+  const { rows } = parseTable('form\tgloss\nperro\tdog\nchat\t\n');
+
+  it('is given to every row, as if the file had the column', () => {
+    const entries = rowsToEntries(rows, [FORM, 'gloss'], {
+      hasHeader: true,
+      constants: { source: 'Word list 2026', status: '  ' },
+    });
+    expect(entries.map((e) => e.values)).toEqual([
+      { gloss: 'dog', source: 'Word list 2026' },
+      { source: 'Word list 2026' },
+    ]);
+  });
+
+  it('yields to a column that supplies the field', () => {
+    const [entry] = rowsToEntries(rows, [FORM, 'gloss'], {
+      hasHeader: true,
+      constants: { gloss: 'cat' },
+    });
+    expect(entry.values).toEqual({ gloss: 'dog' });
+  });
+
+  it('is refused like a cell when the field will not take it', () => {
+    const [entry] = rowsToEntries(rows, [FORM, 'gloss'], {
+      hasHeader: true,
+      constants: { status: 'nonsense' },
+      normalizeValue: (field, raw) => (field === 'status' ? '' : raw),
+    });
+    expect(entry.rejected).toEqual([{ field: 'status', value: 'nonsense' }]);
   });
 });
