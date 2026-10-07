@@ -963,7 +963,8 @@ The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.
 A file can hold up to 4 MB of text.
 A `.flextext`, `.eaf` or `.lift` file is read as text. To bring it into the project, import it.
 Files are kept with the conversation and deleted with it.
-A reply can also give you a file the assistant made, such as a cleaned table: click it under the reply to download it. To add many lexicon entries from a table, ask the assistant to prepare it, then load the file into **Bulk Add**.
+A reply can also give you a file the assistant made, such as a cleaned table: click it under the reply to download it.
+To add many lexicon entries from a table, ask the assistant to prepare it, then load the file into **Bulk Add**.
 
 A PDF must have text in it, so a scan is refused.
 The assistant reads a PDF by section and by page: ask about "§9" or "page 41" and it reads that part.
