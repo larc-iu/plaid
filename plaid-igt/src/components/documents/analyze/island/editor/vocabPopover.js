@@ -631,8 +631,8 @@ export const vocabPopover = {
                 }
               }}
               title=${editingCreate
-                ? 'Enter creates the entry as typed · Esc cancels'
-                : 'Click to edit the form before creating · double-click creates as is'}
+                ? 'Enter to create the entry as typed · Esc to cancel'
+                : 'Click to edit the form before creating · double-click to create as is'}
               @click=${onCreateClick}
             >
               ${editingCreate

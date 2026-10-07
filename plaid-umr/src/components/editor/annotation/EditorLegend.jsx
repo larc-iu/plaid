@@ -79,8 +79,8 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
           <Kbd>↑</Kbd> parent · <Kbd>↓</Kbd> first child · <Kbd>←</Kbd>
           <Kbd>→</Kbd> along the row · {k('canvas.nextSentence')} {k('canvas.previousSentence')}{' '}
           next or previous sentence · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> next sentence ·{' '}
-          <Kbd>⇧</Kbd>+<Kbd>Tab</Kbd> out of the sentence · <Kbd>Esc</Kbd> leaves a mode, closes a
-          picker, or unfocuses the node
+          <Kbd>⇧</Kbd>+<Kbd>Tab</Kbd> out of the sentence · <Kbd>Esc</Kbd> to leave a mode, close a
+          picker, or unfocus the node
         </Row>
 
         <Row title="Make">
@@ -92,19 +92,19 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
         <Row title="Change">
           <Kbd>↵</Kbd> concept · {k('node.relation')} relation to the parent ·{' '}
           {k('node.attributes')} attributes · {k('node.variable')} variable · {k('node.anchor')}{' '}
-          anchor, by clicking words or typing their numbers · {k('node.move')} move under another
+          anchor, by clicking words or typing their numbers · {k('node.move')} to move under another
           node · {k('node.earlier')} {k('node.later')} earlier or later among its siblings ·{' '}
-          {k('node.root')} make it the root · {k('node.takeEntry')} {k('node.takeEntryAll')} the new
-          concept of a changed vocabulary entry, for the node or every node picked from it
+          {k('node.root')} to make it the root · {k('node.takeEntry')} {k('node.takeEntryAll')} the
+          new concept of a changed vocabulary entry, for the node or every node picked from it
         </Row>
 
         <Row title="Document">
           {k('node.coref')} coreference · {k('node.temporal')} temporal · {k('node.modal')} modal ·{' '}
-          {k('node.docRelations')} change or delete one of the node&rsquo;s document relations
+          {k('node.docRelations')} to change or delete one of the node&rsquo;s document relations
         </Row>
 
         <Row title="Review">
-          {k('node.confirm')} accepts the node and its relation to its parent. Accept graph and
+          {k('node.confirm')} to accept the node and its relation to its parent. Accept graph and
           Discard graph in a sentence&rsquo;s header do the whole sentence.
         </Row>
 
@@ -114,8 +114,8 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
         </Row>
 
         <Row title="Mouse">
-          A click focuses a node, and a double-click on one of its parts edits that part. A
-          right-click or ⋯ lists every action with its key.
+          Click to focus a node, and double-click one of its parts to edit that part. Right-click or
+          ⋯ to list every action with its key.
         </Row>
       </div>
     </details>

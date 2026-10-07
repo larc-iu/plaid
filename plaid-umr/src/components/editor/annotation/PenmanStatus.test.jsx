@@ -48,7 +48,7 @@ describe('the status line', () => {
       type(view.container.querySelector('textarea'), '(s9x / sleep-01\n    :ARG0 (s9y / cat))'),
     );
     expect(status(view)).toBe(
-      'Changed. Apply saves it. s9x changes from cat to sleep-01, s9y from sleep-01 to cat.',
+      'Changed. Click Apply to save it. s9x changes from cat to sleep-01, s9y from sleep-01 to cat.',
     );
     view.unmount?.();
   });
@@ -67,7 +67,7 @@ describe('the status line', () => {
     });
     await view.step(() => type(view.container.querySelector('textarea'), ''));
     expect(status(view)).toBe(
-      'Changed. Apply saves it. It deletes s9y with its anchor and 2 document-level relations, s9x with its anchor.',
+      'Changed. Click Apply to save it. It deletes s9y with its anchor and 2 document-level relations, s9x with its anchor.',
     );
     expect(apply(view).disabled).toBe(false);
     view.unmount?.();

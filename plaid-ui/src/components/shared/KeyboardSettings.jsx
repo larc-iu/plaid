@@ -176,7 +176,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                       </div>
                       {isRecording && (
                         <p className="text-xs text-muted-foreground" role="status">
-                          {problem ?? 'Esc cancels.'}
+                          {problem ?? 'Esc to cancel.'}
                         </p>
                       )}
                     </li>

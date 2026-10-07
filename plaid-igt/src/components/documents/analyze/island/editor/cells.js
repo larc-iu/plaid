@@ -451,7 +451,7 @@ export const cells = {
       !isValueAllowed(next, tagset)
     ) {
       notifyError(
-        `${this._violationText(validateValue(next, tagset), tagset)}. Escape puts the saved value back`,
+        `${this._violationText(validateValue(next, tagset), tagset)}. Escape to put the saved value back`,
         'Value not allowed',
       );
       // Nothing re-renders after a refusal; the class sync above has already

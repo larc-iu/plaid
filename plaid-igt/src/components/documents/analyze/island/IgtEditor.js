@@ -718,7 +718,7 @@ export class IgtEditor {
           title=${violations.length
             ? this._violationText(violations, tagset)
             : ps
-              ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} accepts it as is`
+              ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} to accept it as is`
               : nothing}
           rows="1"
           spellcheck="false"
@@ -751,7 +751,7 @@ export class IgtEditor {
     const nAlts = !tagset && !this.readOnly && alternatives ? alternatives().length : 0;
     const basis = g ? this._guessBasis(g) : null;
     const baseTitle = g
-      ? `Guess: ${g.value}${basis ? `, ${basis}` : ''}. Enter accepts it, ${keys.words('analyze.accept')} accepts the whole word, typing replaces`
+      ? `Guess: ${g.value}${basis ? `, ${basis}` : ''}. Enter to accept it, ${keys.words('analyze.accept')} to accept the whole word, type to replace`
       : p
         ? this._cellTitle(v, p, origin)
         : filled
@@ -760,7 +760,7 @@ export class IgtEditor {
     const title = violations.length
       ? this._violationText(violations, tagset)
       : nAlts > 1
-        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} lists ${nAlts} values seen for this form`
+        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${nAlts} values seen for this form`
         : (baseTitle ?? nothing);
     // A suggestion out of the lexicon wears the faint teal of a linked
     // morpheme chip, which already means "lexically identified" here. The wash

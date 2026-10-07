@@ -70,8 +70,8 @@ test('a rebound shortcut works, shows in the legend, and survives a reload', asy
 
   await page.getByRole('button', { name: 'Keyboard & scope help' }).click();
   const legend = page.locator('.igt-legend');
-  await expect(legend).toContainText('9 types a zero morph');
-  await expect(legend).toContainText('L lists the rest');
+  await expect(legend).toContainText('9 to type a zero morph');
+  await expect(legend).toContainText('L to list the rest');
 
   await page.goto('/#/profile');
   await page.getByRole('button', { name: 'Reset all' }).click();

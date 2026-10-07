@@ -52,46 +52,47 @@ export const EditorLegend = ({ project }) => {
         </Row>
 
         <Row title="Review">
-          <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>↵</Key> accepts a word and moves to the next ·{' '}
-          <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>⌫</Key> discards the machine&rsquo;s work on it ·{' '}
+          <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>↵</Key> to accept a word and move to the next ·{' '}
+          <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>⌫</Key> to discard the machine&rsquo;s work on it ·{' '}
           <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>⇧</Key>+<Key>↑</Key>
-          <Key>↓</Key> jumps to the next word needing a look. The buttons under a sentence do the
+          <Key>↓</Key> to jump to the next word needing a look. The buttons under a sentence do the
           whole sentence.
         </Row>
 
         <Row title="Grid">
           <Key>Tab</Key> next cell, <Key>⇧</Key>+ previous · <Key>↑</Key>
-          <Key>↓</Key> move rows · <Key>←</Key>
-          <Key>→</Key> move along the row from the ends of a value · <Key>↵</Key> commits,{' '}
-          <Key>Esc</Key> cancels · in FEATS, <Key>⌫</Key> on the empty input selects the last
+          <Key>↓</Key> to move between rows · <Key>←</Key>
+          <Key>→</Key> to move along the row from the ends of a value · <Key>↵</Key> to commit,{' '}
+          <Key>Esc</Key> to cancel · in FEATS, <Key>⌫</Key> on the empty input to select the last
           feature.
         </Row>
 
         <Row title="Text">
           <Key>Alt</Key>+click a word to open its sentence in the Text Editor, or{' '}
-          <strong>Edit text</strong> under the sentence. <Key>Alt</Key>+click a token there comes
+          <strong>Edit text</strong> under the sentence. <Key>Alt</Key>+click a token there to come
           back to it here.
         </Row>
 
         <Row title="Precedent">
-          <Key>Alt</Key>+<Key>↓</Key> in a lemma, XPOS or FEATS cell lists what this project has
+          <Key>Alt</Key>+<Key>↓</Key> in a lemma, XPOS or FEATS cell to list what this project has
           given words like this one, with counts. The lemma asks about the form, the other two about
           the lemma.
         </Row>
 
         <Row title="Tree">
           Drag from one word to another to draw a relation · click a label to rename it ·{' '}
-          <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> jumps into the labels, <Key>←</Key>
-          <Key>→</Key> move between them, <Key>↵</Key> edits, <Key>↓</Key> drops back into the grid.
+          <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> to jump into the labels, <Key>←</Key>
+          <Key>→</Key> to move between them, <Key>↵</Key> to edit, <Key>↓</Key> to drop back into
+          the grid.
         </Row>
 
         <Row title="Enhanced">
           Start drawing a relation with <Key>Ctrl</Key>/<Key>Cmd</Key> held to add it to the
           enhanced graph, shown under the words. Drawn over a relation of the tree, it gives that
           relation a different label there · <Key>Ctrl</Key>/<Key>Cmd</Key>+click a relation of the
-          tree, or <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>E</Key> on its label, leaves it out of the
+          tree, or <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>E</Key> on its label, to leave it out of the
           enhanced graph, shown faded · <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> from the
-          tree&rsquo;s labels moves to the ones under the words, and back.
+          tree&rsquo;s labels to move to the ones under the words, and back.
         </Row>
       </div>
     </details>

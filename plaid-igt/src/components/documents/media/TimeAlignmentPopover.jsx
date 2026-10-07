@@ -304,7 +304,9 @@ export const TimeAlignmentPopover = ({
             </Button>
           </div>
 
-          <p className="text-xs italic text-muted-foreground">Ctrl/Cmd+Enter saves, Esc cancels.</p>
+          <p className="text-xs italic text-muted-foreground">
+            Ctrl/Cmd+Enter to save, Esc to cancel.
+          </p>
         </div>
       </PopoverContent>
     </Popover>

@@ -256,7 +256,7 @@ describe('as a verifier over contributed work', () => {
     const c = cell('ma:m-1:Gloss');
     expect(c.classList.contains('igt-field--contributed')).toBe(true);
     expect(c.title).toBe(
-      'PL: contributed, unverified. Edit to fix, Ctrl+Enter accepts the whole word',
+      'PL: contributed, unverified. Edit to fix, Ctrl+Enter to accept the whole word',
     );
     expect(editor._wordHasUnverified('w-1')).toBe(true);
     focus(c);

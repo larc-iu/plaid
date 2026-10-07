@@ -940,7 +940,7 @@ describe('SentenceBlock keyboard, with no node focused', () => {
     );
     const stop = r.container.querySelector('.umr-graph');
     expect(stop.tabIndex).toBe(0);
-    expect(stop.getAttribute('aria-label')).toBe('No graph. N adds a node.');
+    expect(stop.getAttribute('aria-label')).toBe('No graph. N to add a node.');
     await r.step(() => stop.focus());
     await r.step(() => press(stop, 'n'));
     expect(r.container.querySelector('.umr-inline-editor input')).not.toBeNull();

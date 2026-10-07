@@ -110,7 +110,7 @@ describe('KeyboardSettings', () => {
     const { press, change } = await mount();
     await change('Accept the word');
     await press({ key: 'Control', ctrlKey: true });
-    expect(view.container.querySelector('[role="status"]').textContent).toBe('Esc cancels.');
+    expect(view.container.querySelector('[role="status"]').textContent).toBe('Esc to cancel.');
     await press({ key: 'Process' });
     expect(view.container.querySelector('[role="status"]').textContent).toBe(
       'That key cannot be used.',

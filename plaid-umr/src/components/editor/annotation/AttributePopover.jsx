@@ -278,7 +278,7 @@ export function AttributePopover({
         </div>
       )}
       <div className="umr-attr-hint">
-        Arrows move, Enter picks, Backspace clears the row, Escape closes.
+        Arrows to move, Enter to pick, Backspace to clear the row, Escape to close.
       </div>
     </div>,
     document.body,

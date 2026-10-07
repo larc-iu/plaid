@@ -68,7 +68,7 @@ export const SentenceActions = React.memo(
                 className="accept-predictions-btn plaid-review plaid-review--accept h-6 gap-1 px-2 text-xs"
                 variant="outline"
                 onClick={handleConfirmSentence}
-                title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter does one word."
+                title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter to do one word."
               >
                 <Check width={12} height={12} />
                 Accept predictions
@@ -79,7 +79,7 @@ export const SentenceActions = React.memo(
                 className="discard-predictions-btn plaid-review plaid-review--discard h-6 gap-1 px-2 text-xs"
                 variant="outline"
                 onClick={handleDiscardSentence}
-                title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace does one word."
+                title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace to do one word."
               >
                 <Undo2 width={12} height={12} />
                 Discard predictions
@@ -101,7 +101,7 @@ export const SentenceActions = React.memo(
                 className="edit-text-btn sentence-action h-6 gap-1 px-2 text-xs"
                 variant="ghost"
                 onClick={onEditText}
-                title="Open this sentence in the Text Editor. Alt+click a word does the same."
+                title="Open this sentence in the Text Editor. Alt+click a word to do the same."
               >
                 <PenLine width={12} height={12} />
                 Edit text

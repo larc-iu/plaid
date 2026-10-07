@@ -61,38 +61,38 @@ export function MediaHelp() {
         stretch (from its start when playback is elsewhere) · <Chord id="media.seekBack" />{' '}
         <Chord id="media.seekForward" /> back / forward 1 s · <Chord id="media.faster" />{' '}
         <Chord id="media.slower" /> faster / slower, in the transcript · speed 0.25× to 5×, click
-        the value for 1× · loop repeats the segment until you pause · <Kbd>Esc</Kbd> clears the
+        the value for 1× · loop repeats the segment until you pause · <Kbd>Esc</Kbd> to clear the
         selected stretch
       </Row>
       <Row label="Transcript">
         one row per segment, in time order · moving into a row plays it (switch it off above the
-        rows) · <Kbd>Enter</Kbd> save the row and move to the next · <Kbd>↑</Kbd> <Kbd>↓</Kbd> the
-        row above or below, from the start or end of the text · <Chord id="media.prevRow" />{' '}
-        <Chord id="media.nextRow" /> the same from anywhere in the row · <Kbd>Esc</Kbd> put the row
-        back · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous
-        one to playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text in the
-        baseline unless you tick the box
+        rows) · <Kbd>Enter</Kbd> to save the row and move to the next · <Kbd>↑</Kbd> <Kbd>↓</Kbd>{' '}
+        the row above or below, from the start or end of the text · <Chord id="media.prevRow" />{' '}
+        <Chord id="media.nextRow" /> the same from anywhere in the row · <Kbd>Esc</Kbd> to put the
+        row back · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the
+        previous one to playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text
+        in the baseline unless you tick the box
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
-        <Kbd>←</Kbd> <Kbd>→</Kbd> move between boxes · <Kbd>↑</Kbd> <Kbd>↓</Kbd> step the box
-        (milliseconds by 10, <Kbd>⇧</Kbd>+ by 100) · <Kbd>⌫</Kbd> zeroes the box ·{' '}
-        <Chord id="media.playSegment" /> plays the segment · <Kbd>Enter</Kbd> or leaving the time
-        saves · <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
+        <Kbd>←</Kbd> <Kbd>→</Kbd> to move between boxes · <Kbd>↑</Kbd> <Kbd>↓</Kbd> to step the box
+        (milliseconds by 10, <Kbd>⇧</Kbd>+ by 100) · <Kbd>⌫</Kbd> to zero the box ·{' '}
+        <Chord id="media.playSegment" /> to play the segment · <Kbd>Enter</Kbd> or leave the time to
+        save · <Kbd>Esc</Kbd> to put it back · a segment cannot run into its neighbours
       </Row>
       <Row label="Timeline">
         drag an empty stretch to add a segment, typed fresh or by selecting words already in the
         baseline (<Kbd>⇧</Kbd>+arrows select there) · drag an edge to trim · click a segment to hear
         it and edit its row · in the new-segment popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
-        <Kbd>Enter</Kbd> saves, <Kbd>Esc</Kbd> cancels · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel zooms,
-        wheel pans
+        <Kbd>Enter</Kbd> to save, <Kbd>Esc</Kbd> to cancel · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel to
+        zoom, wheel to pan
       </Row>
       <Row label="Detection">
         the waveform button in the Recording header proposes where the utterances are, in the
         browser · a proposal is dashed on the timeline and dashed in the transcript, and holds no
         text yet · typing into one makes it a segment, saved by <Kbd>Enter</Kbd> or by moving on ·{' '}
-        <Kbd>×</Kbd> discards it · the dialog's settings re-propose without running the model again
-        · proposals are kept with the document until Discard
+        <Kbd>×</Kbd> to discard it · the dialog's settings re-propose without running the model
+        again · proposals are kept with the document until Discard
       </Row>
       <Row label="Speakers">
         a label per segment · the timeline colors each speaker alike · a new segment keeps the last

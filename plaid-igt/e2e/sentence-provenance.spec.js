@@ -71,7 +71,7 @@ test('a machine translation is violet, a sweep stop, and Ctrl+Enter accepts it a
   const tr = page.locator(`.igt-field[data-cell-key="sa:${sid}:${trLayer.name}"]`);
   await expect(tr).toHaveValue('a machine draft');
   await expect(tr).toHaveClass(/igt-field--machine/);
-  await expect(tr).toHaveAttribute('title', /Ctrl\+Enter accepts/);
+  await expect(tr).toHaveAttribute('title', /Ctrl\+Enter to accept/);
   // The review sweep from a word cell lands on the translation.
   const firstCell = page.locator('.igt-island input.igt-field').first();
   await firstCell.click();

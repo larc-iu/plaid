@@ -185,7 +185,7 @@ export const PULSE_CLASS = 'igt-confirmed';
 // the entity) tells a verified value's two origins apart; `contributor`
 // is whether the person looking is one, whose Ctrl+Enter takes machine
 // proposals only.
-const reviewHint = () => `Edit to fix, ${keys.words('analyze.accept')} accepts the whole word`;
+const reviewHint = () => `Edit to fix, ${keys.words('analyze.accept')} to accept the whole word`;
 const provStateText = (state, origin, contributor) => {
   if (state === PROV_STATES.MACHINE) return `machine-made, unverified. ${reviewHint()}`;
   if (state === PROV_STATES.CONTRIBUTED)

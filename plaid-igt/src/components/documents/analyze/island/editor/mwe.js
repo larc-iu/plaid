@@ -420,8 +420,8 @@ export const mwe = {
       content = n >= 2 ? html`${n} words · <kbd>↵</kbd>` : html`add words…`;
       title =
         n >= 2
-          ? 'Enter links these words to one entry · Shift+click adds or removes a word · Esc drops them'
-          : `Shift+click a word, or ${this._gatherKey()} from a cell, to gather it into the multi-word expression · Esc drops it`;
+          ? 'Enter to link these words to one entry · Shift+click to add or remove a word · Esc to drop them'
+          : `Shift+click a word, or ${this._gatherKey()} from a cell, to gather it into the multi-word expression · Esc to drop it`;
     }
     let popover = nothing;
     if (open) {

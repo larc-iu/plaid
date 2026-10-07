@@ -98,7 +98,7 @@ export const review = {
     const adoptions = this._wordGuessAdoptions(wordId);
     if (!adoptions.length && !this._wordHasUnverified(wordId)) {
       notifyInfo(
-        'Everything here was made by a person already. Enter accepts a guess in one cell.',
+        'Everything here was made by a person already. Enter to accept a guess in one cell.',
         'Nothing to accept on this word',
       );
       return true;

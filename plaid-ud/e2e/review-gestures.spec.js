@@ -232,10 +232,10 @@ test('the legend names the gestures, and shows amber only where work is reviewed
   const legend = page.locator('details', { hasText: 'Gestures and marks' });
   await expect(legend).toBeVisible();
   // Closed until asked for: the tip line it replaced was always on screen.
-  await expect(legend.getByText('accepts a word and moves to the next')).toBeHidden();
+  await expect(legend.getByText('to accept a word and move to the next')).toBeHidden();
 
   await legend.locator('summary').click();
-  await expect(legend.getByText('accepts a word and moves to the next')).toBeVisible();
+  await expect(legend.getByText('to accept a word and move to the next')).toBeVisible();
   await expect(legend.getByText('machine-made')).toBeVisible();
   // This project reviews nobody, so there is no such thing as contributed work
   // in it and the row would be about a feature it does not have.

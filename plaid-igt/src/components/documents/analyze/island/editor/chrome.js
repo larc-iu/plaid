@@ -281,9 +281,9 @@ export const chrome = {
             ${ctx.reviewsSomeone
               ? html`<span class="igt-legend__prov--contributed">contributed</span> · `
               : nothing}<span class="igt-legend__prov--verified">confirmed</span> · plain: a
-            person's · ${kbd('analyze.accept')} accepts a word's proposal, ${kbd('analyze.discard')}
-            discards it, ${kbd('analyze.prevUnverified')} and ${kbd('analyze.nextUnverified')} jump
-            between them</span
+            person's · ${kbd('analyze.accept')} to accept a word's proposal,
+            ${kbd('analyze.discard')} to discard it, ${kbd('analyze.prevUnverified')} and
+            ${kbd('analyze.nextUnverified')} to jump between them</span
           >
         </div>
         <div class="igt-legend__row">
@@ -291,7 +291,7 @@ export const chrome = {
           <span
             ><span class="igt-legend__guess">from this project</span> ·
             <span class="igt-legend__guess igt-legend__guess--entry">from the linked entry</span> ·
-            <kbd>↵</kbd> accepts one, ${kbd('analyze.alternatives')} lists the rest</span
+            <kbd>↵</kbd> to accept one, ${kbd('analyze.alternatives')} to list the rest</span
           >
         </div>
         ${ctx.hasMorphemes
@@ -307,16 +307,16 @@ export const chrome = {
           <strong>Navigate</strong>
           <span
             ><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous ·
-            <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>←</kbd><kbd>→</kbd> move along the row from
-            the ends of a value · <kbd>Esc</kbd> cancel edit · <kbd>Alt</kbd>+click a word to open
-            it in Tokenize</span
+            <kbd>↑</kbd><kbd>↓</kbd> to move between rows · <kbd>←</kbd><kbd>→</kbd> to move along
+            the row from the ends of a value · <kbd>Esc</kbd> to cancel an edit ·
+            <kbd>Alt</kbd>+click a word to open it in Tokenize</span
           >
         </div>
         <div class="igt-legend__row">
           <strong>Rows</strong>
           <span
             >click a row label (or <kbd>↵</kbd>/<kbd>Space</kbd> on it) to pick which rows show ·
-            minimized rows stay as a thin stripe · <kbd>Esc</kbd> closes the menu</span
+            minimized rows stay as a thin stripe · <kbd>Esc</kbd> to close the menu</span
           >
         </div>
         ${ctx.hasMorphemes
@@ -324,9 +324,9 @@ export const chrome = {
               <strong>Morphemes</strong>
               <span
                 >type <kbd>-</kbd> to split, <kbd>=</kbd> to split at a clitic (pasting
-                <em>a-b=c</em> splits too) · <kbd>⌫</kbd> at start merges with previous ·
+                <em>a-b=c</em> splits too) · <kbd>⌫</kbd> at the start to merge with the previous ·
                 ${kbd('morph.literalHyphen')} / ${kbd('morph.literalEquals')} literal character ·
-                ${kbd('morph.zero')} types a zero morph <em>∅</em></span
+                ${kbd('morph.zero')} to type a zero morph <em>∅</em></span
               >
             </div>`
           : nothing}

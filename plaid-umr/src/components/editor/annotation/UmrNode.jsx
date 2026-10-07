@@ -299,7 +299,7 @@ export const UmrNode = React.memo(function UmrNode({
                     ? [
                         t.provTitle,
                         clickable
-                          ? 'Click to change. Shift+Backspace in the editor deletes.'
+                          ? 'Click to change. Shift+Backspace in the editor to delete.'
                           : null,
                       ]
                         .filter(Boolean)

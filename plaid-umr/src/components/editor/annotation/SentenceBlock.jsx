@@ -1863,7 +1863,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             // itself is the keyboard's way in, where `n` starts one.
             tabIndex={emptyStop ? 0 : undefined}
             aria-label={
-              emptyStop ? `No graph. ${keys.words('canvas.newRoot')} adds a node.` : undefined
+              emptyStop ? `No graph. ${keys.words('canvas.newRoot')} to add a node.` : undefined
             }
             // Empty space in child mode: a child with no word, where the
             // click was. Only when the press began on empty space too: a drag
