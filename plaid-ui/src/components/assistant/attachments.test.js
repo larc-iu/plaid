@@ -234,7 +234,13 @@ describe('a file a reply made', () => {
     projectId: 'p1',
     userId: 'u@x',
     client: {
-      userData: { get: vi.fn(async (_, key) => (key in values ? { value: values[key] } : null)) },
+      // The real client rejects a missing key with a 404.
+      userData: {
+        get: vi.fn(async (_, key) => {
+          if (key in values) return { value: values[key] };
+          throw Object.assign(new Error('No such entry'), { status: 404 });
+        }),
+      },
     },
   });
   const key = (n) => `igt:assistant:p1:file:c1:f1:part:${n}`;

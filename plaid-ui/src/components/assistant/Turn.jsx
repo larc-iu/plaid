@@ -279,6 +279,7 @@ export const Turn = ({
                     onDownloadFile(f);
                   }}
                   title={`Download ${f.name}`}
+                  aria-label={`Download ${f.name}`}
                   className="max-w-full rounded-full"
                 >
                   <AttachmentChip file={f} icon={Download} className="hover:bg-muted" />

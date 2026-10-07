@@ -19,6 +19,7 @@
 // conversation the message actually goes to rather than whichever one was open
 // when the paperclip was clicked.
 
+import { statusOf } from '../../lib/errors.js';
 import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
 import { pdfText } from './pdfText.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
@@ -344,7 +345,14 @@ export const readStoredFile = async (store, convId, file) => {
   const { client, userId, app, projectId } = store;
   const parts = [];
   for (let n = 0; n < Math.max(1, file.chunks || 1); n += 1) {
-    const got = await client.userData.get(userId, partKey(app, projectId, convId, file.id, n));
+    // The store answers a missing key with a 404, which would otherwise reach
+    // the person as a bare "Not found."
+    const got = await client.userData
+      .get(userId, partKey(app, projectId, convId, file.id, n))
+      .catch((e) => {
+        if (statusOf(e) === 404) return null;
+        throw e;
+      });
     if (typeof got?.value !== 'string') throw new Error(`${file.name} is no longer stored.`);
     parts.push(got.value);
   }

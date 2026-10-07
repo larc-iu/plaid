@@ -74,8 +74,8 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
 };
 
 // The files on an item, as the chips under it name them: what was attached to
-// a question, and what a reply fetched (linked to where it came from, when
-// that is a web address).
+// a question, what a reply fetched (linked to where it came from, when that is
+// a web address), and what a reply made for the user to download.
 const WEB = /^https?:\/\//i;
 const filesLine = (label, files) =>
   `*${label}: ${files
@@ -115,7 +115,10 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       if (typeof d.elapsedMs === 'number')
         out.push(`*Answered in ${formatElapsed(d.elapsedMs)}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');
-      if (d.files?.length) out.push(filesLine('Fetched', d.files), '');
+      const fetched = (d.files || []).filter((f) => !f.made);
+      const made = (d.files || []).filter((f) => f.made);
+      if (fetched.length) out.push(filesLine('Fetched', fetched), '');
+      if (made.length) out.push(filesLine('Files', made), '');
       if (d.unavailableProjects?.length)
         out.push(`*${markdownText(couldNotOpen(d.unavailableProjects))}*`, '');
       if (d.text) {

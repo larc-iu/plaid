@@ -35,4 +35,16 @@ describe('conversationToMarkdown', () => {
     expect(out).toContain('*Attached: tolemi\\_grammar.pdf*');
     expect(out).toContain('*Fetched: [g.pdf](<https://r.example/a%20b/g.pdf>), notes.txt*');
   });
+
+  it('names a file a reply made apart from what it fetched', () => {
+    const out = md([
+      {
+        kind: 'assistant',
+        text: 'Here it is.',
+        files: [{ id: 'f4', name: 'words cleaned.csv', made: true }],
+      },
+    ]);
+    expect(out).toContain('*Files: words cleaned.csv*');
+    expect(out).not.toContain('Fetched');
+  });
 });
