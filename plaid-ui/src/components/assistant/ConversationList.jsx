@@ -96,10 +96,10 @@ export const AllProjectsSwitch = ({ checked, onCheckedChange, className }) => (
 // A row from ANOTHER project is a link wherever it appears: only that
 // project's own assistant can answer in that thread, so choosing it is a
 // navigation. A row from this project is a link in the tab, where the
-// conversation is in the URL and so shareable, and a button in the panel,
-// where the URL belongs to the screen behind it. `onPick` is what tells the
-// two apart: in the panel it takes a plain click, and the row is still a link
-// to the conversation on the Assistant screen for a new tab.
+// conversation is in the URL and so shareable. In the panel, where the URL
+// belongs to the screen behind it, a plain click opens the row in the panel
+// (`onPick`), and the row is still a link to the conversation on the Assistant
+// screen, for a new tab.
 //
 // `onDelete` is handed the WHOLE row, because a row from another project is
 // deleted under that project's keys and only the row knows which. It is asked
