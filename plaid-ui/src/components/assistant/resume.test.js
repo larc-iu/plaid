@@ -108,6 +108,30 @@ describe('rewindForRetry', () => {
     expect(out.conv.display).toEqual(c.display);
   });
 
+  it("takes a failed turn's question off and keeps a plan note written after it", () => {
+    // The turn failed, then an older plan was discarded, which writes a note
+    // after the question. A retry that left the question in place would send
+    // it twice.
+    const note = 'The user discarded the plan.';
+    const c = conv(
+      [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'Planned.' },
+        { role: 'user', content: '[Asked from the document "Doc1"]\n\nsecond' },
+        { role: 'user', content: note },
+      ],
+      [
+        { kind: 'user', text: 'first' },
+        { kind: 'assistant', text: 'Planned.' },
+        { kind: 'user', text: 'second' },
+        { kind: 'error', text: 'The model could not answer.' },
+      ],
+    );
+    const out = rewindForRetry(c);
+    expect(out.conv.messages).toEqual([c.messages[0], c.messages[1], c.messages[3]]);
+    expect(out.conv.display).toEqual(c.display);
+  });
+
   it('keeps an earlier answered copy of the same question when the failed turn was dropped', () => {
     const c = conv(
       [

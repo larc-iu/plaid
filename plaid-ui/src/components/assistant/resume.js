@@ -50,18 +50,23 @@ export const rewindForRetry = (conv, { stopped = false } = {}) => {
   // project alone, and says nothing about it.
   const projects = conv.display[i].projects || [];
   // A turn with no answer, lost, failed or stopped, still has the user's
-  // message at the end of the model transcript (stamped by the service when
-  // the turn got that far), and it comes off so the retry sends it once.
+  // message in the model transcript (stamped by the service when the turn
+  // got that far), and it comes off so the retry sends it once. Only that
+  // message: a note written after it (a plan approved or discarded since)
+  // stays.
   // A turn whose answer was saved but whose save went unanswered has the
   // message AND the answer, the message stamped by the service: the
   // transcript goes back to before that message, or the retry sends it twice.
   const { messages } = conv;
   const answered = conv.display.slice(i + 1).some((d) => d.kind === 'assistant');
-  const at = answered
-    ? messages.findLastIndex((m) => isMessage(m, text))
-    : isMessage(messages.at(-1), text)
-      ? messages.length - 1
-      : -1;
+  const last = messages.findLastIndex((m) => isMessage(m, text));
+  const at = answered || messages.slice(last + 1).every((m) => m?.role === 'user') ? last : -1;
+  const rewound =
+    at < 0
+      ? messages
+      : answered
+        ? messages.slice(0, at)
+        : [...messages.slice(0, at), ...messages.slice(at + 1)];
   const ended = i < conv.display.length - 1;
   const unanswered = stopped
     ? { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() }
@@ -77,7 +82,7 @@ export const rewindForRetry = (conv, { stopped = false } = {}) => {
     projects,
     conv: {
       ...conv,
-      messages: at >= 0 ? messages.slice(0, at) : messages,
+      messages: rewound,
       display: ended ? conv.display : [...conv.display, unanswered],
     },
   };
