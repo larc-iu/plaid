@@ -25,6 +25,12 @@ from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_a
 from .workspace import Workspace, _need, _refs
 
 
+def refuse_rule_on_merged(ws: Workspace, op) -> None:
+    """A merge of what a planned rule changes a value on (`bulk`)."""
+    from .bulk import refuse_rule_on_merged as refuse
+    refuse(ws, op)
+
+
 def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -> None:
     """A word or sentence takes part in at most one merge per plan, and a
     merge takes no word or sentence another shape op changes. A repeated
@@ -215,11 +221,13 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     note += loss_note(**count_delete_loss(_other_layers(ws, doc), [w.id for w in words], under=True,
                                           skip=_own_layers(ws)))
     s = next(s for s in doc.sentences if s.id in sents)
-    ws.add_op({'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
-               'morpheme_ids': morphs, 'spans': spans, 'links': links,
-               'mwe_ids': [l.id for l in collapsed],
-               'label': f'{ws.doc_label(doc.id)} s{s.index}: merge ' + ' + '.join(f'w{w.index} "{w.surface}"' for w in words)
-                        + f' → "{merged}"{note}'})
+    op = {'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
+          'morpheme_ids': morphs, 'spans': spans, 'links': links,
+          'mwe_ids': [l.id for l in collapsed],
+          'label': f'{ws.doc_label(doc.id)} s{s.index}: merge ' + ' + '.join(f'w{w.index} "{w.surface}"' for w in words)
+                   + f' → "{merged}"{note}'}
+    refuse_rule_on_merged(ws, op)
+    ws.add_op(op)
     return ws.planned_note(1)
 
 
@@ -304,9 +312,11 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     _guard(ws, prev, f's{prev.index}', merging=True)
     spans = _joined_spans([prev, s], ws.project)
     comb = _combined_values(spans, ws.project)
-    ws.add_op({'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
-               'label': f'{ws.doc_label(doc.id)}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'
-                        + (f' (values combined: {comb})' if comb else '')})
+    op = {'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
+          'label': f'{ws.doc_label(doc.id)}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'
+                   + (f' (values combined: {comb})' if comb else '')}
+    refuse_rule_on_merged(ws, op)
+    ws.add_op(op)
     return ws.planned_note(1)
 
 

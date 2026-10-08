@@ -654,6 +654,8 @@ def t_plan_status(ws: Workspace) -> str:
     if not ws.ops:
         return 'The plan is empty.'
     from .plan import settle_merges
+    from .bulk import settle_rules
+    settle_rules(ws)
     lines = [f'{len(ws.ops)} planned change{"s" if len(ws.ops) != 1 else ""} (nothing written yet):']
     # Each merge as the card shows it: less the links another change takes.
     lines.extend(f'  {i + 1}. {op["label"]}' for i, op in enumerate(settle_merges(ws.ops)[0][:200]))

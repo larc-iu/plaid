@@ -717,7 +717,7 @@ def test_a_replacement_is_one_rule_resolved_at_approval():
     op = w.ops[0]
     assert op['kind'] == 'bulk_scope' and op['tool'] == 'replace_in_field' and op['count'] == 3
     assert op['documents'] == ['d1'] and op['args']['pattern'] == 'ali'
-    assert summarize(w.ops) == '3 field values'
+    assert summarize(w.ops) == 'Gloss "ali" → "Bob" (3 values)'
     payload = w.plan_payload()
     assert [d['id'] for d in payload['documents']] == ['d1']
     counts = execute_plan(w.client, payload['ops'], source='s', label='l', project=w.project)

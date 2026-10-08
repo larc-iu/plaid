@@ -59,6 +59,11 @@ def _by_document(ws: Workspace, ops: List[Dict[str, Any]]) -> str:
     return '\n' + line if line else ''
 
 
+def _doc_of_op(ws: Workspace, op: Dict[str, Any]) -> Optional[str]:
+    from .changes import _doc_of
+    return op.get('doc') or _doc_of(ws, op)
+
+
 def _check_cap(n: int):
     if n > PLAN_MAX_OPS:
         raise ToolError(f'That would change {n} items, more than the {PLAN_MAX_OPS} one plan may hold. '
@@ -84,7 +89,8 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                             'whole': whole, 'case_sensitive': case_sensitive, 'document': doc_id},
                            ('regex', 'whole', 'case_sensitive'))
     args['replacement'] = replacement or ''
-    how = ' (regex)' if regex else ' (whole value)' if whole else ' (part of a value)'
+    shown, still_regex = rules.pattern_words(pattern, bool(regex))
+    how = (' (regex)' if still_regex else '') if regex else ' (whole value)' if whole else ' (part of a value)'
     if forms:
         name, unit = 'morpheme form', ('morpheme form', 'morpheme forms')
     else:
@@ -93,14 +99,16 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
 
     def restate(op, _found):
         # An earlier planned value on the field is rewritten in place, as the
-        # value the plan would leave there.
+        # value the plan would leave there, in the document named if one is.
         if forms or op.get('kind') != 'set_span' or op.get('layer_id') != f.layer_id:
+            return None
+        if doc_id is not None and _doc_of_op(ws, op) != doc_id:
             return None
         new = rep(op.get('value') or '')
         return new if new != (op.get('value') or '') and (op.get('value') or '') != '' else None
     return _stage_rule(ws, 'replace_in_field', args, unit,
-                       change=f'{name} "{pattern}" → "{replacement}"',
-                       head=f'{name}: replace "{pattern}" with "{replacement}"{how}',
+                       change=f'{name} {shown} → "{replacement}"',
+                       head=f'{name}: replace {shown} with "{replacement}"{how}',
                        what='morpheme forms' if forms else f'{name} values', restate=restate)
 
 
@@ -386,15 +394,25 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
         return out + left_for_analysis(left)
     docs = op['documents']
     _clear_of_reshapes(ws, docs, values_only=_values_only(kept))
-    same = [i for i, o in enumerate(ws.ops) if rules.is_rule(o) and rules.target(o) == key]
-    full = rules.too_many(KIND, [o for i, o in enumerate(ws.ops) if i not in same], len(kept) - 1, docs)
-    if full:
-        raise ToolError(full)
+    before = ws.rule_found.get(key)
+    try:
+        with ws.staging():
+            _rewrite_planned(ws, rewrites)
+            ws.add_op(op)
+            ws.rule_found[key] = found
+            # An earlier rule leaves to this one what this one changes again,
+            # so the plan is measured once every rule is counted as it writes.
+            settle_rules(ws)
+            full = rules.too_many(KIND, ws.ops)
+            if full:
+                raise ToolError(full)
+    except BaseException:
+        if before is None:
+            ws.rule_found.pop(key, None)
+        else:
+            ws.rule_found[key] = before
+        raise
     ws.note_versions(docs)
-    with ws.staging():
-        _rewrite_planned(ws, rewrites)
-        ws.add_op(op)
-    ws.rule_found[key] = found
     n, accepted = len(kept), op[work.COUNTED]
     sample = [c['label'] for c in op[CARD]['sample']]
     return (ws.planned_note(1) + f'\n  One change covering {rules.count_line(n, unit, len(docs))}.'
@@ -416,48 +434,161 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
     # would write are held to their layers' lists here.
     for o in found:
         ws.refuse_off_list(o)
-    explicit = {op_target(o) for o in ws.ops if not rules.is_rule(o) and o.get('kind') not in SCOPES} - {None}
+    keep = rule_keep(ws, ws.ops)
+    kept = [o for o in found if keep(o)]
     analysed = analysed_morphemes(ws.ops)
-    kept = [o for o in found if op_target(o) not in explicit and not ws.moot_under(o, analysed)]
     left = sum(1 for o in found if ws.moot_under(o, analysed))
+    _refuse_merged_away(ws, found)
+    op = {'kind': 'bulk_scope', 'tool': tool, 'args': args,
+          'matched': rules.matched(KIND, found, lambda o: o.get('doc'), ws.replaces_work),
+          'change': change, 'head': head, 'unit': unit}
+    if ws.prefer_scan:
+        # A workspace that cannot query (the tests' fake) found it by reading
+        # every document, and approval finds it the same way.
+        op['scan'] = True
+    return _counted(ws, op, kept), found, kept, left
+
+
+def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """``op`` with what the rule writes (``kept``) counted: its total, the
+    count per kind, its documents, how many replace a person's work, its line
+    and its card row. What it matched (its digest) is left as it is."""
     docs = sorted({o['doc'] for o in kept if o.get('doc')})
     counts: Dict[str, int] = {}
     for o in kept:
         counts[o['kind']] = counts.get(o['kind'], 0) + 1
     accepted = ws.count_replaced_work(kept)
-
-    def doc_of(o):
-        return o.get('doc')
+    unit = op.get('unit') or ['change', 'changes']
 
     def describe(o):
         from .changes import describe_change
         return describe_change(ws, {**o, work.FLAG: ws.replaces_work(o)})
-    op = {'kind': 'bulk_scope', 'tool': tool, 'args': args, 'count': len(kept), 'counts': counts,
-          'documents': docs, work.COUNTED: accepted,
-          'matched': rules.matched(KIND, found, doc_of, ws.replaces_work),
-          'change': change, 'head': head, 'unit': unit,
-          'label': f'{head}, {rules.count_line(len(kept), unit, len(docs))}' + work.counted_phrase(accepted)}
-    if ws.prefer_scan:
-        # A workspace that cannot query (the tests' fake) found it by reading
-        # every document, and approval finds it the same way.
-        op['scan'] = True
-    op[CARD] = rules.card(op, kept, doc_of, lambda d: ws.corpus.doc_name(d), describe, ws.replaces_work)
-    return op, found, kept, left
+    out = {**op, 'count': len(kept), 'counts': counts, 'documents': docs, work.COUNTED: accepted,
+           'label': f'{op["head"]}, {rules.count_line(len(kept), unit, len(docs))}' + work.counted_phrase(accepted)}
+    out[CARD] = rules.card(out, kept, lambda o: o.get('doc'), lambda d: ws.corpus.doc_name(d), describe,
+                           ws.replaces_work)
+    return out
+
+
+def rule_keep(ws: Workspace, ops: List[Dict[str, Any]]):
+    """Whether a change a rule found is one it writes, given the plan
+    ``ops``: not when the plan names a change of its own on the same target
+    (that change wins, whichever came first), when a planned analysis rewrites
+    the morpheme it is on, or when the plan certainly removes what it is on.
+    Staging and approval (``igt.plan.resolve_scopes``) ask the same question."""
+    from .plan import rule_keep as keep
+    return keep(ws, ops)
+
+
+def settle_rules(ws: Workspace) -> None:
+    """Each rule's count, documents, card and line as approval writes it:
+    less what a change the plan names sets itself (staged before the rule or
+    after it), what the plan removes, what a planned analysis rewrites, and
+    what a later rule changes again. That later rule writes the value both
+    leave, so a value two rules change is counted once, on the later row.
+    What a rule matched, which approval checks, is left as found."""
+    idx = [i for i, op in enumerate(ws.ops) if rules.is_rule(op) and op.get('head') is not None
+           and rules.target(op) in ws.rule_found]
+    if not idx:
+        return
+    keep = rule_keep(ws, ws.ops)
+    later: set = set()
+    for i in reversed(idx):
+        op = ws.ops[i]
+        writes = [o for o in ws.rule_found[rules.target(op)] if keep(o)]
+        kept = [o for o in writes if op_target(o) not in later]
+        later |= {op_target(o) for o in writes} - {None}
+        if op.get('count') == len(kept) and op.get(CARD) is not None \
+                and op[CARD].get('total') == len(kept):
+            continue
+        ws.ops[i] = _counted(ws, op, kept)
+
+
+def later_rule_wins(ops: List[Dict[str, Any]], rule_rows: set, row_key: str) -> List[Dict[str, Any]]:
+    """``ops`` as approval resolved them, less each change a rule found that
+    a later rule changes again (``rule_rows`` are the rules' rows, read from
+    ``row_key``). The later one was found over the value the earlier one
+    leaves, so it writes the value both make, once."""
+    if not rule_rows:
+        return ops
+    later: Dict[Any, Any] = {}
+    out: List[Dict[str, Any]] = []
+    for o in reversed(ops):
+        row = o.get(row_key)
+        if row in rule_rows:
+            t = op_target(o)
+            if t is not None and later.get(t, row) != row:
+                continue
+            if t is not None:
+                later.setdefault(t, row)
+        out.append(o)
+    out.reverse()
+    return out
+
+
+def _merged_away(ws: Workspace) -> Dict[str, Dict[str, Any]]:
+    """The words and sentences a merge in the plan takes away, each with that
+    merge. Their values are not removed: the merge joins them into the
+    survivor's."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for op in ws.ops:
+        if op.get('kind') == 'merge_words':
+            for w in op.get('other_ids') or []:
+                out[w] = op
+        elif op.get('kind') == 'merge_sentences' and op.get('other_id'):
+            out[op['other_id']] = op
+    return out
+
+
+def _refuse_merged_away(ws: Workspace, found: List[Dict[str, Any]]) -> None:
+    """A rule may not change a value on a word or sentence a merge in the plan
+    takes away: the merge joins that value into the survivor's, so leaving
+    the change out would keep the old value there, and what is gone cannot be
+    written. Refused as a change named one by one is, in either order
+    (:func:`refuse_rule_on_merged`)."""
+    gone = _merged_away(ws)
+    if not gone:
+        return
+    for o in found:
+        merge = gone.get(o.get('token_id')) if o.get('kind') == 'set_span' else None
+        if merge is not None:
+            from ..core.opkind import clash_message
+            raise ToolError(clash_message(o, merge))
+
+
+def refuse_rule_on_merged(ws: Workspace, merge: Dict[str, Any]) -> None:
+    """The refusal :func:`_refuse_merged_away` owes the other way round: a
+    merge staged after a rule that changes a value on what it takes away."""
+    if not any(rules.is_rule(op) for op in ws.ops):
+        return
+    ids = set(merge.get('other_ids') or []) | ({merge['other_id']} if merge.get('other_id') else set())
+    for op in ws.ops:
+        if not rules.is_rule(op):
+            continue
+        for o in ws.rule_found.get(rules.target(op), []):
+            if o.get('kind') == 'set_span' and o.get('token_id') in ids:
+                from ..core.opkind import clash_message
+                raise ToolError(clash_message(o, merge))
 
 
 def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
-    """The plan with each rule in its place as the changes it stands for now
-    (what it found when staged, less what the plan's own changes take), for a
-    reader that wants every change one by one."""
-    explicit = {op_target(o) for o in ws.ops if not rules.is_rule(o) and o.get('kind') not in SCOPES} - {None}
-    analysed = analysed_morphemes(ws.ops)
-    out: List[Dict[str, Any]] = []
-    for op in ws.ops:
+    """The plan with each rule in its place as the changes it writes now
+    (what it found when staged, less what the plan's own changes and later
+    rules take, as :func:`settle_rules` counts it), for a reader that wants
+    every change one by one."""
+    keep = rule_keep(ws, ws.ops)
+    later: set = set()
+    per: Dict[int, List[Dict[str, Any]]] = {}
+    for i in reversed(range(len(ws.ops))):
+        op = ws.ops[i]
         if not rules.is_rule(op):
-            out.append(op)
             continue
-        out.extend(o for o in ws.rule_found.get(rules.target(op), [])
-                   if op_target(o) not in explicit and not ws.moot_under(o, analysed))
+        writes = [o for o in ws.rule_found.get(rules.target(op), []) if keep(o)]
+        per[i] = [o for o in writes if op_target(o) not in later]
+        later |= {op_target(o) for o in writes} - {None}
+    out: List[Dict[str, Any]] = []
+    for i, op in enumerate(ws.ops):
+        out.extend(per[i] if i in per else [op])
     return out
 
 

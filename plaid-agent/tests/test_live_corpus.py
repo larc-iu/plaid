@@ -121,7 +121,8 @@ def same_ops(proj, tool, args):
     path also stamps each op with its document."""
     a, b = two(proj)
     ra, rb = call_tool(a, tool, args), call_tool(b, tool, args)
-    strip = lambda ops: [{k: v for k, v in op.items() if k != 'doc'} for op in ops]  # noqa: E731
+    # A rule staged by the scan path says so (`scan`), so approval finds it the same way.
+    strip = lambda ops: [{k: v for k, v in op.items() if k not in ('doc', 'scan')} for op in ops]  # noqa: E731
     assert strip(b.ops) == strip(a.ops), f'{tool} {args}\n--- scan ---\n{ra}\n{a.ops}\n--- query ---\n{rb}\n{b.ops}'
     assert rb == ra, f'{tool} {args}\n--- scan ---\n{ra}\n--- query ---\n{rb}'
     return b
@@ -140,7 +141,8 @@ def test_bulk_tools_plan_the_same_ops(proj):
     same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
     # akuna has no morpheme token: both paths reach its derived morpheme.
     b = same_ops(proj, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
-    assert [op['token_id'] for op in b.ops] == [f'virtual:{proj.ids["w-3"]}']
+    from plaid_agent.igt.bulk import planned_changes
+    assert [op['token_id'] for op in planned_changes(b)] == [f'virtual:{proj.ids["w-3"]}']
     same_ops(proj, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     same_ops(proj, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}], 'skip_analyzed': True})
     same_ops(proj, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]})

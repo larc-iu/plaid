@@ -861,6 +861,10 @@ class Workspace(BaseWorkspace):
         from .plan import summarize
         from .changes import describe_changes
         from ..core.plan import compact_ops
+        from .bulk import settle_rules
+        # Each rule counted as approval writes it, after every change staged
+        # since it.
+        settle_rules(self)
         # A snapshot: the payload must not alias the live list (discard_plan
         # clears it) since it is what the user approves later. Large groups
         # of like ops are stored as one op: a bulk respell cost over a

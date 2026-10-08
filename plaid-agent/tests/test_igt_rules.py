@@ -194,3 +194,74 @@ def test_a_rule_stopped_partway_counts_the_values_it_wrote(monkeypatch):
     helper = _approve(APPS['igt'](), client, plan)
     [done] = helper.done
     assert done['message'].startswith('Partly applied: 2 of 5 changes written.'), done
+
+
+# --- REV-RULES-1 ---------------------------------------------------------------------
+
+def test_a_rule_in_one_document_leaves_a_value_planned_in_another_as_it_is():
+    store = {'sp-g1': 'VASP', 'sp-y1': 'VASP'}
+    client, w = _ws(store)
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'VASP.X'})
+    out = _replace(w, 'VASP', 'ASP', document='d2')
+    assert 'rewritten' not in out, out
+    assert w.ops[0]['value'] == 'VASP.X'
+
+
+def test_a_value_two_rules_change_is_counted_once_and_written_once():
+    store = {'sp-g1': 'X', 'sp-x2': 'X.Y', 'sp-x3': 'Q'}
+    client, w = _ws(store)
+    _replace(w, 'X', 'A', whole=True)
+    _replace(w, r'\bX\b', 'B', regex=True)
+    _replace(w, 'Y', 'Z')
+    payload = w.plan_payload()
+    # X → A takes sp-g1 alone, \bX\b finds X.Y and Y → Z writes what both leave.
+    assert [r['rule']['total'] for r in payload['changes']] == [1, 0, 1], payload['changes']
+    assert payload['summary'] == ('Gloss "X" → "A" (1 value), Gloss "Y" → "Z" (1 value)')
+    _plan, helper = _approved(client, w)
+    assert not helper.errors, helper.errors
+    assert client.updates('spans') == [('sp-g1', 'A'), ('sp-x2', 'B.Z')]
+
+
+def test_a_rule_counts_what_it_writes_after_a_value_named_later():
+    store = {'sp-g1': 'VASP', 'sp-x2': 'VASP', 'sp-x3': 'VASP'}
+    client, w = _ws(store)
+    _replace(w, 'VASP', 'ASP')
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'mine'})
+    payload = w.plan_payload()
+    assert payload['changes'][0]['rule']['total'] == 2
+    assert payload['summary'] == 'Gloss "VASP" → "ASP" (2 values), 1 field value', payload['summary']
+    _plan, helper = _approved(client, w)
+    assert not helper.errors, helper.errors
+    # w2's value is the named one, made as a value of its own (the fake
+    # document holds no span there).
+    assert dict(client.updates('spans')) == {'sp-g1': 'ASP', 'sp-x3': 'ASP'}
+    assert [c['args'][2] for c in client.payloads('spans.create')] == ['mine']
+
+
+def test_a_rule_and_a_merge_of_what_it_changes_refuse_each_other():
+    store = {'sp-x3': 'VASP'}
+    client, w = _ws(store)
+    _replace(w, 'VASP', 'ASP')
+    out = call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert 'writes to something this plan deletes' in out and len(w.ops) == 1, out
+    client, w = _ws(store)
+    call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    out = _replace(w, 'VASP', 'ASP')
+    assert 'writes to something this plan deletes' in out and len(w.ops) == 1, out
+
+
+def test_a_regular_expression_is_said_as_a_person_reads_it():
+    store = {'sp-g1': 'RL', 'sp-x2': 'RL.3'}
+    client, w = _ws(store)
+    _replace(w, r'\bRL\b', 'REAL', regex=True)
+    [row] = w.plan_payload()['changes']
+    assert row['change'] == 'Gloss "RL" as a whole word → "REAL"'
+    assert row['label'].startswith('Gloss: replace "RL" as a whole word with "REAL", 2 values')
+    assert rules.pattern_words(r'^RL$', True) == ('"RL" as the whole value', False)
+    assert rules.pattern_words(r'R(L|X)', True) == ('matching "R(L|X)"', True)
+
+
+def test_a_sample_of_changes_that_all_replace_work_is_spread_over_the_documents():
+    ops = [{'doc': d, 'i': i} for d in ('a', 'b', 'c') for i in range(10)]
+    picked = rules.sample(ops, lambda o: o['doc'], lambda o: 1, n=6)
+    assert sorted({o['doc'] for o in picked}) == ['a', 'b', 'c'] and len(picked) == 6

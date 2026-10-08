@@ -218,41 +218,43 @@ def ranked(counts: Dict[str, int]) -> List[Tuple[str, int]]:
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0] or ''))
 
 
-def sample(ops: List[Dict[str, Any]], doc_of: Callable[[Dict[str, Any]], Optional[str]],
-           replaces: Callable[[Dict[str, Any]], int], n: int = SAMPLE_LINES) -> List[Dict[str, Any]]:
-    """``n`` of a rule's changes to show: those replacing a person's work
-    first, then taken evenly down the documents ranked by how many changes
-    each holds, a few from each, never a run from the largest alone."""
-    if len(ops) <= n:
-        return list(ops)
+def _spread(ops: List[Dict[str, Any]], doc_of: Callable[[Dict[str, Any]], Optional[str]],
+            n: int) -> List[Dict[str, Any]]:
+    """``n`` of ``ops`` taken evenly down their documents ranked by how many
+    each holds: one from each of ``n`` documents spaced along the ranking
+    when there are more documents than that, else one from each in turn."""
     by: Dict[Any, List[Dict[str, Any]]] = {}
     for op in ops:
         by.setdefault(doc_of(op), []).append(op)
     order = [d for d, _ in ranked({d: len(v) for d, v in by.items()})]
-    flagged = [op for op in ops if replaces(op)][:n]
-    picked = list(flagged)
-    seen = {id(op) for op in picked}
+    if len(order) > n:
+        return [by[order[i * len(order) // n]][0] for i in range(n)]
+    out: List[Dict[str, Any]] = []
+    at = 0
+    while len(out) < n and len(out) < len(ops):
+        for d in order:
+            if at < len(by[d]):
+                out.append(by[d][at])
+                if len(out) >= n:
+                    break
+        at += 1
+    return out
+
+
+def sample(ops: List[Dict[str, Any]], doc_of: Callable[[Dict[str, Any]], Optional[str]],
+           replaces: Callable[[Dict[str, Any]], int], n: int = SAMPLE_LINES) -> List[Dict[str, Any]]:
+    """``n`` of a rule's changes to show: those replacing a person's work
+    first, then the rest, each taken evenly down the documents ranked by how
+    many changes each holds (:func:`_spread`), never a run from the largest
+    alone. A correction of a person's work replaces it everywhere, so its
+    sample is spread too."""
+    if len(ops) <= n:
+        return list(ops)
+    flagged = [op for op in ops if replaces(op)]
+    picked = flagged if len(flagged) <= n else _spread(flagged, doc_of, n)
     if len(picked) < n:
-        # Every k-th document of the ranking, one change at a time, until
-        # enough are taken.
-        step = max(1, len(order) // (n - len(picked)))
-        cursors = {d: 0 for d in order}
-        while len(picked) < n:
-            took = False
-            for d in order[::step] + [d for i, d in enumerate(order) if i % step]:
-                rows = by[d]
-                while cursors[d] < len(rows) and id(rows[cursors[d]]) in seen:
-                    cursors[d] += 1
-                if cursors[d] < len(rows):
-                    op = rows[cursors[d]]
-                    picked.append(op)
-                    seen.add(id(op))
-                    cursors[d] += 1
-                    took = True
-                    if len(picked) >= n:
-                        break
-            if not took:
-                break
+        seen = {id(op) for op in picked}
+        picked = picked + _spread([op for op in ops if id(op) not in seen], doc_of, n - len(picked))
     keep = {id(op) for op in picked}
     return [op for op in ops if id(op) in keep]
 
@@ -275,6 +277,76 @@ def card(op: Dict[str, Any], found: List[Dict[str, Any]], doc_of: Callable[[Dict
             'documents': [[d, name_of(d), n] for d, n in order[:DOCUMENTS_MAX]],
             'documents_more': [len(rest), sum(n for _, n in rest)],
             'sample': [describe(o) for o in sample(found, doc_of, replaces)]}
+
+
+# --- a pattern as a person reads it ----------------------------------------------
+
+_META = set('\\^$.|?*+()[]{}')
+
+
+def _literal(pattern: str) -> Optional[str]:
+    """The text a regular expression matches when it is plain text (an
+    escaped punctuation mark counts as itself), or None."""
+    out, i = [], 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == '\\':
+            if i + 1 < len(pattern) and not pattern[i + 1].isalnum():
+                out.append(pattern[i + 1])
+                i += 2
+                continue
+            return None
+        if ch in _META:
+            return None
+        out.append(ch)
+        i += 1
+    return ''.join(out) or None
+
+
+def pattern_words(pattern: str, regex: bool) -> Tuple[str, bool]:
+    """(what a pattern matches as a person would read it, whether that still
+    needs saying it is a regular expression). ``\\bREAL\\b`` is ``"REAL" as
+    a whole word``, ``^REAL$`` is ``"REAL" as the whole value``, plain text
+    is itself in quotes, and anything else is ``matching "<pattern>"``."""
+    if not regex:
+        return f'"{pattern}"', False
+    if pattern.startswith('\\b') and pattern.endswith('\\b') and len(pattern) > 4:
+        lit = _literal(pattern[2:-2])
+        if lit is not None:
+            return f'"{lit}" as a whole word', False
+    if pattern.startswith('^') and pattern.endswith('$') and not pattern.endswith('\\$'):
+        lit = _literal(pattern[1:-1])
+        if lit is not None:
+            return f'"{lit}" as the whole value', False
+    lit = _literal(pattern)
+    if lit is not None:
+        return f'"{lit}"', False
+    return f'matching "{pattern}"', True
+
+
+#: Rules a plan's one-line summary names in their own words. The rest are
+#: counted with the plan's other changes.
+SUMMARY_RULES = 3
+
+
+def phrase(op: Dict[str, Any]) -> str:
+    """A rule in the plan's summary: ``Field "VASP" → "ASP" (1,240 values)``."""
+    unit = op.get('unit') or ('change', 'changes')
+    return f'{op.get("change") or op.get("tool")} ({_plural(total(op), *unit)})'
+
+
+def named(ops: Iterable[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """(the first :data:`SUMMARY_RULES` rules that write anything, as
+    :func:`phrase` says them, every other op): a plan's summary names those
+    rules and counts the rest by kind."""
+    said: List[str] = []
+    rest: List[Dict[str, Any]] = []
+    for op in ops:
+        if is_rule(op) and op.get('change') and total(op) > 0 and len(said) < SUMMARY_RULES:
+            said.append(phrase(op))
+        else:
+            rest.append(op)
+    return said, rest
 
 
 def count_line(n: int, unit: Tuple[str, str], documents: int) -> str:

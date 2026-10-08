@@ -1357,20 +1357,8 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
         return ops
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
-    from .workspace import op_target
-    # A change the model made by name beats one a scope finds at approval,
-    # whichever came first (the scope previewed stored values, not planned).
-    explicit = {op_target(op) for op in ops if not ok.resolver(KIND, op)} - {None}
-    # A value on a morpheme an analysis of the plan rewrites is moot, and one
-    # on a token the plan removes has nothing to land on: both are left out,
-    # as staging left them out of the count.
-    analysed = analysed_morphemes(ops)
-    removed = ok.removed_ids(KIND, [op for op in ops if not ok.resolver(KIND, op)], only_certain=True)
     res = Resolution(client, project, requester)
-
-    def keep(o):
-        return (op_target(o) not in explicit and not res.ws.moot_under(o, analysed)
-                and not ({o.get('token_id'), o.get('word_id'), o.get('morpheme_id')} & removed))
+    keep = rule_keep(res.ws, ops)
 
     def check(op, found):
         # A rule must find what it found when it was staged, in every
@@ -1381,7 +1369,29 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
                                 lambda d: _doc_name(res.ws, d))
         else:
             check_reach(op, found, lambda o: o.get('doc'))
-    return ok.resolve_ops(KIND, res, ops, keep, check=check)
+    out = ok.resolve_ops(KIND, res, ops, keep, check=check)
+    # A value two rules change is written once, by the later one, as staging
+    # counted it (`bulk.settle_rules`).
+    from .bulk import later_rule_wins
+    return later_rule_wins(out, {op[ok.ROW] for op in ops if rules.is_rule(op) and ok.ROW in op}, ok.ROW)
+
+
+def rule_keep(ws, ops: List[Dict[str, Any]]):
+    """Whether a change a rule found is one it writes, given the plan ``ops``
+    (`bulk.rule_keep`): a change the model made by name beats one a rule
+    finds, whichever came first (the rule previewed stored values, not
+    planned), a value on a morpheme an analysis of the plan rewrites is moot,
+    and one on what the plan certainly removes has nothing to land on."""
+    from .workspace import op_target
+    named = [op for op in ops if not ok.resolver(KIND, op)]
+    explicit = {op_target(op) for op in named} - {None}
+    analysed = analysed_morphemes(ops)
+    removed = ok.removed_ids(KIND, named, only_certain=True)
+
+    def keep(o):
+        return (op_target(o) not in explicit and not ws.moot_under(o, analysed)
+                and not ({o.get('token_id'), o.get('word_id'), o.get('morpheme_id')} & removed))
+    return keep
 
 
 def _doc_name(ws, doc_id: str) -> str:
@@ -1886,4 +1896,11 @@ def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
-    return ok.summarize(KIND, expand_ops(ops))
+    """The plan in one phrase, for the card, the audit label and the applied
+    message. A rule is named in its own words (`core.rules.phrase`), the
+    first few of them, and everything else is counted by kind."""
+    named, rest = rules.named(ops)
+    tail = ok.summarize(KIND, expand_ops(rest)) if rest else ''
+    if named and tail == 'no changes':
+        tail = ''
+    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(KIND, [])
