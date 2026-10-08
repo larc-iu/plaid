@@ -147,6 +147,10 @@ const ConversationDetail = ({ client, row, onBack }) => {
                   projectId={row.projectId}
                   projectName={row.projectName}
                   adapter={adapter}
+                  client={client}
+                  owner={row.userId}
+                  app={row.app}
+                  appLabel={row.app === OWN_APP ? null : row.app}
                 />
               )}
             </div>

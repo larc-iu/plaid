@@ -18,6 +18,7 @@ import { AttachmentChip } from './AttachmentChip.jsx';
 import { PlanCard } from './PlanCard.jsx';
 import { homeOnly, namedCitations } from './projectReach.js';
 import { AssistantMark } from './PlaidMarks.jsx';
+import { useExport } from './exportContext.js';
 
 // One turn of a conversation as drawn: the reply with its citations, the
 // example cards a citation opens, the plan it proposed, and the tool trace
@@ -99,6 +100,21 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
 const CitedExamples = ({ cited, projectId, adapter }) => {
   const { ExampleCard } = adapter;
   const [open, setOpen] = useState(false);
+  const label = cited.length === 1 ? '1 cited example' : `${cited.length} cited examples`;
+  // The web page export is read with no script: the same fold, as markup.
+  if (useExport())
+    return (
+      <details className="mt-2">
+        <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground">
+          <ChevronRight className="plaid-export-chevron h-3 w-3" />
+          <Quote className="h-3 w-3" />
+          {label}
+        </summary>
+        {cited.map((c) => (
+          <ExampleCard key={c.key} c={c} projectId={c.projectId ?? projectId} />
+        ))}
+      </details>
+    );
   return (
     <div className="mt-2">
       {/* The muted, small type is the button's own and not the container's: a
@@ -111,7 +127,7 @@ const CitedExamples = ({ cited, projectId, adapter }) => {
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <Quote className="h-3 w-3" />
-        {cited.length === 1 ? '1 cited example' : `${cited.length} cited examples`}
+        {label}
       </button>
       {open &&
         cited.map((c) => <ExampleCard key={c.key} c={c} projectId={c.projectId ?? projectId} />)}
@@ -158,6 +174,7 @@ export const Turn = ({
   // read the owner's store, and then the file is only named.
   onDownloadFile = null,
 }) => {
+  const shownFiles = useExport()?.fileBody ?? null;
   if (item.kind === 'user') {
     return (
       <div className="flex flex-col items-end gap-1">
@@ -299,6 +316,8 @@ export const Turn = ({
             )}
           </div>
         )}
+        {/* The web page export shows a table the reply made, small enough. */}
+        {shownFiles && item.files?.map((f) => <Fragment key={f.id}>{shownFiles(f)}</Fragment>)}
         {item.unavailableProjects?.length > 0 && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <FolderOpen className="h-3 w-3 shrink-0" />
@@ -364,6 +383,40 @@ export const Turn = ({
 const ToolTrace = ({ steps, summary, results }) => {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(null);
+  // The web page export: the same two folds, as markup, shut.
+  if (useExport())
+    return (
+      <details className="text-xs text-muted-foreground">
+        <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5">
+          <ChevronRight className="plaid-export-chevron h-3 w-3" />
+          <Wrench className="h-3 w-3" />
+          {summary}
+        </summary>
+        <ol className="mt-1 flex flex-col gap-0.5 border-l pl-3">
+          {steps.map((s, i) => {
+            const result = results.get(s.id) ?? '';
+            return (
+              <li key={s.id || i}>
+                <details>
+                  <summary
+                    className={cn(
+                      'flex cursor-pointer list-none items-start gap-1 rounded px-1 py-0.5',
+                      result.startsWith('Error') && 'text-destructive',
+                    )}
+                  >
+                    <ChevronRight className="plaid-export-chevron mt-0.5 h-3 w-3 shrink-0" />
+                    <span>{s.label}</span>
+                  </summary>
+                  <pre className="my-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground">
+                    {result || '(no output)'}
+                  </pre>
+                </details>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
+    );
   return (
     <div className="text-xs text-muted-foreground">
       <button

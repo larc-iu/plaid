@@ -141,11 +141,12 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
   );
 };
 
-export const markdownFilename = (meta) =>
+// The file name, from the title. The web page export takes it with `html`.
+export const markdownFilename = (meta, suffix = 'md') =>
   `${
     (meta?.title || 'conversation')
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 60) || 'conversation'
-  }.md`;
+  }.${suffix}`;

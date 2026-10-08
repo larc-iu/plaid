@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { timeAgo } from '../../lib/formatTime.js';
 import {
@@ -8,12 +8,16 @@ import {
   FileDown,
   FileText,
   FolderOpen,
+  Globe,
   History,
   Trash2,
 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { Switch } from '../ui/switch.jsx';
+import { AuthContext } from '../../contexts/useAuth.js';
+import { appName } from '../../lib/uiConfig.js';
+import { conversationToHtml } from './exportHtml.js';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import {
@@ -228,9 +232,36 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled, compact
 );
 
 // ---- export -----------------------------------------------------------------
-// The conversation as Markdown: downloaded as a file, or copied.
+// The conversation as Markdown, downloaded as a file or copied, or as a web
+// page (exportHtml.js).
 
-export const ExportMenu = ({ conv, meta, projectId, projectName, adapter }) => {
+const save = (blob, name) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+// `client` reads which projects the exporter can open and, with `owner` (the
+// conversation's owner, whose store holds the files its replies made, under
+// `app`), those files. `appLabel` names the app on the page, the app's own
+// name by default.
+export const ExportMenu = ({
+  conv,
+  meta,
+  projectId,
+  projectName,
+  adapter,
+  client,
+  owner,
+  app = adapter.app,
+  appLabel = null,
+}) => {
+  const exporter = useContext(AuthContext)?.user;
   const build = () =>
     conversationToMarkdown(conv, meta, {
       origin: `${window.location.origin}${window.location.pathname}`,
@@ -238,16 +269,25 @@ export const ExportMenu = ({ conv, meta, projectId, projectName, adapter }) => {
       projectName,
       adapter,
     });
-  const download = () => {
-    const blob = new Blob([build()], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = markdownFilename(meta);
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const download = () =>
+    save(new Blob([build()], { type: 'text/markdown;charset=utf-8' }), markdownFilename(meta));
+  const downloadPage = async () => {
+    try {
+      const projects = await client.projects.list();
+      const html = await conversationToHtml(conv, meta, {
+        projectId,
+        projectName,
+        adapter,
+        store: { client, userId: owner, app, projectId },
+        readable: new Set((projects || []).map((p) => p.id)),
+        exporter: exporter?.displayName || exporter?.id || null,
+        appLabel: appLabel || appName(),
+        sheets: document.styleSheets,
+      });
+      save(new Blob([html], { type: 'text/html;charset=utf-8' }), markdownFilename(meta, 'html'));
+    } catch (e) {
+      notifyError(humanizeError(e, 'Failed to export the conversation.'), 'Not exported');
+    }
   };
   const copy = async () => {
     try {
@@ -267,6 +307,9 @@ export const ExportMenu = ({ conv, meta, projectId, projectName, adapter }) => {
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={download}>
           <FileDown className="mr-2 h-4 w-4" /> Download as Markdown
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={downloadPage}>
+          <Globe className="mr-2 h-4 w-4" /> Download as web page
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={copy}>
           <Copy className="mr-2 h-4 w-4" /> Copy as Markdown

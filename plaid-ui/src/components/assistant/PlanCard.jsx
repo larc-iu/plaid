@@ -20,6 +20,7 @@ import {
   textRewrites,
   workReplaced,
 } from './planChanges.js';
+import { useExport } from './exportContext.js';
 
 // A proposed change set, row by row, with its apply controls.
 // A proposed plan: what it does in one line, every change as a row under the
@@ -67,7 +68,10 @@ export const PlanCard = ({
     () => groupRows(allRows, projectId, adapter),
     [allRows, projectId, adapter],
   );
-  const [expanded, setExpanded] = useState(allRows.length <= ROWS_COLLAPSED);
+  // The web page export shows every change, unscrolled: it has no button to
+  // show the rest and may be printed.
+  const exported = !!useExport();
+  const [expanded, setExpanded] = useState(exported || allRows.length <= ROWS_COLLAPSED);
   // Rewriting the text is not the same kind of act as annotating it: an
   // annotation can be set again, a transcription that has been retyped is
   // gone. The summary counts a text edit alongside a field value, which reads
@@ -146,6 +150,13 @@ export const PlanCard = ({
             Not finished
           </Badge>
         )}
+        {/* Read by someone who cannot decide it: the state, in place of the
+            buttons. */}
+        {readOnly && undecided && !lost && !applying && (
+          <Badge variant="outline" className="ml-auto">
+            Not approved
+          </Badge>
+        )}
       </div>
       {planProject && (
         <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
@@ -188,7 +199,9 @@ export const PlanCard = ({
       {/* A size container, so a row's place can be held to a share of the
           card's own width: the panel is narrow and the tab is wide, and a
           fixed cap left the change itself one letter wide in the panel. */}
-      <div className="mt-1 max-h-80 overflow-auto [container-type:inline-size]">
+      <div
+        className={cn('mt-1 overflow-auto [container-type:inline-size]', !exported && 'max-h-80')}
+      >
         <table className="w-full border-collapse text-xs leading-5">
           <tbody>
             {shown.groups.map((g) => (

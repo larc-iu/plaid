@@ -59,7 +59,7 @@ const Words = ({ c }) => {
           </tr>
           <tr>
             {words.map((w) => (
-              <td key={w.index} className="px-1.5 align-top leading-5">
+              <td key={w.index} className="px-1.5 align-top font-text leading-5">
                 {w.text}
               </td>
             ))}
@@ -69,7 +69,7 @@ const Words = ({ c }) => {
               {line.items.map((item, i) => (
                 <td
                   key={i}
-                  className="px-1.5 align-top leading-5 text-muted-foreground"
+                  className="px-1.5 align-top font-text leading-5 text-muted-foreground"
                   title={line.header}
                 >
                   {item}
@@ -136,7 +136,9 @@ export const ExampleCard = ({ c, projectId }) => {
           ))}
         </div>
       </div>
-      <div className="py-0.5">{c.text}</div>
+      <div dir="auto" className="py-0.5 font-text">
+        {c.text}
+      </div>
       {shown === 'graph' ? <Graph penman={c.penman} focus={c.focus} /> : <Words c={c} />}
     </div>
   );

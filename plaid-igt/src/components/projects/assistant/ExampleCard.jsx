@@ -73,7 +73,7 @@ export const ExampleCard = ({ c, projectId }) => {
         </a>
       </div>
       {!words.length && (
-        <div className="py-0.5" dir="auto">
+        <div className="py-0.5 font-text" dir="auto">
           {c.text}
         </div>
       )}
@@ -112,7 +112,7 @@ export const ExampleCard = ({ c, projectId }) => {
                       key={j}
                       data-cited={cited && i === 0 ? '' : undefined}
                       className={cn(
-                        'px-1.5 align-top leading-5',
+                        'px-1.5 align-top font-text leading-5',
                         r.kind === 'surface' && 'font-medium',
                         r.kind === 'morphemes' && 'text-xs',
                         r.kind !== 'surface' && r.kind !== 'morphemes' && 'text-xs',
@@ -137,8 +137,8 @@ export const ExampleCard = ({ c, projectId }) => {
         </table>
       </div>
       {(c.fields || []).map((f) => (
-        <div key={f.field} className="mt-2 italic" dir="auto">
-          <span className="not-italic text-xs text-muted-foreground">{f.field}: </span>
+        <div key={f.field} className="mt-2 font-text italic" dir="auto">
+          <span className="font-sans text-xs not-italic text-muted-foreground">{f.field}: </span>
           {f.value}
         </div>
       ))}

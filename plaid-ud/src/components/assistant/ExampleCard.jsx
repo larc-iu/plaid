@@ -199,7 +199,9 @@ export const ExampleCard = ({ c, projectId }) => {
           ))}
         </div>
       </div>
-      <div className="py-0.5">{c.text}</div>
+      <div dir="auto" className="py-0.5 font-text">
+        {c.text}
+      </div>
       {shown === 'tree' ? (
         <div className="mt-1.5">
           <div ref={scroller} className="overflow-x-auto">

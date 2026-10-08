@@ -92,6 +92,8 @@ export const AssistantTab = ({
               projectId={projectId}
               projectName={projectName}
               adapter={adapter}
+              client={client}
+              owner={userId}
             />
           )
         }
