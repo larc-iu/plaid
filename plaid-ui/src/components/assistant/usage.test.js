@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
+import {
+  MESSAGE_ROOM,
+  NEARLY_FULL,
+  fullness,
+  gauge,
+  gaugeLabel,
+  gaugeTitle,
+  latestUsage,
+  recordBytes,
+  recordShare,
+  totalSpend,
+  usageLabel,
+  usageTitle,
+} from './usage.js';
 
 const reply = (usage) => ({ kind: 'assistant', text: 'a', ...(usage ? { usage } : {}) });
 const ask = { kind: 'user', text: 'q' };
@@ -115,5 +128,88 @@ describe('NEARLY_FULL', () => {
     // arrives after the failure it exists to prevent.
     expect(NEARLY_FULL).toBeGreaterThan(0.5);
     expect(NEARLY_FULL).toBeLessThan(1);
+  });
+});
+
+describe('recordBytes', () => {
+  it('is the UTF-8 length of the JSON, which is what the server measures', () => {
+    const value = { display: [{ text: 'kai₁ ŋa 𝔸 é' }] };
+    expect(recordBytes(value)).toBe(new TextEncoder().encode(JSON.stringify(value)).length);
+  });
+});
+
+describe('gauge', () => {
+  const MB = 1048576;
+  const lowContext = { sent: 10_000, window: 100_000 };
+
+  it('shows the fuller of the two limits', () => {
+    const storage = gauge(lowContext, { bytes: 3 * MB, cap: 5 * MB });
+    expect(storage.which).toBe('storage');
+    expect(storage.share).toBeCloseTo(0.6);
+    const context = gauge({ sent: 70_000, window: 100_000 }, { bytes: 1 * MB, cap: 5 * MB });
+    expect(context.which).toBe('context');
+    expect(context.share).toBeCloseTo(0.7);
+  });
+
+  it('is nearly full at NEARLY_FULL of either limit', () => {
+    const under = NEARLY_FULL - 0.01;
+    expect(gauge(lowContext, { bytes: under * 5 * MB, cap: 5 * MB }).nearlyFull).toBe(false);
+    expect(gauge(lowContext, { bytes: NEARLY_FULL * 5 * MB, cap: 5 * MB }).nearlyFull).toBe(true);
+    const record = { bytes: MB, cap: 5 * MB };
+    expect(gauge({ sent: under * 100_000, window: 100_000 }, record).nearlyFull).toBe(false);
+    expect(gauge({ sent: NEARLY_FULL * 100_000, window: 100_000 }, record).nearlyFull).toBe(true);
+  });
+
+  it('is full when the record has no room left for a message', () => {
+    const cap = 5 * MB;
+    expect(gauge(lowContext, { bytes: cap - MESSAGE_ROOM - 1, cap }).full).toBe(false);
+    expect(gauge(lowContext, { bytes: cap - MESSAGE_ROOM, cap }).full).toBe(true);
+    // A record stored under a larger cap than the server has now.
+    const over = gauge(lowContext, { bytes: cap * 2, cap });
+    expect(over.full).toBe(true);
+    expect(over.share).toBe(1);
+  });
+
+  it('falls back to the context alone when the record size or cap is unknown', () => {
+    const g = gauge(lowContext, { bytes: null, cap: 5 * MB });
+    expect(g.which).toBe('context');
+    expect(g.full).toBe(false);
+    expect(gauge(lowContext, null).which).toBe('context');
+    expect(recordShare({ bytes: 10, cap: 0 })).toBeNull();
+  });
+
+  it('shows storage when the model window is not known', () => {
+    const g = gauge({ sent: 42_000 }, { bytes: MB, cap: 5 * MB });
+    expect(g.which).toBe('storage');
+    expect(gaugeLabel(g)).toBe('20%');
+    expect(gaugeLabel(gauge({ sent: 42_000 }, null))).toBe('42k');
+  });
+});
+
+describe('gaugeTitle', () => {
+  const MB = 1048576;
+
+  it('names the limit the bar shows and gives both, the shown one first', () => {
+    const g = gauge({ sent: 10_000, window: 100_000 }, { bytes: 4.6 * MB, cap: 5 * MB });
+    const lines = gaugeTitle(g, 30_000).split('\n');
+    expect(lines[0]).toBe('The bar shows storage.');
+    expect(lines[1]).toBe(
+      'In this conversation, you have used 92% of the available storage (4.6/5 MB).',
+    );
+    expect(lines[2]).toContain('10% of this model');
+    expect(lines[3]).toBe('30,000 tokens over the whole conversation.');
+  });
+
+  it('names context when context is fuller', () => {
+    const g = gauge({ sent: 50_000, window: 100_000 }, { bytes: MB, cap: 5 * MB });
+    const lines = gaugeTitle(g, 0).split('\n');
+    expect(lines[0]).toBe('The bar shows context length.');
+    expect(lines[1]).toContain('50% of this model');
+    expect(lines[2]).toContain('20% of the available storage');
+  });
+
+  it('is the context tooltip unchanged without a record', () => {
+    const usage = { sent: 42_100, window: 110_000 };
+    expect(gaugeTitle(gauge(usage, null), 61_000)).toBe(usageTitle(usage, 61_000));
   });
 });

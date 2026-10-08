@@ -15,7 +15,7 @@ import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { ExportMenu } from '@ui/components/assistant/ConversationList.jsx';
 import { hidesStopped, retryNote } from '@ui/components/assistant/resume.js';
 import { toolResults, turnContext } from '@ui/components/assistant/transcript.js';
-import { latestUsage, totalSpend } from '@ui/components/assistant/usage.js';
+import { latestUsage, recordBytes, totalSpend } from '@ui/components/assistant/usage.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -68,6 +68,8 @@ const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:co
 const ConversationDetail = ({ client, row, onBack }) => {
   const [conv, setConv] = useState(null);
   const [error, setError] = useState(null);
+  // The server's cap on a stored value, for the meter's storage share.
+  const [cap, setCap] = useState(null);
   const adapter = row.app === OWN_APP ? IGT_ASSISTANT : PLAIN_ASSISTANT;
 
   useEffect(() => {
@@ -79,7 +81,13 @@ const ConversationDetail = ({ client, row, onBack }) => {
       .then((entry) => {
         if (!live) return;
         const value = entry?.value || {};
-        setConv({ id: row.convId, messages: value.messages || [], display: value.display || [] });
+        // Measured once, here, as the record was read.
+        setConv({
+          id: row.convId,
+          messages: value.messages || [],
+          display: value.display || [],
+          bytes: entry ? recordBytes(value) : null,
+        });
       })
       .catch((err) => {
         if (!live) return;
@@ -93,6 +101,17 @@ const ConversationDetail = ({ client, row, onBack }) => {
       live = false;
     };
   }, [client, row]);
+
+  useEffect(() => {
+    let live = true;
+    Promise.resolve()
+      .then(() => client.server.limits())
+      .then((limits) => live && setCap(limits?.userDataValueBytes ?? null))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client]);
 
   const display = conv?.display || [];
   const results = useMemo(() => toolResults(conv?.messages), [conv?.messages]);
@@ -139,7 +158,11 @@ const ConversationDetail = ({ client, row, onBack }) => {
             <AssistantMark className="h-4 w-4 shrink-0" />
             {row.model && <span className="font-medium">{row.model}</span>}
             <div className="ml-auto flex items-center gap-2">
-              <UsageMeter usage={usage} spend={spend} />
+              <UsageMeter
+                usage={usage}
+                spend={spend}
+                record={conv.bytes != null && cap ? { bytes: conv.bytes, cap } : null}
+              />
               {display.length > 0 && (
                 <ExportMenu
                   conv={conv}

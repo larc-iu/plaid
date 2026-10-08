@@ -8,7 +8,7 @@ import { AttachmentChip } from './AttachmentChip.jsx';
 import { AddProject, ProjectChip } from './ProjectChips.jsx';
 import { AssistantPicker } from './ConversationList.jsx';
 import { MentionList } from './MentionList.jsx';
-import { NEARLY_FULL, fullness } from './usage.js';
+import { gauge } from './usage.js';
 import { chipRemoveLabels } from './projectReach.js';
 import { useMentions } from './useMentions.js';
 
@@ -36,6 +36,10 @@ export const AssistantComposer = ({
   pendingPlan = false,
   // How full the thread is, from the newest reply that reported it.
   usage = null,
+  // The stored record's size against the server's cap, as {bytes, cap}.
+  record = null,
+  // Starts a new conversation, offered when this one is full.
+  onStartNew = null,
   // What the user pointed at in the editor, as {ref, label}.
   focus = null,
   onClearFocus,
@@ -74,15 +78,19 @@ export const AssistantComposer = ({
     offer: mentionOffer,
   });
 
+  // Both limits. A record that cannot take another message is full, and
+  // nothing is sent into it: the write would be refused.
+  const g = gauge(usage, record);
+  const full = g.full;
+
   const onKeyDown = (e) => {
     if (mentions.handleKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      onSend();
+      if (!full) onSend();
     }
   };
 
-  const full = fullness(usage);
   const fileInput = useRef(null);
   const [over, setOver] = useState(false);
   const canAttach = !!onAttach && canSend;
@@ -134,12 +142,29 @@ export const AssistantComposer = ({
       {/* Nothing manages the window for the reader, so a thread that runs
           long eventually fails a turn outright. Said here, where the next
           message is about to be typed, and with the remedy named: the new
-          conversation button is a few pixels away in the header. */}
-      {(full ?? 0) >= NEARLY_FULL && (
+          conversation button is a few pixels away in the header. The stored
+          record has a limit of its own, the server's cap, and the note names
+          whichever limit is close. A full record offers the new conversation
+          right here, since nothing more can be sent into it. */}
+      {full ? (
+        <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-warning-foreground">
+          <span>This conversation is full.</span>
+          {onStartNew && (
+            <Button type="button" size="sm" variant="outline" onClick={onStartNew}>
+              New conversation
+            </Button>
+          )}
+        </div>
+      ) : g.nearlyFull && g.which === 'storage' ? (
         <p className="mx-auto mb-2 max-w-3xl text-xs text-warning-foreground">
-          This conversation is {Math.round(full * 100)}% full. Start a new one.
+          This conversation&apos;s storage is {Math.round(g.share * 100)}% full. Start a new
+          conversation to keep going.
         </p>
-      )}
+      ) : g.nearlyFull ? (
+        <p className="mx-auto mb-2 max-w-3xl text-xs text-warning-foreground">
+          This conversation is {Math.round(g.share * 100)}% full. Start a new one.
+        </p>
+      ) : null}
       {focus && (
         <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1">
           <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 pr-1 text-xs">
@@ -262,7 +287,7 @@ export const AssistantComposer = ({
           type="button"
           size="sm"
           onClick={() => onSend()}
-          disabled={!canSend || !text.trim() || attaching}
+          disabled={!canSend || !text.trim() || attaching || full}
           title="Send"
         >
           <Send className="h-4 w-4" />

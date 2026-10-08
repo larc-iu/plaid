@@ -158,6 +158,8 @@ const READS = {
   'users.list': async () => [{ id: OWNER, displayName: 'Ada Lovelace' }],
   'users.avatarUrl': () => null,
   'projects.list': async () => [{ id: PA, name: 'Kalamang' }],
+  // The cap the meter measures the record against.
+  'server.limits': async () => ({ userDataValueBytes: 5 * 1048576 }),
   'userData.get': async (_user, key) => ({
     value: key.startsWith('ud:')
       ? UD_CONV

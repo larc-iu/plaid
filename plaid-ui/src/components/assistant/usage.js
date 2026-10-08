@@ -79,3 +79,104 @@ export const usageLabel = (usage) => {
   const k = usage.sent / 1000;
   return k >= 10 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
 };
+
+// The stored record is the second limit. The server refuses a value past its
+// cap (`userDataValueBytes` in /info), and a conversation can reach it with
+// the model's window nearly empty: plan cards and citations weigh on the
+// record and not on the next prompt. So the meter shows whichever of the two
+// is fuller.
+
+// The room a message needs in the record: its text twice (the transcript and
+// the display) and the item around it. A record with less than this left
+// cannot take the next message, so it is full.
+export const MESSAGE_ROOM = 16 * 1024;
+
+// The UTF-8 length of `value` as JSON, which is what the server measures
+// against its cap. Counted from the string without encoding it, because a
+// record runs to megabytes. Called where the page writes or reads the record,
+// never while drawing.
+export const recordBytes = (value) => {
+  const s = JSON.stringify(value);
+  if (s === undefined) return 0;
+  let n = s.length;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) continue;
+    if (c < 0x800) n += 1;
+    // A surrogate pair is two UTF-16 units and four bytes, so each half adds one.
+    else if (c >= 0xd800 && c <= 0xdfff) n += 1;
+    else n += 2;
+  }
+  return n;
+};
+
+// What share of the cap the record takes, unclamped, or null when either
+// number is unknown.
+export const recordShare = (record) => {
+  if (!record || !Number.isFinite(record.bytes) || !(record.cap > 0)) return null;
+  return Math.max(0, record.bytes / record.cap);
+};
+
+// Both limits, and which one the meter shows: the fuller one. `share` is
+// clamped for drawing, and `full` is a record that cannot take a message.
+export const gauge = (usage, record) => {
+  const context = fullness(usage);
+  const storage = recordShare(record);
+  const which =
+    storage !== null && (context === null || storage > context)
+      ? 'storage'
+      : context !== null
+        ? 'context'
+        : null;
+  const share = which === 'storage' ? Math.min(1, storage) : context;
+  return {
+    usage,
+    record: storage === null ? null : record,
+    context,
+    storage,
+    which,
+    share,
+    nearlyFull: share !== null && share >= NEARLY_FULL,
+    full: storage !== null && record.bytes + MESSAGE_ROOM >= record.cap,
+  };
+};
+
+const megabytes = (n) => {
+  const mb = n / 1048576;
+  return mb >= 10 ? `${Math.round(mb)}` : `${Math.round(mb * 10) / 10}`;
+};
+
+// The storage line of the tooltip, in the context line's words.
+const storageLine = (record) => {
+  const s = recordShare(record);
+  if (s === null) return null;
+  const share = s > 1 ? 'more than all' : `${Math.round(Math.min(1, s) * 100)}%`;
+  return (
+    `In this conversation, you have used ${share} of the available storage ` +
+    `(${megabytes(record.bytes)}/${megabytes(record.cap)} MB).`
+  );
+};
+
+// The meter's tooltip with both limits: which one the bar shows, when both
+// are known, then each.
+export const gaugeTitle = (g, spend) => {
+  if (!g) return null;
+  const context = usageTitle(g.usage, spend);
+  const storage = g.record ? storageLine(g.record) : null;
+  if (!storage) return context;
+  const lines = [];
+  if (g.context !== null) {
+    lines.push(g.which === 'storage' ? 'The bar shows storage.' : 'The bar shows context length.');
+  }
+  lines.push(...(g.which === 'storage' || !context ? [storage, context] : [context, storage]));
+  if (!context && spend) lines.push(`${thousands(spend)} tokens over the whole conversation.`);
+  return lines.filter(Boolean).join('\n');
+};
+
+// The header label: the shown limit's percentage, or the token count when
+// neither limit is known.
+export const gaugeLabel = (g) => {
+  if (!g) return null;
+  if (g.share !== null) return `${Math.round(g.share * 100)}%`;
+  return usageLabel(g.usage);
+};
