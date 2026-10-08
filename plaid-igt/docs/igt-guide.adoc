@@ -1410,6 +1410,7 @@ An administrator sees an **Admin** link in the top bar, covering the whole serve
 Deactivating signs the person out, takes away their project roles and API tokens, and refuses them at sign-in.
 Their annotations and their name on them are untouched, and reactivating restores sign-in.
 Opening an account shows the projects it can reach, the API tokens it holds, and its recent work.
+An open account has its own address, as does an open conversation under **Assistant**, so either can be opened in a new tab or sent to another administrator.
 
 **Invites** is every invitation link on the server, whoever minted it, with what it grants and whether it has been used.
 It also mints a numbered set of links in one step, one use each, so a link can be matched to whoever was handed it.
