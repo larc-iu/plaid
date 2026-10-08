@@ -56,10 +56,46 @@ const splitEntries = (text) =>
     .split(',')
     .map((e) => e.trim())
     .filter((e) => e.length > 0);
+// The explicit list's entries, which are whole tokens, so a comma can be one.
+// Commas separate the entries, and a comma standing where an entry begins,
+// with another comma or the end after it, is the comma itself: "., ,, ;"
+// lists ".", "," and ";", which is how the list is written back.
+const explicitEntries = (text) => {
+  const s = String(text ?? '');
+  const out = [];
+  let i = 0;
+  const skipSpace = () => {
+    while (i < s.length && /\s/.test(s[i])) i++;
+  };
+  while (i < s.length) {
+    skipSpace();
+    if (i >= s.length) break;
+    if (s[i] === ',') {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (j >= s.length || s[j] === ',') {
+        out.push(',');
+        i = j + 1;
+      } else {
+        i += 1;
+      }
+      continue;
+    }
+    const end = s.indexOf(',', i);
+    const entry = s.slice(i, end === -1 ? s.length : end).trim();
+    if (entry) out.push(entry);
+    i = end === -1 ? s.length : end + 1;
+  }
+  return out;
+};
 const sameChars = (a, b) => a.length === b.length && a.every((c, i) => c === b[i]);
 // Two ignored-token rules (the shape edited here) that store the same.
-const sameRule = (a, b) =>
-  JSON.stringify(storedIgnoredTokens(a)) === JSON.stringify(storedIgnoredTokens(b));
+const ruleKey = (rule) => JSON.stringify(storedIgnoredTokens(rule));
+const sameRule = (a, b) => ruleKey(a) === ruleKey(b);
+// The fields as a save stores them, for telling a project read back after a
+// save of this page's (its echo) from a change made elsewhere.
+const fieldsKey = (list) =>
+  JSON.stringify((list || []).map((f) => [f.name, f.scope, f.tagset ?? null, f.lang ?? null]));
 
 export const FieldsManager = ({
   initialData,
@@ -124,6 +160,19 @@ export const FieldsManager = ({
     explicitTextRef.current = text;
     setExplicitText(text);
   };
+  // Saves go one after another, each checked against what the one before it
+  // stored (`saved`), never against what the screen showed when it was typed:
+  // a key typed while the last key's save was out made a save whose
+  // `previous` was older than the store, refused as "Changed elsewhere".
+  // `sent` holds what this page has sent since the queue was last empty, so
+  // the project read back after one of them (its echo, older than what has
+  // been typed since) is not taken for a change made elsewhere and put into
+  // the table and the boxes over the typing.
+  const savedRef = useRef(null);
+  const shownRef = useRef(null);
+  const sentRef = useRef({ fields: new Set(), ignored: new Set() });
+  const pendingRef = useRef(0);
+  const chainRef = useRef(Promise.resolve());
   // A change of the ignored-tokens rule that hides annotated words, held for
   // a Save: { next, hidden } (hidden undefined while it is counted, null when
   // it could not be).
@@ -161,22 +210,34 @@ export const FieldsManager = ({
         }
 
         const loadedIgnored = fieldsData.ignoredTokens || defaultIgnoredTokensSetup();
-        setFields(fieldsData.fields);
-        setIgnoredTokens(loadedIgnored);
         // This effect re-runs on every save, because the parent hands down a
-        // fresh project. Adopting the stored list unconditionally would wipe
-        // the field mid-edit: typing "-ab" saves nothing, the reload arrives,
-        // and the two characters already typed disappear before a third can
-        // be. Adopt it only when it says something the field does not already
-        // say — a change made elsewhere, or the first load.
-        const incoming = loadedIgnored.unicodePunctuationExceptions || [];
-        if (!sameChars(incoming, exceptionChars(exceptionsTextRef.current))) {
-          writeExceptionsText(incoming.join(', '));
+        // fresh project. What one of this page's own saves stored is already
+        // shown, or something newer typed since is, so only a change made
+        // elsewhere (or the first load) is taken in.
+        const idle = pendingRef.current === 0;
+        const saved = { ...savedRef.current };
+        if (!sentRef.current.fields.has(fieldsKey(fieldsData.fields))) {
+          setFields(fieldsData.fields);
+          if (idle) saved.fields = fieldsData.fields;
         }
-        const incomingExplicit = loadedIgnored.explicitIgnoredTokens || [];
-        if (!sameChars(incomingExplicit, splitEntries(explicitTextRef.current))) {
-          writeExplicitText(incomingExplicit.join(', '));
+        if (!sentRef.current.ignored.has(ruleKey(loadedIgnored))) {
+          setIgnoredTokens(loadedIgnored);
+          if (idle) saved.ignoredTokens = loadedIgnored;
+          // Adopting the stored list unconditionally would wipe the field
+          // mid-edit: typing "-ab" saves nothing, the reload arrives, and
+          // the two characters already typed disappear before a third can
+          // be. Adopt it only when it says something the field does not
+          // already say.
+          const incoming = loadedIgnored.unicodePunctuationExceptions || [];
+          if (!sameChars(incoming, exceptionChars(exceptionsTextRef.current))) {
+            writeExceptionsText(incoming.join(', '));
+          }
+          const incomingExplicit = loadedIgnored.explicitIgnoredTokens || [];
+          if (!sameChars(incomingExplicit, explicitEntries(explicitTextRef.current))) {
+            writeExplicitText(incomingExplicit.join(', '));
+          }
         }
+        savedRef.current = saved;
         setIsInitialized(true);
       } catch (error) {
         console.error('Failed to load fields configuration:', error);
@@ -203,32 +264,52 @@ export const FieldsManager = ({
 
   // Shown at once, and put back when the save is refused. Resolves to
   // whether it landed.
-  const saveChanges = async (newFields, newIgnoredTokens) => {
-    const before = { fields, ignoredTokens };
+  const saveChanges = (newFields, newIgnoredTokens) => {
+    const shown = { fields: newFields, ignoredTokens: newIgnoredTokens };
     setFields(newFields);
     setIgnoredTokens(newIgnoredTokens);
-    try {
-      if (onSaveChanges) {
-        // `previous` is what the table showed before this change, so a save
-        // can write only what the user changed here.
-        await onSaveChanges({
-          fields: newFields,
-          ignoredTokens: newIgnoredTokens,
-          previous: before,
-        });
+    shownRef.current = shown;
+    sentRef.current.fields.add(fieldsKey(newFields));
+    sentRef.current.ignored.add(ruleKey(newIgnoredTokens));
+    pendingRef.current += 1;
+    const run = chainRef.current.then(async () => {
+      // `previous` is what this page last stored, so a save can write only
+      // what the user changed here, and a change made elsewhere is refused.
+      const previous = savedRef.current ?? { fields, ignoredTokens };
+      try {
+        if (onSaveChanges) {
+          await onSaveChanges({ ...shown, previous });
+        }
+        savedRef.current = shown;
+        return true;
+      } catch (error) {
+        console.error('Failed to save fields configuration:', error);
+        // Put back what is stored, unless a later change is shown: that one
+        // saves next, against what is stored.
+        if (shownRef.current === shown) {
+          setFields(previous.fields);
+          setIgnoredTokens(previous.ignoredTokens);
+          shownRef.current = previous;
+        }
+        if (onError) {
+          onError(error);
+        } else {
+          notifyError(error, 'Not saved');
+        }
+        return false;
+      } finally {
+        pendingRef.current -= 1;
+        if (pendingRef.current === 0) {
+          const saved = savedRef.current ?? previous;
+          sentRef.current = {
+            fields: new Set([fieldsKey(saved.fields)]),
+            ignored: new Set([ruleKey(saved.ignoredTokens)]),
+          };
+        }
       }
-      return true;
-    } catch (error) {
-      console.error('Failed to save fields configuration:', error);
-      setFields(before.fields);
-      setIgnoredTokens(before.ignoredTokens);
-      if (onError) {
-        onError(error);
-      } else {
-        notifyError(error, 'Not saved');
-      }
-      return false;
-    }
+    });
+    chainRef.current = run;
+    return run;
   };
 
   const handleAddField = async () => {
@@ -481,7 +562,7 @@ export const FieldsManager = ({
 
   const handleExplicitTokensChange = async (text) => {
     writeExplicitText(text);
-    const tokens = splitEntries(text);
+    const tokens = explicitEntries(text);
     if (sameChars(tokens, shownIgnored.explicitIgnoredTokens || [])) return;
     await changeIgnored({ ...shownIgnored, explicitIgnoredTokens: tokens });
   };
