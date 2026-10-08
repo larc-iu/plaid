@@ -538,7 +538,7 @@ Deleting a conversation asks first, and cannot be undone. What its plans applied
 
 == Other projects
 
-Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other projects you can open, to compare or to look something up there.
+Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other UMR projects you can open, to compare or to look something up there.
 Each project added is shown above the message box, and each question shows the projects it was sent with.
 The assistant only reads them.
 It plans changes in the conversation's own project, and a change asked for in another project is not planned: the assistant says it can plan changes in this project only.
