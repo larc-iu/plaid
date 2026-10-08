@@ -96,6 +96,7 @@ describe('column guessing', () => {
     expect(guessColumns(rows, FIELDS, humanize)).toEqual({
       skip: 0,
       hasHeader: true,
+      subHeader: false,
       mapping: [FORM, 'gloss', 'pos'],
     });
   });
@@ -118,6 +119,7 @@ describe('column guessing', () => {
     expect(guessColumns(rows, ['gloss', 'pos'], humanize)).toEqual({
       skip: 0,
       hasHeader: false,
+      subHeader: false,
       mapping: [FORM, 'gloss'],
     });
   });
@@ -129,6 +131,7 @@ describe('column guessing', () => {
     expect(guessColumns(rows, FIELDS, humanize)).toEqual({
       skip: 2,
       hasHeader: true,
+      subHeader: false,
       mapping: [FORM, 'gloss', 'pos'],
     });
     const [entry] = rowsToEntries(rows, [FORM, 'gloss', 'pos'], { skip: 2, hasHeader: true });
@@ -139,6 +142,7 @@ describe('column guessing', () => {
     const { rows } = parseTable('notes\t\nForm\tGloss\nperro\tdog\n');
     expect(columnsAt(rows, 1, FIELDS, humanize)).toEqual({
       hasHeader: true,
+      subHeader: false,
       mapping: [FORM, 'gloss'],
     });
   });
@@ -160,7 +164,7 @@ describe('column guessing', () => {
     // A header is never read as a longer field it is only part of: a Morph
     // column holds morphs, not morph types.
     expect(matchHeader('phonetic', fields, label)).toBe(null);
-    expect(matchHeader('Morph', ['morphType'], (f) => 'Morph Type')).toBe(null);
+    expect(matchHeader('Morph', ['morphType'], () => 'Morph Type')).toBe(null);
     // Whole words only.
     expect(matchHeader('Glossary', fields, label)).toBe(null);
     // An alias is a whole header, never a part of one.
@@ -853,6 +857,7 @@ describe('column guessing on real-world tables', () => {
     expect(guessColumns(rows, FIELDS, humanize)).toEqual({
       skip: 1,
       hasHeader: true,
+      subHeader: false,
       mapping: [FORM, 'gloss', 'pos'],
     });
   });
@@ -897,5 +902,140 @@ describe('a value on every row', () => {
       normalizeValue: (field, raw) => (field === 'status' ? '' : raw),
     });
     expect(entry.rejected).toEqual([{ field: 'status', value: 'nonsense' }]);
+  });
+});
+
+describe('header lines (polish 2026-10-02, H8-BULK)', () => {
+  it('leaves out a line of machine keys below the header (H8-BULK-1)', () => {
+    const { rows } = parseTable(
+      [
+        'Wancho dictionary export 2026-10-01,,,,,,,',
+        'Lexeme,Phonetic,Notes,Part of Speech,English Gloss,Spanish Gloss,Definition,Semantic domain',
+        'lexeme,phonetic,notes,parts_of_speech,en_gloss,es_gloss,definition_english,semantic_domains',
+        'kaa,kʰa,,n,house,casa,a dwelling,building',
+        'nu,nu,,n,mother,madre,,kin',
+      ].join('\n'),
+    );
+    const guess = guessColumns(rows, FIELDS, humanize);
+    expect(guess).toMatchObject({ skip: 1, hasHeader: true, subHeader: true });
+    expect(guess.mapping.slice(0, 7)).toEqual([
+      FORM,
+      IGNORE,
+      IGNORE,
+      'pos',
+      'gloss',
+      IGNORE,
+      'definition',
+    ]);
+    const entries = rowsToEntries(rows, guess.mapping, guess);
+    expect(entries.map((e) => e.form)).toEqual(['kaa', 'nu']);
+  });
+
+  it('leaves out a second header line that names the fields', () => {
+    const { rows } = parseTable('Form\tGloss\tPOS\nform\tgloss\tpos\nka\tI\tpron\n');
+    expect(columnsAt(rows, 0, FIELDS, humanize)).toMatchObject({
+      hasHeader: true,
+      subHeader: true,
+    });
+    // A first data row that only mentions a field is data.
+    const { rows: plain } = parseTable('Form\tGloss\nka\tword\nnu\tmother\n');
+    expect(columnsAt(plain, 0, FIELDS, humanize).subHeader).toBe(false);
+    // Nor are glossing conventions, or identifiers that name no column.
+    for (const row of ['walk-PST\twalk.PST\tv', 'go_out\tleave_home\tv']) {
+      const { rows: data } = parseTable(`Form\tGloss\tPOS\n${row}\n`);
+      expect(columnsAt(data, 0, FIELDS, humanize).subHeader).toBe(false);
+    }
+    // Keys of which too few name a field are still a key line.
+    const { rows: keys } = parseTable(
+      'Lexeme\tGloss\tPOS\tPlace\tVariant\nlexeme\tgloss_text\tword_cls\tplace_name\tvariant_form\nka\tI\tpron\tc\td\n',
+    );
+    expect(columnsAt(keys, 0, FIELDS, humanize).subHeader).toBe(true);
+  });
+
+  it('takes the header line that names more columns over a group line above it (H8-BULK-2)', () => {
+    const { rows } = parseTable(
+      'Lexeme\tSense\tSense\nForm\tGloss\tPOS\nka\tI\tpron\nnu\tmother\tn\n',
+    );
+    expect(guessColumns(rows, FIELDS, humanize)).toEqual({
+      skip: 1,
+      hasHeader: true,
+      subHeader: false,
+      mapping: [FORM, 'gloss', 'pos'],
+    });
+    const { rows: csv } = parseTable(
+      'Entry,,,,Sense,,,\nLexeme,Phonetic,Notes,Part of Speech,English Gloss,Spanish Gloss,Definition,Semantic domain\nkaa,kʰa,,n,house,casa,a dwelling,building\n',
+    );
+    expect(guessColumns(csv, FIELDS, humanize)).toMatchObject({ skip: 1, hasHeader: true });
+  });
+
+  it('reads a row the user picks with the first-row bar, and as told by the checkbox (H8-BULK-3)', () => {
+    const { rows } = parseTable(
+      'Lamkang word list 2024\nLamkang\tEnglish\tPart of speech\nka\tI\tpron\n',
+    );
+    // Found by the scan, a header below row 1 must name the form.
+    expect(columnsAt(rows, 1, FIELDS, humanize).hasHeader).toBe(false);
+    expect(columnsAt(rows, 1, FIELDS, humanize, { picked: true })).toEqual({
+      hasHeader: true,
+      subHeader: false,
+      mapping: [IGNORE, 'gloss', 'pos'],
+    });
+    // Ticked, the row is the header whatever it says. Unticked, it is data.
+    const { rows: odd } = parseTable('Lamkang\tNotes\nka\tI\n');
+    expect(columnsAt(odd, 0, FIELDS, humanize, { header: true })).toEqual({
+      hasHeader: true,
+      subHeader: false,
+      mapping: [IGNORE, IGNORE],
+    });
+    expect(columnsAt(rows, 1, FIELDS, humanize, { header: false })).toMatchObject({
+      hasHeader: false,
+      subHeader: false,
+      mapping: [FORM, 'morphType', 'gloss'],
+    });
+  });
+
+  it('numbers rows as a spreadsheet does, a quoted line break inside one row (H8-BULK-4)', () => {
+    const rows = parseDelimited('Title\n\n\nForm\tGloss\n"ka\nkb"\tI\nnu\tmother\n', '\t');
+    expect(rows.map((r) => r.line)).toEqual([1, 4, 5, 6]);
+  });
+
+  it('finds a lone form header in a one-column list below a title (H8-BULK-6)', () => {
+    const { rows } = parseTable('Lamkang words\nForm\nka\nnu\n');
+    expect(guessColumns(rows, FIELDS, humanize)).toMatchObject({ skip: 1, hasHeader: true });
+    const { rows: plain } = parseTable('Lamkang words\nka\nnu\n');
+    expect(guessColumns(plain, FIELDS, humanize)).toMatchObject({ skip: 0, hasHeader: false });
+    // A lone cell that names another field is not a header, at any row.
+    const { rows: gloss } = parseTable('meaning\nka\n');
+    expect(guessColumns(gloss, FIELDS, humanize).hasHeader).toBe(false);
+  });
+
+  it('reads a two-column list whose first gloss is a field word as data (H8-BULK-7)', () => {
+    for (const word of ['meaning', 'type', 'sense', 'category', 'english', 'uses', 'id']) {
+      const { rows } = parseTable(`ka\t${word}\nnu\tmother\n`);
+      expect(guessColumns(rows, FIELDS, humanize)).toMatchObject({ skip: 0, hasHeader: false });
+    }
+    // Two named columns, or the form and one more, are still a header.
+    const { rows } = parseTable('Meaning\tPOS\nI\tpron\n');
+    expect(guessColumns(rows, FIELDS, humanize).hasHeader).toBe(true);
+  });
+
+  it('stores a line break inside a cell as a space (H8-BULK-8)', () => {
+    const rows = parseDelimited('"مَكْتَب\nمكتب"\t"office,\r\n desk"\n', '\t');
+    const [entry] = rowsToEntries(rows, [FORM, 'gloss']);
+    expect(entry.form).toBe('مَكْتَب مكتب');
+    expect(entry.values.gloss).toBe('office, desk');
+  });
+
+  it('reads Word, Lemma, Headword and Forms as the form column', () => {
+    for (const h of ['Word', 'Lemma', 'Headword', 'Forms', 'Words', 'Lemmas'])
+      expect(matchHeader(h, FIELDS, humanize)).toBe(FORM);
+  });
+
+  it('matches a header whatever its Unicode normalization, combining marks included', () => {
+    expect(matchHeader('categori\u0301a', ['categoría'], (f) => f)).toBe('categoría');
+    expect(matchHeader('Categoría', ['categori\u0301a'], (f) => f)).toBe('categori\u0301a');
+    // A combining mark is part of a word, so a header with one is not cut at it.
+    expect(matchHeader('प्रार्थना सूची', ['प्रार्थना'], (f) => f)).toBe('प्रार्थना');
+    expect(matchHeader('प र र थन', ['प्रार्थना'], (f) => f)).toBe(null);
+    expect(matchHeader('क', ['कि'], (f) => f)).toBe(null);
   });
 });

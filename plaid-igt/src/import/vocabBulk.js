@@ -129,7 +129,9 @@ export const detectDelimiter = (text) => {
  * are all blank are dropped, so a trailing newline or a blank separator line
  * doesn't show up as an empty entry.
  *
- * @returns {{cells: string[], line: number}[]} line is 1-based in the source.
+ * @returns {{cells: string[], line: number}[]} line is the row's 1-based number
+ *   as a spreadsheet shows it: blank lines count, and a line break inside a
+ *   quoted cell does not start a row.
  */
 export const parseDelimited = (text, delimiter) => {
   const src = String(text ?? '').replace(/^\uFEFF/, '');
@@ -158,7 +160,6 @@ export const parseDelimited = (text, delimiter) => {
           i++;
         } else quoted = false;
       } else {
-        if (ch === '\n') line += 1; // a newline inside a quoted cell
         cell += ch;
       }
       continue;
@@ -199,16 +200,28 @@ export const delimiterName = (d) =>
 // CJK script normalized to the empty string when only ASCII was kept, so it
 // never matched its own column, and a header row of such names was read as an
 // entry.
+// Combining marks are kept, since in Devanagari or Arabic they tell words
+// apart, and the header is composed first, so a decomposed "categoría" is the
+// same name as a composed one.
 const normalizeHeader = (s) =>
   String(s ?? '')
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '');
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, '');
 
 // Header spellings that mean "this is the entry's form".
 const FORM_ALIASES = new Set(
-  ['form', 'lexeme form', 'lexeme', 'headword', 'head word', 'entry', 'citation form'].map(
-    normalizeHeader,
-  ),
+  [
+    'form',
+    'lexeme form',
+    'lexeme',
+    'headword',
+    'head word',
+    'entry',
+    'citation form',
+    'word',
+    'lemma',
+  ].map(normalizeHeader),
 );
 
 // Header spellings for the core fields, beyond the field's own name and label.
@@ -235,9 +248,10 @@ const EXPORT_ONLY = new Set(['uses', 'id'].map(normalizeHeader));
 // all come apart into words.
 const headerWords = (s) =>
   String(s ?? '')
+    .normalize('NFC')
     .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
     .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter(Boolean);
 
 const containsRun = (words, run) =>
@@ -295,6 +309,7 @@ export const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
       [f, humanize(f), ...(FIELD_ALIASES[f] || [])].some((sp) => normalizeHeader(sp) === singular),
     );
   if (plural) return { target: plural, rank: PLURAL };
+  if (singular && FORM_ALIASES.has(singular)) return { target: FORM, rank: PLURAL };
   const words = headerWords(cell);
   const contained = unique((f) =>
     [f, humanize(f)].some((name) => {
@@ -316,33 +331,76 @@ export const positionalMapping = (colCount, fieldNames) =>
 // date or a second header line above the real one, but not pages of them.
 const HEADER_SCAN = 10;
 
+const nonBlankCells = (cells) => cells.filter((c) => String(c ?? '').trim() !== '');
+
+/**
+ * Does a row read as a header? At least half of its non-blank cells name
+ * something we know. A lone cell is a header only in a one-column table, and
+ * only when it names the form: anything else is a title or a word. A row of
+ * two or more cells names the form or two columns (`ka<TAB>meaning` is data).
+ * `strict`, for a row the scan finds below the first, asks for both, since a
+ * word list whose glosses happen to include "type" or "meaning" has a row
+ * that reads as a header, and taking it would drop the rows above it.
+ */
+const readsAsHeader = (ranked, cells, colCount, strict) => {
+  const nonBlank = nonBlankCells(cells).length;
+  const matched = ranked.filter(Boolean).length;
+  const hasForm = ranked.some((m) => m?.target === FORM);
+  if (!matched || matched * 2 < nonBlank) return false;
+  if (nonBlank === 1) return colCount === 1 && hasForm;
+  return strict ? hasForm && matched >= 2 : hasForm || matched >= 2;
+};
+
+// A line of machine keys, as some exports put under the human header
+// ("parts_of_speech", "en_gloss", "lexemeForm"): every cell is one ASCII
+// identifier, at least half of them are snake_case or camelCase, and one names
+// a column. Glosses like "eat.PFV" or "go-out" are never keys.
+const KEY = /^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*$/;
+const COMPOUND_KEY = /_|[a-z][A-Z]/;
+const isKeyLine = (cells, ranked) => {
+  const keys = nonBlankCells(cells).map((c) => String(c).trim());
+  return (
+    keys.length >= 2 &&
+    keys.every((k) => KEY.test(k)) &&
+    keys.filter((k) => COMPOUND_KEY.test(k)).length * 2 >= keys.length &&
+    ranked.some(Boolean)
+  );
+};
+
 /**
  * What each column holds when row `skip` is the header (`hasHeader`), or when
- * the rows from `skip` on are all data. A header is recognized when at least
- * half of its non-blank cells name something we know, so `Form<TAB>Gloss` is a
- * header but `perro<TAB>dog` is data. A column empty in every row below is not
- * imported, whatever its name.
+ * the rows from `skip` on are all data. A column empty in every row below is
+ * not imported, whatever its name.
  *
- * @returns {{hasHeader: boolean, mapping: string[]}}
+ * Whether row `skip` is the header is read from it (readsAsHeader), by the bar
+ * for the first row when it is the first or the user picked it (`picked`),
+ * and by the stricter bar when the scan found it lower down. `header` true or
+ * false says so outright, as the "That row names the columns" box does.
+ *
+ * Under a header, a second header line (the same names again, or a line of
+ * machine keys) is left out too (`subHeader`).
+ *
+ * @returns {{hasHeader: boolean, subHeader: boolean, mapping: string[]}}
  */
-export const columnsAt = (rows, skip, fieldNames, humanize = (n) => n) => {
+export const columnsAt = (
+  rows,
+  skip,
+  fieldNames,
+  humanize = (n) => n,
+  { picked = false, header = null } = {},
+) => {
   const colCount = Math.max(0, ...rows.slice(skip, skip + 50).map((r) => r.cells.length));
-  if (!colCount) return { hasHeader: false, mapping: [] };
+  if (!colCount) return { hasHeader: false, subHeader: false, mapping: [] };
 
+  const rank = (cells) => cells.map((c) => rankHeader(c, fieldNames, humanize));
   const first = rows[skip]?.cells ?? [];
-  const ranked = first.map((c) => rankHeader(c, fieldNames, humanize));
-  const nonBlank = first.filter((c) => String(c).trim() !== '').length;
-  const matched = ranked.filter(Boolean).length;
-  // A lone cell is a title, not a header, when the table has more columns.
-  // Below the first row the bar is higher still: a word list whose glosses
-  // happen to include "type" or "meaning" has a row that reads as a header,
-  // and taking it would drop the rows above it. So a header found lower down
-  // names the form column and at least one other.
-  const hasHeader =
-    matched > 0 &&
-    matched * 2 >= nonBlank &&
-    (nonBlank > 1 || colCount === 1) &&
-    (skip === 0 || (matched >= 2 && ranked.some((m) => m?.target === FORM)));
+  const ranked = rank(first);
+  const hasHeader = header ?? readsAsHeader(ranked, first, colCount, skip > 0 && !picked);
+  const next = rows[skip + 1]?.cells;
+  const nextRanked = hasHeader && next ? rank(next) : null;
+  const subHeader =
+    !!nextRanked &&
+    (readsAsHeader(nextRanked, next, colCount, true) || isKeyLine(next, nextRanked));
 
   const mapping = hasHeader
     ? Array.from({ length: colCount }, (_, i) => ranked[i]?.target ?? IGNORE)
@@ -350,7 +408,7 @@ export const columnsAt = (rows, skip, fieldNames, humanize = (n) => n) => {
   // A column empty in every row is not imported, whatever its name. Before a
   // field claimed twice is settled, so an empty column never keeps a field
   // from a full one.
-  const body = rows.slice(skip + (hasHeader ? 1 : 0));
+  const body = rows.slice(bodyStart({ skip, hasHeader, subHeader }));
   if (body.length) {
     for (let i = 0; i < mapping.length; i++) {
       if (mapping[i] === FORM) continue;
@@ -369,22 +427,35 @@ export const columnsAt = (rows, skip, fieldNames, humanize = (n) => n) => {
   for (let i = 0; i < mapping.length; i++) {
     if (mapping[i] !== IGNORE && keeper.get(mapping[i]) !== i) mapping[i] = IGNORE;
   }
-  return { hasHeader, mapping };
+  return { hasHeader, subHeader, mapping };
 };
 
+/** The index of the first data row: below the rows skipped and the header lines. */
+export const bodyStart = ({ skip = 0, hasHeader = false, subHeader = false }) =>
+  skip + (hasHeader ? 1 + (subHeader ? 1 : 0) : 0);
+
 /**
- * Guess where the table starts and what each column holds: the first of the
- * top rows that reads as a header, with what is above it skipped, or all of
- * it as data when none does.
+ * Guess where the table starts and what each column holds. Of the top rows
+ * that read as a header, the one that maps the most columns wins, the
+ * earliest on a tie, so a group line above the real header ("Lexeme, Sense,
+ * Sense") loses to the header under it. What is above it is skipped. With no
+ * header, all of it is data.
  *
- * @returns {{skip: number, hasHeader: boolean, mapping: string[]}}
+ * @returns {{skip: number, hasHeader: boolean, subHeader: boolean, mapping: string[]}}
  */
 export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
+  let best = null;
+  let bestScore = 0;
   for (let skip = 0; skip < Math.min(HEADER_SCAN, rows.length); skip++) {
     const at = columnsAt(rows, skip, fieldNames, humanize);
-    if (at.hasHeader) return { skip, ...at };
+    if (!at.hasHeader) continue;
+    const score = at.mapping.filter((t) => t !== IGNORE).length;
+    if (!best || score > bestScore) {
+      best = { skip, ...at };
+      bestScore = score;
+    }
   }
-  return { skip: 0, ...columnsAt(rows, 0, fieldNames, humanize) };
+  return best ?? { skip: 0, ...columnsAt(rows, 0, fieldNames, humanize) };
 };
 
 // ---------------------------------------------------------------------------
@@ -401,16 +472,19 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
  * its morph type once cleaned, whichever column holds them.
  *
  * `skip` rows above the table are left out, and then the header when there is
- * one. `constants` gives a field the same value on every row.
+ * one, and a second header line under it (`subHeader`). `constants` gives a
+ * field the same value on every row.
+ *
+ * A line break inside a cell is read as a space, as the review shows it.
  *
  * @returns {{line: number, form: string, values: object, rejected: {field, value}[]}[]}
  */
 export const rowsToEntries = (
   rows,
   mapping,
-  { skip = 0, hasHeader = false, normalizeValue = null, constants = {} } = {},
+  { skip = 0, hasHeader = false, subHeader = false, normalizeValue = null, constants = {} } = {},
 ) => {
-  const body = rows.slice(skip + (hasHeader ? 1 : 0));
+  const body = rows.slice(bodyStart({ skip, hasHeader, subHeader }));
   // A value given for every row, as if the file had a column of it. A field a
   // column already supplies is the column's.
   const given = Object.entries(constants).filter(
@@ -418,7 +492,10 @@ export const rowsToEntries = (
   );
   const clean = (target, raw, entry) => (normalizeValue ? normalizeValue(target, raw, entry) : raw);
   return body.map(({ cells, line }) => {
-    const cellOf = (i) => String(cells[i] ?? '').trim();
+    const cellOf = (i) =>
+      String(cells[i] ?? '')
+        .replace(/[^\S\r\n]*(?:\r\n|\r|\n)\s*/g, ' ')
+        .trim();
     const formAt = mapping.lastIndexOf(FORM);
     const form = formAt < 0 ? '' : cellOf(formAt);
     // The morph type the row ends up with: the last column that gives a usable one.
