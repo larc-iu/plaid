@@ -205,10 +205,12 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     edges_add: List[Dict[str, Any]] = []
     edges_delete: List[Dict[str, Any]] = []
     # The pairs of nodes an edge the text drops already joined, source to
-    # target, by a relation that is no cycle role. A new edge between them
-    # is a relabel, as the canvas's setRole has it, and closes no cycle the
-    # graph did not already hold.
-    relabelled = set()
+    # target, by a relation that is no cycle role, with how many such edges
+    # each pair lost. A new edge between them is a relabel, as the canvas's
+    # setRole has it, and closes no cycle the graph did not already hold.
+    # Each dropped edge relabels one new edge: a second one beside it is an
+    # edge added, which the canvas refuses inside a cycle.
+    relabelled: Dict[Tuple[str, str], int] = {}
     orders: List[Dict[str, Any]] = []
     order_kept: List[str] = []
 
@@ -271,7 +273,8 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
             wanted = next_by_key.get(key)
             if wanted is None:
                 if edge.role not in CYCLE_ROLES:
-                    relabelled.add((var, name_of(doc.nodes_by_id[edge.target])))
+                    pair = (var, name_of(doc.nodes_by_id[edge.target]))
+                    relabelled[pair] = relabelled.get(pair, 0) + 1
                 edges_delete.append({
                     'kind': 'delete_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                     'relation_id': edge.id, 'source': edge.source, 'target': edge.target,
@@ -361,7 +364,11 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     closing = set(cycle_edges(parsed))
     for op in edges_add:
         edge = (op['source_var'], op['role'], op['target_var'])
-        if edge in closing and (edge[0], edge[2]) not in relabelled:
+        if edge not in closing:
+            continue
+        if relabelled.get((edge[0], edge[2]), 0) > 0:
+            relabelled[(edge[0], edge[2])] -= 1
+        else:
             return GraphDiff([], [], refused=f'{edge[1]} from {edge[0]} to {edge[2]} would '
                                              f'close a cycle.')
 

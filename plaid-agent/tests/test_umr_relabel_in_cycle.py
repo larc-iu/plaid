@@ -147,3 +147,20 @@ def test_a_quote_relabelled_to_a_role_that_closes_a_cycle_is_refused():
     out = _apply(ws, text)
     assert ':theme from s1c to s1x would close a cycle' in out
     assert ws.ops == []
+
+
+def test_one_dropped_edge_relabels_one_new_edge_only():
+    # The canvas relabels the edge, then refuses a second edge between the
+    # same two nodes inside the cycle, as it refuses one beside a kept edge.
+    ws = _ws()
+    out = _apply(ws, OPENING.replace(':experiencer s1a', ':actor s1a\n                :theme s1a'))
+    assert ':theme from s1c to s1a would close a cycle' in out
+    assert ws.ops == []
+
+
+def test_a_relabel_that_writes_the_inverse_keeps_the_pair():
+    ws = _ws()
+    out = _apply(ws, OPENING.replace(':experiencer s1a', ':actor-of s1a'))
+    assert 'would close a cycle' not in out
+    added = next(op for op in ws.ops if op['kind'] == 'create_edge')
+    assert (added['source_var'], added['role'], added['target_var']) == ('s1c', ':actor-of', 's1a')

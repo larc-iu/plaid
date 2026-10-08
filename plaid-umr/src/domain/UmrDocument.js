@@ -2471,13 +2471,17 @@ export class UmrDocument extends DocumentModel {
     // edge the text drops already joined, by a relation that is no cycle
     // role, is a relabel, as setRole has it: it keeps the cycle it stood in
     // and closes none (`:experiencer` to `:actor` under an `:actor-of`).
+    // Each dropped edge relabels one new edge: a second one beside it is an
+    // edge added, which addEdge refuses inside a cycle.
     const closing = new Set(cycleEdges(parsed).map((e) => e.join(' ')));
-    const relabelled = new Set(
-      plan.edgesDelete
-        .map((id) => this.edge(id))
-        .filter((e) => e && !CYCLE_ROLES.has(e.role))
-        .map((e) => `${nameOf(this.node(e.source))} ${nameOf(this.node(e.target))}`),
-    );
+    const relabelled = new Map();
+    plan.edgesDelete
+      .map((id) => this.edge(id))
+      .filter((e) => e && !CYCLE_ROLES.has(e.role))
+      .forEach((e) => {
+        const pair = `${nameOf(this.node(e.source))} ${nameOf(this.node(e.target))}`;
+        relabelled.set(pair, (relabelled.get(pair) ?? 0) + 1);
+      });
     const added = [
       ...plan.edgesAdd,
       ...plan.create.flatMap((c) =>
@@ -2485,10 +2489,10 @@ export class UmrDocument extends DocumentModel {
       ),
     ];
     added.forEach((e) => {
-      if (
-        closing.has(`${e.sourceVar} ${e.role} ${e.targetVar}`) &&
-        !relabelled.has(`${e.sourceVar} ${e.targetVar}`)
-      ) {
+      if (!closing.has(`${e.sourceVar} ${e.role} ${e.targetVar}`)) return;
+      const pair = `${e.sourceVar} ${e.targetVar}`;
+      if (relabelled.get(pair) > 0) relabelled.set(pair, relabelled.get(pair) - 1);
+      else {
         errors.push({
           message: `${e.role} from ${e.sourceVar} to ${e.targetVar} would close a cycle.`,
         });

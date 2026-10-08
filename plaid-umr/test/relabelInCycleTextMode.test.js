@@ -117,3 +117,31 @@ test('a quote relabelled to a role that closes a cycle is still refused', () => 
     [':theme from s1c to s1x would close a cycle.'],
   );
 });
+
+test('one dropped edge relabels one new edge only', () => {
+  // The canvas relabels the edge, then refuses a second edge between the
+  // same two nodes inside the cycle, as it refuses one beside a kept edge.
+  const { doc } = load();
+  const text = doc
+    .penmanOf(1)
+    .replace(':experiencer s1a', ':actor s1a\n                :theme s1a');
+  const { errors } = doc.planPenman(1, text);
+  assert.deepEqual(
+    errors.map((e) => e.message),
+    [':theme from s1c to s1a would close a cycle.'],
+  );
+});
+
+test('a relabel that writes the inverse keeps the pair', async () => {
+  const { doc } = load();
+  const plan = doc.planPenman(1, doc.penmanOf(1).replace(':experiencer s1a', ':actor-of s1a'));
+  assert.equal(plan.errors, undefined);
+  assert.deepEqual(
+    plan.edgesAdd.map((e) => [e.sourceVar, e.role, e.targetVar]),
+    [['s1c', ':actor-of', 's1a']],
+  );
+  const edge = doc.graph.sentences[0].nodes
+    .flatMap((n) => n.out)
+    .find((e) => e.role === ':experiencer');
+  assert.equal(await doc.setRole(edge.id, ':actor-of'), true);
+});
