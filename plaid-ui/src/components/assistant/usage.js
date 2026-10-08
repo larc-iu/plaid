@@ -145,9 +145,12 @@ export const gauge = (usage, record) => {
   };
 };
 
-const megabytes = (n) => {
+// A size in the unit that reads: KB below a megabyte, so a small record is
+// never "0 MB".
+const size = (n) => {
+  if (n < 1048576) return `${n > 0 ? Math.max(1, Math.round(n / 1024)) : 0} KB`;
   const mb = n / 1048576;
-  return mb >= 10 ? `${Math.round(mb)}` : `${Math.round(mb * 10) / 10}`;
+  return `${mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10} MB`;
 };
 
 // The storage line of the tooltip, in the context line's words.
@@ -157,7 +160,7 @@ const storageLine = (record) => {
   const share = s > 1 ? 'more than all' : `${Math.round(Math.min(1, s) * 100)}%`;
   return (
     `In this conversation, you have used ${share} of the available storage ` +
-    `(${megabytes(record.bytes)}/${megabytes(record.cap)} MB).`
+    `(${size(record.bytes)}/${size(record.cap)}).`
   );
 };
 

@@ -46,6 +46,41 @@ describe('a message the record refused', () => {
     expect(after.display.at(-1).text).toBe('earlier');
     expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('This conversation is full'));
   });
+
+  // H10-SCRIPTS polish: a record the meter showed at 86% refused one long
+  // message, and the toast said the conversation was full.
+  it('says the message is too long when the record had room for a message', async () => {
+    notifyError.mockClear();
+    const saved = { messages: [], display: [{ kind: 'user', text: 'earlier' }] };
+    const store = {
+      client: {
+        messages: { requestService: vi.fn() },
+        userData: {
+          put: vi.fn(async () => {
+            throw tooLarge;
+          }),
+          get: vi.fn(async (_u, key) => (key.includes(':conv:') ? { value: saved } : null)),
+        },
+      },
+      userId: 'u1',
+      app: 'igt',
+      projectId: 'p1',
+    };
+    const long = 'كتاب '.repeat(20000);
+    const conv = {
+      id: 'c-long',
+      rev: { conv: 3, meta: 3, bytes: 900000 },
+      messages: [{ role: 'user', content: long }],
+      display: [...saved.display, { kind: 'user', text: long }],
+    };
+    const j = startTurn({ store, service: { serviceId: 's' }, conv, prevMeta: null });
+    await j.promise;
+    expect(j.unsent).toBe(long);
+    expect(notifyError).toHaveBeenCalledWith(
+      expect.stringContaining('This message is too long for the room left in this conversation'),
+    );
+    expect(notifyError).not.toHaveBeenCalledWith(expect.stringContaining('is full'));
+  });
 });
 
 describe('a settled plan', () => {

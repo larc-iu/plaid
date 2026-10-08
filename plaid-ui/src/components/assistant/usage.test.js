@@ -206,10 +206,18 @@ describe('gaugeTitle', () => {
     const lines = gaugeTitle(g, 30_000).split('\n');
     expect(lines[0]).toBe('The bar shows storage.');
     expect(lines[1]).toBe(
-      'In this conversation, you have used 92% of the available storage (4.6/5 MB).',
+      'In this conversation, you have used 92% of the available storage (4.6 MB/5 MB).',
     );
     expect(lines[2]).toContain('10% of this model');
     expect(lines[3]).toBe('30,000 tokens over the whole conversation.');
+  });
+
+  // H10-SCRIPTS polish: a 48 KB record read "0/1 MB".
+  it('gives a record under a megabyte in KB', () => {
+    const g = gauge(null, { bytes: 48_715, cap: MB });
+    expect(gaugeTitle(g, 0)).toBe(
+      'In this conversation, you have used 5% of the available storage (48 KB/1 MB).',
+    );
   });
 
   it('names context when context is fuller', () => {

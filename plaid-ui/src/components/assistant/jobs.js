@@ -4,7 +4,7 @@ import { deleteConversationFiles } from './attachments.js';
 import { lastProjects } from './projectReach.js';
 import { compactPlan } from './planRecord.js';
 import { itemTime } from './itemTime.js';
-import { recordBytes } from './usage.js';
+import { MESSAGE_ROOM, recordBytes } from './usage.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 
 // The assistant's conversations and the runs behind them: what is stored
@@ -24,6 +24,19 @@ const LOST_CONTACT =
 // The record is at the server's size limit, so a message cannot be added.
 const CONVERSATION_FULL =
   'This conversation is full, so the message was not sent. Start a new conversation to go on.';
+
+// The record had room for a message, as the meter showed, but not for this
+// one.
+const MESSAGE_TOO_LONG =
+  'This message is too long for the room left in this conversation, so it was not sent. Shorten it or start a new conversation.';
+
+// Which of the two a refused write was. A record the meter counts as full has
+// less than MESSAGE_ROOM left (usage.js), so a write that added more than
+// that to a record of known size may have been refused for the message alone.
+const refusedSize = (before, tried) =>
+  Number.isFinite(before) && before > 0 && tried - before > MESSAGE_ROOM
+    ? MESSAGE_TOO_LONG
+    : CONVERSATION_FULL;
 
 // The record keys carry the app's tag, the same one the service writes
 // (plaid_agent/core/conversation.py), so one user's ud: and igt: records
@@ -215,6 +228,8 @@ export const persistConv = (
   const { client, userId, app, projectId } = store;
   if (!userId) return Promise.resolve(false);
   const prev = saveQueues.get(conv.id) || Promise.resolve();
+  // The size of the record this write tried to store, for its refusal.
+  let tried = 0;
   const next = prev
     .then(async () => {
       let c = conv;
@@ -230,12 +245,13 @@ export const persistConv = (
               messages: c.messages,
               display: c.display.filter((d) => !d.unsaved).map(compactPlan),
             };
+            // Its size beside its version, for the meter (usage.js): measured
+            // once per write, never while drawing.
+            tried = recordBytes(value);
             const put = await client.userData.put(userId, convKey(app, projectId, c.id), value, {
               version: c.rev?.conv,
             });
-            // Its size beside its version, for the meter (usage.js): measured
-            // once per write, never while drawing.
-            c.rev = { ...c.rev, conv: put?.version, bytes: recordBytes(value) };
+            c.rev = { ...c.rev, conv: put?.version, bytes: tried };
           }
           break;
         } catch (e) {
@@ -278,7 +294,7 @@ export const persistConv = (
       notifyError(
         (typeof failure === 'function' ? failure(e) : failure) ||
           (e?.status === 413
-            ? CONVERSATION_FULL
+            ? refusedSize(conv.rev?.bytes, tried)
             : humanizeError(e, 'Failed to save the conversation.')),
       );
       return false;
