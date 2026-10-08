@@ -36,11 +36,24 @@ export const projectCandidates = (projects, homeId, joined = [], opens = null) =
 // counts the home project.
 export const atProjectCap = (joined, max) => !!max && (joined?.length ?? 0) + 1 >= max;
 
-// Whether a project's discovery answer lists the SAME assistant, online. A
-// project joins only where the assistant answering this conversation also runs:
-// the operator chose which projects' text that model may see.
-export const servedThere = (found, serviceId) =>
-  !!serviceId && (found || []).some((s) => s?.serviceId === serviceId && s.online !== false);
+// Why a project was refused: whoever runs the assistant does not maintain it.
+const notMaintainedThere = (runnerName, name) =>
+  `This assistant is run by ${runnerName || 'another member'}, who is not a maintainer of ${name}.`;
+
+// Why the assistant answering cannot read a project for the reader, from that
+// project's discovery answer, or null when it can. A project joins only where
+// the SAME assistant is online too (the operator chose which projects' text
+// that model may see), and, when someone else runs it, only where that
+// someone maintains the project (`servesYou`). Otherwise every message would
+// be refused until the project came off the conversation.
+export const notThere = (found, serviceId, serviceName, name) => {
+  const there = serviceId
+    ? (found || []).find((s) => s?.serviceId === serviceId && s.online !== false)
+    : null;
+  if (!there) return notServedThere(serviceName, name);
+  if (there.servesYou === false) return notMaintainedThere(there.runnerName, name);
+  return null;
+};
 
 // The set as written on a message: the others, never the home project, each
 // once, and nothing at all when there are none.

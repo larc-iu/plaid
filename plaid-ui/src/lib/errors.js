@@ -150,6 +150,14 @@ const urlOf = (error) =>
 const TOO_LONG = 'The search took too long. Narrow it and try again.';
 const BUSY = 'The server is busy. Try again in a moment.';
 
+// The server's own sentence on a refusal (403), where it is one a reader can
+// act on: it names no id. Null otherwise.
+export const refusalSaid = (error) => {
+  if (statusOf(error) !== 403) return null;
+  const said = String(error?.responseData?.error ?? '').trim();
+  return said && !namesAnId(said) ? said : null;
+};
+
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
   if (statusOf(error) === 408) return TOO_LONG;

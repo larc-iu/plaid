@@ -5,11 +5,11 @@ import {
   couldNotOpen,
   lastProjects,
   namedCitations,
+  notThere,
   projectCandidates,
   projectNamesAt,
   projectsToSend,
   reachChanged,
-  servedThere,
   withProjects,
 } from './projectReach.js';
 import { rewindForRetry } from './resume.js';
@@ -47,25 +47,33 @@ describe('atProjectCap', () => {
   });
 });
 
-describe('servedThere', () => {
+describe('notThere', () => {
   const same = { serviceId: 'igt:assist:one', online: true };
+  const why = (found) => notThere(found, 'igt:assist:one', 'IGT Assistant', 'Kalamang');
   it('joins where the same assistant is online', () => {
-    expect(servedThere([same], 'igt:assist:one')).toBe(true);
+    expect(why([same])).toBe(null);
+    expect(why([{ ...same, runnerName: 'Ana', servesYou: true }])).toBe(null);
   });
 
   it('refuses where that assistant is offline', () => {
-    expect(servedThere([{ ...same, online: false }], 'igt:assist:one')).toBe(false);
+    expect(why([{ ...same, online: false }])).toBe('IGT Assistant is not running in Kalamang.');
   });
 
   it('refuses where only a different assistant runs', () => {
-    expect(servedThere([{ serviceId: 'igt:assist:two', online: true }], 'igt:assist:one')).toBe(
-      false,
+    expect(why([{ serviceId: 'igt:assist:two', online: true }])).toBe(
+      'IGT Assistant is not running in Kalamang.',
     );
   });
 
   it('refuses where discovery found nothing', () => {
-    expect(servedThere([], 'igt:assist:one')).toBe(false);
-    expect(servedThere(null, 'igt:assist:one')).toBe(false);
+    expect(why([])).toBe('IGT Assistant is not running in Kalamang.');
+    expect(why(null)).toBe('IGT Assistant is not running in Kalamang.');
+  });
+
+  it('refuses where whoever runs it does not maintain the project', () => {
+    expect(why([{ ...same, runnerName: 'Ana', servesYou: false }])).toBe(
+      'This assistant is run by Ana, who is not a maintainer of Kalamang.',
+    );
   });
 });
 

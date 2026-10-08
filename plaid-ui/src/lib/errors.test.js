@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   humanizeError,
+  refusalSaid,
   isChangedElsewhere,
   isGone,
   isKeyReused,
@@ -368,5 +369,27 @@ describe('a query that took too long or found the server busy', () => {
     expect(humanizeError(httpError(503, 'Database busy'))).toBe(
       'Failed to reach the server. Check your connection and try again.',
     );
+  });
+});
+
+describe('refusalSaid', () => {
+  const refused = (error) =>
+    Object.assign(new Error('HTTP 403'), { status: 403, responseData: { error } });
+  it("gives the server's sentence on a 403 that names no id", () => {
+    const said =
+      'IGT Assistant is run by Ana, who is not a maintainer of Kalamang. Remove Kalamang from this conversation to go on.';
+    expect(refusalSaid(refused(said))).toBe(said);
+  });
+
+  it('gives nothing for a sentence that names an id, or for another status', () => {
+    expect(
+      refusalSaid(
+        refused('User c lacks privileges for project 01a11d4c-b229-7000-ae0b-a98abcaa4c99'),
+      ),
+    ).toBe(null);
+    expect(
+      refusalSaid(Object.assign(new Error('x'), { status: 409, responseData: { error: 'x' } })),
+    ).toBe(null);
+    expect(refusalSaid(new Error('HTTP 403'))).toBe(null);
   });
 });

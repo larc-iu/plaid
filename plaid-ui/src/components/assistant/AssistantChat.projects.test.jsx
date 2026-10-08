@@ -289,6 +289,22 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 
+  it('refuses a project its runner does not maintain, and says who runs it', async () => {
+    // The send was refused by the server on every turn until the chip came
+    // off (REV-FX9-DELEG).
+    const client = fakeClient({
+      where: { pC: [{ ...SERVICE, runnerName: 'Ana', servesYou: false }] },
+    });
+    const m = await mount(client);
+    await flush(m);
+    await pick(m, 'Lamkang C');
+    expect(refusal()?.textContent).toBe(
+      'This assistant is run by Ana, who is not a maintainer of Lamkang C.',
+    );
+    expect(chip(m, 'Lamkang C')).toBeNull();
+    await m.unmount();
+  });
+
   it('refuses a project where only a different assistant runs', async () => {
     const other = { ...SERVICE, serviceId: 'igt:assist:two' };
     const client = fakeClient({ where: { pC: [other] } });

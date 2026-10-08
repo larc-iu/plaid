@@ -15,8 +15,8 @@ import {
   couldNotOpen,
   lastProjects,
   notServedThere,
+  notThere,
   projectsToSend,
-  servedThere,
 } from './projectReach.js';
 import {
   MAX_FILES,
@@ -280,14 +280,14 @@ export const AssistantChat = ({
       toCheck.map((p) =>
         client.messages
           .discoverServices(p.id)
-          .then((found) => servedThere(found, answeringId))
-          .catch(() => false),
+          .then((found) => notThere(found, answeringId, serviceNameRef.current, p.name))
+          .catch(() => notServedThere(serviceNameRef.current, p.name)),
       ),
-    ).then((served) => {
+    ).then((why) => {
       if (activeRef.current?.id !== convId || serviceIdRef.current !== answeringId) return;
-      const gone = toCheck.filter((_p, k) => !served[k]);
+      const gone = toCheck.filter((_p, k) => why[k]);
       if (!gone.length) return;
-      for (const p of gone) notifyError(notServedThere(serviceNameRef.current, p.name));
+      for (const line of why) if (line) notifyError(line);
       const ids = new Set(gone.map((p) => p.id));
       setReachEdit((prev) => {
         const now =
@@ -701,9 +701,8 @@ export const AssistantChat = ({
     }
     // Asked of the assistant answering NOW: the reader may have chosen
     // another one while this was being looked up.
-    if (!servedThere(found, serviceIdRef.current)) {
-      return notServedThere(serviceNameRef.current, p.name);
-    }
+    const why = notThere(found, serviceIdRef.current, serviceNameRef.current, p.name);
+    if (why) return why;
     // The reader moved to another conversation while this was asked.
     if (activeRef.current?.id !== at) return false;
     setReachEdit((prev) => {

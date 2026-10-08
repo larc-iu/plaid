@@ -1,5 +1,5 @@
 import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
-import { humanizeError } from '../../lib/errors.js';
+import { humanizeError, refusalSaid } from '../../lib/errors.js';
 import { deleteConversationFiles } from './attachments.js';
 import { lastProjects } from './projectReach.js';
 import { compactPlan } from './planRecord.js';
@@ -548,7 +548,9 @@ const settleJob = (j, conv, meta, store, service) => {
           ...conv.display,
           {
             kind: 'error',
-            text: humanizeError(j.error, 'The assistant failed to answer.'),
+            // A send the server refused says why where it can be acted on
+            // ("... Remove Kalamang from this conversation to go on.").
+            text: refusalSaid(j.error) || humanizeError(j.error, 'The assistant failed to answer.'),
             createdAt: itemTime(),
           },
         ],
