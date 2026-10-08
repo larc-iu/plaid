@@ -64,8 +64,8 @@ test('an entry is put back as it was, and the form shows it', async ({ page }) =
   await openPast(page, ids.kai);
   await page.getByRole('button', { name: 'Restore', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText('Form: “kay” → “kai”')).toBeVisible();
-  await expect(dialog.getByText('Gloss: “consume” → “eat”')).toBeVisible();
+  await expect(dialog.getByText('Form: “\u2068kay\u2069” → “\u2068kai\u2069”')).toBeVisible();
+  await expect(dialog.getByText('Gloss: “\u2068consume\u2069” → “\u2068eat\u2069”')).toBeVisible();
   await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(page.getByText('Restored').first()).toBeVisible();
 

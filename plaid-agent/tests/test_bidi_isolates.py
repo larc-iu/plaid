@@ -17,7 +17,7 @@ from test_igt_rules import _replace, _ws
 
 pytestmark = pytest.mark.isolates
 
-FSI, LRI, PDI = '⁨', '⁦', '⁩'
+FSI, LRI, PDI = '\u2068', '\u2066', '\u2069'
 
 
 def iso(v):

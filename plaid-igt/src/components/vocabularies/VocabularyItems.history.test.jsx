@@ -159,8 +159,8 @@ describe('the Entries tab at a past state', () => {
     await settle(view);
     expect(client.calls[0]).toEqual(['restoreItem', 'a', THEN, true, null]);
     const text = document.body.textContent;
-    expect(text).toContain('Form: “kay” → “kai”');
-    expect(text).toContain('Gloss: “consume” → “eat”');
+    expect(text).toContain('Form: “\u2068kay\u2069” → “\u2068kai\u2069”');
+    expect(text).toContain('Gloss: “\u2068consume\u2069” → “\u2068eat\u2069”');
 
     const confirm = all(document.body, '[role="dialog"] button').find(
       (b) => b.textContent.trim() === 'Restore',

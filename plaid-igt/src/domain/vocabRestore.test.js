@@ -35,7 +35,11 @@ describe('entryRestoreLines', () => {
         live,
         fields,
       ),
-    ).toEqual(['Form: “kay” → “kai”', 'Gloss: “consume” → “eat”', 'See Also']);
+    ).toEqual([
+      'Form: “\u2068kay\u2069” → “\u2068kai\u2069”',
+      'Gloss: “\u2068consume\u2069” → “\u2068eat\u2069”',
+      'See Also',
+    ]);
   });
 
   it('names a value that was empty then or is empty now', () => {
@@ -48,7 +52,7 @@ describe('entryRestoreLines', () => {
         live,
         fields,
       ),
-    ).toEqual(['Gloss: “eat” → —']);
+    ).toEqual(['Gloss: “\u2068eat\u2069” → —']);
   });
 
   it('names a moved sense, and anything no field row holds', () => {
@@ -73,7 +77,7 @@ describe('entryRestoreLines', () => {
         entry,
         fields,
       ),
-    ).toEqual(['Form: “kai” → “kay”', 'Other values']);
+    ).toEqual(['Form: “\u2068kai\u2069” → “\u2068kay\u2069”', 'Other values']);
   });
 });
 

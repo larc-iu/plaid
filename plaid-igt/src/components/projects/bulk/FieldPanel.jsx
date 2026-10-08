@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';
+import { isolate } from '@ui/lib/bidi.js';
 import {
   Select,
   SelectTrigger,
@@ -165,8 +166,8 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
         { rows: writable, versions: plan.versions, replan: plan.replan },
         {
           label: blank(plan.repl)
-            ? `Clear “${plan.find}” in ${targetLabel}`
-            : `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}`,
+            ? `Clear “${isolate(plan.find)}” in ${targetLabel}`
+            : `Replace “${isolate(plan.find)}” → “${isolate(plan.repl)}” in ${targetLabel}`,
           onProgress,
         },
       ),

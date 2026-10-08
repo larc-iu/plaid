@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
+import { isolate } from '@ui/lib/bidi.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
@@ -158,8 +159,8 @@ export const ReplaceDialog = ({
     let writes = [];
     let skipped = 0;
     const label = filling
-      ? `Set ${target.label} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
-      : `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
+      ? `Set ${target.label} to “${isolate(repl)}” where empty in ${vocabularyName || 'vocabulary'}`
+      : `Replace “${isolate(find)}” → “${isolate(repl)}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
     try {
       const { landed, error } = await send(
         label,

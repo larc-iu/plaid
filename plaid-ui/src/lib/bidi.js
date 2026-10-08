@@ -50,3 +50,10 @@ export const caretAtArrowEdge = (el, visualRight) => {
  * around it is laid out: 1 forwards, -1 back.
  */
 export const arrowStep = (visualRight, gridRtl) => (visualRight === !!gridRtl ? -1 : 1);
+
+// A value inside a line built as a string: an audit label, a toast. Between
+// FIRST STRONG ISOLATE and POP DIRECTIONAL ISOLATE it keeps its own direction,
+// so `Respell “كتاب” → “كتب”` reads in its own order instead of the arrow
+// joining two right-to-left values into one run that reads backwards. A line
+// drawn from parts puts each value in a `<bdi>` instead.
+export const isolate = (value) => `\u2068${value ?? ''}\u2069`;

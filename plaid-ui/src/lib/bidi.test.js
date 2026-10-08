@@ -3,7 +3,7 @@
 // jsdom, not the suite's default happy-dom: `isRtlBox` asks for a resolved
 // `direction`, which is a question only a real layout engine answers.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isRtlBox, caretAtArrowEdge, arrowStep } from './bidi.js';
+import { isRtlBox, caretAtArrowEdge, arrowStep, isolate } from './bidi.js';
 
 let host;
 beforeEach(() => {
@@ -85,5 +85,12 @@ describe('arrowStep', () => {
   it('reads LEFT as forwards in an RTL grid, where the next word is leftward', () => {
     expect(arrowStep(false, true)).toBe(1);
     expect(arrowStep(true, true)).toBe(-1);
+  });
+});
+
+describe('isolate', () => {
+  it('puts a value between FSI and PDI, and nothing in an empty one', () => {
+    expect(isolate('كتاب')).toBe('\u2068كتاب\u2069');
+    expect(isolate(undefined)).toBe('\u2068\u2069');
   });
 });

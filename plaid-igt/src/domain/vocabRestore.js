@@ -9,11 +9,12 @@
 // at that time and the one now.
 
 import { fullTimestamp } from '@ui/lib/formatTime.js';
+import { isolate } from '@ui/lib/bidi.js';
 import { fieldLabel, FIELD_TYPES } from './vocabFields.js';
 
 const show = (v) => {
   if (v == null || v === '') return '—';
-  return `“${typeof v === 'string' ? v : JSON.stringify(v)}”`;
+  return `“${isolate(typeof v === 'string' ? v : JSON.stringify(v))}”`;
 };
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 

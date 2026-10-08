@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
+import { isolate } from '@ui/lib/bidi.js';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
@@ -130,7 +131,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
         {
           includeMorphemes,
           includeLexicon,
-          label: `Respell “${plan.find}” → “${plan.repl}”`,
+          label: `Respell “${isolate(plan.find)}” → “${isolate(plan.repl)}”`,
           onProgress,
         },
       ),
