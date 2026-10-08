@@ -20,12 +20,14 @@ const Probe = ({
   writeFallback = false,
   aliases,
   ready = true,
+  clears,
   onReady,
 }) => {
   const [active, setActive, tabHref] = useTabParam(tabs, fallback, {
     writeFallback,
     aliases,
     ready,
+    clears,
   });
   const { search } = useLocation();
   onReady({ active, setActive, search, tabHref });
@@ -40,6 +42,16 @@ const mount = async (initial, props = {}) => {
     </MemoryRouter>,
   );
   return { container, unmount, read: () => last };
+};
+
+const mountWithStep = async (initial, props = {}) => {
+  let last = null;
+  const r = await renderComponent(
+    <MemoryRouter initialEntries={[initial]}>
+      <Probe {...props} onReady={(v) => (last = v)} />
+    </MemoryRouter>,
+  );
+  return { ...r, read: () => last };
 };
 
 describe('useTabParam', () => {
@@ -156,6 +168,26 @@ describe('useTabParam while the tab list can still grow', () => {
     });
     expect(read().active).toBe('settings');
     expect(read().search).toBe('?tab=settings');
+    await unmount();
+  });
+});
+
+describe('a param that belongs to one tab', () => {
+  // Admin > Users keeps the open account in `?user=`. Moving to another tab
+  // leaves it behind, so the address never names an account the screen is not
+  // showing and coming back to Users lands on the list.
+  const CLEARS = ['user'];
+
+  it("is dropped by a move to another tab, and by that tab's href", async () => {
+    const { read, step, unmount } = await mountWithStep('/a?tab=search&user=ada&q=x', {
+      clears: CLEARS,
+    });
+    expect(read().tabHref('/a', 'validate')).toBe('/a?tab=validate&q=x');
+    expect(read().tabHref('/a', 'documents')).toBe('/a?q=x');
+    // The tab it belongs to keeps it.
+    expect(read().tabHref('/a', 'search')).toBe('/a?tab=search&user=ada&q=x');
+    await step(() => read().setActive('validate'));
+    expect(read().search).toBe('?tab=validate&q=x');
     await unmount();
   });
 });

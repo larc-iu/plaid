@@ -28,9 +28,13 @@ const TABS = [
   'logs',
 ];
 
+// What one tab has open: Users an account, Assistant a conversation. Moving
+// to another tab leaves it behind, so the tab comes back to its list.
+const DETAIL_PARAMS = ['user', 'conversation'];
+
 export const AdminView = () => {
   const { user, client } = useAuth();
-  const [tab, setTab, tabHref] = useTabParam(TABS, 'users');
+  const [tab, setTab, tabHref] = useTabParam(TABS, 'users', { clears: DETAIL_PARAMS });
   useDocumentTitle('Administration');
 
   // Not a permission check the server relies on — every endpoint behind this

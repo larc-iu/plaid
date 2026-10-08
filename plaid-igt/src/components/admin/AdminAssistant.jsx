@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -56,6 +56,26 @@ const parseKey = (key) => {
 
 const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:conv:${convId}`;
 
+// The open conversation lives in the URL beside `?tab=assistant`, so its title
+// is a real link: middle-click opens it in a new tab, and a pasted address
+// opens it too. Every other param stays.
+const PARAM = 'conversation';
+
+const withConversation = (params, key) => {
+  const next = new URLSearchParams(params);
+  if (key) next.set(PARAM, key);
+  else next.delete(PARAM);
+  return { search: next.toString() };
+};
+
+const AllConversations = ({ to }) => (
+  <Button asChild variant="ghost" size="sm" className="self-start">
+    <Link to={to}>
+      <ArrowLeft className="h-4 w-4" /> All conversations
+    </Link>
+  </Button>
+);
+
 // The conversation as its owner sees it in the chat, drawn by the chat's own
 // `Turn`, and read-only: a plan shows its status and changes and offers no
 // decision, there is no composer and no Retry, and nothing here writes to the
@@ -65,7 +85,7 @@ const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:co
 // Another app's conversation is drawn with PLAIN_ASSISTANT: its citations as
 // the plain place they name, its plan rows by their stored labels, and no
 // links into an editor this app cannot address.
-const ConversationDetail = ({ client, row, onBack }) => {
+const ConversationDetail = ({ client, row, backTo }) => {
   const [conv, setConv] = useState(null);
   const [error, setError] = useState(null);
   // The server's cap on a stored value, for the meter's storage share.
@@ -125,9 +145,7 @@ const ConversationDetail = ({ client, row, onBack }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
-        <ArrowLeft className="h-4 w-4" /> All conversations
-      </Button>
+      <AllConversations to={backTo} />
 
       <div>
         <h2 className="text-xl font-semibold">{row.title}</h2>
@@ -215,7 +233,8 @@ export const AdminAssistant = ({ client }) => {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
+  const [searchParams] = useSearchParams();
+  const selected = searchParams.get(PARAM);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -275,10 +294,18 @@ export const AdminAssistant = ({ client }) => {
   }, [entries, users, projects]);
 
   if (selected) {
+    const backTo = withConversation(searchParams, null);
+    // The detail needs the index's row (who, which project, the summary), so
+    // an address opened cold waits for the index.
+    if (loading) return <Loading className="p-0" />;
     const row = rows.find((r) => r.key === selected);
-    if (row) {
-      return <ConversationDetail client={client} row={row} onBack={() => setSelected(null)} />;
-    }
+    if (row) return <ConversationDetail client={client} row={row} backTo={backTo} />;
+    return (
+      <div className="flex flex-col gap-4">
+        <AllConversations to={backTo} />
+        <p className="text-sm text-muted-foreground">There is no conversation at this address.</p>
+      </div>
+    );
   }
 
   const columns = [
@@ -287,13 +314,9 @@ export const AdminAssistant = ({ client }) => {
       label: 'Conversation',
       sort: (r) => r.title.toLowerCase(),
       render: (r) => (
-        <button
-          type="button"
-          className="text-left font-medium hover:underline"
-          onClick={() => setSelected(r.key)}
-        >
+        <Link to={withConversation(searchParams, r.key)} className="font-medium hover:underline">
           {r.title}
-        </button>
+        </Link>
       ),
     },
     {

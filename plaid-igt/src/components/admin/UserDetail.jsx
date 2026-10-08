@@ -17,13 +17,15 @@ import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
 
-export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
+export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
   const confirm = useConfirm();
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
   const [tokens, setTokens] = useState([]);
   const [tally, setTally] = useState(null);
   const [loading, setLoading] = useState(true);
+  // An address naming no account, opened from a pasted or stale link.
+  const [missing, setMissing] = useState(false);
 
   const begin = useLatestCall();
   const load = useCallback(async () => {
@@ -31,6 +33,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
     // and this one stays mounted, so the slower account can answer last.
     const isCurrent = begin();
     setLoading(true);
+    setMissing(false);
     try {
       const [u, projectList, tokenList, tallyRows] = await Promise.all([
         client.users.get(userId),
@@ -54,6 +57,11 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
       setTally((tallyRows || []).find((r) => r.user?.id === userId) || null);
     } catch (err) {
       if (!isCurrent()) return;
+      setUser(null);
+      if (err?.status === 404) {
+        setMissing(true);
+        return;
+      }
       console.error('Error loading user:', err);
       notifyError(humanizeError(err), 'Failed to load the account');
     } finally {
@@ -84,12 +92,16 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
-        <ArrowLeft className="h-4 w-4" /> All accounts
+      <Button asChild variant="ghost" size="sm" className="self-start">
+        <Link to={backTo}>
+          <ArrowLeft className="h-4 w-4" /> All accounts
+        </Link>
       </Button>
 
       {loading && !user ? (
         <Loading className="p-0" />
+      ) : missing ? (
+        <p className="text-sm text-muted-foreground">There is no account at this address.</p>
       ) : !user ? null : (
         <>
           <div className="flex items-center gap-3">

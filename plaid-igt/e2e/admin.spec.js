@@ -277,9 +277,13 @@ test('an assistant conversation opens whoever had it', async ({ page }) => {
     .toBeGreaterThan(0);
 
   await expect(rows.first().locator('td').first()).toHaveText(title);
-  await rows.first().locator('button').first().click();
+  // The title is a real link to the conversation, so it opens in a new tab too.
+  const titleLink = rows.first().locator('a').first();
+  await expect(titleLink).toHaveAttribute('href', /[?&]conversation=/);
+  await titleLink.click();
 
-  await expect(page.getByRole('button', { name: 'All conversations' })).toBeVisible();
+  await expect(page).toHaveURL(/[?&]conversation=/);
+  await expect(page.getByRole('link', { name: 'All conversations' })).toBeVisible();
   await expect(page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
   // Rendered as the conversation, as the chat draws it: the question and the
   // reply each show, with no way to answer or approve from here.

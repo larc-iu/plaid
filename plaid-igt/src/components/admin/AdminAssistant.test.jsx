@@ -142,7 +142,7 @@ describe('AdminAssistant', () => {
     const { container, step, unmount } = await mount(client);
 
     await step(async () => {
-      byText(container, 'tbody button', 'Which words are unglossed?').click();
+      byText(container, 'tbody a', 'Which words are unglossed?').click();
     });
 
     expect(client.userData.get).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ describe('AdminAssistant', () => {
     const { container, step, unmount } = await mount(client);
 
     await step(async () => {
-      byText(container, 'tbody button', 'Which words are unglossed?').click();
+      byText(container, 'tbody a', 'Which words are unglossed?').click();
     });
 
     expect(container.textContent).toContain('The transcript is gone');
@@ -204,7 +204,7 @@ describe('AdminAssistant across apps', () => {
     // a ud: conversation offered the very route the list refuses to build.
     const { container, step, unmount } = await mount(withUd());
     await step(async () => {
-      byText(container, 'tbody button', 'Words with no lemma?').click();
+      byText(container, 'tbody a', 'Words with no lemma?').click();
     });
     expect(container.textContent).toContain('Lezgi');
     expect(container.querySelector('a[href*="/projects/"]')).toBeNull();
@@ -214,7 +214,7 @@ describe('AdminAssistant across apps', () => {
   it('still links its own project from the conversation it opens', async () => {
     const { container, step, unmount } = await mount(withUd());
     await step(async () => {
-      byText(container, 'tbody button', 'Which words are unglossed?').click();
+      byText(container, 'tbody a', 'Which words are unglossed?').click();
     });
     expect(container.querySelector('a[href*="/projects/"]')).not.toBeNull();
     await unmount();
@@ -233,6 +233,66 @@ describe('AdminAssistant across apps', () => {
     expect(foreign.textContent).toContain('Lezgi');
     expect(foreign.querySelector('a[href*="/projects/"]')).toBeNull();
     expect(mine.querySelector('a[href*="/projects/"]')).not.toBeNull();
+    await unmount();
+  });
+});
+
+describe('a conversation has an address', () => {
+  // Luke, 2026-10-08: a title that looks like a link has to be one. It was a
+  // button that set component state, so middle-click and cmd-click did
+  // nothing and the open conversation could not be shared or reloaded.
+  const KEY = `igt:assistant:${PA}:meta:c1`;
+  const at = (url, client = fakeClient()) =>
+    renderComponent(
+      <MemoryRouter initialEntries={[url]}>
+        <AdminAssistant client={client} />
+      </MemoryRouter>,
+    ).then((r) => ({ ...r, client }));
+
+  it('draws each title as a link to the conversation, keeping the tab', async () => {
+    const { container, unmount } = await at('/admin?tab=assistant');
+    const link = byText(container, 'tbody a', 'Which words are unglossed?');
+    expect(link.tagName).toBe('A');
+    const href = new URL(link.getAttribute('href'), 'http://x');
+    expect(href.pathname).toBe('/admin');
+    expect(href.searchParams.get('tab')).toBe('assistant');
+    expect(href.searchParams.get('conversation')).toBe(KEY);
+    await unmount();
+  });
+
+  it('opens the conversation the address names', async () => {
+    const url = `/admin?tab=assistant&conversation=${encodeURIComponent(KEY)}`;
+    const { container, client, unmount } = await at(url);
+    expect(client.userData.get).toHaveBeenCalledWith(
+      'ada@example.com',
+      `igt:assistant:${PA}:conv:c1`,
+    );
+    expect(container.textContent).toContain('Fourteen, across three documents.');
+    // All conversations is a link back to the list, with the tab kept.
+    const back = byText(container, 'a', 'All conversations');
+    expect(back.getAttribute('href')).toBe('/admin?tab=assistant');
+    await unmount();
+  });
+
+  it('says so when the address names no conversation', async () => {
+    const { container, client, unmount } = await at('/admin?tab=assistant&conversation=nope');
+    expect(container.textContent).toContain('There is no conversation at this address.');
+    expect(client.userData.get).not.toHaveBeenCalled();
+    expect(byText(container, 'a', 'All conversations')).not.toBeNull();
+    await unmount();
+  });
+
+  it('shows Loading, not the list, while the index for an address loads', async () => {
+    let release;
+    const client = fakeClient({
+      admin: { userData: vi.fn(() => new Promise((r) => (release = () => r(ENTRIES)))) },
+    });
+    const url = `/admin?tab=assistant&conversation=${encodeURIComponent(KEY)}`;
+    const { container, step, unmount } = await at(url, client);
+    expect(container.querySelector('tbody')).toBeNull();
+    expect(container.textContent).not.toContain('There is no conversation');
+    await step(async () => release());
+    expect(container.textContent).toContain('Fourteen, across three documents.');
     await unmount();
   });
 });

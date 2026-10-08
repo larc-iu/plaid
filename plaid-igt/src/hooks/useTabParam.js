@@ -32,13 +32,19 @@ import { useSearchParams } from 'react-router-dom';
 // perfectly good `?tab=settings` before it became legal. Nothing else can
 // know that from in here, so the caller says.
 //
+// `clears` names params that belong to one tab's view, such as the account
+// an admin tab has open (`?user=`). They are dropped whenever the group moves
+// to ANOTHER tab, by the setter and in every other tab's href, so the address
+// never names a detail the screen is not showing and coming back to the tab
+// lands on its list.
+//
 // The setter takes the same options as `setSearchParams`. Pass
 // `{ replace: true }` for a switch the user did not ask for, such as an
 // automatic landing tab, so it does not add a history entry to back out of.
 export const useTabParam = (
   tabs,
   fallback,
-  { param = 'tab', writeFallback = false, aliases, ready = true } = {},
+  { param = 'tab', writeFallback = false, aliases, ready = true, clears } = {},
 ) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get(param);
@@ -52,9 +58,12 @@ export const useTabParam = (
 
   const setActive = useCallback(
     (value, options) => {
-      setSearchParams((prev) => writeTab(prev, value, fallback, param, writeFallback), options);
+      setSearchParams(
+        (prev) => writeTab(prev, value, fallback, param, writeFallback, value !== active && clears),
+        options,
+      );
     },
-    [setSearchParams, fallback, param, writeFallback],
+    [setSearchParams, fallback, param, writeFallback, active, clears],
   );
 
   // The href for one tab of this group, for a trigger that is also a link.
@@ -63,10 +72,17 @@ export const useTabParam = (
   // than a bare list.
   const tabHref = useCallback(
     (basePath, value) => {
-      const q = writeTab(searchParams, value, fallback, param, writeFallback).toString();
+      const q = writeTab(
+        searchParams,
+        value,
+        fallback,
+        param,
+        writeFallback,
+        value !== active && clears,
+      ).toString();
       return q ? `${basePath}?${q}` : basePath;
     },
-    [searchParams, fallback, param, writeFallback],
+    [searchParams, fallback, param, writeFallback, active, clears],
   );
 
   // A value that is not already the slug is rewritten in place: to the tab it
@@ -84,9 +100,11 @@ export const useTabParam = (
 // The query string for one tab of a group, keeping every other param.
 // `?item=`, `?focusSentence=` and a project search's `?q=&match=&in=&mode=`
 // all survive a tab switch, and the fallback tab is the bare page unless the
-// group writes its fallback too (see `writeFallback`).
-const writeTab = (current, value, fallback, param, writeFallback) => {
+// group writes its fallback too (see `writeFallback`). `clears`, passed only
+// for a move to another tab, is dropped.
+const writeTab = (current, value, fallback, param, writeFallback, clears) => {
   const next = new URLSearchParams(current);
+  if (clears) for (const key of clears) next.delete(key);
   if (!value || (value === fallback && !writeFallback)) next.delete(param);
   else next.set(param, value);
   return next;

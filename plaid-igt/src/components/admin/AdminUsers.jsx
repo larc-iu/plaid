@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { MoreVertical, UserPlus } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -20,11 +21,24 @@ import { textIncludes } from '@ui/domain/collation.js';
 // The whole account directory. The project Access tab resolves one project's
 // members; this browses everyone, and opens onto what one person has been
 // doing, what they can reach, and what tokens they hold.
+//
+// The open account lives in the URL beside the tab (`?user=<id>`), so a name
+// is a real link: middle-click opens the account in a new tab, and a pasted
+// address opens it too. Every other param stays.
+const PARAM = 'user';
+
+const withUser = (params, id) => {
+  const next = new URLSearchParams(params);
+  if (id) next.set(PARAM, id);
+  else next.delete(PARAM);
+  return { search: next.toString() };
+};
 
 export const AdminUsers = ({ client, currentUser }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
+  const [searchParams] = useSearchParams();
+  const selected = searchParams.get(PARAM);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +67,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       <UserDetail
         client={client}
         userId={selected}
-        onBack={() => setSelected(null)}
+        backTo={withUser(searchParams, null)}
         onEdit={(u) => userAdmin.startEdit(u)}
         dialogs={<UserAdminDialogs controller={userAdmin} />}
       />
@@ -66,11 +80,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       label: 'Name',
       sort: (u) => (u.displayName || u.id).toLowerCase(),
       render: (u) => (
-        <button
-          type="button"
-          className="flex items-center gap-2 text-left hover:underline"
-          onClick={() => setSelected(u.id)}
-        >
+        <Link to={withUser(searchParams, u.id)} className="flex items-center gap-2 hover:underline">
           <UserAvatar
             client={client}
             userId={u.id}
@@ -79,7 +89,7 @@ export const AdminUsers = ({ client, currentUser }) => {
             className="h-6 w-6"
           />
           <span className="font-medium">{u.displayName || u.id}</span>
-        </button>
+        </Link>
       ),
     },
     {
@@ -122,7 +132,9 @@ export const AdminUsers = ({ client, currentUser }) => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setSelected(u.id)}>Open</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to={withUser(searchParams, u.id)}>Open</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>Edit user</DropdownMenuItem>
             <DropdownMenuItem
               disabled={userAdmin.resetting}

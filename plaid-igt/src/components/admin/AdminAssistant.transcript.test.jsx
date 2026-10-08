@@ -197,7 +197,7 @@ const open = async (title) => {
       <AdminAssistant client={client} />
     </MemoryRouter>,
   );
-  await r.step(async () => byText(r.container, 'tbody button', title).click());
+  await r.step(async () => byText(r.container, 'tbody a', title).click());
   return { ...r, calls };
 };
 
@@ -291,8 +291,13 @@ describe('the admin transcript of another app', () => {
     expect(texts(row, 'td')[1]).toBe('s2.w1 lemma = kitab');
     // The inline one is its title, not a link to nowhere.
     expect(texts(container, 'strong')).toContain('dev, sentence 2');
-    // Nothing links into an editor this app cannot address.
-    expect(all(container, 'a').filter((a) => a.getAttribute('href') !== null)).toEqual([]);
+    // Nothing links into an editor this app cannot address. The one link is
+    // All conversations, back to the list.
+    expect(
+      all(container, 'a')
+        .filter((a) => a.getAttribute('href') !== null)
+        .map((a) => a.textContent.trim()),
+    ).toEqual(['All conversations']);
     expect(buttons(container).join(' | ')).not.toMatch(/Approve|Discard/);
     expect(calls.filter((c) => !Object.keys(READS).includes(c))).toEqual([]);
     await unmount();
