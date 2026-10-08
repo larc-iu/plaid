@@ -23,6 +23,7 @@ import {
   ruleCountLine,
   ruleDocuments,
   ruleMoreLine,
+  staleLine,
   textRewrites,
   workReplaced,
 } from './planChanges.js';
@@ -187,7 +188,7 @@ export const PlanCard = ({
       {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
       {stale && reason && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="stale-reason">
-          {sentence(reason)} Nothing was changed.
+          {staleLine(reason)}
         </p>
       )}
       {partial && (
@@ -362,9 +363,6 @@ export const PlanCard = ({
     </div>
   );
 };
-
-// A sentence as the service wrote it, ending in a full stop.
-const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 // One rule: a stored change standing for many (core/rules.py in plaid-agent).
 // The rule in its own words and its count, then, unfolded, each document it

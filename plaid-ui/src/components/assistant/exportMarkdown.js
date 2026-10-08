@@ -11,6 +11,7 @@ import {
   ruleCountLine,
   ruleDocuments,
   ruleMoreLine,
+  staleLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
@@ -60,7 +61,7 @@ export const replyToMarkdown = (text, citations, ctx) => {
 // A plan that stopped partway says how much was written in the service's own
 // count (`outcome` on the record), which counts each change a folded row
 // stands for, as the card's message did.
-const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
+const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) => {
   const said =
     status === 'applied'
       ? 'Approved and applied.'
@@ -77,6 +78,8 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
                 : 'Not yet approved.';
   const where = inProject ? ` in ${markdownText(inProject)}` : '';
   const lines = [`**Proposed changes${where}:** ${plan.summary || ''} (${said})`, ''];
+  // The card's sentence saying why an out-of-date plan was refused.
+  if (status === 'stale' && reason) lines.push(markdownText(staleLine(reason)), '');
   planRows(plan).forEach((r, i) => {
     // A rule's row is the rule in its words, its count on the line below.
     lines.push(`${i + 1}. ${r.rule ? r.change || r.label : r.label}`);
@@ -150,7 +153,14 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       }
       if (d.plan)
         out.push(
-          planToMarkdown(d.plan, d.status, !!d.interrupted, d.outcome, planProjectAt(display, i)),
+          planToMarkdown(
+            d.plan,
+            d.status,
+            !!d.interrupted,
+            d.outcome,
+            planProjectAt(display, i),
+            d.reason,
+          ),
           '',
         );
     }

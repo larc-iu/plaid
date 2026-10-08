@@ -78,6 +78,11 @@ export const ruleCountLine = (rule, replacesWork = 0) => {
 export const ruleMoreLine = (docs, changes) =>
   `and ${count(docs, 'more document', 'more documents')} (${count(changes, 'change', 'changes')})`;
 
+// Why an out-of-date plan was refused, as the service said it, on the card and
+// in the exports.
+export const staleLine = (reason) =>
+  `${/[.!?]$/.test(reason) ? reason : `${reason}.`} Nothing was changed.`;
+
 // How many rows a settled plan's record no longer holds (planRecord.js).
 export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
 

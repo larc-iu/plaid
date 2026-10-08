@@ -47,4 +47,24 @@ describe('conversationToMarkdown', () => {
     expect(out).toContain('*Files: words cleaned.csv*');
     expect(out).not.toContain('Fetched');
   });
+
+  // H10-SCRIPTS-6: the card says why a plan is out of date, and so does the
+  // Markdown.
+  it('gives the reason an out-of-date plan was refused, as the card does', () => {
+    const reason =
+      'Gloss "kitab" → "kutub" now matches 7 places in 2 documents, not the 6 shown when it was planned (1 more in "Tale")';
+    const out = md([
+      {
+        kind: 'assistant',
+        text: 'Planned.',
+        status: 'stale',
+        reason,
+        plan: { summary: 'Gloss "kitab" → "kutub" (6 values)', ops: [], changes: [] },
+      },
+    ]);
+    expect(out).toContain('(Out of date.)');
+    expect(out).toContain(
+      'not the 6 shown when it was planned \\(1 more in "Tale"). Nothing was changed.',
+    );
+  });
 });
