@@ -1039,3 +1039,48 @@ describe('header lines (polish 2026-10-02, H8-BULK)', () => {
     expect(matchHeader('क', ['कि'], (f) => f)).toBe(null);
   });
 });
+
+describe('the row under the header (review of H8-BULK)', () => {
+  it('keeps a first entry whose form looks like a key or whose gloss names a field', () => {
+    for (const row of [
+      'iGama\tword\tn',
+      'isiMo\tform\tn',
+      'kat_a\tkind_of\ttype',
+      'ka_ta\tentry\tn',
+      'abc_d\tenglish\tn',
+      'tu_ku\tsense\tn',
+      'kat_a\tid\tn',
+      'kat_a\tgo_out\tv',
+    ]) {
+      const { rows } = parseTable(`Form\tGloss\tPOS\n${row}\nnu\tmother\tn\n`);
+      const guess = guessColumns(rows, FIELDS, humanize);
+      expect(guess, row).toMatchObject({ skip: 0, hasHeader: true, subHeader: false });
+      expect(rowsToEntries(rows, guess.mapping, guess)).toHaveLength(2);
+    }
+  });
+
+  it('keeps a first entry whose key-like gloss contains a field of the vocabulary', () => {
+    const { rows } = parseTable('Form\tGloss\tDialect\nka_a\tdialect_word\tnorth\nnu\tmother\ts\n');
+    expect(columnsAt(rows, 0, [...FIELDS, 'dialect'], humanize).subHeader).toBe(false);
+  });
+
+  it('leaves out a key line whose form key only contains a form name', () => {
+    for (const keys of ['form_text\tgloss_en\tpos_tag', 'lexemeForm\tglossEn\tpartOfSpeech']) {
+      const { rows } = parseTable(`Form\tGloss\tPOS\n${keys}\nka\tI\tn\n`);
+      expect(columnsAt(rows, 0, FIELDS, humanize).subHeader, keys).toBe(true);
+    }
+  });
+
+  it('never takes a data row lower down over the header above it', () => {
+    const { rows } = parseTable(
+      'Headword\tTranslation\tc3\nka\tI\tx\nentry\tsense\tpos\nnu\tmother\tn\n',
+    );
+    const guess = guessColumns(rows, FIELDS, humanize);
+    expect(guess).toMatchObject({ skip: 0, hasHeader: true });
+    expect(rowsToEntries(rows, guess.mapping, guess).map((e) => e.form)).toEqual([
+      'ka',
+      'entry',
+      'nu',
+    ]);
+  });
+});

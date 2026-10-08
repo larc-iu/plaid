@@ -367,6 +367,30 @@ const isKeyLine = (cells, ranked) => {
   );
 };
 
+// A key for the form column: "lexeme_form", "headwordText".
+const isFormKey = (cell) => {
+  const k = String(cell ?? '').trim();
+  return KEY.test(k) && COMPOUND_KEY.test(k) && headerWords(k).some((w) => FORM_ALIASES.has(w));
+};
+
+// Is the row under a header a second header line? The cell under the form
+// column names the form as well, at least two cells name the column they stand
+// under and none names another, and the row reads as a header or is a line of
+// machine keys. A data row's form is a word of the language, so a first entry
+// whose gloss is "word" or "type", or whose form looks like an identifier
+// ("iGama", "kat_a"), is never taken for one.
+const isSubHeader = (cells, ranked, headerRanked, colCount) => {
+  const formAt = headerRanked.findIndex(
+    (m, i) => m?.target === FORM && (ranked[i]?.target === FORM || isFormKey(cells[i])),
+  );
+  if (formAt < 0) return false;
+  const named = ranked.flatMap((m, i) =>
+    i !== formAt && m ? [[m.target, headerRanked[i]?.target]] : [],
+  );
+  if (!named.length || named.some(([under, above]) => under !== above)) return false;
+  return readsAsHeader(ranked, cells, colCount, true) || isKeyLine(cells, ranked);
+};
+
 /**
  * What each column holds when row `skip` is the header (`hasHeader`), or when
  * the rows from `skip` on are all data. A column empty in every row below is
@@ -378,7 +402,7 @@ const isKeyLine = (cells, ranked) => {
  * false says so outright, as the "That row names the columns" box does.
  *
  * Under a header, a second header line (the same names again, or a line of
- * machine keys) is left out too (`subHeader`).
+ * machine keys, see isSubHeader) is left out too (`subHeader`).
  *
  * @returns {{hasHeader: boolean, subHeader: boolean, mapping: string[]}}
  */
@@ -398,9 +422,7 @@ export const columnsAt = (
   const hasHeader = header ?? readsAsHeader(ranked, first, colCount, skip > 0 && !picked);
   const next = rows[skip + 1]?.cells;
   const nextRanked = hasHeader && next ? rank(next) : null;
-  const subHeader =
-    !!nextRanked &&
-    (readsAsHeader(nextRanked, next, colCount, true) || isKeyLine(next, nextRanked));
+  const subHeader = !!nextRanked && isSubHeader(next, nextRanked, ranked, colCount);
 
   const mapping = hasHeader
     ? Array.from({ length: colCount }, (_, i) => ranked[i]?.target ?? IGNORE)
@@ -435,11 +457,12 @@ export const bodyStart = ({ skip = 0, hasHeader = false, subHeader = false }) =>
   skip + (hasHeader ? 1 + (subHeader ? 1 : 0) : 0);
 
 /**
- * Guess where the table starts and what each column holds. Of the top rows
- * that read as a header, the one that maps the most columns wins, the
- * earliest on a tie, so a group line above the real header ("Lexeme, Sense,
- * Sense") loses to the header under it. What is above it is skipped. With no
- * header, all of it is data.
+ * Guess where the table starts and what each column holds. The first of the
+ * top rows that reads as a header and the header lines right under it compete,
+ * and the one that maps the most columns wins, the earliest on a tie, so a
+ * group line above the real header ("Lexeme, Sense, Sense") loses to the
+ * header under it. What is above it is skipped. With no header, all of it is
+ * data.
  *
  * @returns {{skip: number, hasHeader: boolean, subHeader: boolean, mapping: string[]}}
  */
@@ -448,7 +471,12 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
   let bestScore = 0;
   for (let skip = 0; skip < Math.min(HEADER_SCAN, rows.length); skip++) {
     const at = columnsAt(rows, skip, fieldNames, humanize);
-    if (!at.hasHeader) continue;
+    if (!at.hasHeader) {
+      // Only the header lines right under the first one compete with it: a
+      // row further down that happens to name more fields is data.
+      if (best) break;
+      continue;
+    }
     const score = at.mapping.filter((t) => t !== IGNORE).length;
     if (!best || score > bestScore) {
       best = { skip, ...at };

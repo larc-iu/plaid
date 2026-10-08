@@ -386,7 +386,9 @@ export const BulkAddDialog = ({
   // Rows above the table (a title, a second header line), left out.
   const [skip, setSkip] = useState(0);
   const [hasHeader, setHasHeader] = useState(false);
-  // A second header line under the header (machine keys), left out too.
+  // A second header line under the header (machine keys) is found when the
+  // columns are read, and left out unless the user keeps it.
+  const [subHeaderFound, setSubHeaderFound] = useState(false);
   const [subHeader, setSubHeader] = useState(false);
   const [mapping, setMapping] = useState([]);
   // field -> the value every row gets for it.
@@ -413,6 +415,7 @@ export const BulkAddDialog = ({
     const guess = guessColumns(rows, fieldNames, humanizeFieldName);
     setSkip(guess.skip);
     setHasHeader(guess.hasHeader);
+    setSubHeaderFound(guess.subHeader);
     setSubHeader(guess.subHeader);
     setMapping(guess.mapping);
   }, [raw, rows, fieldNames]);
@@ -431,6 +434,7 @@ export const BulkAddDialog = ({
 
   const readColumns = (at) => {
     setHasHeader(at.hasHeader);
+    setSubHeaderFound(at.subHeader);
     setSubHeader(at.subHeader);
     setMapping(at.mapping);
   };
@@ -827,13 +831,20 @@ export const BulkAddDialog = ({
             </span>
           </p>
         )}
-        {hasHeader && subHeader && (
-          <p className="text-xs text-muted-foreground">
-            The row under the header is left out:{' '}
-            <span dir="auto" className="font-mono">
-              {cellsPreview(rows[skip + 1])}
+        {hasHeader && subHeaderFound && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={subHeader}
+              onChange={(e) => setSubHeader(e.target.checked)}
+            />
+            <span>
+              The row under it names them too (don't import it):{' '}
+              <span dir="auto" className="font-mono text-xs">
+                {cellsPreview(rows[skip + 1])}
+              </span>
             </span>
-          </p>
+          </label>
         )}
 
         <div className="max-h-64 overflow-y-auto rounded-md border">

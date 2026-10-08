@@ -235,9 +235,21 @@ describe('Bulk Add', () => {
     const { view } = await open();
     mounted = view;
     await paste(view, 'Lexeme\tEnglish Gloss\nlexeme\ten_gloss\nkaa\thouse');
-    expect(document.body.textContent).toContain('The row under the header is left out');
+    expect(document.body.textContent).toContain('The row under it names them too');
     await view.step(() => button('Next: review').click());
     expect(button('Add 1')).toBeTruthy();
+  });
+
+  it('imports the row under the header when the user unticks it', async () => {
+    const { view } = await open();
+    mounted = view;
+    await paste(view, 'Form\tGloss\tPOS\nword\tmeaning\tn\nnu\tmother\tn');
+    const subBox = () => all(document.body, 'input[type="checkbox"]')[1];
+    expect(subBox().checked).toBe(true);
+    await view.step(() => subBox().click());
+    expect(subBox().checked).toBe(false);
+    await view.step(() => button('Next: review').click());
+    expect(button('Add 2')).toBeTruthy();
   });
 
   it('asks for CSV or TSV when a spreadsheet file is dropped', async () => {
