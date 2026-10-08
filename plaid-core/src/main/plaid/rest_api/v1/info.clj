@@ -37,7 +37,7 @@
          :metadata-key-count     metadata/max-metadata-key-count
          :metadata-string-length metadata/max-metadata-string-length
          :metadata-total-bytes   metadata/max-metadata-total-bytes
-         :user-data-value-bytes  user-data/max-value-bytes
+         :user-data-value-bytes  (user-data/max-value-bytes)
          ;; What an editor has to know before someone types: a guideline
          ;; refused at save is a page of writing held in a draft.
          :guideline-title-length guideline/max-title-length

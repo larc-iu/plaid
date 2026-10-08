@@ -14,6 +14,7 @@
             [plaid.server.backup :as backup]
             [plaid.server.locks :as locks]
             [plaid.server.log-buffer :as log-buffer]
+            [plaid.sql.user-data :as user-data]
             [plaid.test-helpers :refer :all]))
 
 (defn- with-log-buffer
@@ -68,6 +69,10 @@
       (is (= (locks/lock-expiration-ms)
              (:effective-lock-expiration-ms (:settings body))))
       (is (pos-int? (:effective-lock-expiration-ms (:settings body)))))
+
+    (testing "The private-data cap reported is the one the store enforces"
+      (is (= (user-data/max-value-bytes) (:user-data-value-bytes (:settings body))))
+      (is (= (* 5 1024 1024) (:user-data-value-bytes (:settings body)))))
 
     (testing "No secret is in the report"
       (let [flat (pr-str body)]

@@ -58,6 +58,13 @@
     (with-redefs [config/config {:plaid.server.locks/config {:expiration-ms 90000}}]
       (is (= 90000 (-> (get-info) :body :limits :lock-expiration-ms))))))
 
+(deftest info-publishes-the-configured-private-data-cap
+  ;; The cap the assistants and the composer read before they write, so it
+  ;; has to be the one the store enforces (`[user_data] max_value_mb`).
+  (is (= (* 5 1024 1024) (-> (get-info) :body :limits :user-data-value-bytes)))
+  (with-redefs [config/config (assoc-in (if (map? config/config) config/config {}) [:plaid.sql.user-data/config :max-value-mb] 20)]
+    (is (= (* 20 1024 1024) (-> (get-info) :body :limits :user-data-value-bytes)))))
+
 (deftest openapi-endpoint
   (testing "GET /openapi.json returns valid spec structure"
     (let [res (get-openapi admin-request)]

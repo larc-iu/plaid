@@ -238,3 +238,55 @@
           (System/clearProperty "org.slf4j.simpleLogger.logFile"))
         ;; Put Timbre back the way the rest of the suite expects it.
         (config/configure-logging! {:taoensso.timbre/logging-config {:min-level :info}})))))
+
+;; -----------------------------------------------------------------------------
+;; The private-data cap and the JSON body limit
+;; -----------------------------------------------------------------------------
+
+(deftest the-private-data-cap-is-a-setting
+  (testing "5 MB unless the operator says otherwise"
+    (let [cfg (config/load-config! {:config-path nil :explicit? false})]
+      (is (= 5 (get-in cfg [:plaid.sql.user-data/config :max-value-mb])))))
+  (testing "raised together with the body limit, it loads"
+    (let [f (temp-toml "[server]\nmax_json_body_mb = 25\n\n[user_data]\nmax_value_mb = 20\n")]
+      (try
+        (let [cfg (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})]
+          (is (= 20 (get-in cfg [:plaid.sql.user-data/config :max-value-mb])))
+          (is (= 25 (get-in cfg [:plaid.server.http-server :max-json-body-mb]))))
+        (finally (.delete f))))))
+
+(deftest a-cap-the-body-limit-cannot-carry-refuses-to-load
+  ;; A value is written as one JSON body. A cap at or over the body limit
+  ;; would let the store promise what no request could ever deliver: every
+  ;; write near the cap refused as a body that is too large, with a message
+  ;; about the body and not the value.
+  (doseq [[toml why] [["[user_data]\nmax_value_mb = 20\n" "over the default body limit"]
+                      ["[user_data]\nmax_value_mb = 10\n" "equal to it"]
+                      ["[server]\nmax_json_body_mb = 6\n\n[user_data]\nmax_value_mb = 5.5\n"
+                       "under it by less than the headroom"]
+                      ["[server]\nmax_json_body_mb = 4\n" "a body limit lowered under the default cap"]]]
+    (let [f (temp-toml toml)]
+      (try
+        (let [ex (try (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})
+                      nil
+                      (catch clojure.lang.ExceptionInfo e e))]
+          (is (some? ex) why)
+          (is (re-find #"max_value_mb = .* does not fit under \[server\] max_json_body_mb" (str (some-> ex .getMessage))) why)
+          (is (re-find #"must be at least" (str (some-> ex .getMessage))) why))
+        (finally (.delete f)))))
+  (testing "exactly the headroom is enough"
+    (let [f (temp-toml "[server]\nmax_json_body_mb = 21\n\n[user_data]\nmax_value_mb = 20\n")]
+      (try
+        (is (map? (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})))
+        (finally (.delete f))))))
+
+(deftest a-cap-that-is-not-a-positive-number-refuses-to-load
+  (doseq [toml ["[user_data]\nmax_value_mb = 0\n"
+                "[user_data]\nmax_value_mb = -1\n"
+                "[user_data]\nmax_value_mb = \"5\"\n"]]
+    (let [f (temp-toml toml)]
+      (try
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"max_value_mb must be a positive number"
+                              (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true}))
+            toml)
+        (finally (.delete f))))))

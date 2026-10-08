@@ -220,7 +220,7 @@ def test_every_settled_plan_is_compacted_and_an_undecided_one_never_is():
 
 
 def test_the_transcript_is_held_to_the_models_share_even_when_the_record_fits():
-    """The record's limit is 5MB, far past any model's window, so the record
+    """The record's limit is 5MB by default, far past any model's window, so the record
     fitting says nothing about whether the next turn can be sent. Old tool
     results go until the transcript fits its token budget, oldest first."""
     words = lambda v: len(str(v).split())  # a stand-in tokenizer: one token a word

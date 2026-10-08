@@ -331,7 +331,7 @@ export const uploadAttachments = async (store, convId, pending) => {
   if (!userId || !pending?.length) return;
   for (const file of pending) {
     for (let n = 0; n < file.parts.length; n += 1) {
-      // In order, and awaited: a 1 MB value apiece, and the store is the same
+      // In order, and awaited: up to the server's cap apiece, and the store is the same
       // one the conversation itself is about to be written to.
       await client.userData.put(userId, partKey(app, projectId, convId, file.id, n), file.parts[n]);
     }

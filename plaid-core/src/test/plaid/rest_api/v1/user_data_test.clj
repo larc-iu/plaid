@@ -5,6 +5,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin with-test-users
                                     with-clean-db api-call admin-request user1-request user2-request]]
+            [plaid.server.config :as config]
             [plaid.sql.user-data :as user-data]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -160,9 +161,27 @@
     (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "k")}))))))
 
 (deftest value-size-cap
-  (let [big (apply str (repeat (inc user-data/max-value-bytes) "a"))]
+  (testing "5 MB by default"
+    (is (= (* 5 1024 1024) (user-data/max-value-bytes))))
+  (let [big (apply str (repeat (inc (user-data/max-value-bytes)) "a"))]
     (is (= 413 (:status (api-call user1-request {:method :put :path (path u1 "big") :body big}))))
     (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "big")}))))))
+
+(deftest the-cap-is-the-configured-one
+  ;; `[user_data] max_value_mb`. A value's JSON text is the string plus its two
+  ;; quotes, so a string of n - 2 characters is exactly at the cap.
+  (with-redefs [config/config (assoc-in (if (map? config/config) config/config {}) [:plaid.sql.user-data/config :max-value-mb] 1)]
+    (let [cap (* 1024 1024)]
+      (is (= cap (user-data/max-value-bytes)))
+      (testing "a value at the configured cap is stored"
+        (is (= 200 (:status (api-call user1-request {:method :put :path (path u1 "at")
+                                                     :body (apply str (repeat (- cap 2) "a"))})))))
+      (testing "one byte over is refused, and the 413 names the configured cap"
+        (let [{:keys [status body]} (api-call user1-request {:method :put :path (path u1 "over")
+                                                             :body (apply str (repeat (dec cap) "a"))})]
+          (is (= 413 status))
+          (is (= (str "Value exceeds " cap " bytes") (:error body))))
+        (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "over")}))))))))
 
 (deftest a-prefix-holding-an-astral-character-still-matches
   ;; The prefix is compared with SQLite's `substr`, which counts code points,

@@ -92,7 +92,7 @@ Sign-in tokens are not limited this way.
 === Private user data
 
 Each user also has a small private **key/value store** (`/users/{id}/data/{key}`), meant for application state that should follow a person across devices and sessions but belongs to nobody else: assistant conversations, drafts, interface preferences.
-A key is any string the client chooses (apps namespace theirs, e.g. `igt:assistant:<project>:...`), the value is any JSON document up to 1 MB, and the store can be listed by key prefix or by a glob over the whole key (`*` for any run, `?` for one character, e.g. `igt:assistant:*:meta:*`), optionally with values.
+A key is any string the client chooses (apps namespace theirs, e.g. `igt:assistant:<project>:...`), the value is any JSON document up to `[user_data] max_value_mb` (5 MB by default, published as `limits.userDataValueBytes` on `GET /info`), and the store can be listed by key prefix or by a glob over the whole key (`*` for any run, `?` for one character, e.g. `igt:assistant:*:meta:*`), optionally with values.
 The listing is ordered by key and paginated like every other collection (see <<Pagination>>).
 A page asked for with values is the largest response the API can be made to produce, so the clients page this one at 100 entries a request rather than the usual 1000, a bound their `list` methods take as `page_size` / `pageSize`.
 Only the owning user and admins can read or write it; nothing in it is audited or time-travelable, and it is deleted with the user.
@@ -2487,6 +2487,7 @@ Where `[logging] file` is set, the tail of the file itself is on the same tab, a
 
 * `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days; a shared lab machine may want a day.
 * `[media] max_file_size_mb`: the largest recording a document may carry. Raise the proxy's limit with it.
+* `[user_data] max_value_mb`: the largest private data value, which is how long an assistant conversation can grow before it is full. The default is 5 MB. `[server] max_json_body_mb` must be at least 1 more, or the server refuses to start, so raise the two together.
 * `[api] expose_openapi`: turn off if the API description should not be public.
 * `[backup] directory`: point it at a mounted volume or a synced folder to get backups off the machine for free.
 

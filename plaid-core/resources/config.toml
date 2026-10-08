@@ -23,7 +23,8 @@ port = 8080
 
 # Maximum size (in megabytes) of a non-multipart request body (e.g. JSON/EDN
 # REST payloads). Multipart media uploads are capped separately by
-# [media] max_file_size_mb.
+# [media] max_file_size_mb. Must be at least 1 more than
+# [user_data] max_value_mb, or the server refuses to start.
 max_json_body_mb = 10
 
 # Serve static files from this filesystem directory (UNAUTHENTICATED —
@@ -99,6 +100,18 @@ avatar_size_px = 512
 # that arrives, not the file that is kept: normalization takes nearly every
 # real photo well under it.
 avatar_max_upload_mb = 5
+
+# -----------------------------------------------------------------------------
+# Private user data
+# -----------------------------------------------------------------------------
+# Each user's private store of application state (assistant conversations,
+# drafts, preferences). Not audited, deleted with the user.
+[user_data]
+# Largest single stored value, in megabytes. An assistant conversation is one
+# value, so this is how long a conversation can grow before it is full and a
+# new one has to be started. A value is sent as one request, so
+# [server] max_json_body_mb must be at least this plus 1: raise them together.
+max_value_mb = 5
 
 # -----------------------------------------------------------------------------
 # Database (SQLite)

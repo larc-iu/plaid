@@ -1421,7 +1421,8 @@ class PlaidClient {
        * every project without dragging down the transcripts beside them.
        *
        * `pageSize` is exposed here, and defaults lower than elsewhere, because
-       * one value runs to 1 MB: a page of them with `includeValues` is the
+       * one value runs to megabytes (`userDataValueBytes` in
+       * `server.limits()`): a page of them with `includeValues` is the
        * largest response this API can be asked for. Raise it when the listing
        * is keys, or the values are known to be small.
        * @param {string} userId
@@ -1484,8 +1485,9 @@ class PlaidClient {
           `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
         ),
       /**
-       * Create or replace one private data entry. `value` is any JSON (up to
-       * 1 MB). Not audited, not batchable.
+       * Create or replace one private data entry. `value` is any JSON, up to
+       * the server's `userDataValueBytes` (`server.limits()`, 5 MB by
+       * default), and is refused with 413 over it. Not audited, not batchable.
        *
        * The server stores it verbatim, but this client recases object keys on
        * the way out and back like any other body (`myKey` <-> `my-key`), so a

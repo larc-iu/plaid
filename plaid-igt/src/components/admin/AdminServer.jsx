@@ -224,6 +224,14 @@ export const AdminServer = ({ client }) => {
                 'Upload limit',
                 `${settings.mediaMaxFileMb} MB media, ${settings.maxJsonBodyMb} MB JSON`,
               ],
+              [
+                'Private data limit',
+                // In the unit of `[user_data] max_value_mb`, the setting
+                // that raises it, and of the upload limits above.
+                settings.userDataValueBytes
+                  ? `${Math.round((settings.userDataValueBytes / 1048576) * 10) / 10} MB per value`
+                  : null,
+              ],
               ['CORS origins', (settings.corsAllowedOrigins || []).join(', ') || 'None'],
             ]}
           />

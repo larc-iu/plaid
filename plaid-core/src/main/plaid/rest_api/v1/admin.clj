@@ -124,6 +124,9 @@
    :openapi-exposed      (-> config :plaid.api :expose-openapi?)
    :max-json-body-mb     (-> config :plaid.server.http-server :max-json-body-mb)
    :media-max-file-mb    (-> config :plaid.media/config :max-file-size-mb)
+   ;; In bytes, through `user-data/max-value-bytes`, so the number shown is
+   ;; the number enforced, default included. Same source as `GET /info`.
+   :user-data-value-bytes (user-data/max-value-bytes)
    ;; Through `locks/lock-expiration-ms`, so the number shown is the number
    ;; enforced: the config key is absent by default and the window is then
    ;; 60000, which reading the config directly reported as nil. Same source as

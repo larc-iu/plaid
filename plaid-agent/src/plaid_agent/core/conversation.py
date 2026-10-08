@@ -46,7 +46,8 @@ from .trace import summarize_steps
 # publishes (`record_budget`), and this is the fallback for a server that does
 # not. It is also what the model TRANSCRIPT is held to when the model's window
 # is not known: when the server's cap was 1MB the cap bounded the transcript
-# as well, and at 5MB it no longer does. With the window known the transcript
+# as well, and at the 5MB default or whatever an operator raises it to
+# (`[user_data] max_value_mb`) it no longer does. With the window known the transcript
 # is held to a share of it in tokens instead (`prune`'s ``transcript``).
 CONVERSATION_BUDGET = 700_000
 # The share of the server's cap the service fills. The service is not the

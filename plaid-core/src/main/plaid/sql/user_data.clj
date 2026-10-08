@@ -8,19 +8,31 @@
   this is per-user application state, not annotation data, and it churns
   (every chat turn). Rows cascade away with their user."
   (:require [clojure.data.json :as json]
+            [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
             [plaid.sql.pagination :as psp]
             [plaid.util.codepoint :as cp])
   (:refer-clojure :exclude [get list]))
 
-(def max-value-bytes
-  "Upper bound on one stored value's JSON text, in bytes (UTF-8). Sized for a
-  long assistant conversation, whose record is mostly what the reader sees
-  (plan cards, citations) rather than what the model is sent: at 1MB a
-  working session filled it in a morning. Small enough that the store cannot
-  become a file dump (media has its own endpoints), and well under the 10MB
-  JSON body limit a write has to pass first."
-  5000000)
+(def ^:const default-max-value-mb
+  "What `[user_data] max_value_mb` is when the config does not say (a test
+  that starts no config). The bundled template sets the same figure."
+  5)
+
+(defn max-value-bytes
+  "Upper bound on one stored value's JSON text, in bytes (UTF-8): `[user_data]
+  max_value_mb`, read at call time like the lock window, so the number
+  enforced, the number in the 413 and the number `GET /info` publishes are
+  one. Sized for a long assistant conversation, whose record is mostly what
+  the reader sees (plan cards, citations) rather than what the model is sent:
+  at 1MB a working session filled it in a morning. Small enough by default
+  that the store cannot become a file dump (media has its own endpoints). A
+  value is written as one JSON body, so the config refuses to load when the
+  JSON body limit does not clear it (`plaid.server.config`)."
+  []
+  (long (* (or (get-in config [:plaid.sql.user-data/config :max-value-mb])
+               default-max-value-mb)
+           1024 1024)))
 
 (defn- row->entry [row include-value?]
   (when row
@@ -111,7 +123,7 @@
   ([db user-id key value] (put! db user-id key value nil))
   ([db user-id key value expected-version]
    (let [text (json/write-str value)]
-     (if (> (count (.getBytes ^String text "UTF-8")) max-value-bytes)
+     (if (> (count (.getBytes ^String text "UTF-8")) (max-value-bytes))
        {:error :too-large}
        (let [now (psc/now-iso)
              fresh {:user_id user-id :key key :value text :updated_at now :version 1}

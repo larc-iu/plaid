@@ -59,7 +59,8 @@
                          {:status 200 :body entry}
                          {:status 404 :body {:error "No such entry"}}))}
       :put {:summary (str "Create or replace one private data entry. The body is the value: any JSON "
-                          "(object, array, or scalar), up to 1 MB. Not audited. An admin's "
+                          "(object, array, or scalar), up to the size GET /info publishes as "
+                          "`userDataValueBytes` (`[user_data] max_value_mb`, 5 MB by default). Not audited. An admin's "
                           "write to another user's data needs a signed-in session: one signed "
                           "with a named API token is refused (403). Every write bumps the "
                           "entry's version, which reads and writes answer. With "
@@ -73,7 +74,7 @@
             :handler (fn [{{{:keys [user-id key]} :path {:keys [version]} :query body :body} :parameters db :db}]
                        (let [{:keys [error current] :as result} (user-data/put! db user-id key body version)]
                          (case error
-                           :too-large {:status 413 :body {:error (str "Value exceeds " user-data/max-value-bytes " bytes")}}
+                           :too-large {:status 413 :body {:error (str "Value exceeds " (user-data/max-value-bytes) " bytes")}}
                            :version-mismatch {:status 409
                                               :body (merge {:error "version-mismatch"} current)}
                            nil {:status 200 :body result})))}

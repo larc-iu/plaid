@@ -98,6 +98,8 @@
    [["media" "avatar_size_px"]            [:plaid.media/config :avatar-size-px]                              identity]
    [["media" "avatar_max_upload_mb"]      [:plaid.media/config :avatar-max-upload-mb]                        identity]
 
+   [["user_data" "max_value_mb"]          [:plaid.sql.user-data/config :max-value-mb]                        identity]
+
    [["database" "path"]                   [:plaid.server.sql/config :main-db-path]                           identity]
    [["database" "slow_query_threshold_ms"] [:plaid.server.sql/config :slow-query-threshold-ms]              identity]
    [["database" "min_name_length"]        [:plaid.sql.common/config :min-name-length]                        identity]
@@ -204,6 +206,34 @@
 ;; -----------------------------------------------------------------------------
 ;; Loading
 ;; -----------------------------------------------------------------------------
+(def ^:const json-body-headroom-mb
+  "How far the JSON body limit must clear the private-data cap, in MB. A
+  stored value is written as one request body, which is the value itself as
+  the client serialized it: about what the server measures, and never
+  much over it, so one MB is room to spare."
+  1)
+
+(defn- check-limits!
+  "Refuse a configuration under which a private-data value at its own cap
+  could never be written, because the request carrying it would be refused
+  first by the JSON body limit. Both are operator settings, so the message
+  names both and the smallest body limit that fits."
+  [cfg]
+  (let [cap (get-in cfg [:plaid.sql.user-data/config :max-value-mb])
+        body (get-in cfg [:plaid.server.http-server :max-json-body-mb])]
+    (when (some? cap)
+      (when-not (and (number? cap) (pos? cap))
+        (throw (ex-info (str "[user_data] max_value_mb must be a positive number of megabytes, not "
+                             (pr-str cap))
+                        {:max-value-mb cap})))
+      (when (and (number? body) (< body (+ cap json-body-headroom-mb)))
+        (throw (ex-info (str "[user_data] max_value_mb = " cap " does not fit under [server] "
+                             "max_json_body_mb = " body ". A value is written as one JSON request "
+                             "body, so max_json_body_mb must be at least " (+ cap json-body-headroom-mb)
+                             ". Raise max_json_body_mb or lower max_value_mb.")
+                        {:max-value-mb cap :max-json-body-mb body}))))
+    cfg))
+
 (defn load-config!
   "Build the internal config map: the bundled config.toml template supplies the
    default values, the file at `config-path` (filesystem first, then classpath)
@@ -232,7 +262,7 @@
                         (log/warn "Unrecognized config keys in" ov-src "(ignored):"
                                   (str/join ", " (map #(str/join "." %) uk))))
                       (translate toml)))]
-      (vary-meta (deep-merge (deep-merge internal-only-defaults defaults) overlay)
+      (vary-meta (check-limits! (deep-merge (deep-merge internal-only-defaults defaults) overlay))
                  assoc ::source (or ov-src (str "the bundled defaults (" tpl-src ")"))))))
 
 (defn ensure-config-file!

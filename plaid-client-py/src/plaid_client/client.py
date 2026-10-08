@@ -1351,9 +1351,10 @@ class UserDataResource(_Resource):
             pattern: Only keys matching this GLOB
             include_values: Also return each entry's value
             page_size: Entries per request (1..1000). Exposed here, and lower
-                than elsewhere, because one value runs to 1 MB: a page of them
-                with ``include_values`` is the largest response this API can be
-                asked for. Raise it when the listing is keys, or the values are
+                than elsewhere, because one value runs to megabytes
+                (``user_data_value_bytes`` in ``server.limits()``): a page of
+                them with ``include_values`` is the largest response this API
+                can be asked for. Raise it when the listing is keys, or the values are
                 known to be small.
         """
         return list_all(self._client, f'/api/v1/users/{user_id}/data', page_size=page_size,
@@ -1397,8 +1398,10 @@ class UserDataResource(_Resource):
         return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
 
     def put(self, user_id: str, key: str, value: Any, version: int | None = None) -> Any:
-        """Create or replace one entry. ``value`` is any JSON (up to 1 MB).
-        Answers ``{key, updated_at, version}``.
+        """Create or replace one entry. ``value`` is any JSON, up to the
+        server's ``user_data_value_bytes`` (``server.limits()``, 5 MB by
+        default), and is refused with 413 over it. Answers ``{key,
+        updated_at, version}``.
 
         The server stores it verbatim, but this client recases object keys on
         the way out and back like any other body (``my_key`` <-> ``my-key``),
