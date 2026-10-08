@@ -265,11 +265,16 @@ export const AnnotationEditor = () => {
   // The sentence fields this project declares. Memoized on the project's config
   // so a sentence row memoized on its props doesn't churn per render.
   // The hand-off to the Text Editor, the mirror of Alt+click on a token there.
+  // The address is also the href of the sentence's Edit text link.
   const navigate = useNavigate();
-  const handleEditText = useCallback(
+  const editTextHref = useCallback(
     (sentenceTokenId) =>
-      navigate(`/projects/${projectId}/documents/${documentId}/edit?sent=${sentenceTokenId}`),
-    [navigate, projectId, documentId],
+      `/projects/${projectId}/documents/${documentId}/edit?sent=${sentenceTokenId}`,
+    [projectId, documentId],
+  );
+  const handleEditText = useCallback(
+    (sentenceTokenId) => navigate(editTextHref(sentenceTokenId)),
+    [navigate, editTextHref],
   );
 
   // What a closed vocabulary refuses, built once per layerInfo version so a
@@ -394,6 +399,7 @@ export const AnnotationEditor = () => {
       onDiscardTokens: readOnly ? null : handleDiscardTokens,
       onSentenceMetadata: readOnly ? null : handleSentenceMetadata,
       onEditText: isViewingHistorical ? null : handleEditText,
+      editTextHref: isViewingHistorical ? null : editTextHref,
       onPrecedent: readOnly ? undefined : handlePrecedent,
       onAskAssistant:
         isViewingHistorical || !assistantAvailable || !roomToDock ? undefined : askAssistant,
@@ -430,6 +436,7 @@ export const AnnotationEditor = () => {
       handleSentenceMetadata,
       isViewingHistorical,
       handleEditText,
+      editTextHref,
       handlePrecedent,
       assistantAvailable,
       roomToDock,

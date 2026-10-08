@@ -39,7 +39,7 @@ export const SentenceRow = React.memo(
     // What this row itself reads. The dependency tree and the deprel editor
     // render under the same provider and read their own share of it, so nothing
     // about relations or about the DEPREL vocabulary passes through here.
-    const { onEditText, onToggleField, reviewable, visibleFields, textDirection } =
+    const { onEditText, editTextHref, onToggleField, reviewable, visibleFields, textDirection } =
       useEditorSession();
 
     // Token data is already pre-processed in sentenceData
@@ -264,6 +264,9 @@ export const SentenceRow = React.memo(
       () => (onEditText && sentenceToken?.id ? () => onEditText(sentenceToken.id) : undefined),
       [onEditText, sentenceToken],
     );
+    // The same hand-off as a link, for the Edit text action under the grid.
+    const editTextTo =
+      editTextHref && sentenceToken?.id ? editTextHref(sentenceToken.id) : undefined;
 
     // Where this sentence sits in the document. Its place, not its `sent_id`:
     // the id is a field like any other and can be edited or imported to
@@ -388,7 +391,7 @@ export const SentenceRow = React.memo(
             commentAnchorLabel={commentAnchorLabel}
             hasInferred={hasInferred}
             hasMachine={hasMachine}
-            onEditText={handleEditText}
+            editTextTo={editTextTo}
           />
         </div>
       </div>

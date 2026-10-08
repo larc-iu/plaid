@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, Undo2, PenLine, Tags } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { Button } from '@ui/components/ui/button';
@@ -15,11 +16,11 @@ import { useEditorSession } from './editorSession.js';
 // disclosure is one of the four: it used to be a bold SENTENCE heading on its
 // own line, which made housekeeping the loudest thing under the grid.
 //
-// `onEditText` is bound to this sentence by the row, which also passes it to
-// the tree. The rest of what this needs is the same for every sentence and
+// `editTextTo` is the address of this sentence in the Text Editor, from the
+// row, so Edit text is a real link that opens in a new tab too. The rest of what this needs is the same for every sentence and
 // comes from the session.
 export const SentenceActions = React.memo(
-  ({ sentenceData, sentenceNumber, commentAnchorLabel, hasInferred, hasMachine, onEditText }) => {
+  ({ sentenceData, sentenceNumber, commentAnchorLabel, hasInferred, hasMachine, editTextTo }) => {
     const {
       isReadOnly,
       onConfirmTokens,
@@ -57,7 +58,7 @@ export const SentenceActions = React.memo(
 
     return (
       <>
-        {(onEditText ||
+        {(editTextTo ||
           comments ||
           onAskAssistant ||
           sentenceToken ||
@@ -96,15 +97,17 @@ export const SentenceActions = React.memo(
                 Edit metadata
               </Button>
             )}
-            {onEditText && (
+            {editTextTo && (
               <Button
+                asChild
                 className="edit-text-btn sentence-action h-6 gap-1 px-2 text-xs"
                 variant="ghost"
-                onClick={onEditText}
                 title="Open this sentence in the Text Editor. Alt+click a word to do the same."
               >
-                <PenLine width={12} height={12} />
-                Edit text
+                <Link to={editTextTo}>
+                  <PenLine width={12} height={12} />
+                  Edit text
+                </Link>
               </Button>
             )}
             {onAskAssistant && (
