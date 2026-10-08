@@ -31,7 +31,9 @@ An attribute takes a plain value, never a node.
 of the role without it.
 - A VARIABLE says which sentence it belongs to: `s3e` is a node of sentence 3, and the next free one \
 for a concept is `s` + the sentence number + the concept's first letter, then a counter. A node is \
-addressed as its sentence and its variable: s3.s3e.
+addressed as its sentence and its variable: s3.s3e. A sentence's number is the one the app shows: \
+its place, or in a document imported from a file that numbers its own sentences (an excerpt starting at \
+snt5) the file's number, so its first sentence is s5.
 - ALIGNMENT is which words a node covers, as 1-based word ranges over the sentence's own words. A node \
 with no words (`person`, `author`, a `-91` roleset) is UNALIGNED, which is normal and not a fault. A \
 node this assistant creates is unaligned until somebody anchors it on the canvas, so say so when you \

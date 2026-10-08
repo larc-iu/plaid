@@ -219,7 +219,7 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
           to={thisHref(sentence.index)}
           data-sentence-link
         >
-          {sentence.index}
+          {sentence.number ?? sentence.index}
         </Link>
         <span className="min-w-0 flex-1 truncate text-sm" dir="auto">
           {sentence.text}

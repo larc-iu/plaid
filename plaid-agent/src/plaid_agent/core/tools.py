@@ -10,7 +10,7 @@ import inspect
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
-from .args import clamp_limit, read_int, sentence_number, sentence_numbers
+from .args import clamp_limit, read_int, sentence_number
 from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
 
 
@@ -201,13 +201,20 @@ def read_document(ws, document: str = None, from_sentence=None, to_sentence=None
     many at once, is not.
     """
     doc = ws.doc(document)
+
+    def position(item, name):
+        if item is None or item == '':
+            return None
+        n = ws.sentence_position(doc, item)
+        return n if n is not None else sentence_number(item, name)
+
     if sentences:
         items = sentences if isinstance(sentences, list) else [sentences]
-        sentences = [f's{n}' if (n := ws.sentence_named(doc, item)) is not None else item for item in items]
-        picked = sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
+        picked = list(dict.fromkeys(n for n in (position(i, 'sentences') for i in items)
+                                    if n is not None))[:MAX_SENTENCES_PER_READ]
         return truncate(ws.render(doc, indexes=picked, budget=RENDER_BUDGET))
-    lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)
-    hi = (sentence_number(to_sentence, 'to_sentence')
+    lo = max(1, position(from_sentence, 'from_sentence') or 1)
+    hi = (position(to_sentence, 'to_sentence')
           or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1))
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
         hi = lo + MAX_SENTENCES_PER_READ - 1

@@ -941,7 +941,7 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to add the node';
     if (!this._canWrite(label)) return false;
     const pieces = this._pendingPieces(this.piecesFor(sentence, wordIds));
-    const variable = nextVariable(sentenceIndex, concept, this.takenVariables());
+    const variable = nextVariable(sentence.number ?? sentenceIndex, concept, this.takenVariables());
     const order = parent ? this.nextOrder(parent) : 0;
     // The first node of a sentence is its root. A later parentless node is a
     // fragment until it is connected, and the graph keeps its root.
@@ -1197,13 +1197,17 @@ export class UmrDocument extends DocumentModel {
 
   // Why `variable` cannot name a new node of sentence `sentenceIndex`, or null
   // when it can: the canvas's rename and text mode's new nodes ask the same.
+  // The name carries the number the sentence goes by (`number`), the file's
+  // own in a document numbered by its file.
   _newVariableProblem(variable, sentenceIndex) {
     if (!VARIABLE.test(variable)) {
       return `${variable} is not a variable: s, the sentence number, letters, a number.`;
     }
     const n = Number(variable.match(/^s([0-9]+)/)[1]);
-    if (sentenceIndex != null && n !== sentenceIndex) {
-      return `${variable} names sentence ${n}, and the node is in sentence ${sentenceIndex}.`;
+    const number =
+      sentenceIndex == null ? null : (this.sentence(sentenceIndex)?.number ?? sentenceIndex);
+    if (number != null && n !== number) {
+      return `${variable} names sentence ${n}, and the node is in sentence ${number}.`;
     }
     // The file names each sentence's document-level block `s<n>s0`
     // (toUmrSentences), so a node called that is a second definition of it.

@@ -32,7 +32,7 @@ from .plan import (GRAPH_KINDS, KIND, attr_line, attrs_scope_held, attrs_scope_t
                    replacing_phrase, sentence_graph_key)
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject, attrs_change,
                       gloss_headers, group_of, load_document, node_ref, place_attributes,
-                      render_document, render_document_graph, resolve)
+                      numbering, render_document, render_document_graph, resolve)
 
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ('Replacing a sentence graph counts as one change per node, relation and attribute '
@@ -60,6 +60,22 @@ class Workspace(BaseWorkspace):
 
     def render(self, doc, **kw) -> str:
         return render_document(doc, self.project, doc.gloss, **kw)
+
+    def sentence_position(self, doc, item) -> Optional[int]:
+        """``s5`` is the sentence the app shows as 5: in a document numbered
+        by its file, the file's snt5, wherever it stands."""
+        try:
+            n = sentence_number(str(item).split('.')[0] if isinstance(item, str) else item, 'sentence')
+        except ValueError:
+            return None
+        if n is None:
+            return None
+        s = doc.by_number(n)
+        if s is not None:
+            return s.index
+        if all(s.number == s.index for s in doc.sentences):
+            return None
+        raise ValueError(f's{n}: {numbering(doc)}')
 
     def sentence_print(self, doc, sentence) -> str:
         """The sentence's graph and words, and the gloss lines on its
@@ -137,14 +153,14 @@ class Workspace(BaseWorkspace):
         if kind == 'create_node':
             problems += [variable_form_problem(op.get('var')), concept_problem(op.get('concept'))]
             if not op.get('constant') and doc is not None:
-                problems.append(new_variable_problem(op.get('var'), op.get('sentence'),
+                problems.append(new_variable_problem(op.get('var'), doc.number_of(op.get('sentence')),
                                                      self._taken_variables(doc, replacing)))
         if kind == 'rename_node':
             # A new name for a stored node, held to what the app asks of one
             # (Text mode asks a rename `_newVariableProblem` too).
             problems.append(variable_form_problem(op.get('var')))
             if doc is not None:
-                problems.append(new_variable_problem(op.get('var'), op.get('sentence'),
+                problems.append(new_variable_problem(op.get('var'), doc.number_of(op.get('sentence')),
                                                      self._taken_variables(doc, replacing)))
         if kind == 'set_concept':
             problems += [concept_problem(op.get('concept')),
@@ -370,16 +386,17 @@ def _sentence(ws: Workspace, doc: UmrDoc, sentence) -> Sentence:
                         'sentence')
     if n is None:
         raise ToolError('Name a sentence, as a number or a reference like "s3".')
-    if not 1 <= n <= len(doc.sentences):
-        raise ToolError(f's{n}: document "{doc.name}" has {len(doc.sentences)} sentences')
-    return doc.sentences[n - 1]
+    s = doc.by_number(n)
+    if s is None:
+        raise ToolError(f's{n}: {numbering(doc)}')
+    return s
 
 
 def _node(doc: UmrDoc, sentence: Sentence, var: str) -> GNode:
     node = sentence.node(var)
     if node is None:
         known = ', '.join(n.var for n in sentence.nodes[:20]) or 'none'
-        raise ToolError(f'Sentence s{sentence.index} has no node "{var}". Its nodes: {known}')
+        raise ToolError(f'Sentence s{sentence.number} has no node "{var}". Its nodes: {known}')
     return node
 
 
@@ -404,7 +421,7 @@ def _no_graph_planned(ws: Workspace, doc: UmrDoc, s: Sentence) -> None:
     """
     key = f'{doc.id}:{s.index}'
     if any(op.get('graph_of') == key for op in ws.ops):
-        raise ToolError(f'This plan already replaces the graph of s{s.index} in "{doc.name}", and '
+        raise ToolError(f'This plan already replaces the graph of s{s.number} in "{doc.name}", and '
                         f'this change was worked out against the graph it replaces. Keep one of '
                         f'the two (plan_status, drop_planned), or plan them in separate turns.')
 
@@ -434,13 +451,13 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
                 f'they are stored in, and that order was not applied: pass reorder=true only if the '
                 f'user asked for it.')
     if not diff.ops:
-        return f'Nothing to change: s{s.index} already holds that graph.' + kept
+        return f'Nothing to change: s{s.number} already holds that graph.' + kept
     ws.add_ops(_staged(diff.ops))
     counts: Dict[str, int] = {}
     for op in diff.ops:
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
-    return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.index} in "{doc.name}" '
+    return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.number} in "{doc.name}" '
             f'({what}).' + _removals(diff.ops) + kept)
 
 
@@ -496,7 +513,7 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
         'label': f'{node.var}: {attrs_change(node.attrs, placed)}'}]))
     # What changes, as the card says it, so a line that drops an attribute the
     # model did not write says so.
-    return (f'Planned the attributes of {node.var} in s{s.index}: {shown} '
+    return (f'Planned the attributes of {node.var} in s{s.number}: {shown} '
             f'({attrs_change(node.attrs, placed)}).')
 
 
@@ -534,7 +551,7 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
     kept_note = ''
     if kept:
         kept_note = (f'{len(kept)} node(s) with that concept already have {rel} and are left as '
-                     f'they are (' + ', '.join(f's{s.index}.{n.var} {" ".join(holds(n, rel))}'
+                     f'they are (' + ', '.join(f's{s.number}.{n.var} {" ".join(holds(n, rel))}'
                                                for s, n in kept[:SAMPLE_LINES])
                      + (', …' if len(kept) > SAMPLE_LINES else '')
                      + '). Pass overwrite=true only if the user asked to replace existing values.')
@@ -550,7 +567,7 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
            + (f', replacing {replacing}' if replacing else '') + ', read again when you approve it:']
     for s, node, _placed in targets[:SAMPLE_LINES]:
         was = ' '.join(holds(node, rel))
-        out.append(f'  s{s.index}.{node.var}  ({node.concept}' + (f', was {was}' if was else '') + ')')
+        out.append(f'  s{s.number}.{node.var}  ({node.concept}' + (f', was {was}' if was else '') + ')')
     if len(targets) > SAMPLE_LINES:
         out.append(f'  … and {len(targets) - SAMPLE_LINES} more')
     if kept_note:
@@ -651,13 +668,13 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
             op['begin'], op['end'] = s.begin, s.end
         op['sentence'] = s.index
         op['sentence_id'] = s.id
-        op['ref'] = f's{s.index}'
+        op['ref'] = f's{s.number}'
     else:
         anchor = _later_end(source['node'], target['node'])
         if anchor is not None and anchor.sentence:
             op['sentence'] = anchor.sentence
             op['sentence_id'] = doc.sentences[anchor.sentence - 1].id
-            op['ref'] = f's{anchor.sentence}.{anchor.var}'
+            op['ref'] = f's{doc.number_of(anchor.sentence)}.{anchor.var}'
     staged.append(op)
     ws.add_ops(_staged(staged))
     return (f'Planned the document-level relation ({source["var"]} {rel} {target["var"]}) '

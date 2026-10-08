@@ -228,6 +228,11 @@ class Sentence:
     #: The records after the first that stand in this sentence: one joined to
     #: the sentence before it in another app holds both until it is split.
     other_records: List[str] = dc_field(default_factory=list)
+    #: The sentence's number, as the app shows it and its new variables and
+    #: its ``# :: snt`` line carry it: the file's own number in a document
+    #: numbered by its file (``file_numbers``), else its position. ``index``
+    #: stays its position, which is how nodes and plans find it.
+    number: int = 0
     nodes: List[Node] = dc_field(default_factory=list)
     edges: List[Edge] = dc_field(default_factory=list)
     triples: List[Triple] = dc_field(default_factory=list)
@@ -314,6 +319,16 @@ class UmrDocument:
         DOCUMENT, because the document graph cites an earlier sentence's nodes
         by name."""
         return {n.var for n in self.nodes_by_id.values() if n.var}
+
+    def by_number(self, number: int) -> Optional[Sentence]:
+        """The sentence the app shows as ``number`` (``Sentence.number``)."""
+        return next((s for s in self.sentences if s.number == number), None)
+
+    def number_of(self, index: Optional[int]) -> Optional[int]:
+        """The number shown for the sentence at position ``index``."""
+        if index is None or not 1 <= index <= len(self.sentences):
+            return index
+        return self.sentences[index - 1].number
 
     def constant(self, name: str) -> Optional[Node]:
         for c in self.constants:
@@ -668,6 +683,8 @@ def read_document(raw: dict, layers: UmrLayers,
             s.nodes.append(node)
 
     _records_follow_their_graphs(sentences, records, body)
+    for s, n in zip(sentences, file_numbers(sentences)):
+        s.number = int(n) if re.fullmatch(r'[0-9]+', str(n)) else s.index
     # The triples between two constants each sentence's records list.
     listed_in: Dict[str, set] = {}
     for s in sentences:

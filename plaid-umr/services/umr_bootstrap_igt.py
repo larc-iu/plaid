@@ -461,7 +461,7 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
                     seen.add(rel)
                     attrs.append({'rel': rel, 'value': value, 'order': len(attrs)})
         read = [r for r, _ in placed]
-        var = next_variable(sentence.index, concept, taken)
+        var = next_variable(sentence.number, concept, taken)
         taken.add(var)
         if root_at is None and any(r['eventive'] for r in read):
             root_at = len(nodes)
@@ -528,7 +528,7 @@ class UmrBootstrapService(BaseService):
                                                  links, headwords, self.abbreviations, run.taken,
                                                  listed)
             if not nodes:
-                failures.append({'sentence': sentence.index,
+                failures.append({'sentence': sentence.number,
                                  'reason': 'No word has a vocabulary link or a gloss.'})
                 continue
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,

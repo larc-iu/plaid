@@ -85,6 +85,9 @@ def _card(doc: UmrDoc, project, sentence_index: int, focus: List[str],
              for n in s.nodes]
     return {
         'sentence': s.index,
+        # The number the app shows, the file's own in a document numbered by
+        # its file. `sentence` is its place, which the editor's ?sent= takes.
+        'number': s.number,
         'sentence_id': s.id,
         'text': s.text,
         'words': [{'index': w.index, 'text': w.text} for w in s.words],
@@ -108,9 +111,12 @@ def _one(ws: Workspace, doc: UmrDoc, refs: List[str], view: str):
         m = _NODE.match(r) or _SENTENCE.match(r)
         if not m:
             continue
-        index = int(m.group(1))
-        if not 1 <= index <= len(doc.sentences):
+        # `s5` is the sentence the app shows as 5 (its file's snt5 in a
+        # document numbered by its file): its place is what the card takes.
+        found = doc.by_number(int(m.group(1)))
+        if found is None:
             continue
+        index = found.index
         var = m.group(2) if m.re is _NODE else None
         if sentence is None:
             sentence = index

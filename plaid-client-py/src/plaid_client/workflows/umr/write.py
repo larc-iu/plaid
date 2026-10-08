@@ -197,7 +197,7 @@ def run_label(name: str, plans: Sequence[dict]) -> str:
     """What a run's write is called in History: ``UMR draft of sentence 3``,
     or ``UMR draft (4 sentences)``."""
     if len(plans) == 1:
-        return f"{name} of sentence {plans[0]['sentence'].index}"
+        return f"{name} of sentence {plans[0]['sentence'].number}"
     return f'{name} ({len(plans)} sentences)'
 
 
@@ -324,7 +324,7 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     and attributes it was drafted with, and each edge's its role.
     """
     progress = progress or DraftProgress(None)
-    kept = [plan['sentence'].index for plan in plans
+    kept = [plan['sentence'].number for plan in plans
             if plan['sentence'].nodes and not plan['sentence'].redraftable]
     if kept:
         raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
@@ -652,7 +652,7 @@ def replan(run: DraftRun, plans: Sequence[dict], raw: dict,
         old = plan['sentence']
         new = by_id.get(old.id)
         if new is None or prints.get(old.id) != run.prints.get(old.id):
-            changed.append(old.index)
+            changed.append(old.number)
             continue
         shift = new.begin - old.begin
         kept.append({**plan, 'sentence': new,
@@ -666,7 +666,7 @@ def replan(run: DraftRun, plans: Sequence[dict], raw: dict,
         for node in plan['nodes']:
             meta = dict(node['meta'])
             if meta.get('var') in taken:
-                meta['var'] = next_variable(plan['sentence'].index, node['concept'], taken)
+                meta['var'] = next_variable(plan['sentence'].number, node['concept'], taken)
             if meta.get('var'):
                 taken.add(meta['var'])
             nodes.append({**node, 'meta': meta})

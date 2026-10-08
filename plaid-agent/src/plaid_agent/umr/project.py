@@ -105,21 +105,40 @@ def parse_ref(ref: str) -> Tuple[int, Optional[str]]:
 
 
 def node_ref(sentence: Sentence, node: GNode) -> str:
-    return f's{sentence.index}.{node.var}'
+    return f's{sentence.number}.{node.var}'
+
+
+def numbering(doc: UmrDoc) -> str:
+    """How the document's sentences are numbered, for a refusal to say."""
+    numbers = [s.number for s in doc.sentences]
+    if numbers == list(range(1, len(numbers) + 1)):
+        return f'document "{doc.name}" has {len(numbers)} sentences'
+    return (f'document "{doc.name}" numbers its sentences as its file does: '
+            + ', '.join(f's{n}' for n in numbers[:12]) + (', …' if len(numbers) > 12 else ''))
+
+
+def by_number(doc: UmrDoc, number: int) -> Sentence:
+    """The sentence ``s<number>`` names: the number the app shows, its
+    file's own in a document numbered by its file, else its position."""
+    s = doc.by_number(number)
+    if s is None:
+        raise ValueError(f's{number}: {numbering(doc)}')
+    return s
 
 
 def resolve(doc: UmrDoc, ref: str):
-    """-> Sentence | GNode for a positional reference into ``doc``."""
-    index, var = parse_ref(ref)
-    if not 1 <= index <= len(doc.sentences):
-        raise ValueError(f'{ref}: document "{doc.name}" has {len(doc.sentences)} sentences')
-    s = doc.sentences[index - 1]
+    """-> Sentence | GNode for a reference into ``doc``, by the numbers
+    the app shows."""
+    number, var = parse_ref(ref)
+    s = doc.by_number(number)
+    if s is None:
+        raise ValueError(f'{ref}: {numbering(doc)}')
     if var is None:
         return s
     node = s.node(var)
     if node is None:
         known = ', '.join(n.var for n in s.nodes[:20]) or 'none'
-        raise ValueError(f'{ref}: sentence s{index} has no node {var}. Its nodes: {known}')
+        raise ValueError(f'{ref}: sentence s{number} has no node {var}. Its nodes: {known}')
     return node
 
 
@@ -242,7 +261,7 @@ def render_sentence(doc: UmrDoc, sentence: Sentence, *, lines: Optional[List[dic
     """One sentence as the model reads it: the words with their numbers, the
     gloss lines, the graph as PENMAN, and any document-level triple written in
     this sentence's block."""
-    out = [f'# sent_id = s{sentence.index}']
+    out = [f'# sent_id = s{sentence.number}']
     if sentence.text:
         out.append(f'# text = {sentence.text}')
     out.append('Words: ' + ' '.join(f'{w.index}={w.text}' for w in sentence.words))
@@ -329,16 +348,18 @@ def render_document(doc: UmrDoc, project: UmrProject, values: Dict[str, Dict[str
         used += len(text) + 1
 
     left = [i for i in wanted if i not in shown]
+    # Positions inside, the numbers the app shows outside.
+    num = doc.number_of
     if indexes is not None:
-        head = 'Showing sentences ' + ', '.join(str(i) for i in shown) + '.'
+        head = 'Showing sentences ' + ', '.join(str(num(i)) for i in shown) + '.'
         if left:
-            head += (f' Sentences {", ".join(str(i) for i in left)} did not fit: ask for them in '
+            head += (f' Sentences {", ".join(str(num(i)) for i in left)} did not fit: ask for them in '
                      f'another call.')
     else:
-        head = f'Showing sentences {shown[0]} to {shown[-1]}'
+        head = f'Showing sentences {num(shown[0])} to {num(shown[-1])}'
         if left:
-            head += (f' of the {wanted[0]} to {wanted[-1]} asked for: the rest did not fit. '
-                     f'Continue with from_sentence={left[0]}.')
+            head += (f' of the {num(wanted[0])} to {num(wanted[-1])} asked for: the rest did not fit. '
+                     f'Continue with from_sentence={num(left[0])}.')
         elif shown[0] > 1 or shown[-1] < len(sentences):
             head += '.'
         else:
@@ -387,4 +408,4 @@ def _where(doc: UmrDoc, span_id: str) -> str:
         return span_id
     if node.constant:
         return node.var
-    return f's{node.sentence}.{node.var}' if node.sentence else node.var
+    return f's{doc.number_of(node.sentence)}.{node.var}' if node.sentence else node.var

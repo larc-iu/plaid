@@ -62,9 +62,13 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         'kind': 'token',
         'document_id': did,
         'document_name': name,
-        'ref': op.get('ref') or f's{sentence}',
+        'ref': op.get('ref') or f's{doc.number_of(int(sentence)) if doc is not None else sentence}',
         'sentence': int(sentence),
     }
+    # The number the app shows, the file's own in a document numbered by its
+    # file. `sentence` is its place, which the editor's ?sent= takes.
+    if doc is not None:
+        where['number'] = doc.number_of(int(sentence))
     # The editor's deep link needs the sentence's id, not its number. A
     # compacted op carries the one it was staged with.
     sentence_id = op.get('sentence_id')

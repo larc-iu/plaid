@@ -46,7 +46,7 @@ const changeTitle = (where) => {
   if (!where) return '';
   if (where.kind === 'token')
     return (
-      `${where.documentName}, sentence ${where.sentence}` +
+      `${where.documentName}, sentence ${where.number ?? where.sentence}` +
       (where.node ? `, node ${where.node}` : '')
     );
   if (where.kind === 'document') return where.documentName || '';
@@ -75,7 +75,7 @@ const changePlace = (projectId, where) => {
   if (where.kind !== 'token') return null;
   return where.node
     ? { href, title, name: where.node, detail: where.ref }
-    : { href, title, name: `Sentence ${where.sentence}`, detail: where.surface };
+    : { href, title, name: `Sentence ${where.number ?? where.sentence}`, detail: where.surface };
 };
 
 // A cited sentence for the conversation export: the words, the gloss lines the

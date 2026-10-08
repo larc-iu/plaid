@@ -864,7 +864,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // before a word was dropped on, a number names a word, never a concept.
   const missingWord = (ed, text) =>
     !ed.wordIds.length && /^\d+$/.test(text) && !sentence.words[Number(text) - 1]
-      ? `Sentence ${sentence.index} has no word ${text}.`
+      ? `Sentence ${sentence.number ?? sentence.index} has no word ${text}.`
       : null;
 
   // ----- deleting -----
@@ -1266,7 +1266,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       (!edge || (n.id !== edge.source && !doc.wouldCycle?.(n.id, ed.nodeId, edge.role)));
     return [
       {
-        group: `Sentence ${sentence.index}`,
+        group: `Sentence ${sentence.number ?? sentence.index}`,
         items: sentence.nodes
           .filter(fits)
           .map((n) => ({ value: n.var, label: `${n.var} ${n.concept}`, nodeId: n.id })),
@@ -1278,7 +1278,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (flatItems(targetOptions(ed)).some((o) => o.value === name)) return null;
     return sentence.nodes.some((n) => n.var === name)
       ? `${name} cannot be picked here.`
-      : `Sentence ${sentence.index} has no node ${name}.`;
+      : `Sentence ${sentence.number ?? sentence.index} has no node ${name}.`;
   };
   const pickTarget = (kind, nodeId, targetId) => {
     setMode(null);
@@ -1568,7 +1568,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const modeHint = mode
     ? {
         anchor: mode.missing
-          ? `Sentence ${sentence.index} has no word ${mode.missing}.`
+          ? `Sentence ${sentence.number ?? sentence.index} has no word ${mode.missing}.`
           : mode.typed
             ? `Word ${mode.typed}, Enter to anchor.`
             : 'Click words or type their numbers to anchor to them.',
@@ -1584,7 +1584,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     <section
       ref={sectionRef}
       className={`umr-block${mode ? ` umr-block--mode-${mode.kind}` : ''}`}
-      aria-label={`Sentence ${sentence.index}`}
+      aria-label={`Sentence ${sentence.number ?? sentence.index}`}
       // Somewhere for focus to land when the node that had it is deleted.
       tabIndex={-1}
       data-sentence-index={sentence.index}
@@ -1599,7 +1599,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       }}
     >
       <header className="umr-block-header">
-        <span className="umr-block-index">{sentence.index}</span>
+        <span className="umr-block-index">{sentence.number ?? sentence.index}</span>
         <span className="umr-block-text" dir="auto">
           {sentence.text}
         </span>
@@ -1673,7 +1673,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           <button
             type="button"
             className="umr-text-toggle inline-flex items-center gap-1"
-            onClick={() => onAskAssistant({ ref: `s${sentence.index}`, label: 'Sentence' })}
+            onClick={() =>
+              onAskAssistant({ ref: `s${sentence.number ?? sentence.index}`, label: 'Sentence' })
+            }
             title="Ask the assistant about this sentence"
           >
             <AssistantMark className="h-3.5 w-3.5" />

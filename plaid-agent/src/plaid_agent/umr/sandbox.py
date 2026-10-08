@@ -64,7 +64,7 @@ def view(doc: UmrDoc, project=None) -> Dict[str, Any]:
     sentences = []
     mapping = resolve_ilg(project) if project is not None else []
     for s in doc.sentences:
-        nodes = [{'ref': f's{s.index}.{n.var}', 'var': n.var, 'concept': n.concept,
+        nodes = [{'ref': f's{s.number}.{n.var}', 'var': n.var, 'concept': n.concept,
                   'attrs': [{'rel': a.get('rel'), 'value': a.get('value')} for a in n.attrs],
                   'alignment': [list(a) for a in n.alignment], 'root': bool(n.root)}
                  for n in s.nodes]
@@ -85,7 +85,7 @@ def view(doc: UmrDoc, project=None) -> Dict[str, Any]:
                             'group': t.group})
         lines = ilg_lines(s, project, doc.gloss, mapping) if project is not None else []
         sentences.append({
-            'ref': f's{s.index}', 'text': s.text,
+            'ref': f's{s.number}', 'text': s.text,
             'words': [w.text for w in s.words],
             'lines': [{'header': line.get('header') or line.get('key') or '',
                        'lang': line.get('lang'),

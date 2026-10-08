@@ -56,7 +56,7 @@ export const TEMPORAL_CONSTANTS = DOC_CONSTANTS.filter((c) => !MODAL_CONSTANTS.i
 // Every node of the document as an option, `var concept`, sentence by sentence.
 export const nodeOptions = (graph, exceptId = null) =>
   graph.sentences.map((s) => ({
-    group: `Sentence ${s.index}`,
+    group: `Sentence ${s.number ?? s.index}`,
     items: s.nodes
       .filter((n) => n.id !== exceptId && n.var)
       .map((n) => ({ value: n.var, label: `${n.var} ${n.concept}`, nodeId: n.id })),

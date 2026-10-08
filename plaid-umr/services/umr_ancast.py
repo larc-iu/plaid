@@ -182,7 +182,7 @@ def to_umr_sentences(document):
             'raw_graph': None if s.nodes else s.raw_graph,
             'raw_alignment': None if s.nodes else s.raw_alignment,
             'alignment': alignment,
-            'doc_graph': ({'var': f's{s.index}s0', **groups} if has_triples else None),
+            'doc_graph': ({'var': f's{s.number}s0', **groups} if has_triples else None),
         })
     return out
 

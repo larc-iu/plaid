@@ -17,7 +17,8 @@ export const sentenceHref = (origin, projectId, c) =>
 
 export const citationTitle = (c) => {
   const focus = citationFocus(c);
-  const head = `${c.documentName}, sentence ${c.sentence}`;
+  // `number` is what the editor shows, `sentence` the place ?sent= takes.
+  const head = `${c.documentName}, sentence ${c.number ?? c.sentence}`;
   if (focus.length === 0) return head;
   if (focus.length === 1) return `${head}, node ${focus[0]}`;
   return `${head}, nodes ${focus.join(', ')}`;

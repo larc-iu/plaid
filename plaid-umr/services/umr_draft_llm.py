@@ -206,7 +206,7 @@ def plan_sentence(graph, alignment, sentence, taken):
     edges = []
 
     for var in order_of_var:
-        variables[var] = next_variable(sentence.index, graph.nodes[var].concept, taken)
+        variables[var] = next_variable(sentence.number, graph.nodes[var].concept, taken)
         taken.add(variables[var])
 
     for var in order_of_var:
@@ -388,12 +388,12 @@ def build_user_prompt(sentence, gloss_lines, language) -> str:
     parts = []
     if language:
         parts.append(f'Language: {language}.')
-    parts.append(f'Sentence {sentence.index}: {sentence.text}')
+    parts.append(f'Sentence {sentence.number}: {sentence.text}')
     numbered = '\n'.join(f'  {w.index} {w.text}' for w in sentence.words)
     parts.append(f'Words (numbered):\n{numbered}')
     for name, text in gloss_lines:
         parts.append(f'{name}: {text}')
-    parts.append(f'Write the UMR graph for sentence {sentence.index}, then its alignment.')
+    parts.append(f'Write the UMR graph for sentence {sentence.number}, then its alignment.')
     return '\n\n'.join(parts)
 
 
@@ -462,7 +462,7 @@ class UmrDraftService(BaseService):
         unanswered = UnansweredRun()
         total = len(run.targets)
         for n, sentence in enumerate(run.targets):
-            message = f'Drafting sentence {sentence.index} ({n + 1} of {total})…'
+            message = f'Drafting sentence {sentence.number} ({n + 1} of {total})…'
             progress.report(DraftProgress.DRAFT, n / total, message)
             gloss_lines = gloss_lines_for(sentence, run.layers.gloss_layers, run.document.gloss)
             prompt = build_user_prompt(sentence, gloss_lines, language)
@@ -473,11 +473,11 @@ class UmrDraftService(BaseService):
             except Exception as exc:
                 # The provider's own error text is the operator's: it can carry
                 # the endpoint, the request body and the key that was refused.
-                print(f'Model call failed for sentence {sentence.index}: {exc}')
-                failures.append({'sentence': sentence.index,
+                print(f'Model call failed for sentence {sentence.number}: {exc}')
+                failures.append({'sentence': sentence.number,
                                  'reason': requester_message(exc, secrets=self.REQUEST_SECRETS)})
                 if unanswered.failed(exc):
-                    not_drafted = [s.index for s in run.targets[n + 1:]]
+                    not_drafted = [s.number for s in run.targets[n + 1:]]
                     ended = unanswered.stop_line(len(not_drafted))
                     break
                 continue
@@ -485,7 +485,7 @@ class UmrDraftService(BaseService):
             if reply.truncated:
                 # Half a graph is not a graph: a cut-off reply is a failure, not
                 # a partial result to write.
-                failures.append({'sentence': sentence.index,
+                failures.append({'sentence': sentence.number,
                                  'reason': 'The reply was cut off at the token limit.'})
                 continue
             graph_text, alignment_text = split_reply(reply.text)
@@ -499,8 +499,8 @@ class UmrDraftService(BaseService):
                 # The reply itself goes to the operator's log: what the model
                 # wrote is what anyone improving the prompt needs to see.
                 detail = f'{problem} {graph.errors[0].message}' if graph.errors else problem
-                print(f'Reply for sentence {sentence.index} refused ({detail}):\n{reply.text}')
-                failures.append({'sentence': sentence.index, 'reason': problem})
+                print(f'Reply for sentence {sentence.number} refused ({detail}):\n{reply.text}')
+                failures.append({'sentence': sentence.number, 'reason': problem})
                 continue
             pieces, nodes, edges = plan_sentence(graph, alignment, sentence, run.taken)
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes, 'edges': edges})

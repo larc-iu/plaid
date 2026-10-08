@@ -198,7 +198,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     updates: List[Dict[str, Any]] = []
     if renamed is not None:
         updates.append({
-            'kind': 'rename_node', 'document_id': did, 'ref': f's{sentence.index}.{renamed_to}',
+            'kind': 'rename_node', 'document_id': did, 'ref': f's{sentence.number}.{renamed_to}',
             'span_id': renamed.id, 'var': renamed_to, 'from_var': renamed.var,
             'umr_set': {'var': renamed_to},
             'label': f'rename {renamed.var} to {renamed_to}'})
@@ -219,7 +219,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         old = old_by_var.get(var)
         if old is None:
             creates.append({
-                'kind': 'create_node', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                'kind': 'create_node', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                 'var': var, 'concept': node.concept, 'attrs': attrs,
                 'node_layer_id': project.node_layer_id, 'concept_layer_id': project.concept_layer_id,
                 'text_id': doc.text_id, 'sentence_id': sentence.id,
@@ -229,7 +229,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 'label': f'add ({var} / {node.concept})'})
             for e in edges:
                 edges_add.append({
-                    'kind': 'create_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                    'kind': 'create_edge', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                     'relation_layer_id': project.relation_layer_id, 'source_var': var,
                     'target_var': e['target'], 'role': e['role'], 'order': e['order'],
                     'label': f'{var} {e["role"]} {e["target"]}'})
@@ -259,12 +259,12 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
 
         if old.concept != node.concept:
             updates.append({
-                'kind': 'set_concept', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                'kind': 'set_concept', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                 'span_id': old.id, 'var': var, 'concept': node.concept,
                 'label': f'{var}: {old.concept or "(no concept)"} becomes {node.concept}'})
         if changed_attrs:
             updates.append({
-                'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                 'span_id': old.id, 'var': var, 'attrs': attrs, 'attr_line': attr_line(attrs),
                 'umr_set': {'attrs': attrs},
                 'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
@@ -276,19 +276,19 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                     pair = (var, name_of(doc.nodes_by_id[edge.target]))
                     relabelled[pair] = relabelled.get(pair, 0) + 1
                 edges_delete.append({
-                    'kind': 'delete_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                    'kind': 'delete_edge', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                     'relation_id': edge.id, 'source': edge.source, 'target': edge.target,
                     'label': f'remove {var} {key}'})
             elif reorder and wanted['order'] != edge.order:
                 orders.append({
-                    'kind': 'set_edge_order', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                    'kind': 'set_edge_order', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                     'relation_id': edge.id, 'order': wanted['order'],
                     'label': f'{var}: {key} moves to position {wanted["order"] + 1}'})
         old_keys = {key for _e, key in old_edges}
         for e in edges:
             if f'{e["role"]} {e["target"]}' not in old_keys:
                 edges_add.append({
-                    'kind': 'create_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
+                    'kind': 'create_edge', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                     'relation_layer_id': project.relation_layer_id, 'source_var': var,
                     'target_var': e['target'], 'role': e['role'],
                     'order': new_edge_order[f'{e["role"]} {e["target"]}'],
@@ -323,7 +323,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 label += (f' and {len(triples)} document-level relation'
                           + ('s' if len(triples) > 1 else ''))
             deletes.append({
-                'kind': 'delete_node', 'document_id': did, 'ref': f's{sentence.index}.{node.var}',
+                'kind': 'delete_node', 'document_id': did, 'ref': f's{sentence.number}.{node.var}',
                 'span_id': node.id, 'var': node.var,
                 'token_ids': [p.id for p in node.pieces],
                 'relation_ids': sorted(set(edges + triples)),
@@ -340,7 +340,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
             if node.root and name_of(node) != parsed.root and node.id not in gone_ids:
                 root_ops.append({
                     'kind': 'unset_root', 'document_id': did,
-                    'ref': f's{sentence.index}.{name_of(node)}', 'span_id': node.id,
+                    'ref': f's{sentence.number}.{name_of(node)}', 'span_id': node.id,
                     'umr_unset': ('root',),
                     'label': f'{name_of(node)} is no longer the root'})
         new_root = old_by_var.get(parsed.root)
@@ -352,9 +352,9 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         else:
             root_ops.append({
                 'kind': 'set_root', 'document_id': did,
-                'ref': f's{sentence.index}.{parsed.root}', 'span_id': new_root.id,
+                'ref': f's{sentence.number}.{parsed.root}', 'span_id': new_root.id,
                 'umr_set': {'root': True},
-                'label': f'{parsed.root} becomes the root of s{sentence.index}'})
+                'label': f'{parsed.root} becomes the root of s{sentence.number}'})
 
     # A new edge that would close a cycle UMR does not allow is refused, as
     # Text mode refuses it (the app's rule, `cycle_edges`), judged on the

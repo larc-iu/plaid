@@ -156,7 +156,7 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
                                                             case_sensitive))
                     elif attribute and node.attrs:
                         extra = ' ' + node.attr_line()
-                    shown.append(f'"{doc.name}" s{s.index}.{node.var}  ({node.concept}){extra}')
+                    shown.append(f'"{doc.name}" s{s.number}.{node.var}  ({node.concept}){extra}')
     if not shown:
         return 'No node matched.'
     total = sum(totals.values()) if totals else found
@@ -225,7 +225,7 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
             found += 1
             if len(shown) < limit and here < quota:
                 here += 1
-                shown.append(f'"{doc.name}" s{s.index}  {s.text}\n      {", ".join(hit)}')
+                shown.append(f'"{doc.name}" s{s.number}  {s.text}\n      {", ".join(hit)}')
     if not shown:
         return f'No sentence matches "{pattern}".'
     total = sum(totals.values()) if totals else found
@@ -298,7 +298,7 @@ def t_worklist(ws: Workspace, kind: str = None, document: str = None, limit: int
             continue
         out.append(f'{k}: {len(mine)} sentence(s)')
         for doc, s, _k, what in mine[:limit]:
-            out.append(f'  "{doc.name}" s{s.index}  {what}')
+            out.append(f'  "{doc.name}" s{s.number}  {what}')
         if len(mine) > limit:
             out.append(f'  … and {len(mine) - limit} more (raise limit)')
     if capped:

@@ -72,7 +72,7 @@ class Workspace(BaseWorkspace):
     def render(self, doc, **kw) -> str:
         return render_document(doc, **kw)
 
-    def sentence_named(self, doc, item) -> Optional[int]:
+    def sentence_position(self, doc, item) -> Optional[int]:
         return by_stored_sent_id(doc, item)
 
     def entity_index(self, doc) -> Dict[str, Any]:

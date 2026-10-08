@@ -19,7 +19,9 @@
 //   heldPrepend   the same past a sentence typed in before the first
 //
 // Writes one object per case to stdout: `{name, raw, nodes: {var: sentence},
-// sentences: [{snt, ilg, meta, rawGraph, triples, held}]}`.
+// sentences: [{snt, number, ilg, meta, rawGraph, triples, held}]}`. `number`
+// is the one the sentence goes by: its file's in a document numbered by its
+// file, else its place.
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -229,6 +231,7 @@ for (const [name, make] of Object.entries(CASES)) {
     nodes,
     sentences: doc.graph.sentences.map((s) => ({
       snt: s.snt,
+      number: s.number,
       text: s.text,
       ilg: s.storedIlg.map((l) => l.header),
       meta: s.meta,

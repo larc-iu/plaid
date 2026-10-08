@@ -48,7 +48,7 @@ def _python_side(case):
     doc = read_document(case['raw'], resolve_layers(case['raw']))
     nodes = {n.var: n.sentence for n in doc.nodes_by_id.values() if not n.constant}
     sentences = [{
-        'snt': s.snt, 'text': s.text, 'ilg': [line.get('header') for line in s.stored_ilg],
+        'snt': s.snt, 'number': s.number, 'text': s.text, 'ilg': [line.get('header') for line in s.stored_ilg],
         'meta': s.meta, 'rawGraph': s.raw_graph,
         'triples': sorted(t.rel for t in s.triples),
         'held': [[h.get('source'), h.get('rel'), h.get('target'), h.get('group')]
@@ -85,6 +85,10 @@ def test_the_cases_are_the_ones_the_rules_are_for(cases):
     assert cases['outside']['nodes']['s2n'] == 2
     assert cases['gone']['nodes']['s2n'] == 2
     assert [s['snt'] for s in cases['excerpt']['sentences']] == [None, 5, 6]
+    # The file's numbers are the ones its sentences go by, and the sentence
+    # typed in before them takes its place, which no stored number holds.
+    assert [s['number'] for s in cases['excerpt']['sentences']] == [1, 5, 6]
+    assert [s['number'] for s in cases['prepend']['sentences']] == [1, 2, 3]
     # A bare sentence's record stays on it when the sentence after it was
     # added in IGT and named by its own position, or by a number the bare
     # sentence's position and stored number do not both give.

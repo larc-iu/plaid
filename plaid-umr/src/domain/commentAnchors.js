@@ -41,7 +41,7 @@ export function buildAnchorIndex(doc) {
     const excerpt = anchorExcerpt(sentence.text);
     index.set(sentence.tokenId, {
       kind: 'sentence',
-      label: `Sentence ${number}`,
+      label: `Sentence ${sentence.number ?? number}`,
       detail: quoted(excerpt),
       excerpt,
       sentenceIndex: number,

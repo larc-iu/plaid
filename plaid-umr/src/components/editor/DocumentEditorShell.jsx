@@ -22,7 +22,9 @@ const UMR_SHELL = {
   // which the annotation editor's ?sent= and ?var= take.
   focusParams: (focus) =>
     focus?.sentence ? { sent: String(focus.sentence), var: focus.var || null } : null,
-  sentenceRef: (sentence) => `s${sentence.index}`,
+  // The number the sentence goes by, the file's own in a document numbered
+  // by its file, as the assistant reads it.
+  sentenceRef: (sentence) => `s${sentence.number ?? sentence.index}`,
 };
 
 export const DocumentEditorShell = () => <Shell app={UMR_SHELL} />;

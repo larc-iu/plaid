@@ -8,7 +8,7 @@ import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/
 import { parseUmrFile } from './format/umrFile.js';
 import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import { buildDocumentGraph, KEPT_VARIABLE, wordForFile } from './sentenceGraph.js';
+import { buildDocumentGraph, KEPT_VARIABLE, numberedByFile, wordForFile } from './sentenceGraph.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { pendingId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
@@ -282,6 +282,14 @@ const PER_SENTENCE = {
   'legacy-unaligned': "Alignment '-1--1' is UMR 1.0 for unaligned.",
 };
 
+// The number a sentence of the file goes by in the report: the file's own
+// `snt` when the file numbers its sentences (numberedByFile, an excerpt
+// starting at snt5), else its place. `index` is its place, from 1.
+const shownNumbers = (parsedSentences) => {
+  const byFile = numberedByFile(parsedSentences || []);
+  return (index) => (byFile ? (parsedSentences[index - 1]?.snt ?? index) : index);
+};
+
 /**
  * What the reader noted about the file, as lines of the import report, after
  * the lines about what the import did. Each names its sentence, and a note
@@ -294,6 +302,7 @@ const PER_SENTENCE = {
  * @returns {string[]}
  */
 export function readerNotes(parsed) {
+  const shown = shownNumbers(parsed.sentences);
   const lines = [];
   const sentencesOf = new Map();
   const notes = [
@@ -313,7 +322,7 @@ export function readerNotes(parsed) {
   sentencesOf.forEach((sentences, message) => {
     lines.push(
       sentences.length === 1
-        ? `Sentence ${sentences[0]}: ${message}`
+        ? `Sentence ${shown(sentences[0])}: ${message}`
         : `${sentences.length} sentences: ${message}`,
     );
   });
@@ -327,6 +336,7 @@ export function readerNotes(parsed) {
 // export writes them back and nothing is lost; its document-level triples
 // are read all the same.
 export function planImport(parsedSentences, warnings = [], { existing = null } = {}) {
+  const shown = shownNumbers(parsedSentences);
   if (existing) {
     if (existing.sentences.length !== parsedSentences.length) {
       throw new Error(
@@ -342,7 +352,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       const have = existing.sentences[i].words.map((w) => nfc(wordForFile(w)));
       if (have.length !== ps.words.length || have.some((w, k) => w !== ps.words[k])) {
         throw new Error(
-          `Sentence ${i + 1} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
+          `Sentence ${shown(i + 1)} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
         );
       }
     });
@@ -452,7 +462,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       meta.rawGraph = ps.raw?.graph || '';
       meta.rawAlignment = ps.raw?.alignment || '';
       warnings.push(
-        `Sentence ${index}: unreadable graph, stored as text (${ps.graph.errors[0].message}).`,
+        `Sentence ${shown(index)}: unreadable graph, stored as text (${ps.graph.errors[0].message}).`,
       );
     }
     if (readable) {
@@ -463,7 +473,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         const docGraphOf = /^s([0-9]+)s0$/.exec(v)?.[1];
         if (docGraphOf) {
           warnings.push(
-            `Sentence ${index}: ${v} names the document graph of sentence ${Number(docGraphOf)}. Rename the node.`,
+            `Sentence ${shown(index)}: ${v} names the document graph of sentence ${Number(docGraphOf)}. Rename the node.`,
           );
         }
         const ranges = ps.alignment?.get(v) || [];
@@ -474,14 +484,16 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
           const last = words[b - 1];
           if (!first || !last) {
             warnings.push(
-              `Sentence ${index}: ${v} aligns to words ${a}-${b}, outside the sentence.`,
+              `Sentence ${shown(index)}: ${v} aligns to words ${a}-${b}, outside the sentence.`,
             );
             return;
           }
           // A range written backwards made a token that ends before it
           // begins, and the whole import failed on it.
           if (a > b) {
-            warnings.push(`Sentence ${index}: ${v} aligns to words ${a}-${b}, a range backwards.`);
+            warnings.push(
+              `Sentence ${shown(index)}: ${v} aligns to words ${a}-${b}, a range backwards.`,
+            );
             return;
           }
           pieceIndexes.push(addPiece(first.begin, last.end));
@@ -567,7 +579,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
             return;
           }
           warnings.push(
-            `Sentence ${index}: (${a} ${rel} ${b}) dropped, no node ${missing.join(' or ')}.`,
+            `Sentence ${shown(index)}: (${a} ${rel} ${b}) dropped, no node ${missing.join(' or ')}.`,
           );
           return;
         }
@@ -621,7 +633,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         ? `sentence ${which[0]}`
         : `sentences ${which.slice(0, -1).join(', ')} and ${which.at(-1)}`;
     warnings.push(
-      `Sentence ${index}: ${count(n, 'document-level relation is', 'document-level relations are')} held until ${names} ${which.length === 1 ? 'is' : 'are'} mended.`,
+      `Sentence ${shown(index)}: ${count(n, 'document-level relation is', 'document-level relations are')} held until ${names} ${which.length === 1 ? 'is' : 'are'} mended.`,
     );
   });
 
@@ -631,7 +643,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     const ok = nodeIndex.has(e.source) && nodeIndex.has(e.target);
     if (!ok) {
       warnings.push(
-        `Sentence ${e.sentence}: ${e.role} to ${e.target.split(':')[1]} dropped, no such node.`,
+        `Sentence ${shown(e.sentence)}: ${e.role} to ${e.target.split(':')[1]} dropped, no such node.`,
       );
     }
     return ok;

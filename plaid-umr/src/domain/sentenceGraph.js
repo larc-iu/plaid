@@ -415,6 +415,14 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     s.ilg = ilg ? ilg(s, layerInfo) : storedLines(s);
   });
 
+  // The number each sentence goes by (fileNumbers), digits only, since a
+  // variable carries it.
+  const numbers = fileNumbers(sentences);
+  sentences.forEach((s) => {
+    const n = numbers.get(s);
+    s.number = /^[0-9]+$/.test(String(n)) ? Number(n) : s.index;
+  });
+
   const chains = corefChains(docRelations, nodesById);
 
   return { sentences, constants, nodesById, chains, records };
@@ -911,14 +919,15 @@ export function toUmrSentences(graph) {
       rawGraph: s.nodes.length ? undefined : s.rawGraph,
       rawAlignment: s.nodes.length ? undefined : s.rawAlignment,
       alignment,
-      docGraph: hasTriples ? { var: `s${s.index}s0`, ...groups } : null,
+      docGraph: hasTriples ? { var: `s${s.number ?? s.index}s0`, ...groups } : null,
     };
   });
 }
 
-// The number each sentence's `# :: snt` line writes: its position, as its
-// variables carry it, unless the document goes by its file's numbers
-// (numberedByFile). Then a stored number is written as it is, and a sentence
+// The number each sentence goes by, which the screen shows, its new
+// variables and its document block carry (`number` on each sentence), and
+// its `# :: snt` line writes: its position, unless the document goes by its
+// file's numbers (numberedByFile). Then a stored number is written as it is, and a sentence
 // that stores none, or repeats one, is written by position, or past the
 // highest number when that is taken: the official validator refuses a
 // repeated number. A sentence typed in before the first one in IGT stored
