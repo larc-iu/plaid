@@ -663,9 +663,10 @@ def test_a_sentence_given_a_graph_meanwhile_is_not_written_over():
     ('(v1 / bark-01 :temporal s1Y)\n\n# alignment:\nv1: 3-3\n', ':temporal takes a node'),
     ('(v1 / dog :possessor s1Y)\n\n# alignment:\nv1: 2-2\n', ':possessor takes a node'),
     # A relation UMR does not have is refused as the app and the assistant
-    # refuse it, edge or value, and the reason names the likeliest one meant.
+    # refuse it, edge or value, and the reason names the likeliest one meant,
+    # or the new name of one UMR 2.0 renamed.
     ('(v1 / dog :poss (v2 / person))\n\n# alignment:\nv1: 2-2\nv2: 0-0\n',
-     "Unknown relation ':poss': UMR has no such relation. Did you mean :possessor?"),
+     "Unknown relation ':poss': UMR 2.0 renamed it :possessor."),
     ('(v1 / person :poss-of (v2 / dog))\n\n# alignment:\nv1: 0-0\nv2: 2-2\n',
      "Unknown relation ':poss-of'"),
     ('(v1 / bark-01 :polarityy -)\n\n# alignment:\nv1: 3-3\n',

@@ -99,8 +99,22 @@ test('a temporal relation is offered with what it says, child first', () => {
 // Roles are a closed set, a concept is not: the role editor, the attribute
 // line and text mode refuse a relation the validator calls unknown.
 test('a relation UMR does not have is refused', () => {
-  assert.equal(unknownRelationProblem(':poss'), "Unknown relation ':poss'.");
-  assert.equal(unknownRelationProblem('poss'), "Unknown relation ':poss'.");
+  assert.equal(
+    unknownRelationProblem(':poss'),
+    "Unknown relation ':poss': UMR 2.0 renamed it :possessor.",
+  );
+  assert.equal(
+    unknownRelationProblem('poss'),
+    "Unknown relation ':poss': UMR 2.0 renamed it :possessor.",
+  );
+  assert.equal(
+    unknownRelationProblem(':poss-of'),
+    "Unknown relation ':poss-of': UMR 2.0 renamed it :possessor-of.",
+  );
+  assert.equal(
+    unknownRelationProblem(':location'),
+    "Unknown relation ':location': UMR 2.0 renamed it :place.",
+  );
   assert.equal(unknownRelationProblem(':possessor'), null);
   assert.equal(unknownRelationProblem(':ARG1-of'), null);
   assert.equal(unknownRelationProblem(':op12'), null);

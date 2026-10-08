@@ -19,6 +19,7 @@ import {
   LIST_ITEM_ATTRIBUTES,
   KNOWN_RELATIONS,
   NON_EVENT_ROLESETS,
+  RENAMED_RELATIONS,
 } from './inventory.js';
 import { nfc, treeEdges } from './penman.js';
 
@@ -54,12 +55,19 @@ const knownRelation = (relation) => {
 /**
  * Why `relation` is not a UMR relation, or null when it is. Roles are a
  * closed set (a concept is free text): the canvas and text mode refuse what
- * the validator would report as `unknown-relation`.
+ * the validator would report as `unknown-relation`. A name UMR 2.0 replaced
+ * (RENAMED_RELATIONS) is named with its new one, inverse kept.
  */
 export const unknownRelationProblem = (relation) => {
   const text = String(relation ?? '').trim();
   const rel = text.startsWith(':') ? text : `:${text}`;
-  return knownRelation(rel) ? null : `Unknown relation '${rel}'.`;
+  if (knownRelation(rel)) return null;
+  const base = uninvert(rel);
+  const renamed = RENAMED_RELATIONS[base];
+  if (renamed) {
+    return `Unknown relation '${rel}': UMR 2.0 renamed it ${renamed}${base === rel ? '' : '-of'}.`;
+  }
+  return `Unknown relation '${rel}'.`;
 };
 
 /**

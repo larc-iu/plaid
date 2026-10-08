@@ -211,6 +211,14 @@ export const DOC_RELATIONS = {
 // does not make it a child.
 export const CYCLE_ROLES = new Set([':quote', ':modal-predicate']);
 
+// Relations UMR 2.0 renamed, by their old name: the release's conversion
+// table (its English README) and validate.py's note on `:possessor`. Older
+// guidelines and the fieldwork graphbanks still write the old name, so a
+// refusal of one names the new one. The old name stays unknown, and an
+// imported edge that carries it is kept as any unknown relation is.
+// plaid_client.workflows.umr.inventory holds a copy (its mirror test).
+export const RENAMED_RELATIONS = { ':poss': ':possessor', ':location': ':place' };
+
 // The nodes of a document-level relation that are not sentence variables
 // (validate.py:1166). `have-condition-91` is there because annotators use it
 // as a modal conceiver, documented or not.

@@ -268,7 +268,7 @@ test('text mode refuses what the canvas refuses', () => {
   // stored and then reported. A concept stays free text.
   assert.match(
     doc.planPenman(1, base.replace(':ARG0 s1p', ':poss s1p')).errors[0].message,
-    /s1e: Unknown relation ':poss'/,
+    /s1e: Unknown relation ':poss': UMR 2\.0 renamed it :possessor\./,
   );
   assert.match(
     doc.planPenman(1, base.replace(':aspect performance)', ':colour red)')).errors[0].message,
@@ -440,8 +440,9 @@ test('every write refuses an unknown relation, keeping one stored at that place'
   assert.ok(poss && arg0 && leave.attrs.some((a) => a.rel === ':colour'));
 
   assert.equal(doc.relationProblem(':poss', { edgeId: poss.id }), null);
-  assert.equal(doc.relationProblem('poss', { edgeId: arg0.id }), "Unknown relation ':poss'.");
-  assert.equal(doc.relationProblem(':poss'), "Unknown relation ':poss'.");
+  const renamed = "Unknown relation ':poss': UMR 2.0 renamed it :possessor.";
+  assert.equal(doc.relationProblem('poss', { edgeId: arg0.id }), renamed);
+  assert.equal(doc.relationProblem(':poss'), renamed);
   assert.equal(doc.relationProblem(':colour', { nodeId: leave.id }), null);
   assert.equal(doc.relationProblem(':colour', { nodeId: eat.id }), "Unknown relation ':colour'.");
   assert.match(doc.relationProblem(':a b'), /letters, digits and hyphens only/);

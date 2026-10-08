@@ -36,6 +36,7 @@ console.log(JSON.stringify({{
     .filter(([, v]) => v.length)),
   doc: Object.fromEntries(Object.entries(m.DOC_RELATIONS).map(([g, v]) => [g, v.validator])),
   constants: m.DOC_CONSTANTS,
+  renamed: m.RENAMED_RELATIONS,
 }}));
 """
 
@@ -60,6 +61,11 @@ def test_the_document_level_relations_are_the_apps_group_by_group(js):
 
 def test_the_constants_are_the_apps(js):
     assert list(inventory.DOC_CONSTANTS) == js['constants']
+
+
+def test_the_renamed_relations_are_the_apps(js):
+    """The old names a refusal answers with the new one."""
+    assert inventory.RENAMED_RELATIONS == js['renamed']
 
 
 def test_the_attributes_are_the_apps(js):

@@ -224,11 +224,11 @@ def nearest(relation, names) -> Optional[str]:
     return by_squashed[close[0]] if close else None
 
 
-#: Relations UMR 2.0 renamed, by their old name: the release's conversion
-#: table (its English README) and validate.py's note on ``:possessor``. Older
-#: guidelines and some released graphs still write the old name, so a
-#: refusal of one names the new one rather than calling it unknown. They stay
-#: refused, as plaid-umr refuses them.
+#: Relations UMR 2.0 renamed, by their old name: plaid-umr's
+#: ``RENAMED_RELATIONS`` in ``inventory.js``, which this copy is held to by
+#: the agent's mirror test. Older guidelines and some released graphs still
+#: write the old name, so a refusal of one names the new one, as the app's
+#: does. They stay refused, as plaid-umr refuses them.
 RENAMED_RELATIONS = {':poss': ':possessor', ':location': ':place'}
 
 
