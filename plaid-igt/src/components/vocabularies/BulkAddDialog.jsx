@@ -983,9 +983,14 @@ export const BulkAddDialog = ({
                 {fieldDescription(f)}
               </LegendEntry>
             ))}
+            {/* A field no column supplies may be the one a left-out column
+                holds, so the way to keep it is to pick that field, and adding
+                a field is said only when every field has its column. */}
             {ignoredColumns > 0 && (
               <LegendEntry name="Don't import" note="left out">
-                To keep one of these, add a field to this vocabulary in its Settings first.
+                {unmapped.length > 0
+                  ? 'To keep one of these, choose its field above.'
+                  : 'To keep one of these, add a field to this vocabulary in its Settings first.'}
               </LegendEntry>
             )}
           </dl>

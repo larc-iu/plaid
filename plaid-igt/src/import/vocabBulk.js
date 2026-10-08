@@ -228,18 +228,34 @@ export const delimiterName = (d) =>
 // 2. column mapping
 // ---------------------------------------------------------------------------
 
+// A header in lowercase the way a reader compares two spellings of one name:
+// a Turkish capital İ is the field's i (lowercasing it leaves a dot above),
+// and ı is i too, since "ILIK" can only lowercase to a dotted i. Greek written
+// in capitals drops its accents, so ΛΟΓΟΣ is λόγος: a Greek letter's accents
+// and breathings are dropped (the diaeresis stays, capitals keep it), and a
+// final sigma is a sigma. A sharp s is "ss", as STRASSE spells Straße. Every
+// other mark is kept, since in Devanagari or Arabic marks tell words apart,
+// and the header is composed again after, so a decomposed "categoría" is the
+// same name as a composed one.
+const GREEK_ACCENT = /(\p{Script=Greek}\p{M}*?)[\u0300\u0301\u0342\u0313\u0314\u0345]/gu;
+const foldHeader = (s) => {
+  let t = String(s ?? '')
+    .normalize('NFC')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/([ij])\u0307/g, '$1')
+    .replace(/\u0131/g, 'i')
+    .replace(/\u03c2/g, '\u03c3')
+    .replace(/\u00df/g, 'ss');
+  for (let prev = null; prev !== t; ) [prev, t] = [t, t.replace(GREEK_ACCENT, '$1')];
+  return t.normalize('NFC');
+};
+
 // Letters and digits in any script: a field named in Cyrillic, Arabic or a
 // CJK script normalized to the empty string when only ASCII was kept, so it
 // never matched its own column, and a header row of such names was read as an
 // entry.
-// Combining marks are kept, since in Devanagari or Arabic they tell words
-// apart, and the header is composed first, so a decomposed "categoría" is the
-// same name as a composed one.
-const normalizeHeader = (s) =>
-  String(s ?? '')
-    .normalize('NFC')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{M}\p{N}]+/gu, '');
+const normalizeHeader = (s) => foldHeader(s).replace(/[^\p{L}\p{M}\p{N}]+/gu, '');
 
 // Header spellings that mean "this is the entry's form".
 const FORM_ALIASES = new Set(
@@ -279,10 +295,11 @@ const EXPORT_ONLY = new Set(['uses', 'id'].map(normalizeHeader));
 // camelCase boundary, so "en_gloss", "English Gloss" and "phoneticTranscription"
 // all come apart into words.
 const headerWords = (s) =>
-  String(s ?? '')
-    .normalize('NFC')
-    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
-    .toLowerCase()
+  foldHeader(
+    String(s ?? '')
+      .normalize('NFC')
+      .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2'),
+  )
     .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter(Boolean);
 
@@ -328,8 +345,8 @@ export const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
   // ("English gloss" and "en_gloss" for Gloss, but not "Glossary"). The
   // aliases take part in the plural only: "english" for Gloss is fine as a
   // whole header, but "Example sentence in English" is not a gloss. A name
-  // shorter than five letters is never looked for inside a header, since
-  // "pos" and "type" turn up in too much.
+  // shorter than five Latin letters is never looked for inside a header, since
+  // "pos" and "type" turn up in too much (`longEnough`).
   const unique = (test) => {
     const hits = fieldNames.filter(test);
     return hits.length === 1 ? hits[0] : null;
@@ -346,14 +363,28 @@ export const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
   const contained = unique((f) =>
     [f, humanize(f)].some((name) => {
       const run = headerWords(name);
-      return run.join('').length >= MIN_CONTAINED && containsRun(words, run);
+      return longEnough(run.join('')) && containsRun(words, run);
     }),
   );
   return contained ? { target: contained, rank: CONTAINS } : null;
 };
 
-// The shortest field name looked for inside a header.
-const MIN_CONTAINED = 5;
+// Whether a field name is long enough to be looked for inside a header. Five
+// letters of a script with capitals (Latin, Greek, Cyrillic), where a shorter
+// word turns up inside too many headers. A letter of a script without them
+// (Arabic, Hebrew, Devanagari) says more, so three are enough ("अर्थ" and
+// "معنى", whose vowel signs are marks and not letters), and an ideograph or a
+// kana or hangul syllable more still, so two are ("词义" in "词义（英文）").
+const IDEOGRAPHIC = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const CASED = /[\p{Lu}\p{Ll}\p{Lt}]/u;
+const longEnough = (name) => {
+  let weight = 0;
+  for (const ch of name) {
+    if (!/\p{L}/u.test(ch)) continue;
+    weight += IDEOGRAPHIC.test(ch) ? 15 : CASED.test(ch) ? 6 : 10;
+  }
+  return weight >= 30;
+};
 
 /** Column 0 is the form, the rest follow the vocabulary's field order. */
 export const positionalMapping = (colCount, fieldNames) =>

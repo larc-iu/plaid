@@ -211,6 +211,43 @@ describe('column guessing', () => {
     expect(matchHeader('gloss notes', ['gloss', 'glossNotes2', 'notes'], (f) => f)).toBe(null);
   });
 
+  // H10-SCRIPTS-4: BİLGİ and ΛΟΓΟΣ were left out though the vocabulary has
+  // "bilgi" and "Λόγος", and a short field name in a script without capitals
+  // was never found inside a longer header.
+  it('reads a header in Turkish or Greek capitals as the field it spells', () => {
+    const fields = ['bilgi', 'Λόγος', 'ılık', 'Straße', 'σοφός'];
+    const same = (f) => f;
+    expect(matchHeader('BİLGİ', fields, same)).toBe('bilgi');
+    expect(matchHeader('ΛΟΓΟΣ', fields, same)).toBe('Λόγος');
+    expect(matchHeader('λόγος', fields, same)).toBe('Λόγος');
+    expect(matchHeader('ILIK', fields, same)).toBe('ılık');
+    expect(matchHeader('STRASSE', fields, same)).toBe('Straße');
+    expect(matchHeader('ΣΟΦΟΣ', fields, same)).toBe('σοφός');
+    const { rows } = parseTable('FORM\tGLOSS\tBİLGİ\tΛΟΓΟΣ\nev\thouse\tx\ty\n');
+    expect(guessColumns(rows, ['gloss', 'bilgi', 'Λόγος'], humanize).mapping).toEqual([
+      FORM,
+      'gloss',
+      'bilgi',
+      'Λόγος',
+    ]);
+  });
+
+  it('keeps the marks that tell words apart outside Greek', () => {
+    expect(matchHeader('कल', ['कुल'], (f) => f)).toBe(null);
+    expect(matchHeader('categoria', ['categoría'], (f) => f)).toBe(null);
+    expect(matchHeader('categori\u0301a', ['categoría'], (f) => f)).toBe('categoría');
+  });
+
+  it('finds a short name in a script without capitals inside a longer header', () => {
+    expect(matchHeader('词义（英文）', ['词义'], (f) => f)).toBe('词义');
+    expect(matchHeader('अर्थ (हिंदी)', ['अर्थ'], (f) => f)).toBe('अर्थ');
+    expect(matchHeader('معنى (عربي)', ['معنى'], (f) => f)).toBe('معنى');
+    // One ideograph, two Arabic letters and four Latin ones are still too few.
+    expect(matchHeader('义 (英文)', ['义'], (f) => f)).toBe(null);
+    expect(matchHeader('في المعجم', ['في'], (f) => f)).toBe(null);
+    expect(matchHeader('noun type', ['type'], (f) => f)).toBe(null);
+  });
+
   it('leaves a repeated field on its first column only', () => {
     const { rows } = parseTable('Form\tGloss\tgloss\nx\ta\tb\n');
     expect(guessColumns(rows, FIELDS, humanize).mapping).toEqual([FORM, 'gloss', IGNORE]);

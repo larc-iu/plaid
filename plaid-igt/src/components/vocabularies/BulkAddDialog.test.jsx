@@ -95,6 +95,22 @@ describe('Bulk Add', () => {
     expect(document.body.textContent).not.toContain('left out');
   });
 
+  // H10-SCRIPTS-4: the legend said to add a field the vocabulary already had.
+  it('says to add a field for a left-out column only when every field has a column', async () => {
+    const { view } = await open();
+    mounted = view;
+    await paste(view, 'form\tgloss\tnotes\nperro\tdog\tx');
+    expect(document.body.textContent).toContain('To keep one of these, choose its field above.');
+    expect(document.body.textContent).not.toContain('add a field');
+    await view.unmount();
+    const again = await open({ fields: [{ name: 'gloss', type: 'text' }] });
+    mounted = again.view;
+    await paste(again.view, 'form\tgloss\tnotes\nperro\tdog\tx');
+    expect(document.body.textContent).toContain(
+      'To keep one of these, add a field to this vocabulary in its Settings first.',
+    );
+  });
+
   it('gives every row the same value for a field no column supplies', async () => {
     const bulkCreate = vi.fn(async () => {});
     const { view } = await open({ bulkCreate });
