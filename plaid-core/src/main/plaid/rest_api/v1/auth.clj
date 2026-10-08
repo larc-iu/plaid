@@ -66,6 +66,8 @@
   ([secret-key id password-changes ttl-seconds]
    (sign-user-token secret-key id password-changes ttl-seconds nil))
   ([secret-key id password-changes ttl-seconds project-ids]
+   (sign-user-token secret-key id password-changes ttl-seconds project-ids nil))
+  ([secret-key id password-changes ttl-seconds project-ids runner]
    (jwt/sign (cond-> {:user/id id
                       :version password-changes
                       :exp (exp-seconds ttl-seconds)}
@@ -73,7 +75,10 @@
                ;; `:jti` tells it apart from every other token of its user,
                ;; so it alone may relabel the operation groups it created.
                (some? project-ids) (assoc :scope/projects (vec project-ids)
-                                          :jti (str (random-uuid))))
+                                          :jti (str (random-uuid)))
+               ;; Who runs the service holding it, when that is someone else
+               ;; (see `runner-reach`).
+               (some? runner) (assoc :scope/runner runner))
              secret-key)))
 
 (defn- sign-api-token
@@ -127,6 +132,8 @@
   ([db secret-key user-id project-ids]
    (issue-delegated-token! db secret-key user-id project-ids nil))
   ([db secret-key user-id project-ids not-after]
+   (issue-delegated-token! db secret-key user-id project-ids not-after nil))
+  ([db secret-key user-id project-ids not-after runner]
    (when-let [account (user/get-internal db user-id)]
      (sign-user-token secret-key
                       (:user/id account)
@@ -134,7 +141,8 @@
                       (cond-> (delegated-token-ttl-seconds)
                         (number? not-after)
                         (min (- (long not-after) (quot (System/currentTimeMillis) 1000))))
-                      (vec (distinct (map (comp str/lower-case str) project-ids)))))))
+                      (vec (distinct (map (comp str/lower-case str) project-ids)))
+                      (when (and runner (not= runner (:user/id account))) runner)))))
 
 (defn issue-api-token!
   "Mint + persist a named API token and return the signed JWT — the ONLY time
@@ -293,6 +301,11 @@
 ;; must do no more than its user could do IN THOSE PROJECTS. The rule, and
 ;; where each part of it is enforced:
 ;;
+;; - A token handed to a service someone else runs names that runner
+;;   (`:scope/runner`), and reaches only the projects of its claim where the
+;;   runner is still a maintainer, or every one if the runner is an admin
+;;   (`runner-reach`, asked on every request). The submit handler refuses to
+;;   mint one at all past that line (`runner-delegates?`, Luke 2026-10-08).
 ;; - `wrap-read-jwt` recognizes the claim, puts the scope on the request under
 ;;   `:auth/token-scope`, binds it to `*token-scope*` for the rest of the
 ;;   request, and hands the handlers a user record WITHOUT admin, so no
@@ -349,6 +362,31 @@
   [token-data]
   (when-let [ids (:scope/projects token-data)]
     (set (map (comp str/lower-case str) ids))))
+
+(defn runner-delegates?
+  "May the service run by `runner-id` receive delegated tokens for project
+  `project-id`, that is, act there for members other than its runner? Only
+  when the runner's account is active and maintains the project, or is an
+  admin (Luke, 2026-10-08: a maintainer's service serves every writer). A
+  writer's or a reader's service serves only its runner."
+  [db runner-id project-id]
+  (let [account (some->> runner-id (user/get-internal db))]
+    (boolean
+     (and account
+          (nil? (:user/deactivated-at account))
+          (or (user/admin? account)
+              (some #{runner-id} (:project/maintainers (prj/get db project-id))))))))
+
+(defn- runner-reach
+  "The projects of a scoped token's claims it reaches NOW. A token handed to
+  a service its own user runs reaches all of them. One handed to a service
+  someone else runs reaches only those where that runner still delegates
+  (`runner-delegates?`), asked on every request, so a runner demoted, removed
+  or deactivated after the token was minted loses it at once."
+  [db token-data projects]
+  (if-let [runner (:scope/runner token-data)]
+    (into #{} (filter #(runner-delegates? db runner %)) projects)
+    projects))
 
 (defn- in-scope?
   [scope project-id]
@@ -522,7 +560,7 @@
                   ;; user record without admin, and the gates get the scope.
                   scope (when-let [projects (and (map? token-data) (token-projects token-data))]
                           {:user-id (:user/id token-data)
-                           :projects projects
+                           :projects (runner-reach db token-data projects)
                            :token-key (:jti token-data)
                            :admin? (user/admin? user)
                            :passed (volatile! false)})

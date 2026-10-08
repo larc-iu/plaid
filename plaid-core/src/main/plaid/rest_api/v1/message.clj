@@ -427,6 +427,58 @@
                             (pra/privileged? req :project/readers (constantly %)))))
         joined))
 
+(defn- runner-name
+  "The display name of the account that runs a service, for the requester's
+  eyes."
+  [db runner-id]
+  (or (:user/display-name (user/get db runner-id)) "another member"))
+
+(defn- names-list
+  "\"A\", \"A and B\", \"A, B and C\"."
+  [names]
+  (if (< (count names) 2)
+    (str (first names))
+    (str (str/join ", " (butlast names)) " and " (last names))))
+
+(defn- delegation-refusal
+  "Why a delegating service may not act for this requester, or nil. A
+  service acts for members other than its runner only where its runner is a
+  maintainer or an admin (`pra/runner-delegates?`, Luke 2026-10-08), on the
+  request's own project and on every project the conversation joins. `scope`
+  is what `delegated-projects` found, the request's project first."
+  [db service-entry requester-id scope]
+  (let [runner (:user-id service-entry)]
+    (when (not= runner requester-id)
+      (let [[home & joined] scope
+            name (delay (runner-name db runner))]
+        (if-not (pra/runner-delegates? db runner home)
+          {:status 403
+           :body {:error (str "This service is run by " @name ", who is not a maintainer of this project, "
+                              "so it acts only for " @name " here.")}}
+          (when-let [refused (seq (remove #(pra/runner-delegates? db runner %) joined))]
+            (let [names (names-list (map #(or (:project/name (prj/get db %)) %) refused))]
+              {:status 403
+               :body {:error (str "This service is run by " @name ", who is not a maintainer of " names
+                                  ", so it cannot read " names " for you.")}})))))))
+
+(defn- with-runner
+  "A live discovery entry with who runs it, as the caller sees it:
+  `runner-name`, `run-by-you`, and `serves-you`, whether it would take the
+  caller's requests here. A delegating service does when the caller runs
+  it, or a maintainer or an admin does (`delegation-refusal`). Any other
+  service does when the caller writes the project."
+  [req db project-id {:keys [service-id] :as entry}]
+  (let [runner (:user-id (events/get-service-entry project-id service-id))
+        caller (pra/->user-id req)]
+    (if-not runner
+      entry
+      (assoc entry
+             :runner-name (runner-name db runner)
+             :run-by-you (= runner caller)
+             :serves-you (if (events/delegating-service? entry)
+                           (or (= runner caller) (pra/runner-delegates? db runner project-id))
+                           (boolean (pra/privileged? req :project/writers get-project-id)))))))
+
 (defn- parse-project-ids
   "`?project-ids=` as a list of lower-cased ids, or nil when any is not a UUID."
   [s]
@@ -477,7 +529,9 @@
         ;; A service handing on the group it was handed (a service that asks
         ;; another) hands it on as its requester's, in the same project.
         handed-on (when group-id (events/group-grant group-id user-id requester-token id))
-        handed-elsewhere? (and handed-on (not= (str id) (str (:project-id handed-on))))]
+        handed-elsewhere? (and handed-on (not= (str id) (str (:project-id handed-on))))
+        scope (delay (delegated-projects req db id (parse-project-ids project-ids)))
+        refusal (delay (when delegating? (delegation-refusal db entry user-id @scope)))]
     (cond
       existing
       (if (request-visible? existing req id)
@@ -504,6 +558,11 @@
       (do (drop-service-channel! (assoc entry :project-id id))
           {:status 503 :body {:error (str "No live service '" service-id "' on this project")}})
 
+      ;; A delegating service run by someone who does not maintain a
+      ;; project acts there only for that someone.
+      @refusal
+      @refusal
+
       ;; A grant covers one project (D27), so it is not handed on into another.
       (and handed-elsewhere? (not (og/joinable? db group-id user-id requester-token)))
       {:status 403 :body {:error (str "Operation group " group-id " was handed to this service by a request "
@@ -521,13 +580,15 @@
 
       :else
       (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
-            scope (when delegating?
-                    (delegated-projects req db id (parse-project-ids project-ids)))
+            scope (when delegating? @scope)
             ;; Never longer-lived than the requester's own token, so a
-            ;; delegated token cannot renew itself through a service.
+            ;; delegated token cannot renew itself through a service. It
+            ;; names the service's runner, so it reaches a project only
+            ;; while the runner still maintains it (`pra/runner-reach`).
             delegated-token (when delegating?
                               (pra/issue-delegated-token! db secret-key user-id scope
-                                                          (-> req :jwt-data :exp)))
+                                                          (-> req :jwt-data :exp)
+                                                          (:user-id entry)))
             ;; The service is told which projects the token reaches, so it
             ;; can say which of the ones it was asked about it cannot open.
             event (cond-> {:request-id request-id :requester-id user-id :data data}
@@ -677,10 +738,12 @@
    ["/services"
     {:plaid/idempotency false
      :get {:summary (str "List the services seen on a project: currently connected ones "
-                         "(online true) plus previously-seen offline ones with a last-seen time.")
+                         "(online true) plus previously-seen offline ones with a last-seen time. A connected one "
+                         "names its runner (runner-name, run-by-you) and says whether it would take "
+                         "the caller's requests (serves-you).")
            :middleware [[pra/wrap-reader-required get-project-id]]
-           :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
-                      (let [live (events/list-live-services id)
+           :handler (fn [{{{:keys [id]} :path} :parameters db :db :as req}]
+                      (let [live (map #(with-runner req db id %) (events/list-live-services id))
                             live-ids (set (map :service-id live))
                             seen (try (service-registry/list-seen db id)
                                       (catch Exception e
@@ -731,7 +794,9 @@
            :handler service-channel-handler}
      :post {:summary (str "Client: submit work to a service; streams progress + result (SSE). "
                           "Writer required, or reader when the service delegates (acts on the "
-                          "requester's behalf with a short-lived token the server mints).")
+                          "requester's behalf with a short-lived token the server mints). A "
+                          "delegating service serves members other than its runner only where the "
+                          "runner is a maintainer or an admin.")
             ;; Reader here; the handler raises the bar to writer for a
             ;; non-delegating service (see `submit-request-handler`).
             :middleware [[pra/wrap-reader-required get-project-id]]

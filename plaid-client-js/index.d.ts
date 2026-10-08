@@ -74,6 +74,12 @@ interface DiscoveredService {
   online: boolean;
   /** ISO-8601 stamp of when the service was last seen alive, or null/undefined if never persisted. */
   lastSeenAt?: string | null;
+  /** Online services only: the display name of the account that runs the service. */
+  runnerName?: string;
+  /** Online services only: the caller runs it. */
+  runByYou?: boolean;
+  /** Online services only: it would take the caller's requests on this project. A delegating service serves members other than its runner only where the runner is a maintainer or an admin. */
+  servesYou?: boolean;
 }
 
 interface ServiceRegistration {

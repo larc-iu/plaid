@@ -163,7 +163,12 @@ def discover_services(client, project_id):
     Returns every service ever registered on the project: currently connected
     ones carry ``online: True``; previously-seen offline ones carry
     ``online: False`` plus a ``last_seen_at`` stamp. Callers that need a
-    service they can actually submit work to should filter on ``online``.
+    service they can actually submit work to should filter on ``online``. A
+    connected service also names who runs it, as the caller sees it:
+    ``runner_name`` (the runner's display name), ``run_by_you``, and
+    ``serves_you``, whether it would take the caller's requests on this
+    project. A delegating service serves members other than its runner only
+    where the runner is a maintainer or an admin.
     """
     return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
 

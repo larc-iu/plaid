@@ -92,8 +92,9 @@
 (deftest a-delegated-token-cannot-renew-itself-through-a-service
   (events/reset-state!)
   (let [pid (h/create-test-project admin-request "Lifetime P")
-        _ (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/writers/user1@example.com")})
-        ;; The attacker's delegating service, on a project they write.
+        _ (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/maintainers/user1@example.com")})
+        ;; The attacker's delegating service, on a project they maintain (a
+        ;; writer's serves no one else, `delegation-runner-test`).
         {:keys [sent]} (open-service! fix/user1-token pid "helper")
         ;; A token that has 30 seconds left, as a captured one would near the
         ;; end of its hour.

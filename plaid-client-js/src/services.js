@@ -132,12 +132,16 @@ export function serviceErrorMessage(error, serviceName = '', secrets = []) {
  * service ever registered on the project: currently connected ones carry
  * `online: true`; previously-seen offline ones carry `online: false` plus a
  * `lastSeenAt` stamp. Callers that need a service they can actually submit
- * work to should filter on `online`. Goes over the wire even while a batch is
- * open on the client.
+ * work to should filter on `online`. A connected service also names who runs
+ * it, as the caller sees it: `runnerName` (the runner's display name),
+ * `runByYou`, and `servesYou`, whether it would take the caller's requests on
+ * this project. A delegating service serves members other than its runner
+ * only where the runner is a maintainer or an admin. Goes over the wire even
+ * while a batch is open on the client.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
- * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt}]
+ * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt, runnerName, runByYou, servesYou}]
  */
 export function discoverServices(client, projectId) {
   return client._request('GET', `/api/v1/projects/${projectId}/services`);
