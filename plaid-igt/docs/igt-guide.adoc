@@ -949,6 +949,7 @@ The conversation then reads `You stopped this turn.` with **Retry**.
 Retry sends the question again below it. The attempt that did not finish stays in the conversation.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 The Markdown names the files attached to each question and the PDFs a reply fetched.
+**Download as web page** saves the conversation as one HTML file that looks like the Assistant tab and opens in any browser, offline. It shows a table the assistant made when it is small, names every other file with its size, and leaves out anything from a project you can no longer open, saying so at the top.
 Your server's administrator can read them.
 Deleting a conversation asks first, and cannot be undone. What its plans applied stays.
 The tab opens on a new conversation. The list on the left holds the earlier ones, and each has its own link.
@@ -1408,7 +1409,7 @@ With **No project** as the project, a link creates an account and grants nothing
 A service that has gone for good can be forgotten here.
 
 **Assistant** is every conversation anyone has had with the assistant, on any project, with who had it and how many turns it ran.
-Opening one shows the conversation as its owner saw it, read-only, and it can be downloaded or copied as Markdown.
+Opening one shows the conversation as its owner saw it, read-only, and it can be downloaded or copied as Markdown, or downloaded as a web page.
 Conversations are otherwise private to the person who had them.
 
 **Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at sign-in.
