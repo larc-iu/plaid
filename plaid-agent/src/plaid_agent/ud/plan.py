@@ -273,7 +273,7 @@ def _apply_set_head(ctx: Context, op) -> int:
     # named by its id.
     ctx.b.add(lambda batch, o=op: batch.relations.create(
         o['relation_layer_id'], ctx.lemma_at[o['head_id']], ctx.lemma_at[o['word_id']], o['deprel'],
-        ctx.stamp() or None, id=ctx.b.new_id()))
+        ctx.stamp(), id=ctx.b.new_id()))
     return 1
 
 

@@ -510,6 +510,8 @@ class Resource:
     def _shape(self, writer, method, args, kwargs, arguments, first, sent):
         """What a write records, what a batch's results carry for it, and
         what it answers made on the client."""
+        if method in ('create', 'bulk_create'):
+            self._check_create_metadata(sent)
         if method == 'create':
             # A create given the id to make it under answers that id.
             new = arguments.get('id') or writer.new_id(self._name)
@@ -558,6 +560,17 @@ class Resource:
     #: the key naming the one layer every entry of a bulk create must share
     _BULK_LAYER_KEY = {'tokens': 'token_layer_id', 'spans': 'span_layer_id',
                        'relations': 'relation_layer_id'}
+
+    def _check_create_metadata(self, sent):
+        """The server's schema on a create: ``metadata`` may be left out, and
+        when sent it is a map. A null is refused, as core refuses it."""
+        body = sent.options.get('body')
+        entries = body if isinstance(body, list) else [body]
+        for entry in entries:
+            if isinstance(entry, dict) and 'metadata' in entry and not isinstance(entry['metadata'], dict):
+                raise _refusal(_root(self._client), 400,
+                               'Request validation failed. metadata: invalid type',
+                               sent.method, sent.path)
 
     def _check_bulk_create(self, ops, sent):
         """The server's two rules on a bulk create: every entry in one layer,

@@ -205,7 +205,7 @@ def _token(ctx: Context, op, token_id: str, metadata: Optional[Dict[str, Any]] =
     made = ctx.materialized[token_id] = ctx.b.new_id()
     meta = {**(metadata or {}), **ctx.stamp()}
     ctx.b.add(lambda batch: batch.tokens.create(at['layer_id'], at['text_id'], at['begin'], at['end'],
-                                                precedence=1, metadata=meta or None, id=made))
+                                                precedence=1, metadata=meta, id=made))
     return made
 
 

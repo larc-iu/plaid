@@ -174,7 +174,7 @@ def finish_set_words(op: Dict[str, Any], words: List[str], b, stamp) -> None:
         if len(forms) > 1 or form != surface:
             b.add(lambda batch, o=op, w=word, v=form, i=b.new_id(): batch.spans.bulk_create(
                 [{'span_layer_id': o['form_layer_id'], 'tokens': [w], 'value': v,
-                  'metadata': stamp() or None, 'id': i}]))
+                  'metadata': stamp(), 'id': i}]))
         b.add(lambda batch, o=op, w=word, v=form, i=b.new_id(): batch.spans.bulk_create(
             [{'span_layer_id': o['lemma_layer_id'], 'tokens': [w], 'value': v,
               'metadata': dict(LEMMA_FROM_FORM), 'id': i}]))
