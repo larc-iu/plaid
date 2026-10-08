@@ -447,7 +447,7 @@ The conversation then reads `You stopped this turn.` with **Retry**.
 Retry sends the question again below it. The attempt that did not finish stays in the conversation.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 The Markdown names the files attached to each question and the PDFs a reply fetched.
-**Download as web page** saves the conversation as one HTML file that looks like the Assistant tab and opens in any browser, offline. It shows a table the assistant made when it is small, names every other file with its size, and leaves out anything from a project you can no longer open, saying so at the top.
+**Download as web page** saves the conversation as one HTML file that looks like the Assistant tab and opens in any browser, offline. It shows a table the assistant made when it is small, names every other file with its size, and leaves out the cited examples, tool outputs and made tables from a project you can no longer open, saying so at the top.
 Your server's administrator can read them.
 Deleting a conversation asks first, and cannot be undone. What its plans applied stays.
 
