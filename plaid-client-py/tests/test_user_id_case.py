@@ -43,6 +43,17 @@ def test_normalize_user_id_trims_and_lowercases():
     assert normalize_user_id(None) is None
 
 
+def test_normalize_user_id_spells_an_id_as_core_does():
+    """H10-SCRIPTS-3: the case table core and the JS client run too. A
+    leading BOM signed in to another account than core's."""
+    path = os.path.join(os.path.dirname(__file__), '..', '..', 'plaid-core', 'src', 'test', 'plaid', 'sql',
+                        'user_id_cases.json')
+    with open(path, encoding='utf-8') as f:
+        cases = json.load(f)['cases']
+    for c in cases:
+        assert normalize_user_id(c['input']) == c['id'], c['what']
+
+
 def test_login_sends_the_lowercased_id(monkeypatch):
     sent = _capture_posts(monkeypatch)
     PlaidClient.login('http://x', ' Ana@Example.org', 'pw')

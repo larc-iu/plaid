@@ -73,14 +73,20 @@ export function uuidv4() {
   return s;
 }
 
+// Whitespace, control and format characters at either end of an id (NBSP,
+// the BOM, zero-width and bidi marks as well as ASCII blanks), as core trims.
+const ID_EDGES = /^[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+$/gu;
+
 /**
  * A user id as the server stores it. A user's id is their email address,
- * kept trimmed and lowercased, so `Ana@Example.org` and `ana@example.org`
- * name one account. Compare a typed address with an id through this.
+ * kept in NFC, trimmed of every whitespace, control and format character at
+ * either end and lowercased, so `Ana@Example.org` and `ana@example.org` name
+ * one account. Compare a typed address with an id through this. The rule is
+ * core's (`plaid.sql.user/normalize-id`), checked against its case table.
  * Anything but a string comes back unchanged.
  * @param {string} id
  * @returns {string}
  */
 export function normalizeUserId(id) {
-  return typeof id === "string" ? id.trim().toLowerCase() : id;
+  return typeof id === "string" ? id.normalize("NFC").replace(ID_EDGES, "").toLowerCase() : id;
 }

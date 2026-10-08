@@ -4,7 +4,9 @@
   login, the login rate limit, member and maintainer grants, user search,
   named tokens, private data, the audit and every other route that names a
   user. Two accounts can never differ only in case."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.data.json :as json]
+            [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin
                                     with-test-users with-clean-db rest-handler db api-call
@@ -34,6 +36,26 @@
   (is (= "b@x.com" (user/normalize-id "  B@X.Com ")))
   (is (= "i@x.com" (user/normalize-id "I@X.COM")) "no locale-dependent dotless i")
   (is (nil? (user/normalize-id nil))))
+
+(deftest normalize-id-follows-the-case-table
+  ;; H10-SCRIPTS-3: core trimmed what Java's trim trims, the JS client what
+  ;; String.trim trims and the Python client what str.strip strips, so an id
+  ;; with a trailing NBSP or a leading BOM named two accounts. Both clients
+  ;; run this table too.
+  (doseq [{:strs [input id what]} (get (json/read-str (slurp (io/file "src/test/plaid/sql/user_id_cases.json")))
+                                       "cases")]
+    (is (= id (user/normalize-id input)) what)))
+
+(deftest an-invisible-character-at-an-end-names-the-same-account
+  (let [resp (api-call admin-request {:method :post :path "/api/v1/users"
+                                      :body {:email "\ufeffBom@X.com\u00a0"
+                                             :password "long-enough-1" :is-admin false}})]
+    (assert-created resp)
+    (is (= "bom@x.com" (-> resp :body :id))))
+  (assert-status 409 (api-call admin-request {:method :post :path "/api/v1/users"
+                                              :body {:email "bom@x.com\u200b"
+                                                     :password "long-enough-1" :is-admin false}}))
+  (is (= 200 (:status (login "\u2068BOM@x.com" "long-enough-1")))))
 
 (deftest account-creation-stores-one-spelling
   (testing "POST /users stores the lowercased, trimmed email"

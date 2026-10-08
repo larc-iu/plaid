@@ -4,6 +4,7 @@
 // Python twin (tests/test_user_id_case.py) sends the same bodies.
 
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { PlaidClient, normalizeUserId } from "../src/index.js";
 
@@ -31,6 +32,18 @@ async function bodiesOf(fn) {
 test("normalizeUserId trims and lowercases", () => {
   assert.equal(normalizeUserId("  Ana@Example.ORG "), "ana@example.org");
   assert.equal(normalizeUserId(undefined), undefined);
+});
+
+// H10-SCRIPTS-3: the case table core and the Python client run too. A trailing
+// NBSP or a leading BOM signed in to another account than core's.
+const USER_ID_CASES = JSON.parse(
+  readFileSync(new URL("../../plaid-core/src/test/plaid/sql/user_id_cases.json", import.meta.url), "utf8"),
+);
+
+test("normalizeUserId spells an id as core does", () => {
+  for (const { input, id, what } of USER_ID_CASES.cases) {
+    assert.equal(normalizeUserId(input), id, what);
+  }
 });
 
 test("login sends the lowercased id", async () => {

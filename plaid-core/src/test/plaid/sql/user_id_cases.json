@@ -1,0 +1,120 @@
+{
+  "about": "A user id as core stores it (plaid.sql.user/normalize-id): NFC, then every whitespace, control and format character (general categories Z, Cc and Cf) trimmed at either end, then lowercased in the root locale. plaid-core, plaid-client-js and plaid-client-py each run this table.",
+  "cases": [
+    {
+      "input": "  B@X.Com ",
+      "id": "b@x.com",
+      "what": "ASCII spaces and case"
+    },
+    {
+      "input": "I@X.COM",
+      "id": "i@x.com",
+      "what": "no locale-dependent dotless i"
+    },
+    {
+      "input": "nb@x.com\u00a0",
+      "id": "nb@x.com",
+      "what": "a trailing no-break space"
+    },
+    {
+      "input": "\ufeffbom@x.com",
+      "id": "bom@x.com",
+      "what": "a leading byte order mark, as the first line of a UTF-8 file with a BOM"
+    },
+    {
+      "input": "\u200bzw@x.com\u200d",
+      "id": "zw@x.com",
+      "what": "zero-width space and joiner"
+    },
+    {
+      "input": "ideo@x.com\u3000",
+      "id": "ideo@x.com",
+      "what": "an ideographic space"
+    },
+    {
+      "input": "\u2068iso@x.com\u2069",
+      "id": "iso@x.com",
+      "what": "bidi isolates"
+    },
+    {
+      "input": "\u200eltr@x.com\u200f",
+      "id": "ltr@x.com",
+      "what": "left-to-right and right-to-left marks"
+    },
+    {
+      "input": "\u0085nel@x.com",
+      "id": "nel@x.com",
+      "what": "next line"
+    },
+    {
+      "input": "\u180emvs@x.com",
+      "id": "mvs@x.com",
+      "what": "Mongolian vowel separator"
+    },
+    {
+      "input": "\u2028ls@x.com\u2029",
+      "id": "ls@x.com",
+      "what": "line and paragraph separators"
+    },
+    {
+      "input": "tab@x.com\t\r\n",
+      "id": "tab@x.com",
+      "what": "tab and line ends"
+    },
+    {
+      "input": "\udb40\udc01tag@x.com",
+      "id": "tag@x.com",
+      "what": "an astral format character"
+    },
+    {
+      "input": "\u00adshy@x.com",
+      "id": "shy@x.com",
+      "what": "a soft hyphen"
+    },
+    {
+      "input": "a\u00a0b@x.com",
+      "id": "a\u00a0b@x.com",
+      "what": "a space inside stays"
+    },
+    {
+      "input": "mu\u0308ller@x.de",
+      "id": "m\u00fcller@x.de",
+      "what": "decomposed to composed"
+    },
+    {
+      "input": "M\u00fcller@X.de",
+      "id": "m\u00fcller@x.de",
+      "what": "composed, lowercased"
+    },
+    {
+      "input": "A\u030a@x.com",
+      "id": "\u00e5@x.com",
+      "what": "a ring above composes"
+    },
+    {
+      "input": "\u0130LKER@X.COM",
+      "id": "i\u0307lker@x.com",
+      "what": "dotted capital I keeps its dot"
+    },
+    {
+      "input": "\u039f\u0394\u03a5\u03a3\u03a3\u0395\u03a5\u03a3@X.COM",
+      "id": "\u03bf\u03b4\u03c5\u03c3\u03c3\u03b5\u03c5\u03c2@x.com",
+      "what": "Greek capitals, final sigma"
+    },
+    {
+      "input": "STRA\u1e9eE@X.DE",
+      "id": "stra\u00dfe@x.de",
+      "what": "capital sharp s"
+    },
+    {
+      "input": "\uff21@\uff38.com",
+      "id": "\uff41@\uff58.com",
+      "what": "full-width letters"
+    },
+    {
+      "input": "a@b\u00fccher.de",
+      "id": "a@b\u00fccher.de",
+      "what": "a domain outside ASCII stays as typed"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import secrets
 import threading
 import time
 import uuid
+import unicodedata
 
 _lock = threading.Lock()
 _last_ms = 0
@@ -67,12 +68,27 @@ def drawn_uuid7(seed: str, n: int) -> str:
     return _compose(at >> 12, at & 0xFFF, rand)
 
 
+# Whitespace, control and format characters (NBSP, the BOM, zero-width and
+# bidi marks as well as ASCII blanks): what core trims at either end of an id.
+_ID_EDGES = frozenset(('Zs', 'Zl', 'Zp', 'Cc', 'Cf'))
+
+
 def normalize_user_id(user_id):
     """A user id as the server stores it.
 
-    A user's id is their email address, kept trimmed and lowercased, so
-    ``Ana@Example.org`` and ``ana@example.org`` name one account. Compare a
-    typed address with an id through this. Anything but a string comes back
-    unchanged.
+    A user's id is their email address, kept in NFC, trimmed of every
+    whitespace, control and format character at either end and lowercased,
+    so ``Ana@Example.org`` and ``ana@example.org`` name one account. Compare
+    a typed address with an id through this. The rule is core's
+    (``plaid.sql.user/normalize-id``), checked against its case table.
+    Anything but a string comes back unchanged.
     """
-    return user_id.strip().lower() if isinstance(user_id, str) else user_id
+    if not isinstance(user_id, str):
+        return user_id
+    s = unicodedata.normalize('NFC', user_id)
+    i, j = 0, len(s)
+    while i < j and unicodedata.category(s[i]) in _ID_EDGES:
+        i += 1
+    while j > i and unicodedata.category(s[j - 1]) in _ID_EDGES:
+        j -= 1
+    return s[i:j].lower()

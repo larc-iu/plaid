@@ -1921,7 +1921,7 @@ export interface KeySeed {
 export function uuidv7(): string;
 /** A fresh random UUID (version 4), from crypto.getRandomValues, so it works on any page. */
 export function uuidv4(): string;
-/** A user id as the server stores it: the email address trimmed and lowercased. Compare a typed address with an id through this. */
+/** A user id as the server stores it: the email address in NFC, trimmed of whitespace, control and format characters at either end, and lowercased. Compare a typed address with an id through this. */
 export function normalizeUserId(id: string): string;
 /** Whether a write's answer was replayed from its Idempotency-Key's first send (`Idempotent-Replayed: true`), so it wrote nothing new. Marked on an object or list answer as a non-enumerable `replayed: true`. */
 export function wasReplayed(answer: unknown): boolean;

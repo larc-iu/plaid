@@ -11,7 +11,7 @@
 
 (def user-id
   "A user id (an email address) in a path, a query or a JSON body, decoded to
-  the spelling core stores (`plaid.sql.user/normalize-id`): trimmed and
+  the spelling core stores (`plaid.sql.user/normalize-id`): NFC, trimmed and
   lowercased. Every route that takes a user id or an email uses this, so
   `B@X.COM` and ` b@x.com` name the account `b@x.com` everywhere."
   [:string {:decode/string user/normalize-id

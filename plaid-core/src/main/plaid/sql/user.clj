@@ -33,15 +33,25 @@
   change it. `:user/display-name` is the mutable label the apps show."
   [:user/id :user/display-name :user/is-admin :user/deactivated-at :user/avatar-hash])
 
+(def ^:private id-edges
+  "Whitespace, control and format characters at either end of an id: NBSP,
+  the BOM, zero-width and bidi marks as well as ASCII blanks."
+  #"\A[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+\z")
+
 (defn normalize-id
-  "The one spelling of a user id, which is an email address: trimmed and
-  lowercased. An id is normalized everywhere it enters core, the routes by
-  `plaid.rest-api.v1.schema/user-id` and account creation here, so two
-  accounts never differ only in case and `B@X.COM` signs in, is granted and is
-  found as `b@x.com`. Anything but a string comes back unchanged."
+  "The one spelling of a user id, which is an email address: NFC, trimmed of
+  every whitespace, control and format character at either end, and
+  lowercased in the root locale. An id is normalized everywhere it enters
+  core, the routes by `plaid.rest-api.v1.schema/user-id` and account creation
+  here, so two accounts never differ only in case, composition or an invisible
+  character at an end, and `B@X.COM` signs in, is granted and is found as
+  `b@x.com`. Both clients write the same rule (`normalizeUserId`,
+  `normalize_user_id`), held to it by `user_id_cases.json`. Anything but a
+  string comes back unchanged."
   [id]
   (if (string? id)
-    (.toLowerCase ^String (clojure.string/trim id) java.util.Locale/ROOT)
+    (let [nfc (java.text.Normalizer/normalize ^String id java.text.Normalizer$Form/NFC)]
+      (.toLowerCase ^String (clojure.string/replace nfc id-edges "") java.util.Locale/ROOT))
     id))
 
 (defn- row->user

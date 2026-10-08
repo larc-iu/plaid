@@ -51,8 +51,8 @@ We will discuss layers more shortly.
 
 == Users and Permissions
 Plaid offers a built-in **user** system which allows individuals to log in with a password.
-A user's id is their email address, stored in lowercase with surrounding spaces removed.
-Every route that takes an id or an email (creating an account, logging in, invites, member and maintainer grants, tokens, private data, search) reads it the same way, so `Ana@Example.org` and `ana@example.org` name one account, and two accounts never differ only in case.
+A user's id is their email address as typed, in Unicode NFC, in lowercase, with any whitespace, control or format character (a no-break space, a byte order mark, a zero-width space) at either end removed.
+Every route that takes an id or an email (creating an account, logging in, invites, member and maintainer grants, tokens, private data, search) reads it the same way, so `Ana@Example.org` and `ana@example.org` name one account, and two accounts never differ only in case, composition or an invisible character at an end.
 By default, each project is private, and one of three permissions levels is needed in order to interact with one:
 
 * **Maintainers** have full privileges for working with projects: they may edit documents and also modify the project's configuration.
