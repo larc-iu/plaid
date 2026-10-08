@@ -14,9 +14,9 @@
 // was enough warm and not enough cold, which read as flake.
 const EDITOR_TIMEOUT = 45000;
 
-// The row for a guideline by title.
-const rowFor = (page, title) =>
-  page.locator('button', { has: page.locator(`text="${title}"`) }).first();
+// The row for a guideline by title. A link to the guideline, so it opens in a
+// new tab too.
+const rowFor = (page, title) => page.locator('a', { has: page.locator(`text="${title}"`) }).first();
 
 // The saved guideline as the reader sees it. The editor's own page carries
 // `.md-body` too, so the bare class also matches the draft before the save has
@@ -66,7 +66,7 @@ export const guidelinesTests = ({
     await seed({ title: 'Alpha', body: 'a', pinned: true });
     await open(page);
 
-    const titles = page.locator('button[class*="border-b"] span.font-medium');
+    const titles = page.locator('a[class*="border-b"] span.font-medium');
     await expect(titles.first()).toBeVisible({ timeout: 15000 });
     const shown = (await titles.allTextContents()).filter((t) => t.endsWith(suffix));
     expect(shown).toEqual([titled('Alpha'), titled('Zeta')]);
@@ -91,6 +91,10 @@ export const guidelinesTests = ({
   test('the open guideline is in the address, so the view can be linked', async ({ page }) => {
     const id = await seed({ title: 'Linkable', body: 'x' });
     await open(page);
+    await expect(rowFor(page, titled('Linkable'))).toHaveAttribute(
+      'href',
+      new RegExp(`guideline=${id}`),
+    );
     await rowFor(page, titled('Linkable')).click();
     await expect(page).toHaveURL(new RegExp(`guideline=${id}`));
   });
