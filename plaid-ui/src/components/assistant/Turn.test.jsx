@@ -301,6 +301,8 @@ describe('Turn and what a reply kept', () => {
     );
     const button = view.container.querySelector('button[title="Download words cleaned.csv"]');
     expect(button.textContent).toContain('words cleaned.csv');
+    // The button's own title is the one shown, not the chip's inside it.
+    expect(button.querySelector('[title]')).toBeNull();
     await view.step(() => button.click());
     expect(asked).toEqual(['words cleaned.csv']);
     await view.unmount();
@@ -319,6 +321,8 @@ describe('Turn and what a reply kept', () => {
     );
     expect(view.container.querySelector('button[title^="Download"]')).toBeNull();
     expect(view.container.textContent).toContain('words cleaned.csv');
+    // A long name is cut short on the chip, and its title gives it whole.
+    expect(view.container.querySelector('span[title="words cleaned.csv"]')).not.toBeNull();
     await view.unmount();
   });
 });

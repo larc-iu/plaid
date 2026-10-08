@@ -282,11 +282,16 @@ export const Turn = ({
                   aria-label={`Download ${f.name}`}
                   className="max-w-full rounded-full"
                 >
-                  <AttachmentChip file={f} icon={Download} className="hover:bg-muted" />
+                  <AttachmentChip
+                    file={f}
+                    icon={Download}
+                    title={null}
+                    className="hover:bg-muted"
+                  />
                 </button>
               ) : f.source ? (
                 <a key={f.id} href={f.source} target="_blank" rel="noreferrer" title={f.source}>
-                  <AttachmentChip file={f} className="hover:bg-muted" />
+                  <AttachmentChip file={f} title={null} className="hover:bg-muted" />
                 </a>
               ) : (
                 <AttachmentChip key={f.id} file={f} />

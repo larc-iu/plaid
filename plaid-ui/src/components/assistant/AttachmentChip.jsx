@@ -12,8 +12,12 @@ export const AttachmentChip = ({
   onRemove = null,
   className = '',
   icon: Icon = FileText,
+  // The whole name, where the chip cuts a long one short. A chip inside a
+  // control with a title of its own passes null.
+  title = file.name,
 }) => (
   <span
+    title={title ?? undefined}
     className={cn(
       'inline-flex max-w-full items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 text-xs',
       onRemove ? 'pr-1' : 'pr-2.5',
