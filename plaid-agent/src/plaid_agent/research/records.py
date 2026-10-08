@@ -368,7 +368,10 @@ class Conversations:
             'proposed_count': count, 'proposed_kept': len(proposed or []), 'proposed_source': source,
             'op_count': op_count,
             # A settled plan keeps its first rows and counts the rest (`compact_plan`).
-            'rows': len(plan.get('labels') or []) + int((plan.get('omitted') or {}).get('count') or 0),
+            # A plan made since rules (core/rules.py) writes no `labels`: its
+            # rows are its `changes`.
+            'rows': len(plan.get('changes') or plan.get('labels') or [])
+            + int((plan.get('omitted') or {}).get('count') or 0),
             'as_human': item.get('as_human'), 'contributed': bool(item.get('contributed')),
             'partly_applied': status == 'partial', 'rows_written': len(item.get('written') or []),
             'outcome_unknown': bool(item.get('unknown')),

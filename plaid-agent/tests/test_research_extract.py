@@ -191,3 +191,19 @@ def test_a_stale_plan_the_reader_discarded_says_so_and_stays_stale():
     first, second = rows.plans
     assert (first['status'], first['dismissed'], first['dismissed_at']) == ('stale', True, '2026-10-06T06:00:00Z')
     assert (second['dismissed'], second['dismissed_at']) == (False, None)
+
+
+def test_a_plan_with_no_labels_counts_its_rows_from_its_changes():
+    """A plan made since rules (core/rules.py) writes no `labels`, and a rule's
+    row kept past a settled plan's cap counts once among them."""
+    from plaid_agent.research.records import Conversations
+    rows = Conversations(Pseudonyms(b'salt'))
+    changes = [{'label': f'r{i}'} for i in range(200)] + [{'label': 'rule', 'rule': {'total': 900}, 'row': 230}]
+    plan = {'id': '01a10fc5-61d6-7000-8588-500000000003', 'summary': 'x', 'changes': changes,
+            'omitted': {'count': 30}, 'op_count': 231}
+    conv = {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}],
+            'display': [{'kind': 'user', 'text': 'q'},
+                        {'kind': 'assistant', 'text': 'a', 'plan': plan, 'status': 'discarded'}]}
+    rows.add('u@x', 'igt', 'p1', 'c1', conv, {}, 10, None)
+    [got] = rows.plans
+    assert got['rows'] == 231
