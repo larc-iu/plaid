@@ -774,6 +774,11 @@ COMPACT_ABOVE = 12  # a group larger than this is stored as one op
 # differ only in these are the same change, so they never keep ops apart.
 PRESENTATION_KEYS = ('label', 'change_at')
 
+# The key a change carries on the card's copy of a plan once it is known to
+# replace a person's work (``core.work.FLAG``), named here too so folding
+# does not import the module that counts it.
+REPLACES_WORK = 'replaces_work'
+
 
 def labelled(place: str, change: str) -> Dict[str, Any]:
     """An op's ``label`` (``<place>: <change>``) and ``change_at``, where in
@@ -832,15 +837,19 @@ def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> L
     appearance.
 
     A change flagged as replacing a person's work (``replaces_work``, see
-    core/work.py) is never folded: the card lists it on a row of its own."""
+    core/work.py) folds only with other flagged changes, never with free
+    ones (Luke, 2026-10-08, revising "never folded"), and such a group carries
+    how many of a person's things its members replace, so the card states the
+    count and always shows the row."""
     groups: Dict[tuple, List[int]] = {}
     for i, op in enumerate(ops):
         s = spec.get(op.get('kind'))
-        if s is None or op.get('replaces_work'):
+        if s is None:
             continue
         each = set(s['each'])
-        key = tuple(sorted((k, _hashable(v)) for k, v in op.items() if k not in each and k not in PRESENTATION_KEYS))
-        groups.setdefault(key, []).append(i)
+        key = tuple(sorted((k, _hashable(v)) for k, v in op.items()
+                           if k not in each and k not in PRESENTATION_KEYS and k != REPLACES_WORK))
+        groups.setdefault(key + (('flagged', bool(op.get(REPLACES_WORK))),), []).append(i)
     replaced: Dict[int, Dict[str, Any]] = {}
     dropped: set = set()
     for key, members in groups.items():
@@ -852,6 +861,9 @@ def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> L
         group = {k: v for k, v in first.items() if k not in each and k not in PRESENTATION_KEYS}
         group.update({'items': {k: [ops[i].get(k) for i in members] for k in each},
                       'count': len(members), 'compact': True})
+        flagged = sum(int(ops[i].get(REPLACES_WORK) or 0) for i in members)
+        if flagged:
+            group[REPLACES_WORK] = flagged
         # The line is a string, or what `labelled` returns for one.
         line = s['label'](first, [ops[i] for i in members])
         group.update(line if isinstance(line, dict) else {'label': line})

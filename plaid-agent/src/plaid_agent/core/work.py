@@ -2,8 +2,9 @@
 
 An approval is the person's own act, so a plan may change anything, a
 person's work included. What the card owes them is to say so: a line above the
-list ("3 changes replace accepted work"), and those rows are never folded into
-a group of like changes (ruled 2026-09-28, beside the Rewrite line for prose).
+list ("3 changes replace accepted work"), and those changes fold only into
+groups of their own, never with free ones, each such row always shown with its
+count (ruled 2026-09-28 as never folded, revised by Luke 2026-10-08).
 
 "A person's work" is the provenance convention's protected material: made by a
 person (no provenance), by a contributor, or verified by anyone. Only
