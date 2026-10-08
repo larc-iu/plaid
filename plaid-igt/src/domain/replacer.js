@@ -6,7 +6,11 @@
 //
 // `contains` and `regex` go through translatePattern, the same reading of the
 // pattern that Search sends to the server, so a value is rewritten here
-// exactly when the server's search finds it.
+// exactly when the server's search finds it. The server reads the pattern and
+// the value in NFC, so `pʰá` typed composed finds it stored decomposed, and so
+// does this: the match is found in the composed value, the place it covers is
+// mapped back onto the value as stored, and only that place is rewritten,
+// with the replacement as typed (plaid-agent's core/replace.py, the same rule).
 
 import { translatePattern } from '@ui/domain/javaRegex.js';
 
@@ -20,6 +24,84 @@ import { translatePattern } from '@ui/domain/javaRegex.js';
  * an import writes no status on anything.
  */
 export const MATCH_EMPTY = 'empty';
+
+const nfc = (s) => s.normalize('NFC');
+
+// `s` cut where NFC changes nothing across the cut, each piece with its NFC
+// form: a character and the marks after it, joined to the piece before when
+// the two compose together (Hangul jamo, a vowel sign).
+const canonicalPieces = (s) => {
+  const out = [];
+  const push = (p) => {
+    const n = nfc(p);
+    const last = out[out.length - 1];
+    if (last && nfc(last[0] + p) !== last[1] + n) {
+      last[0] += p;
+      last[1] = nfc(last[0]);
+    } else out.push([p, n]);
+  };
+  let piece = '';
+  for (const ch of s) {
+    if (piece && !/\p{M}/u.test(ch)) {
+      push(piece);
+      piece = '';
+    }
+    piece += ch;
+  }
+  if (piece) push(piece);
+  return out.map(([, n]) => n).join('') === nfc(s) ? out : [[s, nfc(s)]];
+};
+
+// `$1`, `$<name>`, `$&` and the rest in a replacement, as String.replace
+// reads them, for one match of `matchAll`.
+const expand = (template, m) =>
+  template.replace(/\$([$&`']|\d{1,2}|<[^>]*>)/g, (all, t) => {
+    if (t === '$') return '$';
+    if (t === '&') return m[0];
+    if (t === '`') return m.input.slice(0, m.index);
+    if (t === "'") return m.input.slice(m.index + m[0].length);
+    if (t[0] === '<') return m.groups ? (m.groups[t.slice(1, -1)] ?? '') : all;
+    const two = Number(t);
+    if (t.length === 2 && two >= 1 && two < m.length) return m[two] ?? '';
+    const one = Number(t[0]);
+    return one >= 1 && one < m.length ? (m[one] ?? '') + t.slice(1) : all;
+  });
+
+// `value` with every match of `re` (global) in its NFC form rewritten by
+// `by(match)`, mapped back onto `value` as stored. A match that starts or
+// ends inside a piece NFC rewrote takes the whole piece.
+const replaceCanonical = (value, re, by) => {
+  const pieces = canonicalPieces(value);
+  const stored = [];
+  const normal = [];
+  let a = 0;
+  let b = 0;
+  for (const [p, n] of pieces) {
+    stored.push(a);
+    normal.push(b);
+    a += p.length;
+    b += n.length;
+  }
+  const at = (x, end) => {
+    if (x >= b) return value.length;
+    let k = normal.length - 1;
+    while (normal[k] > x) k -= 1;
+    const off = x - normal[k];
+    const [p, n] = pieces[k];
+    if (off === 0 || p === n) return stored[k] + off;
+    return stored[k] + (end ? p.length : 0);
+  };
+  let out = '';
+  let last = 0;
+  re.lastIndex = 0;
+  for (const m of nfc(value).matchAll(re)) {
+    const from = Math.max(at(m.index, false), last);
+    const to = Math.max(at(m.index + m[0].length, true), last);
+    out += value.slice(last, from) + by(m);
+    last = to;
+  }
+  return out + value.slice(last);
+};
 
 const isUpper = (c) => c !== c.toLowerCase() && c === c.toUpperCase();
 const isLower = (c) => c !== c.toUpperCase() && c === c.toLowerCase();
@@ -61,7 +143,7 @@ export function buildReplacer(find, matchType, replacement) {
   let re = null;
   if (matchType === 'regex' || matchType === 'contains') {
     const { source, error } = translatePattern(
-      find,
+      nfc(find),
       matchType === 'contains' ? { literal: true, caseInsensitive: true } : {},
     );
     if (error) return { apply: never, error };
@@ -78,13 +160,23 @@ export function buildReplacer(find, matchType, replacement) {
       next = replacement;
     } else {
       re.lastIndex = 0;
-      if (!re.test(v)) return null;
+      if (!re.test(nfc(v))) return null;
       re.lastIndex = 0;
-      next =
-        matchType === 'regex'
-          ? v.replace(re, replacement)
-          : // A function replacer so `$` in a literal replacement stays literal.
-            v.replace(re, keepCase ? (m) => matchCase(m, replacement) : () => replacement);
+      if (v !== nfc(v)) {
+        next = replaceCanonical(v, re, (m) =>
+          matchType === 'regex'
+            ? expand(replacement, m)
+            : keepCase
+              ? matchCase(m[0], replacement)
+              : replacement,
+        );
+      } else {
+        next =
+          matchType === 'regex'
+            ? v.replace(re, replacement)
+            : // A function replacer so `$` in a literal replacement stays literal.
+              v.replace(re, keepCase ? (m) => matchCase(m, replacement) : () => replacement);
+      }
     }
     return next === v ? null : next;
   };

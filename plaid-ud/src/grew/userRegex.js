@@ -28,7 +28,11 @@ const translate = (v) => {
   const key = keyOf(v);
   let t = translations.get(key);
   if (!t) {
-    t = translatePattern(String(v.pattern), { caseInsensitive: normalizeFlags(v.flags) === 'i' });
+    // In NFC, as the server reads it, so it matches the value's NFC form
+    // (`localMatches`).
+    t = translatePattern(String(v.pattern).normalize('NFC'), {
+      caseInsensitive: normalizeFlags(v.flags) === 'i',
+    });
     translations.set(key, t);
   }
   return t;
@@ -48,7 +52,7 @@ const readable = (v) => {
 export const serverRegex = (v) => readable(v).server;
 
 /** The same pattern as a RegExp for the local matcher. */
-export const localRegExp = (v) => {
+const localRegExp = (v) => {
   const key = keyOf(v);
   let re = compiled.get(key);
   if (!re) {
@@ -57,3 +61,8 @@ export const localRegExp = (v) => {
   }
   return re;
 };
+
+/** Whether the local matcher finds the pattern in `actual`. The server reads
+ * the value in NFC, so a pattern typed composed finds a form stored
+ * decomposed, and so does this. */
+export const localMatches = (v, actual) => localRegExp(v).test(String(actual).normalize('NFC'));

@@ -29,7 +29,7 @@ import {
   featuresLabelRegex,
 } from './regex.js';
 import { splitLabel, compactLabel, bareLabel } from './edgeLabel.js';
-import { localRegExp, serverRegex } from './userRegex.js';
+import { localMatches, serverRegex } from './userRegex.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
 
@@ -80,7 +80,7 @@ const labelCanBeRoot = (label) => {
   }
   if (label.type === 'regex') {
     try {
-      return localRegExp(label).test('root');
+      return localMatches(label, 'root');
     } catch {
       return true;
     }

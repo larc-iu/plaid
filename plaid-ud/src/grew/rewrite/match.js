@@ -13,7 +13,7 @@
 import { GrewUnsupportedError } from '../errors.js';
 import { getFeat, liveNodes, liveWords, structureEdges, sortedEdges } from './graph.js';
 import { splitLabel, isEnhancedLabel, bareLabel } from '../edgeLabel.js';
-import { localRegExp } from '../userRegex.js';
+import { localMatches } from '../userRegex.js';
 
 const analysed = new WeakMap();
 
@@ -437,7 +437,7 @@ function matchValue(actual, value) {
     case 'any':
       return true;
     case 'regex':
-      return toRegExp(value).test(String(actual));
+      return localMatches(value, actual);
     case 'disj':
       return value.items.some((it) => matchValue(actual, it));
     default:
@@ -446,9 +446,8 @@ function matchValue(actual, value) {
 }
 
 // A user regex is a substring search, read by the translator the search's
-// compiler also sends through (userRegex.js), so a rule matches what the
-// search that found the sentence matched.
-const toRegExp = localRegExp;
+// compiler also sends through (userRegex.js `localMatches`), so a rule
+// matches what the search that found the sentence matched.
 
 // Does an edge label satisfy a Label AST? `-[nsubj]->` is the exact label;
 // `-[1=nsubj]->` is the main type, any subtype. An edge of the enhanced graph
@@ -465,7 +464,7 @@ function bareLabelMatches(label, actual) {
     const hit = label.labels.includes(actual);
     return label.negated ? !hit : hit;
   }
-  if (label.type === 'regex') return toRegExp(label).test(actual);
+  if (label.type === 'regex') return localMatches(label, actual);
   if (label.type === 'features') {
     if (!label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
       throw new GrewUnsupportedError(

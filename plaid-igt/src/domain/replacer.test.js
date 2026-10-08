@@ -62,6 +62,22 @@ describe('buildReplacer', () => {
     expect(run('kat', 'exact', 'kat', ['kat']).out).toEqual([null]);
   });
 
+  // H10-SCRIPTS-5: the server finds `pʰá` stored decomposed for the pattern
+  // typed composed, so Bulk Edit has to rewrite it too, and only where it
+  // matched: the rest of the value keeps its spelling.
+  it('matches canonically equivalent text and rewrites only the place it matched', () => {
+    const nfd = 'p\u02b0a\u0301.PL';
+    expect(run('p\u02b0\u00e1', 'contains', 'p\u02b0a\u02e5', [nfd]).out).toEqual([
+      'p\u02b0a\u02e5.PL',
+    ]);
+    expect(run('kat', 'contains', 'cat', ['te\u0301kst kat']).out).toEqual(['te\u0301kst cat']);
+    expect(run('\u00e1', 'contains', 'e\u0301', ['a\u0301']).out).toEqual(['e\u0301']);
+    expect(run('(p.)\u00e1', 'regex', '$1a', [nfd]).out).toEqual(['p\u02b0a.PL']);
+    expect(run('a', 'contains', 'o', ['p\u02b0a\u0301']).out).toEqual([null]);
+    expect(run('\u00e9', 'contains', 'E', ['\u{10400}e\u0301']).out).toEqual(['\u{10400}E']);
+    expect(run('\uac00', 'contains', '\ub098', ['\u1100\u1161x']).out).toEqual(['\ub098x']);
+  });
+
   it('matches nothing without something to find', () => {
     expect(run('', 'contains', 'published', ['kat', '']).out).toEqual([null, null]);
   });

@@ -29,6 +29,7 @@ lookbehinds of any length.
 """
 
 import functools
+import unicodedata
 from typing import Callable, List, NamedTuple, Optional
 
 import regex
@@ -835,10 +836,18 @@ def compile_local(pattern: str, *, literal: bool = False, case_insensitive: bool
                                    whole=whole).local)
 
 
+def nfc(s: str) -> str:
+    """``s`` in Unicode NFC. The server reads a pattern and a value so before
+    it matches them, so text matches whatever is canonically equivalent to it
+    (``pʰá`` typed composed and stored decomposed)."""
+    return s if unicodedata.is_normalized('NFC', s) else unicodedata.normalize('NFC', s)
+
+
 def matcher(pattern: str, *, literal: bool = False, case_insensitive: bool = False,
             whole: bool = False) -> Callable[[Optional[str]], bool]:
     """Whether a value holds a match, exactly as the server's search decides
-    it. Raises :class:`PatternError` for a pattern that cannot be used."""
-    compiled = compile_local(pattern, literal=literal, case_insensitive=case_insensitive,
+    it, both read in NFC (:func:`nfc`). Raises :class:`PatternError` for a
+    pattern that cannot be used."""
+    compiled = compile_local(nfc(pattern), literal=literal, case_insensitive=case_insensitive,
                              whole=whole)
-    return lambda value: compiled.search(value or '') is not None
+    return lambda value: compiled.search(nfc(value or '')) is not None

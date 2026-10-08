@@ -40,6 +40,7 @@
             [plaid.sql.text :as text])
   (:import [org.sqlite SQLiteConnection Function]
            [java.lang.reflect Method]
+           [java.text Normalizer Normalizer$Form]
            [java.util.regex Pattern]
            [java.util.concurrent ConcurrentHashMap]))
 
@@ -90,18 +91,27 @@
       (subSequence [_ a b] (.subSequence s a b))
       (^String toString [_] s))))
 
+(defn- nfc
+  "`s` in Unicode NFC, read without a copy when it already is."
+  ^String [^String s]
+  (if (Normalizer/isNormalized s Normalizer$Form/NFC)
+    s
+    (Normalizer/normalize s Normalizer$Form/NFC)))
+
 (defn- regexp-function
   "A REGEXP(pattern, value) UDF: 1 if `value` contains a match for the Java
-  regex `pattern`, else 0. Compiled patterns are cached. Patterns are validated
-  for syntax at query-validation time, so compile here won't see a bad one. The
-  value is wrapped in an interruptible CharSequence so a runaway pattern can be
-  aborted by the query watchdog (ReDoS guard)."
+  regex `pattern`, else 0. Both are read in NFC, so text matches whatever is
+  canonically equivalent to it: `pʰá` typed composed finds it stored
+  decomposed (a + U+0301), and the reverse. Compiled patterns are cached.
+  Patterns are validated for syntax at query-validation time, so compile here
+  won't see a bad one. The value is wrapped in an interruptible CharSequence
+  so a runaway pattern can be aborted by the query watchdog (ReDoS guard)."
   []
   (proxy [Function] []
     (xFunc []
       (let [pat (.invoke m-value-text this (object-array [(int 0)]))
             s   (.invoke m-value-text this (object-array [(int 1)]))
-            hit (if (and pat s (.find (.matcher (cached-pattern pat) (interruptible-cs s)))) 1 0)]
+            hit (if (and pat s (.find (.matcher (cached-pattern (nfc pat)) (interruptible-cs (nfc s))))) 1 0)]
         (.invoke m-result-int this (object-array [(int hit)]))))))
 
 (defn- register-regexp! [^SQLiteConnection sqlite]

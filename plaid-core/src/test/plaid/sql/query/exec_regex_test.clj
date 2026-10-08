@@ -181,3 +181,26 @@
   (testing "a pattern of exactly 4,096 characters is taken"
     (is (ast/expand {"find" ["?s"]
                      "where" [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" (apply str (repeat 4096 "a"))}}]]}))))
+
+(deftest regex-matches-canonically-equivalent-text
+  ;; H10-SCRIPTS-5: a gloss stored decomposed (a + U+0301) was never found by a
+  ;; pattern typed composed, so the assistant's search and a replacement found
+  ;; nothing. Pattern and value are both read in NFC.
+  (let [pid  (h/create-test-project admin-request "RxNfd")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "gloss"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "a b c"))
+        mk   (fn [b v] (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v))
+        nfd  "pʰá.PL"
+        nfc  "pʰá"]
+    (mk 0 nfd)
+    (mk 2 nfc)
+    (mk 4 "pʰa")
+    (testing "a composed pattern finds the decomposed value and the composed one"
+      (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "pʰá"}}]]))))
+    (testing "a decomposed pattern finds both too"
+      (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "pʰá"}}]]))))
+    (testing "a bare letter does not match inside an accented one"
+      (is (= #{"pʰa"} (values [["span" "?s" {"layer" sl "value" {"regex" "a$"}}]]))))))

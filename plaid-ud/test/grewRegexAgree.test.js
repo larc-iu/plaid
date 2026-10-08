@@ -100,6 +100,29 @@ test('a rewrite matches the words the search finds, regex for regex', () => {
   agree(String.raw`pattern { X [lemma=re"^\P{IsCyrl}+$"] }`, ['حضرت', '13', 'a_b', 'x-y']);
 });
 
+// H10-SCRIPTS-5: the server reads a pattern and a value in NFC, so a lemma
+// stored decomposed is found by the pattern typed composed, and the rewrite
+// has to match it too.
+test('a rewrite matches a lemma stored decomposed for a pattern typed composed', () => {
+  const nfd = new ConlluDocument({
+    raw: rawDocFromConllu(
+      [
+        '# text = kitab x',
+        '1\tkitab\tp\u02b0a\u0301\tNOUN\t_\t_\t0\troot\t_\t_',
+        '2\tx\tp\u02b0a\tX\t_\t_\t1\tdep\t_\t_',
+      ].join('\n'),
+    ),
+  });
+  const g = graphFromSentence(nfd.sentences[0]);
+  const forms = (pattern) =>
+    findMatches(parse(pattern), g)
+      .map((m) => g.nodes.get(m.nodes.get('X')))
+      .filter((n) => !n.anchor)
+      .map((n) => n.form);
+  assert.deepEqual(forms('pattern { X [lemma=re"p\u02b0\u00e1"] }'), ['kitab']);
+  assert.deepEqual(forms('pattern { X [lemma=re"a$"] }'), ['x']);
+});
+
 test('a regex the two engines would read apart is refused where it is written', () => {
   for (const text of [
     String.raw`pattern { X [lemma=re"\p{InArabic}"] }`,

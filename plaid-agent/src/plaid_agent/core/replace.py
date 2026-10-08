@@ -13,16 +13,72 @@ replacement typed as text goes into ``sub`` as a TEMPLATE, where a backslash
 means something. So "back\\slash" raised, "x\\1y" raised, and neither is a
 pattern the user was writing.
 
-Anchoring is the last half: ``whole`` anchors the PATTERN rather than
+Anchoring is the next half: ``whole`` anchors the PATTERN rather than
 switching to ``fullmatch``, so a group captured in a whole-value pattern can
 still be written back into the replacement.
+
+And a value matches as the server's search finds it, in NFC
+(:func:`.java_regex.nfc`): a pattern typed composed finds ``pʰá`` stored
+decomposed. The match is found in the composed text, the place it covers is
+mapped back onto the value as stored, code point for code point, and only
+that place is rewritten, with the replacement as typed. The rest of the value
+keeps its own spelling.
 """
 
-from typing import Callable
+import bisect
+import unicodedata
+from typing import Callable, List, Tuple
 
 import regex
 
-from .java_regex import PatternError, compile_local
+from .java_regex import PatternError, compile_local, nfc
+
+
+def _pieces(s: str) -> List[Tuple[str, str]]:
+    """``s`` cut where NFC changes nothing across the cut, each piece with
+    its NFC form, so the NFC forms joined are NFC(``s``). A piece is a
+    starter and the marks after it, joined to the one before when the two
+    compose together (Hangul jamo, a mark reordered across)."""
+    out: List[List[str]] = []
+    at = 0
+    for i in range(1, len(s) + 1):
+        if i < len(s) and unicodedata.combining(s[i]):
+            continue
+        piece = s[at:i]
+        at = i
+        if out and nfc(out[-1][0] + piece) != out[-1][1] + nfc(piece):
+            out[-1][0] += piece
+            out[-1][1] = nfc(out[-1][0])
+        else:
+            out.append([piece, nfc(piece)])
+    if ''.join(n for _, n in out) != nfc(s):
+        return [(s, nfc(s))]
+    return [(a, b) for a, b in out]
+
+
+def _mapper(s: str):
+    """(start, end): an offset into NFC(``s``) as the offset into ``s`` it
+    stands for, as a match's start and as its end. An offset inside a piece
+    NFC rewrote widens the match to the whole piece."""
+    pieces = _pieces(s)
+    stored, normal = [], []
+    a = b = 0
+    for piece, n in pieces:
+        stored.append(a)
+        normal.append(b)
+        a += len(piece)
+        b += len(n)
+
+    def at(x: int, end: bool) -> int:
+        if x >= b:
+            return len(s)
+        k = bisect.bisect_right(normal, x) - 1
+        off = x - normal[k]
+        piece, n = pieces[k]
+        if off == 0 or piece == n:
+            return stored[k] + off
+        return stored[k] + (len(piece) if end else 0)
+    return (lambda x: at(x, False)), (lambda x: at(x, True))
 
 
 def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
@@ -37,7 +93,7 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
         raise error('Give a pattern.')
     replacement = '' if replacement is None else str(replacement)
     try:
-        compiled = compile_local(pattern, literal=not regex_mode,
+        compiled = compile_local(nfc(pattern), literal=not regex_mode,
                                  case_insensitive=not case_sensitive, whole=whole)
     except PatternError as e:
         raise error(f'That pattern cannot be used: {e}')
@@ -47,7 +103,18 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
 
     def apply(value: str) -> str:
         try:
-            return compiled.sub(template, value)
+            if unicodedata.is_normalized('NFC', value):
+                return compiled.sub(template, value)
+            composed = nfc(value)
+            start, end = _mapper(value)
+            out, last = [], 0
+            for m in compiled.finditer(composed):
+                a, b = max(start(m.start()), last), max(end(m.end()), last)
+                out.append(value[last:a])
+                out.append(m.expand(template))
+                last = b
+            out.append(value[last:])
+            return ''.join(out)
         except (regex.error, IndexError) as e:
             raise error(f'The replacement is not valid for that pattern: {e}')
     return apply

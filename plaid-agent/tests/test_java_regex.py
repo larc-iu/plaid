@@ -23,7 +23,7 @@ import pytest
 from node_exe import node_or_skip
 from plaid_agent.core.corpus import rx
 from plaid_agent.core.java_case_folds import FOLDS
-from plaid_agent.core.java_regex import PatternError, SERVER_PATTERN_MAX, matcher, translate
+from plaid_agent.core.java_regex import PatternError, SERVER_PATTERN_MAX, matcher, nfc, translate
 from plaid_agent.core.replace import replacer
 from plaid_agent.core.tools import ToolError
 
@@ -127,7 +127,9 @@ def _differences(rows):
     assigned = _oracle([_hexed(r'\p{Cn}', s) for s in SUBJECTS])
     known = [s for s, a in zip(SUBJECTS, assigned) if a == '0']
     assert len(known) > 0.9 * len(SUBJECTS)
-    lines = [_hexed(sent, s) for _, _, sent in rows for s in known]
+    # The server's REGEXP reads the pattern and the value in NFC, as the local
+    # matcher does (H10-SCRIPTS-5), and the oracle is Java's engine alone.
+    lines = [_hexed(nfc(sent), nfc(s)) for _, _, sent in rows for s in known]
     answers = _oracle(lines)
     assert len(answers) == len(lines)
     differ = []
