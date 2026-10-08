@@ -363,29 +363,40 @@
   (when-let [ids (:scope/projects token-data)]
     (set (map (comp str/lower-case str) ids))))
 
+(defn runner-delegates-among
+  "The ids among `project-ids`, lower-cased, where the service run by
+  `runner-id` may act for members other than its runner: all of them when
+  the runner's account is active and an admin, those it maintains when it is
+  active and not, none when it is gone or deactivated (Luke, 2026-10-08: a
+  maintainer's service serves every writer). A writer's or a reader's
+  service serves only its runner."
+  [db runner-id project-ids]
+  (let [ids (into #{} (map (comp str/lower-case str)) project-ids)
+        account (some->> runner-id (user/get-internal db))]
+    (cond
+      (or (nil? account) (some? (:user/deactivated-at account))) #{}
+      (user/admin? account) ids
+      :else (prj/maintained-among db runner-id ids))))
+
 (defn runner-delegates?
   "May the service run by `runner-id` receive delegated tokens for project
-  `project-id`, that is, act there for members other than its runner? Only
-  when the runner's account is active and maintains the project, or is an
-  admin (Luke, 2026-10-08: a maintainer's service serves every writer). A
-  writer's or a reader's service serves only its runner."
+  `project-id`, that is, act there for members other than its runner? See
+  `runner-delegates-among`."
   [db runner-id project-id]
-  (let [account (some->> runner-id (user/get-internal db))]
-    (boolean
-     (and account
-          (nil? (:user/deactivated-at account))
-          (or (user/admin? account)
-              (some #{runner-id} (:project/maintainers (prj/get db project-id))))))))
+  (contains? (runner-delegates-among db runner-id [project-id])
+             (str/lower-case (str project-id))))
 
 (defn- runner-reach
   "The projects of a scoped token's claims it reaches NOW. A token handed to
   a service its own user runs reaches all of them. One handed to a service
   someone else runs reaches only those where that runner still delegates
-  (`runner-delegates?`), asked on every request, so a runner demoted, removed
-  or deactivated after the token was minted loses it at once."
+  (`runner-delegates-among`), asked on every request, so a runner demoted,
+  removed or deactivated after the token was minted loses it at once. Two
+  indexed reads whatever the number of projects, none past the first for an
+  admin runner."
   [db token-data projects]
   (if-let [runner (:scope/runner token-data)]
-    (into #{} (filter #(runner-delegates? db runner %)) projects)
+    (runner-delegates-among db runner projects)
     projects))
 
 (defn- in-scope?

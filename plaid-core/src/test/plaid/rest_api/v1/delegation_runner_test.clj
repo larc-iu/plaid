@@ -128,7 +128,7 @@
     (testing "another writer is refused, and told who runs it"
       (let [resp (submit! fix/user2-token p "helper")]
         (is (= 403 (:status resp)))
-        (is (= "This service is run by user1, who is not a maintainer of this project, so it acts only for user1 here."
+        (is (= "helper is run by user1, who is not a maintainer of this project, so it acts only for user1 here."
                (-> resp :body :error)))
         (is (nil? (handed sent)) "the service was handed nothing")))
     (testing "an admin is refused too"
@@ -170,8 +170,8 @@
       (testing "a project the runner does not maintain is refused, by name"
         (let [resp (submit! fix/user2-token p "helper" q r)]
           (is (= 403 (:status resp)))
-          (is (= (str "This service is run by user1, who is not a maintainer of Writer R, "
-                      "so it cannot read Writer R for you.")
+          (is (= (str "helper is run by user1, who is not a maintainer of Writer R. "
+                      "Remove Writer R from this conversation to go on.")
                  (-> resp :body :error)))
           (is (nil? (handed sent)))))
       (testing "the runner maintains it but the requester cannot read it: left out, as before"
@@ -234,6 +234,74 @@
         (is (= 200 (status-with token (str "/api/v1/projects/" p))))
         (is (= 204 (:status (call admin-request :delete (str "/api/v1/users/" runner)))))
         (is (= 403 (status-with token (str "/api/v1/projects/" p))))))))
+
+;; REV-FX9-DELEG: what the per-request check does not see.
+
+(deftest two-refused-projects-are-named-together
+  (events/reset-state!)
+  (let [p (h/create-test-project admin-request "Two P")
+        q (h/create-test-project admin-request "Two Q")
+        r (h/create-test-project admin-request "Two R")]
+    (role! p "maintainers" u1)
+    (doseq [x [p q r]] (role! x "readers" u2))
+    (let [{:keys [sent]} (open-service! fix/user1-token p "helper")
+          resp (submit! fix/user2-token p "helper" q r)]
+      (is (= 403 (:status resp)))
+      (is (= (str "helper is run by user1, who is not a maintainer of Two Q and Two R. "
+                  "Remove them from this conversation to go on.")
+             (-> resp :body :error)))
+      (is (nil? (handed sent))))))
+
+(deftest a-listen-stream-on-a-handed-token-closes-with-the-runners-reach
+  (events/reset-state!)
+  (let [p (h/create-test-project admin-request "Listen P")
+        listen! (fn [token]
+                  (let [closed (atom false)
+                        ch (stub-channel closed (atom []))]
+                    (with-redefs [http-kit/as-channel (fn [_ {:keys [on-open]}]
+                                                        (on-open ch)
+                                                        {:status 200 :body ""})]
+                      (fix/rest-handler ((as token) :get (str "/api/v1/projects/" p "/listen"))))
+                    (is (contains? @events/channel-mappings ch) "the stream opened")
+                    closed))]
+    (role! p "maintainers" u1)
+    (role! p "writers" u2)
+    (let [{:keys [sent]} (open-service! fix/user1-token p "helper")]
+      (is (= 200 (:status (submit! fix/user2-token p "helper"))))
+      (let [{token :delegated-token} (handed sent)
+            on-token (listen! token)
+            on-session (listen! fix/user2-token)]
+        (is (not @on-token))
+        (testing "the runner demoted: the stream the handed token opened closes, the requester's own stays"
+          (role! p "writers" u1)
+          (unrole! p "maintainers" u1)
+          (is @on-token)
+          (is (not @on-session)))))))
+
+(deftest a-channel-another-account-took-before-the-push-is-handed-nothing
+  (events/reset-state!)
+  (let [p (h/create-test-project admin-request "Takeover P")]
+    (role! p "maintainers" u1)
+    (role! p "writers" u2)
+    (open-service! fix/user1-token p "helper")
+    (let [thief-sent (atom [])
+          thief (stub-channel (atom false) thief-sent)
+          requester-sent (atom [])
+          resp (with-redefs [http-kit/as-channel
+                             (fn [_ {:keys [on-open]}]
+                               ;; Between the checks and the push, the maintainer's
+                               ;; channel is gone and another account holds the id.
+                               (events/register-service-channel!
+                                p "helper" thief {:service-name "helper" :extras {:delegation true}}
+                                "user3@example.com")
+                               (on-open (stub-channel (atom false) requester-sent))
+                               {:status 200 :body ""})]
+                 (fix/rest-handler
+                  (-> ((as fix/user2-token) :post (str "/api/v1/projects/" p "/services/helper/requests"))
+                      (mock/json-body {:q 1}))))]
+      (is (= 200 (:status resp)))
+      (is (nil? (handed thief-sent)) "the token naming user1 never reached user3's channel")
+      (is (some #(and (string? %) (str/includes? % "Service unavailable")) @requester-sent)))))
 
 (deftest discovery-says-who-runs-a-service-and-whom-it-serves
   (events/reset-state!)

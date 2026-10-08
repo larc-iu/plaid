@@ -26,14 +26,18 @@
   project must also still exist, since the privilege check lets an admin in
   on any project id, and an admin's channel has to close when its project
   is deleted. And a token that expires (`token-exp`, its `exp` claim) is
-  let in only until then."
-  [{:keys [db project-id user-id token-id token-version token-exp]} privilege]
+  let in only until then. A delegated token handed to a service someone else
+  runs (`runner`, its `scope/runner` claim) is let in only while that runner
+  may act for others on the project (`pra/runner-delegates?`), as
+  `wrap-read-jwt` asks of every request it makes."
+  [{:keys [db project-id user-id token-id token-version token-exp runner]} privilege]
   (let [account (user/get-internal db user-id)]
     (boolean
      (and account
           (or (nil? token-exp) (< (quot (System/currentTimeMillis) 1000) token-exp))
           (prj/get db project-id)
           (nil? (:user/deactivated-at account))
+          (or (nil? runner) (pra/runner-delegates? db runner project-id))
           (if token-id
             (api-token/active? db token-id)
             (= token-version (:user/password-changes account)))
@@ -151,6 +155,7 @@
                                           :token-id (:api-token/id req)
                                           :token-version (-> req :jwt-data :version)
                                           :token-exp (-> req :jwt-data :exp)
+                                          :runner (-> req :jwt-data :scope/runner)
                                           :db db}]
                               (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
                               ;; The credential was admitted by the middleware, before this
@@ -447,19 +452,22 @@
   request's own project and on every project the conversation joins. `scope`
   is what `delegated-projects` found, the request's project first."
   [db service-entry requester-id scope]
-  (let [runner (:user-id service-entry)]
+  (let [runner (:user-id service-entry)
+        service (let [n (str/trim (str (:service-name service-entry)))]
+                  (if (str/blank? n) "This service" n))]
     (when (not= runner requester-id)
       (let [[home & joined] scope
             name (delay (runner-name db runner))]
         (if-not (pra/runner-delegates? db runner home)
           {:status 403
-           :body {:error (str "This service is run by " @name ", who is not a maintainer of this project, "
+           :body {:error (str service " is run by " @name ", who is not a maintainer of this project, "
                               "so it acts only for " @name " here.")}}
-          (when-let [refused (seq (remove #(pra/runner-delegates? db runner %) joined))]
+          (when-let [refused (seq (remove (pra/runner-delegates-among db runner joined) joined))]
             (let [names (names-list (map #(or (:project/name (prj/get db %)) %) refused))]
               {:status 403
-               :body {:error (str "This service is run by " @name ", who is not a maintainer of " names
-                                  ", so it cannot read " names " for you.")}})))))))
+               :body {:error (str service " is run by " @name ", who is not a maintainer of " names
+                                  ". Remove " (if (next refused) "them" names)
+                                  " from this conversation to go on.")}})))))))
 
 (defn- with-runner
   "A live discovery entry with who runs it, as the caller sees it:
@@ -602,7 +610,12 @@
             ;; Re-fetch the channel at push time — it may have dropped since the
             ;; pre-check above. The account holding it is the one that may
             ;; answer the request.
-            (let [{service-ch :channel service-user-id :user-id} (events/get-service-entry id service-id)]
+            (let [{service-ch :channel service-user-id :user-id} (events/get-service-entry id service-id)
+                  ;; The token names the runner checked above. A channel
+                  ;; another account opened since (the first one dropped and
+                  ;; its service id was taken) is not handed it.
+                  service-ch (when (or (nil? delegated-token) (= service-user-id (:user-id entry)))
+                               service-ch)]
               (events/track-request! request-id requester id service-id user-id service-user-id)
               ;; While the request runs, the service may write into the group
               ;; it was handed, as the requester (`events/grant-group!`).

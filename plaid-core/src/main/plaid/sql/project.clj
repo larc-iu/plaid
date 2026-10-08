@@ -5,6 +5,7 @@
   DataSource (reads) or a JDBC Connection in a tx (writes). Write fns open
   their own tx via `submit-operation!`."
   (:require [clojure.data.json :as json]
+            [clojure.string :as str]
             [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.cascade-statistics :as cascade-stats]
@@ -241,6 +242,23 @@
                   :join [[:projects :p] [:= :p.id :pu.project_id]]
                   :where [:and [:= :pu.user_id user-id] [:= :p.deleted_at nil]]})
        (mapv :project_id)))
+
+(defn maintained-among
+  "The ids among `project-ids` that `user-id` maintains, lower-cased, less
+  projects being deleted. One indexed read, for a check made on every
+  request (`plaid.rest-api.v1.auth/runner-reach`)."
+  [db user-id project-ids]
+  (if (empty? project-ids)
+    #{}
+    (->> (psc/q db {:select [:pu.project_id]
+                    :from [[:project_users :pu]]
+                    :join [[:projects :p] [:= :p.id :pu.project_id]]
+                    :where [:and
+                            [:= :pu.user_id user-id]
+                            [:= :pu.role "maintainer"]
+                            [:in :pu.project_id (mapv str project-ids)]
+                            [:= :p.deleted_at nil]]})
+         (into #{} (map (comp str/lower-case str :project_id))))))
 
 (defn maintainer-of-any?
   "True iff `user-id` maintains at least one project. Gates access to the

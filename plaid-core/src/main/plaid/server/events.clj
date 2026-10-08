@@ -165,7 +165,7 @@
    longer open it (see `on-standing-change!`)."
   [http-channel client-chan project-id stop-chan client-id opener]
   (swap! channel-mappings assoc http-channel
-         (merge (select-keys opener [:user-id :token-id :token-version :token-exp :db])
+         (merge (select-keys opener [:user-id :token-id :token-version :token-exp :runner :db])
                 {:client-chan client-chan
                  :project-id  project-id
                  :stop-chan   stop-chan

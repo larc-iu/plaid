@@ -771,8 +771,17 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
         return;
       }
       if (!response.ok) {
-        const err = new Error(`${what} failed: HTTP ${response.status} ${response.statusText}`);
+        // A refusal says why in its body (`{error}`), as on every other route.
+        let said = null;
+        try {
+          said = await response.json();
+        } catch {
+          said = null;
+        }
+        const why = typeof said?.error === 'string' ? `: ${said.error}` : '';
+        const err = new Error(`${what} failed: HTTP ${response.status} ${response.statusText}${why}`);
         err.status = response.status;
+        if (said && typeof said === 'object') err.responseData = said;
         // A proxy's 502 or 504 is no answer from the server: the request may
         // have been taken, and the service may be running it.
         finish(reject, response.status === 502 || response.status === 504 ? lostAnswer(err) : err);
