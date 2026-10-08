@@ -78,7 +78,8 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
   const where = inProject ? ` in ${markdownText(inProject)}` : '';
   const lines = [`**Proposed changes${where}:** ${plan.summary || ''} (${said})`, ''];
   planRows(plan).forEach((r, i) => {
-    lines.push(`${i + 1}. ${r.label}`);
+    // A rule's row is the rule in its words, its count on the line below.
+    lines.push(`${i + 1}. ${r.rule ? r.change || r.label : r.label}`);
     if (!r.rule) return;
     // A rule: its count, every document it reaches by name up to the
     // card's cut, and its sample, as the card shows them unfolded.

@@ -42,7 +42,7 @@ const ruleRow = (extra = {}) => ({
     sample: [
       {
         label: 'Text 0 s1.w2 "kuru": Gloss "VASP.3SG" → "ASP.3SG"',
-        where: { kind: 'token', documentId: 'd0', surface: 'kuru' },
+        where: { kind: 'token', documentId: 'd0', documentName: 'Text 0', surface: 'kuru' },
         change: 'Gloss "VASP.3SG" → "ASP.3SG"',
         replacesWork: 1,
       },
@@ -81,7 +81,7 @@ describe('a rule on the plan card', () => {
     const row = view.container.querySelector('tr[data-rule]');
     expect(row.textContent).toContain('Gloss "VASP" → "ASP"');
     expect(row.textContent).toContain('1,240 changes in 14 documents, 1,100 replace accepted work');
-    expect(byText(view.container, 'p', '1100 changes replace accepted work.')).not.toBeNull();
+    expect(byText(view.container, 'p', '1,100 changes replace accepted work.')).not.toBeNull();
     expect(all(view.container, 'tr[data-rule-document]')).toHaveLength(0);
     const toggle = byText(view.container, 'button', 'Show where');
     await view.step(() => toggle.click());
@@ -94,6 +94,8 @@ describe('a rule on the plan card', () => {
     expect(rest.textContent).toBe('and 4 more documents (166 changes)');
     expect(byText(view.container, 'th', 'For example')).not.toBeNull();
     expect(texts(view.container, 'tr a')).toContain('kuru');
+    // A sample spread over documents names each row's.
+    expect(texts(view.container, 'tr bdi')).toContain('Text 0');
     await view.step(() => byText(view.container, 'button', 'Hide').click());
     expect(all(view.container, 'tr[data-rule-document]')).toHaveLength(0);
     await view.unmount();
@@ -163,12 +165,37 @@ describe('a rule in the Markdown export', () => {
       ],
     };
     const md = conversationToMarkdown(conv, { title: 'T' }, { adapter, projectId: 'pr1' });
-    expect(md).toContain(
-      '1. Gloss: replace "VASP" with "ASP" (part of a value), 1,240 values in 14 documents',
-    );
+    // The rule in its words, its count once, on the line below.
+    expect(md).toContain('1. Gloss "VASP" → "ASP"\n   - 1,240 changes in 14 documents');
     expect(md).toContain('   - 1,240 changes in 14 documents, 1,100 replace accepted work');
     expect(md).toContain('   - Text 0: 120');
     expect(md).toContain('   - and 2 more documents (31 changes)');
     expect(md).toContain('   - For example: Text 0 s1.w2 "kuru": Gloss "VASP.3SG" → "ASP.3SG"');
+  });
+});
+
+describe('a settled plan cut to its first rows', () => {
+  it('says how many rows each document shows, not that they are all it had', async () => {
+    const rows = Array.from({ length: 200 }, (_, i) => ({
+      label: `r${i}`,
+      change: 'x',
+      where: { kind: 'token', documentId: 'd1', documentName: 'Doc one', surface: `w${i}` },
+    }));
+    const p = {
+      id: 'p',
+      summary: '900 field values',
+      opCount: 900,
+      omitted: { count: 700 },
+      changes: rows,
+    };
+    const view = await mount(p, { status: 'applied' }, (card) => (
+      <ExportContext.Provider value={{}}>{card}</ExportContext.Provider>
+    ));
+    const head = byText(view.container, 'th', 'Doc one');
+    expect(head.textContent).toBe('Doc one200 shown');
+    expect(view.container.querySelector('[data-testid=rows-omitted]').textContent).toBe(
+      'and 700 more changes',
+    );
+    await view.unmount();
   });
 });

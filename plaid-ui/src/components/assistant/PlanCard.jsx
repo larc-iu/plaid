@@ -208,7 +208,7 @@ export const PlanCard = ({
           <PenLine className="h-3.5 w-3.5 shrink-0" />
           {rewrites === 1
             ? `1 change rewrites ${adapter.textName}.`
-            : `${rewrites} changes rewrite ${adapter.textName}.`}
+            : `${rewrites.toLocaleString('en-US')} changes rewrite ${adapter.textName}.`}
         </p>
       )}
       {replaced > 0 && (
@@ -216,7 +216,7 @@ export const PlanCard = ({
           <UserCheck className="h-3.5 w-3.5 shrink-0" />
           {replaced === 1
             ? '1 change replaces accepted work.'
-            : `${replaced} changes replace accepted work.`}
+            : `${replaced.toLocaleString('en-US')} changes replace accepted work.`}
         </p>
       )}
       {/* A size container, so a row's place can be held to a share of the
@@ -252,8 +252,11 @@ export const PlanCard = ({
                       ) : (
                         g.title
                       )}
+                      {/* A settled plan cut to its first rows does not know
+                          how many of the rest were here: it says how many it
+                          shows, above "and n more changes". */}
                       <span className="ml-1.5 font-normal text-muted-foreground">
-                        {g.rows.length}
+                        {omitted > 0 ? `${g.rows.length} shown` : g.rows.length}
                       </span>
                     </th>
                   </tr>
@@ -475,6 +478,9 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
             projectId={projectId}
             adapter={adapter}
             indent
+            // A rule's sample is spread over its documents: each row names its
+            // own.
+            documentName={c.where?.documentName ?? c.where?.document_name ?? null}
           />
         ))}
     </>
@@ -502,6 +508,7 @@ const ChangeRow = ({
   written,
   nothingWritten = false,
   indent = false,
+  documentName = null,
 }) => {
   const place = adapter.changePlace(projectId, row.where);
   return (
@@ -511,6 +518,9 @@ const ChangeRow = ({
     >
       <td className={cn('w-px whitespace-nowrap py-0.5 pr-4', indent && 'pl-3')}>
         <span className="inline-block max-w-[min(18rem,40cqi)] truncate align-bottom">
+          {documentName && place && (
+            <bdi className="mr-1.5 text-muted-foreground">{documentName}</bdi>
+          )}
           {place && (
             <>
               {place.href ? (
