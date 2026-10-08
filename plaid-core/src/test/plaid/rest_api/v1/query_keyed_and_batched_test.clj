@@ -95,3 +95,36 @@
                          {:path "/api/v1/query" :method "post" :body {:find ["?nope"] :where [["span" "?s" {}]]}}])]
         (is (= 400 (:status resp)) (str (:body resp)))
         (is (= before (:n (psc/q1 db {:select [[[:count :*] :n]] :from [:spans]}))))))))
+
+(defn- timed [f]
+  (let [start (System/nanoTime)
+        v (f)]
+    [v (long (/ (- (System/nanoTime) start) 1e6))]))
+
+(deftest a-slow-query-in-a-batch-lets-other-writes-through
+  ;; The query runs on the batch's transaction, which holds the database's
+  ;; write lock until the batch ends. Another write waits for that lock only
+  ;; up to busy_timeout (5 s) and is then refused 503. So a query in a batch
+  ;; is held to a short limit, and the batch it holds up rolls back.
+  (let [{:keys [sl t0 t1]} (corpus!)
+        _ (h/create-span admin-request sl [t0] (apply str (repeat 32 "a")))
+        ;; ~6.7 s unbounded (see `exec-regex-test/regex-redos-is-aborted`)
+        slow {:find ["?s"] :where [["span" "?s" {"layer" sl "value" {"regex" "(.*a){28}"}}]]}
+        batch (future (timed #(send! "/api/v1/batch"
+                                     [{:path "/api/v1/spans" :method "post"
+                                       :body {:span-layer-id sl :tokens [t1] :value "HIDDEN"}}
+                                      {:path "/api/v1/query" :method "post" :body slow}])))]
+    (Thread/sleep 300)
+    (testing "a query outside the batch does not see the batch's uncommitted write"
+      (let [resp (send! "/api/v1/query" (spans-valued "HIDDEN"))]
+        (is (= 200 (:status resp)))
+        (is (= [] (-> resp :body :results)))))
+    (testing "another write waits for the batch, and goes through"
+      (let [[resp ms] (timed #(send! "/api/v1/spans" {:span-layer-id sl :tokens [t1] :value "OTHER"}))]
+        (is (= 201 (:status resp)) (str (:body resp)))
+        (is (< ms 4500) (str "the write waited " ms " ms"))))
+    (testing "the batch's query is stopped at its limit, and the batch rolls back"
+      (let [[resp ms] @batch]
+        (is (= 408 (:status resp)) (str (:body resp)))
+        (is (< ms 4500) (str "the batch took " ms " ms"))
+        (is (= [] (-> (send! "/api/v1/query" (spans-valued "HIDDEN")) :body :results)))))))

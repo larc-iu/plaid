@@ -142,13 +142,26 @@
   tests/operators can rebind it."
   30000)
 
+(def ^:dynamic *in-transaction-query-timeout-ms*
+  "The ceiling for a query run on a transaction's connection (a query inside
+  a batch), in place of `*query-timeout-ms*`. The transaction holds the
+  database's write lock for as long as the query runs, and every other write
+  waits for that lock only up to busy_timeout (5 s) before it is refused
+  with a 503. Dynamic so tests can rebind it."
+  2000)
+
+(def ^:dynamic ^:private *in-transaction?* false)
+
 (defn- deadline-from-now [] (+ (System/currentTimeMillis) *query-timeout-ms*))
 
 (defn- ms-left [deadline] (max 0 (- deadline (System/currentTimeMillis))))
 
 (defn- time-limit-error []
-  (ex-info (str "Query exceeded the " (quot *query-timeout-ms* 1000)
-                "s time limit — narrow it with more selective clauses or a tighter :scope.")
+  (ex-info (if *in-transaction?*
+             (str "A query inside a batch has " (quot *query-timeout-ms* 1000)
+                  "s, and this one took longer. Send it on its own, or narrow it.")
+             (str "Query exceeded the " (quot *query-timeout-ms* 1000)
+                  "s time limit — narrow it with more selective clauses or a tighter :scope."))
            {:code 408 :query-error/stage :exec}))
 
 (defn- connection-by
@@ -241,11 +254,20 @@
   queue is full, and the person is told the server is busy."
   ([db f] (run-heavy db f (deadline-from-now)))
   ([db f deadline]
-   (if (.tryAcquire heavy-queries (long (min *heavy-query-wait-ms* (ms-left deadline)))
-                    java.util.concurrent.TimeUnit/MILLISECONDS)
+   (cond
+     ;; On a transaction's connection the query takes no pooled connection,
+     ;; and only one transaction writes at a time. Waiting for a turn here
+     ;; would hold the write lock for the wait.
+     (instance? java.sql.Connection db)
+     (run-bounded db f deadline)
+
+     (.tryAcquire heavy-queries (long (min *heavy-query-wait-ms* (ms-left deadline)))
+                  java.util.concurrent.TimeUnit/MILLISECONDS)
      (try
        (run-bounded db f deadline)
        (finally (.release heavy-queries)))
+
+     :else
      (throw (ex-info "The server is busy with other large queries. Try again in a moment."
                      {:code 503 :query-error/stage :queue})))))
 
@@ -329,7 +351,23 @@
                       e))))]
     (mapv (fn [row] (mapv fetch find-kinds row)) id-results)))
 
+(declare run-query)
+
 (defn run
+  "Execute a query. `raw` is the (JSON- or EDN-dialect) request body. See
+  `run-query` for the result envelope.
+
+  On a transaction's connection (a query inside a batch) the query is held to
+  `*in-transaction-query-timeout-ms*`, since the transaction holds the write
+  lock while it runs, and the batch it overruns is refused with the 408."
+  [db user-id raw]
+  (if (instance? java.sql.Connection db)
+    (binding [*in-transaction?* true
+              *query-timeout-ms* (min *query-timeout-ms* *in-transaction-query-timeout-ms*)]
+      (run-query db user-id raw))
+    (run-query db user-id raw)))
+
+(defn- run-query
   "Execute a query. `raw` is the (JSON- or EDN-dialect) request body. Returns a
   result envelope:
     {:return :ids|:entities  :columns [...] :results [[...] ...] :count N
