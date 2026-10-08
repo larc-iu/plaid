@@ -423,6 +423,10 @@ Where the assistant's model runs, and where what you send it goes, depends on th
 When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
 Otherwise, ask the site's administrators.
 
+The assistant picker names who runs each assistant.
+An assistant run by a maintainer of the project or by an administrator answers every member.
+One run by anyone else answers only the person who runs it, and is not offered to others.
+
 The assistant respells a token's words in place: a word whose form changes keeps its lemma, tags, features and relations.
 Its plans leave each sentence one root. Asked to make another word the root, it gives the old root a head in the same plan. Joining two sentences that each have a root, it gives one of the roots a head in the same plan.
 
@@ -454,6 +458,7 @@ Deleting a conversation asks first, and cannot be undone. What its plans applied
 == Other projects
 
 Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other UD projects you can open, to compare or to look something up there.
+A project joins only where the person who runs the assistant is a maintainer or an administrator.
 Each project added is shown above the message box, and each question shows the projects it was sent with.
 The assistant only reads them.
 It plans changes in the conversation's own project, and a change asked for in another project is not planned: the assistant says it can plan changes in this project only.
