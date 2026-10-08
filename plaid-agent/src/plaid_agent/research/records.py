@@ -49,6 +49,11 @@ ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for 
     ('code_exception', r'^Traceback'),
     ('bad_arguments', r'cannot be called with those arguments|has the wrong type|unexpected keyword|'
                       r'not valid JSON|^Give |must be (a|an|one of|given)|is not a (number|whole number|list)'),
+    # A reference at the wrong level: a word where a morpheme was wanted, a
+    # sentence where a word was, a multi-word token where one of its words was.
+    ('wrong_level', r'\bis not an? (sentence|word|morpheme)\b|names a sentence or a multi-word token|'
+                    r'is (a|inside the) multi-word token|, not (sentences|single morphemes)\b|'
+                    r'is an? \w+ field, not an? \w+ field'),
     ('ambiguous', r'names several|several \w+ match|more than one'),
     ('plan_limit', r'more than the [\d,]+ one plan may hold'),
     ('unavailable', r'is connected to this project|not configured|not available|is offline'),

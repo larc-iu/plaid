@@ -110,7 +110,7 @@ One row per tool call.
 | tool | the tool's name |
 | step_kind | `document`, `read`, `plan`, `web` or `meta` |
 | failed | the tool refused the call (its answer began `Error`) |
-| error_class | for a refusal: `query_rejected` (the server refused a query), `bad_arguments`, `ambiguous` (a name matched several things), `not_found`, `plan_limit`, `plan_conflict`, `unavailable` (a service or capability not there), `server_refused`, `code_exception` (run_code raised), `tool_fault` (a bug in the tool), `other`, or `unknown` when the answer was pruned |
+| error_class | for a refusal: `query_rejected` (the server refused a query), `bad_arguments`, `wrong_level` (a reference to the wrong kind of thing: a word where a morpheme was wanted, a sentence where a word was, a multi-word token where one of its words was), `ambiguous` (a name matched several things), `not_found`, `plan_limit`, `plan_conflict`, `unavailable` (a service or capability not there), `server_refused`, `code_exception` (run_code raised), `tool_fault` (a bug in the tool), `other`, or `unknown` when the answer was pruned |
 | recovered_in_turn | for a refusal: a later call to the same tool in the same turn went through |
 | result_kept | the tool's answer is still in the record |
 | planned | how much the call changed the plan's size |
