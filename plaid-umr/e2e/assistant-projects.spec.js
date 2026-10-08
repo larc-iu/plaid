@@ -18,12 +18,14 @@ let unserved;
 test.beforeAll(async () => {
   const c = client();
   home = (await createUmrProject(c, `E2E Multi home ${stamp}`)).id;
+  // Both set up for UMR, since Add project offers only a project this
+  // assistant can read. C differs only in the assistant not running there.
   served = {
-    id: (await c.projects.create(`E2E Multi B ${stamp}`)).id,
+    id: (await createUmrProject(c, `E2E Multi B ${stamp}`)).id,
     name: `E2E Multi B ${stamp}`,
   };
   unserved = {
-    id: (await c.projects.create(`E2E Multi C ${stamp}`)).id,
+    id: (await createUmrProject(c, `E2E Multi C ${stamp}`)).id,
     name: `E2E Multi C ${stamp}`,
   };
 });

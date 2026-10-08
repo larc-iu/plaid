@@ -22,13 +22,16 @@ test.beforeAll(async () => {
     docName: 'Home text',
     body: 'nis kai',
   }));
-  const c = client();
+  // Both set up for IGT, since Add project offers only a project this
+  // assistant can read. C differs only in the assistant not running there.
+  const igtProject = async (name) =>
+    (await createScratchProject({ name, docName: 'Other text', body: 'nis' })).projectId;
   served = {
-    id: (await c.projects.create(`E2E Multi B ${stamp}`)).id,
+    id: await igtProject(`E2E Multi B ${stamp}`),
     name: `E2E Multi B ${stamp}`,
   };
   unserved = {
-    id: (await c.projects.create(`E2E Multi C ${stamp}`)).id,
+    id: await igtProject(`E2E Multi C ${stamp}`),
     name: `E2E Multi C ${stamp}`,
   };
 });

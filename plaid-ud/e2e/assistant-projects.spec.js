@@ -1,6 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
+import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { assistantProjectsTests } from '../../plaid-ui/e2e/assistantProjects.js';
 
 // A conversation that reads other projects beside its own: plaid-igt's
@@ -22,12 +23,14 @@ test.beforeAll(async () => {
     [8, 12],
   ]));
   const c = client();
+  // Both set up for UD, since Add project offers only a project this
+  // assistant can read. C differs only in the assistant not running there.
   served = {
-    id: (await c.projects.create(`E2E Multi B ${stamp}`)).id,
+    id: (await createUdProject(c, `E2E Multi B ${stamp}`)).id,
     name: `E2E Multi B ${stamp}`,
   };
   unserved = {
-    id: (await c.projects.create(`E2E Multi C ${stamp}`)).id,
+    id: (await createUdProject(c, `E2E Multi C ${stamp}`)).id,
     name: `E2E Multi C ${stamp}`,
   };
 });
