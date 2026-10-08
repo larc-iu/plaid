@@ -13,7 +13,8 @@ export const SETTLED_ROWS_MAX = 200;
 
 // A settled plan's card without what only approving it needed: the ops, the
 // documents they were checked against, and what its corpus-wide changes found
-// while an approval ran (`expansion`). The card is drawn from `changes`
+// while an approval ran (`expansion`), and the mark that one may have written
+// (`writing`). The card is drawn from `changes`
 // and `labels`, of which the first SETTLED_ROWS_MAX stay, and `omitted` says
 // what the rest held: how many rows, and of those how many rewrote the text
 // and how many replaced a person's work, the counts the card states. The
@@ -42,8 +43,14 @@ export const compactPlan = (item) => {
     .filter(([c]) => isRule(c) && typeof c === 'object')
     .map(([c, i]) => ({ row: i, ...c }));
   const rows = Math.max(changes.length - ruled.length, labels.length);
-  if (!('ops' in plan) && !('expansion' in plan) && rows <= SETTLED_ROWS_MAX) return item;
-  const { ops, documents: _documents, expansion: _expansion, ...kept } = plan;
+  if (
+    !('ops' in plan) &&
+    !('expansion' in plan) &&
+    !('writing' in plan) &&
+    rows <= SETTLED_ROWS_MAX
+  )
+    return item;
+  const { ops, documents: _documents, expansion: _expansion, writing: _writing, ...kept } = plan;
   if ('ops' in plan) kept.opCount = (ops || []).length;
   if (rows > SETTLED_ROWS_MAX) {
     const dropped = rest.filter((c) => !isRule(c));

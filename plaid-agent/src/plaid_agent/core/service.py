@@ -84,8 +84,10 @@ from .conversation import (ConversationStore, MissingConversation, assistant_ite
                            proposed_changes, prune, record_budget, turn_ending)
 from . import rules
 from .opkind import ROW
-from .plan import (EXPANSION, HELD_FROM, DocumentsBusy, Expansion, PlanError, PlanOutOfDate, ScopeMoved,
-                   documents_to_lock, drawable, expanding, forget_held, held_from, holding, outcome_unknown)
+from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, PlanError, PlanOutOfDate, RecordFull,
+                   ScopeMoved, documents_to_lock, drawable, expanding, forget_held, holding, outcome_unknown,
+                   writing)
+from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -178,7 +180,9 @@ class BaseAssistantService(BaseService):
         # Plan ids already applied by this process, so a second approval of
         # the same plan (a retried request after a client timeout, a double
         # click) does not write it twice. Bounded, most recent last.
-        self._applied_plans: list = []
+        #: plan id -> how this process settled it ({'status', 'note', 'fields'},
+        #: status None while it is not known yet), newest last.
+        self._applied_plans: Dict[str, Dict[str, Any]] = {}
 
     # --- what the app knows ------------------------------------------------------
 
@@ -749,12 +753,26 @@ class BaseAssistantService(BaseService):
             """Clear the pending marker so the card is decidable again, and
             settle the plan as ``status`` when given (`plan_settling`). False
             when the conversation moved on, which `_write` reports rather than
-            raising."""
-            return self._write(store, conv_id,
-                               plan_settling(plan_id, status, note, documents=plan.get('documents'),
-                                             expansion=plan.get(EXPANSION), **fields),
-                               request_id, model)
+            raising.
 
+            An outcome that wrote (applied, partly applied) is written on the
+            plan even when the conversation moved on (another request's
+            marker stands): the record never says undecided over changes
+            that landed, and the model is told. The other request's marker
+            is kept. False only when the conversation is gone."""
+            change = plan_settling(plan_id, status, note, documents=plan.get('documents'),
+                                   expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **fields)
+            if self._write(store, conv_id, change, request_id, model):
+                return True
+            return status in WROTE and self._write(store, conv_id, change, None, model)
+
+        # This process applied the plan and its outcome never reached the
+        # record (the conversation was deleted and its write refused, say):
+        # written now, so the approval reports the plan as it is.
+        done = self._applied_plans.get(plan_id)
+        if item.get('status') is None and done and done.get('status'):
+            settled(done['status'], done['note'], **done['fields'])
+            item = {**item, 'status': done['status']}
         # A plan that stopped partway is settled: finishing it is a new plan.
         if item.get('status') == 'partial':
             settled()
@@ -827,10 +845,12 @@ class BaseAssistantService(BaseService):
         # makes while the block runs, the record's too, which would leave the
         # card pending over a plan that stopped partway.
         def remember():
-            """Write the plan's documents as the run holds them, and what its
-            scopes resolved to, the approval still pending."""
+            """Write the plan's documents as the run holds them, what its
+            scopes resolved to and whether it may have written, the approval
+            still pending."""
             return self._write(store, conv_id, plan_settling(plan_id, documents=plan.get('documents'),
-                                                             expansion=plan.get(EXPANSION)),
+                                                             expansion=plan.get(EXPANSION),
+                                                             writing=plan.get(WRITING)),
                                request_id, model, pending=(meta or {}).get('pending'))
         expansion = Expansion(plan, remember)
 
@@ -839,7 +859,7 @@ class BaseAssistantService(BaseService):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
                                                  index, conv, settled, remember, stamp_mode, contributor, store,
                                                  response_helper, conv_id, proposed_by(item),
-                                                 item['service'], expansion)
+                                                 item['service'], expansion, plan=plan)
         except DocumentsBusy as e:
             settled()
             name = next((d.get('name') for d in documents
@@ -855,29 +875,24 @@ class BaseAssistantService(BaseService):
         if callable(counts):
             counts()
             return
-        self._remember_applied(plan_id)
         notes = counts.pop('notes', [])
         # Card rows that wrote nothing under this approval (a contributor's
         # confirmation of only other contributors' work), which the card does
         # not show as applied.
         unwritten = counts.pop('unwritten', [])
         note = f'(note) The plan was approved and applied: {summary}.' + (' ' + '; '.join(notes) if notes else '')
-        # `_write` returns False without raising when the conversation has moved
-        # on, so the 'applied' status can fail to reach the record while the
-        # writes have already happened. The only other guard against a second
-        # apply is `_applied_plans`, which lives in this process, so a restart
-        # in between left a card still offering Approve over work already done.
-        # Say so rather than leave it looking undecided.
+        # Settled even when the conversation moved on (`settled`), so the card
+        # never offers Approve over work already done. `_applied_plans` keeps
+        # the outcome too, for a record that could not take it.
         # What the record keeps of the outcome: how the approval was recorded,
         # and what applying dropped (a change a later one superseded, say),
         # since each change's outcome is otherwise the plan's.
         outcome = {'as_human': as_human, **({'contributed': True} if contributor else {}),
                    **({'apply_notes': notes} if notes else {}),
                    **({'unwritten': unwritten} if unwritten else {})}
+        self._remember_applied(plan_id, 'applied', note, outcome)
         if not settled('applied', note, **outcome):
-            response_helper.error(
-                'The changes were applied, but this conversation was changed elsewhere and does not '
-                'show it. Do not approve this plan again.')
+            response_helper.error('The changes were applied, but this conversation was deleted.')
             return
         response_helper.progress(100, 'Done')
         response_helper.complete({
@@ -888,7 +903,7 @@ class BaseAssistantService(BaseService):
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, remember, stamp_mode, contributor, store,
-                           response_helper, conv_id, detail, proposer, expansion=None):
+                           response_helper, conv_id, detail, proposer, expansion=None, plan=None):
         """The staleness check and the writes, under the documents' locks.
         ``detail`` and ``proposer`` are the model and version, and the service
         id, of the turn that proposed the plan: the writes name that assistant
@@ -912,7 +927,23 @@ class BaseAssistantService(BaseService):
         stale = self._stale(client, project, documents)
         if stale:
             return out_of_date(stale)
-        held_from(client, documents, remember)
+        plan = {} if plan is None else plan
+
+        def nothing_written():
+            # The next approval holds the versions the documents have then,
+            # finds what they hold then, and may be discarded meanwhile.
+            forget_held(documents)
+            if expansion is not None:
+                expansion.forget()
+            plan.pop(WRITING, None)
+        try:
+            writing(client, plan, documents, remember)
+        except RecordFull as e:
+            def full(e=e):
+                nothing_written()
+                settled()
+                response_helper.error(str(e))
+            return full
         response_helper.progress(10, 'Applying changes…')
         # One operation of kind assistant-plan, naming the conversation, the
         # plan and the assistant that proposed it, so the audit log says which
@@ -971,11 +1002,8 @@ class BaseAssistantService(BaseService):
             def failed(e=e):
                 why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
                 if not written:
-                    # Nothing landed, so the next approval holds the versions
-                    # the documents have then, and finds what they hold then.
-                    forget_held(documents)
-                    if expansion is not None:
-                        expansion.forget()
+                    # Nothing landed.
+                    nothing_written()
                     settled()
                     response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
                     return
@@ -1004,18 +1032,18 @@ class BaseAssistantService(BaseService):
                 fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {})}
                 said = (f'Partly applied: {outcome} '
                         + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
+                self._remember_applied(plan_id, 'partial', note, fields)
                 if not settled('partial', note, **fields):
-                    said += ' This conversation was changed elsewhere and does not show it.'
+                    said += ' This conversation was deleted.'
                 response_helper.complete({'kind': 'applied', 'partial': True, 'applied': written_n,
                                           'counts': [], 'message': said})
             return failed
         except ValueError as e:
             def rejected(e=e):
-                forget_held(documents)
-                if expansion is not None:
-                    expansion.forget()
+                nothing_written()
                 settled()
-                response_helper.error(f'The plan was rejected before anything was written: {e}')
+                response_helper.error(str(e) if isinstance(e, RecordFull)
+                                      else f'The plan was rejected before anything was written: {e}')
             return rejected
         return counts
 
@@ -1050,9 +1078,15 @@ class BaseAssistantService(BaseService):
                 except Exception:  # noqa: BLE001 - releasing must never turn a finished turn into a failed one
                     traceback.print_exc()
 
-    def _remember_applied(self, plan_id: str) -> None:
-        self._applied_plans.append(plan_id)
-        del self._applied_plans[:-500]
+    def _remember_applied(self, plan_id: str, status: Optional[str] = None, note: Optional[str] = None,
+                          fields: Optional[Dict[str, Any]] = None) -> None:
+        """A plan this process wrote, and how it settled it once that is
+        known, so a second approval neither writes it again nor leaves the
+        record undecided."""
+        self._applied_plans.pop(plan_id, None)
+        self._applied_plans[plan_id] = {'status': status, 'note': note, 'fields': dict(fields or {})}
+        while len(self._applied_plans) > 500:
+            del self._applied_plans[next(iter(self._applied_plans))]
 
 
 def _positive_int(text: str) -> int:

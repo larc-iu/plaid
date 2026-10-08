@@ -153,7 +153,7 @@ def drawable(plan_id) -> bool:
 HELD_FROM = 'held_from'
 
 
-def held_from(client, documents: List[Dict[str, Any]], remember) -> None:
+def held_from(client, documents: List[Dict[str, Any]], remember) -> bool:
     """Hold each document the plan holds (``holding``) at the version its
     first run held it at, so a run again sends the requests the first run sent
     (the document version is part of a keyed request) and the ones that landed
@@ -163,7 +163,7 @@ def held_from(client, documents: List[Dict[str, Any]], remember) -> None:
     The first run records the versions on the plan's ``documents`` (compacted
     away once the plan is settled) and writes the record with ``remember()``
     before anything is sent, so a service that stops partway leaves them for
-    the next approval."""
+    the next approval. True when it wrote the record."""
     held = getattr(client, HELD_DOCUMENTS, None) or {client.strict_mode_document_id} - {None}
     fresh = False
     for d in documents or []:
@@ -176,6 +176,43 @@ def held_from(client, documents: List[Dict[str, Any]], remember) -> None:
             fresh = True
     if fresh:
         remember()
+    return fresh
+
+
+#: Set on a plan while an approval of it may have written (:func:`writing`),
+#: and dropped again by a run that certainly wrote nothing. The page reads it
+#: on a plan whose approval was interrupted: such a plan cannot be discarded,
+#: since some of its changes may be in the project.
+WRITING = 'writing'
+
+#: Said when the record has no room for what an approval keeps on the plan
+#: while it runs. The same words as the page's for a message (plaid-ui
+#: jobs.js `CONVERSATION_FULL`).
+RECORD_FULL = 'This conversation is full, so the plan was not applied. Start a new conversation to go on.'
+
+
+class RecordFull(ValueError):
+    """The conversation record refused (413) what an approval writes on its
+    plan before the first change is sent. Nothing was sent."""
+
+    def __init__(self):
+        super().__init__(RECORD_FULL)
+
+
+def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], remember) -> None:
+    """Before the first change of a run is sent: the plan says that it may
+    have written (:data:`WRITING`) and which versions the run holds its
+    documents at (:func:`held_from`), in one write of the record. Raises
+    :class:`RecordFull` when the record cannot take it."""
+    try:
+        first = not plan.get(WRITING)
+        plan[WRITING] = True
+        if not held_from(client, documents, remember) and first:
+            remember()
+    except PlaidAPIError as e:
+        if getattr(e, 'status', 0) == 413:
+            raise RecordFull() from e
+        raise
 
 
 #: The key on a plan holding what each of its scopes resolved to on the first
@@ -368,9 +405,10 @@ class Expansion:
             self.remember()
         except PlaidAPIError as e:
             if getattr(e, 'status', 0) == 413:
+                # The plan is within its limits (they were checked when it was
+                # staged): what is full is the conversation's record.
                 self.forget()
-                raise ValueError('the plan is too large to apply in one go. Ask the assistant to plan it '
-                                 'in parts') from e
+                raise RecordFull() from e
             raise
 
     def forget(self) -> None:

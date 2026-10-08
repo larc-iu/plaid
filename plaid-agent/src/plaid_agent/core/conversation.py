@@ -534,7 +534,8 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     ``labels``, and the audit log is the record of what was written.
     ``op_count`` keeps the card's rows lined up with the ops they stood for
     (`planRows` in plaid-ui). ``expansion``, what its corpus-wide changes
-    found while an approval ran (`plan.Expansion`), goes with them.
+    found while an approval ran (`plan.Expansion`), goes with them, and so
+    does ``writing``, which says an approval under way may have written.
     Of ``changes`` and ``labels`` the first :data:`SETTLED_ROWS_MAX` stay, and
     ``omitted`` says what the rest held: how many rows, how many of them
     rewrote the text and how many of a person's values they replaced, the
@@ -557,9 +558,9 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     rest = [(i, c) for i, c in enumerate(changes) if i >= SETTLED_ROWS_MAX]
     ruled = [{'row': i, **c} for i, c in rest if isinstance(c, dict) and c.get('rule') is not None]
     rows = max(len(changes) - len(ruled), len(labels))
-    if 'ops' not in plan and 'expansion' not in plan and rows <= SETTLED_ROWS_MAX:
+    if 'ops' not in plan and 'expansion' not in plan and 'writing' not in plan and rows <= SETTLED_ROWS_MAX:
         return item
-    kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents', 'expansion')}
+    kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents', 'expansion', 'writing')}
     if 'ops' in plan:
         kept['op_count'] = len(plan.get('ops') or [])
     if rows > SETTLED_ROWS_MAX:
@@ -674,14 +675,16 @@ _KEEP = object()
 
 
 def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str] = None,
-                  documents: Optional[List[Dict[str, Any]]] = None, expansion: Any = _KEEP, **fields):
+                  documents: Optional[List[Dict[str, Any]]] = None, expansion: Any = _KEEP,
+                  writing: Any = _KEEP, **fields):
     """The change an approval writes on the plan ``plan_id``: ``status``
     (with ``note`` for the model and ``fields`` on the card, `settle_plan`),
     or with no status, the plan's ``documents`` as the run holds them (the
     versions it held them at, `plan.held_from`) while it is undecided, and
     ``expansion``, what its scopes resolved to on that run (`plan.Expansion`),
-    None to forget it. A plan already settled (see `WROTE` for the one
-    exception), or one that is gone, leaves the record as it is."""
+    None to forget it, and ``writing`` (`plan.WRITING`), falsy to drop it.
+    A plan already settled (see `WROTE` for the one exception), or one that
+    is gone, leaves the record as it is."""
     def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         index, item = find_plan(stored, plan_id)
         if item is None:
@@ -705,6 +708,11 @@ def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str
                 new.pop('expansion', None)
             else:
                 new['expansion'] = json.loads(json.dumps(expansion))
+        if writing is not _KEEP:
+            if writing:
+                new['writing'] = True
+            else:
+                new.pop('writing', None)
         if new == plan:
             return stored
         display = list(stored['display'])

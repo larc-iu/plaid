@@ -116,6 +116,8 @@ def _long(rng, n, status, settled_before=False, rules=0, labels=True):
         item['plan'].pop('labels')
     if rules and rng.random() < 0.7:
         item['plan']['expansion'] = {'0': [{'kind': 'set_span', 'token_id': 't1', 'value': 'ASP'}]}
+    if rng.random() < 0.3:
+        item['plan']['writing'] = True
     if settled_before:
         plan = {k: v for k, v in item['plan'].items() if k not in ('ops', 'documents')}
         item['plan'] = {**plan, 'op_count': n}
@@ -207,6 +209,7 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     assert any(any(c.get('rule') and c.get('row', 0) >= SETTLED_ROWS_MAX for c in p.get('changes') or [])
                for p in kept), 'a rule row kept past the cap'
     assert any('expansion' in (c.get('plan') or {}) and c.get('status') for c in cases), 'what an approval found'
+    assert any('writing' in (c.get('plan') or {}) and c.get('status') for c in cases), 'an approval that wrote'
 
 
 def test_the_service_and_the_browser_write_the_same_record(compared):
