@@ -65,6 +65,12 @@ ROW = '_row'
 # were written. Put on by ``core.plan.expand_ops``, and never written.
 MEMBER = '_member'
 
+# The attribute a client carries while an approval runs: the record of what
+# each scope of the plan resolved to (``core.plan.Expansion``), which
+# :func:`resolve_ops` reads instead of resolving again when an earlier run of
+# the same plan wrote it, and writes otherwise.
+EXPANDING = 'plan_expansion'
+
 
 @dataclass(frozen=True)
 class OpKind:
@@ -253,16 +259,32 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
     did not know reached the executor, which refuses a kind staged
     :data:`RESOLVED`: the plan failed after the user had approved it."""
     out: List[Dict[str, Any]] = []
+    # Approved again after a run that wrote part of the plan, a scope read
+    # afresh would find the values that run already changed gone, and stand
+    # for other writes than the ones it sent under the same keys. What the
+    # first run found is kept on the plan before its first write and read
+    # back here.
+    record = getattr(getattr(ctx, 'client', None), EXPANDING, None)
     for op in ops:
         fn = resolver(reg, op)
         if fn is None:
             out.append(op)
             continue
+        found = record.recorded(op) if record is not None else None
+        replayed = found is not None
+        if not replayed:
+            found = list(fn(ctx, op))
+            if record is not None:
+                record.record(op, found, reg)
         resolved = [({**o, **{k: op[k] for k in (ROW, MEMBER) if k in op}} if ROW in op else o)
-                    for o in fn(ctx, op)]
-        if check is not None:
+                    for o in found]
+        # What an earlier run found was checked then, and the corpus now
+        # holds that run's own writes.
+        if check is not None and not replayed:
             check(op, resolved)
         out.extend(o for o in resolved if keep is None or keep(o))
+    if record is not None:
+        record.save()
     return out
 
 

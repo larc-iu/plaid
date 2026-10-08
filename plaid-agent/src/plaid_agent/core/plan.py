@@ -176,6 +176,102 @@ def held_from(client, documents: List[Dict[str, Any]], remember) -> None:
         remember()
 
 
+#: The key on a plan holding what each of its scopes resolved to on the first
+#: run of an approval (see :class:`Expansion`), dropped once it settles.
+EXPANSION = 'expansion'
+
+
+def pack_ops(ops: List[Dict[str, Any]], reg) -> List[Dict[str, Any]]:
+    """``ops`` as few stored ops, in their order: each run of consecutive ops
+    alike but for their kind's per-member keys folds into one group
+    (:func:`compact_ops`), so :func:`expand_ops` gives back the same ops in
+    the same order, less their labels. Order is the point: the batches a run
+    sends are cut from it."""
+    from .opkind import compact_spec
+    spec = compact_spec(reg, label=lambda first, members: '')
+    out: List[Dict[str, Any]] = []
+    run: List[Dict[str, Any]] = []
+    sig = None
+    for op in ops:
+        s = spec.get(op.get('kind'))
+        each = set(s['each']) if s else set()
+        key = (op.get('kind'), tuple(sorted((k, _hashable(v)) for k, v in op.items()
+                                            if k not in each and k not in PRESENTATION_KEYS)))
+        if run and key != sig:
+            out.extend(compact_ops(run, spec))
+            run = []
+        sig = key
+        run.append(op)
+    out.extend(compact_ops(run, spec))
+    return out
+
+
+class Expansion:
+    """What the scopes of one plan resolved to, kept on the plan
+    (:data:`EXPANSION`, by row) from the first run of an approval, written
+    with ``remember()`` before anything is sent.
+
+    A scope is resolved by reading the corpus. Approved again after a run
+    that wrote part of it (``held_from``), it would read that run's own writes
+    and stand for fewer changes, and its batches would differ from the first
+    run's under the same keys, which the server refuses. So a run again reads
+    what the first run found instead. A run that certainly wrote nothing
+    forgets it (:meth:`forget`), and the next one resolves afresh.
+
+    Each scope's changes are stored packed (:func:`pack_ops`), about 60 bytes
+    a change while the approval is in flight. A record that cannot take them
+    refuses the approval before anything is written."""
+
+    def __init__(self, plan: Dict[str, Any], remember):
+        self.plan = plan
+        self.remember = remember
+        self.fresh = False
+
+    def recorded(self, op: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+        stored = (self.plan.get(EXPANSION) or {}).get(str(op.get(ROW)))
+        if stored is None or ROW not in op:
+            return None
+        return [{k: v for k, v in o.items() if k != MEMBER} for o in expand_ops(stored)]
+
+    def record(self, op: Dict[str, Any], found: List[Dict[str, Any]], reg) -> None:
+        if ROW not in op:
+            return
+        plain = [{k: v for k, v in o.items() if k not in (ROW, MEMBER)} for o in found]
+        self.plan.setdefault(EXPANSION, {})[str(op[ROW])] = json.loads(json.dumps(pack_ops(plain, reg)))
+        self.fresh = True
+
+    def save(self) -> None:
+        if not self.fresh:
+            return
+        self.fresh = False
+        try:
+            self.remember()
+        except PlaidAPIError as e:
+            if getattr(e, 'status', 0) == 413:
+                self.forget()
+                raise ValueError('the plan is too large to apply in one go. Ask the assistant to plan it '
+                                 'in parts') from e
+            raise
+
+    def forget(self) -> None:
+        self.plan.pop(EXPANSION, None)
+
+
+@contextmanager
+def expanding(client, expansion: Optional['Expansion']):
+    """``expansion`` on the client for the block, where every app's
+    ``opkind.resolve_ops`` finds it."""
+    from .opkind import EXPANDING
+    if expansion is None:
+        yield
+        return
+    setattr(client, EXPANDING, expansion)
+    try:
+        yield
+    finally:
+        setattr(client, EXPANDING, None)
+
+
 def forget_held(documents: List[Dict[str, Any]]) -> None:
     """A run that wrote nothing leaves no versions to repeat: the next one
     holds the documents as they are then."""

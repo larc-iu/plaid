@@ -83,8 +83,8 @@ from .conversation import (ConversationStore, MissingConversation, assistant_ite
                            find_plan, partial_note, partial_tally, pending_kept, plan_settling,
                            proposed_changes, prune, record_budget, turn_ending)
 from .opkind import ROW
-from .plan import (HELD_FROM, DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock,
-                   drawable, forget_held, held_from, holding, outcome_unknown)
+from .plan import (EXPANSION, HELD_FROM, DocumentsBusy, Expansion, PlanError, PlanOutOfDate, ScopeMoved,
+                   documents_to_lock, drawable, expanding, forget_held, held_from, holding, outcome_unknown)
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -750,7 +750,8 @@ class BaseAssistantService(BaseService):
             when the conversation moved on, which `_write` reports rather than
             raising."""
             return self._write(store, conv_id,
-                               plan_settling(plan_id, status, note, documents=plan.get('documents'), **fields),
+                               plan_settling(plan_id, status, note, documents=plan.get('documents'),
+                                             expansion=plan.get(EXPANSION), **fields),
                                request_id, model)
 
         # A plan that stopped partway is settled: finishing it is a new plan.
@@ -818,17 +819,19 @@ class BaseAssistantService(BaseService):
         # makes while the block runs, the record's too, which would leave the
         # card pending over a plan that stopped partway.
         def remember():
-            """Write the plan's documents as the run holds them, the approval
-            still pending."""
-            return self._write(store, conv_id, plan_settling(plan_id, documents=plan.get('documents')),
+            """Write the plan's documents as the run holds them, and what its
+            scopes resolved to, the approval still pending."""
+            return self._write(store, conv_id, plan_settling(plan_id, documents=plan.get('documents'),
+                                                             expansion=plan.get(EXPANSION)),
                                request_id, model, pending=(meta or {}).get('pending'))
+        expansion = Expansion(plan, remember)
 
         try:
             with holding(client, self.documents_to_lock(ops, documents)):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
                                                  index, conv, settled, remember, stamp_mode, contributor, store,
                                                  response_helper, conv_id, proposed_by(item),
-                                                 item['service'])
+                                                 item['service'], expansion)
         except DocumentsBusy as e:
             settled()
             name = next((d.get('name') for d in documents
@@ -877,7 +880,7 @@ class BaseAssistantService(BaseService):
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, remember, stamp_mode, contributor, store,
-                           response_helper, conv_id, detail, proposer):
+                           response_helper, conv_id, detail, proposer, expansion=None):
         """The staleness check and the writes, under the documents' locks.
         ``detail`` and ``proposer`` are the model and version, and the service
         id, of the turn that proposed the plan: the writes name that assistant
@@ -920,12 +923,15 @@ class BaseAssistantService(BaseService):
                 # Each op names its row on the card, so a plan that stops
                 # partway can say which changes were written.
                 try:
-                    counts = self.execute_plan(client, [{**op, ROW: i} for i, op in enumerate(ops)],
-                                               source=source,
-                                               label=label, project=project,
-                                               stamp_mode=stamp_mode, contributor=contributor,
-                                               requester=store.user_id, detail=detail,
-                                               seed=plan_id)
+                    # A scope reads what an earlier run of this plan found
+                    # (`core.plan.Expansion`), or records what it finds.
+                    with expanding(client, expansion):
+                        counts = self.execute_plan(client, [{**op, ROW: i} for i, op in enumerate(ops)],
+                                                   source=source,
+                                                   label=label, project=project,
+                                                   stamp_mode=stamp_mode, contributor=contributor,
+                                                   requester=store.user_id, detail=detail,
+                                                   seed=plan_id)
                 except PlanError as e:
                     # History names what was written, not the whole plan.
                     if e.wrote:
@@ -957,8 +963,10 @@ class BaseAssistantService(BaseService):
                 why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
                 if not written:
                     # Nothing landed, so the next approval holds the versions
-                    # the documents have then.
+                    # the documents have then, and finds what they hold then.
                     forget_held(documents)
+                    if expansion is not None:
+                        expansion.forget()
                     settled()
                     response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
                     return
@@ -995,6 +1003,8 @@ class BaseAssistantService(BaseService):
         except ValueError as e:
             def rejected(e=e):
                 forget_held(documents)
+                if expansion is not None:
+                    expansion.forget()
                 settled()
                 response_helper.error(f'The plan was rejected before anything was written: {e}')
             return rejected

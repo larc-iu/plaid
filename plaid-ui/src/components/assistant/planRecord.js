@@ -11,8 +11,9 @@
 // applied, and in `proposed` either way.
 export const SETTLED_ROWS_MAX = 200;
 
-// A settled plan's card without what only approving it needed: the ops and
-// the documents they were checked against. The card is drawn from `changes`
+// A settled plan's card without what only approving it needed: the ops, the
+// documents they were checked against, and what its corpus-wide changes found
+// while an approval ran (`expansion`). The card is drawn from `changes`
 // and `labels`, of which the first SETTLED_ROWS_MAX stay, and `omitted` says
 // what the rest held: how many rows, and of those how many rewrote the text
 // and how many replaced a person's work, the counts the card states. The
@@ -32,8 +33,8 @@ export const compactPlan = (item) => {
   const changes = Array.isArray(plan.changes) ? plan.changes : [];
   const labels = Array.isArray(plan.labels) ? plan.labels : [];
   const rows = Math.max(changes.length, labels.length);
-  if (!('ops' in plan) && rows <= SETTLED_ROWS_MAX) return item;
-  const { ops, documents: _documents, ...kept } = plan;
+  if (!('ops' in plan) && !('expansion' in plan) && rows <= SETTLED_ROWS_MAX) return item;
+  const { ops, documents: _documents, expansion: _expansion, ...kept } = plan;
   if ('ops' in plan) kept.opCount = (ops || []).length;
   if (rows > SETTLED_ROWS_MAX) {
     const dropped = changes.slice(SETTLED_ROWS_MAX);
