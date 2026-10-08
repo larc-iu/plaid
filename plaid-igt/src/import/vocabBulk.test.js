@@ -48,6 +48,25 @@ describe('detectDelimiter', () => {
   it('treats separator-free text as a single tab-separated column', () => {
     expect(detectDelimiter('perro\ngato')).toBe('\t');
   });
+
+  it('looks only outside quoted cells', () => {
+    // A tab inside a quoted CSV cell does not make the file tab-separated.
+    const csv = 'form,gloss\nka,"I\tme"\nnu,mother\n';
+    expect(detectDelimiter(csv)).toBe(',');
+    expect(parseTable(csv).rows.map((r) => r.cells)).toEqual([
+      ['form', 'gloss'],
+      ['ka', 'I\tme'],
+      ['nu', 'mother'],
+    ]);
+    // Nor do commas inside quoted cells outvote the semicolons.
+    expect(detectDelimiter('form;gloss\nka;"I, me, myself"\nnu;"mother, mum"\n')).toBe(';');
+    // A quote mid-cell or one that never closes is a character like any other.
+    expect(detectDelimiter('form\tgloss\nka\t5" nail\n')).toBe('\t');
+    expect(detectDelimiter('"form\tgloss\nka\tI\n')).toBe('\t');
+    // A quoted cell with a doubled quote and a tab, then a real tab.
+    expect(detectDelimiter('"a ""b""\tc",d\n')).toBe(',');
+    expect(detectDelimiter('"a ""b"""\td\n')).toBe('\t');
+  });
 });
 
 describe('parseDelimited', () => {

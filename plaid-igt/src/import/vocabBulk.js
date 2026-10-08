@@ -106,14 +106,40 @@ export const DEFAULT_STRATEGIES = {
 // 1. parsing
 // ---------------------------------------------------------------------------
 
+// The text outside quoted cells. A quote opens a cell only at the start of
+// one (after a line break or any of the delimiters), "" inside is a literal
+// quote, and a quote that never closes opens nothing.
+const SEPARATORS = new Set(['\t', ',', ';', '\n', '\r']);
+const unquoted = (text) => {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"' && (i === 0 || SEPARATORS.has(text[i - 1]))) {
+      let j = i + 1;
+      while (j < text.length && !(text[j] === '"' && text[j + 1] !== '"')) {
+        j += text[j] === '"' ? 2 : 1;
+      }
+      if (j < text.length) {
+        i = j + 1;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+};
+
 /**
- * Pick the delimiter from the text itself. A tab anywhere wins, because
- * spreadsheets paste as TSV and a TSV cell may well contain a comma. Then
- * semicolon (the separator Excel uses in comma-decimal locales), then comma.
- * Text with no separator at all parses as a single Form column.
+ * Pick the delimiter from the text itself, outside quoted cells. A tab
+ * anywhere wins, because spreadsheets paste as TSV and a TSV cell may well
+ * contain a comma. Then semicolon (the separator Excel uses in comma-decimal
+ * locales), then comma. Text with no separator at all parses as a single Form
+ * column.
  */
 export const detectDelimiter = (text) => {
-  const sample = String(text ?? '').slice(0, 64 * 1024);
+  const sample = unquoted(String(text ?? '').slice(0, 64 * 1024));
   if (sample.includes('\t')) return '\t';
   const semis = (sample.match(/;/g) || []).length;
   const commas = (sample.match(/,/g) || []).length;
