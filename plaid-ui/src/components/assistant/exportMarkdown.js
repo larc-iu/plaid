@@ -4,6 +4,7 @@
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
 import { fencedLines, linkifyCitations, markdownText } from './citations.js';
+import { omittedLine, rowsOmitted } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
   couldNotOpen,
@@ -70,6 +71,9 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
   const where = inProject ? ` in ${markdownText(inProject)}` : '';
   const lines = [`**Proposed changes${where}:** ${plan.summary || ''} (${said})`, ''];
   (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
+  // A long settled plan keeps its first rows only (planRecord.js).
+  const omitted = rowsOmitted(plan);
+  if (omitted > 0) lines.push('', omittedLine(omitted));
   return lines.join('\n');
 };
 

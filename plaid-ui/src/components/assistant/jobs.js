@@ -224,7 +224,9 @@ export const persistConv = (
             const put = await client.userData.put(
               userId,
               convKey(app, projectId, c.id),
-              { messages: c.messages, display: c.display },
+              // Every settled plan as it is kept (planRecord.js), as the
+              // service writes them too.
+              { messages: c.messages, display: c.display.map(compactPlan) },
               { version: c.rev?.conv },
             );
             c.rev = { ...c.rev, conv: put?.version };

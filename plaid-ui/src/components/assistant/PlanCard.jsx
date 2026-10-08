@@ -15,8 +15,10 @@ import { cn } from '../../lib/utils.js';
 import {
   collapseGroups,
   groupRows,
+  omittedLine,
   planRows,
   ROWS_COLLAPSED,
+  rowsOmitted,
   textRewrites,
   workReplaced,
 } from './planChanges.js';
@@ -76,10 +78,19 @@ export const PlanCard = ({
   // annotation can be set again, a transcription that has been retyped is
   // gone. The summary counts a text edit alongside a field value, which reads
   // as one more line of the same thing, so the card says it separately.
-  const rewrites = useMemo(() => textRewrites(allRows), [allRows]);
+  // A settled plan's record keeps its first rows, and counts what the rest
+  // held (`omitted`, planRecord.js), so these stay the plan's own totals.
+  const omitted = rowsOmitted(plan);
+  const rewrites = useMemo(
+    () => textRewrites(allRows) + (Number(plan.omitted?.writesText) || 0),
+    [allRows, plan],
+  );
   // Approving is the person's own act, so a plan may change what someone made
   // or accepted, and the card says how many of its changes do.
-  const replaced = useMemo(() => workReplaced(allRows), [allRows]);
+  const replaced = useMemo(
+    () => workReplaced(allRows) + (Number(plan.omitted?.replacesWork) || 0),
+    [allRows, plan],
+  );
   const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
   const shown = expanded ? { groups, hidden: 0 } : collapseGroups(groups);
@@ -242,6 +253,13 @@ export const PlanCard = ({
                 ))}
               </Fragment>
             ))}
+            {omitted > 0 && shown.hidden === 0 && (
+              <tr>
+                <td colSpan={2} className="pt-2 text-muted-foreground" data-testid="rows-omitted">
+                  {omittedLine(omitted)}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -254,7 +272,8 @@ export const PlanCard = ({
           }}
           className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          <ChevronDown className="h-3 w-3" /> Show all {allRows.length}
+          <ChevronDown className="h-3 w-3" />{' '}
+          {omitted > 0 ? `Show ${allRows.length}` : `Show all ${allRows.length}`}
         </button>
       )}
       {stale && !dismissed && !readOnly && (

@@ -26,7 +26,7 @@ from plaid_client.transforms import transform_request
 from datetime import datetime, timedelta, timezone
 
 from plaid_agent.core.conversation import (
-    PROPOSED_MAX, PROPOSED_VALUE_MAX, assistant_item, compact_plan, error_item, now_iso, proposed_changes,
+    PROPOSED_MAX, PROPOSED_VALUE_MAX, SETTLED_ROWS_MAX, assistant_item, compact_plan, error_item, now_iso, proposed_changes,
     user_item)
 from plaid_agent.igt.service import AssistantService as IgtService
 from plaid_agent.ud.service import AssistantService as UdService
@@ -88,6 +88,22 @@ def _item(ops, status, keys, docs=None):
             'settled_at': '2026-09-28T12:00:00.000Z'}
 
 
+def _long(rng, n, status, settled_before=False):
+    """A plan of more rows than a settled one keeps, each row located as a
+    service locates it, some rewriting the text or replacing work. Settled
+    before the cap, it has no ops left and every row still."""
+    changes = [{'label': f'r{i}', 'change': 'Gloss = x',
+                'where': {'kind': 'token', 'document_id': f'd{i % 3}', 'document_name': 'T', 'sentence': i},
+                'writes_text': rng.random() < 0.05, 'replaces_work': rng.choice([0, 0, 0, 1, 3])}
+               for i in range(n)]
+    item = _item([_op(rng) for _ in range(n)], status, rng.choice(KEYS))
+    item['plan'] = {**item['plan'], 'changes': changes, 'labels': [c['label'] for c in changes]}
+    if settled_before:
+        plan = {k: v for k, v in item['plan'].items() if k not in ('ops', 'documents')}
+        item['plan'] = {**plan, 'op_count': n}
+    return item
+
+
 def _real_plans():
     """The plans the three assistants actually stage, as the stale tests stage them."""
     out = []
@@ -111,6 +127,11 @@ def _cases():
         cases.append(_item(ops, rng.choice(['applied', 'discarded', 'stale', None]), rng.choice(KEYS)))
     cases.append(_item([_group(rng, PROPOSED_MAX + 17)], 'discarded', KEYS[0]))
     cases.append(_item([_group(rng, PROPOSED_MAX), _op(rng)], 'stale', KEYS[2]))
+    for status in ('applied', 'discarded', 'stale', 'replaced', 'partial', None):
+        cases.append(_long(rng, SETTLED_ROWS_MAX + rng.randrange(1, 400), status))
+        cases.append(_long(rng, SETTLED_ROWS_MAX + rng.randrange(1, 400), status, settled_before=True))
+    cases.append(_long(rng, SETTLED_ROWS_MAX, 'applied'))
+    cases.append(_long(rng, SETTLED_ROWS_MAX + 1, 'applied', settled_before=True))
     cases.append({'kind': 'assistant', 'text': 'no plan', 'plan': None, 'status': None})
     cases.append(user_item('a question'))
     cases.append(error_item('Stopped.', stopped=True, model='m', steps=[{'id': 'c1', 'name': 'search',
@@ -157,6 +178,10 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     assert any(p[0] is None for p in flat), 'an op with no kind'
     assert any(len(p) == 4 and p[3] for p in flat) and any(len(p) == 4 and p[3] is None for p in flat), 'a second end'
     assert any(c.get('status') is None and c.get('plan') for c in cases), 'an undecided plan'
+    kept = [compact_plan(c)['plan'] for c in cases if c.get('plan') and c.get('status')]
+    assert any(p.get('omitted', {}).get('writes_text') and p['omitted'].get('replaces_work') for p in kept), \
+        'rows cut, with what they held'
+    assert any(len(p.get('changes') or []) == SETTLED_ROWS_MAX and 'omitted' not in p for p in kept), 'at the cap'
 
 
 def test_the_service_and_the_browser_write_the_same_record(compared):

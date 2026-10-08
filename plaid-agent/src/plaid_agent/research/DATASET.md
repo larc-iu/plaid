@@ -142,7 +142,7 @@ One row per plan.
 | proposed_kept | how many of them `plan_changes.jsonl` has (at most 500) |
 | proposed_source | `record`, `derived_from_ops` or `none` |
 | op_count | the plan's operations as the card stored them (a bulk row is one) |
-| rows | rows on the plan card |
+| rows | rows on the plan card, those a settled plan of more than 200 no longer keeps included |
 | as_human | the approver had the changes recorded as their own work, not the assistant's |
 | contributed | the approver's work is reviewed in the project, so the changes were stamped as their contribution |
 | partly_applied, rows_written | for a partial plan: the card rows written in full |

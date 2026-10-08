@@ -23,14 +23,23 @@ export const workReplaced = (rows) =>
 // change to a person's work, is not something to approve unread.
 const alwaysShown = (r) => r.writesText || r.replacesWork;
 
+// How many rows a settled plan's record no longer holds (planRecord.js).
+export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
+
+// The line that ends such a plan's list of changes, on the card and in the
+// exports.
+export const omittedLine = (n) =>
+  n === 1 ? 'and 1 more change' : `and ${n.toLocaleString('en-US')} more changes`;
+
 // The changes to show, in plan order: the service's located changes when
 // they line up with the ops, else the labels alone.
 export const planRows = (plan) => {
   // A settled plan keeps its changes and the count of its ops, not the ops
-  // themselves (`compactPlan` in jobs.js).
+  // themselves, and of a long one only the first rows (`compactPlan` in
+  // planRecord.js), the rest counted in `omitted`.
   const opCount = plan?.opCount ?? (plan?.ops || []).length;
   const changes = plan?.changes || [];
-  if (changes.length && changes.length === opCount) {
+  if (changes.length && changes.length === opCount - rowsOmitted(plan)) {
     return changes.map((c, i) => ({
       index: i,
       where: c.where || null,

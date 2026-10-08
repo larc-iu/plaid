@@ -19,7 +19,7 @@ import pytest
 import test_stale_by_sentence as sbs
 
 from plaid_agent.core.conversation import (
-    PROPOSED_MAX, PROPOSED_VALUE_MAX, ConversationStore, assistant_item, build_meta, compact_plan,
+    PROPOSED_MAX, PROPOSED_VALUE_MAX, SETTLED_ROWS_MAX, ConversationStore, assistant_item, build_meta, compact_plan,
     proposed_changes, settle_plan, user_item)
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt.service import AssistantService as IgtService
@@ -161,6 +161,68 @@ def test_settling_stamps_when_and_an_undecided_plan_is_left_whole():
     assert 'settled_at' not in out['display'][2] and out['display'][2]['plan']['ops']
     # Compacting twice changes nothing: the record reads the same.
     assert compact_plan(d) is d
+
+
+# --- a long settled plan keeps its first rows (FX10-CARD, 2026-10-08) -------------
+
+def _long(n, status, settled_before=False):
+    """A plan of ``n`` located rows, every 40th rewriting the text and every
+    25th replacing two of a person's values. Settled before the row cap, it
+    has no ops and every row still."""
+    changes = [{'label': f'r{i}', 'change': 'x', 'where': {'kind': 'token', 'document_id': 'd1', 'sentence': i},
+                'writes_text': i % 40 == 0, 'replaces_work': 2 if i % 25 == 0 else 0} for i in range(n)]
+    item = _item([{'kind': 'set_span', 'token_id': f't{i}', 'value': 'v'} for i in range(n)], status)
+    item['plan'] = {**item['plan'], 'changes': changes, 'labels': [c['label'] for c in changes]}
+    if settled_before:
+        kept = {k: v for k, v in item['plan'].items() if k not in ('ops', 'documents')}
+        item['plan'] = {**kept, 'op_count': n}
+    return item
+
+
+def test_a_long_settled_plan_keeps_its_first_rows_and_counts_the_rest():
+    n = 2631
+    full = _long(n, 'applied')
+    plan = compact_plan(full)['plan']
+    assert plan['changes'] == full['plan']['changes'][:SETTLED_ROWS_MAX]
+    assert plan['labels'] == full['plan']['labels'][:SETTLED_ROWS_MAX]
+    rest = full['plan']['changes'][SETTLED_ROWS_MAX:]
+    assert plan['omitted'] == {'count': n - SETTLED_ROWS_MAX,
+                               'writes_text': sum(1 for c in rest if c['writes_text']),
+                               'replaces_work': sum(c['replaces_work'] for c in rest)}
+    assert plan['op_count'] == n
+    # What it proposed, the research record, is as it was.
+    assert plan['proposed'] == full['plan']['proposed'] and plan['proposed_count'] == n
+    done = compact_plan(full)
+    assert compact_plan(done) is done
+
+
+def test_a_plan_settled_before_the_cap_is_cut_and_one_at_it_or_undecided_is_not():
+    old = _long(900, 'replaced', settled_before=True)
+    plan = compact_plan(old)['plan']
+    assert len(plan['changes']) == len(plan['labels']) == SETTLED_ROWS_MAX
+    assert plan['omitted']['count'] == 900 - SETTLED_ROWS_MAX and plan['op_count'] == 900
+    at = _long(SETTLED_ROWS_MAX, 'stale', settled_before=True)
+    assert compact_plan(at) is at
+    undecided = _long(900, None)
+    assert compact_plan(undecided) is undecided
+
+
+def test_every_write_of_the_record_cuts_every_settled_plan(spec):
+    """Not only the plan being settled: a record that grew before the cap
+    shrinks on the service's next write of it, and an undecided plan stays
+    whole."""
+    client = spec['client']()
+    store = ConversationStore(client, 'u@x', spec['pid'], spec['app'])
+    conv = {'messages': [], 'display': [user_item('q'), _long(900, 'applied', settled_before=True),
+                                        _long(700, None)]}
+    store.save('c1', conv, build_meta(None, 'c1', conv, 'svc', 'm'))
+    later = ConversationStore(client, 'u@x', spec['pid'], spec['app'])
+    assert later.write('c1', lambda c: {**c, 'display': c['display'] + [user_item('again')]},
+                       lambda c, m: m)
+    stored, _ = later.load('c1')
+    assert len(stored['display'][1]['plan']['changes']) == SETTLED_ROWS_MAX
+    assert stored['display'][1]['plan']['omitted']['count'] == 900 - SETTLED_ROWS_MAX
+    assert len(stored['display'][2]['plan']['changes']) == 700 and stored['display'][2]['plan']['ops']
 
 
 # --- the service's three outcomes, in every app ------------------------------------

@@ -366,7 +366,9 @@ class Conversations:
             'settled_at_source': 'record' if settled_at else None,
             'seconds_to_settle': seconds_between(proposed_at, settled_at),
             'proposed_count': count, 'proposed_kept': len(proposed or []), 'proposed_source': source,
-            'op_count': op_count, 'rows': len(plan.get('labels') or []),
+            'op_count': op_count,
+            # A settled plan keeps its first rows and counts the rest (`compact_plan`).
+            'rows': len(plan.get('labels') or []) + int((plan.get('omitted') or {}).get('count') or 0),
             'as_human': item.get('as_human'), 'contributed': bool(item.get('contributed')),
             'partly_applied': status == 'partial', 'rows_written': len(item.get('written') or []),
             'outcome_unknown': bool(item.get('unknown')),

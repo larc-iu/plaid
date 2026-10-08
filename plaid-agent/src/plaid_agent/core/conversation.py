@@ -200,6 +200,9 @@ class ConversationStore:
             if new is None:
                 return False
             if new is not current:
+                # Every settled plan as it is kept (`compact_plan`), as the
+                # browser writes them too.
+                new = {**new, 'display': compact_settled(new['display'])}
                 try:
                     self._put(ckey, {'messages': new['messages'], 'display': new['display']},
                               guarded=True)
@@ -502,26 +505,57 @@ def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str], valu
     return out, total
 
 
+#: How many of a settled plan's rows (``changes`` and ``labels``) the record
+#: keeps. A plan of thousands of changes kept its whole card once settled,
+#: about half a kilobyte a row, and a conversation of a few such plans filled
+#: the record (5MB) with cards nobody could approve any more (2026-10-08).
+SETTLED_ROWS_MAX = 200
+
+
 def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     """A settled plan's card without what only approving it needed.
 
     ``ops`` and ``documents`` are what approval executes and checks, and they
     were most of a long conversation's weight (Eline's 1MB thread was 618KB of
-    plans). Once the plan is applied, discarded or out of date, nothing reads
-    them again: the card is drawn from ``changes`` and ``labels``, and the
-    audit log is the record of what was written. ``op_count`` keeps the card's
-    rows lined up with the ops they stood for (`planRows` in plaid-ui).
+    plans). Once the plan is applied, discarded, out of date or replaced,
+    nothing reads them again: the card is drawn from ``changes`` and
+    ``labels``, and the audit log is the record of what was written.
+    ``op_count`` keeps the card's rows lined up with the ops they stood for
+    (`planRows` in plaid-ui).
+    Of ``changes`` and ``labels`` the first :data:`SETTLED_ROWS_MAX` stay, and
+    ``omitted`` says what the rest held: how many rows, how many of them
+    rewrote the text and how many of a person's values they replaced, the
+    totals the card states.
     What each change targeted and proposed stays, small, as ``proposed``
     (`proposed_changes`, written when the plan was staged), since a plan that
     wrote nothing is in no log.
     An undecided plan is never compacted: it can still be approved.
+    Every write of the record runs this over every settled plan, and it
+    answers the same item when there is nothing to drop.
     Mirrored by ``compactPlan`` in plaid-ui.
     """
     plan = item.get('plan')
-    if not plan or item.get('status') is None or 'ops' not in plan:
+    if not plan or item.get('status') is None:
+        return item
+    changes = plan.get('changes') if isinstance(plan.get('changes'), list) else []
+    labels = plan.get('labels') if isinstance(plan.get('labels'), list) else []
+    rows = max(len(changes), len(labels))
+    if 'ops' not in plan and rows <= SETTLED_ROWS_MAX:
         return item
     kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents')}
-    kept['op_count'] = len(plan.get('ops') or [])
+    if 'ops' in plan:
+        kept['op_count'] = len(plan.get('ops') or [])
+    if rows > SETTLED_ROWS_MAX:
+        dropped = [c for c in changes[SETTLED_ROWS_MAX:] if isinstance(c, dict)]
+        if 'changes' in plan:
+            kept['changes'] = changes[:SETTLED_ROWS_MAX]
+        if 'labels' in plan:
+            kept['labels'] = labels[:SETTLED_ROWS_MAX]
+        kept['omitted'] = {
+            'count': rows - SETTLED_ROWS_MAX,
+            'writes_text': sum(1 for c in dropped if c.get('writes_text')),
+            'replaces_work': sum(int(c.get('replaces_work') or 0) for c in dropped),
+        }
     return {**item, 'plan': kept}
 
 
