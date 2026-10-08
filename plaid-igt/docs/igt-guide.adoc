@@ -755,6 +755,7 @@ Alongside the fields sits the **ignored tokens** rule, usually punctuation, so t
 Its **Ignore punctuation and symbols** option takes every punctuation mark and symbol except ∅ and pictographs such as ★.
 Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
 An orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed here.
+Its **Explicit list** option takes only the tokens you list, separated by commas. To list the comma itself, write it as an entry of its own: `., ,, ;` ignores the full stop, the comma and the semicolon.
 A change to the rule that hides words already annotated is held with a count, `Not saved. This change hides the annotations on 12 words.`, until you press **Save** beside it, and **Cancel** puts the rule back.
 Their annotations are still stored, and show again if the rule changes back.
 

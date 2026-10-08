@@ -124,6 +124,7 @@ A `Sentence:` line is read as the sentence's text.
 Onto a document from Plaid IGT, the document's own text stays the sentence's text.
 
 The report lists each note under its file, with its sentence number.
+A file that numbers its sentences otherwise than 1, 2, 3, such as an excerpt that starts at `snt5` or a file that skips a number, keeps its numbers: the editor, the report and the assistant call its first sentence 5, a new node there is named `s5…`, and the export writes `snt5` again.
 A note that recurs across sentences is one line with the count (`5 sentences: No sentence id line. ...`).
 
 A sentence whose graph the parser cannot read is kept as text and written back unchanged on export, and the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
@@ -143,8 +144,8 @@ Each sentence starts with a bare `# :: snt1` line.
 The sentence's text is written on a `Sentence:` line after the gloss lines of the words and morphemes, only when it is not the words joined by spaces (`Sentence: Ali, eve gitti.` under `Words: Ali eve gitti`).
 A sentence whose text has more items than its words, such as punctuation standing apart (`Tu viens ?`) or a word holding a space, has no `Sentence:` line.
 The whole file is written in Unicode NFC.
-The export numbers the sentences 1, 2, 3 in order, except in a document imported from a file whose numbers start elsewhere.
-There each sentence keeps its file's number, and a sentence added in Plaid IGT takes its position, or the next number past the highest when that one is taken. No number is written twice.
+The export numbers the sentences 1, 2, 3 in order, except in a document imported from a file that numbers them otherwise.
+There each sentence keeps its file's number, and a sentence added in Plaid IGT takes its position, or the next number past the highest when that one is taken. No number is written twice. The sentence's header shows the same number, and such a file imported again reads back as it was exported.
 A triple between nodes of two sentences is written in the block of the later one.
 A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
 The file holds one graph a sentence, the root's. A part of the sentence the root does not reach (a node made with no parent, or what a deleted edge cut off) is shown on the canvas and marked as an error, and the export leaves it out, with its alignment and its document-level relations.
@@ -244,7 +245,7 @@ A document with no sentences at all keeps every node and edge, and shows `No sen
 Tokenizing it again puts each node back in its sentence.
 
 When sentences are added or removed before a sentence, its variables take its new number and keep the rest of the name (`s2v` in what is now sentence 1 is `s1v`).
-Variables are not renumbered in a document whose first `# :: snt` number, as imported, is not 1, such as an excerpt that starts at `snt5`. Its variables stay as the file named them.
+Variables are not renumbered in a document imported from a file that numbers its sentences otherwise than 1, 2, 3, such as an excerpt that starts at `snt5`. Its variables stay as the file named them.
 A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, its variables take the sentence's number.
 
 When a sentence is typed in before an existing one in Plaid IGT, the existing sentence keeps its imported lines: its number, its gloss and metadata lines, and its document-level relations.

@@ -172,7 +172,7 @@ When a tokenizer service makes sentences and tokens only, opening the document i
 
 After tokenizing, the text is shown with each token as a clickable chip:
 
-* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries. Splitting a sentence removes the dependency relations that would cross the new boundary, wherever the split is made. When the split would also delete annotations made outside this editor that cross it, it asks first and counts them.
+* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries. Removing a boundary joins the sentence to the one above it, with any sentence with no words between them. Splitting a sentence removes the dependency relations that would cross the new boundary, wherever the split is made. When the split would also delete annotations made outside this editor that cross it, it asks first and counts them.
 * A **teal** chip marks a **multi-word token** (a token that contains more than one word).
 
 Hover over a token to open its panel, where you can:
@@ -196,6 +196,7 @@ It shows each sentence as a row of editable cells above an interactive dependenc
 Sentences come 25 to a page, with a pager above and below them.
 A document reopens on the page you left it on, and anything that reaches a particular sentence (a search result, a review sweep, a link from the assistant) turns to its page first.
 Sentence numbers belong to the document, not the page, so sentence 40 is sentence 40 wherever it is shown.
+A sentence with no words, such as a line of punctuation another app left untokenized, has no row and no number, and the sentences after it number on.
 
 A token another app added after the document was opened shows only its form, and its cells cannot be edited. An edit on it says `Reopen the document to annotate this word.` Opening the document again makes it a word like the others.
 
@@ -508,6 +509,7 @@ Opening one from there keeps you on the screen you are on.
 
 A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
 **Ask**, beside **Edit text** under a sentence, puts that sentence into the question, and you can take it out again before sending.
+The assistant numbers sentences as the Annotate tab does, and shows a sentence's own `sent_id` beside its number, so you can name a sentence by either.
 
 Typing **@** in the message box names something without leaving the message: the sentences of the document you have open, and the documents of the project.
 Sentences are matched on what they say, so **@** followed by a word finds the sentence that contains it.
