@@ -53,6 +53,7 @@ import {
   targetedAnswer,
   parseTable,
   delimiterName,
+  bodyStart,
   columnsAt,
   guessColumns,
   rowsToEntries,
@@ -335,6 +336,21 @@ const LegendEntry = ({ name, note, children }) => (
   </div>
 );
 
+// The files a spreadsheet saves in its own format, which are not text.
+const SPREADSHEET_FILE = /\.(xlsx|xlsm|xlsb|xls|ods|numbers)$/i;
+
+const TEXT_INPUT_TYPES = new Set(['text', 'number', 'search', '']);
+const isTextField = (el) =>
+  el?.tagName === 'TEXTAREA' ||
+  (el?.tagName === 'INPUT' && TEXT_INPUT_TYPES.has(el.getAttribute('type') ?? ''));
+
+// A row's first few non-blank cells, as the columns step names a row it leaves out.
+const cellsPreview = (row) =>
+  (row?.cells ?? [])
+    .filter((c) => String(c).trim() !== '')
+    .slice(0, 4)
+    .join(' · ');
+
 export const BulkAddDialog = ({
   open,
   onOpenChange,
@@ -370,6 +386,8 @@ export const BulkAddDialog = ({
   // Rows above the table (a title, a second header line), left out.
   const [skip, setSkip] = useState(0);
   const [hasHeader, setHasHeader] = useState(false);
+  // A second header line under the header (machine keys), left out too.
+  const [subHeader, setSubHeader] = useState(false);
   const [mapping, setMapping] = useState([]);
   // field -> the value every row gets for it.
   const [constants, setConstants] = useState({});
@@ -395,27 +413,63 @@ export const BulkAddDialog = ({
     const guess = guessColumns(rows, fieldNames, humanizeFieldName);
     setSkip(guess.skip);
     setHasHeader(guess.hasHeader);
+    setSubHeader(guess.subHeader);
     setMapping(guess.mapping);
   }, [raw, rows, fieldNames]);
 
+  // The start row is numbered as the spreadsheet and the review number it,
+  // blank lines included (parseDelimited's `line`).
+  const lineOf = (i) => rows[i]?.line ?? 1;
+  const lastLine = rows.length ? rows[rows.length - 1].line : 1;
   // What is typed in the start-row box, applied on Enter or when it loses
   // focus. Applied on every keystroke, "12" went through row 1 on the way.
   const [startDraft, setStartDraft] = useState('1');
-  useEffect(() => setStartDraft(String(skip + 1)), [skip]);
+  const [startError, setStartError] = useState(null);
+  // Set by Escape, so the blur that follows puts the row back.
+  const startCancelled = useRef(false);
+  useEffect(() => setStartDraft(String(rows[skip]?.line ?? 1)), [rows, skip]);
 
-  // Another first row is another header, so the columns are read again.
-  const startAt = (row) => {
-    const next = Math.max(0, Math.min(row, rows.length - 1));
-    const at = columnsAt(rows, next, fieldNames, humanizeFieldName);
-    setSkip(next);
-    setStartDraft(String(next + 1));
+  const readColumns = (at) => {
     setHasHeader(at.hasHeader);
+    setSubHeader(at.subHeader);
     setMapping(at.mapping);
   };
 
+  // Another first row is another header, so the columns are read again, by
+  // the bar for a first row since the user picked it.
+  const startAt = (index) => {
+    setSkip(index);
+    setStartDraft(String(lineOf(index)));
+    readColumns(columnsAt(rows, index, fieldNames, humanizeFieldName, { picked: true }));
+  };
+
+  const applyStart = () => {
+    const typed = startDraft.trim();
+    const keep = () => setStartDraft(String(lineOf(skip)));
+    if (startCancelled.current) {
+      startCancelled.current = false;
+      setStartError(null);
+      return keep();
+    }
+    if (!/^\d+$/.test(typed)) return keep();
+    const line = Number(typed);
+    if (line > lastLine) {
+      setStartError(`The last row is row ${n(lastLine)}.`);
+      return keep();
+    }
+    setStartError(null);
+    // A blank line starts the table at the next row that has something.
+    const index = Math.max(
+      0,
+      rows.findIndex((r) => r.line >= line),
+    );
+    if (index !== skip) startAt(index);
+    else keep();
+  };
+
   const entries = useMemo(
-    () => rowsToEntries(rows, mapping, { skip, hasHeader, normalizeValue, constants }),
-    [rows, mapping, skip, hasHeader, normalizeValue, constants],
+    () => rowsToEntries(rows, mapping, { skip, hasHeader, subHeader, normalizeValue, constants }),
+    [rows, mapping, skip, hasHeader, subHeader, normalizeValue, constants],
   );
   const plan = useMemo(
     () =>
@@ -471,6 +525,7 @@ export const BulkAddDialog = ({
     setProgress(null);
     setFailure(null);
     setReplanned(false);
+    setStartError(null);
   };
 
   const close = () => {
@@ -480,6 +535,14 @@ export const BulkAddDialog = ({
 
   const handleFile = async (picked) => {
     if (!picked) return;
+    // A spreadsheet's own file is not text. The picker leaves these out, a drop does not.
+    if (SPREADSHEET_FILE.test(picked.name || '')) {
+      notifyError(
+        `${picked.name} is a spreadsheet file. Save it as CSV or TSV and import it again.`,
+        'Failed to read the file',
+      );
+      return;
+    }
     try {
       setFile({ name: picked.name, text: await readTextFile(picked) });
       setPasted('');
@@ -702,7 +765,7 @@ export const BulkAddDialog = ({
   );
 
   const renderColumns = () => {
-    const top = skip + (hasHeader ? 1 : 0);
+    const top = bodyStart({ skip, hasHeader, subHeader });
     const sampleRows = rows.slice(top, top + SAMPLE_VALUES);
     const usedFields = mapping.filter((m) => m !== FORM && m !== IGNORE);
     // A field no column supplies can still be given one value for every row.
@@ -717,16 +780,19 @@ export const BulkAddDialog = ({
             <Input
               type="number"
               min={1}
-              max={Math.max(1, rows.length)}
+              max={lastLine}
               value={startDraft}
-              onChange={(e) => setStartDraft(e.target.value)}
-              onBlur={() => {
-                const v = parseInt(startDraft, 10);
-                if (Number.isFinite(v) && v - 1 !== skip) startAt(v - 1);
-                else setStartDraft(String(skip + 1));
+              onChange={(e) => {
+                setStartDraft(e.target.value);
+                setStartError(null);
               }}
+              onBlur={applyStart}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') {
+                  startCancelled.current = true;
+                  e.currentTarget.blur();
+                }
               }}
               className="h-7 w-20"
             />
@@ -735,25 +801,37 @@ export const BulkAddDialog = ({
             <input
               type="checkbox"
               checked={hasHeader}
-              onChange={(e) => setHasHeader(e.target.checked)}
+              onChange={(e) =>
+                readColumns(
+                  columnsAt(rows, skip, fieldNames, humanizeFieldName, {
+                    header: e.target.checked,
+                  }),
+                )
+              }
             />
             That row names the columns (don't import it)
           </label>
         </div>
+        {startError && (
+          <p className="flex items-start gap-1.5 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {startError}
+          </p>
+        )}
         {skip > 0 && (
           <p className="text-xs text-muted-foreground">
             {n(skip)} row{skip === 1 ? '' : 's'} above it {skip === 1 ? 'is' : 'are'} left out:{' '}
             <span dir="auto" className="font-mono">
-              {rows
-                .slice(0, Math.min(skip, 2))
-                .map((r) =>
-                  r.cells
-                    .filter((c) => String(c).trim() !== '')
-                    .slice(0, 4)
-                    .join(' · '),
-                )
-                .join(' / ')}
+              {rows.slice(0, Math.min(skip, 2)).map(cellsPreview).join(' / ')}
               {skip > 2 ? ' / …' : ''}
+            </span>
+          </p>
+        )}
+        {hasHeader && subHeader && (
+          <p className="text-xs text-muted-foreground">
+            The row under the header is left out:{' '}
+            <span dir="auto" className="font-mono">
+              {cellsPreview(rows[skip + 1])}
             </span>
           </p>
         )}
@@ -1121,6 +1199,14 @@ export const BulkAddDialog = ({
         className={step === 'review' ? 'max-w-4xl' : 'max-w-2xl'}
         // A stopped import has a Close in its footer too.
         closeLabel="Close import"
+        // Escape in a text field leaves the field, never the wizard. The
+        // start row puts itself back on its own Escape.
+        onEscapeKeyDown={(e) => {
+          if (isTextField(e.target)) e.preventDefault();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && isTextField(e.target)) e.target.blur();
+        }}
       >
         <DialogHeader>
           <DialogTitle>
