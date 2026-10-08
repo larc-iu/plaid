@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.workflows.igt import precedence
 
 from ..core import rules, work
+from ..core.bidi import qv
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
 from ..core.replace import replacer as core_replacer
@@ -107,8 +108,8 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
         new = rep(op.get('value') or '')
         return new if new != (op.get('value') or '') and (op.get('value') or '') != '' else None
     return _stage_rule(ws, 'replace_in_field', args, unit,
-                       change=f'{name} {shown} → "{replacement}"',
-                       head=f'{name}: replace {shown} with "{replacement}"{how}',
+                       change=f'{name} {shown} → {qv(replacement)}',
+                       head=f'{name}: replace {shown} with {qv(replacement)}{how}',
                        what='morpheme forms' if forms else f'{name} values', restate=restate)
 
 
@@ -170,8 +171,8 @@ def _scan_replace(ws: Workspace, f, rep, document: Optional[str]) -> List[Dict[s
                     continue
                 out.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
                             'span_id': sp.id if sp else None, 'value': new, 'doc': doc.id,
-                            **labelled(f'{ws.doc_label(doc.id)} {ref} "{what[:30]}"',
-                                       f'{f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else ''))})
+                            **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:30])}',
+                                       f'{f.name} {qv(cur)} → {qv(new)}' + (' (cleared)' if new == '' else ''))})
     return out
 
 
@@ -207,7 +208,7 @@ def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optio
         at = earlier.get('change_at') or 0
         head = (earlier.get('label') or '')[:max(0, at - 2)]
         out.append({**{k: v for k, v in earlier.items() if k not in ('label', 'change_at')}, 'value': new,
-                    **labelled(head, f'{f.name} "{value}" → "{new}"' + (' (cleared)' if new == '' else ''))})
+                    **labelled(head, f'{f.name} {qv(value)} → {qv(new)}' + (' (cleared)' if new == '' else ''))})
     return out
 
 
@@ -226,7 +227,7 @@ def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
             if new == old or not new.strip():
                 continue
             out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new,
-                        **labelled(v['name'], f'rename entry "{old}" → "{new}"')})
+                        **labelled(v['name'], f'rename entry {qv(old)} → {qv(new)}')})
     return out
 
 
@@ -279,8 +280,8 @@ def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, A
                         continue
                     out.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}',
                                 'value': value, 'doc': doc.id,
-                                **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} "{w.surface}"',
-                                           f'{target} = "{value}"')})
+                                **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} {qv(w.surface)}',
+                                           f'{target} = {qv(value)}')})
         return out
     staged = q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap, a.get('document'))
     if len(staged) > cap:
@@ -639,7 +640,7 @@ def _rewrite_planned(ws: Workspace, rewrites) -> None:
         at = op.get('change_at') or 0
         place = (op.get('label') or '')[:max(0, at - 2)]
         line = change_of(op) or ''
-        line = line.replace(f'"{old}"', f'"{new}"') if f'"{old}"' in line else f'{line} → "{new}"'
+        line = line.replace(qv(old), qv(new)) if qv(old) in line else f'{line} → {qv(new)}'
         ws.ops[i] = {**op, key: new, **labelled(place, line)}
 
 
@@ -733,7 +734,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                                     'a respelling cannot remove a word (retype_sentence can)')
                 check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
                 staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
-                               'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}', f'respell "{w.surface}" → "{new}"')})
+                               'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}', f'respell {qv(w.surface)} → {qv(new)}')})
                 n_words += 1
                 if not morpheme_forms:
                     continue
@@ -835,9 +836,9 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
             return None
         return value if op.get('value') != value else None
     note = _stage_rule(ws, 'set_field_for_form', args, ('value', 'values'),
-                       change=f'{f.name} = "{value}" on "{form}"',
-                       head=f'{f.name}: "{value}" on every "{form}"' + (' without a value' if only_empty else ''),
-                       what=f'occurrences of "{form}"' + (' without a value' if only_empty else ''),
+                       change=f'{f.name} = {qv(value)} on {qv(form)}',
+                       head=f'{f.name}: {qv(value)} on every {qv(form)}' + (' without a value' if only_empty else ''),
+                       what=f'occurrences of {qv(form)}' + (' without a value' if only_empty else ''),
                        restate=restate, quiet_when_empty=bool(edits))
     if edits:
         note += f' {edits} more in analyses this plan already holds, changed there.'
@@ -925,7 +926,7 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
         seg = join_morphemes([((m.get('metadata') or {}).get('form') or m.get('value') or '',
                                (m.get('metadata') or {}).get('morphType')) for m in chain])
         had_values = sum(len(spans.get(m['id']) or []) for m in chain)
-        head = ws.corpus.label_ref(w['document'], w['id'], budget) + f' "{w.get("value") or ""}"'
+        head = ws.corpus.label_ref(w['document'], w['id'], budget) + f' {qv(w.get("value") or "")}'
         op, note = analysis_op(ws, head, w.get('value') or '', w['id'], w['text'], w['begin'], w['end'],
                                existing, seg, had_values, out)
         op['doc'] = w['document']
@@ -1089,7 +1090,7 @@ def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = Non
         return ws.planned_note(0)
     view = ws.view_of_item(it['id'])
     ws.add_op({'kind': 'rename_entry', 'item_id': it['id'], 'form': new_form,
-               'label': f'Rename entry {_name(view, it)} → "{new_form}"'})
+               'label': f'Rename entry {_name(view, it)} → {qv(new_form)}'})
     return ws.planned_note(1)
 
 
@@ -1106,5 +1107,5 @@ def t_rename_document(ws: Workspace, document: str, new_name: str) -> str:
         raise ToolError(f'Another document is already named "{new_name}"; two documents with one name can only be '
                         'told apart by id. Pick a different name.')
     ws.add_op({'kind': 'rename_document', 'document_id': doc.id, 'name': new_name,
-               'label': f'Rename document {ws.doc_label(doc.id, quote=True)} → "{new_name}"'})
+               'label': f'Rename document {ws.doc_label(doc.id, quote=True)} → {qv(new_name)}'})
     return ws.planned_note(1)

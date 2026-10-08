@@ -34,6 +34,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
+from .bidi import qv
 from .limits import GUIDELINES_INLINE_CHARS
 from .opkind import PROSE
 from .tools import ToolError, truncate
@@ -403,7 +404,7 @@ def t_add_guideline(ws, title: str, body: str) -> str:
                  'body': str(body or ''),
                  # The card shows what the guideline will SAY, not a
                  # description of it: it is what the person is approving.
-                 'label': f'New guideline "{str(title).strip()}": '
+                 'label': f'New guideline {qv(str(title).strip())}: '
                           f'{_shown(opening_line(body))}'}])
     return ws.planned_note(1) + note
 
@@ -447,7 +448,7 @@ def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:
                  # write is the same one a rewrite makes and the plan cannot
                  # mean something different by the time it is applied.
                  'body': body.replace(find, replace),
-                 'label': f'Guideline "{g.title}": "{_shown(find)}" → "{_shown(replace)}"'}])
+                 'label': f'Guideline {qv(g.title)}: {qv(_shown(find))} → {qv(_shown(replace))}'}])
     return ws.planned_note(1)
 
 
@@ -459,7 +460,7 @@ def t_rewrite_guideline(ws, title: str, body: str) -> str:
         return 'That guideline already says this. Nothing planned.'
     ws.add_ops([{'kind': 'rewrite_guideline', **_staged_against(g),
                  'body': str(body),
-                 'label': f'Guideline "{g.title}": new text'}])
+                 'label': f'Guideline {qv(g.title)}: new text'}])
     return ws.planned_note(1)
 
 

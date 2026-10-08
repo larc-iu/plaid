@@ -15,6 +15,8 @@ and the counting and the summary line are the same for every app.
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
+from .bidi import iso
+
 # What a step was for. The summary counts documents and searches separately,
 # and planning steps are what the plan card then shows.
 DOCUMENT = 'document'   # read one document
@@ -79,8 +81,9 @@ def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]],
 # Shared so two apps phrase the same shapes the same way.
 
 def q(v: Any) -> str:
-    """A value as the reader sees it, in typographic quotes."""
-    return f'“{"" if v is None else v}”'
+    """A value as the reader sees it, in typographic quotes, isolated
+    (:mod:`.bidi`)."""
+    return f'“{iso(v)}”'
 
 
 def in_doc(a: Dict[str, Any]) -> str:

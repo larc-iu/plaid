@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from plaid_client import uuid7
 
 from ..core import docload, opkind
+from ..core.bidi import qv
 from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
 from ..core.refs import read_ref, same_form
@@ -277,7 +278,7 @@ class Workspace(BaseWorkspace):
         its name, and its id too where another document shares that name.
         ``quote`` puts the name in quotes (for prose), the id outside them."""
         name = self.corpus.doc_name(doc_id)
-        head = f'"{name}"' if quote else name
+        head = qv(name) if quote else name
         return head if self.corpus.ref_name(doc_id) == name else f'{head} ({doc_id})'
 
     def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,

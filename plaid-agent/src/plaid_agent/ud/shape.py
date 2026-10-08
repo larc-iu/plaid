@@ -25,6 +25,7 @@ multi-word token that a later read cannot tell apart.
 from typing import Any, Dict, List
 
 
+from ..core.bidi import qv
 from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, word_ref
 from .tools import ToolError, Workspace, resolve_in
 
@@ -126,7 +127,7 @@ def _respell(ws: Workspace, doc: UdDoc, sentence, token: Token, forms: List[str]
         staged.append({'kind': 'set_span', 'layer_id': layer, 'token_id': w.id,
                        'span_id': sp.id if sp else None, 'value': want, 'field': 'form',
                        'document_id': doc.id, 'ref': ref,
-                       'label': f'form "{w.form}" → "{form}"'})
+                       'label': f'form {qv(w.form)} → {qv(form)}'})
     ws.add_ops(staged)
     return (f'Planned respelling "{token.surface}" in s{sentence.index} as '
             + ' + '.join(f'"{f}"' for f in forms)

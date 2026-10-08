@@ -10,6 +10,7 @@ mirrors the app's own vocabDictionary.js.
 import re
 from typing import Any, Dict, Optional
 
+from ..core.bidi import qv
 from ..core.args import whole
 from ..core.tools import ToolError
 
@@ -191,7 +192,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
         shown = ', '.join(view.label(x) for x in ref_ids({'metadata': meta}, f)) or '(cleared)'
     else:
         old = before.get(f['name'], '')
-        shown = f'"{old}" → "{value}"' if old else f'= "{value}"'
+        shown = f'{qv(old)} → {qv(value)}' if old else f'= {qv(value)}'
     # The patch every later tool in the turn reads the entry through, and the
     # op that writes it: one change or none. Patched first and staged after, a
     # refused op left the field CHANGED for the rest of the turn, so a read
@@ -440,7 +441,7 @@ def t_promote_example(ws: Workspace, document: str, ref: str, entry_form: Option
     with ws.staging():
         ws.add_op(_meta_op(ws, target['id'], before, after,
                            f'entry {view.label(target["id"])}: usage example '
-                           f'{ws.doc_label(doc.id, quote=True)} {word_ref(sent, word)} "{word.surface}"'))
+                           f'{ws.doc_label(doc.id, quote=True)} {word_ref(sent, word)} {qv(word.surface)}'))
     return ws.planned_note(1)
 
 

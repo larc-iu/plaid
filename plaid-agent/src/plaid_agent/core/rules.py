@@ -36,6 +36,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 from . import fingerprint as fp
 from . import opkind
+from .bidi import qrx, qv
 from .limits import PLAN_MAX_CHANGES, PLAN_MAX_DOCUMENTS, SAMPLE_LINES
 from .plan import PlanOutOfDate, change_of
 
@@ -137,7 +138,7 @@ def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tupl
         a, b = then.get(d, (0, None)), now.get(d, (0, None))
         if a == b:
             continue
-        where = f'"{name_of(d)}"' if d is not None else 'outside any document'
+        where = qv(name_of(d)) if d is not None else 'outside any document'
         if b[0] > a[0]:
             places.append(f'{b[0] - a[0]:,} more in {where}')
         elif b[0] < a[0]:
@@ -309,19 +310,19 @@ def pattern_words(pattern: str, regex: bool) -> Tuple[str, bool]:
     a whole word``, ``^REAL$`` is ``"REAL" as the whole value``, plain text
     is itself in quotes, and anything else is ``matching "<pattern>"``."""
     if not regex:
-        return f'"{pattern}"', False
+        return qv(pattern), False
     if pattern.startswith('\\b') and pattern.endswith('\\b') and len(pattern) > 4:
         lit = _literal(pattern[2:-2])
         if lit is not None:
-            return f'"{lit}" as a whole word', False
+            return f'{qv(lit)} as a whole word', False
     if pattern.startswith('^') and pattern.endswith('$') and not pattern.endswith('\\$'):
         lit = _literal(pattern[1:-1])
         if lit is not None:
-            return f'"{lit}" as the whole value', False
+            return f'{qv(lit)} as the whole value', False
     lit = _literal(pattern)
     if lit is not None:
-        return f'"{lit}"', False
-    return f'matching "{pattern}"', True
+        return qv(lit), False
+    return f'matching {qrx(pattern)}', True
 
 
 #: Rules a plan's one-line summary names in their own words. The rest are

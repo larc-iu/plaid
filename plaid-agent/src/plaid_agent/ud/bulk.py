@@ -17,6 +17,7 @@ from collections import Counter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind, work
+from ..core.bidi import qrx, qv
 from ..core.limits import SAMPLE_LINES
 from ..core.provenance import unmark
 from ..core.history import doc_label
@@ -129,13 +130,13 @@ def resolve_replace(client, project: UdProject, op: Dict[str, Any]) -> List[Dict
         if field == 'deprel':
             out.append({'kind': 'set_deprel', 'relation_id': ch['id'], 'deprel': ch['new'],
                         'document_id': ch['document_id'], 'ref': None,
-                        'label': f'deprel "{ch["old"]}" → "{ch["new"]}"'})
+                        'label': f'deprel {qv(ch["old"])} → {qv(ch["new"])}'})
         else:
             out.append({'kind': 'set_span', 'layer_id': ch['layer_id'], 'token_id': ch['token_id'],
                         'span_id': ch['id'], 'value': ch['new'], 'field': field,
                         'feature': feature_key(field, ch['old']),
                         'document_id': ch['document_id'], 'ref': None,
-                        'label': f'{field} "{ch["old"]}" → "{ch["new"]}"'})
+                        'label': f'{field} {qv(ch["old"])} → {qv(ch["new"])}'})
     return out
 
 
@@ -184,9 +185,9 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     _clear_of_reshapes(ws, docs)
     ws.note_staged_versions({d: versions.get(d) for d in docs})
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
-    sample = [f'"{names.get(ch["document_id"], ch["document_id"])}": {field} "{ch["old"]}" → "{ch["new"]}"'
+    sample = [f'{qv(names.get(ch["document_id"], ch["document_id"]))}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
               for ch in found[:SAMPLE_LINES]]
-    where = f' in "{names.get(document_id)}"' if document_id else f' in {len(docs)} document(s)'
+    where = f' in {qv(names.get(document_id))}' if document_id else f' in {len(docs)} document(s)'
     # What it replaces is found again only when it is approved, so the values
     # a person made or accepted are counted now, from what the query returned.
     accepted = sum(1 for ch in found if work.protected(ch.get('metadata')))
@@ -194,7 +195,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
                'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
                'document_id': document_id, 'documents': docs, 'count': len(found), 'ref': None,
                work.COUNTED: accepted,
-               'label': f'{field}: replace "{pattern}" with "{replacement}" on {len(found)} value(s){where}'
+               'label': f'{field}: replace {qrx(pattern) if regex else qv(pattern)} with {qv(replacement)} on {len(found)} value(s){where}'
                         + work.counted_phrase(accepted)})
     # Counted by document, never by name: two documents may share one, and
     # their counts are then told apart by id.

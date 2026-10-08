@@ -19,6 +19,7 @@ reference, are in ``corpus.py``.
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..core.bidi import qv
 from ..core.corpus import rx, spread
 from ..core.limits import ROW_LIMIT
 from ..core.plan import labelled
@@ -855,8 +856,8 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
         ws.note_metadata(sp['id'], sp.get('metadata'))
         staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': sp['id'],
                        'value': new, 'doc': tok['document'],
-                       **labelled(f'{head} "{what[:30]}"',
-                                  f'{f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else ''))})
+                       **labelled(f'{head} {qv(what[:30])}',
+                                  f'{f.name} {qv(cur)} → {qv(new)}' + (' (cleared)' if new == '' else ''))})
     return staged
 
 
@@ -890,7 +891,7 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
             raise ToolError(f'{head}: "{old}" would become empty; there is no delete-word tool')
         check_respell_overlap(ws, tok['text'], tok['begin'], tok['end'], head)
         words.append({'kind': 'respell', 'text_id': tok['text'], 'begin': tok['begin'], 'end': tok['end'], 'value': new,
-                      'doc': tok['document'], **labelled(head, f'respell "{old}" → "{new}"'),
+                      'doc': tok['document'], **labelled(head, f'respell {qv(old)} → {qv(new)}'),
                       '_pos': (tok['document'], tok['begin'], 0, 0)})
     if morpheme_forms and c.M and words:
         mrows = c.entities([c.word('?w', value=spec), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w'),
@@ -905,7 +906,7 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
             head = c.label_ref(m['document'], m['id'], budget)
             ws.note_metadata(m['id'], m.get('metadata'))
             morphs.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
-                           **labelled(f'{head} (in "{w.get("value")}")', f'morpheme form "{old}" → "{new}"'),
+                           **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}'),
                            '_pos': (m['document'], m['begin'], 1, m.get('precedence') or 0)})
     # Interleave as the scan does: each word, then its morpheme forms.
     ordered = sorted(words + morphs, key=lambda op: op['_pos'])
@@ -940,7 +941,7 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
             raise ToolError(f'{head}: "{old}" would become empty')
         ws.note_metadata(m['id'], m.get('metadata'))
         staged.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
-                       **labelled(f'{head} (in "{w.get("value")}")', f'morpheme form "{old}" → "{new}"')})
+                       **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}')})
     return staged
 
 
@@ -966,7 +967,7 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
         head = c.label_ref(tok['document'], tok['id'], budget)
         ws.note_metadata(tok['id'], meta)
         staged.append({'kind': 'set_orthography', 'word_id': tok['id'], 'key': f'orthog:{target}', 'value': value,
-                       'doc': tok['document'], **labelled(f'{head} "{tok.get("value") or ""}"', f'{target} = "{value}"')})
+                       'doc': tok['document'], **labelled(f'{head} {qv(tok.get("value") or "")}', f'{target} = {qv(value)}')})
     return staged
 
 
@@ -1015,8 +1016,8 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
             ws.note_metadata(old.id, old.metadata)
         op = {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': old.id if old else None,
               'value': value, 'doc': tok['document'], **({'virtual_at': tok['virtual_at']} if 'virtual_at' in tok else {}),
-              **labelled(f'{head} "{what[:40]}"',
-                         f'{f.name} ' + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
+              **labelled(f'{head} {qv(what[:40])}',
+                         f'{f.name} ' + (f'{qv(old.value)} → {qv(value)}' if old and old.value != '' else f'= {qv(value)}')
                          + (' (cleared)' if value == '' else '')),
               '_pos': (tok['document'], tok['begin'], tok.get('precedence') or 0)}
         staged.append(op)

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client import uuid7
 
 from ..core import docload, opkind
+from ..core.bidi import qv
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label
@@ -567,7 +568,7 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         staged.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
                        'span_id': sp.id if sp else None, 'value': value,
                        'field': field, 'document_id': doc.id,
-                       'label': f'{field} = "{value}"' if value else f'clear {field}',
+                       'label': f'{field} = {qv(value)}' if value else f'clear {field}',
                        'ref': word_ref(ws.sentence_of(doc, w), w)})
     ws.add_ops(staged)
     what = f'{field} = "{value}"' if value else f'{field} cleared'
@@ -1054,7 +1055,7 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
     ws.add_op({'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
                'count': len(targets), 'per_field': counts, 'ref': None,
                **({'contributed_count': k} if (k := sum(1 for t in targets if t[5] == 'contributed')) else {}),
-               'label': f'confirm {len(targets)} values in "{doc.name}" ({counts_phrase(counts)}{off})'})
+               'label': f'confirm {len(targets)} values in {qv(doc.name)} ({counts_phrase(counts)}{off})'})
     return (f'Planned confirming {len(targets)} value(s) in "{doc.name}": {counts_phrase(counts)}. '
             f'That is one planned change covering the whole document.' + _reviewed_phrase(ws, targets)
             + (f' {left_phrase(left)}' if left else ''))
@@ -1110,7 +1111,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
             counts = per_field(targets)
             ws.add_op({'kind': 'discard_scope', 'document_id': doc.id, 'fields': fields,
                        'count': n, 'per_field': counts, 'ref': None,
-                       'label': f'discard {n} unconfirmed machine values in "{doc.name}" '
+                       'label': f'discard {n} unconfirmed machine values in {qv(doc.name)} '
                                 f'({counts_phrase(counts)})'})
     spared_note = f' Left {spared} machine lemma(s) that anchor arcs a person drew.' if spared else ''
     if not n:
@@ -1225,5 +1226,5 @@ def t_add_comment(ws: Workspace, document: str = None, body: str = None, ref: st
     short = body[:60] + ('…' if len(body) > 60 else '')
     ws.add_op({'kind': 'add_comment', 'entity_type': entity_type, 'entity_id': entity_id, 'body': body,
                'anchor_label': anchor[:200], 'document_id': doc.id, 'ref': where,
-               'label': f'comment on {where or "the document"}: "{short}"'})
+               'label': f'comment on {where or "the document"}: {qv(short)}'})
     return f'Planned a comment on {where or "the document"} of "{doc.name}".'

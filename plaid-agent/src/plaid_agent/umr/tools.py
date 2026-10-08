@@ -14,6 +14,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, fingerprint as fp, opkind
+from ..core.bidi import qv
 from ..core.args import sentence_number
 from plaid_client import uuid7
 from plaid_client.workflows.umr import (concept_problem,
@@ -563,7 +564,7 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
                 f'would end up different ({what}).' + (f' {kept_note}' if kept_note else ''))
     replacing = replacing_phrase(targets, rel) if value else ''
     op['count'] = len(targets)
-    op['label'] = (f'{what} on {len(targets)} node(s) with concept "{concept}" in "{doc.name}"'
+    op['label'] = (f'{what} on {len(targets)} node(s) with concept {qv(concept)} in {qv(doc.name)}'
                    + (f', replacing {replacing}' if replacing else ''))
     ws.add_ops(_staged([op]))
     out = [f'Planned {what} on {len(targets)} node(s) in "{doc.name}"'

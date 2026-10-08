@@ -25,6 +25,7 @@ import litellm
 from plaid_client import ServiceCancelled
 from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
+from .bidi import for_model
 from .filetools import vouches
 from .tools import truncate
 from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
@@ -374,7 +375,10 @@ def _clean_transcript(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         role = m.get('role')
         if role not in ('user', 'assistant', 'tool'):
             continue
-        d: Dict[str, Any] = {'role': role, 'content': m.get('content')}
+        # A settled plan's note and a tool's answer quote plan lines, read
+        # without their isolates (core.bidi).
+        content = m.get('content')
+        d: Dict[str, Any] = {'role': role, 'content': content if role == 'assistant' else for_model(content)}
         if role == 'assistant' and m.get('tool_calls'):
             d['tool_calls'] = [{'id': c.get('id'), 'type': 'function',
                                 'function': {'name': (c.get('function') or {}).get('name'),
@@ -700,6 +704,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # refused before the tool sees it (see core.garble).
                 why = ws.garbled(args) if plan_call and hasattr(ws, 'garbled') else None
                 result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
+                # The lines a plan shows isolate their values (core.bidi). The
+                # model reads them plain, so it never copies an isolate.
+                result = for_model(result)
                 # What the answer holds is text the turn can copy from, less
                 # what it only echoes of the call (see core.garble).
                 # A read of a file the assistant made is not, and what code read

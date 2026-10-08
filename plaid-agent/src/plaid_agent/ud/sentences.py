@@ -40,6 +40,7 @@ cut. One whose head points nowhere is left alone rather than guessed at.
 
 from typing import Any, Dict, List, Optional
 
+from ..core.bidi import qv
 from ..core.loss import _ancestor_layer, _token_layers, other_layers_crossing
 from ..core.refs import clip
 from .project import Sentence, UdDoc, Word, resolve, word_ref
@@ -251,7 +252,7 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         # The other layers' relations the cut deletes, which the card counts
         # as annotations, naming no layer.
         'other_relation_ids': others,
-        'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
+        'label': f'split s{sentence.index} before {qv(thing.form)} ({ref})',
     })
     lost = f', dropping {len(losing)} dependency relation(s) that would cross it' if losing else ''
     if others:
@@ -308,8 +309,8 @@ def _merged_root_op(ws: Workspace, doc, before, sentence, root_head, root_deprel
             'relation_id': dependent.relation_id, 'deprel': deprel, 'document_id': doc.id,
             'suppressor_ids': [i for i in dict.fromkeys(stale) if i],
             'with_merge': sentence.id,
-            'label': f'{word_ref(other, dependent)} ("{dependent.form}") {deprel} of '
-                     f'{word_ref(head_sentence, head)} ("{head.form}"), so the joined sentence has one root',
+            'label': f'{word_ref(other, dependent)} ({qv(dependent.form)}) {deprel} of '
+                     f'{word_ref(head_sentence, head)} ({qv(head.form)}), so the joined sentence has one root',
             'ref': word_ref(other, dependent)}
 
 

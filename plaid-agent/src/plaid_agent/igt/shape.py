@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
 
+from ..core.bidi import qv
 from ..core.args import whole
 from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.tools import ToolError
@@ -171,7 +172,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     # before its sentence has moved it (core.fingerprint, `token_at`).
     ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n,
                'token_at': {'begin': w.begin, 'end': w.end}, 'morpheme_ids': morphs,
-               'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": split into "{left}" + "{right}"{note}'})
+               'label': f'{ws.doc_label(doc.id)} {ref} {qv(w.surface)}: split into {qv(left)} + {qv(right)}{note}'})
     return ws.planned_note(1)
 
 
@@ -224,8 +225,8 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     op = {'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
           'morpheme_ids': morphs, 'spans': spans, 'links': links,
           'mwe_ids': [l.id for l in collapsed],
-          'label': f'{ws.doc_label(doc.id)} s{s.index}: merge ' + ' + '.join(f'w{w.index} "{w.surface}"' for w in words)
-                   + f' → "{merged}"{note}'}
+          'label': f'{ws.doc_label(doc.id)} s{s.index}: merge ' + ' + '.join(f'w{w.index} {qv(w.surface)}' for w in words)
+                   + f' → {qv(merged)}{note}'}
     refuse_rule_on_merged(ws, op)
     ws.add_op(op)
     return ws.planned_note(1)
@@ -269,7 +270,7 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
         before = upto
         staged.append({'kind': 'delete_word', 'word_id': w.id, 'morpheme_ids': [m.id for m in w.morphemes],
                        'link_ids': [l.id for l in dropped],
-                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": delete the word token{note}'})
+                       'label': f'{ws.doc_label(doc.id)} {ref} {qv(w.surface)}: delete the word token{note}'})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -296,7 +297,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
                                                 s.id, w.begin)))
     ws.add_op({'kind': 'split_sentence', 'sentence_id': s.id, 'position': w.begin,
                'token_at': {'begin': s.begin, 'end': s.end},
-               'label': f'{ws.doc_label(doc.id)} {ref}: split before w{n} "{w.surface}" → "{left[:40]}" | "{right[:40]}"{note}'})
+               'label': f'{ws.doc_label(doc.id)} {ref}: split before w{n} {qv(w.surface)} → {qv(left[:40])} | {qv(right[:40])}{note}'})
     return ws.planned_note(1)
 
 
@@ -313,7 +314,7 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     spans = _joined_spans([prev, s], ws.project)
     comb = _combined_values(spans, ws.project)
     op = {'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
-          'label': f'{ws.doc_label(doc.id)}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'
+          'label': f'{ws.doc_label(doc.id)}: merge s{s.index} {qv(s.text[:30])} into s{prev.index} {qv(prev.text[:30])}'
                    + (f' (values combined: {comb})' if comb else '')}
     refuse_rule_on_merged(ws, op)
     ws.add_op(op)
@@ -364,7 +365,7 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
                'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
                'label': f'{ws.doc_label(doc.id)}: append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
-                        f'({words} words): "{text[:60]}{"…" if len(text) > 60 else ""}"'})
+                        f'({words} words): {qv(text[:60] + ("…" if len(text) > 60 else ""))}'})
     return ws.planned_note(1)
 
 
@@ -394,8 +395,8 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
                'begin': b, 'end': e, 'old': old, 'new': text,
                'word_ids': word_ids, 'morpheme_ids': morpheme_ids,
-               'label': f'{ws.doc_label(doc.id)} {ref}: retype "{old[:40]}{"…" if len(old) > 40 else ""}" → '
-                        f'"{text[:40]}{"…" if len(text) > 40 else ""}"' + (f' ({n} sentences)' if n > 1 else '')
+               'label': f'{ws.doc_label(doc.id)} {ref}: retype {qv(old[:40] + ("…" if len(old) > 40 else ""))} → '
+                        f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
                         + f' ({_retype_effects(ws, s, b, old, text)})'})
     return ws.planned_note(1)
 
