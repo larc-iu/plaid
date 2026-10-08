@@ -9,7 +9,7 @@ import {
   detectDelimiter,
   parseDelimited,
   parseTable,
-  matchHeader,
+  rankHeader,
   columnsAt,
   guessColumns,
   positionalMapping,
@@ -29,6 +29,8 @@ import {
   rejectedFields,
   countRejected,
 } from './vocabBulk.js';
+
+const matchHeader = (...args) => rankHeader(...args)?.target ?? null;
 
 const FIELDS = ['morphType', 'gloss', 'pos', 'definition'];
 const humanize = (n) => ({ morphType: 'Morph Type', pos: 'POS' })[n] ?? n;

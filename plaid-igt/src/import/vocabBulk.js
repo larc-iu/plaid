@@ -254,8 +254,12 @@ const CONTAINS = 3;
  * Match one header cell to a mapping target, and say how good the match is:
  * `{target, rank}` with target FORM, IGNORE or a field name, or null when
  * nothing recognizes it.
+ *
+ * @param {string} cell - the header cell
+ * @param {string[]} fieldNames - the vocabulary's field names
+ * @param {(name: string) => string} humanize - field name → display label
  */
-const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
+export const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
   const n = normalizeHeader(cell);
   if (!n) return null;
   // A field the vocabulary actually declares comes first: "lexemeForm" is a
@@ -300,17 +304,6 @@ const rankHeader = (cell, fieldNames, humanize = (n) => n) => {
   );
   return contained ? { target: contained, rank: CONTAINS } : null;
 };
-
-/**
- * Match one header cell to a mapping target: FORM, a field name, or null when
- * nothing recognizes it.
- *
- * @param {string} cell - the header cell
- * @param {string[]} fieldNames - the vocabulary's field names
- * @param {(name: string) => string} humanize - field name → display label
- */
-export const matchHeader = (cell, fieldNames, humanize = (n) => n) =>
-  rankHeader(cell, fieldNames, humanize)?.target ?? null;
 
 // The shortest field name looked for inside a header.
 const MIN_CONTAINED = 5;
