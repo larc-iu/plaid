@@ -533,6 +533,28 @@ export const AssistantChat = ({
   const usage = useMemo(() => latestUsage(active?.display), [active?.display]);
   const spend = useMemo(() => totalSpend(active?.display), [active?.display]);
 
+  // How full the stored record is: its size as the page last wrote or read it
+  // (`rev.bytes`, jobs.js) against the server's cap on one value.
+  const [recordCap, setRecordCap] = useState(null);
+  useEffect(() => {
+    let live = true;
+    Promise.resolve()
+      .then(() => client.server.limits())
+      .then((limits) => {
+        const cap = limits?.userDataValueBytes;
+        if (live && Number.isInteger(cap) && cap > 0) setRecordCap(cap);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client]);
+  const recordSize = active?.rev?.bytes;
+  const record = useMemo(
+    () => (recordCap && recordSize > 0 ? { bytes: recordSize, cap: recordCap } : null),
+    [recordCap, recordSize],
+  );
+
   const canSend = !!service && !busy && !attaching;
 
   // `files` is given on a RETRY, where the message is sent again with the
@@ -946,7 +968,7 @@ export const AssistantChat = ({
                   : `${elsewhere.length} running elsewhere`}
               </Link>
             )}
-            <UsageMeter usage={usage} spend={spend} />
+            <UsageMeter usage={usage} spend={spend} record={record} />
             <DisclosureButton text={disclosure} />
             {renderActions?.(chrome)}
             <Button
@@ -1084,6 +1106,13 @@ export const AssistantChat = ({
           canSend={canSend}
           pendingPlan={pendingPlan}
           usage={usage}
+          record={record}
+          onStartNew={() => {
+            // What was typed goes with the reader into the new conversation.
+            const typed = input;
+            startNew();
+            setInput(typed);
+          }}
           focus={focus}
           onClearFocus={onClearFocus}
           mentionOffer={subject?.mentions}

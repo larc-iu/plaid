@@ -4,6 +4,7 @@ import { deleteConversationFiles } from './attachments.js';
 import { lastProjects } from './projectReach.js';
 import { compactPlan } from './planRecord.js';
 import { itemTime } from './itemTime.js';
+import { recordBytes } from './usage.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 
 // The assistant's conversations and the runs behind them: what is stored
@@ -221,15 +222,15 @@ export const persistConv = (
       for (let i = 0; ; i += 1) {
         try {
           if (!metaOnly) {
-            const put = await client.userData.put(
-              userId,
-              convKey(app, projectId, c.id),
-              // Every settled plan as it is kept (planRecord.js), as the
-              // service writes them too.
-              { messages: c.messages, display: c.display.map(compactPlan) },
-              { version: c.rev?.conv },
-            );
-            c.rev = { ...c.rev, conv: put?.version };
+            // Every settled plan as it is kept (planRecord.js), as the
+            // service writes them too.
+            const value = { messages: c.messages, display: c.display.map(compactPlan) };
+            const put = await client.userData.put(userId, convKey(app, projectId, c.id), value, {
+              version: c.rev?.conv,
+            });
+            // Its size beside its version, for the meter (usage.js): measured
+            // once per write, never while drawing.
+            c.rev = { ...c.rev, conv: put?.version, bytes: recordBytes(value) };
           }
           break;
         } catch (e) {
@@ -311,7 +312,12 @@ const readRecord = async (store, id, { strict = false } = {}) => {
       id,
       messages: v.messages || [],
       display: v.display || [],
-      rev: { conv: c ? c.version : 0, meta: m ? m.version : 0 },
+      // The record's size as read, for the meter (usage.js).
+      rev: {
+        conv: c ? c.version : 0,
+        meta: m ? m.version : 0,
+        bytes: c ? recordBytes(v) : 0,
+      },
     },
     // Under this project's keys is the only place it was looked for, so that is
     // the project it belongs to. The entry goes back into the list as it is,
