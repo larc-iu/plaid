@@ -34,6 +34,11 @@ export const AssistantComposer = ({
   canSend,
   // A plan is waiting to be decided, which the placeholder says.
   pendingPlan = false,
+  // Why the last message or decision was not taken (work under way in
+  // another tab, the conversation deleted), said above the box. `offerNew`
+  // offers a new conversation beside it, which takes the typed text along.
+  notice = null,
+  offerNew = false,
   // How full the thread is, from the newest reply that reported it.
   usage = null,
   // The stored record's size against the server's cap, as {bytes, cap}.
@@ -87,7 +92,7 @@ export const AssistantComposer = ({
     if (mentions.handleKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!full) onSend();
+      if (!full && !offerNew) onSend();
     }
   };
 
@@ -146,7 +151,19 @@ export const AssistantComposer = ({
           record has a limit of its own, the server's cap, and the note names
           whichever limit is close. A full record offers the new conversation
           right here, since nothing more can be sent into it. */}
-      {full ? (
+      {notice ? (
+        <div
+          role="status"
+          className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-warning-foreground"
+        >
+          <span>{notice}</span>
+          {offerNew && onStartNew && (
+            <Button type="button" size="sm" variant="outline" onClick={onStartNew}>
+              New conversation
+            </Button>
+          )}
+        </div>
+      ) : full ? (
         <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-warning-foreground">
           <span>This conversation is full.</span>
           {onStartNew && (
@@ -289,7 +306,7 @@ export const AssistantComposer = ({
           type="button"
           size="sm"
           onClick={() => onSend()}
-          disabled={!canSend || !text.trim() || attaching || full}
+          disabled={!canSend || !text.trim() || attaching || full || offerNew}
           title="Send"
         >
           <Send className="h-4 w-4" />

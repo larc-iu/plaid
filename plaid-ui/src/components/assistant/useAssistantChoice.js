@@ -13,6 +13,9 @@ import { serviceCache } from './jobs.js';
 //
 // `meta` is the open conversation's sidebar entry, which is where the binding
 // is recorded.
+// How often discovery is asked again while no assistant is online.
+const REDISCOVER_EVERY_MS = 15 * 1000;
+
 export const useAssistantChoice = ({ client, projectId, app, meta }) => {
   const [services, setServices] = useState([]);
   const [discovering, setDiscovering] = useState(true);
@@ -55,6 +58,25 @@ export const useAssistantChoice = ({ client, projectId, app, meta }) => {
     ? (assistants.find((s) => s.serviceId === meta.serviceId) ?? null)
     : null;
   const service = pinned ?? assistants.find((s) => s.serviceId === choice) ?? assistants[0] ?? null;
+
+  // An assistant that restarts, or starts after the page loaded, is found
+  // without a reload: while none is online for this conversation, discovery
+  // is asked again now and then, and whenever the page comes back into view.
+  const missing = !service || (!!meta?.serviceId && !pinned);
+  useEffect(() => {
+    if (!missing) return undefined;
+    const again = () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') discover();
+    };
+    const timer = setInterval(again, REDISCOVER_EVERY_MS);
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', again);
+      document.removeEventListener('visibilitychange', again);
+    };
+  }, [missing, discover]);
 
   return {
     services,

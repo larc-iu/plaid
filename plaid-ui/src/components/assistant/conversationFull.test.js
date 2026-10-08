@@ -24,8 +24,11 @@ describe('a message the record refused', () => {
       client: {
         messages: { requestService },
         userData: {
-          put: vi.fn(async () => {
-            throw tooLarge;
+          // The sidebar entry (the claim) is small and lands, the transcript
+          // with the message is refused.
+          put: vi.fn(async (_u, key) => {
+            if (key.includes(':conv:')) throw tooLarge;
+            return { version: 4 };
           }),
           get: vi.fn(async (_u, key) => (key.includes(':conv:') ? { value: saved } : null)),
         },
@@ -56,8 +59,11 @@ describe('a message the record refused', () => {
       client: {
         messages: { requestService: vi.fn() },
         userData: {
-          put: vi.fn(async () => {
-            throw tooLarge;
+          // The sidebar entry (the claim) is small and lands, the transcript
+          // with the message is refused.
+          put: vi.fn(async (_u, key) => {
+            if (key.includes(':conv:')) throw tooLarge;
+            return { version: 4 };
           }),
           get: vi.fn(async (_u, key) => (key.includes(':conv:') ? { value: saved } : null)),
         },

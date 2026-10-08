@@ -30,7 +30,7 @@ import { cn } from '../../lib/utils.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
-import { jobFor } from './jobs.js';
+import { followable, jobFor } from './jobs.js';
 import { runByLine } from './useAssistantAvailable.js';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 
@@ -59,7 +59,7 @@ const ConversationRow = ({ m, opening, elsewhere = null }) => {
           ? 'Nothing sent yet'
           : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
             (m.model ? ` · ${m.model.split('/').pop()}` : '') +
-            (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
+            (followable(m.pending) && !jobFor(m.id) ? ' · unfinished' : '')}
       </div>
       {elsewhere && (
         <div className="flex items-center gap-1 pl-5 text-[11px] text-muted-foreground">

@@ -349,3 +349,29 @@ describe('a plan read by someone other than its owner', () => {
     await view.unmount();
   });
 });
+
+describe('an approval interrupted after its run began writing (H10-RECORD-3)', () => {
+  it('offers Apply again and History, and no Discard', async () => {
+    const p = { ...plan([{ label: 'Gloss = "house"' }]), writing: true };
+    const view = await mount(p, { interrupted: true });
+    const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
+    expect(buttons).toContain('Apply again');
+    expect(buttons).not.toContain('Discard');
+    expect(
+      byText(
+        view.container,
+        'p',
+        'Applying did not finish. Some changes may be written. Apply again to finish, or undo them in History.',
+      ),
+    ).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('keeps Discard when the run certainly wrote nothing', async () => {
+    const view = await mount(plan([{ label: 'Gloss = "house"' }]), { interrupted: true });
+    const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
+    expect(buttons).toEqual(expect.arrayContaining(['Apply again', 'Discard']));
+    expect(byText(view.container, 'p', 'Applying did not finish.')).not.toBeNull();
+    await view.unmount();
+  });
+});

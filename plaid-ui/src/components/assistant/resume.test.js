@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
+import { answeredLast, hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
 
 const conv = (messages, display) => ({ id: 'c1', messages, display });
 
@@ -61,10 +61,12 @@ describe('rewindForRetry', () => {
     expect(out.conv.display).toEqual(c.display);
   });
 
-  it('takes a saved turn whose save went unanswered out of the transcript, the stamped message included', () => {
-    // conc-2026-09-29 H8-6: the service's save of the turn landed and its
-    // answer was lost, so the record holds the question (stamped with where
-    // it was asked) and the answer. A retry sent the question a second time.
+  it('never sends again a question with an answer after it', () => {
+    // conc-2026-09-29 H8-6 and H10-RECORD-4: the record holds the question
+    // and its answer, then an error line (a second request for the same
+    // turn, or a save whose answer was lost). Retry rewound the model
+    // transcript past the answer the reader could see, and the model never
+    // read it again. The answer stands, and nothing is offered again.
     const c = conv(
       [
         { role: 'user', content: 'first' },
@@ -77,13 +79,12 @@ describe('rewindForRetry', () => {
         { kind: 'assistant', text: 'ok' },
         { kind: 'user', text: 'What is s4?' },
         { kind: 'assistant', text: 'play-01' },
-        { kind: 'error', text: 'The answer is ready but the conversation could not be saved' },
+        { kind: 'error', text: 'The conversation has no message to answer' },
       ],
     );
-    const out = rewindForRetry(c);
-    expect(out.text).toBe('What is s4?');
-    expect(out.conv.messages).toEqual(c.messages.slice(0, 2));
-    expect(out.conv.display).toEqual(c.display);
+    expect(answeredLast(c.display)).toBe(true);
+    expect(rewindForRetry(c)).toBe(null);
+    expect(answeredLast(c.display.slice(0, 3))).toBe(false);
   });
 
   it("takes a failed turn's question, kept stamped in the transcript, off before sending it again", () => {

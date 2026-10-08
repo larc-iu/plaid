@@ -113,6 +113,10 @@ export const PlanCard = ({
   // undecided plan: applying again is safe, since the service refuses to
   // write the same plan twice.
   const lost = undecided && interrupted && !applying;
+  // Its run marked it as writing before it was cut off, so some of its
+  // changes may be in the project: applying again finishes them, History
+  // undoes them, and it is not discarded as if nothing had happened.
+  const maybeWritten = lost && !!plan.writing;
   // Stopped partway, and settled so: finishing it is a new plan.
   const partial = status === 'partial';
   const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);
@@ -185,7 +189,13 @@ export const PlanCard = ({
           </span>
         </div>
       )}
-      {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
+      {lost && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {maybeWritten
+            ? 'Applying did not finish. Some changes may be written. Apply again to finish, or undo them in History.'
+            : 'Applying did not finish.'}
+        </p>
+      )}
       {stale && reason && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="stale-reason">
           {staleLine(reason)}
@@ -338,9 +348,11 @@ export const PlanCard = ({
           ) : (
             <span className="text-muted-foreground">Applying needs write access.</span>
           )}
-          <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
-            <X className="h-4 w-4" /> Discard
-          </Button>
+          {!maybeWritten && (
+            <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
+              <X className="h-4 w-4" /> Discard
+            </Button>
+          )}
           {canWrite && !contributor && (
             <label
               htmlFor={humanId}

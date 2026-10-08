@@ -70,6 +70,8 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
 
   // An entry after a write, back in its place in the list.
   const applyMeta = useCallback((meta) => setRows(upsert(meta)), []);
+  // A row whose conversation is gone (deleted elsewhere), taken out.
+  const forget = useCallback((id) => setRows((prev) => prev.filter((m) => m.id !== id)), []);
 
   const removedRef = useRef(onRemoved);
   removedRef.current = onRemoved;
@@ -110,6 +112,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
     projectNames,
     reload,
     applyMeta,
+    forget,
     remove,
   };
 };

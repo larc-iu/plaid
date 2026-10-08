@@ -8,7 +8,7 @@ import { notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
-import { hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
+import { answeredLast, hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
 import { itemTime } from './itemTime.js';
 import {
   atProjectCap,
@@ -45,12 +45,14 @@ import {
   attachJob,
   buildMeta,
   changesTheView,
+  declinedLine,
+  discardPlan,
+  followable,
   jobFor,
   newConversation,
-  persistConv,
+  planDiscarded,
   readConv,
   recordAhead,
-  settle,
   startApply,
   startTurn,
   stopJob,
@@ -185,6 +187,10 @@ export const AssistantChat = ({
   // A send or retry reading the record before it writes: a second press in
   // that moment is the same send, not another one.
   const sendingRef = useRef(false);
+  // Why the last thing asked of this conversation was not done, said above the
+  // composer: work under way elsewhere, or the conversation deleted. Held with
+  // its conversation, as {convId, text, gone}.
+  const [notice, setNotice] = useState(null);
 
   const list = useConversationList({
     client,
@@ -361,6 +367,7 @@ export const AssistantChat = ({
   // nothing here following it, is rejoined: the record gets the outcome
   // either way, this shows it landing.
   const applyMeta = list.applyMeta;
+  const forgetRow = list.forget;
   const open = useCallback(
     async (id) => {
       if (activeRef.current?.id === id) return;
@@ -378,7 +385,7 @@ export const AssistantChat = ({
         setActive(conv);
         // The record is newer than the list (a reply may have landed since).
         if (meta) applyMeta(meta);
-        if (meta?.pending?.requestId && !jobFor(id)) {
+        if (followable(meta?.pending) && !jobFor(id)) {
           attachJob({ store, conv, meta, docked: !toastOnApply });
         }
       } catch (e) {
@@ -436,15 +443,21 @@ export const AssistantChat = ({
         setElsewhereTick((n) => n + 1);
         return;
       }
-      if (j.done) applyMeta(j.result.meta);
+      if (j.done && j.result.meta) applyMeta(j.result.meta);
+      // A conversation deleted elsewhere leaves the list.
+      if (j.done && j.gone) forgetRow(j.id);
       // A plan that landed changed the project, so whatever is showing it
       // (the document beside this panel) is now stale (see changesTheView).
-      if (changesTheView(j)) onAppliedRef.current?.();
+      if (changesTheView(j) && !j.declined) onAppliedRef.current?.();
       if (activeRef.current?.id !== j.id) return;
       if (j.done) {
         activeRef.current = j.result.conv;
         setActive(j.result.conv);
         clearJob();
+        // Turned down: why, above the composer. Anything else that settles
+        // here ends what the line was about.
+        if (j.declined && j.why) setNotice({ convId: j.id, text: j.why, gone: !!j.gone });
+        else if (!j.declined) setNotice((n) => (n?.gone ? n : null));
         // A message that could not be saved was not sent. It comes back to
         // the composer, unless the record kept it after all (then the tab
         // offers to send it again) or something new has been typed since.
@@ -465,7 +478,7 @@ export const AssistantChat = ({
     };
     jobListeners.add(onJob);
     return () => jobListeners.delete(onJob);
-  }, [applyMeta]);
+  }, [applyMeta, forgetRow]);
 
   // Switching conversations: pick up a job in flight for the new one.
   useEffect(() => {
@@ -474,44 +487,6 @@ export const AssistantChat = ({
     else if (busy) clearJob();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
-
-  // Apply `fn` to the active conversation and persist the result. No service
-  // is involved (discarding a plan is the user's own doing), so the
-  // conversation keeps the assistant already recorded against it.
-  //
-  // `fn` answers null when it has nothing to change. Made again on the record
-  // as stored when another write landed first, and that copy is shown.
-  const update = (fn) => {
-    const next = fn(activeRef.current);
-    if (!next) return;
-    activeRef.current = next;
-    setActive(next);
-    const meta = buildMeta(
-      store,
-      list.rows.find((m) => m.id === next.id),
-      next,
-      null,
-    );
-    applyMeta(meta);
-    persistConv(store, next, meta, {
-      rebase: (fresh) => {
-        const c = fn(fresh.conv);
-        return c && { conv: c, meta: buildMeta(store, fresh.meta, c, null) };
-      },
-    }).then((written) => {
-      const shown = written?.declined ? written.fresh : written;
-      if (!shown || activeRef.current !== next) return;
-      if (shown.conv === next) {
-        // Written as it is shown: only its size changed (`rev.bytes`, set on
-        // the copy by the write), which the meter reads when drawn.
-        setSizeTick((n) => n + 1);
-        return;
-      }
-      activeRef.current = shown.conv;
-      setActive(shown.conv);
-      if (shown.meta) applyMeta(shown.meta);
-    });
-  };
 
   const startNew = () => {
     openSeq.current++;
@@ -583,6 +558,7 @@ export const AssistantChat = ({
   };
   const sendNow = async (typed, retry, files, projects) => {
     setStopped(null);
+    setNotice(null);
     // The chip is the reference the question is about, said the way the
     // assistant addresses one. A question that already names it is left alone.
     const text = !retry && focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
@@ -604,12 +580,13 @@ export const AssistantChat = ({
         activeRef.current = ahead.conv;
         setActive(ahead.conv);
         applyMeta(ahead.meta);
-        // A turn is under way there (asked in another tab): it is followed
-        // here, and the message waits in the composer.
-        if (ahead.meta?.pending?.requestId) {
+        // Work is under way there (asked or approved in another tab): it is
+        // followed here, and the message waits in the composer.
+        if (followable(ahead.meta?.pending)) {
           if (!jobFor(base.id)) {
             attachJob({ store, conv: base, meta: ahead.meta, docked: !toastOnApply });
           }
+          setNotice({ convId: base.id, text: declinedLine(ahead) });
           return;
         }
       }
@@ -811,10 +788,11 @@ export const AssistantChat = ({
       activeRef.current = conv;
       setActive(conv);
       applyMeta(ahead.meta);
-      if (ahead.meta?.pending?.requestId) {
+      if (followable(ahead.meta?.pending)) {
         if (!jobFor(conv.id)) {
           attachJob({ store, conv, meta: ahead.meta, docked: !toastOnApply });
         }
+        setNotice({ convId: conv.id, text: declinedLine(ahead) });
         return;
       }
       const last = conv.display.at(-1)?.kind;
@@ -843,6 +821,7 @@ export const AssistantChat = ({
     const conv = activeRef.current;
     if (!conv || !canSend) return;
     setStopped(null);
+    setNotice(null);
     showJob(
       startApply({
         store,
@@ -857,25 +836,60 @@ export const AssistantChat = ({
   };
 
   // Found by its plan's id, on whichever copy the write is made (the record
-  // as stored, when another write landed first). An undecided plan is settled
-  // as discarded. An out-of-date one keeps that verdict (the record of an
-  // approval that was refused) and is marked dismissed. A plan decided
-  // meanwhile is left as it is.
-  const discard = (index) => {
-    const planId = activeRef.current?.display[index]?.plan?.id;
-    update((c) => {
-      const i = c.display.findIndex((d) => d.plan?.id === planId);
-      const d = c.display[i];
-      if (!d) return null;
-      if (d.status === 'stale') {
-        if (d.dismissed) return null;
-        const display = [...c.display];
-        display[i] = { ...d, dismissed: true, dismissedAt: itemTime() };
-        return { ...c, display };
+  // as stored, when another write landed first), see `planDiscarded`. Shown
+  // at once, and written under a claim on the conversation (`discardPlan`):
+  // turned down while other work runs there (an approval of this very plan in
+  // another tab, which the card then follows), and the record is shown as it
+  // is.
+  const discard = async (index) => {
+    const conv = activeRef.current;
+    const planId = conv?.display[index]?.plan?.id;
+    if (!conv || !planId) return;
+    const next = planDiscarded(conv, planId);
+    if (!next) return;
+    setNotice(null);
+    activeRef.current = next;
+    setActive(next);
+    const prevMeta = list.rows.find((m) => m.id === conv.id);
+    if (prevMeta) applyMeta(buildMeta(store, prevMeta, next, null, prevMeta.pending ?? null));
+    const written = await discardPlan({ store, conv, prevMeta, planId, shown: next });
+    if (!written || activeRef.current !== next) {
+      // Not written (said so): the record as it was.
+      if (written === false && activeRef.current === next) {
+        activeRef.current = conv;
+        setActive(conv);
       }
-      if (d.status != null) return null;
-      return settle(c, i, 'discarded', '(note) The user discarded the plan; nothing was changed.');
-    });
+      return;
+    }
+    if (written.declined) {
+      if (written.gone) {
+        forgetRow(conv.id);
+        activeRef.current = conv;
+        setActive(conv);
+        setNotice({ convId: conv.id, text: declinedLine(null, { gone: true }), gone: true });
+        return;
+      }
+      const { conv: now, meta: nowMeta } = written.fresh;
+      activeRef.current = now;
+      setActive(now);
+      applyMeta(nowMeta);
+      if (followable(nowMeta?.pending) && !jobFor(now.id)) {
+        showJob(
+          attachJob({ store, conv: now, meta: nowMeta, docked: !toastOnApply, reread: true }),
+        );
+      }
+      if (nowMeta?.pending) setNotice({ convId: now.id, text: declinedLine(written.fresh) });
+      return;
+    }
+    if (written.conv === next) {
+      // Written as it is shown: only its size changed (`rev.bytes`, set on
+      // the copy by the write), which the meter reads when drawn.
+      setSizeTick((n) => n + 1);
+    } else {
+      activeRef.current = written.conv;
+      setActive(written.conv);
+    }
+    applyMeta(written.meta);
   };
 
   const display = active?.display || [];
@@ -919,8 +933,12 @@ export const AssistantChat = ({
   const lastKind = display.at(-1)?.kind;
   // An answer that came back but could not be saved is no failed turn: the
   // line under it says so, and the turn is not offered again there.
+  // Nor is a question with an answer after it.
   const canRetryTurn =
-    idle && (lastKind === 'user' || (lastKind === 'error' && !display.at(-1).unsaved));
+    idle &&
+    !answeredLast(display) &&
+    (lastKind === 'user' || (lastKind === 'error' && !display.at(-1).unsaved));
+  const noticeHere = notice && notice.convId === active?.id ? notice : null;
   const stoppedHere = stoppedIn(stopped, active?.id);
   const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
   // What the surface's own chrome is drawn from.
@@ -1116,6 +1134,8 @@ export const AssistantChat = ({
           inputRef={inputRef}
           canSend={canSend}
           pendingPlan={pendingPlan}
+          notice={noticeHere?.text ?? null}
+          offerNew={!!noticeHere?.gone}
           usage={usage}
           record={record}
           onStartNew={() => {

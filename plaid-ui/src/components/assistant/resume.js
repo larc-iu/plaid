@@ -27,6 +27,15 @@ export const retryNote = (display, stoppedHere) => {
     : 'No answer came back for this message.';
 };
 
+// Whether the user's last message has an answer after it. Such a turn is
+// never sent again: Retry would rewind the model transcript past an answer the
+// reader can see.
+export const answeredLast = (display) => {
+  const items = display || [];
+  const i = items.map((d) => d.kind).lastIndexOf('user');
+  return i >= 0 && items.slice(i + 1).some((d) => d.kind === 'assistant');
+};
+
 // Whether item `i` is the stop record the retry line stands in for.
 export const hidesStopped = (display, i) => i === display.length - 1 && !!display[i]?.stopped;
 
@@ -36,10 +45,11 @@ export const hidesStopped = (display, i) => i === display.length - 1 && !!displa
 // them. Only the model transcript goes back to before that question, so the
 // model reads it once. A turn that got no answer at all has no such line yet,
 // and is given the one the screen showed under it (`stopped` when the reader
-// stopped it). Returns null when there is nothing to retry.
+// stopped it). Returns null when there is nothing to retry, which includes a
+// question with an answer after it (`answeredLast`).
 export const rewindForRetry = (conv, { stopped = false } = {}) => {
   const i = (conv?.display || []).map((d) => d.kind).lastIndexOf('user');
-  if (i < 0) return null;
+  if (i < 0 || answeredLast(conv.display)) return null;
   const text = conv.display[i].text || '';
   // The files the message carried. Their parts are already stored under this
   // conversation, so sending it again points at the same ones rather than
@@ -54,19 +64,10 @@ export const rewindForRetry = (conv, { stopped = false } = {}) => {
   // got that far), and it comes off so the retry sends it once. Only that
   // message: a note written after it (a plan approved or discarded since)
   // stays.
-  // A turn whose answer was saved but whose save went unanswered has the
-  // message AND the answer, the message stamped by the service: the
-  // transcript goes back to before that message, or the retry sends it twice.
   const { messages } = conv;
-  const answered = conv.display.slice(i + 1).some((d) => d.kind === 'assistant');
   const last = messages.findLastIndex((m) => isMessage(m, text));
-  const at = answered || messages.slice(last + 1).every((m) => m?.role === 'user') ? last : -1;
-  const rewound =
-    at < 0
-      ? messages
-      : answered
-        ? messages.slice(0, at)
-        : [...messages.slice(0, at), ...messages.slice(at + 1)];
+  const at = messages.slice(last + 1).every((m) => m?.role === 'user') ? last : -1;
+  const rewound = at < 0 ? messages : [...messages.slice(0, at), ...messages.slice(at + 1)];
   const ended = i < conv.display.length - 1;
   const unanswered = stopped
     ? { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() }
