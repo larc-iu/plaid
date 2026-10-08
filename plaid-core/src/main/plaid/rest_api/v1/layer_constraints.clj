@@ -101,6 +101,9 @@
                            (and (nil? document) (not (pra/privileged? request :project/maintainers project-fn)))
                            {:status 403 :body {:error "Repairing a whole layer requires maintainer privileges."}}
 
+                           (and (nil? document) (:auth/token-scope request))
+                           pra/project-admin-refusal
+
                            :else
                            (or (and document (document-refusal {:kind kind :id-of id-of :request request
                                                                 :db db :document document}))

@@ -321,8 +321,19 @@
 ;;   rights, since such a change reaches every project the vocabulary is
 ;;   shared with and a maintainer grant outlasts the token (ruled 2026-09-27).
 ;;   Renaming, merging and deleting single entries stay open to it.
+;; - A route behind the project maintainer gate (`wrap-maintainer-required`)
+;;   refuses a scoped token the same way, whatever its user's rights: adding
+;;   or removing members, renaming or deleting the project, its config and
+;;   telemetry switch, creating, renaming, deleting or moving its layers,
+;;   their config and constraints, and the maintainers' reads (the activity
+;;   tally, the telemetry events). Whoever runs a delegating service holds
+;;   the token, and a member grant or a deletion outlasts it (H9-ACL-1,
+;;   2026-10-08). A maintainer action on one document carries
+;;   `:plaid/document-maintainer` and stays open: restoring a document, which
+;;   the assistants plan. A handler that asks `privileged?` for maintainer
+;;   rights on a whole project refuses with `project-admin-refusal` itself.
 
-(declare wrap-login-required)
+(declare wrap-login-required wrap-maintainer-required)
 
 (def ^:dynamic *token-scope*
   "The scope of the request being served when it came with a scoped token:
@@ -366,6 +377,21 @@
   {:status 403
    :body {:error (str "A delegated token cannot rename or delete a vocabulary, change its maintainers "
                       "or settings, link or unlink it, or restore its entries.")}})
+
+(def project-admin-refusal
+  "The answer to a scoped token on a route that needs maintainer rights on a
+  whole project. See \"Scoped tokens\" above."
+  {:status 403
+   :body {:error (str "A delegated token cannot change a project's members, name, settings or layers, "
+                      "delete it, or read its activity tally or telemetry.")}})
+
+(defn- project-maintainer-gated?
+  "Does route `data` sit behind the project maintainer gate, without marking
+  itself a maintainer action on one document?"
+  [data]
+  (and (not (:plaid/document-maintainer data))
+       (boolean (some #(and (vector? %) (identical? wrap-maintainer-required (first %)))
+                      (:middleware data)))))
 
 (defn query-token-scope
   "`:plaid/token-scope` for the query route: a scoped token must name its
@@ -431,13 +457,15 @@
   router's middleware transform in `plaid.rest-api.v1.core`). For a request
   with a scoped token, it refuses unless a project or vocab gate passed the
   request on a project in scope, or the route's own `:plaid/token-scope`
-  check passes it. On a route marked `:plaid/vocabulary-admin` it refuses
-  every scoped request. Every other request goes straight through."
+  check passes it. On a route marked `:plaid/vocabulary-admin`, and on one
+  behind the project maintainer gate (`project-maintainer-gated?`), it
+  refuses every scoped request. Every other request goes straight through."
   {:name ::token-scope-gate
    :compile (fn [data _]
               (when (some #(identical? wrap-login-required %) (:middleware data))
                 (let [own (:plaid/token-scope data)
-                      vocabulary-admin? (:plaid/vocabulary-admin data)]
+                      vocabulary-admin? (:plaid/vocabulary-admin data)
+                      project-admin? (project-maintainer-gated? data)]
                   {:name ::token-scope-gate
                    :wrap (fn [handler]
                            (fn [request]
@@ -445,6 +473,7 @@
                                (cond
                                  (nil? scope) (handler request)
                                  vocabulary-admin? vocabulary-admin-refusal
+                                 project-admin? project-admin-refusal
                                  own (or (own request scope) (handler request))
                                  @(:passed scope) (handler request)
                                  :else scope-refusal))))})))})

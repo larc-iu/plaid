@@ -226,6 +226,8 @@
                            "Requires maintainer privileges.")
              :middleware [[pra/wrap-maintainer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
+             ;; One document: open to a delegated token (`pra/token-scope-gate`).
+             :plaid/document-maintainer true
              :parameters {:query [:map
                                   [:as-of :string]
                                   [:dry-run {:optional true} boolean?]
