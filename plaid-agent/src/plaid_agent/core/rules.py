@@ -350,6 +350,22 @@ def named(ops: Iterable[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]
     return said, rest
 
 
-def count_line(n: int, unit: Tuple[str, str], documents: int) -> str:
-    """``1,240 values in 12 documents``."""
-    return f'{_plural(n, *unit)} in {_plural(documents, "document", "documents")}'
+#: The key on a rule's card (:func:`card`) listing the later rules of the
+#: plan that change its values again, ``[[later rule in words, values], ...]``.
+CHANGED_AGAIN = 'changed_again'
+
+
+def count_line(n: int, unit: Tuple[str, str], documents: int, again: Optional[List[list]] = None) -> str:
+    """``1,240 values in 12 documents``. With ``again`` (:data:`CHANGED_AGAIN`),
+    what later rules change again is said too, so that a rule left with no
+    changes of its own says why: ``0 values: its 33 values are changed again
+    by Field "ASP" → "ASPX"``."""
+    line = f'{_plural(n, *unit)} in {_plural(documents, "document", "documents")}'
+    later = [(words, int(k)) for words, k in again or [] if int(k) > 0]
+    m = sum(k for _, k in later)
+    if not m:
+        return line
+    by = later[0][0] if len(later) == 1 else ', '.join(f'{w} ({_plural(k, *unit)})' for w, k in later)
+    if n == 0:
+        return f'{_plural(0, *unit)}: its {_plural(m, *unit)} {"is" if m == 1 else "are"} changed again by {by}'
+    return f'{line}, and {_plural(m, *unit)} changed again by {by}'

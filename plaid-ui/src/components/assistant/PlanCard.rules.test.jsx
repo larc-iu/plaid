@@ -137,6 +137,32 @@ describe('a rule on the plan card', () => {
     expect(got[200].rule.total).toBe(1240);
   });
 
+  it('says why a rule whose values a later rule changes again has no changes of its own', async () => {
+    const later = 'Gloss "ASP" → "ASPX"';
+    const none = ruleRow({
+      replacesWork: 0,
+      rule: {
+        ...ruleRow().rule,
+        total: 0,
+        documents: [],
+        documentsMore: [0, 0],
+        sample: [],
+        changedAgain: [[later, 9990]],
+      },
+    });
+    const some = ruleRow({ rule: { ...ruleRow().rule, changedAgain: [[later, 31]] } });
+    const view = await mount(plan([none, some]));
+    const rows = all(view.container, 'tr[data-rule]');
+    expect(rows[0].textContent).toContain(
+      '0 changes: its 9,990 values are changed again by Gloss "ASP" → "ASPX"',
+    );
+    expect(rows[0].textContent).not.toContain('0 documents');
+    expect(rows[1].textContent).toContain(
+      '1,240 changes in 14 documents, 1,100 replace accepted work, and 31 values changed again by Gloss "ASP" → "ASPX"',
+    );
+    await view.unmount();
+  });
+
   it('reads a plan with no labels from its changes', () => {
     const p = { id: 'p', changes: [{ label: 'a' }, { label: 'b' }], opCount: 5 };
     expect(planRows(p).map((r) => r.label)).toEqual(['a', 'b']);

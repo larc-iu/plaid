@@ -169,10 +169,13 @@ def _scan_replace(ws: Workspace, f, rep, document: Optional[str]) -> List[Dict[s
                 new = rep(cur)
                 if new == cur:
                     continue
+                stored = sp.value if sp else ''
+                ws.note_stored(f.layer_id, u.id, stored)
                 out.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
                             'span_id': sp.id if sp else None, 'value': new, 'doc': doc.id,
                             **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:30])}',
-                                       f'{f.name} {qv(cur)} → {qv(new)}' + (' (cleared)' if new == '' else ''))})
+                                       f'{f.name} {qv(stored or cur)} → {qv(new)}'
+                                       + (' (cleared)' if new == '' else ''))})
     return out
 
 
@@ -207,8 +210,11 @@ def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optio
             continue
         at = earlier.get('change_at') or 0
         head = (earlier.get('label') or '')[:max(0, at - 2)]
+        # From the value stored, before any rule, to the one written.
+        stored = ws.stored_values.get((layer, token), value)
+        line = f'{f.name} {qv(stored)} → {qv(new)}' if stored != '' else f'{f.name} = {qv(new)}'
         out.append({**{k: v for k, v in earlier.items() if k not in ('label', 'change_at')}, 'value': new,
-                    **labelled(head, f'{f.name} {qv(value)} → {qv(new)}' + (' (cleared)' if new == '' else ''))})
+                    **labelled(head, line + (' (cleared)' if new == '' else ''))})
     return out
 
 
@@ -311,6 +317,7 @@ def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dic
                     cur = ws.planned_value(f.layer_id, u.id, old.value if old else '')
                     if cur == value or (only_empty and cur != ''):
                         continue
+                    ws.note_stored(f.layer_id, u.id, old.value if old else '')
                     op = {**span_op(ws, doc, ref, what, f, u.id, old, value), 'doc': doc.id}
                     ws.place_virtual(op)
                     out.append(op)
@@ -450,10 +457,13 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
     return _counted(ws, op, kept), found, kept, left
 
 
-def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
+             again: Optional[List[list]] = None) -> Dict[str, Any]:
     """``op`` with what the rule writes (``kept``) counted: its total, the
     count per kind, its documents, how many replace a person's work, its line
-    and its card row. What it matched (its digest) is left as it is."""
+    and its card row. ``again`` is ``[[later rule in words, values], ...]``
+    for the values it finds that later rules change again, which its line
+    and its card say. What it matched (its digest) is left as it is."""
     docs = sorted({o['doc'] for o in kept if o.get('doc')})
     counts: Dict[str, int] = {}
     for o in kept:
@@ -465,9 +475,12 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]]) -> D
         from .changes import describe_change
         return describe_change(ws, {**o, work.FLAG: ws.replaces_work(o)})
     out = {**op, 'count': len(kept), 'counts': counts, 'documents': docs, work.COUNTED: accepted,
-           'label': f'{op["head"]}, {rules.count_line(len(kept), unit, len(docs))}' + work.counted_phrase(accepted)}
+           'label': (f'{op["head"]}, {rules.count_line(len(kept), unit, len(docs), again)}'
+                     + work.counted_phrase(accepted))}
     out[CARD] = rules.card(out, kept, lambda o: o.get('doc'), lambda d: ws.corpus.doc_name(d), describe,
                            ws.replaces_work)
+    if again:
+        out[CARD][rules.CHANGED_AGAIN] = again
     return out
 
 
@@ -493,16 +506,25 @@ def settle_rules(ws: Workspace) -> None:
     if not idx:
         return
     keep = rule_keep(ws, ws.ops)
-    later: set = set()
+    # Each value a later rule writes, with the latest rule that writes it.
+    later: Dict[Any, int] = {}
     for i in reversed(idx):
         op = ws.ops[i]
         writes = [o for o in ws.rule_found[rules.target(op)] if keep(o)]
         kept = [o for o in writes if op_target(o) not in later]
-        later |= {op_target(o) for o in writes} - {None}
+        by: Dict[int, int] = {}
+        for o in writes:
+            j = later.get(op_target(o))
+            if j is not None:
+                by[j] = by.get(j, 0) + 1
+        again = [[ws.ops[j].get('change') or ws.ops[j].get('tool'), n] for j, n in sorted(by.items())] or None
+        for o in writes:
+            if op_target(o) is not None:
+                later.setdefault(op_target(o), i)
         if op.get('count') == len(kept) and op.get(CARD) is not None \
-                and op[CARD].get('total') == len(kept):
+                and op[CARD].get('total') == len(kept) and op[CARD].get(rules.CHANGED_AGAIN) == again:
             continue
-        ws.ops[i] = _counted(ws, op, kept)
+        ws.ops[i] = _counted(ws, op, kept, again)
 
 
 def later_rule_wins(ops: List[Dict[str, Any]], rule_rows: set, row_key: str) -> List[Dict[str, Any]]:

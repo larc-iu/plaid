@@ -265,3 +265,36 @@ def test_a_sample_of_changes_that_all_replace_work_is_spread_over_the_documents(
     ops = [{'doc': d, 'i': i} for d in ('a', 'b', 'c') for i in range(10)]
     picked = rules.sample(ops, lambda o: o['doc'], lambda o: 1, n=6)
     assert sorted({o['doc'] for o in picked}) == ['a', 'b', 'c'] and len(picked) == 6
+
+
+def test_a_rule_whose_values_a_later_rule_changes_again_says_so_and_a_chained_line_reads_from_the_stored_value():
+    store = {'sp-g1': 'X', 'sp-x2': 'X.Y', 'sp-x3': 'Q'}
+    client, w = _ws(store)
+    _replace(w, 'X', 'A', whole=True)
+    _replace(w, r'\bX\b', 'B', regex=True)
+    _replace(w, 'Y', 'Z')
+    payload = w.plan_payload()
+    first, middle, last = payload['changes']
+    # Every value \bX\b finds, Y → Z changes again: its row says so rather
+    # than "0 values in 0 documents".
+    assert middle['rule']['total'] == 0
+    assert middle['rule'][rules.CHANGED_AGAIN] == [['Gloss "Y" → "Z"', 1]]
+    assert middle['label'].endswith('0 values: its 1 value is changed again by Gloss "Y" → "Z"'), middle['label']
+    assert rules.CHANGED_AGAIN not in first['rule'] and rules.CHANGED_AGAIN not in last['rule']
+    # The later rule's line goes from what is stored to what is written.
+    [sample] = last['rule']['sample']
+    assert sample['change'] == 'Gloss "X.Y" → "B.Z"', sample
+    _plan, helper = _approved(client, w)
+    assert not helper.errors, helper.errors
+    assert client.updates('spans') == [('sp-g1', 'A'), ('sp-x2', 'B.Z')]
+
+
+def test_a_rule_some_of_whose_values_a_later_rule_changes_again_counts_them_apart():
+    store = {'sp-g1': 'VASP', 'sp-x2': 'VASP.3SG', 'sp-x3': 'VASP'}
+    client, w = _ws(store)
+    _replace(w, 'VASP', 'ASP')
+    _replace(w, 'ASP.3SG', 'ASP.SG')
+    first, second = w.plan_payload()['changes']
+    assert first['rule']['total'] == 2 and first['rule'][rules.CHANGED_AGAIN] == [['Gloss "ASP.3SG" → "ASP.SG"', 1]]
+    assert ', and 1 value changed again by Gloss "ASP.3SG" → "ASP.SG"' in first['label'], first['label']
+    assert second['rule']['sample'][0]['change'] == 'Gloss "VASP.3SG" → "ASP.SG"'

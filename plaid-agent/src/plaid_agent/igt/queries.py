@@ -854,10 +854,14 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
         what = what or (tok.get('value') or '').strip()
         head = c.label_ref(tok['document'], tok['id'], budget)
         ws.note_metadata(sp['id'], sp.get('metadata'))
+        ws.note_stored(f.layer_id, tok['id'], sp.get('value'))
+        # From the value stored to the one written, an earlier rule's step
+        # between them included.
         staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': sp['id'],
                        'value': new, 'doc': tok['document'],
                        **labelled(f'{head} {qv(what[:30])}',
-                                  f'{f.name} {qv(cur)} → {qv(new)}' + (' (cleared)' if new == '' else ''))})
+                                  f'{f.name} {qv(sp.get("value") or cur)} → {qv(new)}'
+                                  + (' (cleared)' if new == '' else ''))})
     return staged
 
 
@@ -1014,6 +1018,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
         head = c.label_ref(tok['document'], tok['id'], budget)
         if old is not None:
             ws.note_metadata(old.id, old.metadata)
+        ws.note_stored(f.layer_id, tok['id'], old.value if old else '')
         op = {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': old.id if old else None,
               'value': value, 'doc': tok['document'], **({'virtual_at': tok['virtual_at']} if 'virtual_at' in tok else {}),
               **labelled(f'{head} {qv(what[:40])}',

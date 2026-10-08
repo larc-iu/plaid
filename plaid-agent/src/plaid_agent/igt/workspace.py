@@ -192,6 +192,10 @@ class Workspace(BaseWorkspace):
         # (layer id, token id) -> (value, the change that leaves it), which
         # ``planned_value`` reads instead of the plan's enumerated changes.
         self._rule_view: Optional[Dict[tuple, tuple]] = None
+        # The value stored on each (layer id, token id) a rule found, before
+        # any rule of the plan: a chained change's line reads from it to the
+        # value the plan writes.
+        self.stored_values: Dict[tuple, str] = {}
 
     # --- rules (core.rules) ---------------------------------------------------
 
@@ -220,6 +224,10 @@ class Workspace(BaseWorkspace):
             yield
         finally:
             self._rule_view = saved
+
+    def note_stored(self, layer_id: str, token_id: str, value: Optional[str]) -> None:
+        """What is stored on a value a rule found (:attr:`stored_values`)."""
+        self.stored_values[(layer_id, token_id)] = value or ''
 
     def rule_values(self) -> Dict[tuple, tuple]:
         """(layer id, token id) -> (value, change) the plan's rules leave."""

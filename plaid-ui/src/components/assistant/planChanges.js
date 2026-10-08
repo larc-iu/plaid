@@ -41,13 +41,36 @@ export const ruleDocuments = (rule) => {
   return { named, moreDocs: Number(moreDocs) || 0, moreChanges: Number(moreChanges) || 0 };
 };
 
-// "1,240 changes in 12 documents", and how many replace accepted work.
+// The values of a rule that later rules of the plan change again
+// (`rule.changedAgain`, `[later rule in words, values]`): "Gloss "ASP" →
+// "ASPX"", or each later rule with its count when there are several.
+const changedAgainBy = (rule) => {
+  const later = (rule?.changedAgain || []).filter(([, n]) => Number(n) > 0);
+  const n = later.reduce((s, [, k]) => s + Number(k), 0);
+  if (!n) return null;
+  const by =
+    later.length === 1
+      ? later[0][0]
+      : later.map(([words, k]) => `${words} (${count(Number(k), 'value', 'values')})`).join(', ');
+  return { n, by };
+};
+
+// "1,240 changes in 12 documents", and how many replace accepted work. A
+// rule whose values a later rule changes again says so, so that "0 changes"
+// never stands without its reason.
 export const ruleCountLine = (rule, replacesWork = 0) => {
   const { named, moreDocs } = ruleDocuments(rule);
   const docs = named.length + moreDocs;
-  const line = `${count(Number(rule?.total) || 0, 'change', 'changes')} in ${count(docs, 'document', 'documents')}`;
-  return replacesWork > 0
-    ? `${line}, ${count(replacesWork, 'replaces', 'replace')} accepted work`
+  const total = Number(rule?.total) || 0;
+  const again = changedAgainBy(rule);
+  if (total === 0 && again) {
+    return `0 changes: its ${count(again.n, 'value is', 'values are')} changed again by ${again.by}`;
+  }
+  let line = `${count(total, 'change', 'changes')} in ${count(docs, 'document', 'documents')}`;
+  if (replacesWork > 0)
+    line = `${line}, ${count(replacesWork, 'replaces', 'replace')} accepted work`;
+  return again
+    ? `${line}, and ${count(again.n, 'value', 'values')} changed again by ${again.by}`
     : line;
 };
 
