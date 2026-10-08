@@ -48,3 +48,10 @@ def test_a_numeric_stored_sent_id_is_not_read_as_a_place():
 def test_a_stored_sent_id_nobody_has_is_refused_with_where_to_look():
     out = call_tool(_ws(), 'read_document', {'document': 'Viaje', 'sentences': ['sent_id=a9']})
     assert 'No sentence in "Viaje" has the stored sent_id "a9"' in out
+
+
+def test_an_empty_sent_id_finds_no_sentence():
+    """``sent_id=`` with nothing after it matched the sentence that stores no
+    sent_id, and read it as if asked for."""
+    out = call_tool(_ws(), 'read_document', {'document': 'Viaje', 'sentences': ['sent_id=']})
+    assert 'names no sent_id' in out and '# sent_id = s2' not in out

@@ -841,13 +841,17 @@ def by_stored_sent_id(doc: 'UdDoc', item: Any) -> Optional[int]:
     explicit = text.lower().replace(' ', '').startswith(SENT_ID_PREFIX)
     if explicit:
         text = text.split('=', 1)[1].strip()
+        if not text:
+            raise ValueError(f'"{item}" names no sent_id: write the stored id after it, as "sent_id=a3".')
     else:
         try:
             sentence_number(item, 'sentences')
             return None
         except ValueError:
             pass
-    found = [s.index for s in doc.sentences if str(s.metadata.get('sent_id') or '').strip() == text]
+    # A sentence that stores no sent_id is never found by one.
+    found = [s.index for s in doc.sentences
+             if (stored := str(s.metadata.get('sent_id') or '').strip()) and stored == text]
     if not found and not explicit:
         return None
     if len(found) == 1:
