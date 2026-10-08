@@ -98,7 +98,8 @@ export const AllProjectsSwitch = ({ checked, onCheckedChange, className }) => (
 // navigation. A row from this project is a link in the tab, where the
 // conversation is in the URL and so shareable, and a button in the panel,
 // where the URL belongs to the screen behind it. `onPick` is what tells the
-// two apart.
+// two apart: in the panel it takes a plain click, and the row is still a link
+// to the conversation on the Assistant screen for a new tab.
 //
 // `onDelete` is handed the WHOLE row, because a row from another project is
 // deleted under that project's keys and only the row knows which. It is asked
@@ -147,9 +148,19 @@ export const ConversationRows = ({
         {m.draft ? (
           <div className="min-w-0 flex-1 text-left">{row}</div>
         ) : onPick && !other ? (
-          <button type="button" onClick={() => onPick(m.id)} className="min-w-0 flex-1 text-left">
+          // Still a link to the conversation on the Assistant screen, so it
+          // opens in a new tab like any other. A plain click opens it here.
+          <Link
+            to={hrefFor(m)}
+            onClick={(e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              onPick(m.id);
+            }}
+            className="min-w-0 flex-1 text-left"
+          >
             {row}
-          </button>
+          </Link>
         ) : (
           <Link to={hrefFor(m)} className="min-w-0 flex-1 text-left">
             {row}

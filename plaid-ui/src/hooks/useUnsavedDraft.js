@@ -211,13 +211,14 @@ const install = (ask) => {
 
   // An in-app link, before React or the router sees the click. A modified
   // click opens a new browser tab and loses nothing; a tab trigger is asked
-  // about by `Tabs`'s own guard on mousedown; a link off this origin is the
+  // about by `Tabs`'s own guard on mousedown, and a link marked
+  // `data-guarded` asks in its own click handler; a link off this origin is the
   // browser's question through `beforeunload`.
   const onClick = (e) => {
     if (!hasUnsavedDraft() || e.defaultPrevented) return;
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const anchor = e.target?.closest?.('a[href]');
-    if (!anchor || anchor.getAttribute('role') === 'tab') return;
+    if (!anchor || anchor.getAttribute('role') === 'tab' || anchor.dataset.guarded) return;
     if (anchor.hasAttribute('download')) return;
     const target = anchor.getAttribute('target');
     if (target && target !== '_self') return;

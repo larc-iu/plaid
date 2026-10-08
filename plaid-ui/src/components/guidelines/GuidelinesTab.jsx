@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Pin, PinOff, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Input } from '../ui/input.jsx';
@@ -52,11 +52,20 @@ const blankDraft = () => ({
   mint: { current: null },
 });
 
-/** One row in the list. */
-const GuidelineRow = ({ entry, selected, onSelect }) => (
-  <button
-    type="button"
-    onClick={() => onSelect(entry.id)}
+/**
+ * One row in the list. A link to the guideline, so it opens in a new tab too.
+ * A plain click is the list's own: it asks about an unsaved draft first and
+ * replaces the address rather than adding to history.
+ */
+const GuidelineRow = ({ entry, selected, to, onSelect }) => (
+  <Link
+    to={to}
+    data-guarded="true"
+    onClick={(e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      onSelect(entry.id);
+    }}
     aria-current={selected ? 'true' : undefined}
     className={cn(
       'flex w-full flex-col border-b px-3 py-2 text-left transition-colors last:border-b-0',
@@ -71,7 +80,7 @@ const GuidelineRow = ({ entry, selected, onSelect }) => (
         {entry.title}
       </span>
     </span>
-  </button>
+  </Link>
 );
 
 export function GuidelinesTab({ client, projectId, canWrite }) {
@@ -108,6 +117,13 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       ),
     [setParams],
   );
+
+  // A guideline's address: this page with every other param kept.
+  const guidelineTo = (id) => {
+    const out = new URLSearchParams(params);
+    out.set('guideline', id);
+    return { search: out.toString() };
+  };
 
   const load = useCallback(async () => {
     const isCurrent = begin();
@@ -342,6 +358,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
                 key={entry.id}
                 entry={entry}
                 selected={entry.id === selectedId && !editing}
+                to={guidelineTo(entry.id)}
                 onSelect={async (id) => {
                   if (!(await guardLeaving())) return;
                   setDraft(null);

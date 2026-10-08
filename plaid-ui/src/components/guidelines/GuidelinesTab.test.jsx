@@ -68,7 +68,7 @@ const typeInto = (el, value) => {
 };
 
 /** The titles in the list, in the order they are drawn. */
-const rowTitles = (container) => texts(container, 'button[class*="border-b"] span.font-medium');
+const rowTitles = (container) => texts(container, 'a[class*="border-b"] span.font-medium');
 
 describe('the guidelines list', () => {
   it('reads the index without bodies and shows pinned first, then by title', async () => {
@@ -84,7 +84,7 @@ describe('the guidelines list', () => {
 
     expect(client.guidelines.get).not.toHaveBeenCalled();
 
-    const alpha = byText(container, 'button', 'Alpha');
+    const alpha = byText(container, 'a', 'Alpha');
     await step(() => alpha.click());
 
     expect(client.guidelines.get).toHaveBeenCalledWith('g2');
@@ -94,7 +94,7 @@ describe('the guidelines list', () => {
 
   it('renders a body as Markdown rather than as its source', async () => {
     const { container, step, unmount } = await mount();
-    await step(() => byText(container, 'button', 'Translations').click());
+    await step(() => byText(container, 'a', 'Translations').click());
 
     expect(all(container, 'strong').map((n) => n.textContent)).toContain('idiomatic');
     expect(container.textContent).not.toContain('**idiomatic**');
@@ -105,14 +105,39 @@ describe('the guidelines list', () => {
   // Arabic guideline title in a left-to-right list, and the other way round.
   it('lets a title choose its own direction, in the list and in the read pane', async () => {
     const { container, step, unmount } = await mount();
-    expect(all(container, 'button[class*="border-b"] span.font-medium').map((n) => n.dir)).toEqual([
+    expect(all(container, 'a[class*="border-b"] span.font-medium').map((n) => n.dir)).toEqual([
       'auto',
       'auto',
       'auto',
     ]);
 
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     expect(container.querySelector('h2').dir).toBe('auto');
+    await unmount();
+  });
+
+  // Luke, 2026-10-08: a row that opens something is a link, so middle-click
+  // and cmd-click open the guideline in a new tab.
+  it('draws each row as a link to the guideline, keeping the other params', async () => {
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter initialEntries={['/p?tab=guidelines']}>
+        <GuidelinesTab client={fakeClient()} projectId="p1" canWrite={false} />
+      </MemoryRouter>,
+    );
+    const alpha = byText(container, 'a', 'Alpha');
+    expect(alpha.getAttribute('href')).toBe('/p?tab=guidelines&guideline=g2');
+    await unmount();
+  });
+
+  it('opens the guideline the address names', async () => {
+    const client = fakeClient();
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter initialEntries={['/p?tab=guidelines&guideline=g2']}>
+        <GuidelinesTab client={client} projectId="p1" canWrite={false} />
+      </MemoryRouter>,
+    );
+    expect(client.guidelines.get).toHaveBeenCalledWith('g2');
+    expect(container.textContent).toContain('The alpha body.');
     await unmount();
   });
 
@@ -127,7 +152,7 @@ describe('the guidelines list', () => {
 describe('a reader is shown no control that would be refused', () => {
   it('offers no New, Edit, Delete or pin', async () => {
     const { container, step, unmount } = await mount({ canWrite: false });
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
 
     const labels = all(container, 'button').map((b) => b.textContent.trim());
     expect(labels).not.toContain('New');
@@ -151,7 +176,7 @@ describe('a writer', () => {
     const labels = () => all(container, 'button').map((b) => b.textContent.trim());
 
     expect(labels()).toContain('New');
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     expect(labels()).toContain('Edit');
     await unmount();
   });
@@ -214,7 +239,7 @@ describe('a writer', () => {
 
   it('sends what the draft was opened against, so a second writer cannot overwrite blind', async () => {
     const { container, client, step, unmount } = await mount({ canWrite: true });
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     await step(() => byText(container, 'button', 'Edit').click());
     await step(() => byText(container, 'button', 'Save').click());
 
@@ -232,7 +257,7 @@ describe('a writer', () => {
     const conflict = Object.assign(new Error('HTTP 409 changed'), { status: 409 });
     const client = fakeClient({ update: vi.fn().mockRejectedValueOnce(conflict) });
     const { container, step, unmount } = await mount({ canWrite: true, client });
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     await step(() => byText(container, 'button', 'Edit').click());
     await step(() => byText(container, 'button', 'Save').click());
 
@@ -255,7 +280,7 @@ describe('a writer', () => {
       get: vi.fn(async (id) => ({ ...INDEX.find((g) => g.id === id), body: long })),
     });
     const { container, step, unmount } = await mount({ canWrite: true, client });
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     await step(() => byText(container, 'button', 'Edit').click());
 
     expect(container.textContent).toContain('20,001 of 20,000 characters');
@@ -279,7 +304,7 @@ describe('a writer', () => {
       server: { limits: vi.fn().mockResolvedValue({ guidelineBodyLength: 90 }) },
     };
     const { container, step, unmount } = await mount({ canWrite: true, client });
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     await step(() => byText(container, 'button', 'Edit').click());
 
     expect(container.textContent).toContain('95 of 90 characters');
@@ -290,7 +315,7 @@ describe('a writer', () => {
 
   it('pins a guideline without restating the rest of it', async () => {
     const { container, client, step, unmount } = await mount({ canWrite: true });
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
 
     const pin = container.querySelector('[aria-label="Pin"]');
     await step(() => pin.click());
@@ -316,7 +341,7 @@ describe('a guideline being written', () => {
 
     // Another guideline in the list is a way out too. With no confirmation
     // given, the draft stays on screen.
-    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Alpha').click());
     expect(container.querySelector('#guideline-title').value).toBe('Loanwords');
 
     await step(() => byText(container, 'button', 'Cancel').click());
