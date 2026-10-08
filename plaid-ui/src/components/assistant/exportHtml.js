@@ -10,8 +10,8 @@
 // - A table the assistant made (.csv, .tsv) is shown in full when it is small
 //   enough. Every other file is named with its size.
 // - Nothing from a project the exporter cannot open today: a citation into one
-//   is left out, its name is written "Another project", and the tool output of
-//   a turn that read one is left out.
+//   is left out, its name is written "Another project", and the tool outputs
+//   of a turn that read one and the content of a table it made are left out.
 // - A long tool output is cut short, and past a total the rest are left out,
 //   so a long conversation stays a file of a few MB at most.
 // The header says what was left out.
@@ -41,6 +41,9 @@ export const prepareExport = (conv, { projectId, readable }) => {
   const rename = (projects) => projects.map((p) => (opens(p.id) ? p : { ...p, name: OTHER }));
   const outputs = toolResults(conv?.messages);
   const results = new Map();
+  // The files a turn that read a closed project made: what they hold may
+  // come from it, so only their names are shown.
+  const closedFiles = new Set();
   const left = { citations: 0, results: 0, shortened: 0 };
   let budget = TOOL_OUTPUT_TOTAL;
   let reach = [];
@@ -57,6 +60,7 @@ export const prepareExport = (conv, { projectId, readable }) => {
       left.citations += d.citations.length - out.citations.length;
     }
     const closed = reach.some((p) => !opens(p.id));
+    if (closed) for (const f of d.files || []) if (f.made) closedFiles.add(f.id);
     for (const s of d.steps || []) {
       if (!s.id || !outputs.has(s.id)) continue;
       let text = outputs.get(s.id);
@@ -65,21 +69,20 @@ export const prepareExport = (conv, { projectId, readable }) => {
         left.results += 1;
         continue;
       }
-      if (text.length > TOOL_OUTPUT_CHARS) {
-        text = `${text.slice(0, TOOL_OUTPUT_CHARS)}\n…`;
-        left.shortened += 1;
-      }
+      const long = text.length > TOOL_OUTPUT_CHARS;
+      if (long) text = `${text.slice(0, TOOL_OUTPUT_CHARS)}\n…`;
       if (text.length > budget) {
         results.set(s.id, NOT_INCLUDED);
         left.results += 1;
         continue;
       }
+      if (long) left.shortened += 1;
       budget -= text.length;
       results.set(s.id, text);
     }
     return out;
   });
-  return { display, results, left };
+  return { display, results, left, closedFiles };
 };
 
 // A CSV or TSV as the host's csv module writes it: quoted fields may hold the
@@ -123,14 +126,14 @@ const TABLE_FILE = /\.(csv|tsv)$/i;
 
 // The made tables small enough to show, by file id, and the names of those
 // that are not.
-const readTables = async (display, store, convId) => {
+const readTables = async (display, store, convId, closedFiles) => {
   const tables = new Map();
   const notShown = [];
   for (const d of display) {
     if (d.kind !== 'assistant') continue;
     for (const f of d.files || []) {
       if (!f.made || !TABLE_FILE.test(f.name || '')) continue;
-      if (!store || (f.bytes || 0) > TABLE_BYTES) {
+      if (!store || closedFiles.has(f.id) || (f.bytes || 0) > TABLE_BYTES) {
         notShown.push(f.name);
         continue;
       }
@@ -276,8 +279,8 @@ export const conversationToHtml = async (
     now = new Date(),
   },
 ) => {
-  const { display, results, left } = prepareExport(conv, { projectId, readable });
-  const { tables, notShown } = await readTables(display, store, conv?.id);
+  const { display, results, left, closedFiles } = prepareExport(conv, { projectId, readable });
+  const { tables, notShown } = await readTables(display, store, conv?.id, closedFiles);
   const title = meta?.title || 'Conversation';
   const ran = models(display, meta);
   const facts = [

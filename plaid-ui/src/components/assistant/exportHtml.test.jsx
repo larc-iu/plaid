@@ -275,6 +275,62 @@ describe('the web page export', () => {
     );
   });
 
+  it('shows no table made by a turn that read a closed project, only its name', async () => {
+    const reading = conv.display.findIndex((d) => d.kind === 'assistant' && d.unavailableProjects);
+    const display = conv.display.map((d, i) =>
+      i === reading
+        ? { ...d, files: [{ id: 'fc', name: 'compared.csv', bytes: 60, made: true, chunks: 1 }] }
+        : d,
+    );
+    const read = vi.fn(async (_user, key) => ({
+      value: key.includes(':fc:') ? 'form,gloss\nzz,CLOSED-ROW\n' : 'verb,gloss\nakal,eat\n',
+    }));
+    const doc = parse(
+      await conversationToHtml(
+        { ...conv, display },
+        { title: 'Verbs in Text 1' },
+        {
+          projectId: HOME,
+          adapter,
+          store: { ...store, client: { userData: { get: read } } },
+          readable: new Set([HOME, OPEN]),
+        },
+      ),
+    );
+    expect(doc.body.textContent).not.toContain('CLOSED-ROW');
+    expect(doc.body.textContent).toContain('compared.csv');
+    expect(doc.querySelector('.plaid-export-header').textContent).toContain(
+      'the content of compared.csv',
+    );
+    // The table the first turn made, which read the home project only, is shown.
+    expect(doc.querySelector('.plaid-export-table').textContent).toContain('akal');
+    expect(
+      read.mock.calls.some(([, key]) => key.includes(':fc:')),
+      'the closed turn file is never read',
+    ).toBe(false);
+  });
+
+  it('counts a long tool output left out as left out, not as shortened', () => {
+    const many = {
+      messages: Array.from({ length: 300 }, (_, i) => ({
+        role: 'tool',
+        toolCallId: `t${i}`,
+        content: 'y'.repeat(9000),
+      })),
+      display: [
+        { kind: 'user', text: 'Go.' },
+        {
+          kind: 'assistant',
+          text: 'Done.',
+          steps: Array.from({ length: 300 }, (_, i) => ({ id: `t${i}`, label: `Step ${i}` })),
+        },
+      ],
+    };
+    const { left } = prepareExport(many, { projectId: HOME, readable: null });
+    expect(left.shortened + left.results).toBe(300);
+    expect(left.results).toBeGreaterThan(0);
+  });
+
   it('names a made table it does not show', async () => {
     const big = {
       ...conv,
