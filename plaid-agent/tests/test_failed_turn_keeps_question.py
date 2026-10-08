@@ -58,3 +58,37 @@ def test_the_next_turn_reads_the_question_a_failed_turn_never_answered(monkeypat
     # And it failed too: both questions stay, each once.
     conv, _meta = store.load('c1')
     assert len(conv['messages']) == 2 and conv['messages'][1]['content'].endswith(NEXT)
+
+
+@pytest.mark.parametrize('outcome', ['answer', 'failure'])
+def test_a_turn_the_page_settled_first_keeps_the_question_once_and_the_note_after_it(monkeypatch, outcome):
+    """The page settled the turn as failed while the service still ran (the
+    request ended for the page, not for the service), keeping the question in
+    the transcript as the service does, and a plan was discarded after it.
+    The service's own ending, written after, holds the question once and the
+    note after it, whichever way the turn ended."""
+    from test_record_versions import _browser_writes
+    from plaid_agent.core.agent import TurnResult
+    client = FakeClient()
+    store = _seed(client, text=ASKED)
+    note = '(note) The plan was discarded.'
+
+    def settled_by_page(conv):
+        conv['display'].append({'kind': 'error', 'text': 'Service disconnected',
+                                'created_at': '2026-10-08T00:00:00.000Z'})
+        conv['messages'].append({'role': 'user', 'content': note})
+        return conv
+
+    def run(cfg, kit, ws, system, transcript, on_progress, cancelled=None, on_text=None):
+        _browser_writes(ws.client, settled_by_page, pending=None)
+        if outcome == 'failure':
+            raise RuntimeError('RateLimitError: Model capacity reached')
+        return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', run)
+    _service().process_request(_request(client), Helper())
+    conv, _meta = store.load('c1')
+    contents = [m['content'] for m in conv['messages']]
+    assert [c for c in contents if c.endswith(ASKED)] == [ASKED]
+    assert contents[1] == note
+    assert [d['kind'] for d in conv['display']] == ['user', 'assistant' if outcome == 'answer' else 'error']
