@@ -681,6 +681,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             name = c['function']['name']
             raw = c['function']['arguments'] or '{}'
             planned = 0
+            saved_before = len(getattr(getattr(ws, 'keeper', None), 'saved', None) or ())
             key = (name, raw)
             repeated = False
             try:
@@ -715,7 +716,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     if before is not None and _plan_snapshot(ws) == before:
                         result, repeated = ALREADY_PLANNED, True
             failed = str(result).startswith('Error')
-            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned))
+            saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
+            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned, saved=saved))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
             calls_made.append({'id': c['id'], 'name': name, 'arguments': truncate(raw), 'result': result})
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:

@@ -394,3 +394,20 @@ def test_a_read_repeated_is_not_a_plan_repeat(monkeypatch):
     script = Script(*([_resp(calls=[_call(i, 'read', '{}')]) for i in range(4)] + [_resp('Found it.')]))
     turn = _turn(monkeypatch, script)
     assert turn.text == 'Found it.'
+
+
+def test_a_step_names_the_files_its_call_saved(monkeypatch):
+    # The summary counts a run of code that saved a file as the saving, which
+    # it can only do if the step says what its call saved.
+    ws = Ws()
+    ws.keeper = SimpleNamespace(saved=['earlier.csv'])
+
+    def tool(w, name, args):
+        if args.get('save'):
+            w.keeper.saved.append('words.csv')
+        return 'ok'
+    script = Script(_resp(calls=[_call(1, 'run_code', '{"save": true}'), _call(2, 'run_code', '{}')]),
+                    _resp('Done.'))
+    result = _turn(monkeypatch, script, tool, ws=ws)
+    assert [s.get('saved') for s in result.steps] == [['words.csv'], None]
+    assert result.summary == '1 search · saved 1 file · 2 steps'

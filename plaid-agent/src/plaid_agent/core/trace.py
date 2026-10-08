@@ -117,14 +117,15 @@ def failed_label(label: str) -> str:
 
 
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
-               failed: bool = False, planned: int = 0) -> Dict[str, Any]:
+               failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
     still shows it where it happened) but is left out of every count.
     ``planned`` is how much the call changed the plan's size (negative for a
     drop), so the summary counts the changes the card shows rather than the
-    calls that asked for them."""
+    calls that asked for them. ``saved`` names the files the call saved for
+    the user (save_file in run_code)."""
     kind = tracer.kind(name)
     label = tracer.describe(name, args)
     item = {'id': call_id, 'name': name, 'kind': kind,
@@ -135,6 +136,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
         item['document'] = str(args['document'])
     if planned:
         item['planned'] = planned
+    if saved and not failed:
+        item['saved'] = list(saved)
     return item
 
 
@@ -151,9 +154,14 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     parts = []
     if docs:
         parts.append(f'read {plural(len(docs), "document")}')
-    reads = sum(1 for s in steps if s['kind'] == READ)
+    # A run of code that saved a file is counted as the saving, not as a
+    # search, and a file saved twice (code run again after a fix) is one file.
+    reads = sum(1 for s in steps if s['kind'] == READ and not s.get('saved'))
     if reads:
         parts.append(plural(reads, 'search', 'searches'))
+    saved = {n.casefold() for s in steps for n in s.get('saved') or ()}
+    if saved:
+        parts.append('saved ' + plural(len(saved), 'file'))
     web = sum(1 for s in steps if s['kind'] == WEB)
     if web:
         parts.append(plural(web, 'web lookup'))

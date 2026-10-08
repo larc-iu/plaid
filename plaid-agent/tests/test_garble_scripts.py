@@ -237,6 +237,12 @@ print(plan("set_field", document="Text 1", refs=["s1.w2"], field="Gloss", value=
     assert 'Wancho' in out and not w.ops, out
 
 
+def test_the_refusal_says_a_saved_file_is_no_source():
+    # The model that copied a value from its own file is told where to copy from.
+    w = _ws(_file('mine.csv', f'form\n{WANCHO}\n', made=True))
+    assert 'never of one you saved' in w.garbled({'value': WANCHO})
+
+
 @pytest.mark.parametrize('name', ['x.json', 'x.txt'])
 def test_save_file_checks_what_escaped_text_decodes_to(name):
     w = _ws()
@@ -284,36 +290,42 @@ def test_every_table_reads_back_in_bulk_add_as_it_was_saved():
     cases = []
     for what, rows in TABLES:
         for suffix in ('.csv', '.tsv'):
-            text, name = _table_text('t' + suffix, rows)
-            cases.append((what, suffix, name, text, _expected(rows)))
+            name = 't' + suffix
+            text = _table_text(name, rows)
+            # Dropped in as the file, and pasted into the dialog as text.
+            for given in (name, None):
+                cases.append((what, suffix, given, text, _expected(rows)))
     with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, encoding='utf-8') as fh:
-        json.dump([c[3] for c in cases], fh)
+        json.dump([{'text': c[3], 'name': c[2]} for c in cases], fh)
     try:
         run = subprocess.run([node, os.path.join(here, 'bulk_add_mirror.mjs'), fh.name],
                              capture_output=True, text=True, timeout=120)
     finally:
         os.unlink(fh.name)
     assert run.returncode == 0, run.stderr
-    for (what, suffix, name, text, want), got in zip(cases, json.loads(run.stdout)):
-        assert got['rows'] == want, (what, suffix, name, text, got)
-        # A .tsv is read as one, and a .csv kept as such is read as one. A
+    for (what, suffix, given, text, want), got in zip(cases, json.loads(run.stdout)):
+        assert got['rows'] == want, (what, suffix, given, text, got)
+        # A .tsv is read as one and a .csv as one, by name or from the text. A
         # table of one column has no separator to read.
-        assert len(want[0]) == 1 or got['delimiter'] == ('\t' if name.endswith('.tsv') else ','), (what, suffix, got['delimiter'])
+        assert len(want[0]) == 1 or got['delimiter'] == ('\t' if suffix == '.tsv' else ','), \
+            (what, suffix, given, got['delimiter'])
 
 
-def test_a_csv_bulk_add_would_misread_is_saved_as_tsv_and_said_so():
+def test_a_csv_stays_a_csv_whatever_its_cells_hold():
     w = _ws()
     save = save_api(w)['save_file']
     out = save('entries.csv', TABLES[1][1])
-    assert '"entries.tsv"' in out and 'tab-separated' in out
-    # Saved again under the name asked for, it replaces that file.
-    save('entries.csv', [{'form': 'kha', 'meaning': 'eat'}])
+    assert '"entries.csv"' in out and 'tab-separated' not in out
+    assert w.keeper.refs[0]['name'] == 'entries.csv'
+    text = w.files.get('entries.csv').text()
+    assert text == 'form,meaning\nkha,"eat; drink; consume; take; have"\nahi,"go; walk; leave"\n'
+    save('entries.csv', TABLES[0][1])
+    assert '\t' in w.files.get('entries.csv').text()
     assert [r['name'] for r in w.keeper.refs] == ['entries.csv']
 
 
 def test_cells_are_written_exactly_as_given():
-    text, name = _table_text('t.csv', TABLES[6][1])
-    assert name == 't.csv' and text == 'form,gloss,n,x\n-ka,=PL,+3,@foo\n'
+    assert _table_text('t.csv', TABLES[6][1]) == 'form,gloss,n,x\n-ka,=PL,+3,@foo\n'
 
 
 # --- H8-AGENT-7: a failed save leaves nothing in the store -------------------------

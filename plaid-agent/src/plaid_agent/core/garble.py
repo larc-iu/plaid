@@ -226,8 +226,8 @@ def _excerpt(s: str, at: int) -> str:
     return _shown(('…' if lo else '') + s[lo:at + 20] + ('…' if at + 20 < len(s) else ''))
 
 
-_COPY = ('Do not type it: copy it in run_code from the data that holds it (load, query or file_rows), and '
-         'stage the change from there.')
+_COPY = ('Do not type it: copy it in run_code from the data that holds it (load, query, or file_rows of a '
+         'file the user attached, never of one you saved), and stage the change from there.')
 
 
 def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] = None) -> Optional[str]:

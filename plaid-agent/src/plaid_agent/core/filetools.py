@@ -18,7 +18,7 @@ go into the note.
 
 import json
 import unicodedata
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from . import pdftext
 from .args import clamp_limit, whole
@@ -411,12 +411,6 @@ def save_help(ws) -> str:
     return SAVE_HELP.format(suffixes=', '.join(SAVE_SUFFIXES))
 
 
-# What a reader that guesses the separator from the text looks at: the first
-# 64 KB, where a tab anywhere means tab-separated, and more semicolons than
-# commas mean semicolon-separated.
-SNIFFED = 64 * 1024
-
-
 def _cell(v: Any) -> str:
     """One cell, quoted when it holds a separator of any kind (a tab, a comma,
     a semicolon), a quote or a line break, so a reader keeps it whole whichever
@@ -427,25 +421,15 @@ def _cell(v: Any) -> str:
     return text
 
 
-def _sniffed_as(text: str) -> str:
-    """The separator a reader that guesses from the text takes ``text`` for."""
-    sample = text[:SNIFFED]
-    if '\t' in sample:
-        return '\t'
-    semis, commas = sample.count(';'), sample.count(',')
-    return ';' if semis > commas else ','
+def _table_text(name: str, rows: List[Any]) -> str:
+    """Rows as the text of a .csv or .tsv.
 
-
-def _table_text(name: str, rows: List[Any]) -> Tuple[str, str]:
-    """Rows as the text of a .csv or .tsv, and the name to save it under.
-
-    Every cell holding a separator is quoted, so a one-column table reads the
-    same under any separator. A .csv whose cells hold a tab, or more
-    semicolons than the commas between its cells, would be taken for
-    tab- or semicolon-separated by an import screen that guesses from the
-    text, and is saved as a .tsv instead, which every such reader takes for
-    what it is. The cells themselves are written exactly as given: a form
-    such as "=PL" or "-ka" is data, not a formula."""
+    Every cell holding a separator of any kind is quoted, so a reader that
+    guesses the separator from what lies outside quoted cells (Bulk Add, given
+    pasted text) settles on the one the file was written with, and a
+    one-column table reads the same under any separator. The cells themselves
+    are written exactly as given: a form such as "=PL" or "-ka" is data, not a
+    formula."""
     if rows and all(isinstance(r, dict) for r in rows):
         columns: List[str] = []
         for r in rows:
@@ -462,12 +446,7 @@ def _table_text(name: str, rows: List[Any]) -> Tuple[str, str]:
     def written(sep: str) -> str:
         return ''.join(sep.join(_cell(v) for v in row) + '\n' for row in table)
 
-    if name.lower().endswith('.tsv'):
-        return written('\t'), name
-    text = written(',')
-    if _sniffed_as(text) == ',':
-        return text, name
-    return written('\t'), name[:-4] + '.tsv'
+    return written('\t' if name.lower().endswith('.tsv') else ',')
 
 
 def _decoded(text: str) -> Any:
@@ -508,17 +487,12 @@ def save_api(ws) -> Dict[str, Callable]:
         lower = name.lower()
         if not lower.endswith(SAVE_SUFFIXES):
             raise ValueError('A saved file ends in one of ' + ', '.join(SAVE_SUFFIXES) + '.')
-        why_tsv = ''
         if isinstance(content, str):
             text = content
         elif lower.endswith('.json'):
             text = json.dumps(content, ensure_ascii=False, indent=1)
         elif lower.endswith(('.csv', '.tsv')) and isinstance(content, (list, tuple)):
-            asked = name
-            text, name = _table_text(name, list(content))
-            if name != asked:
-                why_tsv = (' It is tab-separated, since its cells hold tabs or semicolons that an import '
-                           'screen would take for the separator of a .csv.')
+            text = _table_text(name, list(content))
         else:
             raise ValueError('content is text, or for a .csv or .tsv a list of rows.')
         # What it holds is checked like a plan's values: the user takes this
@@ -535,9 +509,9 @@ def save_api(ws) -> Dict[str, Callable]:
                              'hold. Split it in two.')
         if ws.files is None:
             ws.files = Attachments([])
-        a = keeper.save(ws.files, name, text, also=asked if why_tsv else None)
+        a = keeper.save(ws.files, name, text)
         lines = f'{a.lines:,} line{"" if a.lines == 1 else "s"}'
-        return (f'Saved "{a.name}" ({lines}).{why_tsv} It is on your reply for the user to download: '
+        return (f'Saved "{a.name}" ({lines}). It is on your reply for the user to download: '
                 'say in your reply what it holds.')
 
     return {'save_file': save_file}

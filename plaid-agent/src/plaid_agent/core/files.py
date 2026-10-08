@@ -442,6 +442,9 @@ class FileKeeper:
         self._keys: List[str] = []
         # What this turn saved with save_file, by name folded for case.
         self._made: Dict[str, Attachment] = {}
+        # Every save this turn, by the name it was saved as, in order: the
+        # trace reads off which call saved what.
+        self.saved: List[str] = []
 
     def keep(self, files: 'Attachments', name: str, text: str, source: str = '') -> Attachment:
         """Store ``text`` as a file of this conversation and add it to
@@ -486,15 +489,14 @@ class FileKeeper:
         self.refs.append({**ref, 'name': name})
         return a
 
-    def save(self, files: 'Attachments', name: str, text: str, also: Optional[str] = None) -> Attachment:
+    def save(self, files: 'Attachments', name: str, text: str) -> Attachment:
         """Store ``text`` as a file this turn MADE for the user (``save_file``),
         which the reply carries for them to download and later turns read like
         an attachment. Saving a name this turn already saved replaces that
         file, so code run again after a fix leaves one file, not two. The name
         is the one asked for or the one it was saved as, which differ when it
-        clashed with an attachment. ``also`` is one more name it answers to:
-        the one asked for, when the file was saved under another suffix."""
-        earlier = self._made.get(name.casefold()) or (self._made.get(also.casefold()) if also else None)
+        clashed with an attachment."""
+        earlier = self._made.get(name.casefold())
         if earlier is None and len({id(a) for a in self._made.values()}) >= MAX_SAVED:
             raise ValueError(f'One reply can carry {MAX_SAVED} files, and this one already has '
                              f'{MAX_SAVED}. Put what is left in one of them.')
@@ -514,8 +516,7 @@ class FileKeeper:
         self.refs[-1]['made'] = True
         self._made[name.casefold()] = a
         self._made[a.name.casefold()] = a
-        if also:
-            self._made[also.casefold()] = a
+        self.saved.append(a.name)
         return a
 
     def _drop(self, files: 'Attachments', a: Attachment) -> None:

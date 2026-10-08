@@ -78,6 +78,17 @@ def test_summary_counts_documents_searches_and_changes():
     assert summarize_steps([]) == '0 steps'
 
 
+def test_a_run_of_code_that_saved_files_counts_as_saving_not_as_a_search():
+    # H8-AGENT polish: two run_code calls, one of which saved two files, read
+    # "2 searches". A file saved again (code run after a fix) is one file.
+    steps = [trace_step(TRACER, 'a', 'run_code', {'code': 'x'}),
+             trace_step(TRACER, 'b', 'run_code', {'code': 'y'}, saved=['words.csv', 'notes.txt']),
+             trace_step(TRACER, 'c', 'run_code', {'code': 'z'}, saved=['Words.csv']),
+             trace_step(TRACER, 'd', 'run_code', {'code': 'w'}, failed=True, saved=['other.csv'])]
+    assert 'saved' not in steps[3]
+    assert summarize_steps(steps) == '1 search · saved 2 files · 4 steps'
+
+
 def test_the_summary_counts_the_changes_planned_not_the_calls():
     """The step line said "7 planned changes" (calls) over a card listing 9
     (changes). One call can stage many changes, a refused call none, and a
