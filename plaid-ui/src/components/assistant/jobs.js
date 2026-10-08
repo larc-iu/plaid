@@ -224,7 +224,12 @@ export const persistConv = (
           if (!metaOnly) {
             // Every settled plan as it is kept (planRecord.js), as the
             // service writes them too.
-            const value = { messages: c.messages, display: c.display.map(compactPlan) };
+            // An answer shown as not saved (`withUnsavedAnswer`) stays out of
+            // it, with its line, as when it was refused.
+            const value = {
+              messages: c.messages,
+              display: c.display.filter((d) => !d.unsaved).map(compactPlan),
+            };
             const put = await client.userData.put(userId, convKey(app, projectId, c.id), value, {
               version: c.rev?.conv,
             });
@@ -426,7 +431,8 @@ const answerNotSaved = (e) =>
 // the panel shows it. Not stored, so it offers nothing to approve: its plan
 // stays out (approving needs it in the record, where the service reads it),
 // and so does what the answer would have done to the plans before it. A line
-// after it says the answer is not saved.
+// after it says the answer is not saved. Both are flagged `unsaved`, which
+// keeps them out of the next write of the record (`persistConv`).
 const withUnsavedAnswer = (conv, item, e) => {
   const { plan, ...answer } = item;
   const said = plan
@@ -436,9 +442,11 @@ const withUnsavedAnswer = (conv, item, e) => {
     ...conv,
     display: [
       ...conv.display,
-      { ...answer, createdAt: item.createdAt || itemTime() },
+      { ...answer, unsaved: true, createdAt: item.createdAt || itemTime() },
       {
         kind: 'error',
+        // Not a turn that failed: no Retry under it (AssistantChat).
+        unsaved: true,
         text: e?.status === 413 ? `${said} This conversation is full.` : said,
         createdAt: itemTime(),
       },
@@ -631,8 +639,30 @@ const finishJob = async (j, store, service) => {
     } else if (settled.failure) {
       // The answer is in neither the record nor the service: shown once, as
       // not saved, on the record as it was read.
-      conv = withUnsavedAnswer(conv, j.outcome.item, refused);
       meta = settled.meta;
+      if (refused?.status === 413) {
+        // A record too full for the answer refuses it however often it is
+        // asked, so the request is settled on the entry too. Left marked, every
+        // load rejoined it and was refused again.
+        const cleared = await persistConv(
+          store,
+          conv,
+          buildMeta(store, meta, conv, service, null),
+          {
+            metaOnly: true,
+            settles: j.requestId,
+            rebase: (fresh) =>
+              fresh.meta?.pending?.requestId === j.requestId
+                ? {
+                    conv: fresh.conv,
+                    meta: buildMeta(store, fresh.meta, fresh.conv, service, null),
+                  }
+                : null,
+          },
+        );
+        if (cleared && !cleared.declined) ({ conv, meta } = cleared);
+      }
+      conv = withUnsavedAnswer(conv, j.outcome.item, refused);
     } else {
       ({ conv, meta } = settled);
     }

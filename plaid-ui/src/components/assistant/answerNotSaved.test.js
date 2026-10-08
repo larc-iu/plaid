@@ -15,15 +15,16 @@ vi.mock('../../lib/notify.js', () => ({
 }));
 
 const { notifyError } = await import('../../lib/notify.js');
-const { jobListeners, startTurn } = await import('./jobs.js');
+const { jobListeners, persistConv, startTurn } = await import('./jobs.js');
 
 const KEYS = { conv: 'igt:assistant:proj:conv:c1', meta: 'igt:assistant:proj:meta:c1' };
 const question = { kind: 'user', text: 'Gloss sentence 4.', createdAt: '2026-10-06T00:00:00.000Z' };
 const plan = { id: 'p2', summary: '1 field value', changes: [{ label: 'a' }], ops: [{}] };
 const earlier = { kind: 'assistant', text: 'Planned.', plan: { id: 'p1', ops: [] }, status: null };
 
-// The user's private data as core keeps it, where every write after the
-// message and its marker (the first two) is refused with `refusal`.
+// The user's private data as core keeps it, where every write of the
+// transcript after the message and its marker (the first two writes) is
+// refused with `refusal`. The small sidebar entry still takes writes.
 const setup = (item, refusal) => {
   const data = new Map();
   let puts = 0;
@@ -34,7 +35,7 @@ const setup = (item, refusal) => {
     }),
     put: vi.fn(async (_user, key, value) => {
       puts += 1;
-      if (puts > 2) throw refusal;
+      if (puts > 2 && key.includes(':conv:')) throw refusal;
       data.set(key, structuredClone(value));
       return {};
     }),
@@ -62,6 +63,7 @@ const setup = (item, refusal) => {
 const run = async (item, refusal) => {
   notifyError.mockClear();
   const { data, store, stop } = setup(item, refusal);
+  lastStore = store;
   const conv = {
     id: 'c1',
     messages: [
@@ -76,6 +78,7 @@ const run = async (item, refusal) => {
   return { j, data };
 };
 
+let lastStore = null;
 const tooLarge = Object.assign(new Error('Value exceeds 5242880 bytes'), { status: 413 });
 const serverError = Object.assign(new Error('Forbidden'), { status: 403 });
 
@@ -121,5 +124,43 @@ describe('an answer neither the service nor the page could save', () => {
     expect(shown[0].status).toBe(null);
     expect(shown[0].plan.id).toBe('p1');
     expect(data.get(KEYS.conv).display.some((d) => d.plan?.id === 'p2')).toBe(false);
+  });
+
+  it('settles the request on the stored entry when the record is full', async () => {
+    // Left marked, every load of the conversation rejoined the request, was
+    // handed the same answer and was refused again, toast and all.
+    const { data } = await run(
+      { kind: 'assistant', text: 'Glossed.', plan: null, status: null },
+      tooLarge,
+    );
+    expect(data.get(KEYS.meta).pending).toBe(null);
+    // The record as stored: the message, unanswered.
+    expect(data.get(KEYS.conv).display.map((d) => d.kind)).toEqual(['assistant', 'user']);
+    expect(notifyError).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the request marked when the save failed for another reason', async () => {
+    const { data } = await run(
+      { kind: 'assistant', text: 'Glossed.', plan: null, status: null },
+      serverError,
+    );
+    expect(data.get(KEYS.meta).pending?.kind).toBe('turn');
+  });
+
+  it('never writes the unsaved answer or its line with the next message', async () => {
+    const { j } = await run(
+      { kind: 'assistant', text: 'Here is a plan.', plan, status: null },
+      tooLarge,
+    );
+    const shown = j.result.conv;
+    const put = vi.fn(async () => ({ version: 9 }));
+    const next = {
+      ...shown,
+      messages: [...shown.messages, { role: 'user', content: 'Again.' }],
+      display: [...shown.display, { kind: 'user', text: 'Again.' }],
+    };
+    await persistConv({ ...lastStore, client: { userData: { put } } }, next, { id: 'c1' });
+    const written = put.mock.calls.find(([, key]) => key === KEYS.conv)[2];
+    expect(written.display.map((d) => d.text)).toEqual(['Planned.', question.text, 'Again.']);
   });
 });

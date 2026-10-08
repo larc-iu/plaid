@@ -177,6 +177,8 @@ export const AssistantChat = ({
 
   const [active, setActive] = useState(newConversation); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
+  // Drawn again when a write changed only the stored size of what is shown.
+  const [, setSizeTick] = useState(0);
   const activeRef = useRef(active);
   activeRef.current = active;
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
@@ -498,7 +500,13 @@ export const AssistantChat = ({
       },
     }).then((written) => {
       const shown = written?.declined ? written.fresh : written;
-      if (!shown || activeRef.current !== next || shown.conv === next) return;
+      if (!shown || activeRef.current !== next) return;
+      if (shown.conv === next) {
+        // Written as it is shown: only its size changed (`rev.bytes`, set on
+        // the copy by the write), which the meter reads when drawn.
+        setSizeTick((n) => n + 1);
+        return;
+      }
       activeRef.current = shown.conv;
       setActive(shown.conv);
       if (shown.meta) applyMeta(shown.meta);
@@ -909,7 +917,10 @@ export const AssistantChat = ({
   // it was lost rather than in progress.
   const idle = !busy && !jobFor(active?.id);
   const lastKind = display.at(-1)?.kind;
-  const canRetryTurn = idle && (lastKind === 'user' || lastKind === 'error');
+  // An answer that came back but could not be saved is no failed turn: the
+  // line under it says so, and the turn is not offered again there.
+  const canRetryTurn =
+    idle && (lastKind === 'user' || (lastKind === 'error' && !display.at(-1).unsaved));
   const stoppedHere = stoppedIn(stopped, active?.id);
   const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
   // What the surface's own chrome is drawn from.
