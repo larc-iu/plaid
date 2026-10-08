@@ -82,6 +82,7 @@ from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, partial_note, partial_tally, pending_kept, plan_settling,
                            proposed_changes, prune, record_budget, turn_ending)
+from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, DocumentsBusy, Expansion, PlanError, PlanOutOfDate, ScopeMoved,
                    documents_to_lock, drawable, expanding, forget_held, held_from, holding, outcome_unknown)
@@ -795,6 +796,13 @@ class BaseAssistantService(BaseService):
             settled()
             response_helper.error('Nothing to apply')
             return
+        # The limits a plan is held to when it is staged, asked again: a plan
+        # staged under other limits must not lock or write more than these.
+        big = rules.too_big(ops, self.documents_to_lock(ops, plan.get('documents') or []))
+        if big:
+            settled('stale', f'(note) The plan was not applied: {big} Nothing was written.', reason=big)
+            response_helper.error(f'Nothing was written. {big}')
+            return
         # Whose work is reviewed is the project's setting as it is NOW, read
         # here rather than taken from the page: a page loaded before a
         # maintainer changed it would stamp the plan by the old setting.
@@ -896,7 +904,8 @@ class BaseAssistantService(BaseService):
             said = ' '.join(_sentence(s) for s in reasons)
 
             def refuse():
-                settled('stale', f'(note) The plan was not applied: {said} Nothing was written.')
+                # The card says why, in the same words (`reason`).
+                settled('stale', f'(note) The plan was not applied: {said} Nothing was written.', reason=said)
                 response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return refuse
 
@@ -980,7 +989,7 @@ class BaseAssistantService(BaseService):
                 # A row that folds many changes ("dep on 600 words") counts
                 # each of them, written or not, so a row cut short by the
                 # failure says "400 of 600", not "0 of 1".
-                sizes = [int(op.get('count') or 1) if op.get('compact') else 1 for op in ops]
+                sizes = [int(op.get('count') or 1) if op.get('compact') or rules.is_rule(op) else 1 for op in ops]
                 parts = {i: n for i, n in (e.members or {}).items() if 0 <= i < len(ops) and i not in done}
                 written_n = sum(sizes[i] for i in done if 0 <= i < len(ops)) + sum(parts.values())
                 # A row another service wrote in part (a parse that stopped
@@ -1241,7 +1250,10 @@ def stale_documents(client, documents: list, reread=None) -> list:
         except Exception as e:  # noqa: BLE001 - deleted or unreadable: the plan cannot apply
             out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
             continue
-        if now.get('version') == d['version'] or d.get(HELD_FROM) is not None:
+        # Reached by rules alone: what they match there is checked by its
+        # digest when they are found again (`core.rules.check_matched`), so an
+        # edit elsewhere in the document does not refuse the plan.
+        if now.get('version') == d['version'] or d.get(HELD_FROM) is not None or d.get('rule'):
             continue
         named = _named(now.get('name') or d.get('name'))
         changed = None

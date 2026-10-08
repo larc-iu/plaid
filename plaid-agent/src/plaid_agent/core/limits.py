@@ -130,3 +130,13 @@ PIN_SENTENCES_PLAN_MAX = 1000
 # than any window, so this, and not that, is what keeps a long thread
 # sendable.
 TRANSCRIPT_WINDOW_SHARE = 0.8
+
+# Changes one plan may make once its rules are expanded (a rule stored as one
+# change counts every change it stands for), asked when a change is staged and
+# again when the plan is approved. About thirteen seconds of bulk updates at
+# the measured 6,107 values in 3.9 s (Luke, 2026-10-08).
+PLAN_MAX_CHANGES = 20000
+
+# Documents one plan may reach. Approval locks each of them, one call each,
+# and holds every lock until the last write (Luke, 2026-10-08).
+PLAN_MAX_DOCUMENTS = 500

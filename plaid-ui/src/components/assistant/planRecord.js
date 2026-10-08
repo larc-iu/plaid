@@ -32,13 +32,22 @@ export const compactPlan = (item) => {
   if (!plan || item.status === null || item.status === undefined) return item;
   const changes = Array.isArray(plan.changes) ? plan.changes : [];
   const labels = Array.isArray(plan.labels) ? plan.labels : [];
-  const rows = Math.max(changes.length, labels.length);
+  // A rule's row is never cut: it is one row, and the only record of what
+  // the rule proposed. One past the cap stays after the first rows with its
+  // place on the card (`row`).
+  const isRule = (c) => c?.rule !== null && c?.rule !== undefined;
+  const rest = changes.slice(SETTLED_ROWS_MAX);
+  const ruled = rest
+    .map((c, i) => [c, SETTLED_ROWS_MAX + i])
+    .filter(([c]) => isRule(c) && typeof c === 'object')
+    .map(([c, i]) => ({ row: i, ...c }));
+  const rows = Math.max(changes.length - ruled.length, labels.length);
   if (!('ops' in plan) && !('expansion' in plan) && rows <= SETTLED_ROWS_MAX) return item;
   const { ops, documents: _documents, expansion: _expansion, ...kept } = plan;
   if ('ops' in plan) kept.opCount = (ops || []).length;
   if (rows > SETTLED_ROWS_MAX) {
-    const dropped = changes.slice(SETTLED_ROWS_MAX);
-    if ('changes' in plan) kept.changes = changes.slice(0, SETTLED_ROWS_MAX);
+    const dropped = rest.filter((c) => !isRule(c));
+    if ('changes' in plan) kept.changes = [...changes.slice(0, SETTLED_ROWS_MAX), ...ruled];
     if ('labels' in plan) kept.labels = labels.slice(0, SETTLED_ROWS_MAX);
     kept.omitted = {
       count: rows - SETTLED_ROWS_MAX,

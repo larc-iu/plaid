@@ -735,6 +735,11 @@ class BaseWorkspace:
             core_reserve(len(self.ops), n, self.PLAN_NOTE, PLAN_MAX_OPS)
         except PlanFull as e:
             raise ToolError(str(e)) from None
+        # A rule stored as one op stands for many changes, which count too.
+        from . import rules
+        full = rules.too_many(self.KIND, self.ops, n)
+        if full:
+            raise ToolError(full)
 
     def certainly_gone(self) -> set:
         """What the plan certainly deletes. Rebuilt whenever the plan was

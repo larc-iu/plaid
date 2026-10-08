@@ -491,10 +491,22 @@ def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str], valu
     clipped to :data:`PROPOSED_VALUE_MAX` code points. The keys are the app's
     (``BaseAssistantService.proposed_keys``). Each change's outcome is the
     plan's: approval is of the whole plan.
+
+    A rule (``core.rules``) is not listed: ``[kind, None, None]`` would say
+    nothing, and its card row says everything (tool, arguments, counts per
+    document, a sample), so it adds only its total to the count.
     """
     out: List[list] = []
     total = 0
-    for op in expand_ops([op for op in ops if isinstance(op, dict)]):
+    plain = []
+    for op in ops:
+        if not isinstance(op, dict):
+            continue
+        if isinstance(op.get('matched'), list):
+            total += int(op.get('count') or 0)
+        else:
+            plain.append(op)
+    for op in expand_ops(plain):
         total += 1
         if len(out) < PROPOSED_MAX:
             change = [op.get('kind'), _proposed_target(op, target_keys), _proposed_value(op, value_keys)]
@@ -526,7 +538,9 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     Of ``changes`` and ``labels`` the first :data:`SETTLED_ROWS_MAX` stay, and
     ``omitted`` says what the rest held: how many rows, how many of them
     rewrote the text and how many of a person's values they replaced, the
-    totals the card states.
+    totals the card states. A rule's row (``rule``, see core/rules.py) is never
+    cut: it is one row, and the only record of what a rule proposed. One past
+    the cap is kept after the first rows with its place on the card (``row``).
     What each change targeted and proposed stays, small, as ``proposed``
     (`proposed_changes`, written when the plan was staged), since a plan that
     wrote nothing is in no log.
@@ -540,16 +554,18 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
         return item
     changes = plan.get('changes') if isinstance(plan.get('changes'), list) else []
     labels = plan.get('labels') if isinstance(plan.get('labels'), list) else []
-    rows = max(len(changes), len(labels))
+    rest = [(i, c) for i, c in enumerate(changes) if i >= SETTLED_ROWS_MAX]
+    ruled = [{'row': i, **c} for i, c in rest if isinstance(c, dict) and c.get('rule') is not None]
+    rows = max(len(changes) - len(ruled), len(labels))
     if 'ops' not in plan and 'expansion' not in plan and rows <= SETTLED_ROWS_MAX:
         return item
     kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents', 'expansion')}
     if 'ops' in plan:
         kept['op_count'] = len(plan.get('ops') or [])
     if rows > SETTLED_ROWS_MAX:
-        dropped = [c for c in changes[SETTLED_ROWS_MAX:] if isinstance(c, dict)]
+        dropped = [c for _, c in rest if isinstance(c, dict) and c.get('rule') is None]
         if 'changes' in plan:
-            kept['changes'] = changes[:SETTLED_ROWS_MAX]
+            kept['changes'] = changes[:SETTLED_ROWS_MAX] + ruled
         if 'labels' in plan:
             kept['labels'] = labels[:SETTLED_ROWS_MAX]
         kept['omitted'] = {

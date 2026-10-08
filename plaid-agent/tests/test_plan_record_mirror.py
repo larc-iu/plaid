@@ -88,16 +88,34 @@ def _item(ops, status, keys, docs=None):
             'settled_at': '2026-09-28T12:00:00.000Z'}
 
 
-def _long(rng, n, status, settled_before=False):
+def _rule_row(rng, i):
+    """A rule's card row (core/rules.py), which a settled plan never cuts."""
+    return {'label': f'rule {i}', 'where': None, 'change': 'Gloss "VASP" → "ASP"', 'writes_text': False,
+            'replaces_work': rng.choice([0, 12]),
+            'rule': {'tool': 'replace_in_field', 'args': {'pattern': 'VASP', 'whole_value': False},
+                     'total': 1240, 'kinds': {'set_span': 1240}, 'documents': [['d1', 'Text 1', 1240]],
+                     'documents_more': [0, 0], 'sample': [{'label': 'T s1.w2: Gloss "VASP" → "ASP"',
+                                                           'where': None, 'change': 'x', 'replaces_work': 1}]}}
+
+
+def _long(rng, n, status, settled_before=False, rules=0, labels=True):
     """A plan of more rows than a settled one keeps, each row located as a
     service locates it, some rewriting the text or replacing work. Settled
-    before the cap, it has no ops left and every row still."""
+    before the cap, it has no ops left and every row still. ``rules`` of its
+    rows are a rule's, some past the cap, and a plan made since rules has no
+    ``labels`` and may hold what an interrupted approval found."""
     changes = [{'label': f'r{i}', 'change': 'Gloss = x',
                 'where': {'kind': 'token', 'document_id': f'd{i % 3}', 'document_name': 'T', 'sentence': i},
                 'writes_text': rng.random() < 0.05, 'replaces_work': rng.choice([0, 0, 0, 1, 3])}
                for i in range(n)]
+    for i in rng.sample(range(n), rules):
+        changes[i] = _rule_row(rng, i)
     item = _item([_op(rng) for _ in range(n)], status, rng.choice(KEYS))
     item['plan'] = {**item['plan'], 'changes': changes, 'labels': [c['label'] for c in changes]}
+    if not labels:
+        item['plan'].pop('labels')
+    if rules and rng.random() < 0.7:
+        item['plan']['expansion'] = {'0': [{'kind': 'set_span', 'token_id': 't1', 'value': 'ASP'}]}
     if settled_before:
         plan = {k: v for k, v in item['plan'].items() if k not in ('ops', 'documents')}
         item['plan'] = {**plan, 'op_count': n}
@@ -130,6 +148,10 @@ def _cases():
     for status in ('applied', 'discarded', 'stale', 'replaced', 'partial', None):
         cases.append(_long(rng, SETTLED_ROWS_MAX + rng.randrange(1, 400), status))
         cases.append(_long(rng, SETTLED_ROWS_MAX + rng.randrange(1, 400), status, settled_before=True))
+    for status in ('applied', 'discarded', 'stale', 'replaced', None):
+        cases.append(_long(rng, SETTLED_ROWS_MAX + rng.randrange(1, 300), status, rules=rng.randrange(1, 6),
+                           labels=False))
+        cases.append(_long(rng, rng.randrange(1, SETTLED_ROWS_MAX), status, rules=1, labels=False))
     cases.append(_long(rng, SETTLED_ROWS_MAX, 'applied'))
     cases.append(_long(rng, SETTLED_ROWS_MAX + 1, 'applied', settled_before=True))
     cases.append({'kind': 'assistant', 'text': 'no plan', 'plan': None, 'status': None})
@@ -182,6 +204,9 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     assert any(p.get('omitted', {}).get('writes_text') and p['omitted'].get('replaces_work') for p in kept), \
         'rows cut, with what they held'
     assert any(len(p.get('changes') or []) == SETTLED_ROWS_MAX and 'omitted' not in p for p in kept), 'at the cap'
+    assert any(any(c.get('rule') and c.get('row', 0) >= SETTLED_ROWS_MAX for c in p.get('changes') or [])
+               for p in kept), 'a rule row kept past the cap'
+    assert any('expansion' in (c.get('plan') or {}) and c.get('status') for c in cases), 'what an approval found'
 
 
 def test_the_service_and_the_browser_write_the_same_record(compared):

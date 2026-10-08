@@ -276,8 +276,11 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
             found = list(fn(ctx, op))
             if record is not None:
                 record.record(op, found, reg)
-        resolved = [({**o, **{k: op[k] for k in (ROW, MEMBER) if k in op}} if ROW in op else o)
-                    for o in found]
+        # A rule's row counts each change it stands for (``core.rules``), so
+        # each is numbered as a folded group's members are.
+        member = ROW in op and isinstance(op.get('matched'), list)
+        resolved = [({**o, **{k: op[k] for k in (ROW, MEMBER) if k in op}, **({MEMBER: i} if member else {})}
+                     if ROW in op else o) for i, o in enumerate(found)]
         # What an earlier run found was checked then, and the corpus now
         # holds that run's own writes.
         if check is not None and not replayed:
