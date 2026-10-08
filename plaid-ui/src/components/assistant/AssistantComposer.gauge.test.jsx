@@ -105,6 +105,17 @@ describe('the composer note', () => {
     expect(onStartNew).toHaveBeenCalledTimes(1);
     await m.unmount();
   });
+
+  it('at the cap with a plan waiting offers only deciding it', async () => {
+    const m = await mount({
+      record: { bytes: 5 * MB - 100, cap: 5 * MB },
+      pendingPlan: true,
+    });
+    expect(m.container.querySelector('textarea').placeholder).toBe(
+      'Approve or discard the plan above',
+    );
+    await m.unmount();
+  });
 });
 
 describe('the meter', () => {

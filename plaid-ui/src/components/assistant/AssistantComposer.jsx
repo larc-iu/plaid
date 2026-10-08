@@ -237,7 +237,9 @@ export const AssistantComposer = ({
             !service
               ? 'No assistant online'
               : pendingPlan
-                ? 'Approve or discard the plan above, or keep talking'
+                ? full
+                  ? 'Approve or discard the plan above'
+                  : 'Approve or discard the plan above, or keep talking'
                 : 'Message the assistant… (Shift+Enter for a new line)'
           }
           aria-label="Message"

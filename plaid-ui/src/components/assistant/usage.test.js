@@ -132,9 +132,21 @@ describe('NEARLY_FULL', () => {
 });
 
 describe('recordBytes', () => {
-  it('is the UTF-8 length of the JSON, which is what the server measures', () => {
-    const value = { display: [{ text: 'kai₁ ŋa 𝔸 é' }] };
-    expect(recordBytes(value)).toBe(new TextEncoder().encode(JSON.stringify(value)).length);
+  it('counts what the server measures: recased keys, escaped non-ASCII and slashes', () => {
+    const value = { display: [{ createdAt: '1/2', text: 'kai₁ ŋa 𝔸 é' }] };
+    // The server's serialization of the value as the client sends it.
+    const stored =
+      '{"display":[{"created-at":"1\\/2","text":"kai\\u2081 \\u014ba \\ud835\\udd38 \\u00e9"}]}';
+    expect(recordBytes(value)).toBe(stored.length);
+    // As UTF-8 it would be far less, which is what the meter used to show.
+    expect(recordBytes(value)).toBeGreaterThan(
+      new TextEncoder().encode(JSON.stringify(value)).length + 15,
+    );
+  });
+
+  it('leaves the keys inside metadata as they are, as the client sends them', () => {
+    const value = { metadata: { myKey: 'a' } };
+    expect(recordBytes(value)).toBe('{"metadata":{"myKey":"a"}}'.length);
   });
 });
 

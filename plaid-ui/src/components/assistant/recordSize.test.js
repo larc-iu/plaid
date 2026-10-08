@@ -31,7 +31,8 @@ describe('the record size', () => {
     const conv = { id: 'c1', ...value, rev: { conv: 3, meta: 1 } };
     const out = await persistConv(storeOf({ put }), conv, { id: 'c1' });
     expect(out.conv.rev).toEqual({ conv: 4, meta: 2, bytes: recordBytes(value) });
-    expect(out.conv.rev.bytes).toBe(new TextEncoder().encode(JSON.stringify(value)).length);
+    // As the server counts it: `kai₁` escaped, twice.
+    expect(out.conv.rev.bytes).toBe(JSON.stringify(value).length + 10);
   });
 
   it('is the read value, set on rev with the version', async () => {
