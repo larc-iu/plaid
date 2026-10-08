@@ -17,7 +17,11 @@
   Routes that a batch cannot carry, or whose answer is a secret, say
   `:plaid/idempotency false` in their route data and refuse a key with 400.
   `/batch` says `:plaid/idempotency :batch`: its own transaction looks the
-  key up and stores it (`plaid.rest-api.v1.batch/*pending-key*`)."
+  key up and stores it (`plaid.rest-api.v1.batch/*pending-key*`). A read
+  sent as a POST (`/query`) says `:plaid/idempotency :read`: a key on it is
+  let through and changes nothing, as on a GET, since running it again is
+  the same as answering from a stored row, and a stored row would hold the
+  write lock for as long as the read runs."
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [muuntaja.core :as m]
@@ -191,12 +195,14 @@
    (fn [route-data _]
      (let [muuntaja (:muuntaja route-data)
            refuse? (refuses-key route-data)
-           batch-route? (= :batch (:plaid/idempotency route-data))]
+           batch-route? (= :batch (:plaid/idempotency route-data))
+           read-route? (= :read (:plaid/idempotency route-data))]
        (fn [handler]
          (fn [request]
            (let [key (get-in request [:headers header-name])]
              (cond
                (or (nil? key)
+                   read-route?
                    (#{:get :head :options} (:request-method request))
                    (get request log-buffer/sub-request-key))
                (handler request)

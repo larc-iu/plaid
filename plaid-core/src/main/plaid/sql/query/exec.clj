@@ -163,39 +163,51 @@
       (throw (time-limit-error)))
     conn))
 
+(defn- run-on-connection
+  "Run `(f conn)` on `conn`, aborting via SQLite's `interrupt()` if it is
+  still running at `deadline`. See `run-bounded`."
+  [^java.sql.Connection conn f deadline]
+  (let [sqlite (.unwrap conn SQLiteConnection)
+        ndb (.getDatabase sqlite)
+        _ (register-regexp! sqlite)            ; make REGEXP() available for this query
+        done (atom false)
+        worker (promise)
+        fut (future (deliver worker (Thread/currentThread))
+                    (try (f conn)
+                         ;; clear any interrupt before this pooled thread is
+                         ;; reused (the watchdog may have set it)
+                         (finally (reset! done true) (Thread/interrupted))))
+        watchdog (future (Thread/sleep (ms-left deadline))
+                         (when-not @done
+                           ;; abort SQLite's VM AND interrupt the worker thread,
+                           ;; so a runaway Java regex (which SQLite's interrupt
+                           ;; can't reach) is killed via interruptible-cs too.
+                           (.interrupt ndb)
+                           (.interrupt ^Thread @worker)))]
+    (try
+      @fut
+      (catch java.util.concurrent.ExecutionException e
+        (let [cause (.getCause e)]
+          (if (and cause (re-find #"(?i)interrupt" (str (.getMessage cause))))
+            (throw (time-limit-error))
+            (throw cause))))
+      (finally (future-cancel watchdog)))))
+
 (defn- run-bounded
   "Run `(f conn)` on a dedicated pooled connection, aborting via SQLite's
   `interrupt()` if it is still running at `deadline` (by default
   `*query-timeout-ms*` from now). Returns `(f conn)`'s value, or throws a 408
-  `ex-info` on timeout. Any other SQL error propagates as its cause."
+  `ex-info` on timeout. Any other SQL error propagates as its cause.
+
+  A `db` that is already a connection (a query inside a batch, whose
+  transaction it is) is used as it is and left open, so the query reads what
+  the batch's earlier operations wrote, as any read in a batch does."
   ([db f] (run-bounded db f (deadline-from-now)))
   ([db f deadline]
-   (with-open [conn (connection-by db deadline)]
-     (let [sqlite (.unwrap conn SQLiteConnection)
-           ndb (.getDatabase sqlite)
-           _ (register-regexp! sqlite)            ; make REGEXP() available for this query
-           done (atom false)
-           worker (promise)
-           fut (future (deliver worker (Thread/currentThread))
-                       (try (f conn)
-                           ;; clear any interrupt before this pooled thread is
-                           ;; reused (the watchdog may have set it)
-                            (finally (reset! done true) (Thread/interrupted))))
-           watchdog (future (Thread/sleep (ms-left deadline))
-                            (when-not @done
-                             ;; abort SQLite's VM AND interrupt the worker thread,
-                             ;; so a runaway Java regex (which SQLite's interrupt
-                             ;; can't reach) is killed via interruptible-cs too.
-                              (.interrupt ndb)
-                              (.interrupt ^Thread @worker)))]
-       (try
-         @fut
-         (catch java.util.concurrent.ExecutionException e
-           (let [cause (.getCause e)]
-             (if (and cause (re-find #"(?i)interrupt" (str (.getMessage cause))))
-               (throw (time-limit-error))
-               (throw cause))))
-         (finally (future-cancel watchdog)))))))
+   (if (instance? java.sql.Connection db)
+     (run-on-connection db f deadline)
+     (with-open [conn (connection-by db deadline)]
+       (run-on-connection conn f deadline)))))
 
 ;; --- The heavy-query queue ------------------------------------------------
 ;; A counting query (an aggregate, or `return count`) walks everything its

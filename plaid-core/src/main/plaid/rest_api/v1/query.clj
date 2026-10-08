@@ -14,7 +14,10 @@
 
 (def query-routes
   [["/query"
-    {:post {:summary "Run a query over all projects you can read. Returns id tuples (or full entities / a count via :return)."
+    {:post {:summary (str "Run a query over all projects you can read. Returns id tuples (or full entities / a count via :return). "
+                          "It writes nothing, so an Idempotency-Key on it is accepted and changes nothing. "
+                          "Inside a batch it reads what the batch's earlier operations wrote.")
+            :plaid/idempotency :read
             :openapi {:security [{:auth []}]}
             :parameters {:body any?}
             :handler (fn [{db :db user-id :user/id {body :body} :parameters}]
