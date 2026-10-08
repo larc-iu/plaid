@@ -2467,7 +2467,17 @@ export class UmrDocument extends DocumentModel {
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });
     });
+    // Judged on the graph the text writes. A new edge between two nodes an
+    // edge the text drops already joined, by a relation that is no cycle
+    // role, is a relabel, as setRole has it: it keeps the cycle it stood in
+    // and closes none (`:experiencer` to `:actor` under an `:actor-of`).
     const closing = new Set(cycleEdges(parsed).map((e) => e.join(' ')));
+    const relabelled = new Set(
+      plan.edgesDelete
+        .map((id) => this.edge(id))
+        .filter((e) => e && !CYCLE_ROLES.has(e.role))
+        .map((e) => `${nameOf(this.node(e.source))} ${nameOf(this.node(e.target))}`),
+    );
     const added = [
       ...plan.edgesAdd,
       ...plan.create.flatMap((c) =>
@@ -2475,7 +2485,10 @@ export class UmrDocument extends DocumentModel {
       ),
     ];
     added.forEach((e) => {
-      if (closing.has(`${e.sourceVar} ${e.role} ${e.targetVar}`)) {
+      if (
+        closing.has(`${e.sourceVar} ${e.role} ${e.targetVar}`) &&
+        !relabelled.has(`${e.sourceVar} ${e.targetVar}`)
+      ) {
         errors.push({
           message: `${e.role} from ${e.sourceVar} to ${e.targetVar} would close a cycle.`,
         });

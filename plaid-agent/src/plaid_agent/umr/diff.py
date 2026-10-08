@@ -33,7 +33,7 @@ changes is a row of its own.
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman
-from plaid_client.workflows.umr.graph import next_order
+from plaid_client.workflows.umr.graph import CYCLE_ROLES, next_order
 
 from .plan import attr_line
 from .project import Sentence, UmrDoc, UmrProject, attrs_change, penman_of, reachable_from_root
@@ -204,6 +204,11 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
             'label': f'rename {renamed.var} to {renamed_to}'})
     edges_add: List[Dict[str, Any]] = []
     edges_delete: List[Dict[str, Any]] = []
+    # The pairs of nodes an edge the text drops already joined, source to
+    # target, by a relation that is no cycle role. A new edge between them
+    # is a relabel, as the canvas's setRole has it, and closes no cycle the
+    # graph did not already hold.
+    relabelled = set()
     orders: List[Dict[str, Any]] = []
     order_kept: List[str] = []
 
@@ -265,6 +270,8 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         for edge, key in old_edges:
             wanted = next_by_key.get(key)
             if wanted is None:
+                if edge.role not in CYCLE_ROLES:
+                    relabelled.add((var, name_of(doc.nodes_by_id[edge.target])))
                 edges_delete.append({
                     'kind': 'delete_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                     'relation_id': edge.id, 'source': edge.source, 'target': edge.target,
@@ -347,12 +354,14 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 'label': f'{parsed.root} becomes the root of s{sentence.index}'})
 
     # A new edge that would close a cycle UMR does not allow is refused, as
-    # Text mode refuses it (the app's rule, `cycle_edges`). One the graph
-    # already held stays: an imported file may bring such a cycle.
+    # Text mode refuses it (the app's rule, `cycle_edges`), judged on the
+    # graph the text writes. One the graph already held stays: an imported
+    # file may bring such a cycle. A relabel keeps the cycle it stood in, so
+    # it closes none (`:experiencer` to `:actor` under an `:actor-of`).
     closing = set(cycle_edges(parsed))
     for op in edges_add:
         edge = (op['source_var'], op['role'], op['target_var'])
-        if edge in closing:
+        if edge in closing and (edge[0], edge[2]) not in relabelled:
             return GraphDiff([], [], refused=f'{edge[1]} from {edge[0]} to {edge[2]} would '
                                              f'close a cycle.')
 
