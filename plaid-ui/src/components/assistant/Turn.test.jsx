@@ -249,6 +249,45 @@ describe('Turn and the names of other projects', () => {
     );
     await view.unmount();
   });
+
+  it('says on hover that the place line is where the message was sent from', async () => {
+    const hover = async (kind) => {
+      const view = await draw(
+        { kind: 'user', text: 'here', where: { kind, id: 'x', name: R1.name } },
+        { movedHere: true },
+      );
+      const title = view.container.querySelector('bdi').closest('[title]').title;
+      await view.unmount();
+      return title;
+    };
+    expect(await hover('document')).toBe(
+      `When you sent this message, you were in the document “${R1.name}”.`,
+    );
+    expect(await hover('lexicon')).toBe(
+      `When you sent this message, you were in the vocabulary “${R1.name}”.`,
+    );
+    expect(await hover('something-new')).toBe(
+      `When you sent this message, you were in “${R1.name}”.`,
+    );
+  });
+
+  it('says on hover what the assistant could read from a message on', async () => {
+    const hover = async (projects, homeName) => {
+      const view = await draw(
+        { kind: 'user', text: 'here', projects },
+        { reachChanged: true, homeName },
+      );
+      const title = view.container.querySelector('bdi').closest('[title]').title;
+      await view.unmount();
+      return title;
+    };
+    expect(await hover([R1], 'Home')).toBe(
+      `From this message on, the assistant could also read “${R1.name}”.`,
+    );
+    expect(await hover([], 'Home')).toBe(
+      'From this message on, the assistant could read only “Home”.',
+    );
+  });
 });
 
 describe('Turn and what a reply kept', () => {

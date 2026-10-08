@@ -142,6 +142,29 @@ const CitedExamples = ({ cited, projectId, adapter }) => {
 // (`withProjects` and `couldNotOpen` in projectReach.js).
 const NAMES = 'min-w-0 [overflow-wrap:anywhere]';
 
+// What a screen calls the place a message was sent from: a `lexicon` is a
+// vocabulary on screen. A kind with no entry is named without a noun.
+const PLACE_NOUN = { document: 'document', lexicon: 'vocabulary' };
+
+// Hover text for the place line above a message. The line is where the reader
+// was when they sent it, not what they have open now.
+const placeTitle = (where) => {
+  const noun = PLACE_NOUN[where.kind];
+  return `When you sent this message, you were in ${noun ? `the ${noun} ` : ''}“${where.name}”.`;
+};
+
+// Hover text for the projects line above a message: what the assistant could
+// read from that message on.
+const reachTitle = (projects, homeName) => {
+  const names = (projects || []).map((p) => `“${p.name || p.id}”`);
+  if (names.length) {
+    return `From this message on, the assistant could also read ${names.join(', ')}.`;
+  }
+  return homeName
+    ? `From this message on, the assistant could read only “${homeName}”.`
+    : 'From this message on, the assistant could read only this project.';
+};
+
 export const Turn = ({
   item,
   projectId,
@@ -184,7 +207,10 @@ export const Turn = ({
             sense against the place each question came from. The model is told
             the same thing, on the same terms. */}
         {movedHere && item.where?.name && (
-          <div className="flex max-w-full items-center gap-1 text-xs text-muted-foreground">
+          <div
+            className="flex max-w-full items-center gap-1 text-xs text-muted-foreground"
+            title={placeTitle(item.where)}
+          >
             <MapPin className="h-3 w-3 shrink-0" />
             <span className={NAMES}>
               <bdi>{item.where.name}</bdi>
@@ -195,7 +221,10 @@ export const Turn = ({
             changed, on the same terms as the place above. Where the reader
             removed them all, the home project is named alone. */}
         {reachChanged && (
-          <div className="flex max-w-full items-center gap-1 text-xs text-muted-foreground">
+          <div
+            className="flex max-w-full items-center gap-1 text-xs text-muted-foreground"
+            title={reachTitle(item.projects, homeName)}
+          >
             <FolderOpen className="h-3 w-3 shrink-0" />
             <span className={NAMES}>
               {item.projects?.length > 0 ? (
