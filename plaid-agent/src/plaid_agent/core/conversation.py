@@ -580,8 +580,8 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
 
     ``base`` is the record as the turn read it, whose last display item is
     the question. ``asked`` is what the model transcript holds up to the
-    answer (the question as the turn stamped it, or nothing of it for a turn
-    that ended without an answer) and ``added`` what the turn adds after it.
+    answer, the question as the turn stamped it, kept whether or not the turn
+    was answered, and ``added`` what the turn adds after it.
     ``replaces``: the reply stages a plan, so every plan still waiting is
     marked replaced (`replace_undecided`). ``fit`` holds the result to the
     record's budget (`prune`).

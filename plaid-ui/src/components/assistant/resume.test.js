@@ -86,6 +86,28 @@ describe('rewindForRetry', () => {
     expect(out.conv.display).toEqual(c.display);
   });
 
+  it("takes a failed turn's question, kept stamped in the transcript, off before sending it again", () => {
+    // Bench note 8: a failed turn keeps its question for the next turn to
+    // read, so a retry must take it off or the model reads it twice.
+    const c = conv(
+      [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'ok' },
+        { role: 'user', content: '[Asked from the document "Doc1"]\n\nsecond' },
+      ],
+      [
+        { kind: 'user', text: 'first' },
+        { kind: 'assistant', text: 'ok' },
+        { kind: 'user', text: 'second' },
+        { kind: 'error', text: 'The model could not answer.' },
+      ],
+    );
+    const out = rewindForRetry(c);
+    expect(out.text).toBe('second');
+    expect(out.conv.messages).toEqual(c.messages.slice(0, 2));
+    expect(out.conv.display).toEqual(c.display);
+  });
+
   it('keeps an earlier answered copy of the same question when the failed turn was dropped', () => {
     const c = conv(
       [

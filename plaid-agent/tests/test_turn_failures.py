@@ -347,7 +347,7 @@ def test_an_empty_reply_is_a_failed_turn_with_its_own_line(monkeypatch):
     assert item.pop('created_at')
     assert item == {'kind': 'error', 'text': EMPTY_REPLY, 'model': 'fake/model',
                     'version': _service().version, 'service': 'igt:assist:fake'}
-    assert conv['messages'] == [], 'the message leaves the transcript, so Retry sends it once'
+    assert [m['role'] for m in conv['messages']] == ['user'], 'the question stays for the next turn to read'
 
 
 # --- H38: a successful plan call repeated word for word -------------------------

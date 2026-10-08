@@ -123,7 +123,8 @@ describe('a turn the service ended without writing the record', () => {
       ['user', undefined],
       ['error', true],
     ]);
-    expect(stored.messages).toEqual([]);
+    // The question stays for the next turn to read.
+    expect(stored.messages).toEqual(conv().messages);
     expect(data.get(KEYS.meta).pending).toBe(null);
     stop();
   });

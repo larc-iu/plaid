@@ -354,11 +354,6 @@ export const settle = (conv, index, status, note) => ({
   ),
 });
 
-// The user's message leaves the model transcript when its turn ends without
-// an answer, so a retry does not send it twice; it stays on screen.
-const dropUnanswered = (conv) =>
-  conv.messages.at(-1)?.role === 'user' ? conv.messages.slice(0, -1) : conv.messages;
-
 // The record when it holds more than the page's copy of it, else null: an
 // answer the service wrote after the page stopped waiting for it (the server
 // restarted under the request, and the page settled the turn as unanswered).
@@ -489,9 +484,11 @@ const settleJob = (j, conv, meta, store, service) => {
     // A stop the service ended the request on without writing the record
     // (its result says `stopped`) is a stop like one this page saw.
     if (j.stopped || j.outcome?.stopped || j.outcome?.kind === 'stopped') {
+      // The user's message stays in the model transcript whatever happened
+      // to the turn, so the next message is read with what it follows.
+      // Retry takes it off before sending it again (`rewindForRetry`).
       conv = {
         ...conv,
-        messages: dropUnanswered(conv),
         display: [
           ...conv.display,
           { kind: 'error', stopped: true, text: 'Stopped.', createdAt: itemTime() },
@@ -510,9 +507,9 @@ const settleJob = (j, conv, meta, store, service) => {
         failure = NOT_SAVED;
       }
     } else if (j.error && j.error.status !== 404) {
+      // As on a stop, the user's message stays in the model transcript.
       conv = {
         ...conv,
-        messages: dropUnanswered(conv),
         display: [
           ...conv.display,
           {

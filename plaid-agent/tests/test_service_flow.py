@@ -116,7 +116,8 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
     assert item == {'kind': 'error', 'text': 'Stopped.', 'stopped': True,
                     'model': 'fake/model', 'version': _service().version,
                     'service': 'igt:assist:fake'}
-    assert conv['messages'] == [], 'the unanswered message leaves the transcript so a retry sends it once'
+    assert [m['role'] for m in conv['messages']] == ['user'], 'the question stays for the next turn to read'
+    assert conv['messages'][0]['content'].endswith('Which words are unglossed?')
     assert meta['pending'] is None
 
 
@@ -124,7 +125,7 @@ def test_a_stop_seen_while_a_tool_reports_progress_is_recorded_as_a_stop(monkeyp
     """A2-UD-1: the reader presses Stop while a tool walks the corpus. The
     tool's next progress line is the client's checkpoint, which raises
     ServiceCancelled (not an Exception). The record gets the Stopped item with
-    the steps made before it, the question leaves the transcript, and the
+    the steps made before it, the question stays in the transcript, and the
     request ends as stopped rather than escaping to the client."""
     from plaid_agent.core import agent
     from plaid_agent.core.agent import Toolkit
@@ -159,7 +160,7 @@ def test_a_stop_seen_while_a_tool_reports_progress_is_recorded_as_a_stop(monkeyp
     item = conv['display'][-1]
     assert item['stopped'] is True and item['text'] == 'Stopped.'
     assert [c['id'] for c in item['calls']] == ['c1'] and len(item['steps']) == 1
-    assert conv['messages'] == []
+    assert [m['role'] for m in conv['messages']] == ['user']
     assert meta['pending'] is None
 
 

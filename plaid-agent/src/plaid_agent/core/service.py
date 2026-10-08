@@ -601,12 +601,14 @@ class BaseAssistantService(BaseService):
             # the record and the question left unanswered in the transcript).
             self._release(ws)
             ws.keeper.discard()
-            # The user's message leaves the model transcript (a retry must not
-            # send it twice) and stays on screen with what happened. What the
-            # turn did before it stopped stays on the item, for the record.
+            # The user's message stays in the model transcript, as the turn
+            # stamped it, so the next message ("go on", "I meant the second
+            # one") is read with what it follows. Retry takes it off before
+            # sending it again (`rewindForRetry`). What the turn did before it
+            # stopped stays on the item, for the record.
             steps, calls = turn_trace(e)
             self._write(store, conv_id,
-                        turn_ending(conv, transcript[:-1],
+                        turn_ending(conv, transcript,
                                     error_item('Stopped.', stopped=True, model=model, version=self.version,
                                                service=self.service_id, steps=steps, calls=calls),
                                     fit=fit),
@@ -619,8 +621,10 @@ class BaseAssistantService(BaseService):
             traceback.print_exc()
             line = self.turn_failure_line(e)
             steps, calls = turn_trace(e)
+            # The user's message stays in the model transcript whatever the
+            # model call did, as on a stop.
             self._write(store, conv_id,
-                        turn_ending(conv, transcript[:-1],
+                        turn_ending(conv, transcript,
                                     error_item(line, model=model, version=self.version,
                                                service=self.service_id, steps=steps, calls=calls),
                                     fit=fit),

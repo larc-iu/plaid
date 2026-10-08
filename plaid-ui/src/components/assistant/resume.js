@@ -49,8 +49,9 @@ export const rewindForRetry = (conv, { stopped = false } = {}) => {
   // message only, so a message sent again without them reads its home
   // project alone, and says nothing about it.
   const projects = conv.display[i].projects || [];
-  // A lost turn still has the user's message in the model transcript; a
-  // failed or stopped one had it dropped so a retry could not send it twice.
+  // A turn with no answer, lost, failed or stopped, still has the user's
+  // message at the end of the model transcript (stamped by the service when
+  // the turn got that far), and it comes off so the retry sends it once.
   // A turn whose answer was saved but whose save went unanswered has the
   // message AND the answer, the message stamped by the service: the
   // transcript goes back to before that message, or the retry sends it twice.

@@ -1,8 +1,8 @@
 """A turn that fails or is stopped keeps, in the record, the tool calls it
 made before it ended: their steps as an answer's are, and what each was sent
-and answered. The turn's messages leave the model transcript as before (a
-retry must not send them again), so the calls ride on the error item, which
-the model never reads. Every item is also dated (``created_at``).
+and answered. The turn's tool messages stay out of the model transcript (the
+question stays), so the calls ride on the error item, which the model never
+reads. Every item is also dated (``created_at``).
 
 Before 2026-10-06 an error item had neither, so the turns that went wrong
 were exactly the ones whose tool use the record lost (R1-EXTRACT, hole 3)."""
@@ -137,7 +137,9 @@ def test_the_record_keeps_a_failed_or_stopped_turns_steps(monkeypatch, exc, stop
     assert item['steps_summary'] == summarize_steps(STEPS) == '1 search · 2 steps'
     assert item['calls'] == CALLS
     assert ISO_MS.match(item['created_at'])
-    assert conv['messages'] == [], 'the transcript is rolled back as before: the model never sees them'
+    # The question stays, and the calls do not: the model reads what was
+    # asked, never the tool use of a turn that did not finish.
+    assert [m['role'] for m in conv['messages']] == ['user']
     assert meta['pending'] is None
 
 
