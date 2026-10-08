@@ -590,10 +590,16 @@ A plan approved in the panel re-reads the document, so the canvas shows the resu
 
 == How full a conversation is
 
-The panel's header shows how much of the model's limit the last turn used, with the counts behind it on hover.
-A conversation fills up as it grows, because every turn sends the whole thread again.
-Past 85 percent the panel says so, and a new conversation starts with room again.
-Where the model's limit is not known the count is shown without a percentage, unless the assistant was started with its limit stated.
+The panel's header shows how full the conversation is against two limits, the model's limit on what one turn can send and the size a conversation can be stored at, and the bar follows whichever is closer.
+Hovering over it gives both, with the counts behind them.
+A conversation fills up as it grows, because every turn sends the whole thread again and every answer is kept.
+Past 85 percent of either limit the bar turns amber and the panel says which limit is close, and a new conversation starts with room again.
+A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
+A plan waiting in it can still be approved or discarded.
+An answer too large to store is shown once, without its plan, and marked as not saved.
+A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had.
+Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
+The storage limit is set by the server's operator.
 
 == When no assistant is connected
 
