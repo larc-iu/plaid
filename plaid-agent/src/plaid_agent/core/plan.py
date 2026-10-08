@@ -15,10 +15,12 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 :class:`PlanError` out.
 """
 
+import base64
 import json
 import logging
 import unicodedata
 import uuid
+import zlib
 from contextlib import ExitStack, contextmanager
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -180,30 +182,141 @@ def held_from(client, documents: List[Dict[str, Any]], remember) -> None:
 #: run of an approval (see :class:`Expansion`), dropped once it settles.
 EXPANSION = 'expansion'
 
+# A value a change does not carry at all, as against one it carries as None.
+_ABSENT = object()
 
-def pack_ops(ops: List[Dict[str, Any]], reg) -> List[Dict[str, Any]]:
-    """``ops`` as few stored ops, in their order: each run of consecutive ops
-    alike but for their kind's per-member keys folds into one group
-    (:func:`compact_ops`), so :func:`expand_ops` gives back the same ops in
-    the same order, less their labels. Order is the point: the batches a run
-    sends are cut from it."""
-    from .opkind import compact_spec
-    spec = compact_spec(reg, label=lambda first, members: '')
-    out: List[Dict[str, Any]] = []
-    run: List[Dict[str, Any]] = []
-    sig = None
-    for op in ops:
-        s = spec.get(op.get('kind'))
-        each = set(s['each']) if s else set()
-        key = (op.get('kind'), tuple(sorted((k, _hashable(v)) for k, v in op.items()
-                                            if k not in each and k not in PRESENTATION_KEYS)))
-        if run and key != sig:
-            out.extend(compact_ops(run, spec))
-            run = []
-        sig = key
-        run.append(op)
-    out.extend(compact_ops(run, spec))
+
+def _canonical_uuid(v: Any) -> bool:
+    if not isinstance(v, str) or len(v) != 36:
+        return False
+    try:
+        return str(uuid.UUID(v)) == v
+    except ValueError:
+        return False
+
+
+def _put_varint(n: int, out: bytearray) -> None:
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return
+
+
+def _get_varint(buf: bytes, i: int):
+    n = shift = 0
+    while True:
+        b = buf[i]
+        i += 1
+        n |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return n, i
+        shift += 7
+
+
+def _json(v: Any) -> str:
+    return json.dumps(v, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+
+
+def pack_found(ops: List[Dict[str, Any]], known: Iterable[Any] = ()) -> Dict[str, Any]:
+    """``ops`` as one short string, column by column, for :class:`Expansion`.
+
+    A column of ids, nearly all different, is kept as 16 bytes an id. Any
+    other column keeps each different value once and an index a change, so
+    what is the same across a rule's changes (its kind, its field, the value
+    it writes, the document) costs next to nothing. ``known`` are values the
+    stored rule already holds (its documents and arguments): an index names
+    them without their being stored again. The whole is compressed, and
+    ``fp`` is the digest of the changes it gives back (:func:`unpack_found`).
+
+    Missing keys stay missing and None stays None, so the changes come back
+    equal to ``ops`` as JSON keeps them, in the same order."""
+    plain = json.loads(json.dumps(ops))
+    keys: List[str] = []
+    for o in plain:
+        for k in o:
+            if k not in keys:
+                keys.append(k)
+    seeds = list(dict.fromkeys(_json(v) for v in known))
+    cols: List[list] = []
+    body = bytearray()
+    for k in keys:
+        vals = [o.get(k, _ABSENT) if k in o else _ABSENT for o in plain]
+        ids = [v for v in vals if isinstance(v, str)]
+        if ids and all(v is _ABSENT or v is None or _canonical_uuid(v) for v in vals) \
+                and 2 * len(set(ids)) > len(ids):
+            cols.append([k, 'u'])
+            body += bytes(0 if v is _ABSENT else 1 if v is None else 2 for v in vals)
+            for v in ids:
+                body += uuid.UUID(v).bytes
+            continue
+        table = {s: i for i, s in enumerate(seeds)}
+        new: List[str] = []
+        for v in vals:
+            if v is _ABSENT:
+                _put_varint(0, body)
+                continue
+            s = _json(v)
+            if s not in table:
+                table[s] = len(table)
+                new.append(s)
+            _put_varint(table[s] + 1, body)
+        cols.append([k, 'd', new])
+    header = json.dumps({'n': len(plain), 'cols': cols}, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    blob = bytearray()
+    _put_varint(len(header), blob)
+    blob += header + body
+    z = base64.urlsafe_b64encode(zlib.compress(bytes(blob), 9)).decode('ascii').rstrip('=')
+    return {'n': len(plain), 'z': z, 'fp': fp_digest(plain)}
+
+
+def unpack_found(packed: Dict[str, Any], known: Iterable[Any] = ()) -> List[Dict[str, Any]]:
+    """The changes :func:`pack_found` packed, with the same ``known``.
+    Raises ValueError when they do not give back its digest."""
+    z = packed['z']
+    blob = zlib.decompress(base64.urlsafe_b64decode(z + '=' * (-len(z) % 4)))
+    n_header, i = _get_varint(blob, 0)
+    header = json.loads(blob[i:i + n_header].decode('utf-8'))
+    i += n_header
+    n = int(header['n'])
+    seeds = list(dict.fromkeys(_json(v) for v in known))
+    out: List[Dict[str, Any]] = [{} for _ in range(n)]
+    for col in header['cols']:
+        k, mode = col[0], col[1]
+        if mode == 'u':
+            tags = blob[i:i + n]
+            i += n
+            for o, t in zip(out, tags):
+                if t == 1:
+                    o[k] = None
+                elif t == 2:
+                    o[k] = str(uuid.UUID(bytes=bytes(blob[i:i + 16])))
+                    i += 16
+            continue
+        table = seeds + list(col[2])
+        for o in out:
+            j, i = _get_varint(blob, i)
+            if j:
+                o[k] = json.loads(table[j - 1])
+    if len(out) != packed.get('n') or fp_digest(out) != packed.get('fp'):
+        raise ValueError('what the first run of this plan found does not read back. Ask the assistant to plan '
+                         'it again')
     return out
+
+
+def fp_digest(ops: List[Dict[str, Any]]) -> str:
+    from .fingerprint import fingerprint
+    return fingerprint(ops)
+
+
+def rule_known(op: Dict[str, Any]) -> List[Any]:
+    """What a stored rule already says that its changes repeat: the documents
+    it matched and its arguments."""
+    return ([m[0] for m in op.get('matched') or [] if isinstance(m, list) and m]
+            + [v for _k, v in sorted((op.get('args') or {}).items())])
 
 
 class Expansion:
@@ -218,9 +331,15 @@ class Expansion:
     what the first run found instead. A run that certainly wrote nothing
     forgets it (:meth:`forget`), and the next one resolves afresh.
 
-    Each scope's changes are stored packed (:func:`pack_ops`), about 60 bytes
-    a change while the approval is in flight. A record that cannot take them
-    refuses the approval before anything is written."""
+    What is kept is what a run again needs to send the same requests: each
+    change the scope writes (after the plan's own changes and later rules
+    take theirs), packed by :func:`pack_found`. Its ids are kept, since a
+    request names them and an id a first run deleted cannot be read back.
+    Its values are kept once each, since a replacement's new value comes
+    from the value as found, which the first run overwrote. What the stored
+    rule holds (its documents, its arguments) is named, not repeated. About
+    30 to 40 bytes a change while the approval is in flight. A record that
+    cannot take them refuses the approval before anything is written."""
 
     def __init__(self, plan: Dict[str, Any], remember):
         self.plan = plan
@@ -231,13 +350,14 @@ class Expansion:
         stored = (self.plan.get(EXPANSION) or {}).get(str(op.get(ROW)))
         if stored is None or ROW not in op:
             return None
-        return [{k: v for k, v in o.items() if k != MEMBER} for o in expand_ops(stored)]
+        return unpack_found(stored, rule_known(op))
 
-    def record(self, op: Dict[str, Any], found: List[Dict[str, Any]], reg) -> None:
+    def record(self, op: Dict[str, Any], found: List[Dict[str, Any]]) -> None:
         if ROW not in op:
             return
-        plain = [{k: v for k, v in o.items() if k not in (ROW, MEMBER)} for o in found]
-        self.plan.setdefault(EXPANSION, {})[str(op[ROW])] = json.loads(json.dumps(pack_ops(plain, reg)))
+        plain = [{k: v for k, v in o.items() if k not in (ROW, MEMBER) and k not in PRESENTATION_KEYS}
+                 for o in found]
+        self.plan.setdefault(EXPANSION, {})[str(op[ROW])] = pack_found(plain, rule_known(op))
         self.fresh = True
 
     def save(self) -> None:

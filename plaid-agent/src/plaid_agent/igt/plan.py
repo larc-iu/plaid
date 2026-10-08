@@ -1369,11 +1369,11 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
                                 lambda d: _doc_name(res.ws, d))
         else:
             check_reach(op, found, lambda o: o.get('doc'))
-    out = ok.resolve_ops(KIND, res, ops, keep, check=check)
     # A value two rules change is written once, by the later one, as staging
     # counted it (`bulk.settle_rules`).
     from .bulk import later_rule_wins
-    return later_rule_wins(out, {op[ok.ROW] for op in ops if rules.is_rule(op) and ok.ROW in op}, ok.ROW)
+    rows = {op[ok.ROW] for op in ops if rules.is_rule(op) and ok.ROW in op}
+    return ok.resolve_ops(KIND, res, ops, keep, check=check, final=lambda out: later_rule_wins(out, rows, ok.ROW))
 
 
 def rule_keep(ws, ops: List[Dict[str, Any]]):

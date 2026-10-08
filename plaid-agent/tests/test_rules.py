@@ -4,12 +4,15 @@ count and a digest per document, refused whole at approval when it matches
 anything else, with a sentence that says what changed and where.
 """
 
+import json
+
 import pytest
 
 from plaid_agent.core import rules
 from plaid_agent.core.conversation import SETTLED_ROWS_MAX, compact_plan, proposed_changes
 from plaid_agent.core.limits import PLAN_MAX_CHANGES, PLAN_MAX_DOCUMENTS
-from plaid_agent.core.plan import COMPACT_ABOVE, Expansion, PlanOutOfDate, expand_ops, labelled, pack_ops
+from plaid_agent.core.plan import (COMPACT_ABOVE, EXPANSION, Expansion, PlanOutOfDate, labelled, pack_found,
+                                   unpack_found)
 from plaid_agent.igt.plan import KIND
 
 
@@ -159,23 +162,59 @@ def test_a_rule_adds_its_total_to_what_a_plan_proposed_and_nothing_to_the_list()
 
 # --- what approval records of a rule --------------------------------------------------------
 
+def _uuid(n):
+    import uuid
+    return str(uuid.UUID(int=(0x0192_0000_0000_7000_8000_0000_0000_0000 + n * 7919)))
+
+
 def test_a_packed_expansion_gives_back_the_same_changes_in_the_same_order():
     ops = []
     for i in range(30):
-        ops.append({'kind': 'respell', 'text_id': 't', 'begin': i * 5, 'end': i * 5 + 3, 'value': f'w{i}', 'doc': 'd1',
-                    'label': f'w{i}'})
+        ops.append({'kind': 'respell', 'text_id': 't', 'begin': i * 5, 'end': i * 5 + 3, 'value': f'w{i}', 'doc': 'd1'})
         if i % 3 == 0:
-            ops.append({'kind': 'set_morpheme_form', 'morpheme_id': f'm{i}', 'form': f'f{i}', 'doc': 'd1',
-                        'label': f'm{i}'})
-    ops += [_span(f't{i}', 'a', 'b') for i in range(40)]
-    packed = pack_ops(ops, KIND)
-    # Runs short of a group stay as they are, in order, and the forty
-    # values in a row fold into one.
-    assert len(packed) == len(ops) - 40 + 1
-    # A member gets every per-member key of its kind back, None where it had none.
-    strip = lambda os: [{k: v for k, v in o.items() if k not in ('label', 'change_at') and v is not None}  # noqa: E731
-                        for o in os]
-    assert strip(expand_ops(packed)) == strip(ops)
+            ops.append({'kind': 'set_morpheme_form', 'morpheme_id': _uuid(1000 + i), 'form': f'f{i}', 'doc': 'd1',
+                        'existing': {'ids': [1, 2], 'note': None}})
+    ops += [{'kind': 'set_span', 'layer_id': 'g', 'token_id': _uuid(i), 'span_id': None if i % 4 else _uuid(500 + i),
+             'value': 'ASP' if i % 2 else 'ASP.3SG', 'doc': _uuid(9000 + i % 3),
+             **({'virtual_at': 2} if i == 7 else {})}
+            for i in range(40)]
+    known = [_uuid(9000), _uuid(9001), 'ASP']
+    packed = pack_found(ops, known)
+    # A key a change does not carry stays missing, None stays None, and a
+    # nested value comes back equal.
+    assert unpack_found(packed, known) == ops
+    assert set(packed) == {'n', 'z', 'fp'} and packed['n'] == len(ops)
+    assert pack_found([], known)['n'] == 0 and unpack_found(pack_found([], known), known) == []
+
+
+def test_a_packed_expansion_costs_ids_not_repeated_values():
+    ops = [{'kind': 'set_span', 'layer_id': 'gloss-layer', 'token_id': _uuid(2 * i), 'span_id': _uuid(2 * i + 1),
+            'value': 'ASP.3SG' if i % 3 else 'ASP', 'doc': _uuid(9000 + i % 12)} for i in range(2000)]
+    packed = pack_found(ops, [_uuid(9000 + d) for d in range(12)])
+    # Two ids a change, packed: well under the 45 bytes a change asked for.
+    assert len(json.dumps(packed)) / len(ops) < 45
+
+
+def test_a_packed_expansion_that_does_not_read_back_refuses():
+    ops = [_span('t1', 'a', 'b')]
+    packed = pack_found(ops, ['d1'])
+    # Read with other known values, the indexes name other values.
+    with pytest.raises(ValueError, match='does not read back'):
+        unpack_found(packed, ['d2', 'x'])
+    with pytest.raises(ValueError, match='does not read back'):
+        unpack_found({**packed, 'fp': '0' * 16}, ['d1'])
+
+
+def test_an_expansion_names_what_the_rule_holds_and_drops_what_is_shown():
+    plan = {}
+    ex = Expansion(plan, lambda: None)
+    op = {'kind': 'bulk_scope', '_row': 0, 'args': {'pattern': 'VASP'}, 'matched': [['d1', 2, 'x']]}
+    found = [{**_span(f't{i}', 'VASP', 'ASP'), '_row': 0, '_member': i} for i in range(2)]
+    ex.record(op, found)
+    back = ex.recorded(op)
+    assert [o['token_id'] for o in back] == ['t0', 't1']
+    assert all('label' not in o and 'change_at' not in o and '_row' not in o and '_member' not in o for o in back)
+    assert 'd1' not in plan[EXPANSION]['0']['z']
 
 
 def test_an_expansion_is_kept_by_row_and_read_back_once_recorded():
@@ -184,7 +223,7 @@ def test_an_expansion_is_kept_by_row_and_read_back_once_recorded():
     op = {'kind': 'bulk_scope', '_row': 2}
     assert ex.recorded(op) is None
     found = [_span(f't{i}', 'a', 'b') for i in range(COMPACT_ABOVE + 5)]
-    ex.record(op, found, KIND)
+    ex.record(op, found)
     ex.save()
     ex.save()
     assert len(saved) == 1 and list(plan['expansion']) == ['2']
@@ -192,3 +231,38 @@ def test_an_expansion_is_kept_by_row_and_read_back_once_recorded():
     assert [o['token_id'] for o in back] == [o['token_id'] for o in found]
     ex.forget()
     assert 'expansion' not in plan
+
+
+def test_an_expansion_keeps_only_what_the_run_writes_and_a_run_again_writes_the_same():
+    from types import SimpleNamespace
+    from plaid_agent.core import opkind as ok
+    from plaid_agent.core.plan import expanding
+    found = {'r1': [_span(f't{i}', 'A', 'B') for i in range(6)], 'r2': [_span(f't{i}', 'B', 'C') for i in range(3)]}
+    reg = ok.registry([ok.OpKind('scope', ('change', 'changes'), resolve=lambda ctx, op: list(found[op['tool']]),
+                                 shape=ok.SCOPE, stage=ok.RESOLVED),
+                       ok.OpKind('set_span', ('value', 'values'))])
+    ops = [{'kind': 'scope', 'tool': 'r1', 'matched': [], '_row': 0}, {'kind': 'set_span', 'token_id': 't5', '_row': 1},
+           {'kind': 'scope', 'tool': 'r2', 'matched': [], '_row': 2}]
+
+    def keep(o):
+        return o.get('token_id') != 't5' or o.get('kind') != 'set_span' or '_member' not in o
+
+    def final(out):
+        # The later rule's value wins (igt's later_rule_wins).
+        later = {o['token_id'] for o in out if o.get('_row') == 2}
+        return [o for o in out if not (o.get('_row') == 0 and o['token_id'] in later)]
+    plan = {}
+    client = SimpleNamespace()
+    with expanding(client, Expansion(plan, lambda: None)):
+        first = ok.resolve_ops(reg, SimpleNamespace(client=client), ops, keep, final=final)
+    assert [(o.get('_row'), o['token_id']) for o in first] == [(0, 't3'), (0, 't4'), (1, 't5'), (2, 't0'), (2, 't1'),
+                                                                (2, 't2')]
+    # The first rule's changes a later one takes, and the one the plan names,
+    # are not kept.
+    assert plan[EXPANSION]['0']['n'] == 2 and plan[EXPANSION]['2']['n'] == 3
+    found.clear()  # a run again reads nothing from the corpus
+    with expanding(client, Expansion(plan, lambda: None)):
+        again = ok.resolve_ops(reg, SimpleNamespace(client=client), ops, keep, final=final)
+    strip = lambda os: [{k: v for k, v in o.items() if k not in ('label', 'change_at', '_member')}  # noqa: E731
+                        for o in os]
+    assert strip(again) == strip(first)

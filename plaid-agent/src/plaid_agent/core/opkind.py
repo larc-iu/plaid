@@ -246,13 +246,16 @@ def resolver(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> Optional[Callable
 
 def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any]],
                 keep: Optional[Callable[[Dict[str, Any]], bool]] = None,
-                check: Optional[Callable[[Dict[str, Any], List[Dict[str, Any]]], None]] = None
+                check: Optional[Callable[[Dict[str, Any], List[Dict[str, Any]]], None]] = None,
+                final: Optional[Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]]] = None
                 ) -> List[Dict[str, Any]]:
     """``ops`` with every scope replaced, in its place, by the operations it
     stands for. ``ctx`` is whatever the app's resolvers read with, and ``keep``
     says which of the resolved operations join the plan. ``check(scope,
     resolved)`` sees everything a scope resolved to, before ``keep`` drops
-    any, and raises to refuse the plan.
+    any, and raises to refuse the plan. ``final(ops)`` is the app's last word
+    over the whole result (a value two rules change is written by the later
+    one), and gives back what is written.
 
     No kind is named here, so a scope kind added later is resolved by declaring
     a resolver. The loop this replaced dispatched on the name, and a kind it
@@ -262,9 +265,11 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
     # Approved again after a run that wrote part of the plan, a scope read
     # afresh would find the values that run already changed gone, and stand
     # for other writes than the ones it sent under the same keys. What the
-    # first run found is kept on the plan before its first write and read
-    # back here.
+    # first run wrote of each scope is kept on the plan before its first
+    # write and read back here. ``keep`` and ``final`` only ever drop, and
+    # drop nothing more the second time.
     record = getattr(getattr(ctx, 'client', None), EXPANDING, None)
+    fresh: List[Dict[str, Any]] = []
     for op in ops:
         fn = resolver(reg, op)
         if fn is None:
@@ -274,8 +279,8 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
         replayed = found is not None
         if not replayed:
             found = list(fn(ctx, op))
-            if record is not None:
-                record.record(op, found, reg)
+            if record is not None and ROW in op:
+                fresh.append(op)
         # A rule's row counts each change it stands for (``core.rules``), so
         # each is numbered as a folded group's members are.
         member = ROW in op and isinstance(op.get('matched'), list)
@@ -286,7 +291,15 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
         if check is not None and not replayed:
             check(op, resolved)
         out.extend(o for o in resolved if keep is None or keep(o))
+    if final is not None:
+        out = final(out)
     if record is not None:
+        rows: Dict[Any, List[Dict[str, Any]]] = {op[ROW]: [] for op in fresh}
+        for o in out:
+            if o.get(ROW) in rows:
+                rows[o[ROW]].append(o)
+        for op in fresh:
+            record.record(op, rows[op[ROW]])
         record.save()
     return out
 
