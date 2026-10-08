@@ -174,8 +174,12 @@ describe('a turn the service ended without writing the record', () => {
     });
     const j = startTurn({ store, service: { serviceId: 's1' }, conv: conv(), prevMeta: null });
     await j.promise;
-    expect(j.result.conv.display.map((d) => d.kind)).toEqual(['user', 'assistant']);
-    expect(notifyError).toHaveBeenCalledWith('The answer was not saved.');
+    expect(j.result.conv.display.map((d) => d.kind)).toEqual(['user', 'assistant', 'error']);
+    expect(j.result.conv.display[1].text).toBe('Glossed.');
+    // The reason, not only that it failed (answerNotSaved.test.js).
+    expect(notifyError).toHaveBeenCalledWith(
+      expect.stringMatching(/^The answer was not saved\. \S/),
+    );
     stop();
   });
 });

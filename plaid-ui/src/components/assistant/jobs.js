@@ -203,7 +203,8 @@ const metaOver = (fresh, meta, settles) => ({
 // the record (a turn reads the message from it) must not go on without it.
 //
 // `failure` replaces the message a refused write shows, for a write that is
-// not the sending of a message.
+// not the sending of a message: a string, or a function of the error that
+// answers one.
 export const persistConv = (
   store,
   conv,
@@ -267,7 +268,7 @@ export const persistConv = (
     .catch((e) => {
       console.error('[Assistant] could not save the conversation', e);
       notifyError(
-        failure ||
+        (typeof failure === 'function' ? failure(e) : failure) ||
           (e?.status === 413
             ? CONVERSATION_FULL
             : humanizeError(e, 'Failed to save the conversation.')),
@@ -402,7 +403,40 @@ export const withAnswer = (conv, outcome) => {
   };
 };
 
-const NOT_SAVED = 'The answer was not saved.';
+// An answer neither the service nor the page could write into the record,
+// said with the page's reason. A record at the size limit takes nothing more,
+// so the conversation is over.
+const ANSWER_FULL =
+  'This conversation is full, so the answer was not saved. Start a new conversation to go on.';
+
+const answerNotSaved = (e) =>
+  e?.status === 413
+    ? ANSWER_FULL
+    : `The answer was not saved. ${humanizeError(e, 'The server refused it.')}`;
+
+// The record as stored with the answer the page could not save after it, as
+// the panel shows it. Not stored, so it offers nothing to approve: its plan
+// stays out (approving needs it in the record, where the service reads it),
+// and so does what the answer would have done to the plans before it. A line
+// after it says the answer is not saved.
+const withUnsavedAnswer = (conv, item, e) => {
+  const { plan, ...answer } = item;
+  const said = plan
+    ? 'This answer and its proposed changes were not saved, so the changes cannot be applied.'
+    : 'This answer was not saved.';
+  return {
+    ...conv,
+    display: [
+      ...conv.display,
+      { ...answer, createdAt: item.createdAt || itemTime() },
+      {
+        kind: 'error',
+        text: e?.status === 413 ? `${said} This conversation is full.` : said,
+        createdAt: itemTime(),
+      },
+    ],
+  };
+};
 
 // How often, and for how long, a turn whose request went missing looks for
 // an answer landing in its record. The server forgets a request when it
@@ -504,7 +538,7 @@ const settleJob = (j, conv, meta, store, service) => {
       );
       if (!landed) {
         conv = withAnswer(conv, j.outcome);
-        failure = NOT_SAVED;
+        failure = answerNotSaved;
       }
     } else if (j.error && j.error.status !== 404) {
       // As on a stop, the user's message stays in the model transcript.
@@ -561,21 +595,36 @@ const finishJob = async (j, store, service) => {
   const settled = stillOut ? null : settleJob(j, conv, meta, store, service);
   if (settled) {
     gone = settled.gone;
+    let refused = null;
     // Made again on the record as stored when another write landed first
     // (the service's late answer, another tab): settled there only while it
     // still names this request.
     const written = await persistConv(store, settled.conv, settled.meta, {
       // Nothing is added to an unanswered turn: its marker alone is cleared.
       metaOnly: settled.gone,
-      ...(settled.failure ? { failure: settled.failure } : {}),
+      ...(settled.failure
+        ? {
+            failure: (e) => {
+              refused = e;
+              return settled.failure(e);
+            },
+          }
+        : {}),
       settles: j.requestId,
       rebase: (fresh) => settleJob(j, fresh.conv, fresh.meta, store, service),
     });
     if (written?.declined) {
       ({ conv, meta } = written.fresh);
       gone = false;
+    } else if (written) {
+      ({ conv, meta } = written);
+    } else if (settled.failure) {
+      // The answer is in neither the record nor the service: shown once, as
+      // not saved, on the record as it was read.
+      conv = withUnsavedAnswer(conv, j.outcome.item, refused);
+      meta = settled.meta;
     } else {
-      ({ conv, meta } = written || settled);
+      ({ conv, meta } = settled);
     }
   }
   j.done = true;
