@@ -119,13 +119,22 @@
 (defn wrap-author-or-maintainer-required
   "The comment's author, or a maintainer of its owner (or an admin), may
   proceed. Used for delete: removing a comment misattributes nothing, and a
-  maintainer needs recourse against something abusive or misfiled."
+  maintainer needs recourse against something abusive or misfiled.
+
+  A delegated token deletes only its own user's comments, whatever that
+  user's rights: whoever runs the service holds the token, and another
+  member's words are not theirs to remove (ruled 2026-10-08)."
   [handler]
   (fn [request]
     (let [{:keys [row user-id response]} (fetch-for-authorship request)]
       (cond
         response response
-        (or (= (:author_id row) user-id) (owner-maintainer? request row))
+        (= (:author_id row) user-id)
+        (handler request)
+        (:auth/token-scope request)
+        {:status 403
+         :body {:error "A delegated token can delete only its own user's comments."}}
+        (owner-maintainer? request row)
         (handler request)
         :else
         {:status 403
