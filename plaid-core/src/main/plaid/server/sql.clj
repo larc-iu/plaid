@@ -51,9 +51,9 @@
     (cond
       (and (seq env-email) (seq env-password))
       ;; nil actor: this is the bootstrap admin — no user exists yet.
-      (let [{:keys [success error]} (pxu/create datasource env-email true env-password nil)]
+      (let [{:keys [success extra error]} (pxu/create datasource env-email true env-password nil)]
         (if success
-          (log/info (str "Admin user created from PLAID_ADMIN_EMAIL (" env-email ")."))
+          (log/info (str "Admin user created from PLAID_ADMIN_EMAIL (" extra ")."))
           (do (log/error "Error creating first admin from env vars:" error)
               (exit! 1))))
 
@@ -77,9 +77,9 @@
                     (flush))
               password (read-line-secret)
               ;; nil actor: this is the bootstrap admin — no user exists yet.
-              {:keys [success error]} (pxu/create datasource email true password nil)]
+              {:keys [success extra error]} (pxu/create datasource email true password nil)]
           (if success
-            (log/info (str "Admin user created with email " email "."))
+            (log/info (str "Admin user created with email " extra "."))
             (do (log/error "Error creating first user:" error)
                 (exit! 1))))))))
 

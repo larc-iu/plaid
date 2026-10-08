@@ -39,7 +39,7 @@ from plaid_client.provenance import (
 )
 from plaid_client.constraints import value_set_allows, violations_of
 from plaid_client.created import created_id, created_ids
-from plaid_client.ids import uuid7
+from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.replayed import was_replayed
 from plaid_client.metadata_ops import (
     metadata_ops,
@@ -64,6 +64,7 @@ __all__ = [
     "created_id",
     "created_ids",
     "uuid7",
+    "normalize_user_id",
     "was_replayed",
     "PlaidClient",
     "MAX_BATCH_OPS",

@@ -21,7 +21,7 @@ from plaid_client.http import (
     retry_unknown, is_unknown_outcome, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
     IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
 )
-from plaid_client.ids import uuid7
+from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.replayed import mark_replayed, was_replayed
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
@@ -1082,7 +1082,8 @@ class UsersResource(_Resource):
                 local part of the email.
         """
         return self._request('POST', '/api/v1/users',
-                             body=_body_of(email=email, password=password, is_admin=is_admin,
+                             body=_body_of(email=normalize_user_id(email), password=password,
+                                           is_admin=is_admin,
                                            display_name=_UNSET if display_name is None else display_name),
                              audit_message=audit_message)
 
@@ -4549,7 +4550,7 @@ class PlaidClient:
         """
         body = {'code': code, 'password': password}
         if email is not None:
-            body['email'] = email
+            body['email'] = normalize_user_id(email)
         if display_name is not None:
             body['display-name'] = display_name
         data = cls._anonymous_post(base_url, '/api/v1/invites/redeem', body,
@@ -4583,7 +4584,8 @@ class PlaidClient:
         try:
             response = req_lib.post(url,
                                     headers={'Content-Type': 'application/json'},
-                                    data=json.dumps({'user-id': user_id, 'password': password}),
+                                    data=json.dumps({'user-id': normalize_user_id(user_id),
+                                                     'password': password}),
                                     timeout=wire_timeout(timeout))
         except Exception as e:
             if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):

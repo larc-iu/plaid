@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.audit
   (:require [clojure.string]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.audit :as audit]
@@ -206,7 +207,7 @@
                           (fn [opts start end] (audit/get-document-audit-log db document-id start end opts))))}}]
 
    ["/users/:user-id/audit"
-    {:parameters {:path [:map [:user-id string?]]}
+    {:parameters {:path [:map [:user-id schema/user-id]]}
      :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc kinds-doc order-doc ops-limit-doc)
                   :middleware [[pra/wrap-admin-required]  ; Only admins can view other users' audit logs
                                [pra/wrap-path-user-required]]

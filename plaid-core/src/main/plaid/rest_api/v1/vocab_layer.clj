@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.vocab-layer
   (:require [plaid.history.read :as hread]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.history.vocab-restore :as vrestore]
             [plaid.rest-api.v1.audit :as audit-routes]
             [plaid.rest-api.v1.auth :as pra]
@@ -233,7 +234,7 @@
      :plaid/vocabulary-admin true}
     ["/maintainers/:user-id"
      {:post {:summary "Assign a user as a maintainer for this vocab layer."
-             :parameters {:path [:map [:id :uuid] [:user-id string?]]}
+             :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
              :handler (fn [{{{:keys [id user-id]} :path} :parameters
                             db :db
                             actor-user-id :user/id :as req}]
@@ -244,7 +245,7 @@
                              :body {:error error}})))}
 
       :delete {:summary "Remove a user's maintainer privileges for this vocab layer."
-               :parameters {:path [:map [:id :uuid] [:user-id string?]]}
+               :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
                :handler (fn [{{{:keys [id user-id]} :path} :parameters
                               db :db
                               actor-user-id :user/id :as req}]

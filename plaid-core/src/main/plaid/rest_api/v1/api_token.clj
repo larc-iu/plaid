@@ -3,6 +3,7 @@
   `/users/:user-id/tokens`. A user manages their own tokens; a global admin
   may manage anyone's. Minting returns the signed JWT exactly ONCE."
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.api-token :as api-token]
             [plaid.sql.user :as user]
@@ -53,7 +54,7 @@
 (def api-token-routes
   ["/users/:user-id/tokens"
    {:openapi {:security [{:auth []}]}
-    :parameters {:path [:map [:user-id string?]]}
+    :parameters {:path [:map [:user-id schema/user-id]]}
     :middleware [pra/wrap-login-required wrap-self-or-admin pra/wrap-path-user-required]}
 
    [""

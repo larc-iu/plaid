@@ -13,6 +13,7 @@
   Cost note: `server` runs a handful of counts and a directory walk, so it is
   a page a person opens, not something to poll on a timer."
   (:require [clojure.java.io :as io]
+            [plaid.rest-api.v1.schema :as schema]
             [clojure.string :as str]
             [plaid.media.storage :as media]
             [plaid.rest-api.v1.api-token :as api-token]
@@ -265,7 +266,7 @@
               :middleware [api-token/wrap-session-required]
               :parameters {:query [:map
                                    [:ip {:optional true} string?]
-                                   [:user-id {:optional true} string?]]}
+                                   [:user-id {:optional true} schema/user-id]]}
               :handler (fn [{{{:keys [ip user-id]} :query} :parameters}]
                          (rl/clear-buckets! {:ip ip :user-id user-id})
                          {:status 200
@@ -320,7 +321,7 @@
                                 [:q {:optional true} string?]
                                 [:level {:optional true} string?]
                                 [:status {:optional true} string?]
-                                [:user {:optional true} string?]
+                                [:user {:optional true} schema/user-id]
                                 [:method {:optional true} string?]]}
            :handler (fn [{{{:keys [limit q level status user method]} :query} :parameters}]
                       (let [limit (min (or limit 200) max-log-lines)]

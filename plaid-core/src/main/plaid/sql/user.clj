@@ -33,6 +33,17 @@
   change it. `:user/display-name` is the mutable label the apps show."
   [:user/id :user/display-name :user/is-admin :user/deactivated-at :user/avatar-hash])
 
+(defn normalize-id
+  "The one spelling of a user id, which is an email address: trimmed and
+  lowercased. An id is normalized everywhere it enters core, the routes by
+  `plaid.rest-api.v1.schema/user-id` and account creation here, so two
+  accounts never differ only in case and `B@X.COM` signs in, is granted and is
+  found as `b@x.com`. Anything but a string comes back unchanged."
+  [id]
+  (if (string? id)
+    (.toLowerCase ^String (clojure.string/trim id) java.util.Locale/ROOT)
+    id))
+
 (defn- row->user
   "Translate a `users` row (snake_case column keys) to the namespaced
   shape the rest of the system expects. Returns nil on nil input."
@@ -106,7 +117,7 @@
                                                                (select-keys public-keys)))}
                              (not (clojure.string/blank? q))
                              (assoc :base-where
-                                    (let [q (clojure.string/lower-case q)]
+                                    (let [q (normalize-id q)]
                                       [:or
                                        [:> [:instr [:lower :display_name] q] 0]
                                        (if (clojure.string/includes? q "@")
@@ -246,42 +257,45 @@
   See the user-display-name migration."
   ([tx id is-admin password] (insert-user-row! tx id is-admin password nil))
   ([tx id is-admin password display-name]
-   (assert-valid-email! id)
-   (assert-valid-password! password)
-   (let [display-name (or (not-empty (some-> display-name clojure.string/trim))
-                          (default-display-name id))
-         _ (assert-valid-display-name! display-name)
-         password-hash (hashers/derive password)
-         row {:id               id
-              :username         id
-              :display_name     display-name
-              :password_hash    password-hash
-              :password_changes 0
-              :is_admin         (if is-admin 1 0)}]
-     (try
-       (crud/insert! tx :users row)
-       (catch SQLException e
-         (if (account-taken-violation? e)
-           (throw (ex-info (psc/err-msg-already-exists "User" id) {:id id :code 409}))
-           (throw e))))
-     id)))
+   (let [id (normalize-id id)]
+     (assert-valid-email! id)
+     (assert-valid-password! password)
+     (let [display-name (or (not-empty (some-> display-name clojure.string/trim))
+                            (default-display-name id))
+           _ (assert-valid-display-name! display-name)
+           password-hash (hashers/derive password)
+           row {:id               id
+                :username         id
+                :display_name     display-name
+                :password_hash    password-hash
+                :password_changes 0
+                :is_admin         (if is-admin 1 0)}]
+       (try
+         (crud/insert! tx :users row)
+         (catch SQLException e
+           (if (account-taken-violation? e)
+             (throw (ex-info (psc/err-msg-already-exists "User" id) {:id id :code 409}))
+             (throw e))))
+       id))))
 
 (defn create
   "Create a new user. `id` is the account's email address, which is also what
-  they log in with and cannot be changed afterwards. `display-name` is
-  optional (nil takes the local part of the email).
+  they log in with and cannot be changed afterwards. It is stored as
+  `normalize-id` spells it. `display-name` is optional (nil takes the local
+  part of the email).
   `acting-user-id` attributes the op in the audit log — nil ONLY for the
   bootstrap admin created at first startup, where no actor exists yet.
   Returns {:success true :extra id} or {:success false ...}."
   ([db id is-admin password acting-user-id]
    (create db id is-admin password acting-user-id nil))
   ([db id is-admin password acting-user-id display-name]
-   (submit-operation! [tx db {:type :user/create
-                              :project nil
-                              :document nil
-                              :description (str "Create user " id)
-                              :user acting-user-id}]
-                      (insert-user-row! tx id is-admin password display-name))))
+   (let [id (normalize-id id)]
+     (submit-operation! [tx db {:type :user/create
+                                :project nil
+                                :document nil
+                                :description (str "Create user " id)
+                                :user acting-user-id}]
+                        (insert-user-row! tx id is-admin password display-name)))))
 
 (defn- count-other-admins
   "Count global admins OTHER than `eid`. Used to enforce the

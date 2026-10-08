@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.user
   (:require [clojure.string :as str]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.media.avatar :as avatar]
             [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.auth :as pra]
@@ -56,7 +57,7 @@
                           "token is refused (403).")
             :middleware [pra/wrap-admin-required api-token/wrap-session-required]
             :parameters {:body [:map
-                                [:email string?]
+                                [:email schema/user-id]
                                 [:password string?]
                                 [:is-admin boolean?]
                                 [:display-name {:optional true} string?]]}
@@ -69,7 +70,7 @@
                             :body {:error (:error result)}})))}}]
 
    ["/:id"
-    {:parameters {:path [:map [:id string?]]}}
+    {:parameters {:path [:map [:id schema/user-id]]}}
     [""
      {;; A delegated token reads its own user here and nothing else
       ;; (`pra/own-user-token-scope`).
@@ -179,7 +180,7 @@
                           "dropped and EXIF orientation is applied rather than carried. Accepts PNG, "
                           "JPEG, WebP, and GIF. Stores PNG when the source has transparency and JPEG "
                           "otherwise. Replaces any existing picture.")
-            :parameters {:path [:map [:id string?]]}
+            :parameters {:path [:map [:id schema/user-id]]}
             :openapi {:requestBody {:content {"multipart/form-data"
                                               {:schema {:type "object"
                                                         :properties {:file {:type "string"

@@ -3,6 +3,7 @@
   The owning user or a global admin may read and write; nobody else can see
   that a key exists. Values are arbitrary JSON, stored and returned verbatim."
   (:require [plaid.rest-api.v1.api-token :as api-token :refer [self-or-admin]]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.user-data :as user-data]))
@@ -22,7 +23,7 @@
   ["/users/:user-id/data"
    {:plaid/idempotency false
     :openapi {:security [{:auth []}]}
-    :parameters {:path [:map [:user-id string?]]}
+    :parameters {:path [:map [:user-id schema/user-id]]}
     :middleware [pra/wrap-login-required
                  (self-or-admin "You can only read or change your own private data.")
                  pra/wrap-path-user-required]}

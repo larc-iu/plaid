@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.auth
   "Implements JWT-based authentication and provides authorization middleware."
   (:require [buddy.hashers :as hashers]
+            [plaid.rest-api.v1.schema :as schema]
             [buddy.sign.jwt :as jwt]
             [clojure.string :as str]
             [plaid.query.ast :as ast]
@@ -159,7 +160,7 @@
                          "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
                          "authentication to the server.")
            :middleware [rl/wrap-login-rate-limit]
-           :parameters {:body {:user-id string? :password string?}}
+           :parameters {:body {:user-id schema/user-id :password string?}}
            :handler (fn [{{{:keys [user-id password]} :body} :parameters
                           db :db secret-key :secret-key :as request}]
                       ;; Return the same generic error in all branches to avoid

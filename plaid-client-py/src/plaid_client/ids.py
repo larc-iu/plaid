@@ -65,3 +65,14 @@ def drawn_uuid7(seed: str, n: int) -> str:
     at = ((top >> 16) << 12) + (top & 0xFFF) + 1 + n
     rand = int.from_bytes(hashlib.sha256(f'{u}/{n}'.encode()).digest()[:8], 'big') >> 2
     return _compose(at >> 12, at & 0xFFF, rand)
+
+
+def normalize_user_id(user_id):
+    """A user id as the server stores it.
+
+    A user's id is their email address, kept trimmed and lowercased, so
+    ``Ana@Example.org`` and ``ana@example.org`` name one account. Compare a
+    typed address with an id through this. Anything but a string comes back
+    unchanged.
+    """
+    return user_id.strip().lower() if isinstance(user_id, str) else user_id

@@ -88,3 +88,27 @@ describe('useUserAdmin passwords', () => {
     expect(client.users.update).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useUserAdmin emails', () => {
+  it('creates the account under the lowercased, trimmed address and names it so', async () => {
+    const { notifySuccess } = await import('../lib/notify.js');
+    const { admin, step, client } = await mount();
+    await step(() =>
+      admin().state.setNewUser({
+        email: '  Ana@Example.ORG ',
+        displayName: '',
+        isAdmin: false,
+        password: 'abc12345',
+        confirmPassword: 'abc12345',
+      }),
+    );
+    await step(() => admin().state.createUser());
+    expect(client.users.create).toHaveBeenCalledWith(
+      'ana@example.org',
+      'abc12345',
+      false,
+      undefined,
+    );
+    expect(notifySuccess).toHaveBeenCalledWith('User "ana@example.org" created', 'User created');
+  });
+});

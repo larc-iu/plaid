@@ -31,6 +31,7 @@
     public routes can reach a handler at all. A new subtree here is
     unauthenticated until it says otherwise: say otherwise."
   (:require [plaid.rest-api.v1.api-token :as api-token]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.rest-api.v1.rate-limit :as rl]
@@ -105,7 +106,7 @@
                           "grant what it grants), with that <body>status</body> in the body.")
             :parameters {:body [:map
                                 [:code string?]
-                                [:email {:optional true} string?]
+                                [:email {:optional true} schema/user-id]
                                 [:display-name {:optional true} string?]
                                 [:password string?]]}
             :handler (fn [{{{:keys [code email display-name password]} :body} :parameters
@@ -226,7 +227,7 @@
                                 [:grant-admin {:optional true} boolean?]
                                 [:project-id {:optional true} string?]
                                 [:project-role {:optional true} string?]
-                                [:target-user-id {:optional true} string?]]}
+                                [:target-user-id {:optional true} schema/user-id]]}
             :handler (fn [{{body :body} :parameters db :db :as request}]
                        (let [{:keys [success extra error] status-code :code}
                              (invite/create! db

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { notifySuccess, notifyError } from '../lib/notify.js';
 import { humanizeError } from '../lib/errors.js';
+import { normalizeUserId } from '@larc-iu/plaid-client';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../lib/email.js';
 import { usePasswordMinimum, passwordTooShort } from './usePasswordMinimum.js';
 
@@ -67,17 +68,20 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       notifyError('The two passwords do not match', 'Check the password');
       return;
     }
+    // The id as the server stores it, trimmed and lowercased, so the
+    // messages below name the account that exists.
+    const email = normalizeUserId(newUser.email);
     try {
       setCreating(true);
       // The email becomes the account's id and login, permanently. A blank
       // display name lets the server default it to the email's local part.
       await client.users.create(
-        newUser.email,
+        email,
         newUser.password,
         newUser.isAdmin,
         newUser.displayName.trim() || undefined,
       );
-      notifySuccess(`User "${newUser.email}" created`, 'User created');
+      notifySuccess(`User "${email}" created`, 'User created');
       setNewUser(EMPTY_USER);
       setCreateOpen(false);
       await changed();
@@ -86,7 +90,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       const exists = err.status === 409 || (err.message && err.message.includes('409'));
       notifyError(
         exists
-          ? `An account already exists for ${newUser.email}.`
+          ? `An account already exists for ${email}.`
           : humanizeError(err, 'Failed to create the account.'),
         'Failed to create the account',
       );

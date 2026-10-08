@@ -67,7 +67,7 @@ from urllib.parse import quote
 from plaid_client import client as _client
 from plaid_client.document_lock import DocumentLock
 from plaid_client.http import BatchRef, PlaidAPIError
-from plaid_client.ids import uuid7
+from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_protected
 from plaid_client.services import CancelScope, requester_message
@@ -1631,6 +1631,7 @@ class FakeClient:
         def __init__(self, base_url='http://plaid.internal:8085'):
             self.base_url = base_url
             #: (user_id, key) -> {'value', 'updated_at', 'version'}
+            #: The user id as the server stores it (`normalize_user_id`).
             self.store = {}
 
         def _missing(self, user_id, key, method):
@@ -1638,7 +1639,7 @@ class FakeClient:
                             f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
 
         def get(self, user_id, key):
-            entry = self.store.get((user_id, key))
+            entry = self.store.get((normalize_user_id(user_id), key))
             if entry is None:
                 raise self._missing(user_id, key, 'GET')
             return {'key': key, 'updated_at': entry['updated_at'],
@@ -1649,13 +1650,13 @@ class FakeClient:
             """As the server: every write raises the version, and one naming
             a version the entry is no longer at (0: there is an entry) is
             refused with 409 and the stored version."""
-            was = self.store.get((user_id, key))
+            was = self.store.get((normalize_user_id(user_id), key))
             stored = was.get('version', 1) if was else 0
             if version is not None and version != stored:
                 return self._version_mismatch(user_id, key, stored, was)
             wire = json.loads(json.dumps(transform_request(value)))
             entry = {'value': transform_response(wire), 'updated_at': _now_iso(), 'version': stored + 1}
-            self.store[(user_id, key)] = entry
+            self.store[(normalize_user_id(user_id), key)] = entry
             return {'key': key, 'updated_at': entry['updated_at'], 'version': entry['version']}
 
         def _version_mismatch(self, user_id, key, stored, was):
@@ -1666,7 +1667,7 @@ class FakeClient:
                                                'updated_at': was['updated_at'] if was else None})
 
         def delete(self, user_id, key):
-            if self.store.pop((user_id, key), None) is None:
+            if self.store.pop((normalize_user_id(user_id), key), None) is None:
                 raise self._missing(user_id, key, 'DELETE')
 
         def _entries(self, user_id, prefix, pattern, include_values):
@@ -1674,7 +1675,7 @@ class FakeClient:
             rows = [{'key': k, 'updated_at': e['updated_at'], 'version': e.get('version', 1),
                      **({'value': copy.deepcopy(e['value'])} if include_values else {})}
                     for (u, k), e in self.store.items()
-                    if u == user_id
+                    if u == normalize_user_id(user_id)
                     and (not prefix or k.startswith(prefix))
                     and (not pattern or fnmatch.fnmatchcase(k, pattern))]
             rows.sort(key=lambda r: r['key'])

@@ -22,7 +22,7 @@ import {
   DEFAULT_BATCH_TIMEOUT_MS,
   queryTimeout,
 } from "./http.js";
-import { uuidv4, uuidv7 } from "./ids.js";
+import { uuidv4, uuidv7, normalizeUserId } from "./ids.js";
 import { constraintsBody } from "./constraints.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
 import { recorderFor } from "./events.js";
@@ -1239,7 +1239,7 @@ class PlaidClient {
         this._request("POST", "/api/v1/users", {
           auditMessage,
           body: bodyOf({
-            email,
+            email: normalizeUserId(email),
             password,
             "is-admin": isAdmin,
             // Left out when not given (null too), so core gives the user the
@@ -4197,7 +4197,12 @@ class PlaidClient {
     const data = await anonymousPost(
       baseUrl,
       "/api/v1/invites/redeem",
-      bodyOf({ code, email, password, "display-name": displayName }),
+      bodyOf({
+        code,
+        email: normalizeUserId(email),
+        password,
+        "display-name": displayName,
+      }),
       options,
     );
     return {
@@ -4227,7 +4232,7 @@ class PlaidClient {
       const fetchOptions = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ "user-id": userId, password }),
+        body: JSON.stringify({ "user-id": normalizeUserId(userId), password }),
       };
       const signal = timeoutSignal(
         options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS,
@@ -4433,6 +4438,6 @@ export { createdId, createdIds } from "./created.js";
 // UUIDv7 ids for what a client creates. See ./ids.js and the manual,
 // "Retrying a write". uuidv4 works where crypto.randomUUID does not (a page
 // served over plain HTTP from any host but localhost).
-export { uuidv4, uuidv7 } from "./ids.js";
+export { uuidv4, uuidv7, normalizeUserId } from "./ids.js";
 export { wasReplayed } from "./replayed.js";
 export { MAX_BATCH_OPS };
