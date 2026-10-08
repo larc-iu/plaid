@@ -908,7 +908,9 @@ A change that rewrites your baseline text, rather than annotating it, is marked 
 The assistant is told not to propose one unless you asked for it.
 Text the assistant adds is split into words as a Baseline save's is, and gets none when **Tokenize new text** is off.
 A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
-A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
+A change over the whole project, such as replacing a gloss everywhere, is one row: the change, how many values it changes in how many documents, and how many of them replace accepted work.
+**Show where** lists the documents with their counts and a few examples.
+A value that two such changes reach is counted once, on the later one.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
 If your work is reviewed in this project, what you approve is your own contribution and waits for a reviewer, as anything you enter does.
@@ -920,6 +922,7 @@ A new entry then has its form alone, as **+ Create** in the popover makes it, an
 Giving a new entry its fields or type, changing an existing entry, adding a sense, and renaming, merging or deleting entries need a maintainer of that lexicon or an administrator, as on the Vocabularies screens.
 Asking for a new plan replaces one still waiting.
 The older card then reads **Replaced** and can no longer be approved, and the new plan restates whatever from it should still happen.
+One plan makes at most 20,000 changes and reaches at most 500 documents.
 
 Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
 When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
@@ -934,7 +937,9 @@ An edit to another sentence does not stop it, even one that adds or removes lett
 A text edit or a respelling is refused after any edit to its document.
 An out-of-date plan can still be discarded, which removes its buttons and leaves it marked **Out of date**.
 Ask again to have it planned on the current text.
-A replacement across documents is also out of date when a document starts or stops matching it after the plan was made.
+A change over the whole project is out of date when the values it matches have changed since it was planned.
+The card then says which change, how many places it matched then and now, and where, and nothing is changed.
+An edit elsewhere in the same documents does not stop it.
 Approving a plan on a document that a service run (a transcription, an analysis) is writing to is refused with nothing written. Approve again once the run has finished.
 Deleting an entry through a plan is refused when the entry was linked after the plan was made.
 The assistant cannot delete an entry that has links in projects it cannot open: the plan says so and is not applied.
@@ -1032,7 +1037,7 @@ Past 85 percent of either limit the bar turns amber and the panel says which lim
 A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
 A plan waiting in it can still be approved or discarded.
 An answer too large to store is shown once, without its plan, and marked as not saved.
-A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had.
+A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had. A change over the whole project is kept whole.
 Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
 The storage limit is set by the server's operator.
 

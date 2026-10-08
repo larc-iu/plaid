@@ -418,6 +418,7 @@ A confirmation that wrote nothing is faded on the card and marked `(nothing writ
 Reading needs Reader access, and applying a plan needs Writer.
 Asking for a new plan replaces one still waiting.
 The older card then reads **Replaced** and can no longer be approved, and the new plan restates whatever from it should still happen.
+One plan makes at most 20,000 changes and reaches at most 500 documents.
 
 Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
 When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
