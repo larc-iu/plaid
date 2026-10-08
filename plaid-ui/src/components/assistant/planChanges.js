@@ -20,8 +20,40 @@ export const workReplaced = (rows) =>
   (rows || []).reduce((n, r) => n + (Number(r.replacesWork) || 0), 0);
 
 // A row the collapsed card never folds away: a rewrite of the text, or a
-// change to a person's work, is not something to approve unread.
-const alwaysShown = (r) => r.writesText || r.replacesWork;
+// change to a person's work, is not something to approve unread, and a rule
+// is one row standing for many changes.
+const alwaysShown = (r) => r.writesText || r.replacesWork || r.rule;
+
+// How many documents a rule's row lists before "and n more documents".
+export const RULE_DOCUMENTS_SHOWN = 10;
+
+const count = (n, one, many) => `${Number(n).toLocaleString('en-US')} ${n === 1 ? one : many}`;
+
+// A rule's documents (`rule.documents`, `[id, name, changes]` largest first)
+// and how many more the record counts without naming.
+export const ruleDocuments = (rule) => {
+  const named = (rule?.documents || []).map(([id, name, n]) => ({
+    id,
+    name,
+    count: Number(n) || 0,
+  }));
+  const [moreDocs, moreChanges] = rule?.documentsMore || [0, 0];
+  return { named, moreDocs: Number(moreDocs) || 0, moreChanges: Number(moreChanges) || 0 };
+};
+
+// "1,240 changes in 12 documents", and how many replace accepted work.
+export const ruleCountLine = (rule, replacesWork = 0) => {
+  const { named, moreDocs } = ruleDocuments(rule);
+  const docs = named.length + moreDocs;
+  const line = `${count(Number(rule?.total) || 0, 'change', 'changes')} in ${count(docs, 'document', 'documents')}`;
+  return replacesWork > 0
+    ? `${line}, ${count(replacesWork, 'replaces', 'replace')} accepted work`
+    : line;
+};
+
+// "and 3 more documents (31 changes)".
+export const ruleMoreLine = (docs, changes) =>
+  `and ${count(docs, 'more document', 'more documents')} (${count(changes, 'change', 'changes')})`;
 
 // How many rows a settled plan's record no longer holds (planRecord.js).
 export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
@@ -41,7 +73,8 @@ export const planRows = (plan) => {
   const changes = plan?.changes || [];
   if (changes.length && changes.length === opCount - rowsOmitted(plan)) {
     return changes.map((c, i) => ({
-      index: i,
+      // A rule's row kept past a settled plan's row cap says where it was.
+      index: c.row ?? i,
       where: c.where || null,
       change: c.change || null,
       label: c.label || '',
@@ -54,15 +87,20 @@ export const planRows = (plan) => {
       // thing, the count for a corpus-wide replace, 0 for none. Such a change
       // is never folded into a group, service side or here.
       replacesWork: Number(c.replacesWork) || 0,
+      // One stored change standing for many (core/rules.py in plaid-agent):
+      // its tool and arguments, total, count per document and a sample.
+      rule: c.rule || null,
     }));
   }
-  return (plan?.labels || []).map((label, i) => ({
+  // A plan made since rules has no `labels`: each change carries its own.
+  return (plan?.labels || changes.map((c) => c?.label || '')).map((label, i) => ({
     index: i,
     where: null,
     change: null,
     label,
     writesText: false,
     replacesWork: 0,
+    rule: null,
   }));
 };
 
@@ -72,6 +110,11 @@ export const groupRows = (rows, projectId, adapter) => {
   const groups = [];
   const byKey = new Map();
   for (const row of rows) {
+    // A rule names its own documents: it is a group of its own.
+    if (row.rule) {
+      groups.push({ key: `rule:${row.index}`, title: null, href: null, rule: true, rows: [row] });
+      continue;
+    }
     const { key, title, href } = adapter.groupOf(projectId, row.where);
     let g = byKey.get(key);
     if (!g) {

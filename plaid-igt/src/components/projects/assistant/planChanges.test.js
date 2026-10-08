@@ -69,8 +69,17 @@ describe('planRows', () => {
         label: 'a',
         writesText: false,
         replacesWork: 0,
+        rule: null,
       },
-      { index: 1, where: null, change: null, label: 'b', writesText: false, replacesWork: 0 },
+      {
+        index: 1,
+        where: null,
+        change: null,
+        label: 'b',
+        writesText: false,
+        replacesWork: 0,
+        rule: null,
+      },
     ]);
   });
 
@@ -83,6 +92,7 @@ describe('planRows', () => {
         label: 'only a label',
         writesText: false,
         replacesWork: 0,
+        rule: null,
       },
     ]);
     expect(planRows(null)).toEqual([]);

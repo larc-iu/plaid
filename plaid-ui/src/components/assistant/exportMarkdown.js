@@ -4,7 +4,14 @@
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
 import { fencedLines, linkifyCitations, markdownText } from './citations.js';
-import { omittedLine, rowsOmitted } from './planChanges.js';
+import {
+  omittedLine,
+  planRows,
+  rowsOmitted,
+  ruleCountLine,
+  ruleDocuments,
+  ruleMoreLine,
+} from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
   couldNotOpen,
@@ -70,7 +77,17 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject) => {
                 : 'Not yet approved.';
   const where = inProject ? ` in ${markdownText(inProject)}` : '';
   const lines = [`**Proposed changes${where}:** ${plan.summary || ''} (${said})`, ''];
-  (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
+  planRows(plan).forEach((r, i) => {
+    lines.push(`${i + 1}. ${r.label}`);
+    if (!r.rule) return;
+    // A rule: its count, every document it reaches by name up to the
+    // card's cut, and its sample, as the card shows them unfolded.
+    const { named, moreDocs, moreChanges } = ruleDocuments(r.rule);
+    lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork)}`);
+    named.forEach((d) => lines.push(`   - ${markdownText(d.name || d.id)}: ${d.count}`));
+    if (moreDocs) lines.push(`   - ${ruleMoreLine(moreDocs, moreChanges)}`);
+    (r.rule.sample || []).forEach((c) => lines.push(`   - For example: ${c.label}`));
+  });
   // A long settled plan keeps its first rows only (planRecord.js).
   const omitted = rowsOmitted(plan);
   if (omitted > 0) lines.push('', omittedLine(omitted));

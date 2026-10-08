@@ -354,6 +354,7 @@ export const Turn = ({
             notes={item.applyNotes}
             unwritten={item.unwritten}
             unknown={!!item.unknown}
+            reason={item.reason || null}
             recordedAsHuman={item.asHuman}
             dismissed={!!item.dismissed}
             interrupted={interrupted}

@@ -19,6 +19,10 @@ import {
   planRows,
   ROWS_COLLAPSED,
   rowsOmitted,
+  RULE_DOCUMENTS_SHOWN,
+  ruleCountLine,
+  ruleDocuments,
+  ruleMoreLine,
   textRewrites,
   workReplaced,
 } from './planChanges.js';
@@ -42,6 +46,9 @@ export const PlanCard = ({
   notes,
   unwritten,
   unknown = false,
+  // An out-of-date plan: why, in the service's words (what a rule matched
+  // when planned and now, a document that changed).
+  reason = null,
   recordedAsHuman,
   // An out-of-date plan the reader discarded. It stays out of date (the
   // record of an approval that was refused) and offers nothing more.
@@ -178,6 +185,11 @@ export const PlanCard = ({
         </div>
       )}
       {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
+      {stale && reason && (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="stale-reason">
+          {sentence(reason)} Nothing was changed.
+        </p>
+      )}
       {partial && (
         <p className="mt-2 text-xs text-muted-foreground">
           {outcome}
@@ -217,40 +229,52 @@ export const PlanCard = ({
           <tbody>
             {shown.groups.map((g) => (
               <Fragment key={g.key}>
-                <tr>
-                  <th
-                    colSpan={2}
-                    scope="colgroup"
-                    className="pt-2 text-left font-medium text-foreground"
-                  >
-                    {g.href ? (
-                      <a href={g.href} className="hover:underline">
-                        {g.title}
-                      </a>
-                    ) : (
-                      g.title
-                    )}
-                    <span className="ml-1.5 font-normal text-muted-foreground">
-                      {g.rows.length}
-                    </span>
-                  </th>
-                </tr>
-                {g.rows.map((r) => (
-                  <ChangeRow
-                    key={r.index}
-                    row={r}
+                {g.rule && (
+                  <RuleRow
+                    row={g.rows[0]}
                     projectId={projectId}
                     adapter={adapter}
-                    written={
-                      partial
-                        ? writtenRows.has(r.index)
-                        : unwrittenRows.has(r.index)
-                          ? false
-                          : undefined
-                    }
-                    nothingWritten={unwrittenRows.has(r.index)}
+                    open={exported}
+                    written={partial ? writtenRows.has(g.rows[0].index) : undefined}
                   />
-                ))}
+                )}
+                {!g.rule && (
+                  <tr>
+                    <th
+                      colSpan={2}
+                      scope="colgroup"
+                      className="pt-2 text-left font-medium text-foreground"
+                    >
+                      {g.href ? (
+                        <a href={g.href} className="hover:underline">
+                          {g.title}
+                        </a>
+                      ) : (
+                        g.title
+                      )}
+                      <span className="ml-1.5 font-normal text-muted-foreground">
+                        {g.rows.length}
+                      </span>
+                    </th>
+                  </tr>
+                )}
+                {!g.rule &&
+                  g.rows.map((r) => (
+                    <ChangeRow
+                      key={r.index}
+                      row={r}
+                      projectId={projectId}
+                      adapter={adapter}
+                      written={
+                        partial
+                          ? writtenRows.has(r.index)
+                          : unwrittenRows.has(r.index)
+                            ? false
+                            : undefined
+                      }
+                      nothingWritten={unwrittenRows.has(r.index)}
+                    />
+                  ))}
               </Fragment>
             ))}
             {omitted > 0 && shown.hidden === 0 && (
@@ -279,7 +303,9 @@ export const PlanCard = ({
       {stale && !dismissed && !readOnly && (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
-            Changed since this plan was made. Ask again to plan on the current version.
+            {reason
+              ? 'Ask again to plan on the current version.'
+              : 'Changed since this plan was made. Ask again to plan on the current version.'}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" disabled>
@@ -334,6 +360,127 @@ export const PlanCard = ({
   );
 };
 
+// A sentence as the service wrote it, ending in a full stop.
+const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+
+// One rule: a stored change standing for many (core/rules.py in plaid-agent).
+// The rule in its own words and its count, then, unfolded, each document it
+// reaches with its count, as a link into the editor, and a sample of its
+// changes as ordinary rows. The web page export shows it unfolded.
+const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) => {
+  const [open, setOpen] = useState(openFirst);
+  const { named, moreDocs, moreChanges } = ruleDocuments(row.rule);
+  const shownDocs = openFirst ? named : named.slice(0, RULE_DOCUMENTS_SHOWN);
+  const unnamed = named.length - shownDocs.length;
+  const sample = row.rule.sample || [];
+  return (
+    <>
+      <tr
+        className={cn('align-top', written === false && 'text-muted-foreground')}
+        data-rule="true"
+        data-written={written === undefined ? undefined : String(written)}
+      >
+        <td colSpan={2} className="pt-2 pb-0.5">
+          {written && (
+            <Check className="mr-1 inline h-3 w-3 align-[-2px] text-success" aria-label="Written" />
+          )}
+          {row.writesText && (
+            <Badge
+              variant="outline"
+              className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
+            >
+              Rewrite
+            </Badge>
+          )}
+          {row.replacesWork > 0 && (
+            <Badge
+              variant="outline"
+              className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
+            >
+              Accepted
+            </Badge>
+          )}
+          <span className="font-medium text-foreground">{row.change ?? row.label}</span>
+          <span className="ml-1.5 text-muted-foreground">
+            {ruleCountLine(row.rule, row.replacesWork)}
+          </span>
+          {!openFirst && (
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+              className="ml-1.5 inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <ChevronDown className={cn('h-3 w-3', open && 'rotate-180')} />
+              {open ? 'Hide' : 'Show where'}
+            </button>
+          )}
+        </td>
+      </tr>
+      {open &&
+        shownDocs.map((d) => {
+          const { href, title } = adapter.groupOf(projectId, {
+            kind: 'document',
+            documentId: d.id,
+            documentName: d.name,
+          });
+          return (
+            <tr key={`doc:${d.id}`} className="align-top" data-rule-document={d.id}>
+              <td className="w-px whitespace-nowrap py-0.5 pl-3 pr-4">
+                {href ? (
+                  <a href={href} className="font-medium text-foreground hover:underline">
+                    {title}
+                  </a>
+                ) : (
+                  <span className="font-medium">{title}</span>
+                )}
+              </td>
+              <td className="py-0.5 text-muted-foreground">{d.count.toLocaleString('en-US')}</td>
+            </tr>
+          );
+        })}
+      {open && (unnamed > 0 || moreDocs > 0) && (
+        <tr>
+          <td colSpan={2} className="py-0.5 pl-3 text-muted-foreground">
+            {ruleMoreLine(
+              unnamed + moreDocs,
+              named.slice(shownDocs.length).reduce((n, d) => n + d.count, 0) + moreChanges,
+            )}
+          </td>
+        </tr>
+      )}
+      {open && sample.length > 0 && (
+        <tr>
+          <th
+            colSpan={2}
+            scope="colgroup"
+            className="pt-1 pl-3 text-left font-normal text-muted-foreground"
+          >
+            For example
+          </th>
+        </tr>
+      )}
+      {open &&
+        sample.map((c, i) => (
+          <ChangeRow
+            key={`sample:${i}`}
+            row={{
+              index: `${row.index}:${i}`,
+              where: c.where || null,
+              change: c.change || null,
+              label: c.label || '',
+              writesText: !!c.writesText,
+              replacesWork: Number(c.replacesWork) || 0,
+            }}
+            projectId={projectId}
+            adapter={adapter}
+            indent
+          />
+        ))}
+    </>
+  );
+};
+
 // One change: where it lands, as a link into the editor, and what changes.
 // The app says what that place is called and where it opens
 // (`adapter.changePlace`); a change with no location shows its label alone.
@@ -348,14 +495,21 @@ export const PlanCard = ({
 // written in full: a check if so, faded if not. On an applied plan,
 // `nothingWritten` marks a change that wrote nothing (a contributor's
 // confirmation of other contributors' work only), faded and said so.
-const ChangeRow = ({ row, projectId, adapter, written, nothingWritten = false }) => {
+const ChangeRow = ({
+  row,
+  projectId,
+  adapter,
+  written,
+  nothingWritten = false,
+  indent = false,
+}) => {
   const place = adapter.changePlace(projectId, row.where);
   return (
     <tr
       className={cn('align-top', written === false && 'text-muted-foreground')}
       data-written={written === undefined ? undefined : String(written)}
     >
-      <td className="w-px whitespace-nowrap py-0.5 pr-4">
+      <td className={cn('w-px whitespace-nowrap py-0.5 pr-4', indent && 'pl-3')}>
         <span className="inline-block max-w-[min(18rem,40cqi)] truncate align-bottom">
           {place && (
             <>
