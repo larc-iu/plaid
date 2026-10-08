@@ -297,17 +297,6 @@
         [_ entry] svcs]
     (assoc entry :project-id project-id)))
 
-(defn service-token?
-  "Does the named API token `token-id` hold a service channel open on any
-  project right now? What tells a service's writes from a script's on the
-  same kind of credential (`plaid.sql.operation/*credential*`). False when
-  the registry is not running (a test that never started it)."
-  [token-id]
-  (let [state service-channels
-        svcs (when (instance? clojure.lang.IDeref state) @state)]
-    (boolean (and token-id (map? svcs)
-                  (some (fn [[_ by-id]] (some #(= (str token-id) (some-> (:token-id %) str)) (vals by-id))) svcs)))))
-
 ;; Who may hold a service channel or a /listen stream can change while it is
 ;; open: its API token is revoked, its user is deactivated, logs out or
 ;; changes password, or loses their role on the project. The channel was

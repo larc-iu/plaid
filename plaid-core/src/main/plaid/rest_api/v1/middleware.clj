@@ -1,6 +1,5 @@
 (ns plaid.rest-api.v1.middleware
-  (:require [plaid.server.events :as events]
-            [plaid.server.log-buffer :as log-buffer]
+  (:require [plaid.server.log-buffer :as log-buffer]
             [reitit.coercion :as reitit-coercion]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -634,16 +633,17 @@
 
 (defn request-credential
   "What kind of credential signed `request`, as `plaid.sql.operation/*credential*`
-  records it: \"delegated\" for a scoped token, \"service\" for a named token
-  that holds a service channel, \"named-token\" for any other named token,
-  \"login\" for a session, nil when the request is not signed."
+  records it: \"delegated\" for a scoped token, \"named-token\" for a named
+  API token, \"login\" for a session, nil when the request is not signed.
+  It is read from the token alone. Whether that token also holds a service
+  channel open says nothing about the write: anyone may open one with their
+  script's token (H9-ACL-3, 2026-10-08, which retired \"service\")."
   [request]
-  (let [token-id (:api-token/id request)]
-    (cond
-      (:auth/token-scope request) "delegated"
-      token-id (if (events/service-token? token-id) "service" "named-token")
-      (:user/id request) "login"
-      :else nil)))
+  (cond
+    (:auth/token-scope request) "delegated"
+    (:api-token/id request) "named-token"
+    (:user/id request) "login"
+    :else nil))
 
 (defn wrap-api-token-id
   "Bind the request's validated API-token id (set by `wrap-read-jwt` from the

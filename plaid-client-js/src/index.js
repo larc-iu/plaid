@@ -2229,7 +2229,8 @@ class PlaidClient {
        * Get audit log for a document. Transparently follows pagination cursors
        * and returns the full flat array. Each entry, and each of its `ops`,
        * says what kind of credential made it as `credential`: `login`,
-       * `named-token`, `service` or `delegated` (absent on older operations),
+       * `named-token` or `delegated` (absent on older operations, `service`
+       * on some from 2026-10-06 to 2026-10-08),
        * beside `apiToken` (the named token's id and name) when there was one.
        * @param {string} documentId - The document ID
        * @param {string} [startTime] - Start of time range
@@ -2468,7 +2469,8 @@ class PlaidClient {
        * Get audit log for a project. Transparently follows pagination cursors
        * and returns the full flat array. Each entry, and each of its `ops`,
        * says what kind of credential made it as `credential`: `login`,
-       * `named-token`, `service` or `delegated` (absent on older operations),
+       * `named-token` or `delegated` (absent on older operations, `service`
+       * on some from 2026-10-06 to 2026-10-08),
        * beside `apiToken` (the named token's id and name) when there was one.
        * @param {string} projectId - The project ID
        * @param {string} [startTime] - Start of time range

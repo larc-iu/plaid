@@ -29,7 +29,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - Approval is of the whole plan. A change's own outcome is the plan's status, and what happened to it afterwards is read from the audit log (`plan_changes.fate`).
 - A conversation the user deleted is gone with its plans, by design. An applied plan's operation stays in the log with its kind and reference, marked `plan_record: deleted` in `units.jsonl`.
 - Comments are not in the audit log, by design. A plan's comments are found by their ids (`comments.jsonl`): since 2026-09-30 a plan draws the id of every row it creates from its own. An applied plan from before then that left no operation is `comment_link: unrecoverable`, and what it commented cannot be found.
-- Which credential made a write (`credential`: a password login, a named API token, a service's token or a token delegated to a service) is recorded since 2026-10-06. Before that only `via_token` says a named token was used.
+- Which credential made a write (`credential`: a password login, a named API token or a token delegated to a service) is recorded since 2026-10-06. Before that only `via_token` says a named token was used. From 2026-10-06 to 2026-10-08 a named token that held a service connection when it wrote was recorded as `service`, whoever opened the connection. Since 2026-10-08 the kind comes from the token alone and such writes are `named-token`, so a service's own writes are told from a script's by the unit's kind (`service-run`), not by its credential.
 - The parts of a record pruned to fit its size cap are gone: old tool results (`tool_results_dropped`), the steps and citations of old replies, the `ops` of settled plans. A failed tool call whose answer was pruned has `error_class: unknown`.
 - User data is not in the audit log. Only the latest version of each record exists.
 - Operation kinds and references are recorded since 2026-09-29. Older operations are classed by what they wrote (see `units.jsonl`).
@@ -196,7 +196,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 | project_id, project | the project |
 | started_at, ended_at | its first and last audit row |
 | via_token | some of its writes were made with an API token |
-| credentials | its audit rows by the kind of credential that made them: `login` (a session from signing in with a password), `named-token` (a named API token, such as a script), `service` (a named token holding a service connection), `delegated` (a token a service was handed to act for its requester). Empty before 2026-10-06 |
+| credentials | its audit rows by the kind of credential that made them: `login` (a session from signing in with a password), `named-token` (a named API token, such as a script or a service run on its owner's token), `service` (only from 2026-10-06 to 2026-10-08: a named token holding a service connection), `delegated` (a token a service was handed to act for its requester). Empty before 2026-10-06 |
 | documents | documents it wrote |
 | counts | its audit rows by `table.change` |
 | sources | the provSource of its machine or verified writes, counted |

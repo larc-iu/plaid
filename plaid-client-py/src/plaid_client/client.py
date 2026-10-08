@@ -2292,8 +2292,8 @@ class DocumentsResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list of audit entries. Each entry, and each of its ``ops``,
         says what kind of credential made it as ``credential``: ``login``,
-        ``named-token``, ``service`` or ``delegated`` (absent on older
-        operations), beside ``api_token`` (the named token's id and name)
+        ``named-token`` or ``delegated`` (absent on older operations,
+        ``service`` on some from 2026-10-06 to 2026-10-08), beside ``api_token`` (the named token's id and name)
         when there was one.
 
         Args:
@@ -2773,8 +2773,8 @@ class ProjectsResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list of audit entries. Each entry, and each of its ``ops``,
         says what kind of credential made it as ``credential``: ``login``,
-        ``named-token``, ``service`` or ``delegated`` (absent on older
-        operations), beside ``api_token`` (the named token's id and name)
+        ``named-token`` or ``delegated`` (absent on older operations,
+        ``service`` on some from 2026-10-06 to 2026-10-08), beside ``api_token`` (the named token's id and name)
         when there was one.
 
         Args:

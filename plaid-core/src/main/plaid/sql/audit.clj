@@ -117,8 +117,9 @@
     :audit/api-token present iff the head op ran under a named API token
                      (server-authoritative; absence marks session activity)
     :audit/credential what kind of credential signed the head op: login,
-                     named-token, service or delegated (absent on
-                     operations older than the column). Each op carries
+                     named-token or delegated (absent on operations
+                     older than the column, service on some from
+                     2026-10-06 to 2026-10-08). Each op carries
                      its own as :op/credential
     :audit/op-count  how many members the unit has in this read. More than
                      `:audit/ops` holds when `ops-limit` cut the list

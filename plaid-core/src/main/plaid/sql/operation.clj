@@ -28,9 +28,8 @@
 
 (def ^:dynamic *credential*
   "What kind of credential signed the current request: \"login\" (a session
-  from signing in with a password), \"named-token\", \"service\" (a named
-  token holding a service connection) or \"delegated\" (a scoped token minted
-  for a service's requester), nil when no request is being served. Bound by
+  from signing in with a password), \"named-token\" or \"delegated\" (a
+  scoped token minted for a service's requester), nil when no request is being served. Bound by
   `wrap-api-token-id` from the VALIDATED token and persisted onto the
   operations row as `credential`."
   nil)

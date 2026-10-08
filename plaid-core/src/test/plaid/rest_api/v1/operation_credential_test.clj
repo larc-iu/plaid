@@ -1,10 +1,11 @@
 (ns plaid.rest-api.v1.operation-credential-test
   "Every operation records what kind of credential made it (`operations.credential`):
-  a session from signing in, a named API token, a named token holding a
-  service connection, or a delegated token. Set by the server from the
-  validated token, so a script run on a person's named token can be told
-  from that person's own edits in the browser. The audit read returns it on
-  the entry and on each operation."
+  a session from signing in, a named API token, or a delegated token. Set by
+  the server from the validated token alone, so a script run on a person's
+  named token can be told from that person's own edits in the browser. A
+  named token that holds a service channel open writes as a named token: who
+  opened a channel is no part of what the token is (H9-ACL-3). The audit read
+  returns it on the entry and on each operation."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [mount.core :as mount]
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
@@ -62,7 +63,8 @@
     (testing "the operations row says which kind of credential made it"
       (is (= "login" (credential-of "by login")))
       (is (= "named-token" (credential-of "by script")))
-      (is (= "service" (credential-of "by service")))
+      (is (= "named-token" (credential-of "by service"))
+          "a token holding a service channel is still a named token")
       (is (= "delegated" (credential-of "by delegation"))))
     (testing "all four are the same person"
       (is (= #{"user1@example.com"}
@@ -76,13 +78,13 @@
       (let [e (entry-of p "by login")]
         (is (= "login" (:audit/credential e)))
         (is (nil? (:audit/api-token e))))
-      (is (= "service" (:audit/credential (entry-of p "by service"))))
+      (is (= "named-token" (:audit/credential (entry-of p "by service"))))
       (is (= "delegated" (:audit/credential (entry-of p "by delegation")))))
     (testing "the token itself is stored nowhere in the log"
       (is (empty? (psc/q fix/db {:select [:id] :from [:operations]
                                  :where [:or [:like :credential (str "%" (:token named) "%")]
                                          [:like :token_id (str "%" (:token named) "%")]]}))))
-    (testing "once the service's connection is gone, its token writes as a named token"
+    (testing "once the service's connection is gone, its token still writes as a named token"
       (events/reset-state!)
       (is (= 201 (:status (create-doc! (as (:token svc)) p "after the service left"))))
       (is (= "named-token" (credential-of "after the service left"))))))
