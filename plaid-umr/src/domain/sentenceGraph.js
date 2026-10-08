@@ -89,6 +89,9 @@ function recordFields(holder, sentence, slice) {
     storedIlg: meta.ilg || [],
     meta: meta.meta || [],
     snt: meta.snt || null,
+    // Written by an import whose file numbers its sentences otherwise than
+    // 1, 2, 3 (`fileNumbersItsSentences`), on every record it makes.
+    fileNumbered: meta.numbering === 'file',
     rawGraph: meta.rawGraph || null,
     rawAlignment: meta.rawAlignment || null,
     held: Array.isArray(meta.held) ? meta.held : [],
@@ -117,14 +120,29 @@ function variableNumber(sentence) {
 }
 
 /**
+ * Whether a parsed .umr file numbers its sentences otherwise than 1, 2, 3 in
+ * order: an excerpt starting at snt5, a released file with a gap, or this
+ * app's export of a document numbered by its file that holds a sentence typed
+ * in before its first (snt1, snt5, snt6). The import marks every record of
+ * such a file, so the document goes by those numbers whatever stands first.
+ */
+export function fileNumbersItsSentences(parsedSentences) {
+  return (parsedSentences || []).some(
+    (ps, i) => ps.snt != null && String(ps.snt) !== String(i + 1),
+  );
+}
+
+/**
  * Whether the document goes by the sentence numbers its file stored rather
- * than by position: the first stored `# :: snt` number is not 1, as in a
- * released excerpt starting at snt5. Its variables are left as the file
- * named them (umrReconcile.js `planRenumber`) and its export writes the
- * stored numbers. Every other document is numbered by position, a stored
+ * than by position: its import marked its records so
+ * (`fileNumbersItsSentences`), or the first stored `# :: snt` number is not
+ * 1, as in a released excerpt starting at snt5. Its variables are left as
+ * the file named them (umrReconcile.js `planRenumber`) and its export writes
+ * the stored numbers. Every other document is numbered by position, a stored
  * number included, once IGT has added or removed a sentence.
  */
 export function numberedByFile(sentences) {
+  if ((sentences || []).some((s) => s.fileNumbered)) return true;
   const first = (sentences || []).find((s) => s.snt != null);
   return !!first && String(first.snt) !== '1';
 }
@@ -775,8 +793,9 @@ export const crossSentenceEdges = (graph) => {
     s.edges.forEach((e) => {
       const target = graph.nodesById.get(e.target);
       if (!target || target.sentence === s.index) return;
-      const where =
-        target.sentence == null ? 'outside every sentence' : `into sentence ${target.sentence}`;
+      // The number the sentence goes by, as its header shows it.
+      const into = graph.sentences[target.sentence - 1]?.number ?? target.sentence;
+      const where = target.sentence == null ? 'outside every sentence' : `into sentence ${into}`;
       out.push({
         level: 'error',
         code: 'edge-across-sentences',

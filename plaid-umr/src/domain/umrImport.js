@@ -8,7 +8,12 @@ import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/
 import { parseUmrFile } from './format/umrFile.js';
 import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import { buildDocumentGraph, KEPT_VARIABLE, numberedByFile, wordForFile } from './sentenceGraph.js';
+import {
+  buildDocumentGraph,
+  fileNumbersItsSentences,
+  KEPT_VARIABLE,
+  wordForFile,
+} from './sentenceGraph.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { pendingId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
@@ -283,10 +288,10 @@ const PER_SENTENCE = {
 };
 
 // The number a sentence of the file goes by in the report: the file's own
-// `snt` when the file numbers its sentences (numberedByFile, an excerpt
-// starting at snt5), else its place. `index` is its place, from 1.
+// `snt` when the file numbers its sentences (fileNumbersItsSentences, an
+// excerpt starting at snt5), else its place. `index` is its place, from 1.
 const shownNumbers = (parsedSentences) => {
-  const byFile = numberedByFile(parsedSentences || []);
+  const byFile = fileNumbersItsSentences(parsedSentences);
   return (index) => (byFile ? (parsedSentences[index - 1]?.snt ?? index) : index);
 };
 
@@ -337,6 +342,7 @@ export function readerNotes(parsed) {
 // are read all the same.
 export function planImport(parsedSentences, warnings = [], { existing = null } = {}) {
   const shown = shownNumbers(parsedSentences);
+  const byFile = fileNumbersItsSentences(parsedSentences);
   if (existing) {
     if (existing.sentences.length !== parsedSentences.length) {
       throw new Error(
@@ -442,6 +448,9 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     // export writes back from the text, so it is not also kept as a line.
     const meta = {
       snt: ps.snt ?? index,
+      // The document goes by the file's numbers (sentenceGraph.js
+      // `numberedByFile`), its export writing them back as they are.
+      ...(byFile ? { numbering: 'file' } : {}),
       ilg: (ps.ilg || []).filter((l) => !['index', 'words', 'sentence'].includes(l.key)),
       meta: ps.meta || [],
     };

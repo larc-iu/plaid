@@ -416,8 +416,10 @@ export class UmrDocument extends DocumentModel {
   get exportProblems() {
     return this._derived('exportProblems', () => [
       ...umrFileProblems(toUmrSentences(this.graph)),
+      // Named as the file's own problems are, by the number the sentence
+      // goes by (`umrFileProblems` reads its `snt`).
       ...variablesSharedInSentence(this.graph).map(({ sentence, var: v, message }) => ({
-        sentence,
+        sentence: this.sentence(sentence)?.number ?? sentence,
         var: v,
         message,
       })),
@@ -1831,7 +1833,7 @@ export class UmrDocument extends DocumentModel {
     return this._confirm(
       sentence.nodes,
       'Failed to accept the graph',
-      `Accept the graph of sentence ${sentenceIndex}`,
+      `Accept the graph of sentence ${sentence.number ?? sentenceIndex}`,
     );
   }
 
@@ -1935,7 +1937,7 @@ export class UmrDocument extends DocumentModel {
           explicit.forEach((r) => b.relations.delete(settledId(r.id)));
           if (tokenIds.length) b.tokens.bulkDelete(tokenIds.map(settledId));
         }),
-      `Discard the drafted graph of sentence ${sentenceIndex}`,
+      `Discard the drafted graph of sentence ${sentence.number ?? sentenceIndex}`,
     );
   }
 
@@ -2940,7 +2942,7 @@ export class UmrDocument extends DocumentModel {
         }
         this._settle(ids);
       },
-      `Apply text to sentence ${sentenceIndex} (${plan.changes} change${plan.changes === 1 ? '' : 's'})`,
+      `Apply text to sentence ${sentence?.number ?? sentenceIndex} (${plan.changes} change${plan.changes === 1 ? '' : 's'})`,
       {
         // The text is the whole sentence: sent again on a later version, it
         // goes only while nobody else changed the sentence's graph (a node

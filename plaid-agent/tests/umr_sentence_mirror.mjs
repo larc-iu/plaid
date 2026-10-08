@@ -10,6 +10,8 @@
 //                 unaligned node) on the new text, and the sentence's record
 //                 cut onto it too
 //   excerpt       the same over a file numbered from snt5
+//   exported      a file numbered 1, 5, 6, as the export of the excerpt
+//                 with a sentence typed in before it writes it
 //   between       a sentence typed in between the first two
 //   later         a boundary moved two characters later, over an unaligned
 //                 node of the second sentence
@@ -168,6 +170,9 @@ const CASES = {
     insertSentenceAtStart(raw, undefined, { recordCut: true });
     return raw;
   },
+  // This app's export of an excerpt with a sentence typed in before it:
+  // numbered 1, 5, 6, which the import marks as going by its file.
+  exported: () => fromText(`${block(1)}\n${block(5)}\n${block(6)}`),
   between: () => {
     const raw = fromText(`${block(1)}\n${block(2)}\n${block(3)}`);
     insertAfterFirst(raw);

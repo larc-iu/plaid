@@ -230,10 +230,11 @@ export function planWordSplits(graph, namespace) {
  * shape are left alone. Relations point at nodes, so only the names change.
  * `reserved` holds names taken by something that is not a node, the
  * variables a graph kept as text defines. Nothing is renamed in a document
- * that goes by its file's numbers, whose first stored `# :: snt` number is
- * not 1, as a released excerpt starting at snt5 (`numberedByFile`). A
- * sentence deleted or merged later in an imported file does not stop it: the
- * numbers after it no longer run, and are then read by position.
+ * that goes by its file's numbers (`numberedByFile`): one imported from a
+ * file numbered otherwise than 1, 2, 3, as a released excerpt starting at
+ * snt5. A sentence deleted or merged later in a document imported in order
+ * does not stop it: the numbers after it no longer run, and are then read by
+ * position.
  *
  * @returns {{ nodeId: string, from: string, to: string }[]}
  */

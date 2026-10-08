@@ -191,7 +191,7 @@ function foldTemporal(rows) {
  * several reads in flight the documents finish out of order, so `name` is
  * the one that just landed rather than the one being read.
  *
- * @returns {Promise<Array<{ documentId, documentName, sentenceIndex, level, code, message, var, details? }>>}
+ * @returns {Promise<Array<{ documentId, documentName, sentenceIndex, sentenceNumber, level, code, message, var, details? }>>}
  */
 export async function validateProject(
   client,
@@ -225,6 +225,9 @@ export async function validateProject(
       documentId: summary.id,
       documentName: summary.name,
       sentenceIndex: p.sentence ?? null,
+      // The number the editor shows, the file's own in a document numbered
+      // by its file. `sentenceIndex` is the place a link opens.
+      sentenceNumber: p.sentence == null ? null : (doc.sentence(p.sentence)?.number ?? p.sentence),
       level: p.level,
       code: p.code,
       message: p.message,

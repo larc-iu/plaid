@@ -58,6 +58,18 @@ Gloss: ${words}
 
 const role = (raw, r) => raw.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === r);
 const fromText = (text) => rawFromPlan(planImport(parseUmrFile(text).sentences, []));
+// A file numbered otherwise than 1, 2, 3 marks its records as going by its
+// numbers (sentenceGraph.js `fileNumbersItsSentences`). A test that writes
+// such a file to stand for a document imported in order and changed in IGT
+// since takes the mark off, as that import never made it.
+const importedInOrder = (raw) => {
+  raw.textLayers[0].tokenLayers.forEach((l) =>
+    l.tokens.forEach((t) => {
+      if (t.metadata?.umr) delete t.metadata.umr.numbering;
+    }),
+  );
+  return raw;
+};
 // A sentence added in IGT has no record.
 const added = (raw, i) => {
   const s = role(raw, 'sentence').tokens[i];
@@ -135,6 +147,7 @@ test('a sentence added after one with no graph, then one typed in before both, m
   );
   added(raw, 1);
   added(raw, 3);
+  importedInOrder(raw);
   const { doc, calls } = open(raw);
   assert.deepEqual(records(doc), [
     ['Ali geldi .', 1],
@@ -191,10 +204,13 @@ test('two sentences typed in before the first, with no open between, still move 
   assert.deepEqual(await again.doc._reconcile(), { findings: [] });
 });
 
-test('a file whose snt numbers skip one keeps a triple between constants on its sentence', async () => {
-  // snt1, snt2, snt4, snt5: read by position, and the variables renumbered
-  // to match. The triple written in snt5's block stays on that sentence.
-  const raw = fromText(`${block(1)}\n${block(2)}\n${block(4)}\n${block(5, { modal: true })}`);
+test('a document whose stored numbers skip one keeps a triple between constants on its sentence', async () => {
+  // Imported as snt1 to snt5 and snt3 deleted in IGT, so it stores snt1,
+  // snt2, snt4, snt5: read by position, and the variables renumbered to
+  // match. The triple written in snt5's block stays on that sentence.
+  const raw = importedInOrder(
+    fromText(`${block(1)}\n${block(2)}\n${block(4)}\n${block(5, { modal: true })}`),
+  );
   const { doc, calls } = open(raw);
   assert.deepEqual(
     doc.graph.sentences.map((s) => s.triples.length),

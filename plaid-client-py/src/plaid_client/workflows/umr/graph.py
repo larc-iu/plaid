@@ -207,6 +207,9 @@ class Sentence:
     end: int
     text: str
     snt: Optional[Any] = None
+    #: Its record was written by an import whose file numbers its sentences
+    #: otherwise than 1, 2, 3 (``fileNumbered`` in sentenceGraph.js).
+    file_numbered: bool = False
     words: List[Word] = dc_field(default_factory=list)
     morphemes: List[Morpheme] = dc_field(default_factory=list)
     stored_ilg: List[dict] = dc_field(default_factory=list)
@@ -466,7 +469,8 @@ def _record_fields(holder: Optional[dict], begin: int, end: int, body: str) -> d
     return dict(
         record_token=holder['id'] if holder else None,
         text=meta.get('text') or body[begin:end].rstrip('\n'),
-        snt=meta.get('snt') or None, stored_ilg=list(meta.get('ilg') or []),
+        snt=meta.get('snt') or None, file_numbered=meta.get('numbering') == 'file',
+        stored_ilg=list(meta.get('ilg') or []),
         meta=list(meta.get('meta') or []), raw_graph=meta.get('rawGraph'),
         raw_alignment=meta.get('rawAlignment'),
         held=list(meta['held']) if isinstance(meta.get('held'), list) else [],
@@ -489,8 +493,11 @@ def _variable_number(sentence: Sentence) -> Optional[int]:
 
 def _numbered_by_file(sentences: List[Sentence]) -> bool:
     """Whether the document goes by the ``# :: snt`` numbers its file stored:
-    the first stored one is not 1, as in a released excerpt starting at snt5.
-    Every other document is numbered by position (``numberedByFile``)."""
+    its import marked its records so, or the first stored one is not 1, as in
+    a released excerpt starting at snt5. Every other document is numbered by
+    position (``numberedByFile``)."""
+    if any(s.file_numbered for s in sentences):
+        return True
     first = next((s for s in sentences if s.snt is not None), None)
     return first is not None and str(first.snt) != '1'
 

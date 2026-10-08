@@ -115,14 +115,14 @@ export const ProjectValidation = () => {
         label: 'Sentence',
         align: 'right',
         sort: (p) => p.sentenceIndex ?? null,
-        // The sentence's number, counting from one, as the editor shows it. A
-        // problem about the document as a whole has none.
+        // The sentence's number as the editor shows it. A problem about the
+        // document as a whole has none.
         render: (p) =>
           p.sentenceIndex == null ? (
             ''
           ) : (
             <Link to={problemHref(projectId, p)} className="hover:underline">
-              {p.sentenceIndex}
+              {p.sentenceNumber ?? p.sentenceIndex}
             </Link>
           ),
       },

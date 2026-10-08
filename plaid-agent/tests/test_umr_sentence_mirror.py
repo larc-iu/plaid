@@ -89,6 +89,8 @@ def test_the_cases_are_the_ones_the_rules_are_for(cases):
     # typed in before them takes its place, which no stored number holds.
     assert [s['number'] for s in cases['excerpt']['sentences']] == [1, 5, 6]
     assert [s['number'] for s in cases['prepend']['sentences']] == [1, 2, 3]
+    # A file numbered 1, 5, 6 goes by those numbers, though its first is 1.
+    assert [s['number'] for s in cases['exported']['sentences']] == [1, 5, 6]
     # A bare sentence's record stays on it when the sentence after it was
     # added in IGT and named by its own position, or by a number the bare
     # sentence's position and stored number do not both give.

@@ -12,6 +12,9 @@ import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { nodeOptions } from '../src/components/editor/annotation/pickers.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
+import { validateProject } from '../src/domain/validationQueries.js';
+import { planRenumber } from '../src/domain/umrReconcile.js';
+import { insertSentenceAtStart } from './igtInsertSentence.js';
 
 const SEP = '#'.repeat(80);
 const block = (n, extra = '') => `${SEP}
@@ -110,4 +113,87 @@ test("the import's report names a sentence by the file's number", () => {
     EXCERPT.replace('Words: dogs bark\n', 'Words: dogs bark\n# :: odd\n'),
   );
   assert.ok(readerNotes(parsed).every((line) => !/^Sentence [12]:/.test(line)));
+});
+
+// History, the Validation tab and the canvas's own problems name a sentence
+// as its header does. They named its place: "Apply text to sentence 1" for
+// the sentence shown as 5.
+test("History and the Validation tab name a sentence by the file's number", async () => {
+  const { doc, errors } = load();
+  const { client, calls } = recordingClient();
+  doc._client = client;
+  const labels = () => calls.filter((c) => c.name === 'operation').map((c) => c.args[0]);
+  const text = doc.penmanOf(2).replace('(s6d / dog)', '(s6d / dog :mod (s6z / zebra))');
+  assert.ok(await doc.applyPenman(2, text), errors.join('; '));
+  // What Accept names its operation, whatever the nodes' provenance.
+  let accepted = null;
+  doc._confirm = async (_nodes, _error, label) => {
+    accepted = label;
+    return true;
+  };
+  await doc.confirmSentence(2);
+  assert.ok(
+    labels().some((l) => l.startsWith('Apply text to sentence 6 (')),
+    labels().join(' | '),
+  );
+  assert.equal(accepted, 'Accept the graph of sentence 6');
+
+  // A word no node is aligned to, in each sentence, for a row each.
+  const loud = EXCERPT.replaceAll(
+    'Index: 1 2\nWords: dogs bark',
+    'Index: 1 2 3\nWords: dogs bark loudly',
+  );
+  const raw = rawFromPlan(planImport(parseUmrFile(loud).sentences, []));
+  const rows = await validateProject(
+    {
+      projects: { listDocuments: async () => [{ id: 'd1', name: 'Excerpt' }] },
+      documents: { get: async () => raw },
+    },
+    'p1',
+  );
+  const placed = rows.filter((r) => r.sentenceIndex != null);
+  assert.ok(placed.length > 0);
+  assert.ok(
+    placed.every((r) => r.sentenceNumber === r.sentenceIndex + 4),
+    JSON.stringify(placed.map((r) => [r.sentenceIndex, r.sentenceNumber])),
+  );
+});
+
+// A sentence typed in before the excerpt's first in IGT is sentence 1, so the
+// export starts at snt1. Read back, that file went by its places: snt5 became
+// 2, and opening it renamed every variable (s5b to s2b). The import now marks
+// a file that numbers its sentences otherwise than 1, 2, 3, and the document
+// goes by those numbers.
+test('an excerpt with a sentence typed in before it exports and reads back the same', () => {
+  const raw = rawFromPlan(planImport(parseUmrFile(EXCERPT).sentences, []));
+  insertSentenceAtStart(raw);
+  const first = new UmrDocument({ raw });
+  assert.deepEqual(
+    first.graph.sentences.map((s) => s.number),
+    [1, 5, 6],
+  );
+  const out = first.toUmr();
+  assert.match(out, /# :: snt1\n/);
+
+  const again = rawFromPlan(planImport(parseUmrFile(out).sentences, []));
+  const second = new UmrDocument({ raw: again });
+  assert.deepEqual(
+    second.graph.sentences.map((s) => s.number),
+    [1, 5, 6],
+  );
+  assert.deepEqual(planRenumber(second.graph), []);
+  assert.equal(second.toUmr(), out);
+});
+
+test('a file numbered 1, 2, 3 is not marked, and one with a gap is', () => {
+  const plain = planImport(parseUmrFile(`${block(1)}\n${block(2)}`).sentences, []);
+  assert.ok(plain.sentences.every((s) => s.meta.numbering === undefined));
+  const gap = planImport(parseUmrFile(`${block(1)}\n${block(3)}`).sentences, []);
+  assert.ok(gap.sentences.every((s) => s.meta.numbering === 'file'));
+  const doc = new UmrDocument({ raw: rawFromPlan(gap) });
+  assert.deepEqual(
+    doc.graph.sentences.map((s) => s.number),
+    [1, 3],
+  );
+  assert.deepEqual(planRenumber(doc.graph), []);
 });
