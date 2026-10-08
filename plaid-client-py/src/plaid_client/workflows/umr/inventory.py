@@ -224,6 +224,14 @@ def nearest(relation, names) -> Optional[str]:
     return by_squashed[close[0]] if close else None
 
 
+#: Relations UMR 2.0 renamed, by their old name: the release's conversion
+#: table (its English README) and validate.py's note on ``:possessor``. Older
+#: guidelines and some released graphs still write the old name, so a
+#: refusal of one names the new one rather than calling it unknown. They stay
+#: refused, as plaid-umr refuses them.
+RENAMED_RELATIONS = {':poss': ':possessor', ':location': ':place'}
+
+
 def unknown_relation_problem(relation) -> Optional[str]:
     """Why ``relation`` is not a sentence-level UMR relation, or None when it
     is. Worded for someone who can retype it: the likeliest intended relation
@@ -232,7 +240,11 @@ def unknown_relation_problem(relation) -> Optional[str]:
     if is_known_relation(rel):
         return None
     inverse = rel.endswith('-of')
-    guess = nearest(rel[:-3] if inverse else rel, KNOWN_RELATIONS)
+    base = rel[:-3] if inverse else rel
+    if base in RENAMED_RELATIONS:
+        suffix = '-of' if inverse else ''
+        return f'Unknown relation \'{rel}\': UMR 2.0 renamed it {RENAMED_RELATIONS[base]}{suffix}.'
+    guess = nearest(base, KNOWN_RELATIONS)
     if guess and inverse:
         guess += '-of'
     hint = f' Did you mean {guess}?' if guess else ''
@@ -267,8 +279,8 @@ def unknown_doc_relation_problem(group: Optional[str], relation) -> Optional[str
             + ', '.join(known) + '.' + hint)
 
 
-__all__ = ['KNOWN_RELATIONS', 'ATTRIBUTE_RELATIONS', 'ATTRIBUTE_VALUES', 'NODE_ROLES',
-           'LIST_ITEM_ATTRIBUTES', 'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS',
+__all__ = ['KNOWN_RELATIONS', 'RENAMED_RELATIONS', 'ATTRIBUTE_RELATIONS', 'ATTRIBUTE_VALUES',
+           'NODE_ROLES', 'LIST_ITEM_ATTRIBUTES', 'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS',
            'DOC_CONSTANTS', 'GROUPS', 'edge_only', 'list_item_problem',
            'node_under_attribute_problem',
            'attribute_value_problem', 'is_known_relation', 'nearest',
