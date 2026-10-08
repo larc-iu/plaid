@@ -88,6 +88,7 @@ from typing import Any, Dict, List, Optional
 from ..core import fingerprint as fp
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
+from ..core import rules
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops, uuid7
 
@@ -668,22 +669,25 @@ class Resolution:
         self.project = project
         self.ws = Workspace(client, project)
         self.ws.requester_id = requester
+        # What each rule resolved to so far, in plan order: a later rule is
+        # resolved over the values the earlier ones leave.
+        self.found: List[List[Dict[str, Any]]] = []
 
 
 def _resolve_bulk_scope(res: Resolution, op):
-    from .bulk import CANDIDATE_MAX, SCOPED
+    from .bulk import resolve_rule
     from ..core.tools import ToolError
-    fn = SCOPED.get(op.get('tool'))
-    if fn is None:
-        raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
+    res.ws.prefer_scan = bool(op.get('scan'))
     try:
-        found = fn(res.ws, dict(op.get('args') or {}), CANDIDATE_MAX)
+        # Over the values the plan's earlier rules leave, as when it was staged.
+        found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found))
         # Rebuilt now, outside add_op: held to the layers' lists as staged.
         for o in found:
             res.ws.refuse_off_list(o)
-        return found
     except ToolError as e:
         raise ValueError(str(e)) from e
+    res.found.append(found)
+    return found
 
 
 # --- the registry -------------------------------------------------------------------
@@ -845,7 +849,7 @@ KIND = ok.registry([
     # sees one. The summary counts what it stands for.
     OpKind('bulk_scope', ('corpus-wide change', 'corpus-wide changes'), required=('tool', 'args', 'counts'),
            stage=ok.RESOLVED, shape=ok.SCOPE, resolve=_resolve_bulk_scope,
-           summary=_bulk_scope_summary),
+           summary=_bulk_scope_summary, target=rules.target),
 ])
 
 # Every table below is the registry read a different way. None of them is
@@ -1110,7 +1114,11 @@ def planned_morpheme(ops: List[Dict[str, Any]], link: Dict[str, Any]) -> Optiona
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
     """Reject a malformed plan BEFORE anything is written."""
-    reach = {d for op in ops if op.get('kind') in SCOPES for d in (op.get('documents') or [])}
+    # A rule writing values only may share a plan with a reshape of a document
+    # it reaches (`bulk.values_rule`).
+    from .bulk import values_rule
+    reach = {d for op in ops if op.get('kind') in SCOPES and not values_rule(op)
+             for d in (op.get('documents') or [])}
     if reach:
         for op in ops:
             if op.get('kind') in RESHAPES and (not op.get('doc') or op['doc'] in reach):
@@ -1353,11 +1361,34 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
     # A change the model made by name beats one a scope finds at approval,
     # whichever came first (the scope previewed stored values, not planned).
     explicit = {op_target(op) for op in ops if not ok.resolver(KIND, op)} - {None}
-    # The documents a scope reaches now must be the ones it was pinned to,
-    # checked and locked by: `check_reach` refuses the plan otherwise.
-    return ok.resolve_ops(KIND, Resolution(client, project, requester), ops,
-                          lambda o: op_target(o) not in explicit,
-                          check=lambda op, found: check_reach(op, found, lambda o: o.get('doc')))
+    # A value on a morpheme an analysis of the plan rewrites is moot, and one
+    # on a token the plan removes has nothing to land on: both are left out,
+    # as staging left them out of the count.
+    analysed = analysed_morphemes(ops)
+    removed = ok.removed_ids(KIND, [op for op in ops if not ok.resolver(KIND, op)], only_certain=True)
+    res = Resolution(client, project, requester)
+
+    def keep(o):
+        return (op_target(o) not in explicit and not res.ws.moot_under(o, analysed)
+                and not ({o.get('token_id'), o.get('word_id'), o.get('morpheme_id')} & removed))
+
+    def check(op, found):
+        # A rule must find what it found when it was staged, in every
+        # document (`core.rules.check_matched`): the plan is refused whole
+        # otherwise. A scope staged before rules is held to its documents.
+        if rules.is_rule(op):
+            rules.check_matched(op, rules.matched(KIND, found, lambda o: o.get('doc'), res.ws.replaces_work),
+                                lambda d: _doc_name(res.ws, d))
+        else:
+            check_reach(op, found, lambda o: o.get('doc'))
+    return ok.resolve_ops(KIND, res, ops, keep, check=check)
+
+
+def _doc_name(ws, doc_id: str) -> str:
+    try:
+        return ws.corpus.doc_name(doc_id)
+    except Exception:  # noqa: BLE001 - a name is for the sentence; the id still says which
+        return doc_id
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None,

@@ -77,37 +77,23 @@ def _replace(ws):
 def test_igt_a_change_from_a_query_carries_the_provenance_the_query_returned(monkeypatch, metadata, flagged):
     _client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-g1', 'Ali', 'w-1', metadata)])
     _replace(ws)
-    assert [op['kind'] for op in ws.ops] == ['set_span'] and 'd1' not in ws._docs
+    # One rule (core.rules), its count of a person's work from the query.
+    assert [op['kind'] for op in ws.ops] == ['bulk_scope'] and 'd1' not in ws._docs
     assert [c['replaces_work'] for c in ws.plan_payload()['changes']] == [flagged]
 
 
-def test_igt_a_document_reached_only_through_a_query_is_pinned_by_sentence(monkeypatch):
-    client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-g1', 'Ali', 'w-1')])
-    _replace(ws)
-    [doc] = ws.plan_payload()['documents']
-    assert doc['id'] == 'd1' and doc['version'] == 7
-    assert [s['id'] for s in doc['sentences']] == ['s-1']
-    assert 'd1' not in ws._docs
-
-
-def test_igt_a_document_that_moved_after_the_query_is_pinned_whole_to_what_the_query_saw(monkeypatch):
-    """The query saw version 7. Someone writes before the turn ends, so the
-    document read to pin it is version 8, and fingerprints of version 8 would
-    let a plan built from version 7 through. It is pinned whole, at 7."""
+def test_igt_a_document_reached_only_by_a_rule_is_recorded_as_such_and_not_read(monkeypatch):
+    """What a rule matched there is checked by its digest when it is found
+    again, so the document is neither read to fingerprint it nor pinned to its
+    version: it is recorded with `rule: true`, at the version the query saw
+    even when it moved before the turn ended."""
     client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-g1', 'Ali', 'w-1')])
     _replace(ws)
     client._documents['d1']['version'] = 8
+    ws.load_doc = lambda *a: pytest.fail('read a document only a rule reaches')
     [doc] = ws.plan_payload()['documents']
-    assert doc == {'id': 'd1', 'name': 'Text 1', 'version': 7}
-
-
-def test_igt_past_the_read_budget_a_document_is_pinned_whole(monkeypatch):
-    from plaid_agent.igt import workspace
-    monkeypatch.setattr(workspace, 'PIN_LOAD_MAX', 0)
-    _client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-g1', 'Ali', 'w-1')])
-    _replace(ws)
-    [doc] = ws.plan_payload()['documents']
-    assert doc == {'id': 'd1', 'name': 'Text 1', 'version': 7}
+    assert doc == {'id': 'd1', 'name': 'Text 1', 'version': 7, 'rule': True}
+    assert 'd1' not in ws._docs
 
 
 def _store(ws, client, pid, app):
@@ -122,23 +108,36 @@ def _store(ws, client, pid, app):
     return plan
 
 
-def test_igt_a_query_plan_applies_after_an_edit_elsewhere_and_is_refused_after_one_in_its_sentence(monkeypatch):
+def test_igt_a_rule_applies_after_an_edit_that_leaves_what_it_matched_and_is_refused_after_one_that_does_not(monkeypatch):
+    """An edit anywhere in the document, its sentence included, leaves a
+    rule as it was when it does not touch what it matched. A value it matched
+    edited since refuses the whole plan, naming the rule, what it matched then
+    and now, and where (Luke's ruling, 2026-10-08)."""
     spec = APPS['igt']()
-    for where, refused in (('w-4', False), ('w-2', True)):
+    for where in ('w-4', 'w-2'):
         client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-g1', 'Ali', 'w-1')])
         _replace(ws)
         plan = _store(ws, client, igt_fx.PID, 'igt')
         _edit(client, spec, lambda raw: _layer(raw, igt_fx.GLOSS)['spans'].append(
             {'id': 'sp-new', 'value': 'fish', 'tokens': [where]}))
         helper = _approve(spec, client, plan)
-        assert bool(helper.errors) == refused, helper.errors
+        assert not helper.errors, helper.errors
+    client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-g1', 'Ali', 'w-1')])
+    _replace(ws)
+    plan = _store(ws, client, igt_fx.PID, 'igt')
+    _igt_engine(client, [_gloss_row('sp-g1', 'Ali.PL', 'w-1')])
+    helper = _approve(spec, client, plan)
+    [said] = helper.errors
+    assert said == ('Nothing was written. Gloss "Ali" → "Bob" now matches other values than the 1 shown when it '
+                    'was planned (other values in "Text 1"). Ask the assistant to plan again.'), said
+    conv, _meta = ConversationStore(client, 'u@x', igt_fx.PID, 'igt').load('c1')
+    assert conv['display'][1]['status'] == 'stale'
+    assert conv['display'][1]['reason'] == said[len('Nothing was written. '):-len(' Ask the assistant to plan again.')]
 
 
 # --- IGT, a corpus-wide replace stored as one change ---------------------------------
 
 def test_igt_a_corpus_wide_replace_counts_the_accepted_values_it_replaces(monkeypatch):
-    from plaid_agent.igt import bulk
-    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 1)
     rows = [_gloss_row('sp-g1', 'Ali', 'w-1'), _gloss_row('sp-x2', 'ali', 'w-2', MACHINE),
             _gloss_row('sp-x3', 'ALI', 'w-3', VERIFIED)]
     _client, ws = _igt_ws(monkeypatch, rows)
@@ -147,13 +146,13 @@ def test_igt_a_corpus_wide_replace_counts_the_accepted_values_it_replaces(monkey
     assert op['kind'] == 'bulk_scope' and op['replaces_accepted'] == 2
     assert op['label'].endswith(', 2 of them replace accepted work')
     assert '2 of them replace work a person made or accepted' in out
-    # Found again when approved, so its document stays pinned whole and is
-    # not read to fingerprint it.
-    ws.load_doc = lambda *a: pytest.fail('read a document a stored scope pins whole')
+    # Found again when approved and checked by what it matched, so its
+    # document is not read to fingerprint it.
+    ws.load_doc = lambda *a: pytest.fail('read a document a stored rule reaches')
     payload = ws.plan_payload()
     [row] = payload['changes']
     assert row['replaces_work'] == 2
-    assert payload['documents'] == [{'id': 'd1', 'name': 'Text 1', 'version': 7}]
+    assert payload['documents'] == [{'id': 'd1', 'name': 'Text 1', 'version': 7, 'rule': True}]
     # None of a machine's: no mark, no count.
     _client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-x2', 'ali', 'w-2', MACHINE),
                                         _gloss_row('sp-x3', 'ALI', 'w-3', MACHINE)])

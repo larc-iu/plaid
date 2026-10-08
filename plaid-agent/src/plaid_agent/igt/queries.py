@@ -860,10 +860,11 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
     return staged
 
 
-def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int,
+                       document_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """The edits a replacement would make, or a refusal when more values match
     than one pass may consider."""
-    rows = q_replace_matches(ws, f, spec, None, cap)
+    rows = q_replace_matches(ws, f, spec, document_id, cap)
     if len(rows) > cap:
         raise ToolError(f'More than {cap} {f.name} values match, which is more than one pass may '
                         f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
@@ -913,9 +914,40 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
     return ordered, len(words), len(morphs)
 
 
-def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwrite: bool, cap: int):
+def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
+                     document_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """The stored morpheme forms a replacement changes, in text order: one
+    set_morpheme_form op for each whose form differs afterwards. A morpheme
+    showing its word's surface stores no form, and is respell_all's."""
     c = ws.corpus
-    where = [c.word('?t')]
+    where = ([c.word('?w'), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w')
+             + ([['in', '?m.doc', [document_id]]] if document_id else []))
+    rows = c.entities(where, ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+    if len(rows) > cap:
+        raise ToolError(f'More than {cap} morpheme forms match, which is more than one pass may '
+                        f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
+    budget = _docs_of(rows)
+    staged = []
+    for m, w in rows:
+        if not (isinstance(m, dict) and isinstance(w, dict)):
+            continue
+        old = (m.get('metadata') or {}).get('form') or ''
+        new = rep(old)
+        if new == old:
+            continue
+        head = c.label_ref(m['document'], m['id'], budget)
+        if not new.strip():
+            raise ToolError(f'{head}: "{old}" would become empty')
+        ws.note_metadata(m['id'], m.get('metadata'))
+        staged.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
+                       **labelled(f'{head} (in "{w.get("value")}")', f'morpheme form "{old}" → "{new}"')})
+    return staged
+
+
+def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwrite: bool, cap: int,
+                          document_id: Optional[str] = None):
+    c = ws.corpus
+    where = [c.word('?t')] + ([['in', '?t.doc', [document_id]]] if document_id else [])
     if not overwrite:
         where.append(['not', ['token', '?t', {'metadata': {f'orthog:{target}': {'regex': '.'}}}]])
     rows = c.entities(where, ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
@@ -938,14 +970,16 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
     return staged
 
 
-def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int):
+def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int,
+                         document_id: Optional[str] = None):
     from .project import Span
     c = ws.corpus
     spec = rx(form, whole=True)
+    in_doc = [['in', '?u.doc', [document_id]]] if document_id else []
     if f.scope == 'Word':
-        unit = [c.word('?u', value=spec)]
+        unit = [c.word('?u', value=spec)] + in_doc
     else:
-        unit = [c.morph_form_clauses('?u', spec)]
+        unit = [c.morph_form_clauses('?u', spec)] + in_doc
     with_span = [] if False else c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
                                             [['?u.doc'], ['?u.begin']])
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
@@ -954,7 +988,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     # A word of that form nobody has segmented: its morpheme is the derived
     # one the editor shows, stored nowhere and so holding no value, which the
     # plan makes when it writes the value (``virtual_at``).
-    bare = c.entities(c.bare_word('?u', value=spec), ['?u'], cap + 1,
+    bare = c.entities(c.bare_word('?u', value=spec) + in_doc, ['?u'], cap + 1,
                       [['?u.doc'], ['?u.begin']]) if f.scope == 'Morpheme' else []
     rows += [(_derived_morpheme(ws, u), None) for (u,) in bare if isinstance(u, dict) and not c.ignored(u.get('value'))]
     # Every read caps CANDIDATES, not matches, and they are ordered by document.

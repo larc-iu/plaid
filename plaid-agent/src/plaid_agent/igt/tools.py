@@ -21,6 +21,7 @@ from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, confirm_preview, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
+from ..core import rules
 from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
@@ -1127,6 +1128,10 @@ def t_drop_planned(ws: Workspace, indexes) -> str:
     before = ws.unlinked
     orphans = ws.unlink_orphans()
     ws.reported_unlinked += ws.unlinked - before
+    # A later rule was found over the values a dropped one leaves.
+    if any(rules.is_rule(op) for op in dropped):
+        from .bulk import refresh_rules
+        refresh_rules(ws)
     return f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + \
         (' Links to the dropped new entries were dropped with them.' if keys else '') + \
         (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '') + \

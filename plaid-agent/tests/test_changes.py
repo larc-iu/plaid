@@ -73,7 +73,7 @@ def test_a_new_document_has_nowhere_to_link():
 def test_the_plan_payload_carries_the_changes():
     ws = _plan(('set_field', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3'], 'field': 'Gloss', 'value': 'x'}))
     payload = ws.plan_payload()
-    assert len(payload['changes']) == len(payload['ops']) == len(payload['labels']) == 2
+    assert len(payload['changes']) == len(payload['ops']) == 2 and 'labels' not in payload
     assert [c['where']['word'] for c in payload['changes']] == [2, 3]
 
 

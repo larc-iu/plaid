@@ -3,6 +3,7 @@ from fixtures import scan_ws, FakeClient
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.workspace import Workspace
 from plaid_agent.igt.toolkit import call_tool, TOOLS, _IMPL, WRITE_TOOLS
+from plaid_agent.igt.bulk import planned_changes as changes
 
 
 def ws(client=None):
@@ -106,22 +107,22 @@ def test_sequence_search():
 def test_bulk_plans():
     w = ws()
     out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
-    assert out.startswith('Planned 1 change') and w.ops[-1]['value'] == 'OBL' and w.ops[-1]['span_id'] == 'sp-m1b'
+    assert out.startswith('Planned 1 change') and changes(w)[-1]['value'] == 'OBL' and changes(w)[-1]['span_id'] == 'sp-m1b'
     out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
-    assert w.ops[-1]['value'] == 'Ali saw a fish!'
+    assert changes(w)[-1]['value'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
     # A literal replacement is text, not a re.sub template: these two raised.
     w1 = ws()
     out = call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'back\\slash'})
-    assert w1.ops[-1]['value'] == 'back\\slash', out
+    assert changes(w1)[-1]['value'] == 'back\\slash', out
     w1 = ws()
     call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'x\\1y'})
-    assert w1.ops[-1]['value'] == 'x\\1y'
+    assert changes(w1)[-1]['value'] == 'x\\1y'
     # And a backreference expands even when the pattern matches the whole value.
     w1 = ws()
     call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': r'(A)(li)', 'replacement': r'\2\1',
                                        'regex': True, 'whole': True})
-    assert w1.ops[-1]['value'] == 'liA'
+    assert changes(w1)[-1]['value'] == 'liA'
     out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
     # 4 words (case-insensitive, like search) + the stored morpheme forms of those words
     # (Ali, Gam, ar) + every lexicon headword the pattern hits (Ali, gam, gam), as Bulk Edit does.
@@ -138,13 +139,14 @@ def test_bulk_plans():
     # replace_in_field on the stored morpheme forms (derived forms are left to respell_all)
     w2 = ws()
     out = call_tool(w2, 'replace_in_field', {'field': 'morpheme form', 'pattern': 'ar', 'replacement': 'är', 'whole': True})
-    assert 'Planned 1 change' in out and w2.ops == [w2.ops[0]] and w2.ops[0]['kind'] == 'set_morpheme_form' and w2.ops[0]['morpheme_id'] == 'm-4b'
-    assert 'm2 (in "Gam-ar"): morpheme form "ar" → "är"' in w2.ops[0]['label']
+    [only] = changes(w2)
+    assert 'Planned 1 change' in out and only['kind'] == 'set_morpheme_form' and only['morpheme_id'] == 'm-4b'
+    assert 'm2 (in "Gam-ar"): morpheme form "ar" → "är"' in only['label']
     out = call_tool(w2, 'replace_in_field', {'field': 'form', 'pattern': 'gam', 'replacement': 'x'})
     assert 'Planned 1 change' in out and 'm1 (in "Gam-ar"): morpheme form "Gam" → "x"' in out  # m-2 has no stored form: skipped
     assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '.*', 'replacement': '', 'regex': True})
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
-    assert 'Planned 3 changes' in out  # w-1 already has IPA
+    assert 'One change covering 3 words in 1 document.' in out  # w-1 already has IPA
     out = call_tool(w, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     assert 'Planned 1 change' in out and w.ops[-1]['kind'] == 'set_analysis' and w.ops[-1]['word_id'] == 'w-2'
     assert 'Nothing to change' in call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'skip_analyzed': True,
@@ -305,14 +307,15 @@ def test_unverified_worklist_sees_machine_made_links():
 def test_set_field_for_form_fills_gaps_by_default():
     w = ws()
     out = call_tool(w, 'set_field_for_form', {'form': 'GAM', 'field': 'Morph Gloss', 'value': 'fish'})
-    assert 'Planned 2 changes' in out and {op['token_id'] for op in w.ops} == {'m-2', 'm-4a'}
+    # One rule standing for both (core.rules).
+    assert 'Planned 1 change' in out and {op['token_id'] for op in changes(w)} == {'m-2', 'm-4a'}
     # existing values are left alone unless only_empty=false
     assert 'Nothing to change' in call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL'})
     call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
-    assert w.ops[-1]['span_id'] == 'sp-m1b' and w.ops[-1]['value'] == 'OBL'
+    assert changes(w)[-1]['span_id'] == 'sp-m1b' and changes(w)[-1]['value'] == 'OBL'
     # word fields match word surfaces
     call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Gloss', 'value': 'saw'})
-    assert w.ops[-1]['token_id'] == 'w-3'
+    assert changes(w)[-1]['token_id'] == 'w-3'
     assert 'sentence field' in call_tool(w, 'set_field_for_form', {'form': 'x', 'field': 'Translation', 'value': 'y'})
 
 
@@ -422,6 +425,6 @@ def test_every_occurrence_of_a_form_folds_case_as_the_server_does():
     assert 'Nothing to change' in call_tool(w, 'set_analysis_for_form', {
         'form': 'strasse', 'document': 'd1', 'morphemes': [{'form': 'x'}]})
     call_tool(w, 'set_field_for_form', {'form': ' STRAß ', 'field': 'Gloss', 'value': 'street', 'document': 'd1'})
-    assert w.ops[-1]['token_id'] == 'w-3'
+    assert changes(w)[-1]['token_id'] == 'w-3'
     assert 's1.w3' not in call_tool(w, 'analyses_of', {'form': 'strass', 'document': 'd1'})
     assert 's1.w3' in call_tool(w, 'analyses_of', {'form': 'STRAß', 'document': 'd1'})

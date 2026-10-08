@@ -51,6 +51,14 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     label = op.get('label') or ''
+    if op.get('card') is not None:
+        # A rule: its row was built when it was staged (core.rules.card).
+        docs = op.get('documents') or []
+        where = ({'kind': 'document', 'document_id': docs[0], 'document_name': _doc_name(ws, docs[0])}
+                 if len(docs) == 1 else None)
+        return {'label': label, 'where': where, 'change': op.get('change'),
+                'writes_text': writes_text(op), 'replaces_work': int(op.get(work.COUNTED) or 0),
+                'rule': op['card']}
     where = locate(ws, op)
     # An op built by `labelled` says where its change starts. Nothing to place
     # it at shows the label whole, as a label of an unexpected shape does.

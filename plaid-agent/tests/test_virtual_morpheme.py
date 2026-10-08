@@ -12,6 +12,7 @@ from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, scan_ws
 
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.toolkit import call_tool
+from plaid_agent.igt.bulk import planned_changes
 
 SOURCE = 'service:igt:assist:x'
 VIRTUAL = 'virtual:w-3'
@@ -55,7 +56,9 @@ def test_every_occurrence_of_a_form_reaches_unsegmented_words():
     out = call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go',
                                               'document': 'd1'})
     assert 'Nothing to change' not in out, out
-    [op] = w.ops
+    [rule] = w.ops
+    assert rule['kind'] == 'bulk_scope' and rule['tool'] == 'set_field_for_form'
+    [op] = planned_changes(w)
     assert op['kind'] == 'set_span' and op['token_id'] == VIRTUAL and op['virtual_at'] == AT
 
 

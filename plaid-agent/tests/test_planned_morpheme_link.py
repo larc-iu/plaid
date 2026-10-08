@@ -85,7 +85,7 @@ def test_the_card_places_each_link_at_its_new_morpheme():
             ('token', 1, 3, index, form)
         assert where['document_name'] == 'Text 1'
         assert row['change'] == f'link "{entry}"'
-    assert payload['labels'][1] == 'Text 1 s1.w3.m1 "akun": link "gam₁"'
+    assert rows[1]['label'] == 'Text 1 s1.w3.m1 "akun": link "gam₁"'
     assert payload['summary'] == '1 analysis, 2 lexicon links'
 
 

@@ -184,6 +184,61 @@ class Workspace(BaseWorkspace):
         # and how many of them a note has told the model about.
         self.analysis_took = 0
         self.reported_took = 0
+        # What each rule of the plan found when it was staged, by its target
+        # (``core.rules.target``), so a later rule reads the values it leaves.
+        self.rule_found: Dict[tuple, List[Dict[str, Any]]] = {}
+        # While a rule is resolved: the values the plan's earlier rules leave,
+        # (layer id, token id) -> (value, the change that leaves it), which
+        # ``planned_value`` reads instead of the plan's enumerated changes.
+        self._rule_view: Optional[Dict[tuple, tuple]] = None
+
+    # --- rules (core.rules) ---------------------------------------------------
+
+    def rule_found_before(self, key: tuple) -> List[List[Dict[str, Any]]]:
+        """What the plan's rules other than ``key`` found, in plan order."""
+        from ..core import rules
+        return [self.rule_found[rules.target(op)] for op in self.ops
+                if rules.is_rule(op) and rules.target(op) != key and rules.target(op) in self.rule_found]
+
+    @staticmethod
+    def _values_left(found_lists) -> Dict[tuple, tuple]:
+        out: Dict[tuple, tuple] = {}
+        for found in found_lists:
+            for op in found:
+                if op.get('kind') == 'set_span':
+                    out[(op.get('layer_id'), op.get('token_id'))] = (op.get('value') or '', op)
+        return out
+
+    @contextmanager
+    def resolving_rules(self, earlier):
+        """Resolve a rule over the stored values as ``earlier`` rules (their
+        found changes, in plan order) leave them."""
+        saved = self._rule_view
+        self._rule_view = self._values_left(earlier)
+        try:
+            yield
+        finally:
+            self._rule_view = saved
+
+    def rule_values(self) -> Dict[tuple, tuple]:
+        """(layer id, token id) -> (value, change) the plan's rules leave."""
+        if self._rule_view is not None:
+            return self._rule_view
+        return self._values_left(self.rule_found_before(None))
+
+    def planned_value(self, layer_id: str, token_id: str, current: str) -> str:
+        """While a rule is resolved, the value its earlier rules leave (never an
+        enumerated change: approval resolves without them). Otherwise an
+        enumerated change wins, then the plan's rules, then what is stored."""
+        if self._rule_view is not None:
+            return self._rule_view.get((layer_id, token_id), (current,))[0]
+        for op in self.ops:
+            if op.get('kind') == self.SPAN_KIND and op.get('layer_id') == layer_id \
+                    and op.get('token_id') == token_id:
+                return op.get('value') or ''
+        if any(op.get('matched') is not None for op in self.ops):
+            return self.rule_values().get((layer_id, token_id), (current,))[0]
+        return current
 
     def make_corpus(self):
         from .corpus import Corpus
@@ -828,9 +883,13 @@ class Workspace(BaseWorkspace):
             docs = set((op.get('items') or {}).get('doc') or []) if op.get('compact') else set()
             if len(docs) == 1:
                 op['doc'] = docs.pop()
-        return {'id': uuid7(), 'summary': summarize(self.ops),
-                'labels': [op['label'] for op in ops], 'ops': ops,
-                'changes': describe_changes(self, ops),
+        # A rule's card row is built when it is staged and goes in `changes`
+        # only. `labels` are not written: each row of `changes` has its label.
+        changes = describe_changes(self, ops)
+        for op in ops:
+            op.pop(CARD, None)
+        return {'id': uuid7(), 'summary': summarize(self.ops), 'ops': ops,
+                'changes': changes,
                 'documents': self.touched_documents()}
 
     def touched_documents(self) -> List[Dict[str, Any]]:
@@ -866,8 +925,14 @@ class Workspace(BaseWorkspace):
             mine = [op for op in self.ops
                     if _op_mentions(op, ids) or did in docs_of_op(op) or op.get('doc') == did]
             if any(_op_mentions(op, ids) for op in mine):
-                out.append(self.pinned({'id': doc.id, 'name': doc.name, 'version': doc.version},
-                                       doc, mine))
+                entry = {'id': doc.id, 'name': doc.name, 'version': doc.version}
+                # Reached by rules alone: checked by what they match, not by
+                # the version (see `_pin_unloaded`).
+                plain = [op for op in mine if op.get('matched') is None]
+                if not plain:
+                    out.append({**entry, 'rule': True})
+                else:
+                    out.append(self.pinned(entry, doc, plain))
         return self.cap_pins(out)
 
     def note_versions(self, doc_ids) -> None:
@@ -897,8 +962,13 @@ class Workspace(BaseWorkspace):
                    or d in docs_of_op(op)] for d in order}
         # A corpus-wide change stored as one is found again when approved, so
         # its documents stay pinned whole and are not read for it.
-        readable = [d for d in order if versions[d] is not None
-                    and not any(opkind.resolver(self.KIND, op) for op in ops[d])][:PIN_LOAD_MAX]
+        # A document reached by rules alone is recorded with `rule: true`: what
+        # the rules matched there is checked by digest, so its version may
+        # move. One that holds enumerated changes too is pinned for those.
+        enumerated = {d: [op for op in ops[d] if not opkind.resolver(self.KIND, op)] for d in order}
+        readable = [d for d in order if versions[d] is not None and enumerated[d]
+                    and not any(opkind.resolver(self.KIND, op) and not op.get('matched') for op in ops[d])
+                    ][:PIN_LOAD_MAX]
         # Cached by the version the query saw, so a document already read at
         # that version is not read again.
         key = {d: self._version_of({'id': d, 'version': versions[d]}) for d in readable}
@@ -906,15 +976,22 @@ class Workspace(BaseWorkspace):
         out = []
         for did in order:
             entry = {'id': did, 'name': self.corpus.doc_name(did), 'version': versions[did]}
-            if did in readable:
+            if not enumerated[did] and all(op.get('matched') is not None for op in ops[did]):
+                entry['rule'] = True
+            elif did in readable:
                 try:
                     doc = self.reader.get(did, key[did], entry['name'] or '')
                 except Exception:  # noqa: BLE001 - unreadable now: the version alone decides
                     doc = None
                 if doc is not None and doc.version == versions[did]:
-                    entry = self.pinned(entry, doc, ops[did])
+                    entry = self.pinned(entry, doc, enumerated[did])
             out.append(entry)
         return out
+
+#: The key a rule op carries for its card row while it is in the turn's plan
+#: (``bulk.CARD``).
+CARD = 'card'
+
 
 def _op_mentions(value, ids: set) -> bool:
     if isinstance(value, str):

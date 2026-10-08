@@ -26,6 +26,7 @@ from plaid_client.http import PlaidAPIError
 from plaid_agent.core.plan import PlanOutOfDate
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.toolkit import call_tool
+from plaid_agent.igt.bulk import planned_changes
 
 
 def _forget(client, item_id):
@@ -373,7 +374,8 @@ def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_
     _analyse_ali(w)
     out = call_tool(w, 'replace_in_field', {'field': 'morpheme forms', 'pattern': 'a', 'replacement': 'o'})
     # m-1a "Ali" is the analysis's now. m-4a "Gam" and m-4b "ar" are not.
-    assert sorted(op['morpheme_id'] for op in w.ops if op['kind'] == 'set_morpheme_form') == ['m-4a', 'm-4b'], out
+    assert sorted(op['morpheme_id'] for op in planned_changes(w) if op['kind'] == 'set_morpheme_form') \
+        == ['m-4a', 'm-4b'], out
     assert '1 morpheme of words whose analysis this plan rewrites was left as planned' in out, out
 
 

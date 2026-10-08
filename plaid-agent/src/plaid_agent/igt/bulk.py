@@ -8,12 +8,12 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.workflows.igt import precedence
 
-from ..core import work
+from ..core import rules, work
 from ..core.limits import SAMPLE_LINES
-from ..core.plan import PLAN_MAX_OPS, by_document, labelled
+from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
 from ..core.replace import replacer as core_replacer
 from ..core.provenance import unmark
-from .plan import SCOPES, analysed_morphemes, move_phrase, settle_merges
+from .plan import KIND, SCOPES, analysed_morphemes, move_phrase, settle_merges
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
@@ -72,65 +72,36 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     whole value, or regex with backreferences), project-wide or in one
     document. Empty cells are not filled: use set_field_for_form for that.
     ``field`` may also name the stored morpheme forms (Bulk Edit's morpheme
-    domain) when no field is so named."""
-    if not _names_morpheme_forms(ws, field):
+    domain) when no field is so named.
+
+    Staged as one rule (``core.rules``), found again when approved."""
+    forms = _names_morpheme_forms(ws, field)
+    if not forms:
         replacement = unmark(replacement, 'replacement')
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
-    staged: List[Dict[str, Any]] = []
-    if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
-        args = {'field': field, 'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
-                'whole': bool(whole), 'case_sensitive': bool(case_sensitive)}
+    doc_id = ws.doc(document).id if document else None
+    args = rules.normalize({'field': field, 'pattern': pattern, 'replacement': replacement, 'regex': regex,
+                            'whole': whole, 'case_sensitive': case_sensitive, 'document': doc_id},
+                           ('regex', 'whole', 'case_sensitive'))
+    args['replacement'] = replacement or ''
+    how = ' (regex)' if regex else ' (whole value)' if whole else ' (part of a value)'
+    if forms:
+        name, unit = 'morpheme form', ('morpheme form', 'morpheme forms')
+    else:
         f = ws.project.field(field)
-        return _stage(ws, 'replace_in_field', args, _scoped_replace(ws, args, CANDIDATE_MAX), 'set_span',
-                      f'{f.name} values')
-    analysed = analysed_morphemes(ws.ops)
-    left = 0
-    if _names_morpheme_forms(ws, field):
-        for doc in _docs(ws, document):
-            for s in doc.sentences:
-                for w in s.words:
-                    for m in w.morphemes:
-                        if not has_own_form(m):
-                            continue  # a derived form is the word's surface: respell_all's job
-                        new = rep(m.form)
-                        if new == m.form:
-                            continue
-                        if m.id in analysed:
-                            left += 1
-                            continue
-                        if not new.strip():
-                            raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
-                        staged.append(morpheme_form_op(ws, doc, word_ref(s, w), w, m, new))
-        _check_cap(len(staged))
-        ws.add_ops(staged)
-        return _bulk_note(ws, staged, 'morpheme forms') + left_for_analysis(left)
-    f = ws.project.field(field)
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            if f.scope == 'Sentence':
-                units = [(s, f's{s.index}', s.text)]
-            elif f.scope == 'Word':
-                units = [(w, word_ref(s, w), w.surface) for w in s.words]
-            else:
-                units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for w in s.words for m in w.morphemes]
-            for u, ref, what in units:
-                sp = u.fields.get(f.name)
-                cur = ws.planned_value(f.layer_id, u.id, sp.value if sp else '')
-                if cur == '':
-                    continue
-                new = rep(cur)
-                if new == cur:
-                    continue
-                if u.id in analysed:
-                    left += 1
-                    continue
-                staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
-                               'span_id': sp.id if sp else None, 'value': new,
-                               **labelled(f'{ws.doc_label(doc.id)} {ref} "{what[:30]}"',
-                                          f'{f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else ''))})
-    _check_cap(len(staged))
-    ws.add_ops(staged)
-    return _bulk_note(ws, staged, f'{f.name} values') + left_for_analysis(left)
+        name, unit = f.name, ('value', 'values')
+
+    def restate(op, _found):
+        # An earlier planned value on the field is rewritten in place, as the
+        # value the plan would leave there.
+        if forms or op.get('kind') != 'set_span' or op.get('layer_id') != f.layer_id:
+            return None
+        new = rep(op.get('value') or '')
+        return new if new != (op.get('value') or '') and (op.get('value') or '') != '' else None
+    return _stage_rule(ws, 'replace_in_field', args, unit,
+                       change=f'{name} "{pattern}" → "{replacement}"',
+                       head=f'{name}: replace "{pattern}" with "{replacement}"{how}',
+                       what='morpheme forms' if forms else f'{name} values', restate=restate)
 
 
 # --- corpus-wide changes as ONE op ----------------------------------------------
@@ -149,13 +120,87 @@ CANDIDATE_MAX = 20000
 
 
 def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
-    from .queries import q_replace_in_field, rx
-    f = ws.project.field(a['field'])
+    from .queries import q_replace_in_field, q_morpheme_forms, rx
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
-    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
-              case_sensitive=bool(a.get('case_sensitive')))
-    return q_replace_in_field(ws, f, rep, spec, cap)
+    document = a.get('document')
+    if _names_morpheme_forms(ws, a['field']):
+        if ws.use_scan(document):
+            return _scan_morpheme_forms(ws, rep, document)
+        spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
+                  case_sensitive=bool(a.get('case_sensitive')))
+        return q_morpheme_forms(ws, rep, spec, cap, document)
+    f = ws.project.field(a['field'])
+    if ws.use_scan(document):
+        found = _scan_replace(ws, f, rep, document)
+    else:
+        spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
+                  case_sensitive=bool(a.get('case_sensitive')))
+        found = q_replace_in_field(ws, f, rep, spec, cap, document)
+    return found + _chained(ws, f, rep, found, document)
+
+
+def _scan_replace(ws: Workspace, f, rep, document: Optional[str]) -> List[Dict[str, Any]]:
+    """A replacement over the field's values, read from the documents (one,
+    or all when the workspace cannot query)."""
+    out: List[Dict[str, Any]] = []
+    for doc in _docs(ws, document):
+        for s in doc.sentences:
+            if f.scope == 'Sentence':
+                units = [(s, f's{s.index}', s.text)]
+            elif f.scope == 'Word':
+                units = [(w, word_ref(s, w), w.surface) for w in s.words]
+            else:
+                units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for w in s.words for m in w.morphemes]
+            for u, ref, what in units:
+                sp = u.fields.get(f.name)
+                cur = ws.planned_value(f.layer_id, u.id, sp.value if sp else '')
+                if cur == '':
+                    continue
+                new = rep(cur)
+                if new == cur:
+                    continue
+                out.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
+                            'span_id': sp.id if sp else None, 'value': new, 'doc': doc.id,
+                            **labelled(f'{ws.doc_label(doc.id)} {ref} "{what[:30]}"',
+                                       f'{f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else ''))})
+    return out
+
+
+def _scan_morpheme_forms(ws: Workspace, rep, document: Optional[str]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for doc in _docs(ws, document):
+        for s in doc.sentences:
+            for w in s.words:
+                for m in w.morphemes:
+                    if not has_own_form(m):
+                        continue  # a derived form is the word's surface: respell_all's job
+                    new = rep(m.form)
+                    if new == m.form:
+                        continue
+                    if not new.strip():
+                        raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
+                    out.append({**morpheme_form_op(ws, doc, word_ref(s, w), w, m, new), 'doc': doc.id})
+    return out
+
+
+def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optional[str]) -> List[Dict[str, Any]]:
+    """The values an earlier rule of the plan leaves on the field that this
+    replacement changes in turn, where the stored value did not match it
+    ("A" → "B", then "B" → "C"). Rules compose in plan order."""
+    have = {op.get('token_id') for op in found}
+    out = []
+    for (layer, token), (value, earlier) in ws.rule_values().items():
+        if layer != f.layer_id or token in have or (document and earlier.get('doc') != document):
+            continue
+        new = rep(value)
+        if new == value or value == '':
+            continue
+        at = earlier.get('change_at') or 0
+        head = (earlier.get('label') or '')[:max(0, at - 2)]
+        out.append({**{k: v for k, v in earlier.items() if k not in ('label', 'change_at')}, 'value': new,
+                    **labelled(head, f'{f.name} "{value}" → "{new}"' + (' (cleared)' if new == '' else ''))})
+    return out
 
 
 def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
@@ -213,7 +258,23 @@ def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, A
     from .queries import q_copy_to_orthography
     target = ws.project.orthography(a['orthography'])
     src = None if (a.get('source') or 'baseline').lower() == 'baseline' else ws.project.orthography(a['source'])
-    staged = q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap)
+    if ws.use_scan(a.get('document')):
+        out = []
+        for doc in _docs(ws, a.get('document')):
+            for s in doc.sentences:
+                for w in s.words:
+                    cur = w.orthographies.get(target, '')
+                    if cur and not a.get('overwrite'):
+                        continue
+                    value = w.surface if src is None else w.orthographies.get(src, '')
+                    if not value or value == cur:
+                        continue
+                    out.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}',
+                                'value': value, 'doc': doc.id,
+                                **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} "{w.surface}"',
+                                           f'{target} = "{value}"')})
+        return out
+    staged = q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap, a.get('document'))
     if len(staged) > cap:
         raise ToolError(f'More than {cap} words are candidates, which is more than one pass may consider. '
                         f'Narrow it to a document and go in passes.')
@@ -223,8 +284,28 @@ def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, A
 def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     from .queries import q_set_field_for_form
     f = ws.project.field(a['field'])
-    return q_set_field_for_form(ws, a['form'], f, '' if a.get('value') is None else str(a['value']),
-                                bool(a.get('only_empty', True)), cap)
+    value = '' if a.get('value') is None else str(a['value'])
+    only_empty = bool(a.get('only_empty', True))
+    if not ws.use_scan(a.get('document')):
+        return q_set_field_for_form(ws, a['form'], f, value, only_empty, cap, a.get('document'))
+    same = _form_matcher(a['form'])
+    out = []
+    for doc in _docs(ws, a.get('document')):
+        for s in doc.sentences:
+            for w in s.words:
+                if f.scope == 'Word':
+                    units = [(w, word_ref(s, w), w.surface)] if same(w.surface) else []
+                else:
+                    units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if same(m.form)]
+                for u, ref, what in units:
+                    old = u.fields.get(f.name)
+                    cur = ws.planned_value(f.layer_id, u.id, old.value if old else '')
+                    if cur == value or (only_empty and cur != ''):
+                        continue
+                    op = {**span_op(ws, doc, ref, what, f, u.id, old, value), 'doc': doc.id}
+                    ws.place_virtual(op)
+                    out.append(op)
+    return out
 
 
 SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
@@ -270,17 +351,206 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
             + (f'\n  … {len(staged) - SAMPLE_LINES} more' if len(staged) > SAMPLE_LINES else ''))
 
 
+def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change: str, head: str, what: str,
+                restate=None, quiet_when_empty: bool = False) -> str:
+    """Stage a corpus-wide change as one rule (``core.rules``): the tool and
+    its arguments, what it found now, counted per document with a digest of
+    each document's changes, and the card row with a sample. It is found again
+    at approval by the same function (``SCOPED``), and the plan is refused if
+    it finds anything else.
+
+    ``restate(op, found)`` is the value an earlier enumerated change of the
+    plan takes under this rule, or None: a rule applies to the plan's own
+    earlier values (an enumerated change staged after it wins at approval).
+    """
+    key = ('rule', tool, rules.fingerprint_args(args))
+    where = f' in {ws.doc_label(args["document"], quote=True)}' if args.get('document') else ''
+    op, found, kept, left = _build_rule(ws, tool, args, list(unit), change + where, head + where,
+                                        ws.rule_found_before(key))
+    explicit = {op_target(o): i for i, o in enumerate(ws.ops) if not rules.is_rule(o)
+                and o.get('kind') not in SCOPES}
+    explicit.pop(None, None)
+    by_target = {op_target(o): o for o in found}
+    rewrites = []
+    if restate is not None:
+        for t, i in explicit.items():
+            new = restate(ws.ops[i], by_target.get(t))
+            if new is not None:
+                rewrites.append((i, new))
+    if not kept:
+        out = '' if quiet_when_empty and not rewrites else f'Nothing to change: no {what} matched.'
+        if rewrites:
+            with ws.staging():
+                _rewrite_planned(ws, rewrites)
+            out = ws.planned_note(0) + f' {_rewritten(len(rewrites))}'
+        return out + left_for_analysis(left)
+    docs = op['documents']
+    _clear_of_reshapes(ws, docs, values_only=_values_only(kept))
+    same = [i for i, o in enumerate(ws.ops) if rules.is_rule(o) and rules.target(o) == key]
+    full = rules.too_many(KIND, [o for i, o in enumerate(ws.ops) if i not in same], len(kept) - 1, docs)
+    if full:
+        raise ToolError(full)
+    ws.note_versions(docs)
+    with ws.staging():
+        _rewrite_planned(ws, rewrites)
+        ws.add_op(op)
+    ws.rule_found[key] = found
+    n, accepted = len(kept), op[work.COUNTED]
+    sample = [c['label'] for c in op[CARD]['sample']]
+    return (ws.planned_note(1) + f'\n  One change covering {rules.count_line(n, unit, len(docs))}.'
+            + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
+               if accepted else '')
+            + _by_document(ws, kept) + '\nFor example:\n  ' + '\n  '.join(sample)
+            + (f'\n  … {n - len(sample)} more' if n > len(sample) else '')
+            + '\nStored as one change, found again when the user approves.'
+            + (f' {_rewritten(len(rewrites))}' if rewrites else '')
+            + left_for_analysis(left))
+
+
+def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, change: str, head: str, earlier):
+    """(rule op, what it found, what it writes, how many a planned analysis
+    makes moot): the rule resolved now over the values the ``earlier`` rules
+    leave, as approval will resolve it."""
+    found = resolve_rule(ws, tool, args, earlier)
+    # Staged as one rule, its changes never pass add_op, so the values they
+    # would write are held to their layers' lists here.
+    for o in found:
+        ws.refuse_off_list(o)
+    explicit = {op_target(o) for o in ws.ops if not rules.is_rule(o) and o.get('kind') not in SCOPES} - {None}
+    analysed = analysed_morphemes(ws.ops)
+    kept = [o for o in found if op_target(o) not in explicit and not ws.moot_under(o, analysed)]
+    left = sum(1 for o in found if ws.moot_under(o, analysed))
+    docs = sorted({o['doc'] for o in kept if o.get('doc')})
+    counts: Dict[str, int] = {}
+    for o in kept:
+        counts[o['kind']] = counts.get(o['kind'], 0) + 1
+    accepted = ws.count_replaced_work(kept)
+
+    def doc_of(o):
+        return o.get('doc')
+
+    def describe(o):
+        from .changes import describe_change
+        return describe_change(ws, {**o, work.FLAG: ws.replaces_work(o)})
+    op = {'kind': 'bulk_scope', 'tool': tool, 'args': args, 'count': len(kept), 'counts': counts,
+          'documents': docs, work.COUNTED: accepted,
+          'matched': rules.matched(KIND, found, doc_of, ws.replaces_work),
+          'change': change, 'head': head, 'unit': unit,
+          'label': f'{head}, {rules.count_line(len(kept), unit, len(docs))}' + work.counted_phrase(accepted)}
+    if ws.prefer_scan:
+        # A workspace that cannot query (the tests' fake) found it by reading
+        # every document, and approval finds it the same way.
+        op['scan'] = True
+    op[CARD] = rules.card(op, kept, doc_of, lambda d: ws.corpus.doc_name(d), describe, ws.replaces_work)
+    return op, found, kept, left
+
+
+def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
+    """The plan with each rule in its place as the changes it stands for now
+    (what it found when staged, less what the plan's own changes take), for a
+    reader that wants every change one by one."""
+    explicit = {op_target(o) for o in ws.ops if not rules.is_rule(o) and o.get('kind') not in SCOPES} - {None}
+    analysed = analysed_morphemes(ws.ops)
+    out: List[Dict[str, Any]] = []
+    for op in ws.ops:
+        if not rules.is_rule(op):
+            out.append(op)
+            continue
+        out.extend(o for o in ws.rule_found.get(rules.target(op), [])
+                   if op_target(o) not in explicit and not ws.moot_under(o, analysed))
+    return out
+
+
+def refresh_rules(ws: Workspace) -> None:
+    """Resolve every rule of the plan again, in plan order, after a change to
+    the plan that one of them may depend on (an earlier rule dropped), so what
+    each one stores is what approval will find."""
+    for op in list(ws.ops):
+        if not rules.is_rule(op) or op.get('head') is None:
+            continue
+        key = rules.target(op)
+        new, found, kept, _left = _build_rule(ws, op['tool'], op['args'], op.get('unit') or ['change', 'changes'],
+                                              op.get('change') or '', op['head'], ws.rule_found_before(key))
+        i = ws.ops.index(op)
+        ws.rule_found[key] = found
+        if kept:
+            ws.ops[i] = new
+        else:
+            # Nothing left for it to change: a row of no changes says nothing.
+            del ws.ops[i]
+            ws._gone_at = -1
+
+
+#: The key a rule op carries in the turn's plan for its card row, moved into
+#: ``changes`` when the plan is packaged and never stored in ``ops``.
+CARD = 'card'
+
+# The kinds a rule may write and still share a plan with an analysis of a
+# word it reaches: values, which the analysis makes moot where it rewrites
+# them, never the text or the words themselves.
+VALUE_KINDS = ('set_span', 'set_orthography', 'set_morpheme_form')
+
+
+def _values_only(ops) -> bool:
+    return all(op.get('kind') in VALUE_KINDS for op in ops)
+
+
+def _rewritten(n: int) -> str:
+    return f'{n} planned change{"s" if n != 1 else ""} rewritten by this one.'
+
+
+def _rewrite_planned(ws: Workspace, rewrites) -> None:
+    """Give each earlier enumerated change its new value, with its line."""
+    for i, new in rewrites:
+        op = ws.ops[i]
+        key = 'value' if 'value' in op else 'form'
+        old = op.get(key) or ''
+        at = op.get('change_at') or 0
+        place = (op.get('label') or '')[:max(0, at - 2)]
+        line = change_of(op) or ''
+        line = line.replace(f'"{old}"', f'"{new}"') if f'"{old}"' in line else f'{line} → "{new}"'
+        ws.ops[i] = {**op, key: new, **labelled(place, line)}
+
+
+def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier) -> List[Dict[str, Any]]:
+    """What a rule resolves to now: its tool's resolver (``SCOPED``) over
+    the stored values as the plan's earlier rules leave them (``earlier``,
+    their found changes in plan order), never its enumerated changes. Staging
+    and approval both resolve through here, so what approval finds is what
+    was counted unless the project changed."""
+    fn = SCOPED.get(tool)
+    if fn is None:
+        raise ToolError(f'unknown corpus-wide tool {tool!r}')
+    with ws.resolving_rules(earlier):
+        return fn(ws, dict(args), CANDIDATE_MAX)
+
+
 def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
     """Whether a corpus-wide change already planned reaches this document (or
-    might, when the document is not known)."""
-    reach = {d for op in ws.ops if op.get('kind') in SCOPES for d in (op.get('documents') or [])}
+    might, when the document is not known). A rule that writes values only
+    does not count (``values_rule``)."""
+    reach = {d for op in ws.ops if op.get('kind') in SCOPES and not values_rule(op)
+             for d in (op.get('documents') or [])}
     return bool(reach) and (doc_id is None or doc_id in reach)
 
 
-def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
+def values_rule(op: Dict[str, Any]) -> bool:
+    """Whether ``op`` is a rule that writes values only (``VALUE_KINDS``). It
+    may share a plan with anything that reshapes a document it reaches: it
+    names what it writes by id, is resolved before anything is written, and
+    what it resolves to then passes the checks an enumerated change passes
+    (a change on something the plan removes or an analysis rewrites is left
+    out), as the same change listed one by one would."""
+    return rules.is_rule(op) and _values_only([{'kind': k} for k in (op.get('counts') or {})])
+
+
+def _clear_of_reshapes(ws: Workspace, docs: List[str], values_only: bool = False) -> None:
     """A corpus-wide replacement reaches every document it matched, so a plan
-    that already reshapes text or words in one of them cannot take it."""
+    that already reshapes text or words in one of them cannot take it, unless
+    it writes values only (``values_rule``)."""
     from .plan import RESHAPES
+    if values_only:
+        return
     reach = set(docs)
     for op in ws.ops:
         if op.get('kind') in RESHAPES and (op.get('doc') in reach or not op.get('doc')):
@@ -364,27 +634,23 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
                           document: Optional[str] = None, overwrite: bool = False) -> str:
     """PLAN: fill an orthography from the baseline (or another orthography)
     for every word lacking a value (or all words with overwrite=true), as a
-    starting point for a transcription tier."""
+    starting point for a transcription tier. Staged as one rule."""
     target = ws.project.orthography(orthography)
-    src = None if (source or 'baseline').lower() == 'baseline' else ws.project.orthography(source)
-    staged: List[Dict[str, Any]] = []
-    if not ws.use_scan(document):
-        args = {'orthography': orthography, 'source': source or 'baseline', 'overwrite': bool(overwrite)}
-        return _stage(ws, 'copy_to_orthography', args, _scoped_copy(ws, args, CANDIDATE_MAX), 'set_orthography', 'words')
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            for w in s.words:
-                cur = w.orthographies.get(target, '')
-                if cur and not overwrite:
-                    continue
-                value = w.surface if src is None else w.orthographies.get(src, '')
-                if not value or value == cur:
-                    continue
-                staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}', 'value': value,
-                               **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} "{w.surface}"', f'{target} = "{value}"')})
-    _check_cap(len(staged))
-    ws.add_ops(staged)
-    return _bulk_note(ws, staged, 'words')
+    src = 'baseline' if (source or 'baseline').lower() == 'baseline' else ws.project.orthography(source)
+    doc_id = ws.doc(document).id if document else None
+    args = rules.normalize({'orthography': orthography, 'source': source or 'baseline', 'overwrite': overwrite,
+                            'document': doc_id}, ('overwrite',))
+
+    def restate(op, found):
+        if op.get('kind') != 'set_orthography' or found is None:
+            return None
+        if op.get('value') and not overwrite:
+            return None
+        return found.get('value') if found.get('value') != op.get('value') else None
+    return _stage_rule(ws, 'copy_to_orthography', args, ('word', 'words'),
+                       change=f'{target} copied from {src}',
+                       head=f'{target}: copy from {src}' + ('' if overwrite else ', where empty'),
+                       what='words', restate=restate)
 
 
 def _form_matcher(form: str):
@@ -397,54 +663,54 @@ def _form_matcher(form: str):
 def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_empty: bool = True,
                          document: Optional[str] = None) -> str:
     """PLAN: one field value on every occurrence of a form (morpheme form for
-    a morpheme field, word form for a word field)."""
+    a morpheme field, word form for a word field). Staged as one rule."""
     f = ws.project.field(field)
     if f.scope == 'Sentence':
         raise ToolError(f'"{f.name}" is a sentence field; use set_field with sentence references')
     form = (form or '').strip()
     if not form:
         raise ToolError('Give a form.')
-    same = _form_matcher(form)
     value = '' if value is None else unmark(str(value), f.name)
-    staged: List[Dict[str, Any]] = []
-    if not ws.use_scan(document):
-        args = {'form': form, 'field': field, 'value': value, 'only_empty': bool(only_empty)}
-        return _stage(ws, 'set_field_for_form', args, _scoped_set_for_form(ws, args, CANDIDATE_MAX), 'set_span',
-                      f'occurrences of "{form}"' + (' without a value' if only_empty else ''))
-    # A word whose analysis the plan writes is read as that analysis, and a
-    # value on one of its morphemes goes into it (as set_field does).
-    planned = {op.get('word_id'): op for op in ws.ops if op.get('kind') == 'set_analysis'}
-    edits: List[tuple] = []
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            for w in s.words:
-                if f.scope != 'Word' and w.id in planned:
-                    for k, pm in enumerate(planned[w.id].get('morphemes') or [], start=1):
-                        cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
-                                    if fv.get('layer_id') == f.layer_id), '')
-                        if same(pm.get('form')) and cur != value and not (only_empty and cur):
-                            edits.append((doc, f'{word_ref(s, w)}.m{k}'))
-                    continue
-                if f.scope == 'Word':
-                    units = [(w, word_ref(s, w), w.surface)] if same(w.surface) else []
-                else:
-                    units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if same(m.form)]
-                for u, ref, what in units:
-                    old = u.fields.get(f.name)
-                    cur = ws.planned_value(f.layer_id, u.id, old.value if old else '')
-                    if cur == value or (only_empty and cur != ''):
-                        continue
-                    staged.append(span_op(ws, doc, ref, what, f, u.id, old, value))
-    _check_cap(len(staged) + len(edits))
-    with ws.staging():
-        for doc, ref in edits:
-            edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), field=f, value=value)
-        ws.add_ops(staged)
-    what = f'occurrences of "{form}"' + (' without a value' if only_empty else '')
-    if not staged:
-        return ws.planned_note(len(edits)) if edits else _bulk_note(ws, staged, what)
-    return _bulk_note(ws, staged, what) + (
-        f' {len(edits)} more in analyses this plan already holds, changed there.' if edits else '')
+    doc_id = ws.doc(document).id if document else None
+    args = rules.normalize({'form': form, 'field': field, 'value': value, 'only_empty': only_empty,
+                            'document': doc_id}, ('only_empty',))
+    args['value'] = value
+    edits = 0
+    if ws.use_scan(document):
+        # A word whose analysis the plan writes is read as that analysis, and
+        # a value on one of its morphemes goes into it (as set_field does).
+        same = _form_matcher(form)
+        planned = {op.get('word_id'): op for op in ws.ops if op.get('kind') == 'set_analysis'}
+        targets = []
+        if f.scope != 'Word' and planned:
+            for doc in _docs(ws, document):
+                for s in doc.sentences:
+                    for w in s.words:
+                        for k, pm in enumerate((planned.get(w.id) or {}).get('morphemes') or [], start=1):
+                            cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
+                                        if fv.get('layer_id') == f.layer_id), '')
+                            if same(pm.get('form')) and cur != value and not (only_empty and cur):
+                                targets.append((doc, f'{word_ref(s, w)}.m{k}'))
+        if targets:
+            with ws.staging():
+                for doc, ref in targets:
+                    edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), field=f, value=value)
+            edits = len(targets)
+
+    def restate(op, found):
+        if op.get('kind') != 'set_span' or found is None:
+            return None
+        if only_empty and (op.get('value') or ''):
+            return None
+        return value if op.get('value') != value else None
+    note = _stage_rule(ws, 'set_field_for_form', args, ('value', 'values'),
+                       change=f'{f.name} = "{value}" on "{form}"',
+                       head=f'{f.name}: "{value}" on every "{form}"' + (' without a value' if only_empty else ''),
+                       what=f'occurrences of "{form}"' + (' without a value' if only_empty else ''),
+                       restate=restate, quiet_when_empty=bool(edits))
+    if edits:
+        note += f' {edits} more in analyses this plan already holds, changed there.'
+    return note
 
 
 def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document: Optional[str] = None,

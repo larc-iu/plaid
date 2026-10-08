@@ -132,7 +132,8 @@ def test_orthography_respell_links_entries():
                          'label': 'entry "Ali": pos "N" → "PN"'}
     payload = w.plan_payload()
     assert payload['summary'].startswith('1 orthography value, 1 respelling')
-    assert len(payload['labels']) == len(payload['ops']) == len(w.ops)
+    # Each row of `changes` has its label: `labels` is not written.
+    assert len(payload['changes']) == len(payload['ops']) == len(w.ops) and 'labels' not in payload
     assert call_tool(w, 'discard_plan', {}) == f'Discarded {len(payload["ops"])} planned changes.'
     assert w.plan_payload() is None
 
@@ -698,20 +699,19 @@ def _engine_for_replace(w, spans, metadata=None):
     w.client.query = query
 
 
-def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(monkeypatch):
+def test_a_replacement_is_one_rule_resolved_at_approval():
     """The query path read every value of a field and refused past the cap, so
     a field with more values than the cap could never be replaced in. Now the
-    engine applies the pattern, and more changes than fit span by span are
-    stored as one op and found again at approval."""
-    from plaid_agent.igt import bulk
+    engine applies the pattern, and the replacement is stored as one rule
+    (core.rules), whatever its count, and found again at approval."""
     from plaid_agent.igt.plan import execute_plan, summarize
-    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 2)
     w = scan_ws(FakeClient())
     w.prefer_scan = False
     spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
     _engine_for_replace(w, spans)
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
-    assert 'One change covering 3 changes to Gloss values.' in out
+    assert 'One change covering 3 values in 1 document.' in out
+    assert 'Stored as one change, found again when the user approves.' in out
     assert '\nIn 1 document: "Text 1" 3.\n' in out
     assert 'more' not in out  # three lines of sample, and no "… -5 more" under it
     op = w.ops[0]
@@ -723,11 +723,6 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     counts = execute_plan(w.client, payload['ops'], source='s', label='l', project=w.project)
     assert counts == {'field values': 3}
     assert w.client.updates('spans') == [('s1', 'Bob'), ('s2', 'Bob-x'), ('s3', 'Bob')]
-    # Under the cap, the same call stages per-span ops, as the scan path does.
-    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 3000)
-    w.ops.clear()
-    call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
-    assert [op['kind'] for op in w.ops] == ['set_span'] * 3
 
 
 
@@ -864,15 +859,14 @@ def test_a_bulk_answer_counts_its_changes_by_document(monkeypatch):
     # Machine output, so no change replaces a person's work and all four fold.
     _engine_for_replace(w, spans, metadata={'prov': 'inferred', 'provSource': 'service:x'})
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': '.', 'replacement': ':'})
-    assert out.startswith('Planned 4 changes')
+    assert out.startswith('Planned 1 change') and 'One change covering 4 values in 2 documents.' in out
     assert '\nIn 2 documents: "Elicited: LLEC Wordlist" 3, "Text 1" 1.\n' in out
-    group, = w.plan_payload()['ops']
-    assert group['label'] == '4 changes in 2 documents: 4 × Gloss "NOM.PAT" → "NOM:PAT"'
-    # Past the cap: one stored op, and the same counts.
-    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 2)
-    w.ops.clear()
-    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': '.', 'replacement': ':'})
-    assert '\nIn 2 documents: "Elicited: LLEC Wordlist" 3, "Text 1" 1.\n' in out
+    payload = w.plan_payload()
+    rule, = payload['ops']
+    assert rule['kind'] == 'bulk_scope' and rule['count'] == 4
+    # The card row counts each document, largest first.
+    [row] = payload['changes']
+    assert [(name, n) for _d, name, n in row['rule']['documents']] == [('Elicited: LLEC Wordlist', 3), ('Text 1', 1)]
 
 
 def test_a_scan_bulk_answer_counts_by_document_too():
