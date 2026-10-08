@@ -495,7 +495,10 @@ See <<_headwords_and_senses>>.
 
 **Bulk Add** takes rows pasted from a spreadsheet or read from a file.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
-When a file has a title or extra lines above its header, set the row the table starts at, and the rows above it are left out.
+When a file has a title or extra lines above its header, set the row the table starts at, numbered as in the spreadsheet, and the rows above it are left out.
+A second header line under the header, such as a row of column keys, is left out too, and unticking it imports that row.
+A file named `.csv` or `.tsv` is read with that separator.
+Spreadsheet files such as `.xlsx` or `.ods` are read once saved as CSV or TSV.
 A column that is empty in every row is not imported.
 **The same value on every row** gives a field one value for each entry, such as a source or a status, where no column holds it.
 When an import stops partway, **Back to review** shows the rows again with what already landed counted as present, so the rest can be imported.
