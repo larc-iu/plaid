@@ -10,6 +10,7 @@ const adapter = {
   citationTitle: (c) => c.title,
   citationHref: (_origin, projectId, c) => `/p/${projectId}/${c.key}`,
   parseCitationHref: () => null,
+  opensProject: () => true,
   ExampleCard: ({ c }) => <div data-card={c.key}>{c.title}</div>,
 };
 

@@ -20,12 +20,15 @@ export const lastProjects = (display) => {
   return [];
 };
 
-// What "Add project" offers: every project the reader can open, less the home
-// one and those already added, as {id, name}.
-export const projectCandidates = (projects, homeId, joined = []) => {
+// What "Add project" offers: every project the reader can open that the
+// assistant can read too, less the home one and those already added, as
+// {id, name}. `opens(project)` is the app adapter's `opensProject`, which
+// says whether a project is set up for that app. A project that is not was
+// offered, and then reported as "could not be opened" with no reason.
+export const projectCandidates = (projects, homeId, joined = [], opens = null) => {
   const taken = new Set([homeId, ...joined.map((p) => p.id)]);
   return (projects || [])
-    .filter((p) => p?.id && !taken.has(p.id))
+    .filter((p) => p?.id && !taken.has(p.id) && (!opens || opens(p)))
     .map((p) => ({ id: p.id, name: p.name || p.id }));
 };
 

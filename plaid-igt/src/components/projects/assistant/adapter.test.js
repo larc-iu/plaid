@@ -38,4 +38,13 @@ describe('IGT_ASSISTANT', () => {
   it('answers everything the shared half asks of an adapter', () => {
     expect(missingFromAdapter(IGT_ASSISTANT)).toEqual([]);
   });
+
+  it('opens only a project set up for IGT', () => {
+    // "Add project" offers only these. Another app's project, or one never
+    // set up, was offered and then "could not be opened".
+    expect(IGT_ASSISTANT.opensProject({ config: { igt: { initialized: true } } })).toBe(true);
+    expect(IGT_ASSISTANT.opensProject({ config: { ud: { initialized: true } } })).toBe(false);
+    expect(IGT_ASSISTANT.opensProject({ config: {} })).toBe(false);
+    expect(IGT_ASSISTANT.opensProject({})).toBe(false);
+  });
 });

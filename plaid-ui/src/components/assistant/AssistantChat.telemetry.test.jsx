@@ -32,6 +32,7 @@ const ADAPTER = {
   groupOf: () => ({ key: 'doc', title: 'Text 1', href: null }),
   changePlace: () => ({ name: 'Text 1', href: null }),
   parseCitationHref: () => null,
+  opensProject: () => true,
 };
 
 const SERVICE = {

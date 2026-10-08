@@ -58,4 +58,6 @@ export const PLAIN_ASSISTANT = {
   // The stored label, which says the whole change.
   rowText: (row) => row.label,
   parseCitationHref: () => null,
+  // Drawn read-only, with no composer to add a project from.
+  opensProject: () => false,
 };

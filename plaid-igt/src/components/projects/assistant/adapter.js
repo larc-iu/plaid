@@ -4,6 +4,7 @@
 //
 // This is the whole of IGT's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-ud has an adapter of its own.
+import { readInitialized } from '../../../domain/igtConfig.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationToMarkdown } from './citationMarkdown.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
@@ -124,6 +125,8 @@ export const IGT_ASSISTANT = {
   changePlace,
   groupOf,
   parseCitationHref,
+  // The assistant reads a project set up for IGT, and no other.
+  opensProject: (project) => readInitialized(project?.config),
   examples: [
     'Which words in this project are still unglossed?',
     'Are the glosses for the most common suffix consistent?',

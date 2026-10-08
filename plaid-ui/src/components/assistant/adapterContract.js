@@ -40,6 +40,10 @@ export const ADAPTER_MEMBERS = [
   // Reading one of this app's own links back, so a click can scroll the screen
   // behind the panel instead of navigating.
   'parseCitationHref',
+  // Whether this app's assistant can read a project, from the project as a
+  // listing gives it (with its layers): whether it is set up for this app.
+  // "Add project" offers only those.
+  'opensProject',
 ];
 // Optional: `rowText(row)`, what a plan row says beside its place, where the
 // default (`change`, else `label`) does not fit (PLAIN_ASSISTANT).

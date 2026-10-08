@@ -36,8 +36,18 @@ export const ProjectChip = ({ project, onRemove, label = `Remove ${project.name}
 // the project and answers `true` when it joined, or the line that says why it
 // did not. The list closes only on a join. A refusal is written in the list,
 // above the field, and the list stays open for another pick. `max` counts the
-// home project, as the assistant advertises it.
-export const AddProject = ({ client, homeId, joined, max, disabled = false, onPick }) => {
+// home project, as the assistant advertises it. `opens(project)` says whether
+// the assistant can read a project (the adapter's `opensProject`), and only
+// those are offered.
+export const AddProject = ({
+  client,
+  homeId,
+  joined,
+  max,
+  opens = null,
+  disabled = false,
+  onPick,
+}) => {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState('');
@@ -69,7 +79,7 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
     };
   }, [open, client]);
 
-  const options = projectCandidates(projects, homeId, joined).map((p) => ({
+  const options = projectCandidates(projects, homeId, joined, opens).map((p) => ({
     value: p.id,
     label: p.name,
   }));
@@ -121,7 +131,11 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
         ) : error ? (
           <p className="px-1 py-1 text-xs text-destructive">{error}</p>
         ) : options.length === 0 ? (
-          <p className="px-1 py-1 text-xs text-muted-foreground">No other projects.</p>
+          <p className="px-1 py-1 text-xs text-muted-foreground">
+            {projectCandidates(projects, homeId, joined).length
+              ? 'No other projects this assistant can read.'
+              : 'No other projects.'}
+          </p>
         ) : (
           <>
             {/* Above the field, and kept until the next pick. The option

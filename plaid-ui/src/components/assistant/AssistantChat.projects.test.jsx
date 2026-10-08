@@ -33,6 +33,8 @@ const ADAPTER = {
   groupOf: () => ({ key: 'doc', title: 'Text 1', href: null }),
   changePlace: () => ({ name: 'Text 1', href: null }),
   parseCitationHref: () => null,
+  // A project the listing marks `igt: false` is not set up for this app.
+  opensProject: (p) => p.igt !== false,
 };
 
 const SERVICE = {
@@ -243,6 +245,34 @@ describe('AssistantChat and other projects', () => {
     await typeAndSend(m, 'all three?');
     await flush(m, 8);
     expect(lastAsked(client).projects).toEqual([B, C]);
+    await m.unmount();
+  });
+
+  it('offers only the projects this assistant can read', async () => {
+    // A project not set up for the app was offered, and the turn then said it
+    // "could not be opened" with no reason (H9-ACL).
+    const D = { id: 'pD', name: 'Plain D', igt: false };
+    const client = fakeClient({ conv: { messages: [], display: [] } });
+    client.projects.list.mockResolvedValue([{ id: 'p1', name: 'Lamkang A' }, B, C, D]);
+    const m = await mount(client);
+    await flush(m);
+    await m.step(() => m.container.querySelector('[aria-label="Add project"]').click());
+    await flush(m);
+    const names = all(document.body, '[role="option"]').map((n) => n.textContent);
+    expect(names).toEqual(['Lamkang B', 'Lamkang C']);
+    await m.unmount();
+  });
+
+  it('says so when no other project is one this assistant can read', async () => {
+    const D = { id: 'pD', name: 'Plain D', igt: false };
+    const client = fakeClient({ conv: { messages: [], display: [] } });
+    client.projects.list.mockResolvedValue([{ id: 'p1', name: 'Lamkang A' }, D]);
+    const m = await mount(client);
+    await flush(m);
+    await m.step(() => m.container.querySelector('[aria-label="Add project"]').click());
+    await flush(m);
+    expect(all(document.body, '[role="option"]')).toEqual([]);
+    expect(byText(document.body, 'p', 'No other projects this assistant can read.')).toBeTruthy();
     await m.unmount();
   });
 

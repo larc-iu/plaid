@@ -54,6 +54,8 @@ export const AssistantComposer = ({
   // and the button is not offered.
   projects = [],
   maxProjects = null,
+  // Whether the assistant can read a project: only those are offered.
+  opensProject = null,
   onAddProject = null,
   onRemoveProject = null,
   onSend,
@@ -251,6 +253,7 @@ export const AssistantComposer = ({
             homeId={projectId}
             joined={projects}
             max={maxProjects}
+            opens={opensProject}
             disabled={!canSend}
             onPick={onAddProject}
           />
