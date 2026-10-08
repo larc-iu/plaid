@@ -178,12 +178,29 @@ class BaseWorkspace:
         return self._reader
 
     def _version_of(self, entry: dict):
-        """The version to cache a listed document under, or None to read it
-        afresh. A client may opt out, which test doubles do: they reuse ids
-        across different content, so a version means nothing there."""
+        """The :class:`docload.Stamp` to cache a listed document under, or
+        None to read it afresh. A client may opt out, which test doubles do:
+        they reuse ids across different content, so a version means nothing
+        there.
+
+        An entry that knows its version but not when it was last written (a
+        version a query answered) takes the time from the document list when
+        the list holds it at that version, and is read afresh otherwise, so no
+        document is cached under a key a restored database could repeat."""
         if getattr(self.client, 'no_doc_cache', False):
             return None
-        return (entry or {}).get('version')
+        entry = entry or {}
+        version = entry.get('version')
+        if version is None:
+            return None
+        if 'time_modified' in entry:
+            modified = entry['time_modified']
+        else:
+            listed = next((d for d in self.documents() if d.get('id') == entry.get('id')), None)
+            if listed is None or listed.get('version') != version:
+                return None
+            modified = listed.get('time_modified')
+        return docload.Stamp(getattr(self.client, 'base_url', None), version, modified)
 
     def read_ahead(self, wanted, *, once: bool = False) -> None:
         """Start reading documents in the background, a bounded few at a time.

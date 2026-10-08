@@ -18,12 +18,20 @@ The other half of the saving is not reading what will not be parsed. An app
 knows which layers it reads, so it names them and the server never fetches,
 serializes or compresses the rest. See each app's ``read_layer_ids``.
 
-A parsed document is cached under ``(document id, version)``. Every write
-inside a document bumps that version, and so does every write outside it that
-restates the document's body. The version a turn compares against comes from
-the document list it starts from, so a cached document is exact or unused. Any
-reader of a project may read all of its documents, so one process-wide cache
-is safe to share.
+A parsed document is cached under ``(document id, Stamp)``, the stamp being
+the server the document came from, its version and when it was last written.
+Every write inside a document bumps that version, and so does every write
+outside it that restates the document's body. The version a turn compares
+against comes from the document list it starts from, so a cached document is
+exact or unused. Any reader of a project may read all of its documents, so one
+process-wide cache is safe to share.
+
+The version alone is not enough. A process that talks to two servers, or to
+two copies of one database, sees the same id at the same version holding
+different content, and a database restored from a backup under a running
+assistant brings back versions the cache has already seen. The server's
+address tells the first apart, and the time of the last write the second:
+a restored document written again is written at a new time.
 
 What this does NOT cover: renaming a layer, or changing its config, restates
 every document in the project, and no version moves for it. A turn rebuilds
@@ -36,7 +44,7 @@ import os
 import threading
 from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from .limits import DOC_CACHE_SIZE
 
@@ -59,6 +67,21 @@ WINDOW_PER_WORKER = 3
 _ENV_WORKERS = 'PLAID_AGENT_READ_WORKERS'
 
 
+class Stamp(NamedTuple):
+    """Which copy of a document a cached parse is: the server it was read
+    from, its version, and when it was last written (the listing's
+    ``time_modified``)."""
+    server: Optional[str]
+    version: Any
+    modified: Optional[str]
+
+
+def version_of(stamp: Any) -> Any:
+    """The document version a cache key stands for, given a :class:`Stamp`
+    or a bare version."""
+    return stamp.version if isinstance(stamp, Stamp) else stamp
+
+
 def workers() -> int:
     """The ceiling, which an operator may move with ``PLAID_AGENT_READ_WORKERS``.
     One disables overlapping entirely, which is the setting for a server with
@@ -73,7 +96,7 @@ def workers() -> int:
 
 
 class DocCache:
-    """Parsed documents by ``(id, version)``, bounded, least recently used out.
+    """Parsed documents by ``(id, Stamp)``, bounded, least recently used out.
 
     Shared by every turn in this process, so it is locked. The lock covers
     only the dictionary: parsing happens outside it, and two turns that want
@@ -180,7 +203,7 @@ class Reader:
         written between the list read and this read comes back at a later
         version, and caching it under the version we asked for would hand the
         next turn a document that is not what its key claims."""
-        if version is not None and getattr(doc, 'version', None) == version:
+        if version is not None and getattr(doc, 'version', None) == version_of(version):
             self._cache.put(key, doc)
 
     # --- reading ahead ----------------------------------------------------

@@ -901,7 +901,7 @@ class Workspace(BaseWorkspace):
                     and not any(opkind.resolver(self.KIND, op) for op in ops[d])][:PIN_LOAD_MAX]
         # Cached by the version the query saw, so a document already read at
         # that version is not read again.
-        key = {d: self._version_of({'version': versions[d]}) for d in readable}
+        key = {d: self._version_of({'id': d, 'version': versions[d]}) for d in readable}
         self.reader.read_ahead([(d, key[d]) for d in readable])
         out = []
         for did in order:
