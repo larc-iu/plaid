@@ -407,7 +407,8 @@ export const BulkAddDialog = ({
   const [replanned, setReplanned] = useState(false);
 
   const raw = file ? file.text : pasted;
-  const { delimiter, rows } = useMemo(() => parseTable(raw), [raw]);
+  const fileName = file?.name;
+  const { delimiter, rows } = useMemo(() => parseTable(raw, fileName), [raw, fileName]);
 
   // Re-guess the shape whenever the source text changes. The user's manual
   // edits to the mapping live on until then.

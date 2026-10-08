@@ -132,19 +132,25 @@ const unquoted = (text) => {
 };
 
 /**
- * Pick the delimiter from the text itself, outside quoted cells. A tab
- * anywhere wins, because spreadsheets paste as TSV and a TSV cell may well
- * contain a comma. Then semicolon (the separator Excel uses in comma-decimal
- * locales), then comma. Text with no separator at all parses as a single Form
- * column.
+ * Pick the delimiter. A file named .tsv or .tab is tab-separated. Otherwise it
+ * is read from the text outside quoted cells: a tab anywhere wins, because
+ * spreadsheets paste as TSV and a TSV cell may well contain a comma, except in
+ * a file named .csv, which is never tab-separated. Then semicolon (the
+ * separator Excel uses in comma-decimal locales, under a .csv name too), then
+ * comma. Text with no separator at all parses as a single Form column.
+ *
+ * @param {string} text
+ * @param {string} [name] - the file's name, when the text came from a file
  */
-export const detectDelimiter = (text) => {
+export const detectDelimiter = (text, name = '') => {
+  const suffix = /\.([^.]+)$/.exec(String(name ?? ''))?.[1]?.toLowerCase();
+  if (suffix === 'tsv' || suffix === 'tab') return '\t';
   const sample = unquoted(String(text ?? '').slice(0, 64 * 1024));
-  if (sample.includes('\t')) return '\t';
+  if (suffix !== 'csv' && sample.includes('\t')) return '\t';
   const semis = (sample.match(/;/g) || []).length;
   const commas = (sample.match(/,/g) || []).length;
   if (semis > commas) return ';';
-  if (commas > 0) return ',';
+  if (commas > 0 || suffix === 'csv') return ',';
   return '\t';
 };
 
@@ -208,9 +214,9 @@ export const parseDelimited = (text, delimiter) => {
   return rows;
 };
 
-/** Detect the delimiter and parse in one step. */
-export const parseTable = (text) => {
-  const delimiter = detectDelimiter(text);
+/** Detect the delimiter and parse in one step. `name` is the file's, if any. */
+export const parseTable = (text, name) => {
+  const delimiter = detectDelimiter(text, name);
   return { delimiter, rows: parseDelimited(text, delimiter) };
 };
 

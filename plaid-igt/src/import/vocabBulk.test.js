@@ -67,6 +67,23 @@ describe('detectDelimiter', () => {
     expect(detectDelimiter('"a ""b""\tc",d\n')).toBe(',');
     expect(detectDelimiter('"a ""b"""\td\n')).toBe('\t');
   });
+
+  it("trusts a file's .csv or .tsv name", () => {
+    // A .tsv is tab-separated whatever its cells hold.
+    expect(detectDelimiter('form\nka, kb\n', 'words.tsv')).toBe('\t');
+    expect(detectDelimiter('form\tgloss\n"ka;kb"\tI\n', 'WORDS.TSV')).toBe('\t');
+    // A .csv is never tab-separated, even with a stray tab outside quotes, and
+    // may still use semicolons.
+    expect(detectDelimiter('form,gloss\nka,I\tme\n', 'words.csv')).toBe(',');
+    expect(detectDelimiter('form;gloss\nka;dog, hound\n', 'words.csv')).toBe(';');
+    expect(detectDelimiter('form\nka\n', 'words.csv')).toBe(',');
+    // Another name reads the text, as a paste does.
+    expect(detectDelimiter('form\tgloss\nka\tI\n', 'words.txt')).toBe('\t');
+    expect(parseTable('form,gloss\nka,I\tme\n', 'words.csv').rows[1].cells).toEqual([
+      'ka',
+      'I\tme',
+    ]);
+  });
 });
 
 describe('parseDelimited', () => {
