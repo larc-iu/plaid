@@ -457,10 +457,22 @@ class FileKeeper:
         file_id = str(uuid.uuid4())
         parts = chunk(text, self.budget)
         base = file_key(self.store.app, self.store.project_id, self.conv_id, file_id)
-        for n, part in enumerate(parts):
-            key = f'{base}:part:{n}'
-            client.user_data.put(self.store.user_id, key, part)
-            self._keys.append(key)
+        written: List[str] = []
+        try:
+            for n, part in enumerate(parts):
+                key = f'{base}:part:{n}'
+                client.user_data.put(self.store.user_id, key, part)
+                written.append(key)
+        except BaseException:
+            # The parts already stored would be named by nothing, so would sit
+            # in the store until the conversation went.
+            for key in written:
+                try:
+                    client.user_data.delete(self.store.user_id, key)
+                except Exception:  # noqa: BLE001 - what is left goes with the conversation
+                    pass
+            raise
+        self._keys.extend(written)
         lines = text.count('\n') + (0 if text.endswith('\n') or not text else 1)
         ref = {'id': file_id, 'name': name, 'bytes': len(text.encode('utf-8')), 'lines': lines,
                'chunks': len(parts)}
@@ -474,14 +486,15 @@ class FileKeeper:
         self.refs.append({**ref, 'name': name})
         return a
 
-    def save(self, files: 'Attachments', name: str, text: str) -> Attachment:
+    def save(self, files: 'Attachments', name: str, text: str, also: Optional[str] = None) -> Attachment:
         """Store ``text`` as a file this turn MADE for the user (``save_file``),
         which the reply carries for them to download and later turns read like
         an attachment. Saving a name this turn already saved replaces that
         file, so code run again after a fix leaves one file, not two. The name
         is the one asked for or the one it was saved as, which differ when it
-        clashed with an attachment."""
-        earlier = self._made.get(name.casefold())
+        clashed with an attachment. ``also`` is one more name it answers to:
+        the one asked for, when the file was saved under another suffix."""
+        earlier = self._made.get(name.casefold()) or (self._made.get(also.casefold()) if also else None)
         if earlier is None and len({id(a) for a in self._made.values()}) >= MAX_SAVED:
             raise ValueError(f'One reply can carry {MAX_SAVED} files, and this one already has '
                              f'{MAX_SAVED}. Put what is left in one of them.')
@@ -501,6 +514,8 @@ class FileKeeper:
         self.refs[-1]['made'] = True
         self._made[name.casefold()] = a
         self._made[a.name.casefold()] = a
+        if also:
+            self._made[also.casefold()] = a
         return a
 
     def _drop(self, files: 'Attachments', a: Attachment) -> None:

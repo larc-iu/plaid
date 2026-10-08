@@ -17,7 +17,8 @@ go into the note.
 """
 
 import json
-from typing import Any, Callable, Dict, List, Optional
+import unicodedata
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import pdftext
 from .args import clamp_limit, whole
@@ -190,6 +191,29 @@ def need_files(ws):
         raise ToolError('Nothing is attached to this conversation. A file is attached in the chat, '
                         'with the paperclip beside the message box.')
     return attached
+
+
+def made_file(ws, name: Any) -> bool:
+    """Whether ``name`` is a file this conversation's assistant made
+    (save_file). What it holds may have been typed, so reading it vouches
+    for nothing (see core.garble)."""
+    attached = getattr(ws, 'files', None)
+    if not attached or not isinstance(name, str):
+        return False
+    try:
+        return bool(getattr(attached.get(name), 'made', False))
+    except ValueError:
+        return False
+
+
+def vouches(ws, tool: Any, args: Any) -> bool:
+    """Whether the answer to a call of ``tool`` with ``args`` is text a value
+    can be copied from: every read but a read of a file the assistant made."""
+    return not (tool in NAMES and isinstance(args, dict) and made_file(ws, args.get('name')))
+
+
+# The host functions that read one file by name, for :func:`made_file`.
+READERS = ('file_rows', 'file_text')
 
 
 def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
@@ -387,10 +411,41 @@ def save_help(ws) -> str:
     return SAVE_HELP.format(suffixes=', '.join(SAVE_SUFFIXES))
 
 
-def _table_text(name: str, rows: List[Any]) -> str:
-    """Rows as the text of a .csv or .tsv, quoted by the standard library."""
-    import csv
-    import io
+# What a reader that guesses the separator from the text looks at: the first
+# 64 KB, where a tab anywhere means tab-separated, and more semicolons than
+# commas mean semicolon-separated.
+SNIFFED = 64 * 1024
+
+
+def _cell(v: Any) -> str:
+    """One cell, quoted when it holds a separator of any kind (a tab, a comma,
+    a semicolon), a quote or a line break, so a reader keeps it whole whichever
+    separator it settles on."""
+    text = '' if v is None else str(v)
+    if any(c in text for c in '\t,;"\n\r'):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def _sniffed_as(text: str) -> str:
+    """The separator a reader that guesses from the text takes ``text`` for."""
+    sample = text[:SNIFFED]
+    if '\t' in sample:
+        return '\t'
+    semis, commas = sample.count(';'), sample.count(',')
+    return ';' if semis > commas else ','
+
+
+def _table_text(name: str, rows: List[Any]) -> Tuple[str, str]:
+    """Rows as the text of a .csv or .tsv, and the name to save it under.
+
+    Every cell holding a separator is quoted, so a one-column table reads the
+    same under any separator. A .csv whose cells hold a tab, or more
+    semicolons than the commas between its cells, would be taken for
+    tab- or semicolon-separated by an import screen that guesses from the
+    text, and is saved as a .tsv instead, which every such reader takes for
+    what it is. The cells themselves are written exactly as given: a form
+    such as "=PL" or "-ka" is data, not a formula."""
     if rows and all(isinstance(r, dict) for r in rows):
         columns: List[str] = []
         for r in rows:
@@ -403,11 +458,29 @@ def _table_text(name: str, rows: List[Any]) -> str:
     else:
         raise ValueError('A table is a list of dicts, one per row, or a list of lists with the header '
                          'first. Not a mix of the two.')
-    out = io.StringIO()
-    writer = csv.writer(out, delimiter='\t' if name.lower().endswith('.tsv') else ',', lineterminator='\n')
-    for row in table:
-        writer.writerow(['' if v is None else v for v in row])
-    return out.getvalue()
+
+    def written(sep: str) -> str:
+        return ''.join(sep.join(_cell(v) for v in row) + '\n' for row in table)
+
+    if name.lower().endswith('.tsv'):
+        return written('\t'), name
+    text = written(',')
+    if _sniffed_as(text) == ',':
+        return text, name
+    return written('\t'), name[:-4] + '.tsv'
+
+
+def _decoded(text: str) -> Any:
+    """What a reader decodes ``text`` to, where that is more than the text:
+    JSON writes any letter as an escape (\\u...), which hides its script from
+    a check of the text alone. None when it is not JSON."""
+    first = text.lstrip()[:1]
+    if first not in ('[', '{', '"'):
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
 
 
 def save_api(ws) -> Dict[str, Callable]:
@@ -425,23 +498,35 @@ def save_api(ws) -> Dict[str, Callable]:
         return {}
 
     def save_file(name: str, content: Any) -> str:
-        name = ' '.join(str(name or '').split())
+        # Control and format characters (a NUL, a right-to-left override) and
+        # half characters are dropped: on the download they would hide or
+        # reorder the name, or fail to be stored.
+        name = ''.join(c for c in str(name or '') if unicodedata.category(c) not in ('Cc', 'Cf', 'Cs') or c.isspace())
+        name = ' '.join(name.split())
         if not name or '/' in name or '\\' in name or len(name) > 120:
             raise ValueError('Give the file a plain name, with no folder, such as "words cleaned.csv".')
         lower = name.lower()
         if not lower.endswith(SAVE_SUFFIXES):
             raise ValueError('A saved file ends in one of ' + ', '.join(SAVE_SUFFIXES) + '.')
+        why_tsv = ''
         if isinstance(content, str):
             text = content
         elif lower.endswith('.json'):
             text = json.dumps(content, ensure_ascii=False, indent=1)
         elif lower.endswith(('.csv', '.tsv')) and isinstance(content, (list, tuple)):
-            text = _table_text(name, list(content))
+            asked = name
+            text, name = _table_text(name, list(content))
+            if name != asked:
+                why_tsv = (' It is tab-separated, since its cells hold tabs or semicolons that an import '
+                           'screen would take for the separator of a .csv.')
         else:
             raise ValueError('content is text, or for a .csv or .tsv a list of rows.')
         # What it holds is checked like a plan's values: the user takes this
         # file elsewhere, and a garbled form in it goes with them.
-        why = ws.garbled(text) if hasattr(ws, 'garbled') else None
+        # A .json is checked as it decodes too, since its text may spell a
+        # letter as an escape.
+        decoded = _decoded(text) if isinstance(content, str) else None
+        why = ws.garbled([text, decoded]) if hasattr(ws, 'garbled') else None
         if why:
             raise ValueError(why)
         size = len(text.encode('utf-8'))
@@ -450,8 +535,9 @@ def save_api(ws) -> Dict[str, Callable]:
                              'hold. Split it in two.')
         if ws.files is None:
             ws.files = Attachments([])
-        a = keeper.save(ws.files, name, text)
-        return (f'Saved "{a.name}" ({a.lines:,} lines). It is on your reply for the user to download: '
+        a = keeper.save(ws.files, name, text, also=asked if why_tsv else None)
+        lines = f'{a.lines:,} line{"" if a.lines == 1 else "s"}'
+        return (f'Saved "{a.name}" ({lines}).{why_tsv} It is on your reply for the user to download: '
                 'say in your reply what it holds.')
 
     return {'save_file': save_file}

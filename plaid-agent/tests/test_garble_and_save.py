@@ -44,15 +44,17 @@ def test_a_script_is_seen_from_an_answer_but_not_from_what_the_call_asked():
     seen.add(f'No entry matches "{GARBLED}".', unless={'form': GARBLED})
     assert seen.scripts == set()
     seen.add(f'{WANCHO}: bamboo', unless={'form': 'bamboo'})
-    assert seen.scripts == {'WANCHO'}
+    assert seen.scripts == {'script:Wancho'}
 
 
 def test_letters_of_the_common_scripts_are_never_in_doubt():
-    assert scripts_of('Grüße, Ελληνικά, हिन्दी, 漢字') == set()
+    # Read, they vouch for their scripts (a Han character for every Han one).
+    assert scripts_of('Grüße, Ελληνικά, हिन्दी, 漢字') == {
+        'script:Latin', 'script:Greek', 'script:Devanagari', 'script:Han'}
     assert refusal({'value': 'हिन्दी'}, Seen()) is None
 
 
-def test_a_broken_character_is_refused_whatever_was_seen():
+def test_a_broken_character_is_refused_when_nothing_read_holds_one():
     why = refusal({'value': '��' + WANCHO}, Seen())
     assert why and 'broken character' in why
 
@@ -160,7 +162,7 @@ def test_the_seed_keeps_what_the_user_pasted_and_drops_what_a_call_only_echoed()
     seen = Seen()
     seed(seen, 'system', transcript)
     # The arguments arrive escaped (json.dumps), and still hide nothing.
-    assert seen.scripts == {'WANCHO'}
+    assert seen.scripts == {'script:Wancho'}
 
 
 # --- save_file ----------------------------------------------------------------------

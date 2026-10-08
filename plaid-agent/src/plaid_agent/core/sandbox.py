@@ -343,11 +343,23 @@ def noted(ws, api: Dict[str, Callable]) -> Dict[str, Callable]:
     if seen is None:
         return api
 
-    def wrap(f):
+    from .filetools import READERS, made_file
+
+    def wrap(name, f):
         def read(*args, **kwargs):
-            return seen.add(f(*args, **kwargs), unless=[args, kwargs])
+            answer = f(*args, **kwargs)
+            # A file the assistant made vouches for nothing: what it holds may
+            # have been typed.
+            if name in READERS and made_file(ws, args[0] if args else kwargs.get('name')):
+                return seen.add_made(answer)
+            if name == 'files':
+                mine = [r for r in answer if made_file(ws, r.get('name'))]
+                seen.add_made(mine)
+                seen.add([r for r in answer if r not in mine], unless=[args, kwargs])
+                return answer
+            return seen.add(answer, unless=[args, kwargs])
         return read
-    return {name: (f if name in _WRITERS else wrap(f)) for name, f in api.items()}
+    return {name: (f if name in _WRITERS else wrap(name, f)) for name, f in api.items()}
 
 
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]]) -> str:

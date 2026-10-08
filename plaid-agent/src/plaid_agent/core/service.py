@@ -586,7 +586,7 @@ class BaseAssistantService(BaseService):
             overhead = (system, self.kit.tools_for(ws))
             # What the turn was given is text a value can be copied from (see
             # core.garble).
-            seed(ws.seen, system, transcript)
+            seed(ws.seen, system, transcript, lambda tool, args: filetools.vouches(ws, tool, args))
 
         def fit(record):
             """The record held to its budget (`prune`)."""

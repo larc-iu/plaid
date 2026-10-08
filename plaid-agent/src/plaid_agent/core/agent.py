@@ -25,6 +25,7 @@ import litellm
 from plaid_client import ServiceCancelled
 from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
+from .filetools import vouches
 from .tools import truncate
 from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
@@ -700,8 +701,12 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
                 # What the answer holds is text the turn can copy from, less
                 # what it only echoes of the call (see core.garble).
+                # A read of a file the assistant made is not, and what code read
+                # from one is held against what the run printed.
                 if getattr(ws, 'seen', None) is not None:
-                    ws.seen.add(result, unless=args)
+                    withheld = ws.seen.take_made()
+                    if vouches(ws, name, args):
+                        ws.seen.add(result, unless=args, withheld=withheld)
                 planned = len(ws.ops) - planned_before
                 if planned:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
