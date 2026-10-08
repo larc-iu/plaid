@@ -91,6 +91,27 @@
           (is (not= etag (get-in (h {:request-method :get :uri "/client/ids.js"})
                                  [:headers "ETag"]))))))))
 
+(deftest revalidates-a-star-a-weak-tag-and-a-list
+  ;; If-None-Match compares weakly, and `*` matches any current copy (H9-ACL
+  ;; notes). Both answered 200 before.
+  (with-client-handler
+    (fn [handler]
+      (let [etag (get-in (get-uri handler "/client/http.js") [:headers "ETag"])
+            status (fn [inm] (:status (handler {:request-method :get :uri "/client/http.js"
+                                                :headers {"if-none-match" inm}})))]
+        (is (= 304 (status "*")))
+        (is (= 304 (status (str "W/" etag))))
+        (is (= 304 (status (str "\"other\", W/" etag))))
+        (is (= 304 (status etag)))
+        (is (= 200 (status "W/\"other\"")))
+        (let [r (handler {:request-method :get :uri "/client/http.js"
+                          :headers {"if-none-match" "*"}})]
+          (is (= etag (get-in r [:headers "ETag"])))
+          (is (nil? (:body r))))
+        (testing "a miss still falls through, whatever the header"
+          (is (= 404 (:status (handler {:request-method :get :uri "/client/nope.js"
+                                        :headers {"if-none-match" "*"}})))))))))
+
 (deftest head-answers-the-headers
   (with-client-handler
     (fn [handler]

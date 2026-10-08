@@ -267,6 +267,18 @@
                             (.digest (java.security.MessageDigest/getInstance "SHA-256") body))
                 "\"")}))
 
+(defn- unchanged-for?
+  "Does the request's If-None-Match name `etag`? Its value is `*` (any
+  current copy) or a comma-separated list of tags, compared weakly as the
+  header asks (RFC 9110 13.1.2), so a `W/` tag a proxy weakened still
+  matches its strong original."
+  [request etag]
+  (when-let [header (get-in request [:headers "if-none-match"])]
+    (let [strip (fn [tag] (let [tag (str/trim tag)]
+                            (if (str/starts-with? tag "W/") (subs tag 2) tag)))]
+      (or (= "*" (str/trim header))
+          (boolean (some #(= (strip etag) (strip %)) (str/split header #",")))))))
+
 (defn wrap-client-js
   "Serve the JavaScript client that matches this core's version at
   /client/plaid-client.js, with its types at /client/plaid-client.d.ts.
@@ -275,7 +287,9 @@
   at the same path. The validator is an ETag of the content, not a
   Last-Modified date: a jar's resources carry the jar file's date, so a
   rollback to an older jar would answer 304 to a browser holding the newer
-  client. HEAD answers the same headers. Misses fall through."
+  client. A request whose If-None-Match names the content (`*`, the tag, or
+  the tag marked weak) is answered 304. HEAD answers the same headers.
+  Misses fall through."
   [handler]
   (let [dev-dir (not-empty (System/getProperty client-js-dir-property))
         ;; A jar's files never change while it runs. The working tree's do.
@@ -294,13 +308,17 @@
                         (str/starts-with? uri "/client/")
                         (client-js-file uri))]
         (if-let [{:keys [body etag]} (entry rel)]
-          {:status 200
-           :headers {"Content-Type" (if (str/ends-with? rel ".js")
-                                      "text/javascript; charset=utf-8"
-                                      "text/plain; charset=utf-8")
-                     "Cache-Control" "no-cache"
-                     "ETag" etag}
-           :body (when (= :get request-method) body)}
+          (if (unchanged-for? request etag)
+            {:status 304
+             :headers {"Cache-Control" "no-cache" "ETag" etag}
+             :body nil}
+            {:status 200
+             :headers {"Content-Type" (if (str/ends-with? rel ".js")
+                                        "text/javascript; charset=utf-8"
+                                        "text/plain; charset=utf-8")
+                       "Cache-Control" "no-cache"
+                       "ETag" etag}
+             :body (when (= :get request-method) body)})
           (handler request))
         (handler request)))))
 
