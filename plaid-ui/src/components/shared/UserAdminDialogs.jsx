@@ -47,7 +47,11 @@ export const UserAdminDialogs = ({ controller }) => {
               <Label htmlFor="user-admin-email">Email address</Label>
               <Input
                 id="user-admin-email"
-                type="email"
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                autoComplete="off"
                 placeholder="you@example.com"
                 value={newUser.email}
                 onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}

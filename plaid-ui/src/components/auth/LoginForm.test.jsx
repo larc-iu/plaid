@@ -73,6 +73,25 @@ describe('LoginForm', () => {
     expect(sessionStorage.getItem('plaid:logout-reason')).toBe(null);
   });
 
+  // H10-SCRIPTS-2: the browser's email check refused `müller@x.de` and sent
+  // `a@bücher.de` as punycode.
+  it('sends an address with letters outside ASCII as typed', async () => {
+    auth.login.mockResolvedValue({ success: true });
+    const { container, step } = await mount();
+    const input = container.querySelector('#email');
+    expect(input.type).toBe('text');
+    expect(input.inputMode).toBe('email');
+
+    await step(async () => {
+      fill(container, 'email', 'Müller@bücher.de');
+      fill(container, 'password', 'pw');
+      expect(container.querySelector('form').checkValidity()).toBe(true);
+      submit(container);
+    });
+
+    expect(auth.login).toHaveBeenCalledWith('Müller@bücher.de', 'pw');
+  });
+
   it('shows what the refusal was, and says nothing on success', async () => {
     auth.login.mockResolvedValue({ success: false, error: 'Email or password is incorrect.' });
     const { container, step } = await mount();

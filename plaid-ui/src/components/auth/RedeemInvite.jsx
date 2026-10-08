@@ -189,12 +189,15 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
                     <Label htmlFor="invite-email">Your email address</Label>
                     <Input
                       id="invite-email"
-                      type="email"
+                      type="text"
+                      inputMode="email"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       placeholder="e.g. jsmith@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       disabled={submitting}
-                      autoComplete="email"
+                      autoComplete="username"
                       autoFocus
                     />
                     <p className="text-xs text-muted-foreground">
