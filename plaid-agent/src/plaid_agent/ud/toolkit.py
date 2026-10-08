@@ -80,7 +80,8 @@ TOOLS = [
         {'document': _DOC,
          'sentences': {'type': 'array', 'items': {'type': 'string'},
                        'description': 'Just these sentences, e.g. ["s34","s64","s104"]. A word '
-                                      'reference like "s34.w2" names its sentence. Overrides the '
+                                      'reference like "s34.w2" names its sentence, and "sent_id=a3" '
+                                      'the sentence whose stored sent_id is a3. Overrides the '
                                       'range below.'},
          'from_sentence': {'type': ['integer', 'string'],
                            'description': 'First sentence, 1-based: 3 or "s3" (default 1).'},

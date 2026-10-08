@@ -202,6 +202,8 @@ def read_document(ws, document: str = None, from_sentence=None, to_sentence=None
     """
     doc = ws.doc(document)
     if sentences:
+        items = sentences if isinstance(sentences, list) else [sentences]
+        sentences = [f's{n}' if (n := ws.sentence_named(doc, item)) is not None else item for item in items]
         picked = sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
         return truncate(ws.render(doc, indexes=picked, budget=RENDER_BUDGET))
     lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)

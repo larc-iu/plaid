@@ -324,9 +324,14 @@ def merge_op(ws: Workspace, doc, ref: str):
         raise ToolError('s1 has nothing before it to join. Name the SECOND of the two sentences, '
                         'so s3 joins s2 and s3 into one.')
     before = doc.sentences[sentence.index - 2]
-    return ({'kind': 'merge_sentences', 'document_id': doc.id, 'sentence_id': sentence.id,
-             'previous_id': before.id, 'ref': ref, 'label': f'merge s{before.index} and s{sentence.index}'},
-            before, sentence)
+    op = {'kind': 'merge_sentences', 'document_id': doc.id, 'sentence_id': sentence.id,
+          'previous_id': before.id, 'ref': ref, 'label': f'merge s{before.index} and s{sentence.index}'}
+    # A sentence with no words between the two has no number, and the merge
+    # takes it in, as the editor's boundary toggle does.
+    between = [i for i, b, e in doc.wordless if before.end <= b and e <= sentence.begin]
+    if between:
+        op['between_ids'] = between
+    return op, before, sentence
 
 
 def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root_head=None,
@@ -363,4 +368,5 @@ def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
 
 
 def apply_merge_sentences(op: Dict[str, Any], b, stamp) -> None:
-    b.add(lambda batch, o=op: batch.tokens.merge(o['previous_id'], o['sentence_id']))
+    for joined in list(op.get('between_ids') or []) + [op['sentence_id']]:
+        b.add(lambda batch, o=op, j=joined: batch.tokens.merge(o['previous_id'], j))

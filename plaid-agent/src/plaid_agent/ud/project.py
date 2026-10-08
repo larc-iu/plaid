@@ -38,6 +38,7 @@ from plaid_client.workflows.messages import setup_incomplete
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
+from ..core.args import sentence_number
 from ..core.refs import clip, read_ref, same_form
 
 UD = 'ud'
@@ -426,6 +427,10 @@ class UdDoc:
     #: A pair can hold more than one row, and a split takes them all, as the
     #: editor's ``relationsCrossing`` does.
     suppressors: Dict[Tuple[str, str], List[str]] = dc_field(default_factory=dict)
+    #: The sentences holding no word, as ``(id, begin, end)`` in order. They
+    #: have no number and are not in ``sentences``, as the app shows no row
+    #: for them. A merge across one takes it in.
+    wordless: List[Tuple[str, int, int]] = dc_field(default_factory=list)
 
     def suppressor_over(self, source_span_id: str, target_span_id: str) -> Optional[str]:
         """The suppressor over this pair of lemma spans, if there is one: the
@@ -530,8 +535,9 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
     tokens = sorted(token_layer.get('tokens') or [], key=lambda t: (t['begin'], t['end']))
     by_lemma_span: Dict[str, Word] = {}
     sentences: List[Sentence] = []
+    wordless: List[Tuple[str, int, int]] = []
     ti = 0
-    for si, s in enumerate(sorted(sent_layer.get('tokens') or [], key=lambda t: t['begin']), start=1):
+    for s in sorted(sent_layer.get('tokens') or [], key=lambda t: t['begin']):
         while ti < len(tokens) and tokens[ti]['begin'] < s['begin']:
             ti += 1
         sent_tokens: List[Token] = []
@@ -561,8 +567,14 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
                 if fields.get('lemma'):
                     by_lemma_span[fields['lemma'].id] = word
             sent_tokens.append(tok)
+        if not sent_tokens:
+            # No words, so no number: plaid-ud gives such a sentence no row
+            # (sentenceRows.js `sentenceHoldsWords`), and the rows after it
+            # number on without a gap. The mirror test holds the two together.
+            wordless.append((s['id'], s['begin'], s['end']))
+            continue
         sentences.append(Sentence(
-            id=s['id'], index=si, begin=s['begin'], end=s['end'],
+            id=s['id'], index=len(sentences) + 1, begin=s['begin'], end=s['end'],
             text=''.join(chars[s['begin']:s['end']]).strip(),
             tokens=sent_tokens, metadata=s.get('metadata') or {}))
 
@@ -580,7 +592,7 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
         target.relation_metadata = rel.get('metadata')
     suppressors = _read_enhanced(word_layer, project, basic, by_lemma_span, sentences)
     return UdDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences,
-                 raw.get('metadata') or {}, raw.get('version'), suppressors)
+                 raw.get('metadata') or {}, raw.get('version'), suppressors, wordless)
 
 
 def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
@@ -813,6 +825,40 @@ def _rows(s: Sentence) -> List[List[str]]:
     return rows
 
 
+#: The line a read prints the stored ``sent_id`` under, beside the positional
+#: ref, and the prefix read_document takes it back with ("sent_id=a3").
+STORED_SENT_ID = 'stored sent_id'
+SENT_ID_PREFIX = 'sent_id='
+
+
+def by_stored_sent_id(doc: 'UdDoc', item: Any) -> Optional[int]:
+    """The number of the sentence a ``sentences`` item names by its stored
+    ``sent_id``, or None when the item is not that kind. ``"sent_id=12"``
+    always means the stored id, so a numeric one cannot be read as a place. A
+    bare item that is no positional ref ("a3") is looked up too. Raises
+    ValueError when the stored id names no sentence."""
+    text = str(item).strip()
+    explicit = text.lower().replace(' ', '').startswith(SENT_ID_PREFIX)
+    if explicit:
+        text = text.split('=', 1)[1].strip()
+    else:
+        try:
+            sentence_number(item, 'sentences')
+            return None
+        except ValueError:
+            pass
+    found = [s.index for s in doc.sentences if str(s.metadata.get('sent_id') or '').strip() == text]
+    if not found and not explicit:
+        return None
+    if len(found) == 1:
+        return found[0]
+    if found:
+        raise ValueError(f'"{text}" is the stored sent_id of {len(found)} sentences in "{doc.name}": '
+                         + ', '.join(f's{n}' for n in found) + '. Read them by those refs.')
+    raise ValueError(f'No sentence in "{doc.name}" has the stored sent_id "{text}". A read prints it as '
+                     f'"# {STORED_SENT_ID} = ...", beside the ref (s3) that every tool takes.')
+
+
 def render_sentence(s: Sentence, *, header: bool = True) -> str:
     """One sentence as CoNLL-U rows, tab-separated as CoNLL-U itself is (an
     aligned layout cost nearly twice the characters, and a read is paid for
@@ -824,6 +870,10 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
         # The renderer owns these two: `sent_id` is the address the model must
         # use to refer to the sentence, whatever the corpus called it.
         out.append(f'# sent_id = s{s.index}')
+        # The treebank's own id, which the export writes and a user may quote.
+        stored = s.metadata.get('sent_id')
+        if isinstance(stored, str) and stored.strip():
+            out.append(f'# {STORED_SENT_ID} = {stored.strip()}')
         out.append(f'# text = {s.text}')
         for k in sorted(s.metadata):
             if k not in ('sent_id', 'text') and isinstance(s.metadata[k], str) and s.metadata[k]:

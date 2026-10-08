@@ -29,7 +29,10 @@ Where they are not, the token is a MULTI-WORD TOKEN: Spanish "al" is one token h
 its own, and neither does a sentence: everything sits on a word.
 - Addressing is CoNLL-U's own, always together with the document: s3 is a sentence, s3.w2 is the word whose \
 CoNLL-U id is 2 in it, s3.w1-2 the multi-word token spanning words 1 and 2. Those are the numbers reads print \
-in the ID column and the numbers the HEAD column points at. Numbers restart in every document and sentence.
+in the ID column and the numbers the HEAD column points at. Numbers restart in every document and sentence. \
+A sentence with no words has no number, as in the app. A sentence's own id from the treebank, which the export \
+writes and a user may quote, reads as "# stored sent_id = a3": read_document with sentences ["sent_id=a3"] \
+finds it, and every tool then takes its ref.
 - A value followed by ~ was made by a machine and nobody has confirmed it. A ^ is a contributor's unreviewed \
 work. Both are waiting for a reviewer, and confirm is what clears them.
 

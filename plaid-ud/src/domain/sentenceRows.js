@@ -44,6 +44,16 @@ export const tokensWithin = (sorted, parent) => {
   return out;
 };
 
+// Whether a sentence gets a row, and with it a number. A sentence holding no
+// word (a punctuation-only line another app left untokenized) has none, so
+// the rows after it number on without a gap. The grid, Ask, `@`, comment
+// anchors, the export and the boundary toggle all go by this, and the ud
+// assistant's reader (plaid-agent ud/project.py `parse_document`) leaves the
+// same sentences out. Both lists sorted by position.
+export const sentenceHoldsWords = (sentence, sortedWords, sortedMorphemes) =>
+  tokensWithin(sortedWords, sentence).length > 0 ||
+  tokensWithin(sortedMorphemes, sentence).length > 0;
+
 // A word another app made (igt's Tokenize, an import into it) has no UD word
 // under it until a writer opens the document and the repair on open seeds one
 // (ConlluDocument._reconcile). A reader never seeds, and neither does an
@@ -140,6 +150,7 @@ export function buildSentenceRows(body, layerInfo) {
   const rowsByMorpheme = new Map();
 
   effectiveSentences.forEach((sentence, sentenceIdx) => {
+    if (!sentenceHoldsWords(sentence, wordTokens, morphemeTokens)) return;
     const wordsInSentence = tokensWithin(wordTokens, sentence);
 
     const morphemeEntries = [];
@@ -167,8 +178,6 @@ export function buildSentenceRows(body, layerInfo) {
         tokenIndex += 1;
       });
     }
-
-    if (morphemeEntries.length === 0) return;
 
     const rowIndex = rows.length;
     morphemeEntries.forEach((entry) => {

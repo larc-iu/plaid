@@ -54,7 +54,7 @@ Citation form, lowercase except proper nouns.
 
 What a word is here:
 - A TOKEN is what the text is divided into. A WORD is what gets annotated. Usually they are the same thing. Where they are not, the token is a MULTI-WORD TOKEN: Spanish "al" is one token holding the two words "a" and "el", and reads print it as a range line (2-3 al) above its words. A multi-word token carries no annotation of its own, and neither does a sentence: everything sits on a word.
-- Addressing is CoNLL-U's own, always together with the document: s3 is a sentence, s3.w2 is the word whose CoNLL-U id is 2 in it, s3.w1-2 the multi-word token spanning words 1 and 2. Those are the numbers reads print in the ID column and the numbers the HEAD column points at. Numbers restart in every document and sentence.
+- Addressing is CoNLL-U's own, always together with the document: s3 is a sentence, s3.w2 is the word whose CoNLL-U id is 2 in it, s3.w1-2 the multi-word token spanning words 1 and 2. Those are the numbers reads print in the ID column and the numbers the HEAD column points at. Numbers restart in every document and sentence. A sentence with no words has no number, as in the app. A sentence's own id from the treebank, which the export writes and a user may quote, reads as "# stored sent_id = a3": read_document with sentences ["sent_id=a3"] finds it, and every tool then takes its ref.
 - A value followed by ~ was made by a machine and nobody has confirmed it. A ^ is a contributor's unreviewed work. Both are waiting for a reviewer, and confirm is what clears them.
 
 How to work:
@@ -116,7 +116,7 @@ The documents by name, a page at a time, optionally filtered by a name substring
 Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, head and deprel, and a range line for each multi-word token. A sentence whose enhanced graph differs from its tree carries a DEPS column as well. A value followed by ~ was made by a machine and nobody has confirmed it; ^ is a contributor's unreviewed work. Up to 40 sentences per call, fewer when they are long: the first line says which sentences were shown and where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get them all in ONE call. Paging a long document with from_sentence/to_sentence costs a call per page and will run out of steps before it runs out of document.
 
 - `document` (string, required): Document id or exact name (see project_overview).
-- `sentences` (array of string): Just these sentences, e.g. ["s34","s64","s104"]. A word reference like "s34.w2" names its sentence. Overrides the range below.
+- `sentences` (array of string): Just these sentences, e.g. ["s34","s64","s104"]. A word reference like "s34.w2" names its sentence, and "sent_id=a3" the sentence whose stored sent_id is a3. Overrides the range below.
 - `from_sentence` (integer or string): First sentence, 1-based: 3 or "s3" (default 1).
 - `to_sentence` (integer or string): Last sentence, inclusive: 8 or "s8".
 
@@ -412,6 +412,7 @@ Document "Viaje" (2 sentences, 7 words)
 # genre = fiction
 
 # sent_id = s1
+# stored sent_id = train-1
 # text = Vamos al mar.
 ID	FORM	LEMMA	UPOS	XPOS	FEATS	HEAD	DEPREL
 1	Vamos	ir	VERB	_	Mood=Ind|Number=Plur	0	root

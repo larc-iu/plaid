@@ -116,5 +116,8 @@ class Corpus(BaseCorpus):
 
     def sizes(self) -> Dict[str, int]:
         """How much corpus there is: sentences and words."""
-        return {'sentences': self.count([['token', '?s', {'layer': self.p.sentence_layer_id}]], ['?s']),
+        # A sentence holding no word has no number in the app, and none here.
+        return {'sentences': self.count([['token', '?s', {'layer': self.p.sentence_layer_id}],
+                                         ['token', '?w', {'layer': self.p.token_layer_id}],
+                                         ['within', '?w', '?s']], ['?s']),
                 'words': self.count([self.word('?t')], ['?t'])}

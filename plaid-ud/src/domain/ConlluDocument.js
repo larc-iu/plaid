@@ -48,7 +48,7 @@ import {
 import { validateConlluDocument } from './validate.js';
 import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
-import { buildSentenceRows, isVirtualWordId } from './sentenceRows.js';
+import { buildSentenceRows, isVirtualWordId, sentenceHoldsWords } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
@@ -672,20 +672,49 @@ export class ConlluDocument extends DocumentModel {
     if (startsHere) {
       // Remove the boundary: merge with the preceding sentence. Merging
       // only widens a sentence, so no dependency relation can become invalid.
-      const prevSent = sentenceTokens.find((s) => s.end === charPos);
+      // A sentence with no words between has no row (`sentenceHoldsWords`),
+      // so the sentence before on screen is the nearest one with words, and
+      // the word-less ones between join it too.
+      let prevSent = sentenceTokens.find((s) => s.end === charPos);
       if (!prevSent) return false;
+      const sorted = (layer) => [...(layer?.tokens || [])].sort((a, b) => a.begin - b.begin);
+      const words = sorted(this.layerInfo.wordTokenLayer);
+      const morphemes = sorted(this.layerInfo.morphemeTokenLayer);
+      const between = [];
+      for (;;) {
+        if (sentenceHoldsWords(prevSent, words, morphemes)) break;
+        const earlier = sentenceTokens.find((s) => s.end === prevSent.begin && s !== prevSent);
+        if (!earlier) break;
+        between.unshift(prevSent);
+        prevSent = earlier;
+      }
+      if (!sentenceHoldsWords(prevSent, words, morphemes)) {
+        // Nothing before holds words: join the sentence right before, as ever.
+        prevSent = between.pop() ?? prevSent;
+        between.length = 0;
+      }
       if (!this._canWrite(label)) return false;
+      const joined = new Set([...between, startsHere].map((t) => t.id));
       this._applyRawPatch((next, info) => {
         if (info.sentenceTokenLayer?.tokens) {
           const p = info.sentenceTokenLayer.tokens.find((t) => t.id === prevSent.id);
           if (p) p.end = startsHere.end;
           info.sentenceTokenLayer.tokens = info.sentenceTokenLayer.tokens.filter(
-            (t) => t.id !== startsHere.id,
+            (t) => !joined.has(t.id),
           );
         }
       });
+      if (between.length === 0) {
+        return this._queueWrite(label, () =>
+          this._client.tokens.merge(settledId(prevSent.id), settledId(startsHere.id)),
+        );
+      }
       return this._queueWrite(label, () =>
-        this._client.tokens.merge(settledId(prevSent.id), settledId(startsHere.id)),
+        this._client.batched(async (b) => {
+          for (const t of [...between, startsHere]) {
+            b.tokens.merge(settledId(prevSent.id), settledId(t.id));
+          }
+        }),
       );
     }
 

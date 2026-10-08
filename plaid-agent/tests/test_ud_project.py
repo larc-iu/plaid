@@ -132,8 +132,10 @@ def test_a_sentence_renders_as_conllu_with_a_range_line(doc):
     out = render_sentence(doc.sentences[0])
     lines = out.splitlines()
     assert lines[0] == '# sent_id = s1'
-    assert lines[1] == '# text = Vamos al mar.'
-    # The corpus's own sent_id does not get a second # sent_id line.
+    # The corpus's own sent_id does not get a second # sent_id line. It is
+    # printed under its own key, which read_document takes back.
+    assert lines[1] == '# stored sent_id = train-1'
+    assert lines[2] == '# text = Vamos al mar.'
     assert out.count('# sent_id') == 1
     body = [l for l in lines if l and not l.startswith('#')]
     assert body[0].split() == list(('ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'DEPREL'))

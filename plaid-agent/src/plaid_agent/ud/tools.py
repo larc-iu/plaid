@@ -27,7 +27,7 @@ from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_clears)
 from .project import (FEATURES, VIRTUAL_REFUSAL, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
-                      feature_refusal, load_document, normalize_feature, render_document, resolve,
+                      by_stored_sent_id, feature_refusal, load_document, normalize_feature, render_document, resolve,
                       word_ref, words_listing)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      left_phrase, per_field)
@@ -71,6 +71,9 @@ class Workspace(BaseWorkspace):
 
     def render(self, doc, **kw) -> str:
         return render_document(doc, **kw)
+
+    def sentence_named(self, doc, item) -> Optional[int]:
+        return by_stored_sent_id(doc, item)
 
     def entity_index(self, doc) -> Dict[str, Any]:
         """Everything that carries provenance, a word's basic relation

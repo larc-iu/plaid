@@ -300,6 +300,12 @@ class BaseWorkspace:
         characters."""
         raise NotImplementedError
 
+    def sentence_named(self, doc, item) -> Optional[int]:
+        """The number of the sentence a read_document ``sentences`` item
+        names in this app's own way, or None for a plain number or reference.
+        UD takes a stored sent_id ("sent_id=a3")."""
+        return None
+
     def comment_anchor(self, doc, ref: str) -> str:
         """The id of the token a comment on ``ref`` hangs off, or a refusal
         saying what a comment may sit on."""
