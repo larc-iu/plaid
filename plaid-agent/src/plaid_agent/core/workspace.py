@@ -307,6 +307,12 @@ class BaseWorkspace:
         gives its sentences other than their places."""
         return None
 
+    def sentence_shown(self, doc, sentence) -> int:
+        """The number the app shows for ``sentence`` and the tools take back
+        (``s3``): its place, unless the app numbers it otherwise (a document
+        that goes by its file's numbers)."""
+        return sentence.index
+
     def comment_anchor(self, doc, ref: str) -> str:
         """The id of the token a comment on ``ref`` hangs off, or a refusal
         saying what a comment may sit on."""
@@ -327,7 +333,7 @@ class BaseWorkspace:
         eid = comment.get('entity_id')
         if comment.get('entity_type') == 'document':
             return '(the document)' if eid == doc.id else None
-        return next((f's{s.index}' for s in doc.sentences if s.id == eid), None)
+        return next((f's{self.sentence_shown(doc, s)}' for s in doc.sentences if s.id == eid), None)
 
     def touched_documents(self) -> List[Dict[str, Any]]:
         """The documents the plan refers to, with the version each was read at,
@@ -420,7 +426,7 @@ class BaseWorkspace:
         """sentence id -> (its number, its fingerprint) in the document as it
         is now, read afresh, for an approval to compare against the plan's."""
         doc = self.load_doc(doc_id)
-        return {s.id: (s.index, self.sentence_print(doc, s)) for s in doc.sentences}
+        return {s.id: (self.sentence_shown(doc, s), self.sentence_print(doc, s)) for s in doc.sentences}
 
     # --- whose work a plan replaces -----------------------------------------
 

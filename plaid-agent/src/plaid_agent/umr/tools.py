@@ -77,6 +77,9 @@ class Workspace(BaseWorkspace):
             return None
         raise ValueError(f's{n}: {numbering(doc)}')
 
+    def sentence_shown(self, doc, sentence) -> int:
+        return sentence.number
+
     def sentence_print(self, doc, sentence) -> str:
         """The sentence's graph and words, and the gloss lines on its
         sentence, words and morphemes, which the model reads its graph from

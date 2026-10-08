@@ -75,3 +75,19 @@ def test_a_reference_by_place_is_not_taken_for_the_files_number():
     out = call_tool(_ws(), 'apply_penman', {'document': 'Story', 'sentence': 's1',
                                             'text': '(s1z / zebra)'})
     assert 'numbers its sentences as its file does' in out
+
+
+def test_a_comment_an_approval_and_a_query_name_the_sentence_by_its_number():
+    """The comments tool, an approval's "sentence N has changed" and a query's
+    rows name a sentence by the number every other tool takes back. A comment
+    on the file's snt6 read as s2, which the assistant then resolved to no
+    sentence, or in a document numbered 1, 5, 6 to another one."""
+    from plaid_agent.umr.query import _ref_index
+    ws = _ws()
+    doc = ws.doc('Story')
+    second = doc.sentences[1]
+    assert ws.comment_ref(doc, {'entity_type': 'token', 'entity_id': second.id}) == 's6'
+    assert sorted(n for n, _print in ws.current_prints(doc.id).values()) == [5, 6]
+    refs = _ref_index(ws, [doc.id])
+    assert refs[second.id] == '"Story" s6'
+    assert refs[second.words[0].id] == '"Story" s6 word 1'
