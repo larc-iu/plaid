@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
 from plaid_client.workflows.messages import setup_incomplete
-from plaid_client.workflows.igt import read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
+from plaid_client.workflows.igt import precedence, read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 # Which tokens are left out of annotation is plaid_client's, the one Python copy
 # of igtConfig.js's rule. Re-exported for the modules that read it from here.
 from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
@@ -561,7 +561,7 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
     for m in (morph_layer or {}).get('tokens') or []:
         morphs_by_extent.setdefault((m['begin'], m['end']), []).append(m)
     for ms in morphs_by_extent.values():
-        ms.sort(key=lambda m: m.get('precedence') or 1)
+        ms.sort(key=precedence)
 
     words = sorted(word_layer.get('tokens') or [], key=lambda t: (t['begin'], t['end']))
     sentences: List[Sentence] = []

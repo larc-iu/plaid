@@ -6,6 +6,8 @@ is applied only after approval."""
 
 from typing import Any, Dict, List, Optional
 
+from plaid_client.workflows.igt import precedence
+
 from ..core import work
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, labelled
@@ -521,7 +523,7 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
         ref = ws.corpus.label_ref(w['document'], w['id'], budget)
         refuse_shape_and_analysis(ws, w['id'], ref, analysing=True)
     for w in words:
-        chain = sorted(chains.get(w['id']) or [], key=lambda m: (m.get('precedence') or 0, m.get('id')))
+        chain = sorted(chains.get(w['id']) or [], key=lambda m: (precedence(m), m.get('id')))
         existing = [{'id': m['id'], 'span_ids': spans.get(m['id']) or []} for m in chain]
         seg = join_morphemes([((m.get('metadata') or {}).get('form') or m.get('value') or '',
                                (m.get('metadata') or {}).get('morphType')) for m in chain])

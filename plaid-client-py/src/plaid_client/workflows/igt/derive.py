@@ -21,6 +21,14 @@ from .ignored import is_token_ignored
 VIRTUAL_PREFIX = 'virtual:'
 
 
+def precedence(morpheme) -> int:
+    """A morpheme's place in its word's chain: its stored precedence, 1 when
+    it stores none, as plaid-igt reads it (derive.js ``m.precedence ?? 1``).
+    A stored 0 stays 0 and sorts first."""
+    p = morpheme.get('precedence')
+    return 1 if p is None else p
+
+
 def virtual_morpheme(word_token):
     """The morpheme of a word nobody has segmented. It is not stored: it is
     the word, with the word's extent, no form of its own and no annotation,
@@ -127,7 +135,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     for m in morph_layer.get('tokens', []):
         morphs_by_extent.setdefault((m['begin'], m['end']), []).append(m)
     for ms in morphs_by_extent.values():
-        ms.sort(key=lambda m: m.get('precedence') or 1)
+        ms.sort(key=precedence)
 
     words = sorted(word_layer.get('tokens', []), key=lambda t: t['begin'])
     sentences = []
