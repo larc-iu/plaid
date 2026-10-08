@@ -20,10 +20,18 @@ import { serviceCache } from './jobs.js';
 // that offered the OTHER app's assistant sent every turn to a service that
 // then could not find the conversation. The service advertises its app in
 // `extras.app`, which is the same value that keys the records.
+//
+// A service someone else runs, where its runner is not a maintainer, takes no
+// one's requests but its runner's (`servesYou`), so it is not offered.
 export const assistantsAmong = (services, app) =>
   filterServicesByTask(services || [], TASKS.ASSIST).filter(
-    (s) => s.online !== false && s.extras?.app === app,
+    (s) => s.online !== false && s.extras?.app === app && s.servesYou !== false,
   );
+
+// Who runs an assistant, for the line beside its name: "run by Ana", or "run
+// by you". Nothing when discovery did not say.
+export const runByLine = (service) =>
+  service?.runByYou ? 'run by you' : service?.runnerName ? `run by ${service.runnerName}` : '';
 
 export const useAssistantAvailable = (client, projectId, app) => {
   const cached = serviceCache.get(projectId);

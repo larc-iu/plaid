@@ -3,6 +3,7 @@ import { Badge } from '../ui/badge.jsx';
 import { Button } from '../ui/button.jsx';
 import { AssistantChat } from './AssistantChat.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
+import { runByLine } from './useAssistantAvailable.js';
 import { useConversationParam } from './conversationParam.js';
 import {
   AllProjectsSwitch,
@@ -72,6 +73,9 @@ export const AssistantTab = ({
             <span className="font-medium">{service.serviceName}</span>
             {choice.model && !service.serviceName?.includes(choice.model) && (
               <Badge variant="secondary">{choice.model}</Badge>
+            )}
+            {runByLine(service) && (
+              <span className="text-xs text-muted-foreground">{runByLine(service)}</span>
             )}
             {!canWrite && (
               <span className="text-xs text-muted-foreground">

@@ -27,6 +27,7 @@ import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { jobFor } from './jobs.js';
+import { runByLine } from './useAssistantAvailable.js';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 
 // The conversation rail: one row per conversation, the assistant picker, and
@@ -218,7 +219,7 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled, compact
     </SelectTrigger>
     <SelectContent>
       {assistants.map((s) => (
-        <SelectItem key={s.serviceId} value={s.serviceId}>
+        <SelectItem key={s.serviceId} value={s.serviceId} hint={runByLine(s) || undefined}>
           {compact ? s.extras?.model || s.serviceName : s.serviceName}
         </SelectItem>
       ))}

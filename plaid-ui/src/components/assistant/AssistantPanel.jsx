@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
 import { AssistantChat } from './AssistantChat.jsx';
 import { AssistantPicker, ConversationHistory } from './ConversationList.jsx';
+import { runByLine } from './useAssistantAvailable.js';
 
 // The assistant in the shell's dock: the same chat, a third of a screen wide,
 // beside whatever the reader is working on.
@@ -61,7 +62,10 @@ export const AssistantPanel = ({
               compact
             />
           ) : (
-            <span className="min-w-0 truncate text-muted-foreground" title={service.serviceName}>
+            <span
+              className="min-w-0 truncate text-muted-foreground"
+              title={[service.serviceName, runByLine(service)].filter(Boolean).join(', ')}
+            >
               {choice.model || service.serviceName}
             </span>
           )
