@@ -217,3 +217,42 @@ def test_a_plan_with_no_labels_counts_its_rows_from_its_changes():
     rows.add('u@x', 'igt', 'p1', 'c1', conv, {}, 10, None)
     [got] = rows.plans
     assert got['rows'] == 231
+
+
+def _fate_rows():
+    """A service run writes a gloss NFD, a person edits a second gloss, then a
+    conversion (an operation of kind repair, run as the admin) composes both
+    to NFC. Row columns as fates.ROW_SQL reads them."""
+    import json as _json
+
+    def row(ts, target, value, op, user, group, kind, prov=None):
+        image = {'id': target, 'value': _json.dumps(value, ensure_ascii=False), 'tokens': ['t1'],
+                 'metadata': {'prov': prov, 'provSource': 'service:x'} if prov else {}}
+        return (ts, 0, 'spans', target, 'update' if op != 'o1' else 'insert', _json.dumps(image), 'd1', None,
+                op, user, None, None, group, None, 'p1', kind, None, None, user, ts)
+    nfd, nfc = 'bé', 'bé'
+    return [
+        row('2026-10-01T00:00:01Z', 's1', nfd, 'o1', 'svc@x', 'g1', 'service-run', prov='inferred'),
+        row('2026-10-01T00:00:02Z', 's2', nfd, 'o1', 'svc@x', 'g1', 'service-run', prov='inferred'),
+        row('2026-10-02T00:00:00Z', 's2', 'house', 'o2', 'b@x', None, None),
+        row('2026-10-09T00:00:00Z', 's1', nfc, 'o3', 'admin@x', 'g3', 'repair', prov='inferred'),
+        row('2026-10-09T00:00:01Z', 's2', 'house', 'o3', 'admin@x', 'g3', 'repair'),
+    ]
+
+
+def test_a_repair_is_neither_a_persons_nor_a_machines_edit():
+    from plaid_agent.research.fates import Fates
+    fates = Fates(Pseudonyms(b'k' * 32), '2026-10-10T00:00:00Z')
+    fates.stream(_fate_rows())
+    by = {w['target_id']: w for w in fates.writes}
+    # the run's gloss the conversion composed is unchanged, and still its value
+    assert by['s1']['fate'] == 'unchanged'
+    assert by['s1']['first_event'] is None and by['s1']['first_edit'] is None
+    assert by['s1']['final_value_same'] is True
+    assert by['s1']['later_by'] == {'repair.value': 1}
+    # the person's edit stays the person's
+    assert by['s2']['fate'] == 'edited_by_person'
+    assert by['s2']['first_edit']['actor'] == Pseudonyms(b'k' * 32).user('b@x')
+    assert by['s2']['later_by'] == {'person.value': 1}
+    # the repair is no unit of its own unless asked for
+    assert {u['kind'] for u in fates.unit_rows()} == {'service-run'}

@@ -217,22 +217,22 @@ One row per entity a followed unit wrote (its last write to it), and what happen
 | prov_written | its provenance as written: `human`, `machine`, `contributed` or `verified` |
 | source_written, model_written | its provSource and provDetail.model |
 | value_written | its value as written (a span's or relation's value, an entry's form, a morpheme token's form, a link's entry id), clipped |
-| fate | the headline, in this order of precedence: `deleted_by_run` (the unit itself deleted it), `deleted_by_<actor>`, `edited_by_<actor>` (its value or non-provenance metadata changed), `reshaped` (only where it sits changed: offsets, its tokens), `reviewed_by_<actor>` (only its provenance changed, as when someone confirms it), `unchanged` |
+| fate | the headline, in this order of precedence (a repair, an operation of kind `repair`, is nobody's edit: a change it makes is no event and decides no fate, only its deletion counts): `deleted_by_run` (the unit itself deleted it), `deleted_by_<actor>`, `edited_by_<actor>` (its value or non-provenance metadata changed), `reshaped` (only where it sits changed: offsets, its tokens), `reviewed_by_<actor>` (only its provenance changed, as when someone confirms it), `unchanged` |
 | later_writes | changes to it after the unit, by later units |
-| later_by | those changes counted by `<actor>.<category>` |
+| later_by | those changes counted by `<actor>.<category>`. A repair's are counted here as `repair.<category>` and nowhere else |
 | first_event | the first later change of any kind |
 | first_edit | the first change of its value or metadata |
 | first_review | the first change of its provenance only |
 | deletion | its deletion |
 | final_exists | it still exists at the horizon |
-| final_value_same | its value at the horizon is the value written |
+| final_value_same | its value at the horizon is the value written (both composed to NFC when a repair changed it) |
 
 An event (`first_event`, `first_edit`, `first_review`, `deletion`) has:
 
 | field | meaning |
 |---|---|
 | at, after_s | when, and how long after the unit's write |
-| actor_class | `person`, `assistant` (an approved plan), `machine` (a service run or untagged machine unit), `import`, `repair` (an app's own repair when a document opens) |
+| actor_class | `person`, `assistant` (an approved plan), `machine` (a service run or untagged machine unit), `import`, `repair` (only for a deletion: an app's own repair when a document opens, or a conversion of the stored data) |
 | actor_kind | the kind of the unit that made the change (`person-untagged` for a person's ordinary edit) |
 | actor | who made it (pseudonym) |
 | by_requester | the same person who started the followed unit |

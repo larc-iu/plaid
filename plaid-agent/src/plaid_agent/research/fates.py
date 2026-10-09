@@ -19,6 +19,7 @@ by another unit is what happened to it, classed by what changed and by who.
 """
 
 import json
+import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -123,6 +124,14 @@ def value_key(table: str, image: Optional[Dict[str, Any]]):
     if table == 'tokens':
         return ((image.get('metadata') or {}).get('form'),)
     return tuple(field_of(table, image, f) for f in VALUE_FIELDS.get(table, ()))
+
+
+def nfc_key(key):
+    """A value key with its strings composed (NFC), to compare a value as
+    written with the same value after a repair composed it."""
+    if key is None:
+        return None
+    return tuple(unicodedata.normalize('NFC', v) if isinstance(v, str) else v for v in key)
 
 
 def change_category(table: str, prev: Optional[Dict[str, Any]], cur: Optional[Dict[str, Any]]) -> Tuple[str, List[str]]:
@@ -391,8 +400,21 @@ class Fates:
         prev = written
         by = Counter()
         cats = []
+        repaired = False
         for r in later:
             actor = ACTOR.get(units[r.unit].cls, 'person')
+            if actor == 'repair' and r.change != 'delete':
+                # A repair (an app's repair on open, or a conversion of the
+                # stored data such as composing text to NFC) is nobody's
+                # edit: the entity reads as it left it from here on, and the
+                # write is counted in later_by, but it is never the first
+                # event, edit or review, and it decides no fate.
+                category, _ = change_category(r.table, prev, r.state)
+                prev = r.state
+                if category != 'none':
+                    by[f'repair.{category}'] += 1
+                    repaired = True
+                continue
             if r.change == 'delete':
                 ev = self._event(unit, last.ts, r, units)
                 under = set((prev or {}).get('tokens') or []) | {
@@ -420,7 +442,8 @@ class Fates:
         out['later_writes'] = sum(by.values())
         out['later_by'] = dict(by)
         if prev is not None:
-            out['final_value_same'] = value_key(last.table, prev) == value_key(last.table, written)
+            key = nfc_key if repaired else (lambda k: k)
+            out['final_value_same'] = key(value_key(last.table, prev)) == key(value_key(last.table, written))
         if 'delete' in cats:
             out['fate'] = f'deleted_by_{out["deletion"]["actor_class"]}'
         elif out['first_edit']:
