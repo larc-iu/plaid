@@ -181,7 +181,8 @@ TOOLS = [
         'format\'s constants. The group (' + ', '.join(GROUPS) + ') follows from the relation '
         'unless you say otherwise. A constant no triple has used yet is created with it. The '
         'triple reads (a rel b): b stands in relation rel to a, which is its reference, so '
-        '(document-creation-time :before e) says e happened before the document was made and '
+        '(document-creation-time :before e) says e happened before the document was made, '
+        '(s4e :before s2e) between two events says s2e happened before s4e, and '
         '(author :full-affirmative e) says the author is sure e happened. A relation outside '
         'its group\'s closed set is refused.',
         {'document': _DOC, 'a': _END,

@@ -198,7 +198,7 @@ PLAN: set one attribute on every node in a document whose concept matches, or re
 
 ### add_triple
 
-PLAN: add one document-level relation between two nodes, or between a node and one of the format's constants. The group (temporal, modal, coref) follows from the relation unless you say otherwise. A constant no triple has used yet is created with it. The triple reads (a rel b): b stands in relation rel to a, which is its reference, so (document-creation-time :before e) says e happened before the document was made and (author :full-affirmative e) says the author is sure e happened. A relation outside its group's closed set is refused.
+PLAN: add one document-level relation between two nodes, or between a node and one of the format's constants. The group (temporal, modal, coref) follows from the relation unless you say otherwise. A constant no triple has used yet is created with it. The triple reads (a rel b): b stands in relation rel to a, which is its reference, so (document-creation-time :before e) says e happened before the document was made, (s4e :before s2e) between two events says s2e happened before s4e, and (author :full-affirmative e) says the author is sure e happened. A relation outside its group's closed set is refused.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `a` (string, required): A node variable, e.g. "s3e", or one of the constants root, author, null-conceiver, have-condition-91, document-creation-time, past-reference, present-reference, future-reference.
