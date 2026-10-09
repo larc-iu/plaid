@@ -207,11 +207,11 @@ def _clause(clause: Any) -> Any:
         raise QueryRefused('Each "where" clause is a list that starts with its kind or operator: ' + CLAUSE_SHAPE
                            + '. Got ' + _shown(clause) + '.')
     op = clause[0]
-    head = op[1:] if op.startswith(':') else op  # the engine reads ":or" as "or"
+    name = op[1:] if op.startswith(':') else op  # the engine reads ":or" as "or"
     if op.startswith('?'):
         raise QueryRefused('A predicate puts its operator first: ["=", "?s.value", "x"], not ["?s.value", '
                            '"=", "x"]. Got ' + _shown(clause) + '.')
-    if head == 'or':
+    if name == 'or':
         groups = clause[1:]
         if not groups or not all(isinstance(g, list) and g and all(isinstance(c, (list, dict)) for c in g)
                                  for g in groups):
@@ -219,7 +219,7 @@ def _clause(clause: Any) -> Any:
                                '...]], e.g. ["or", [["=", "?g.value", "A"]], [["=", "?g.value", "B"]]]. Got '
                                + _shown(clause) + '.')
         return [op, *[[_clause(c) for c in g] for g in groups]]
-    if head == 'not':
+    if name == 'not':
         return [op, *[_clause(c) for c in clause[1:]]]
     return clause
 

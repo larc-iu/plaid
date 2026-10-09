@@ -51,8 +51,8 @@ NAMES = ('run_code', 'code_help')
 # what load() returns), so the attribute form is turned into the key form
 # before the code runs. A key that is not there names the keys that are, a
 # few of them for a large dict. The builtins it uses are bound when it is
-# defined, so code that names a variable type or getattr (a morpheme's
-# "type" is one) does not break every attribute read after it.
+# defined, so code that names a variable type or getattr (a key named
+# "type" makes the first likely) does not break every attribute read after it.
 READER = '_plaid_attr_'
 PRELUDE = '''
 def _plaid_attr_(o, name, _type=type, _dict=dict, _getattr=getattr, _len=len, _repr=repr, _str=str,
@@ -165,12 +165,12 @@ def keyed(code: str) -> str:
 def _unread(line: str) -> str:
     """One line of rewritten code with every ``_plaid_attr_(x, 'name')`` put
     back as ``x.name``."""
-    head = READER + '('
+    opener = READER + '('
     while True:
-        at = line.rfind(head)
+        at = line.rfind(opener)
         if at < 0:
             return line
-        depth, quote, i, comma = 0, None, at + len(head), None
+        depth, quote, i, comma = 0, None, at + len(opener), None
         while i < len(line):
             c = line[i]
             if quote:
@@ -192,7 +192,7 @@ def _unread(line: str) -> str:
         if i >= len(line) or comma is None:
             return line  # cut off mid-call: leave it
         name = line[comma + 1:i].strip().strip('\'"')
-        line = line[:at] + line[at + len(head):comma].rstrip() + '.' + name + line[i + 1:]
+        line = line[:at] + line[at + len(opener):comma].rstrip() + '.' + name + line[i + 1:]
 
 
 def _unkeyed(text: str) -> str:
