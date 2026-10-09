@@ -76,10 +76,13 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
 
   // MISC is not stored (see scope decisions), but `SpaceAfter=No` is a fact
   // of the text: a token that is not its sentence's last and is followed by
-  // no space gets it, as UD's validators expect of `# text`.
+  // no space gets it, as UD's validators expect of `# text`. So does one the
+  // next token starts right at, which a token of no width (a mark that
+  // composed with the letter before it) does.
   let chars = null;
-  const miscOf = (extent, isLast) => {
+  const miscOf = (extent, isLast, nextExtent) => {
     if (isLast || !extent) return UNDERSCORE;
+    if (nextExtent && nextExtent.begin <= extent.end) return 'SpaceAfter=No';
     chars ??= [...(info.textLayer?.text?.body ?? '')];
     const next = chars[extent.end];
     return next !== undefined && !/\s/u.test(next) ? 'SpaceAfter=No' : UNDERSCORE;
@@ -163,9 +166,11 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
       // text in the document: the stored form is that text when it was set,
       // and a text edit since (`del` to `dul`) leaves it behind, which put a
       // form in the file that its own `# text` did not hold.
+      const next = morphemes[i + groupLen];
       const misc = miscOf(
         morphemes[i].word || morphemes[i].token,
         i + groupLen >= morphemes.length,
+        next && (next.word || next.token),
       );
       if (groupLen > 1) {
         const wordMeta = morphemes[i].word?.metadata || {};

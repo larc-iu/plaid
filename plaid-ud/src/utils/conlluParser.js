@@ -5,7 +5,7 @@
 
 // Token offsets are Unicode CODE POINTS, so locate/measure forms in code points
 // (cpLength, and code-point offsets kept beside UTF-16 ones), not the UTF-16 indexOf / .length.
-import { cpLength } from '@larc-iu/plaid-client';
+import { composeText, cpLength } from '@larc-iu/plaid-client';
 import { parseDeps } from '../domain/enhancedGraph.js';
 
 // Split a CoNLL-U file into one chunk per `# newdoc[ id = X]` block, so a single
@@ -382,14 +382,24 @@ export function buildConlluHierarchy(parsedData) {
 
   parsedData.sentences.forEach((sentence, sentIdx) => {
     const units = surfaceUnitsForSentence(sentence);
-    const rawSentenceText =
-      sentence.metadata && sentence.metadata.text
-        ? sentence.metadata.text
-        : units
-            .map((u, k) => u.surfaceForm + (u.spaceAfterNo || k === units.length - 1 ? '' : ' '))
-            .join('');
+    const built = units
+      .map((u, k) => u.surfaceForm + (u.spaceAfterNo || k === units.length - 1 ? '' : ' '))
+      .join('');
+    const given = sentence.metadata && sentence.metadata.text;
+    // The forms are placed on a spelling of the sentence that holds each of
+    // them whole, and the text is composed once at the end with every offset
+    // moved by the server's rule (`composeText`). A form glued to the one
+    // before that composes with it (a lone combining mark, a trailing Hangul
+    // jamo) is in neither composed spelling. The forms joined are used when
+    // they are the `# text` up to spelling, else the `# text` decomposed with
+    // each form decomposed, so a form is found by its letters, not its bytes.
+    const decompose = given && given.normalize('NFC') !== built.normalize('NFC');
+    const rawSentenceText = decompose ? given.normalize('NFD') : built;
+    const located = decompose
+      ? units.map((u) => ({ ...u, surfaceForm: (u.surfaceForm || '').normalize('NFD') }))
+      : units;
 
-    const { positions: unitPositions, usedSynthetic } = locateUnits(rawSentenceText, units);
+    const { positions: unitPositions, usedSynthetic } = locateUnits(rawSentenceText, located);
     if (usedSynthetic) syntheticOffsetSentences += 1;
     // The synthetic-offset fallback can place a unit past
     // `rawSentenceText.length` when cumulative form lengths exceed the
@@ -446,5 +456,26 @@ export function buildConlluHierarchy(parsedData) {
     });
   });
 
-  return { text, sentences, dropped: { syntheticOffsetSentences } };
+  return composedHierarchy({ text, sentences, dropped: { syntheticOffsetSentences } });
+}
+
+// The hierarchy over its text as the server stores it, composed (NFC), with
+// every offset moved by the server's rule: an edge inside a composed sequence
+// goes to where the sequence can be cut, else to its end.
+function composedHierarchy(hierarchy) {
+  const { text, at } = composeText(hierarchy.text);
+  if (text === hierarchy.text) return hierarchy;
+  hierarchy.sentences.forEach((s) => {
+    s.begin = at(s.begin);
+    s.end = at(s.end);
+    s.words.forEach((w) => {
+      w.begin = at(w.begin);
+      w.end = at(w.end);
+      w.morphemes.forEach((m) => {
+        m.begin = w.begin;
+        m.end = w.end;
+      });
+    });
+  });
+  return { ...hierarchy, text };
 }
