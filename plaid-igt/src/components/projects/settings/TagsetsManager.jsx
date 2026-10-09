@@ -23,6 +23,7 @@ import {
 } from '@/domain/tagsets';
 import { textIncludes } from '@ui/domain/collation.js';
 import { sameConfig } from '@ui/domain/configCells.js';
+import { nameKey } from '@ui/lib/nameKey.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
@@ -128,7 +129,9 @@ export const TagsetsManager = ({
   const patch = (name, changes) => save({ ...draft, [name]: { ...draft[name], ...changes } });
 
   const handleAddTagset = async () => {
-    const name = newTagsetName.trim();
+    // composed, as the server stores the name, so a name typed in another
+    // spelling finds the tagset it names
+    const name = nameKey(newTagsetName).trim();
     if (!name) return;
     if (draft[name]) {
       notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');
@@ -142,7 +145,7 @@ export const TagsetsManager = ({
   };
 
   const handleRenameTagset = async (from, to) => {
-    const name = to.trim();
+    const name = nameKey(to).trim();
     if (!name || name === from) return;
     if (draft[name]) {
       notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');

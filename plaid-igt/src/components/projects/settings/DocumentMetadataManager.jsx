@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Trash2, RotateCcw, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
+import { nameKey } from '@ui/lib/nameKey.js';
 import {
   Select,
   SelectTrigger,
@@ -118,7 +119,9 @@ export const DocumentMetadataManager = ({
   };
 
   const handleAddCustomField = async () => {
-    const trimmedName = newFieldName.trim();
+    // composed, as the server stores a name, so the duplicate check below
+    // finds a field typed in another spelling
+    const trimmedName = nameKey(newFieldName).trim();
 
     if (!trimmedName) {
       notifyError('Field name cannot be empty', 'Invalid field name');

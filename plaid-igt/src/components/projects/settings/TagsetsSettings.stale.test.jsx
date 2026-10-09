@@ -127,3 +127,22 @@ describe('Settings, tagsets, two maintainers', () => {
     await a.view.unmount();
   });
 });
+
+// The server stores a tagset's name composed, and composes a name written to
+// it, so a name typed decomposed (an accent typed after its letter) is the
+// name of the tagset already there. It is refused as one, not written over it.
+describe('Settings, tagsets, a name in another Unicode spelling', () => {
+  it('is the tagset of that name', async () => {
+    const { notifyError } = await import('@/utils/feedback');
+    const { server, client } = makeServer();
+    server.config.igt.tagsets = { Tón: { ...tagset(), values: ['H', 'L'] } };
+    const a = await openPage(server, client);
+    await addTagset(a, 'Tón');
+    expect(notifyError).toHaveBeenCalledWith(
+      expect.stringContaining('already exists'),
+      'Duplicate tagset',
+    );
+    expect(server.config.igt.tagsets).toEqual({ Tón: { ...tagset(), values: ['H', 'L'] } });
+    await a.view.unmount();
+  });
+});

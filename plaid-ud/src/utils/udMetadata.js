@@ -14,6 +14,7 @@
 // rewriting what is stored.
 
 import { PLAID_NAMESPACE, isReservedMetadataKey } from '@larc-iu/plaid-client';
+import { sameName } from '../../../plaid-ui/src/lib/nameKey.js';
 
 export const DOCUMENT_METADATA_KEY = 'documentMetadata';
 export const SENTENCE_METADATA_KEY = 'sentenceMetadata';
@@ -71,7 +72,7 @@ export function metadataFieldError(name, level, taken = []) {
       ? 'Every sentence already has sent_id.'
       : `${trimmed} is written from the document text.`;
   }
-  if (taken.some((t) => t.trim() === trimmed)) return `${trimmed} is already a field.`;
+  if (taken.some((t) => sameName(t.trim(), trimmed))) return `${trimmed} is already a field.`;
   return null;
 }
 

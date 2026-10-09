@@ -65,6 +65,11 @@ test('metadataFieldError refuses an empty name and a duplicate', () => {
   assert.equal(metadataFieldError('Licence', 'document', ['Source', 'Genre']), null);
 });
 
+test('metadataFieldError finds a duplicate typed in another Unicode spelling', () => {
+  // the server stores the declared name composed
+  assert.match(metadataFieldError('Re\u0301gion', 'document', ['R\u00e9gion']), /already a field/);
+});
+
 test('metadataRows shows the declared fields plus whatever is already stored', () => {
   // "Genre" was declared and dropped, but the value is still there and still
   // exports. Hiding it would make it invisible and impossible to clear.

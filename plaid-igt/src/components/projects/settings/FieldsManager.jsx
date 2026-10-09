@@ -24,6 +24,7 @@ import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { countOf } from '@ui/lib/plural.js';
+import { nameKey } from '@ui/lib/nameKey.js';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
@@ -313,7 +314,9 @@ export const FieldsManager = ({
   };
 
   const handleAddField = async () => {
-    const trimmedName = newFieldName.trim();
+    // composed, as the server stores a name, so the duplicate check below
+    // finds a field typed in another spelling
+    const trimmedName = nameKey(newFieldName).trim();
 
     if (!trimmedName) {
       notifyError('Field name cannot be empty', 'Invalid field name');
