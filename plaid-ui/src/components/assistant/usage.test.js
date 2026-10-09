@@ -7,7 +7,6 @@ import {
   gaugeLabel,
   gaugeTitle,
   latestUsage,
-  recordBytes,
   recordShare,
   totalSpend,
   usageLabel,
@@ -128,25 +127,6 @@ describe('NEARLY_FULL', () => {
     // arrives after the failure it exists to prevent.
     expect(NEARLY_FULL).toBeGreaterThan(0.5);
     expect(NEARLY_FULL).toBeLessThan(1);
-  });
-});
-
-describe('recordBytes', () => {
-  it('counts what the server measures: recased keys, escaped non-ASCII and slashes', () => {
-    const value = { display: [{ createdAt: '1/2', text: 'kai₁ ŋa 𝔸 é' }] };
-    // The server's serialization of the value as the client sends it.
-    const stored =
-      '{"display":[{"created-at":"1\\/2","text":"kai\\u2081 \\u014ba \\ud835\\udd38 \\u00e9"}]}';
-    expect(recordBytes(value)).toBe(stored.length);
-    // As UTF-8 it would be far less, which is what the meter used to show.
-    expect(recordBytes(value)).toBeGreaterThan(
-      new TextEncoder().encode(JSON.stringify(value)).length + 15,
-    );
-  });
-
-  it('leaves the keys inside metadata as they are, as the client sends them', () => {
-    const value = { metadata: { myKey: 'a' } };
-    expect(recordBytes(value)).toBe('{"metadata":{"myKey":"a"}}'.length);
   });
 });
 

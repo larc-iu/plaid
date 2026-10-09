@@ -1,5 +1,3 @@
-import { transformRequest } from '../../../../plaid-client-js/src/transforms.js';
-
 // How full a conversation is, and what it has cost.
 //
 // The service records what each turn sent and got back, against the model's
@@ -92,27 +90,6 @@ export const usageLabel = (usage) => {
 // the display) and the item around it. A record with less than this left
 // cannot take the next message, so it is full.
 export const MESSAGE_ROOM = 16 * 1024;
-
-// The bytes the server counts for `value` against its cap. That is not the
-// UTF-8 of this page's JSON: the client sends object keys recased
-// (`createdAt` as `created-at`), and the server measures its own
-// serialization, which writes every non-ASCII character as an escape of six
-// bytes for each UTF-16 unit and every slash as two bytes. Counted as UTF-8, a
-// record in a non-Latin script weighed a third of what the server saw, and the
-// meter showed room the record did not have. Mirrors `_bytes` in plaid-agent's
-// conversation.py. Called where the page writes or reads the record, never
-// while drawing.
-export const recordBytes = (value) => {
-  const s = JSON.stringify(transformRequest(value));
-  if (s === undefined) return 0;
-  let n = s.length;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c >= 0x80) n += 5;
-    else if (c === 0x2f) n += 1;
-  }
-  return n;
-};
 
 // What share of the cap the record takes, unclamped, or null when either
 // number is unknown.

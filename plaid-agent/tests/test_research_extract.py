@@ -256,3 +256,22 @@ def test_a_repair_is_neither_a_persons_nor_a_machines_edit():
     assert by['s2']['later_by'] == {'person.value': 1}
     # the repair is no unit of its own unless asked for
     assert {u['kind'] for u in fates.unit_rows()} == {'service-run'}
+
+
+def test_a_conversation_row_has_the_size_the_service_wrote_and_no_holding_tab():
+    """The service is the record's only writer (design/SINGLE-WRITER.md): it
+    writes the record's size on the sidebar entry, and the tab that holds the
+    conversation, which is not exported. A user message's request id is not
+    either."""
+    from plaid_agent.research.records import Conversations
+    conv = Conversations(Pseudonyms(b'k' * 32))
+    record = {'messages': [{'role': 'user', 'content': 'q'}], 'display': [
+        {'kind': 'user', 'text': 'q', 'request-id': '0192-r1'}]}
+    meta = {'id': 'c1', 'title': 't', 'about': {'document-id': 'd1', 'document-name': 'Text 1'},
+            'holder': {'tab': 'tab-uuid', 'at': '2026-10-09T00:00:00.000Z'},
+            'size': {'bytes': 123, 'cap': 1000}, 'pending': None}
+    conv.add('u@x', 'igt', 'p1', 'c1', record, meta, 10, None)
+    [row] = conv.conversations
+    assert row['size_bytes'] == 123 and row['about_document'] == 'd1'
+    flat = repr([conv.conversations, conv.turns, conv.private])
+    assert 'tab-uuid' not in flat and '0192-r1' not in flat

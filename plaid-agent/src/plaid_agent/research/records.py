@@ -303,7 +303,12 @@ class Conversations:
             'transcript_messages': len(messages),
             'tool_results_kept': sum(1 for m in messages if m.get('role') == 'tool' and m.get('content') != DROPPED),
             'tool_results_dropped': dropped,
-            'about_document': (meta.get('about') or {}).get('id') if isinstance(meta.get('about'), dict) else None,
+            'about_document': (meta.get('about') or {}).get('document_id') if isinstance(meta.get('about'), dict)
+            else None,
+            # The service's own count, on the entry since it alone writes the
+            # record. The tab that holds the conversation (`holder`) is a
+            # per-viewer fact with no research value and is not exported.
+            'size_bytes': (meta.get('size') or {}).get('bytes') if isinstance(meta.get('size'), dict) else None,
         })
 
     def _steps(self, base, index, turn, steps, results, arguments, end) -> int:

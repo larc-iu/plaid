@@ -67,8 +67,9 @@ One row per assistant conversation.
 | plans | replies that carried a plan |
 | models, services | every model and assistant service that answered |
 | version | the assistant's prompt version at the last turn |
-| pending | a turn or approval was under way when the database was copied |
+| pending | a turn or approval was under way when the database was copied, or one that died was never settled (see below) |
 | record_bytes | the stored record's size |
+| size_bytes | the record's size as the assistant last wrote it on the sidebar entry, null for a record not written since 2026-10-09 |
 | transcript_messages | messages in the model transcript |
 | tool_results_kept, tool_results_dropped | tool results still in the transcript, and those pruned to fit the size cap |
 | about_document | the document a docked conversation is about |
@@ -281,3 +282,13 @@ The extractor version, the database file name, the horizon, the options, how pla
 ### PRIVATE_text.jsonl (only with `--include-text`)
 
 User messages, replies, error lines, tool refusals (first 500 characters) and operation labels, keyed like the rows above. For the researcher's own review. Never share it.
+
+## Records written by the assistant alone (from 2026-10-09)
+
+The assistant service is the only writer of a conversation record from 2026-10-09 (design/SINGLE-WRITER.md). Two things read differently in the records it writes:
+
+- A turn whose request died (the service restarted) and was never retried keeps its `pending` marker until the conversation is next touched, since the page no longer settles it. So `pending: true` in `conversations.jsonl` is more common than before.
+- A stop the service never recorded (it died between the reader's Stop and its write) reads as a lost turn, not as a stop.
+
+A user message carries the id of the request that recorded it (`request_id`). The extractor drops it, as it drops the tab that holds the conversation (`holder`).
+

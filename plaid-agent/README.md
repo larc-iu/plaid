@@ -497,15 +497,19 @@ The modules below are `igt/` unless they say otherwise.
   was applied if a later batch fails. A plan carries the version of every
   document it touches; approval is refused if any of them changed since, as
   the plan's ids and character offsets were read from that state.
-- `agent.py`: the litellm loop. `service.py`: the Plaid service; one request
-  is one turn or one approval. A conversation lives in the user's private
-  key/value store on the server. The browser appends the user's message and
-  marks the conversation pending before submitting; the service loads the
-  record, runs the turn, and writes the reply back before reporting the
-  request done, so the answer lands whether or not the browser is still
-  watching, and a browser that comes back rejoins the running request by id
-  or reads the finished reply from the record. Stop cancels the request; the
-  service checks between model calls and tool calls.
+- `agent.py`: the litellm loop. `service.py`: the Plaid service. A
+  conversation lives in the user's private key/value store on the server,
+  and the service is its only writer: the page sends one request per thing
+  the user does (`ops.py`: send, retry, approve, discard, attach, delete,
+  rename, hold) and reads. A send appends the user's message, runs the
+  turn, and writes the reply back before reporting the request done, so the
+  answer lands whether or not the page is still watching, and a page that
+  comes back rejoins the running request by id or reads the finished reply
+  from the record. One tab acts on a conversation at a time (`holder` on the
+  sidebar entry, a five minute lease). Stop cancels the request; the service
+  checks between model calls and tool calls. A request with no op comes from
+  a page older than this and is told to reload, and the service advertises
+  `extras.record: 2` for the pages that send ops.
 
 ## Research dataset
 
