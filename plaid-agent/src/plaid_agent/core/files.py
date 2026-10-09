@@ -554,3 +554,63 @@ class FileKeeper:
         self._keys = []
         self.refs = []
         self._made = {}
+
+
+def store_parts(store, conv_id: str, file_id: str, parts: List[str]) -> None:
+    """Store a file the user attached, its parts already cut by the page to
+    fit one value each, beside the conversation (the ``attach`` request).
+    Nothing is left stored when a part is refused."""
+    base = file_key(store.app, store.project_id, conv_id, file_id)
+    written: List[str] = []
+    try:
+        for n, part in enumerate(parts):
+            key = f'{base}:part:{n}'
+            store.client.user_data.put(store.user_id, key, part)
+            written.append(key)
+    except BaseException:
+        for key in written:
+            try:
+                store.client.user_data.delete(store.user_id, key)
+            except Exception:  # noqa: BLE001 - an orphan is swept later
+                pass
+        raise
+
+
+#: A file part this much older than now, whose conversation has no entry, is
+#: left behind (an attach whose send never came) rather than one being sent.
+ORPHAN_AGE_S = 60 * 60
+
+
+def sweep_orphan_files(store, now: Optional[float] = None) -> int:
+    """Delete the parts of files whose conversation has no sidebar entry and
+    that are older than :data:`ORPHAN_AGE_S`, under one user's project.
+    How many were deleted."""
+    import time as _time
+    from datetime import datetime
+    client = store.client
+    under = f'{store.app}:assistant:{store.project_id}:'
+    live = {e['key'][len(under) + len('meta:'):]
+            for e in client.user_data.list(store.user_id, prefix=under + 'meta:', page_size=1000) or []
+            if isinstance(e, dict) and e.get('key')}
+    files = client.user_data.list(store.user_id, prefix=under + 'file:', page_size=1000) or []
+    now = _time.time() if now is None else now
+    gone = 0
+    for e in files:
+        key = e.get('key') if isinstance(e, dict) else None
+        if not key:
+            continue
+        conv = key[len(under) + len('file:'):].split(':', 1)[0]
+        if not conv or conv in live:
+            continue
+        try:
+            at = datetime.fromisoformat(str(e.get('updated_at') or '').replace('Z', '+00:00')).timestamp()
+        except ValueError:
+            at = None
+        if at is not None and now - at < ORPHAN_AGE_S:
+            continue
+        try:
+            client.user_data.delete(store.user_id, key)
+            gone += 1
+        except Exception:  # noqa: BLE001 - tried again next sweep
+            pass
+    return gone

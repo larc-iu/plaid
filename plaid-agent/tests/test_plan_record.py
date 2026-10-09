@@ -258,7 +258,7 @@ def _staged(spec, client, monkeypatch):
     svc.service_id = sid
     svc.kit = svc.toolkit()
     helper = Helper(request_id='r1')
-    svc.process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
+    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
                          'conversation_id': 'c1'}, helper)
     assert not helper.errors, helper.errors
     plan = _stored(spec, client)['plan']
@@ -380,8 +380,8 @@ def test_a_contributors_approval_is_recorded_on_the_item(spec, monkeypatch):
     from test_service_flow import Helper
     svc.cfg = ModelConfig(model='fake/model')
     svc.service_id = f'{spec["app"]}:assist:fake'
-    svc.process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
+    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
                          'conversation_id': 'c1',
-                         'approve': {'plan_id': plan['id']}}, Helper(request_id='r9'))
+                         'op': 'approve', **{'plan_id': plan['id']}}, Helper(request_id='r9'))
     item = _stored(spec, client)
     assert item['status'] == 'applied' and item['contributed'] is True and item['as_human'] is False

@@ -134,9 +134,9 @@ def _approve(spec, client, plan):
     svc.cfg = ModelConfig(model='fake/model')
     svc.service_id = f'{spec["app"]}:assist:fake'
     helper = Helper(request_id='r9')
-    svc.process_request({'requester_client': client, 'requester_id': 'u@x',
+    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x',
                          'project_id': spec['pid'], 'conversation_id': 'c1',
-                         'approve': {'plan_id': plan['id']}}, helper)
+                         'op': 'approve', **{'plan_id': plan['id']}}, helper)
     return helper
 
 

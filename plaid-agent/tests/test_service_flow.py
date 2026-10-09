@@ -54,7 +54,9 @@ def _service():
 
 
 def _seed(client, conv_id='c1', request_id='r1', text='Which words are unglossed?'):
-    """What the browser writes before submitting a turn."""
+    """A record holding a question its turn has not answered, marked with
+    that turn's request (as a send writes it), so a request with that id runs
+    the turn on it without appending the question again."""
     store = ConversationStore(client, 'u@x', 'p1', 'igt')
     conv = {'messages': [{'role': 'user', 'content': text}], 'display': [user_item(text)]}
     meta = build_meta(None, conv_id, conv, 'igt:assist:fake', 'fake/model',
@@ -64,7 +66,13 @@ def _seed(client, conv_id='c1', request_id='r1', text='Which words are unglossed
 
 
 def _request(client, **extra):
-    return {'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'conversation_id': 'c1', **extra}
+    """A request as the page sends it: ``approve={plan_id, as_human}`` asks
+    for an approval, anything else a turn on the last message."""
+    approve = extra.pop('approve', None)
+    op = ({'op': 'approve', **approve} if approve is not None
+          else {'op': 'send', 'text': 'Which words are unglossed?'})
+    return {'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'conversation_id': 'c1',
+            'tab': 't1', **op, **extra}
 
 
 def test_a_turn_is_written_to_the_record_before_it_is_reported(monkeypatch):
@@ -231,13 +239,17 @@ def test_a_failed_turn_is_written_as_an_error_item(monkeypatch):
 
 
 def test_an_outcome_is_not_written_over_a_conversation_that_moved_on(monkeypatch):
+    """Another assistant process took the conversation while the turn ran
+    (its marker names another request): the outcome is dropped."""
     client = FakeClient()
     store = _seed(client, request_id='r1')
-    monkeypatch.setattr(service_mod, 'run_turn',
-                        lambda *a, **k: TurnResult('late', [{'role': 'assistant', 'content': 'late'}], []))
-    # Meanwhile the user stopped and sent again: the record names r2 now.
-    conv, meta = store.load('c1')
-    store.save('c1', conv, {**meta, 'pending': {'kind': 'turn', 'request_id': 'r2'}})
+
+    def fake_run_turn(*a, **k):
+        conv, meta = store.load('c1')
+        store.save('c1', conv, {**meta, 'pending': {'kind': 'turn', 'request_id': 'r2'}})
+        return TurnResult('late', [{'role': 'assistant', 'content': 'late'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
     helper = Helper(request_id='r1')
     _service().process_request(_request(client), helper)
     assert helper.done[0]['kind'] == 'turn', 'the request still ends'
@@ -246,18 +258,14 @@ def test_an_outcome_is_not_written_over_a_conversation_that_moved_on(monkeypatch
     assert meta['pending']['request_id'] == 'r2'
 
 
-def test_a_missing_conversation_is_an_error_that_names_the_app():
-    """A conversation's record is namespaced by app, so this is also what a
-    turn sent from ANOTHER app's screen looks like. It happened: IGT offered a
-    `ud:assist:` service because the discovery filter asked only about the
-    task, and every turn came back "No such conversation" with nothing in the
-    message to act on."""
+def test_a_send_to_a_conversation_that_is_not_there_is_refused_as_deleted():
+    """H10-RECORD-5: a conversation deleted in another tab. The page keeps
+    the message and offers a new conversation."""
     client = FakeClient()
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert len(helper.errors) == 1
-    assert 'No such conversation in igt' in helper.errors[0]
-    assert 'belongs to the app it was started in' in helper.errors[0]
+    assert helper.done == [{'kind': 'refused', 'why': 'gone', 'message': 'This conversation was deleted.'}]
+    assert not client.user_data.store, 'nothing written'
     helper = Helper()
     _service().process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1'}, helper)
     assert helper.errors == ['Missing conversation_id']

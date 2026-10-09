@@ -16,7 +16,7 @@ import pytest
 
 from plaid_client.client import PlaidClient
 from plaid_agent.core.conversation import (
-    RECORD_HEADROOM, ConversationStore, assistant_item, build_meta, conv_key, prune, record_budget, user_item,
+    RECORD_HEADROOM, RECORD_HEADROOM_LARGE, ConversationStore, assistant_item, build_meta, conv_key, prune, record_budget, user_item,
 )
 from plaid_agent.core.files import VALUE_HEADROOM, Attachments, FileKeeper, value_budget
 
@@ -177,7 +177,7 @@ def test_after_core_restarts_with_a_larger_cap_the_record_fills_to_it(core):
     core.restart(2 * MB)
     assert _until(lambda: stream.ready_state == 2)
     _open(client)
-    assert _until(lambda: record_budget(client) == int(2 * MB * RECORD_HEADROOM))
+    assert _until(lambda: record_budget(client) == int(2 * MB * RECORD_HEADROOM_LARGE))
     assert value_budget(client) == 2 * MB - VALUE_HEADROOM
     _write(store, client)
     assert _traces(core, key) == 15, 'the 1.5 MB record is kept whole under 2 MB'
@@ -190,7 +190,7 @@ def test_after_core_restarts_with_a_larger_cap_the_record_fills_to_it(core):
 def test_a_413_under_a_lowered_cap_refits_the_record_to_it(core):
     core.cap = 3 * MB
     client, store = _store(core)
-    assert record_budget(client) == int(3 * MB * RECORD_HEADROOM)
+    assert record_budget(client) == int(3 * MB * RECORD_HEADROOM_LARGE)
     # Core restarted with 1 MB, and no stream of this client saw it.
     core.cap = 1 * MB
     _write(store, client)

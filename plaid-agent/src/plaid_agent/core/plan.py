@@ -747,6 +747,35 @@ class TrackingBatcher(Batcher):
         return {r: n for r, n in out.items() if r not in whole}
 
 
+def may_have_written(item: Dict[str, Any]) -> bool:
+    """Whether some of an undecided plan's changes may be in the project:
+    its approval was cut off after the run marked it :data:`WRITING`. As
+    plaid-ui ``mayHaveWritten``."""
+    plan = item.get('plan') if isinstance(item, dict) else None
+    return bool(plan) and item.get('status') is None and bool(item.get('interrupted')) and bool(plan.get(WRITING))
+
+
+def nothing_landed(client, item: Dict[str, Any]) -> bool:
+    """Whether such a plan's documents show its run wrote nothing after all
+    (cut off between marking the plan and sending its first change): every
+    document the run held is still at the version it held it at. Only for a
+    plan whose every change lands in those documents, which its mark says
+    (``inside``). False whenever it cannot be told."""
+    if not may_have_written(item):
+        return False
+    mark = item['plan'].get(WRITING)
+    if not isinstance(mark, dict) or mark.get('inside') is not True:
+        return False
+    held = [d for d in item['plan'].get('documents') or []
+            if isinstance(d, dict) and d.get('id') and d.get(HELD_FROM) is not None]
+    if not held:
+        return False
+    try:
+        return all((client.documents.get(d['id']) or {}).get('version') == d[HELD_FROM] for d in held)
+    except Exception:  # noqa: BLE001 - not known, so not nothing
+        return False
+
+
 def outcome_unknown(error) -> bool:
     """Whether ``error`` is a write whose answer never came back (a reset, a
     timeout), so it may have been saved. A refused connection sent nothing."""

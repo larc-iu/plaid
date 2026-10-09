@@ -15,11 +15,16 @@ short tag, so one user's assistants never read each other's conversations:
     read) and what the person sees (``display``: user, assistant, and error
     items, an assistant item carrying its plan, citations, and trace).
 
-The service owns the record while it works: the browser appends the user's
-message and marks the conversation pending, submits the request, and from
-then on only reads. The service loads the record, runs the turn, and writes
-the reply back before reporting the request done, so the answer lands
-whether or not anyone is still watching the request's stream.
+The service is the record's only writer. The page sends requests (a
+message, a retry, an approval, a discard, a file, a rename, a delete, a
+hold on the conversation) and reads. The service appends the user's message
+itself, runs the turn, and writes the reply back before reporting the
+request done, so the answer lands whether or not anyone is still watching
+the request's stream.
+
+The sidebar entry also says which tab may act on the conversation
+(``holder: {tab, at}``, stamped by the service's clock) and how much the
+transcript weighs as the server counts it (``size: {bytes, cap}``).
 
 Keys are snake_case here and camelCase in the browser. The clients recase
 them on the wire, so both sides read one record.
@@ -50,11 +55,18 @@ from .trace import summarize_steps
 # (`[user_data] max_value_mb`) it no longer does. With the window known the transcript
 # is held to a share of it in tokens instead (`prune`'s ``transcript``).
 CONVERSATION_BUDGET = 700_000
-# The share of the server's cap the service fills. The service is not the
-# record's only writer: the browser adds the next message and a discard's note
-# to the record as it stands, so a record pruned to the cap exactly took the
-# user's next message back as a 413, and the turn ran without it.
+# The share of the server's cap the service fills, leaving room for its own
+# small writes after a turn (a settle note, a discard's note, the line that
+# stands in for an answer the record could not take). It appends the next
+# message itself and prunes to make room for it, so a large cap needs little.
 RECORD_HEADROOM = 0.9
+RECORD_HEADROOM_LARGE = 0.97
+# The cap from which the larger share is used.
+LARGE_CAP = 2_000_000
+# What a message may weigh before a record counted full refuses it outright
+# (plaid-ui usage.js MESSAGE_ROOM): past it, a refused message is said to be
+# too long for the room left rather than the conversation full.
+MESSAGE_ROOM = 16 * 1024
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 TITLE_MAX = 60
 
@@ -126,8 +138,8 @@ class ConversationStore:
     """Read and write one user's conversations on a project, under one app's
     key prefix.
 
-    The record has two writers, the browser and the service, and each keeps a
-    copy. A write names the version of the entry it was made from
+    The service is the record's only writer, but more than one request (and
+    more than one assistant process) may write it at once. A write names the version of the entry it was made from
     (``user_data.put(..., version=)``), so a write from a copy that another
     write overtook is refused (409) rather than putting back what was there
     before it. :meth:`write` then reads the record again and makes its change
@@ -168,6 +180,68 @@ class ConversationStore:
                   {'messages': conv['messages'], 'display': conv['display']})
         self._put(meta_key(self.app, self.project_id, conv_id), meta)
 
+    def create(self, conv_id: str, conv: Dict[str, Any], meta: Dict[str, Any]) -> bool:
+        """A new conversation: the transcript and then the sidebar entry, each
+        written only when there is no entry under its key (version 0). False,
+        writing nothing more, when the transcript's key is taken. The entry
+        carries the transcript's ``size``."""
+        ckey = conv_key(self.app, self.project_id, conv_id)
+        value = {'messages': conv['messages'], 'display': compact_settled(conv['display'])}
+        self._seen[ckey] = (0, None)
+        try:
+            self._put(ckey, value, guarded=True)
+        except PlaidAPIError as e:
+            if _moved(e):
+                return False
+            raise
+        mkey = meta_key(self.app, self.project_id, conv_id)
+        self._seen[mkey] = (0, None)
+        self._put(mkey, with_size(meta, value, value_cap(self.client)), guarded=True)
+        return True
+
+    def write_meta(self, conv_id: str, change: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]
+                   ) -> Optional[Dict[str, Any]]:
+        """Write the sidebar entry alone, ``change(entry as stored)``, made
+        again on the stored one when another write landed first. The entry as
+        written, or None when there is none (deleted) or ``change`` answers
+        None."""
+        mkey = meta_key(self.app, self.project_id, conv_id)
+        self._forget(mkey)
+        for _ in range(WRITE_TRIES):
+            meta = self._latest(mkey)
+            if not isinstance(meta, dict):
+                return None
+            new = change(dict(meta))
+            if new is None:
+                return None
+            try:
+                self._put(mkey, new, guarded=True)
+                return new
+            except PlaidAPIError as e:
+                if not _moved(e):
+                    raise
+            self._forget(mkey)
+        raise RecordMoved(conv_id)
+
+    def delete(self, conv_id: str) -> None:
+        """Every key of the conversation: its files first, then the
+        transcript, then the sidebar entry last, so a delete cut short still
+        lists and can be made again. A key already gone is skipped."""
+        for key in self.file_keys(conv_id) + [conv_key(self.app, self.project_id, conv_id),
+                                               meta_key(self.app, self.project_id, conv_id)]:
+            try:
+                self.client.user_data.delete(self.user_id, key)
+            except PlaidAPIError as e:
+                if e.status != 404:
+                    raise
+            self._forget(key)
+
+    def file_keys(self, conv_id: str) -> List[str]:
+        """The keys of every file part stored beside the conversation."""
+        prefix = f'{self.app}:assistant:{self.project_id}:file:{conv_id}:'
+        return [e['key'] for e in (self.client.user_data.list(self.user_id, prefix=prefix, page_size=1000) or [])
+                if isinstance(e, dict) and e.get('key')]
+
     def write(self, conv_id: str, change: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]],
               meta_of: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]],
               request_id: Optional[str] = None) -> bool:
@@ -195,6 +269,8 @@ class ConversationStore:
         # user moved on while this request worked.
         self._forget(mkey)
         refitted = False
+        wrote = False
+        cap = None
         for _ in range(WRITE_TRIES):
             conv, meta = self._latest(ckey), self._latest(mkey)
             if not isinstance(conv, dict) or not isinstance(meta, dict) or not _owns(meta, request_id):
@@ -211,6 +287,7 @@ class ConversationStore:
                 try:
                     self._put(ckey, {'messages': new['messages'], 'display': new['display']},
                               guarded=True)
+                    wrote = True
                 except PlaidAPIError as e:
                     if e.status == 413 and not refitted and value_cap(self.client) != cap:
                         # The client read the cap again on the 413, and it is
@@ -227,7 +304,10 @@ class ConversationStore:
             raise RecordMoved(conv_id)
         for _ in range(WRITE_TRIES):
             try:
-                self._put(mkey, meta_of(new, meta), guarded=True)
+                entry = meta_of(new, meta)
+                if wrote:
+                    entry = with_size(entry, new, cap)
+                self._put(mkey, entry, guarded=True)
                 return True
             except PlaidAPIError as e:
                 if not _moved(e):
@@ -335,8 +415,14 @@ def pending_kept(prev: Optional[Dict[str, Any]], request_id: Optional[str],
 # ``itemTime``). A plan's own times stay where they were: its id dates its
 # staging, ``settled_at`` its decision.
 
-def user_item(text: str) -> Dict[str, Any]:
-    return {'kind': 'user', 'text': text, 'created_at': now_iso()}
+def user_item(text: str, **fields) -> Dict[str, Any]:
+    """A message the user sent. ``fields`` are what it carries beside the
+    text, given only when set: ``request_id`` (the request that recorded it,
+    so a request sent again finds it), ``where``, ``files``, ``projects``,
+    ``retry``."""
+    item = {'kind': 'user', 'text': text, 'created_at': now_iso()}
+    item.update({k: v for k, v in fields.items() if v})
+    return item
 
 
 def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Dict[str, Any]],
@@ -442,7 +528,30 @@ def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any
         # only thing that can lose it, and losing it means the panel starts a
         # new thread instead of resuming the one about this document.
         'about': prev.get('about'),
+        # Which tab may act on it, and how much the transcript weighs: written
+        # by other requests and by the store, never lost by this rewrite.
+        'holder': prev.get('holder'),
+        'size': prev.get('size'),
     }
+
+
+def kept_meta(prev: Dict[str, Any], conv: Optional[Dict[str, Any]] = None, **fields) -> Dict[str, Any]:
+    """The sidebar entry ``prev`` with ``fields`` set. With ``conv`` (the
+    transcript changed), its turn count and ``updated_at`` follow it, so the
+    list's order and a reader's change check see it. Without, both stay: a
+    hold, a rename or a cleared marker moves nothing a reader rereads."""
+    meta = dict(prev)
+    if conv is not None:
+        meta['turns'] = sum(1 for d in conv['display'] if isinstance(d, dict) and d.get('kind') == 'user')
+        meta['updated_at'] = now_iso()
+    meta.update(fields)
+    return meta
+
+
+def with_size(meta: Dict[str, Any], conv: Dict[str, Any], cap: Optional[int]) -> Dict[str, Any]:
+    """The entry with the weight of the transcript ``conv`` as the server
+    counts it, against the cap on one value, for the size meter."""
+    return {**meta, 'size': {'bytes': conversation_bytes(conv), 'cap': cap}}
 
 
 # --- plans ----------------------------------------------------------------------
@@ -678,6 +787,9 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
     return change
 
 
+#: What the model is told of a plan the user discarded.
+DISCARDED_NOTE = '(note) The user discarded the plan; nothing was changed.'
+
 # The outcomes of a plan that wrote to the project.
 WROTE = ('applied', 'partial')
 
@@ -831,11 +943,14 @@ def value_cap(client) -> Optional[int]:
 
 def record_budget(client, default: int = CONVERSATION_BUDGET) -> int:
     """What the service may fill of the cap the server enforces on one stored
-    value (`value_cap`): the cap less the browser's room (`RECORD_HEADROOM`).
+    value (`value_cap`): the cap less the room its own small writes need
+    (`RECORD_HEADROOM`, `RECORD_HEADROOM_LARGE` from `LARGE_CAP`).
     A server that does not report one gets the fallback, which is what the
     budget was before anybody asked."""
     cap = value_cap(client)
-    return default if cap is None else int(cap * RECORD_HEADROOM)
+    if cap is None:
+        return default
+    return int(cap * (RECORD_HEADROOM_LARGE if cap >= LARGE_CAP else RECORD_HEADROOM))
 
 
 def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
@@ -925,3 +1040,58 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
         if excess <= 0:
             break
     return {**conv, 'display': display}
+
+
+# --- sending a message again ----------------------------------------------------
+
+def answered_last(display: List[Dict[str, Any]]) -> bool:
+    """Whether the user's last message has an answer after it. Such a message
+    is never sent again: the rewind would cut the model transcript back past
+    an answer the reader can see (H10-RECORD-4). As plaid-ui ``answeredLast``."""
+    items = [d for d in display or [] if isinstance(d, dict)]
+    kinds = [d.get('kind') for d in items]
+    if 'user' not in kinds:
+        return False
+    i = len(kinds) - 1 - kinds[::-1].index('user')
+    return any(k == 'assistant' for k in kinds[i + 1:])
+
+
+def _is_message(m: Any, text: str) -> bool:
+    """The model's copy of a user message: the text as sent, or with the
+    notes the service stamps in front of it, each ending in a blank line."""
+    content = m.get('content') if isinstance(m, dict) else None
+    return (isinstance(m, dict) and m.get('role') == 'user' and isinstance(content, str)
+            and (content == text or content.endswith(f'\n\n{text}')))
+
+
+LOST_LINE = 'No answer came back for this message.'
+
+
+def rewind_for_retry(conv: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    """What sending the user's last message again starts from, as
+    ``(record, question)``, or None when there is nothing to send again
+    (no message, or one with an answer after it, `answered_last`).
+
+    The attempt that failed stays in the record: the question and the line
+    saying how it ended (a turn that got no answer at all is given
+    :data:`LOST_LINE`). Only the model transcript goes back to before that
+    question, so the model reads it once, and a note written after it (a plan
+    decided since) stays. ``question`` is the display item asked again, with
+    its files, the projects it read and where it was asked from. As plaid-ui
+    ``rewindForRetry`` did."""
+    display = list(conv.get('display') or [])
+    kinds = [d.get('kind') if isinstance(d, dict) else None for d in display]
+    if 'user' not in kinds or answered_last(display):
+        return None
+    i = len(kinds) - 1 - kinds[::-1].index('user')
+    asked = display[i]
+    text = asked.get('text') or ''
+    messages = list(conv.get('messages') or [])
+    last = next((k for k in range(len(messages) - 1, -1, -1) if _is_message(messages[k], text)), -1)
+    if last >= 0 and all(isinstance(m, dict) and m.get('role') == 'user' for m in messages[last + 1:]):
+        messages = messages[:last] + messages[last + 1:]
+    if i == len(display) - 1:
+        display.append({'kind': 'error', 'lost': True, 'text': LOST_LINE, 'created_at': now_iso()})
+    question = {k: asked[k] for k in ('text', 'files', 'projects', 'where') if asked.get(k)}
+    question.setdefault('text', text)
+    return {'messages': messages, 'display': display}, question

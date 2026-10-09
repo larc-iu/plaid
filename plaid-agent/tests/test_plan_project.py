@@ -28,7 +28,7 @@ def _turn(app, monkeypatch, projects, delegated):
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
     helper = _Helper()
-    _svc(app).process_request({'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
+    _svc(app).process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
                                'conversation_id': 'c1', 'delegated_projects': delegated(pid)}, helper)
     assert not helper.errors, helper.errors
     conv, _ = store.load('c1')

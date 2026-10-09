@@ -187,15 +187,15 @@ def test_a_save_that_failed_says_so_with_one_period(monkeypatch):
     _service().process_request(_request(client), helper)
     [done] = helper.done
     assert '..' not in done['warning']
-    assert done['warning'] == ('The conversation could not be saved: HTTP 413 The value is too large. '
-                               'This answer is not in the record.')
+    assert done['warning'] == 'This answer was not saved. This conversation is full.'
+    assert done['item']['text'] == 'Two words.', 'the answer goes out whole, shown once'
 
     monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
         _lost('PUT', '/api/v1/users/u@x/data/k')))
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert helper.done[0]['warning'] == ('Saving the conversation got no answer, so this answer may not '
-                                         'be in the record.')
+                                         'be in the record yet.')
 
 
 def test_a_failed_final_save_ends_the_request_once_with_the_answer(monkeypatch):
