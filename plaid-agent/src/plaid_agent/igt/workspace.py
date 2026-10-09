@@ -196,6 +196,9 @@ class Workspace(BaseWorkspace):
         # any rule of the plan: a chained change's line reads from it to the
         # value the plan writes.
         self.stored_values: Dict[tuple, str] = {}
+        # Set by a rule's resolver that read only part of what it would
+        # change (``[read, of]``), for the rule to say so (H12-RULES-2).
+        self.partial_read: Optional[List[int]] = None
 
     # --- rules (core.rules) ---------------------------------------------------
 

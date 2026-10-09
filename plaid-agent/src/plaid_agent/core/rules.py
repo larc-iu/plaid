@@ -381,6 +381,20 @@ def transition_lines(rows: List[Dict[str, Any]], more: List[int], unit: Tuple[st
     return out
 
 
+# --- a rule that read only part of what it would change -----------------------------
+
+#: The key on a rule's card saying it covers part of what it would change.
+PARTIAL = 'partial'
+
+
+def partial_line(partial: List[int], unit: Tuple[str, str]) -> str:
+    """The card's line for a rule that read only the first ``read`` of ``of``
+    things it would change: ``Covers the first 20,000 of 66,111 words.
+    Approve, then ask again for the rest.``"""
+    read, of = partial
+    return f'Covers the first {read:,} of {_plural(of, *unit)}. Approve, then ask again for the rest.'
+
+
 # --- a pattern as a person reads it ----------------------------------------------
 
 _META = set('\\^$.|?*+()[]{}')

@@ -252,6 +252,34 @@ describe('every distinct change a rule makes (H12-RULES-1)', () => {
   });
 });
 
+describe('a rule that covers part of what it would change (H12-RULES-2)', () => {
+  const partial = () =>
+    ruleRow({
+      rule: {
+        ...ruleRow().rule,
+        partial: 'Covers the first 20,000 of 66,111 words. Approve, then ask again for the rest.',
+      },
+    });
+
+  it('says so on the card, folded or not', async () => {
+    const view = await mount(plan([partial()]));
+    expect(view.container.querySelector('[data-rule-partial]').textContent).toBe(
+      'Covers the first 20,000 of 66,111 words. Approve, then ask again for the rest.',
+    );
+    await view.unmount();
+  });
+
+  it('and in the Markdown export', () => {
+    const conv = {
+      display: [{ kind: 'assistant', text: 'Planned.', plan: plan([partial()]), status: null }],
+    };
+    const md = conversationToMarkdown(conv, { title: 'T' }, { adapter, projectId: 'pr1' });
+    expect(md).toContain(
+      '   - Covers the first 20,000 of 66,111 words. Approve, then ask again for the rest.',
+    );
+  });
+});
+
 describe('a settled plan cut to its first rows', () => {
   it('says how many rows each document shows, not that they are all it had', async () => {
     const rows = Array.from({ length: 200 }, (_, i) => ({

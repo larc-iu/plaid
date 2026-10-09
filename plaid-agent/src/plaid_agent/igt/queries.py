@@ -881,6 +881,11 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
     from .tools import check_respell_overlap
     c = ws.corpus
     rows = c.entities([c.word('?t', value=spec)], ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+    # The read caps candidates in document order: past it the later documents
+    # were never looked at, whatever the rows read hold (H12-RULES-2).
+    if len(rows) > cap:
+        raise ToolError(f'More than {cap:,} words match, which is more than one pass may consider. '
+                        f'Narrow it (a document, a stricter pattern) and go in passes.')
     budget = _docs_of(rows)
     words, morphs = [], []
     for (tok,) in rows:
@@ -900,6 +905,9 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
     if morpheme_forms and c.M and words:
         mrows = c.entities([c.word('?w', value=spec), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w'),
                            ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+        if len(mrows) > cap:
+            raise ToolError(f'More than {cap:,} morpheme forms match, which is more than one pass may '
+                            f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
         for m, w in mrows:
             if not (isinstance(m, dict) and isinstance(w, dict)) or c.ignored(w.get('value')):
                 continue
@@ -956,6 +964,15 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
     if not overwrite:
         where.append(['not', ['token', '?t', {'metadata': {f'orthog:{target}': {'regex': '.'}}}]])
     rows = c.entities(where, ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+    if len(rows) > cap:
+        # One pass reads the first `cap` words, in document order. Filling
+        # where empty, the next pass finds the rest. Overwriting, it would
+        # read the same words again, so it is refused.
+        if overwrite:
+            raise ToolError(f'More than {cap:,} words are candidates, which is more than one pass may '
+                            f'consider. Narrow it to a document and go in passes.')
+        rows = rows[:cap]
+        ws.partial_read = [cap, c.count(where, ['?t'])]
     budget = _docs_of(rows)
     staged = []
     for (tok,) in rows:
@@ -1049,6 +1066,9 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     if skip_analyzed:
         where += Unanalyzed.clauses(c, '?w')
     rows = c.entities(where, ['?w'], cap + 1, [['?w.doc'], ['?w.begin']])
+    if len(rows) > cap:
+        raise ToolError(f'"{form}" occurs more than {cap:,} times, more than one plan may hold. '
+                        f'Narrow it to a document and go in passes.')
     words = [r[0] for r in rows if isinstance(r[0], dict) and not c.ignored(r[0].get('value'))]
     chains: Dict[str, List[dict]] = defaultdict(list)
     spans: Dict[str, List[str]] = defaultdict(list)

@@ -90,6 +90,7 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) =
     // card's cut, and its sample, as the card shows them unfolded.
     const { named, moreDocs, moreChanges } = ruleDocuments(r.rule);
     lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork)}`);
+    if (r.rule.partial) lines.push(`   - ${r.rule.partial}`);
     if (r.rule.mode) lines.push(`   - Matches ${r.rule.mode}`);
     const changes = ruleTransitions(r.rule);
     changes.rows.forEach((t) => lines.push(`   - ${markdownText(transitionLine(t))}`));

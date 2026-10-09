@@ -441,6 +441,17 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
           )}
         </td>
       </tr>
+      {row.rule.partial && (
+        <tr>
+          <td
+            colSpan={2}
+            className="py-0.5 pl-3 font-medium text-warning-foreground"
+            data-rule-partial
+          >
+            {row.rule.partial}
+          </td>
+        </tr>
+      )}
       {changes.rows.map((t, i) => (
         <tr key={`change:${i}`} className="align-top" data-rule-change={i}>
           <td className="w-px whitespace-nowrap py-0.5 pl-3 pr-4">

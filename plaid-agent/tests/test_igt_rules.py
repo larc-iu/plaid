@@ -355,3 +355,79 @@ def test_how_a_rule_matches_in_words():
     assert rules.match_mode(r'\bRL\b', True, False, True) == 'as a whole word, case-sensitive'
     assert rules.match_mode(r'^RL$', True, False, True) == 'the whole value, case-sensitive'
     assert rules.match_mode(r'PROS(?!P)', True, False, True) == 'anywhere in the value, case-sensitive'
+
+
+# --- a rule that reads part of what it would change (H12-RULES-2) -------------------
+
+def _words_engine(client, n_words, total):
+    """Words with no IPA spelling, in document order, ``n_words`` of them in
+    the read and ``total`` by count."""
+    def query(body):
+        where = body.get('where') or []
+        if where and where[0][0] == 'document':
+            return {'return': 'entities', 'results': [
+                [{'id': d, 'version': client._documents[d]['version']}]
+                for d in where[0][2]['id'] if d in client._documents]}
+        if body.get('return') == 'count':
+            return {'return': 'count', 'count': total}
+        if body.get('return') == 'entities':
+            rows = [[{'id': f'w-{i}', 'document': 'd1', 'value': f'kuru{i}', 'begin': 0, 'end': 1,
+                      'metadata': {}, 'text': 't1'}] for i in range(1, n_words + 1)]
+            return {'return': 'entities', 'results': rows[:body.get('limit') or len(rows)]}
+        return {'return': 'aggregate', 'results': []}
+    client.query = query
+
+
+def test_a_copy_past_the_candidate_cap_says_it_covers_the_first_part(monkeypatch):
+    from plaid_agent.igt import bulk
+    monkeypatch.setattr(bulk, 'CANDIDATE_MAX', 2)
+    client, w = _ws({})
+    _words_engine(client, 3, 66111)
+    out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
+    assert 'One change covering 2 words in 1 document.' in out
+    assert ('Only the first 2 of the 66,111 words it would look at were read, in document order: this change '
+            'covers 2 words among them, and the rest are not in the plan. Tell the user so: once they approve '
+            'this, ask again (the same call) for the rest.') in out
+    [row] = w.plan_payload()['changes']
+    assert row['rule'][rules.PARTIAL] == ('Covers the first 2 of 66,111 words. Approve, then ask again for '
+                                          'the rest.')
+
+
+def test_a_copy_that_overwrites_past_the_cap_is_refused(monkeypatch):
+    from plaid_agent.igt import bulk
+    monkeypatch.setattr(bulk, 'CANDIDATE_MAX', 2)
+    client, w = _ws({})
+    _words_engine(client, 3, 3)
+    out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA', 'overwrite': True})
+    assert 'More than 2 words are candidates' in out and not w.ops
+
+
+def test_a_copy_under_the_cap_says_nothing_of_a_part(monkeypatch):
+    from plaid_agent.igt import bulk
+    monkeypatch.setattr(bulk, 'CANDIDATE_MAX', 5)
+    client, w = _ws({})
+    _words_engine(client, 3, 3)
+    out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
+    assert 'One change covering 3 words in 1 document.' in out and 'Only the first' not in out
+    [row] = w.plan_payload()['changes']
+    assert rules.PARTIAL not in row['rule']
+
+
+def test_a_respelling_past_the_cap_is_refused_whatever_the_rows_hold(monkeypatch):
+    # three words read with the cap at two: one of them needs no change, which
+    # left two staged and nothing said before
+    from plaid_agent.igt import bulk
+    monkeypatch.setattr(bulk, 'CANDIDATE_MAX', 2)
+    client, w = _ws({})
+    _words_engine(client, 3, 3)
+    out = call_tool(w, 'respell_all', {'pattern': 'kuru1', 'replacement': 'kulu1'})
+    assert 'More than 2 words match' in out and not w.ops
+
+
+def test_an_analysis_for_a_form_past_the_cap_is_refused_whatever_the_rows_hold(monkeypatch):
+    from plaid_agent.igt import bulk
+    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 2)
+    client, w = _ws({})
+    _words_engine(client, 3, 3)
+    out = call_tool(w, 'set_analysis_for_form', {'form': 'kuru1', 'morphemes': [{'form': 'kuru1'}]})
+    assert 'occurs more than 2 times' in out and not w.ops

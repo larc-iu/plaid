@@ -297,11 +297,7 @@ def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, A
                                 **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} {qv(w.surface)}',
                                            f'{target} = {qv(value)}')})
         return out
-    staged = q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap, a.get('document'))
-    if len(staged) > cap:
-        raise ToolError(f'More than {cap} words are candidates, which is more than one pass may consider. '
-                        f'Narrow it to a document and go in passes.')
-    return staged
+    return q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap, a.get('document'))
 
 
 def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
@@ -438,6 +434,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     return (ws.planned_note(1) + f'\n  One change covering {rules.count_line(n, unit, len(docs))}.'
             + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
+            + (f'\n{_partial_note(op, unit)}' if op.get('partial') else '')
             + (f'\nMatches {mode}.' if mode else '')
             + (('\nEvery distinct change it makes, the card lists the same:\n  ' + '\n  '.join(changes))
                if changes else '')
@@ -453,7 +450,9 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
     """(rule op, what it found, what it writes, how many a planned analysis
     makes moot): the rule resolved now over the values the ``earlier`` rules
     leave, as approval will resolve it."""
+    ws.partial_read = None
     found = resolve_rule(ws, tool, args, earlier)
+    partial, ws.partial_read = ws.partial_read, None
     # Staged as one rule, its changes never pass add_op, so the values they
     # would write are held to their layers' lists here.
     for o in found:
@@ -468,6 +467,8 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
           'change': change, 'head': head, 'unit': unit}
     if mode:
         op['mode'] = mode
+    if partial:
+        op['partial'] = partial
     if ws.prefer_scan:
         # A workspace that cannot query (the tests' fake) found it by reading
         # every document, and approval finds it the same way.
@@ -501,6 +502,8 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
         out[CARD][rules.CHANGED_AGAIN] = again
     if op.get('mode'):
         out[CARD]['mode'] = op['mode']
+    if op.get('partial'):
+        out[CARD][rules.PARTIAL] = rules.partial_line(op['partial'], unit)
     if op.get('tool') in _TRANSITION_TOOLS:
         a = op.get('args') or {}
         notes = (rules.surprises(a.get('pattern') or '', bool(a.get('regex')), bool(a.get('whole')),
@@ -510,6 +513,20 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
         out[CARD][rules.TRANSITIONS] = rows
         out[CARD][rules.TRANSITIONS_MORE] = more
     return out
+
+
+def _partial_note(op: Dict[str, Any], unit) -> str:
+    """What the model is told of a rule that read only the first part of what
+    it would change: how much, and that the user approves this part and asks
+    again for the rest (the card says the same)."""
+    read, of = op['partial']
+    return (f'Only the first {read:,} of the {of:,} {unit[1]} it would look at were read, in document order: '
+            f'this change covers {_plural_unit(op.get("count") or 0, unit)} among them, and the rest are not '
+            f'in the plan. Tell the user so: once they approve this, ask again (the same call) for the rest.')
+
+
+def _plural_unit(n: int, unit) -> str:
+    return f'{n:,} {unit[0] if n == 1 else unit[1]}'
 
 
 #: The rules whose card lists every distinct change they make: a value
