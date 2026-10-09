@@ -9,7 +9,7 @@ declared tool reaches that fallback.
 
 from typing import Any, Dict
 
-from ..core.trace import count, in_doc, plural, q, tracer_for
+from ..core.trace import count, in_doc, plural, q, read_document_label, reading_line, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -33,14 +33,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'list_documents':
         return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
     if name == 'read_document':
-        span = ''
-        picked = a.get('sentences')
-        if picked:
-            span = f' ({plural(len(picked), "sentence")})'
-        elif a.get('from_sentence') or a.get('to_sentence'):
-            span = f' (sentences {a.get("from_sentence") or 1}'
-            span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
-        return f'Read {q(a.get("document"))}{span}'
+        return read_document_label(a)
     if name == 'search':
         where = a.get('where') if a.get('where') and a['where'] != 'baseline' else 'the baseline'
         return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
@@ -219,7 +212,7 @@ _PROGRESS = {
     'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
     'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
     'list_documents': lambda a: 'Listing the documents…',
-    'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
+    'read_document': reading_line,
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'read_lexicon': lambda a: 'Reading the lexicon…',
     'concordance': lambda a: f'Concordancing "{a.get("pattern", "")}"…',

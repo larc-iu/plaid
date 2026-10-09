@@ -22,6 +22,7 @@ from . import docload, fingerprint as fp, garble, opkind, work
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
 from .tools import ToolError
+from .trace import note as trace_note
 
 # A turn that has read a page from the web plans nothing. The page is text by
 # a stranger, and nothing it says gets to become a proposed change in the same
@@ -296,9 +297,22 @@ class BaseWorkspace:
 
     def render(self, doc, **kw) -> str:
         """One of this app's documents as the model reads it. Takes
-        ``from_sentence``/``to_sentence`` or ``indexes``, and a ``budget`` in
-        characters."""
+        ``from_sentence``/``to_sentence`` or ``indexes``, a ``budget`` in
+        characters, and ``shown_out``, a list the positions of the sentences
+        rendered are added to."""
         raise NotImplementedError
+
+    #: What the tool call under way has read (`trace.note`), or None outside
+    #: one. The loop sets it before each call, and a call routed to another
+    #: project's workspace shares it (`reach.route`).
+    reads: Optional[List[Dict[str, Any]]] = None
+
+    def note_read(self, n: int, unit: str, of: Optional[int] = None, which: Optional[str] = None) -> None:
+        """Say what the tool call under way showed the model: ``n`` of
+        ``unit`` (one of `trace.UNITS`), out of ``of``, and ``which`` ones,
+        for its step's label and the summary line."""
+        if self.reads is not None:
+            self.reads.append(trace_note(n, unit, of, which))
 
     def sentence_position(self, doc, item) -> Optional[int]:
         """The position of the sentence a read_document argument names in

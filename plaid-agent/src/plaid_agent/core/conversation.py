@@ -68,6 +68,10 @@ LARGE_CAP = 2_000_000
 # too long for the room left rather than the conversation full.
 MESSAGE_ROOM = 16 * 1024
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
+#: The kinds of value stored beside a conversation, under
+#: ``<app>:assistant:<project>:<kind>:<conv>:``: attached and fetched files,
+#: each model call's round, and the instructions (core/rounds.py).
+BESIDE = ('file', 'round', 'prompt')
 TITLE_MAX = 60
 
 
@@ -234,10 +238,11 @@ class ConversationStore:
         raise RecordMoved(conv_id)
 
     def delete(self, conv_id: str) -> None:
-        """Every key of the conversation: its files first, then the
-        transcript, then the sidebar entry last, so a delete cut short still
-        lists and can be made again. A key already gone is skipped."""
-        for key in self.file_keys(conv_id) + [conv_key(self.app, self.project_id, conv_id),
+        """Every key of the conversation: its files, rounds and prompts first,
+        then the transcript, then the sidebar entry last, so a delete cut
+        short still lists and can be made again. A key already gone is
+        skipped."""
+        for key in self.beside_keys(conv_id) + [conv_key(self.app, self.project_id, conv_id),
                                                meta_key(self.app, self.project_id, conv_id)]:
             try:
                 self.client.user_data.delete(self.user_id, key)
@@ -246,11 +251,15 @@ class ConversationStore:
                     raise
             self._forget(key)
 
-    def file_keys(self, conv_id: str) -> List[str]:
-        """The keys of every file part stored beside the conversation."""
-        prefix = f'{self.app}:assistant:{self.project_id}:file:{conv_id}:'
-        return [e['key'] for e in (self.client.user_data.list(self.user_id, prefix=prefix, page_size=1000) or [])
-                if isinstance(e, dict) and e.get('key')]
+    def beside_keys(self, conv_id: str) -> List[str]:
+        """The keys of every value stored beside the conversation: its file
+        parts, its rounds and its prompts (`BESIDE`)."""
+        out: List[str] = []
+        for kind in BESIDE:
+            prefix = f'{self.app}:assistant:{self.project_id}:{kind}:{conv_id}:'
+            out += [e['key'] for e in (self.client.user_data.list(self.user_id, prefix=prefix, page_size=1000) or [])
+                    if isinstance(e, dict) and e.get('key')]
+        return out
 
     def write(self, conv_id: str, change: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]],
               meta_of: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]],
@@ -439,9 +448,11 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
                    steps: List[Dict[str, Any]], steps_summary: str, model: Optional[str],
                    usage: Optional[Dict[str, int]] = None,
                    context_note: str = '', version: Optional[str] = None,
-                   service: Optional[str] = None) -> Dict[str, Any]:
-    """What the person sees of a reply. A step's own output is not repeated
-    here: it is the ``tool`` message with the same id in the transcript.
+                   service: Optional[str] = None, reply_round: Optional[str] = None) -> Dict[str, Any]:
+    """What the person sees of a reply. A step's own input and output are not
+    repeated here: they are in the round the step names (core/rounds.py),
+    stored beside the conversation. ``reply_round`` names the round of the
+    model call that wrote the reply, when it was stored.
 
     ``usage`` is ``{sent, received, window, total}`` for the turn that
     produced this reply: ``sent`` and ``received`` are its last model call,
@@ -474,33 +485,32 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
         item['usage'] = usage
     if context_note:
         item['context_note'] = context_note
+    if reply_round:
+        item['reply_round'] = reply_round
     return item
 
 
 def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
                version: Optional[str] = None, service: Optional[str] = None,
                steps: Optional[List[Dict[str, Any]]] = None,
-               calls: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+               partial: Optional[str] = None) -> Dict[str, Any]:
     """A turn that ended without an answer. ``model``, ``version`` and
     ``service`` say which assistant it was asked of, as on an answer.
 
     ``steps`` are the tool calls the turn made before it failed or was
-    stopped, as an answer's are (`trace.trace_step`), and ``calls`` what each
-    was sent and answered: ``{id, name, arguments, result}``, the arguments as
-    the model wrote them and the result as the tool returned it (cut to
-    ``MAX_RESULT_CHARS`` like every result). An answer keeps these in the
-    model transcript, but a failed turn's messages leave the transcript (a
-    retry must not send them again), so they are kept on the item instead,
-    which the model never reads. `prune` drops their results first, then
-    them, like an old answer's."""
+    stopped, as an answer's are (`trace.trace_step`), each naming the round
+    that holds its input and output, as an answer's do. ``partial`` is the
+    text the model call under way had written when the turn ended. A failed
+    turn's messages leave the model transcript (a retry must not send them
+    again), so the item is the only record of them in the conversation."""
     item: Dict[str, Any] = {'kind': 'error', 'text': text, 'created_at': now_iso()}
     if stopped:
         item['stopped'] = True
     if steps:
         item['steps'] = steps
         item['steps_summary'] = summarize_steps(steps)
-    if calls:
-        item['calls'] = calls
+    if partial:
+        item['partial'] = partial
     if model:
         item['model'] = model
     if version:
@@ -1012,29 +1022,9 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
     if excess <= 0:
         return conv
 
-    # A failed or stopped turn keeps its calls' results on its own item (see
-    # `error_item`), where they are tool results like any other: they go
-    # next, oldest first, the newest item's too, since the model never reads
-    # them and the reader of the record has their steps and arguments still.
-    display = list(conv.get('display') or [])
-    for i, item in enumerate(display):
-        if excess <= 0:
-            break
-        if item.get('kind') != 'error' or not item.get('calls'):
-            continue
-        calls = []
-        for c in item['calls']:
-            if excess > 0 and isinstance(c, dict) and c.get('result') not in (None, DROPPED):
-                excess -= _bytes(c['result']) - dropped
-                c = {**c, 'result': DROPPED}
-            calls.append(c)
-        display[i] = {**item, 'calls': calls}
-    if excess <= 0:
-        return {**conv, 'display': display}
-
     # Stages two and three walk `display` oldest first and leave the last item
-    # whole, because that is the reply on screen. A failed turn's steps go with
-    # the calls they name.
+    # whole, because that is the reply on screen.
+    display = list(conv.get('display') or [])
     for key in ('steps', 'citations'):
         for i in range(max(0, len(display) - 1)):
             if excess <= 0:
@@ -1043,11 +1033,7 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
             if item.get('kind') not in ('assistant', 'error') or not item.get(key):
                 continue
             excess -= _bytes(item[key])
-            thinner = {**item, key: []}
-            if key == 'steps' and item.get('calls'):
-                excess -= _bytes(item['calls'])
-                thinner['calls'] = []
-            display[i] = thinner
+            display[i] = {**item, key: []}
         if excess <= 0:
             break
     return {**conv, 'display': display}

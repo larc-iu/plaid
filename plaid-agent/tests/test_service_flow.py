@@ -167,7 +167,9 @@ def test_a_stop_seen_while_a_tool_reports_progress_is_recorded_as_a_stop(monkeyp
     assert [d['kind'] for d in conv['display']] == ['user', 'error']
     item = conv['display'][-1]
     assert item['stopped'] is True and item['text'] == 'Stopped.'
-    assert [c['id'] for c in item['calls']] == ['c1'] and len(item['steps']) == 1
+    assert len(item['steps']) == 1 and 'calls' not in item
+    [rnd] = [e['value'] for (_u, k), e in client.user_data.store.items() if ':round:c1:' in k]
+    assert item['steps'][0]['round'] == rnd['id'] and [c['id'] for c in rnd['calls']] == ['c1']
     assert [m['role'] for m in conv['messages']] == ['user']
     assert meta['pending'] is None
 

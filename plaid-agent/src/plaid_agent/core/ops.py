@@ -40,7 +40,7 @@ LEASE_S = 5 * 60
 
 #: Advertised as ``extras.record``: the pages that send ops offer only an
 #: assistant that takes them.
-RECORD_PROTOCOL = 2
+RECORD_PROTOCOL = 3
 
 #: What a page that writes the record itself is told: it sent a request with
 #: no op. The page writes it as the turn's error line, or shows it as a toast.

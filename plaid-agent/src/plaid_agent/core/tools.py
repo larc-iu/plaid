@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit, read_int, sentence_number
 from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
+from .trace import ranges
 
 
 class ToolError(Exception):
@@ -183,6 +184,7 @@ def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) 
     limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
     offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
+    ws.note_read(len(page), 'document', of=len(docs))
     out = [f'{len(docs)} document(s)' + (f' matching "{pattern}"' if pattern else '')
            + (f', showing {offset + 1} to {offset + len(page)}' if len(docs) > len(page) else '')
            + ':']
@@ -212,10 +214,22 @@ def read_document(ws, document: str = None, from_sentence=None, to_sentence=None
         items = sentences if isinstance(sentences, list) else [sentences]
         picked = list(dict.fromkeys(n for n in (position(i, 'sentences') for i in items)
                                     if n is not None))[:MAX_SENTENCES_PER_READ]
-        return truncate(ws.render(doc, indexes=picked, budget=RENDER_BUDGET))
+        return _noted(ws, doc, lambda shown: ws.render(doc, indexes=picked, budget=RENDER_BUDGET, shown_out=shown))
     lo = max(1, position(from_sentence, 'from_sentence') or 1)
     hi = (position(to_sentence, 'to_sentence')
           or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1))
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
         hi = lo + MAX_SENTENCES_PER_READ - 1
-    return truncate(ws.render(doc, from_sentence=lo, to_sentence=hi, budget=RENDER_BUDGET))
+    return _noted(ws, doc, lambda shown: ws.render(doc, from_sentence=lo, to_sentence=hi, budget=RENDER_BUDGET,
+                                                   shown_out=shown))
+
+
+def _noted(ws, doc, render: Callable[[List[int]], str]) -> str:
+    """A read of ``doc`` rendered, with the sentences it showed noted
+    (`BaseWorkspace.note_read`) by the numbers the app shows for them."""
+    shown: List[int] = []
+    out = truncate(render(shown))
+    if shown:
+        numbers = [ws.sentence_shown(doc, doc.sentences[i - 1]) for i in shown]
+        ws.note_read(len(shown), 'sentence', of=len(doc.sentences), which=ranges(numbers))
+    return out

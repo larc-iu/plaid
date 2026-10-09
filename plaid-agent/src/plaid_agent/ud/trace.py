@@ -10,7 +10,7 @@ if any declared tool reaches that fallback.
 import re
 from typing import Any, Dict, List
 
-from ..core.trace import count, in_doc, plural, q, tracer_for
+from ..core.trace import count, in_doc, plural, q, read_document_label, reading_line, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -58,14 +58,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'list_documents':
         return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
     if name == 'read_document':
-        span = ''
-        picked = a.get('sentences')
-        if picked:
-            span = f' ({plural(len(picked), "sentence")})'
-        elif a.get('from_sentence') or a.get('to_sentence'):
-            span = f' (sentences {a.get("from_sentence") or 1}'
-            span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
-        return f'Read {q(a.get("document"))}{span}'
+        return read_document_label(a)
     if name == 'query_help':
         return 'Looked up the query language'
     if name == 'query':
@@ -167,7 +160,7 @@ _PROGRESS = {
     'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
     'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
     'list_documents': lambda a: 'Listing the documents…',
-    'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
+    'read_document': reading_line,
     'split_sentence': lambda a: 'Splitting a sentence…',
     'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
     'query': lambda a: 'Running a query…',

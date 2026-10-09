@@ -581,10 +581,12 @@ def store_parts(store, conv_id: str, file_id: str, parts: List[str]) -> None:
 ORPHAN_AGE_S = 60 * 60
 
 
-def sweep_orphan_files(store, now: Optional[float] = None) -> int:
-    """Delete the parts of files whose conversation has no sidebar entry and
-    that are older than :data:`ORPHAN_AGE_S`, under one user's project.
-    How many were deleted."""
+def sweep_orphans(store, now: Optional[float] = None) -> int:
+    """Delete what is stored beside a conversation that has no sidebar entry
+    (file parts, rounds, prompts: `conversation.BESIDE`) and is older than
+    :data:`ORPHAN_AGE_S`, under one user's project. A round written after its
+    conversation was deleted (a late round of a stopped turn) goes here. How
+    many were deleted."""
     import time as _time
     from datetime import datetime
     client = store.client
@@ -592,14 +594,16 @@ def sweep_orphan_files(store, now: Optional[float] = None) -> int:
     live = {e['key'][len(under) + len('meta:'):]
             for e in client.user_data.list(store.user_id, prefix=under + 'meta:', page_size=1000) or []
             if isinstance(e, dict) and e.get('key')}
-    files = client.user_data.list(store.user_id, prefix=under + 'file:', page_size=1000) or []
+    from .conversation import BESIDE
+    beside = [(kind, e) for kind in BESIDE
+              for e in client.user_data.list(store.user_id, prefix=f'{under}{kind}:', page_size=1000) or []]
     now = _time.time() if now is None else now
     gone = 0
-    for e in files:
+    for kind, e in beside:
         key = e.get('key') if isinstance(e, dict) else None
         if not key:
             continue
-        conv = key[len(under) + len('file:'):].split(':', 1)[0]
+        conv = key[len(under) + len(kind) + 1:].split(':', 1)[0]
         if not conv or conv in live:
             continue
         try:

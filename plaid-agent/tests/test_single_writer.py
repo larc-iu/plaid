@@ -75,7 +75,7 @@ def test_a_request_with_no_op_is_from_an_old_page_and_is_refused_with_a_reload_l
 def test_the_service_says_it_takes_ops():
     import inspect
     from plaid_agent.core.ops import RECORD_PROTOCOL
-    assert RECORD_PROTOCOL == 2
+    assert RECORD_PROTOCOL == 3
     assert "self.extras['record'] = RECORD_PROTOCOL" in inspect.getsource(service_mod.BaseAssistantService.setup)
 
 
@@ -580,15 +580,15 @@ def test_delete_during_an_approval_is_refused():
 
 
 def test_a_sweep_deletes_files_whose_conversation_never_came(monkeypatch):
-    from plaid_agent.core.files import sweep_orphan_files
+    from plaid_agent.core.files import sweep_orphans
     client = FakeClient()
     client.user_data.put('u@x', 'igt:assistant:p1:file:gone:f1:part:0', 'x')
     client.user_data.put('u@x', 'igt:assistant:p1:meta:live', {'id': 'live'})
     client.user_data.put('u@x', 'igt:assistant:p1:file:live:f2:part:0', 'y')
     store = _store(client)
-    assert sweep_orphan_files(store) == 0, 'too young'
+    assert sweep_orphans(store) == 0, 'too young'
     import time
-    assert sweep_orphan_files(store, now=time.time() + 2 * 3600) == 1
+    assert sweep_orphans(store, now=time.time() + 2 * 3600) == 1
     keys = {k for (_u, k) in client.user_data.store}
     assert 'igt:assistant:p1:file:gone:f1:part:0' not in keys and 'igt:assistant:p1:file:live:f2:part:0' in keys
 

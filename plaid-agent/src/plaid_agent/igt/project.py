@@ -801,7 +801,8 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
                     max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
-                    budget: Optional[int] = None, indexes: Optional[List[int]] = None) -> str:
+                    budget: Optional[int] = None, indexes: Optional[List[int]] = None,
+                    shown_out: Optional[List[int]] = None) -> str:
     """Either a range (``start`` to ``end``) or the sentences numbered in
     ``indexes``, in that order. ``ref_name`` is how a reference to this
     document must name it (its id where another document shares its name):
@@ -839,6 +840,8 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         rendered.append(text)
         done.append(i)
         used += len(text) + 1
+    if shown_out is not None:
+        shown_out.extend(done)
     left = wanted[len(done):]
     if indexes is not None:
         showing = 'Showing ' + ', '.join(f's{i}' for i in done) + '.'

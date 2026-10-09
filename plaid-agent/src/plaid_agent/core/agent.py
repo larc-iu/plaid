@@ -27,7 +27,7 @@ from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, ret
 
 from .bidi import for_model
 from .filetools import vouches
-from .tools import truncate
+from .rounds import call_record, new_round
 from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
@@ -531,6 +531,10 @@ class TurnResult:
     # only grows as its tool results pile up. ``total`` is every call of the
     # turn added up, which is what the turn cost (see `Spend`).
     usage: Optional[Dict[str, Any]] = None
+    # The stored round of the model call that wrote the reply, when it holds
+    # something the steps' rounds do not (the question as received, on a turn
+    # that called no tool).
+    reply_round: Optional[str] = None
 
     @property
     def summary(self) -> str:
@@ -577,11 +581,12 @@ class Spend:
 
 
 def turn_trace(e: BaseException):
-    """``(steps, calls)`` of a turn that ended with ``e``: the tool calls it
-    made before it failed or was stopped, as :func:`run_turn` left them on
-    the exception (see `conversation.error_item`). Empty for an exception
-    raised anywhere else."""
-    return list(getattr(e, 'turn_steps', None) or []), list(getattr(e, 'turn_calls', None) or [])
+    """``(steps, partial)`` of a turn that ended with ``e``: the tool calls it
+    made before it failed or was stopped, and the text the model call under
+    way had written, as :func:`run_turn` left them on the exception (see
+    `conversation.error_item`). Empty for an exception raised anywhere
+    else."""
+    return list(getattr(e, 'turn_steps', None) or []), getattr(e, 'turn_partial', None) or ''
 
 
 def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: List[Dict[str, Any]],
@@ -594,28 +599,65 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     text of the reply being written, whole each time, as it grows (and ''
     when a new model call starts).
 
+    Each model call is a ROUND (core/rounds.py): when ``ws.rounds`` is set
+    (the service's `RoundKeeper`), each round is stored once its tool calls
+    have run and before the next model call, and the steps name it.
+
     A turn that ends with an exception (failed, or stopped) carries the tool
-    calls it made on it, for the record (:func:`turn_trace`). A stop seen by
-    the client's own checkpoint (a progress line sent from inside a tool
-    raises :class:`ServiceCancelled`, which is not an ``Exception``) carries
-    them too."""
+    calls it made on it, for the record (:func:`turn_trace`), and stores the
+    round under way when it made any. A stop seen by the client's own
+    checkpoint (a progress line sent from inside a tool raises
+    :class:`ServiceCancelled`, which is not an ``Exception``) carries them
+    too."""
     trace: List[Dict[str, Any]] = []
-    calls: List[Dict[str, Any]] = []
+    live: Dict[str, Any] = {'round': None, 'text': ''}
+    keeper = getattr(ws, 'rounds', None)
+    if keeper is not None:
+        keeper.follow(trace)
     try:
-        return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, calls)
+        return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, live, keeper)
     except (Exception, ServiceCancelled) as e:
+        rnd = live['round']
+        if keeper is not None and rnd is not None and rnd['calls'] and not keeper.store(rnd):
+            _unstored(trace, rnd)
+        # The text of the call under way, or of a call whose tools never ran.
+        partial = live['text'] or (rnd.get('said', '') if rnd is not None and not rnd['calls'] else '')
         try:
-            e.turn_steps, e.turn_calls = trace, calls
+            e.turn_steps, e.turn_partial = trace, partial
         except AttributeError:  # an exception type that takes no attributes keeps none
             pass
         raise
 
 
+def _unstored(trace: List[Dict[str, Any]], rnd: Dict[str, Any]) -> None:
+    """The steps of a round the store would not take, which the panel draws
+    unopenable."""
+    for s in trace:
+        if s.get('round') == rnd['id']:
+            s['unstored'] = True
+
+
+def _asked(history: List[Dict[str, Any]]) -> Optional[str]:
+    """The question as the model received it: the last user message of the
+    transcript it was sent."""
+    for m in reversed(history):
+        if m.get('role') == 'user':
+            return m.get('content') if isinstance(m.get('content'), str) else json.dumps(m.get('content'))
+    return None
+
+
 def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
-              trace: List[Dict[str, Any]], calls_made: List[Dict[str, Any]]) -> TurnResult:
+              trace: List[Dict[str, Any]], live: Dict[str, Any], keeper) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
     rounds = 0
+    asked = _asked(history)
+
+    def text_seen(t: str) -> None:
+        # What the model call under way has written, kept for a turn that
+        # ends before the call returns (`turn_partial`).
+        live['text'] = t
+        on_text(t)
     # The call that last failed (or was a plan call repeated to no effect)
     # and how many times running, as (name, arguments). Only an IDENTICAL
     # repeat counts: a model that changes its arguments after a refusal is
@@ -632,8 +674,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                   + [{'role': 'user', 'content': nudge}]}
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
-        on_text('')
-        resp = _complete(cfg, kwargs, on_text, cancelled)
+        text_seen('')
+        resp = _complete(cfg, kwargs, text_seen, cancelled)
         spend.add(resp)
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
@@ -660,13 +702,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             kwargs['temperature'] = cfg.temperature
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
-        on_text('')
-        resp = _complete(cfg, kwargs, on_text, cancelled)
+        text_seen('')
+        resp = _complete(cfg, kwargs, text_seen, cancelled)
         spend.add(resp)
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
         new.append(d)
         calls = d.get('tool_calls') or []
+        rnd = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
         if not calls:
             text = (d.get('content') or '').strip()
             if not text:
@@ -677,7 +720,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                                                  'Reply now with your answer to the user.')
             else:
                 text += _length_note(choice)
-            return TurnResult(text, new, trace, spend.usage())
+            # The reply's own round holds something only on a turn that
+            # called no tool: the question as received. Its text is the reply.
+            reply_round = rnd['id'] if keeper is not None and rounds == 0 and keeper.store(rnd) else None
+            return TurnResult(text, new, trace, spend.usage(), reply_round)
+        # The text written beside the calls is the round's, and goes on its
+        # first step: it is no longer the call under way's.
+        said = (d.get('content') or '').strip()
+        if said:
+            rnd['said'] = said
+        live['round'], live['text'] = rnd, ''
         rounds += 1
         for c in calls:
             if cancelled():
@@ -688,6 +740,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             saved_before = len(getattr(getattr(ws, 'keeper', None), 'saved', None) or ())
             key = (name, raw)
             repeated = False
+            saw = None
             try:
                 args = json.loads(raw)
                 if not isinstance(args, dict):
@@ -703,7 +756,12 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # A value typed in a rare script can come out garbled, and is
                 # refused before the tool sees it (see core.garble).
                 why = ws.garbled(args) if plan_call and hasattr(ws, 'garbled') else None
-                result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
+                # What the call reads is noted here (`BaseWorkspace.note_read`).
+                ws.reads = []
+                try:
+                    result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
+                finally:
+                    saw, ws.reads = ws.reads, None
                 # The lines a plan shows isolate their values (core.bidi). The
                 # model reads them plain, so it never copies an isolate.
                 result = for_model(result)
@@ -724,14 +782,22 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         result, repeated = ALREADY_PLANNED, True
             failed = str(result).startswith('Error')
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
-            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned, saved=saved))
+            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned, saved=saved,
+                                    saw=saw, round_id=rnd['id'] if keeper is not None else None,
+                                    said=None if rnd['calls'] else rnd.get('said')))
+            if keeper is not None and not rnd['calls']:
+                # The round's text is on its first step now, not the call's.
+                keeper.text = ''
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
-            calls_made.append({'id': c['id'], 'name': name, 'arguments': truncate(raw), 'result': result})
+            rnd['calls'].append(call_record(c['id'], name, raw, result))
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:
                 failing['times'] += 1
             else:
                 failing.update(call=key if failed or repeated else None, times=1 if failed or repeated else 0,
                                repeated=repeated)
+        if keeper is not None and not keeper.store(rnd):
+            _unstored(trace, rnd)
+        live['round'] = None
         if failing['times'] >= REPEATED_FAILURES:
             what = 'been repeated' if failing['repeated'] else 'failed'
             text = ask_for_the_reply(kwargs, f'(system) The same tool call has {what} '

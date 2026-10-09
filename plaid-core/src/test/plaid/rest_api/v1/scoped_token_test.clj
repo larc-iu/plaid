@@ -85,6 +85,15 @@
         (let [resp (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=" prefix))]
           (is (= 200 (:status resp)))
           (is (= [k] (mapv :key (-> resp :body :entries)))))))
+    (testing "a conversation's rounds and prompts, written and listed by their prefix"
+      (doseq [kind ["round" "prompt"]]
+        (let [k (str "igt:assistant:" p ":" kind ":c1:r1")
+              prefix (str "igt:assistant:" p ":" kind ":c1:")]
+          (is (= 200 (:status (call admin :put (str "/api/v1/users/admin@example.com/data/" k) {:n 1}))))
+          (let [resp (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=" prefix
+                                           "&include-values=true"))]
+            (is (= 200 (:status resp)))
+            (is (= [k] (mapv :key (-> resp :body :entries))))))))
     (testing "a batch of operations inside the project"
       (is (= 200 (:status (call admin :post "/api/v1/batch"
                                 [{:path (str "/api/v1/projects/" p) :method "get"}])))))))

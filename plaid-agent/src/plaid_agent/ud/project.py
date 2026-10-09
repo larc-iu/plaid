@@ -888,7 +888,7 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
     return '\n'.join(out)
 
 
-def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int = None,
+def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int = None, shown_out: list = None,
                     indexes: Optional[List[int]] = None, budget: Optional[int] = None) -> str:
     """A document as the model reads it.
 
@@ -933,6 +933,8 @@ def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int =
         shown.append(i)
         used += len(text) + 1
 
+    if shown_out is not None:
+        shown_out.extend(shown)
     left = [i for i in wanted if i not in shown]
     if indexes is not None:
         head = 'Showing sentences ' + ', '.join(str(i) for i in shown) + '.'

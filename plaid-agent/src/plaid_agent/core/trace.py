@@ -1,10 +1,11 @@
 """What an assistant did before answering, in the reader's terms.
 
 Every tool call a turn makes becomes one trace item next to the reply: the
-tool's name, one line saying what it did, and what kind of step it was. The
-Assistant tab shows the summary line, expands it to the steps, and expands a
-step to the tool's own output, which it reads out of the transcript where it
-is already stored (nothing is sent twice).
+tool's name, one line saying what it did and what it read, and what kind of
+step it was. The Assistant tab shows the summary line, expands it to the
+steps, and expands a step to the call's input and the tool's own output, read
+from the round the call belongs to (core/rounds.py), stored beside the
+conversation.
 
 The WORDING is the app's, next to its own tool table: a new tool is described
 where it is declared rather than in the browser. An app hands the core a
@@ -101,6 +102,128 @@ def plural(n: int, one: str, many: Optional[str] = None) -> str:
     return f'{n} {one if n == 1 else (many or one + "s")}'
 
 
+# --- what a call read ----------------------------------------------------------
+#
+# A tool notes what it showed the model (``ws.note_read``): how many of what,
+# out of how many, and which. The step carries the notes as ``saw``, the label
+# says them, and the summary counts sentences and documents from them, so a
+# column of reads says which sentences each one read rather than looking like
+# a scan of the whole corpus.
+
+#: The units a note may count in, with their singular and plural. One list, so
+#: the three apps phrase what they read alike.
+UNITS = {
+    'sentence': ('sentence', 'sentences'),
+    'document': ('document', 'documents'),
+    'match': ('match', 'matches'),
+    'row': ('row', 'rows'),
+    'entry': ('entry', 'entries'),
+    'word': ('word', 'words'),
+    'node': ('node', 'nodes'),
+    'comment': ('comment', 'comments'),
+    'change': ('change', 'changes'),
+    'query': ('query', 'queries'),
+    'line': ('line', 'lines'),
+    'printed': ('line', 'lines'),
+}
+
+#: How long ``which`` may be.
+WHICH_MAX = 40
+
+
+def ranges(numbers: List[Any]) -> str:
+    """``3–7, 9, 12–13`` for the numbers in their order, runs of consecutive
+    integers joined. Anything not an integer is kept as it is."""
+    out: List[str] = []
+    run: List[int] = []
+
+    def flush():
+        if run:
+            out.append(str(run[0]) if len(run) == 1 else f'{run[0]}–{run[-1]}')
+            run.clear()
+    for n in numbers:
+        if isinstance(n, int) and not isinstance(n, bool):
+            if run and n == run[-1] + 1:
+                run.append(n)
+                continue
+            flush()
+            run.append(n)
+        else:
+            flush()
+            out.append(str(n))
+    flush()
+    return ', '.join(out)
+
+
+def note(n: int, unit: str, of: Optional[int] = None, which: Optional[str] = None) -> Dict[str, Any]:
+    """One note of what a call read, as the step keeps it."""
+    if unit not in UNITS:
+        raise ValueError(f'unknown unit {unit!r}')
+    out: Dict[str, Any] = {'n': int(n), 'unit': unit}
+    if of is not None:
+        out['of'] = int(of)
+    if which:
+        w = str(which)
+        out['which'] = w if len(w) <= WHICH_MAX else w[:WHICH_MAX - 1] + '…'
+    return out
+
+
+def say_note(s: Dict[str, Any]) -> str:
+    """One note as the label says it: ``sentences 3–7 of 120``, ``30 of 412
+    matches``, ``printed 14 lines``."""
+    n, unit, of, which = s['n'], s['unit'], s.get('of'), s.get('which')
+    one, many = UNITS.get(unit, (unit, unit + 's'))
+    word = one if n == 1 else many
+    if unit == 'printed':
+        return f'printed {n} {word}'
+    if which:
+        named = f'{word} {which}'
+        return f'{named} of {of}' if of is not None else named
+    if of is not None and of != n:
+        return f'{n} of {of} {many if of != 1 else one}'
+    return f'{n} {word}'
+
+
+def say_saw(saw: Optional[List[Dict[str, Any]]]) -> str:
+    """What a call read, every note in its order, or nothing."""
+    return ', '.join(say_note(s) for s in saw or ())
+
+
+def read_document_label(a: Dict[str, Any]) -> str:
+    """The line for a read of a document, with the span it asked for. Used
+    only where the read noted nothing it showed (it failed): otherwise the
+    step says what was shown (:func:`trace_step`)."""
+    span = ''
+    picked = a.get('sentences')
+    if picked:
+        span = f' ({plural(len(picked) if isinstance(picked, list) else 1, "sentence")})'
+    elif a.get('from_sentence') or a.get('to_sentence'):
+        span = f' (sentences {a.get("from_sentence") or 1}'
+        span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
+    return f'Read {q(a.get("document"))}{span}'
+
+
+def reading_line(a: Dict[str, Any]) -> str:
+    """The line shown while a document is read, naming the span asked for."""
+    picked = a.get('sentences')
+    span = ''
+    if picked:
+        items = picked if isinstance(picked, list) else [picked]
+        span = f', sentences {ranges([_int(i) for i in items])}' if len(items) > 1 \
+            else f', sentence {ranges([_int(i) for i in items])}'
+    elif a.get('from_sentence') or a.get('to_sentence'):
+        span = f', sentences {a.get("from_sentence") or 1}'
+        span += f'–{a["to_sentence"]}' if a.get('to_sentence') else ' on'
+    return f'Reading {q(a.get("document", ""))}{span}…'
+
+
+def _int(v: Any) -> Any:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return v
+
+
 # --- items ----------------------------------------------------------------------
 
 # A failed step reads as what it tried, never as done: "Planned X" on a call
@@ -120,7 +243,9 @@ def failed_label(label: str) -> str:
 
 
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
-               failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None) -> Dict[str, Any]:
+               failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
+               saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
+               said: Optional[str] = None) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
@@ -128,9 +253,19 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     ``planned`` is how much the call changed the plan's size (negative for a
     drop), so the summary counts the changes the card shows rather than the
     calls that asked for them. ``saved`` names the files the call saved for
-    the user (save_file in run_code)."""
+    the user (save_file in run_code).
+
+    ``saw`` is what the call read (:func:`note`), said after the label.
+    ``round_id`` names the model call it belongs to, whose stored round holds
+    its input and output, and ``said`` is the text the model wrote in that
+    call, on the round's first step only."""
     kind = tracer.kind(name)
-    label = tracer.describe(name, args)
+    if kind == DOCUMENT and saw and not failed:
+        label = f'Read {q(args.get("document"))}'
+    else:
+        label = tracer.describe(name, args)
+    if saw and not failed:
+        label = f'{label}: {say_saw(saw)}'
     item = {'id': call_id, 'name': name, 'kind': kind,
             'label': failed_label(label) if failed else label}
     if failed:
@@ -141,7 +276,19 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
         item['planned'] = planned
     if saved and not failed:
         item['saved'] = list(saved)
+    if saw and not failed:
+        item['saw'] = list(saw)
+    if round_id:
+        item['round'] = round_id
+    if said:
+        item['said'] = said
     return item
+
+
+def sentences_read(steps: List[Dict[str, Any]]) -> int:
+    """The sentences the document reads among ``steps`` showed the model."""
+    return sum(s['n'] for st in steps if st.get('kind') == DOCUMENT and not st.get('failed')
+               for s in st.get('saw') or () if s.get('unit') == 'sentence')
 
 
 def summarize_steps(steps: List[Dict[str, Any]]) -> str:
@@ -155,7 +302,10 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     steps = [s for s in steps if not s.get('failed')]
     docs = {s['document'] for s in steps if s.get('document')}
     parts = []
-    if docs:
+    sentences = sentences_read(steps)
+    if docs and sentences:
+        parts.append(f'read {plural(sentences, "sentence")} in {plural(len(docs), "document")}')
+    elif docs:
         parts.append(f'read {plural(len(docs), "document")}')
     # A run of code that saved a file is counted as the saving, not as a
     # search, and a file saved twice (code run again after a fix) is one file.

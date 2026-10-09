@@ -10,7 +10,7 @@ with no line of its own falls back to its name, and
 from typing import Any, Dict
 
 from ..core.args import sentence_number
-from ..core.trace import count, in_doc, plural, q, tracer_for
+from ..core.trace import count, in_doc, plural, q, read_document_label, reading_line, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -32,14 +32,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'list_documents':
         return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
     if name == 'read_document':
-        span = ''
-        picked = a.get('sentences')
-        if picked:
-            span = f' ({plural(len(picked), "sentence")})'
-        elif a.get('from_sentence') or a.get('to_sentence'):
-            span = f' (sentences {a.get("from_sentence") or 1}'
-            span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
-        return f'Read {q(a.get("document"))}{span}'
+        return read_document_label(a)
     if name == 'document_graph':
         return f'Read the document graph of {q(a.get("document"))}'
     if name == 'find_nodes':
@@ -119,7 +112,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
 _PROGRESS = {
     'project_overview': lambda a: 'Looking at the project…',
     'list_documents': lambda a: 'Listing the documents…',
-    'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
+    'read_document': reading_line,
     'document_graph': lambda a: 'Reading the document graph…',
     'find_nodes': lambda a: 'Looking for nodes…',
     'search': lambda a: 'Searching the corpus…',

@@ -27,7 +27,7 @@ import { serviceCache } from './jobs.js';
 // And only one that writes the conversation record itself, taking a request
 // for each thing the reader does (`extras.record` 2, plaid_agent/core/ops.py):
 // this page writes none of it. The assistants are restarted with a deploy.
-const RECORD_PROTOCOL = 2;
+const RECORD_PROTOCOL = 3;
 
 export const assistantsAmong = (services, app) =>
   filterServicesByTask(services || [], TASKS.ASSIST).filter(

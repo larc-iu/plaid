@@ -311,7 +311,8 @@ def _name_of(doc: UmrDoc, span_id: str) -> str:
 
 def render_document(doc: UmrDoc, project: UmrProject, values: Dict[str, Dict[str, str]],
                     *, from_sentence: int = None, to_sentence: int = None,
-                    indexes: Optional[List[int]] = None, budget: Optional[int] = None) -> str:
+                    indexes: Optional[List[int]] = None, budget: Optional[int] = None,
+                    shown_out: Optional[List[int]] = None) -> str:
     """A document as the model reads it, either a range or an explicit list of
     sentence numbers. Sentences are rendered until the character budget is
     spent, and the header says which were shown and where to continue."""
@@ -347,6 +348,8 @@ def render_document(doc: UmrDoc, project: UmrProject, values: Dict[str, Dict[str
         shown.append(i)
         used += len(text) + 1
 
+    if shown_out is not None:
+        shown_out.extend(shown)
     left = [i for i in wanted if i not in shown]
     # Positions inside, the numbers the app shows outside.
     num = doc.number_of

@@ -84,7 +84,8 @@ from .conversation import (DISCARDED_NOTE, MESSAGE_ROOM, ConversationStore, Miss
                            now_iso, partial_note, partial_tally, pending_kept, plan_settling, proposed_changes,
                            prune, record_budget, rewind_for_retry, settle_plan, title_from, turn_ending,
                            user_item, value_cap)
-from .files import store_parts, sweep_orphan_files
+from .files import store_parts, sweep_orphans
+from .rounds import RoundKeeper
 from .ops import (ANOTHER_PROJECT, CONVERSATION_FULL, MESSAGE_TOO_LONG, OPS, RECORD_PROTOCOL, STALE_PAGE, about_of, busy_why,
                   hold_free, refused)
 from . import rules
@@ -960,7 +961,7 @@ class BaseAssistantService(BaseService):
             return
         self._swept[tag] = now
         try:
-            sweep_orphan_files(ctx.store)
+            sweep_orphans(ctx.store)
         except Exception:  # noqa: BLE001 - a sweep is housekeeping
             traceback.print_exc()
 
@@ -1031,19 +1032,22 @@ class BaseAssistantService(BaseService):
             response_helper.error('The conversation has no message to answer')
             return
         model = self.cfg.model
-        # Every progress event carries the reply text written so far, so a
-        # watcher (or one that rejoins) shows it as it grows.
-        state = {'pct': 5, 'text': ''}
+        # Every progress event carries the turn so far, whole each time, so a
+        # watcher (or one that rejoins, which core replays only the last event
+        # to) draws it as it grows: the steps as they will be stored
+        # (`RoundKeeper.live_trace`) and the text of the model call under way.
+        state = {'pct': 5}
+        keeper = RoundKeeper(store, conv_id)
 
         def send(msg):
-            response_helper.progress(state['pct'], msg, text=state['text'])
+            response_helper.progress(state['pct'], msg, text=keeper.text, trace=keeper.live_trace())
 
         def on_progress(pct, msg):
             state['pct'] = max(state['pct'], pct)
             send(msg)
 
         def on_text(text):
-            state['text'] = text
+            keeper.text = text
             send('Writing…')
 
         def cancelled() -> bool:
@@ -1092,6 +1096,10 @@ class BaseAssistantService(BaseService):
             # What every call of the next turn sends besides the transcript, taken
             # off the window before the transcript is held to its share of it.
             overhead = (system, self.kit.tools_for(ws))
+            # Each model call's input and output, stored beside the
+            # conversation as it finishes, with the instructions it was given.
+            keeper.system, keeper.tools = overhead
+            ws.rounds = keeper
             # What the turn was given is text a value can be copied from (see
             # core.garble).
             seed(ws.seen, system, transcript, lambda tool, args: filetools.vouches(ws, tool, args))
@@ -1114,11 +1122,11 @@ class BaseAssistantService(BaseService):
             # one") is read with what it follows. Retry takes it off before
             # sending it again (`rewind_for_retry`). What the turn did before it
             # stopped stays on the item, for the record.
-            steps, calls = turn_trace(e)
+            steps, partial = turn_trace(e)
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
                                     error_item('Stopped.', stopped=True, model=model, version=self.version,
-                                               service=self.service_id, steps=steps, calls=calls),
+                                               service=self.service_id, steps=steps, partial=partial),
                                     fit=fit),
                         request_id, model)
             response_helper.complete({'kind': 'stopped'})
@@ -1128,13 +1136,13 @@ class BaseAssistantService(BaseService):
             ws.keeper.discard()
             traceback.print_exc()
             line = self.turn_failure_line(e)
-            steps, calls = turn_trace(e)
+            steps, partial = turn_trace(e)
             # The user's message stays in the model transcript whatever the
             # model call did, as on a stop.
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
                                     error_item(line, model=model, version=self.version,
-                                               service=self.service_id, steps=steps, calls=calls),
+                                               service=self.service_id, steps=steps, partial=partial),
                                     fit=fit),
                         request_id, model)
             response_helper.error(line)
@@ -1159,7 +1167,7 @@ class BaseAssistantService(BaseService):
         item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
-                              version=self.version, service=self.service_id)
+                              version=self.version, service=self.service_id, reply_round=turn.reply_round)
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
         if ws.keeper.refs:
             # The files this turn stored, which later turns read as the

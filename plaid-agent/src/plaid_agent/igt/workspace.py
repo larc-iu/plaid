@@ -293,9 +293,10 @@ class Workspace(BaseWorkspace):
         return head if self.corpus.ref_name(doc_id) == name else f'{head} ({doc_id})'
 
     def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,
-               indexes: Optional[List[int]] = None, budget: Optional[int] = None) -> str:
+               indexes: Optional[List[int]] = None, budget: Optional[int] = None,
+               shown_out: Optional[List[int]] = None) -> str:
         return render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
-                               ref_name=self.corpus.ref_name(doc.id), budget=budget)
+                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out)
 
     def use_scan(self, document: Optional[str]) -> bool:
         """Scan (one document, or everything when asked) rather than query."""

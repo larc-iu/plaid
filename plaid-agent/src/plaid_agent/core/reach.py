@@ -228,8 +228,11 @@ def route(ws, name: str, args: Any) -> Tuple[Any, Any]:
         return ws, args
     rest = {k: v for k, v in args.items() if k != 'project'}
     if name in LOCAL_TOOLS or name in PLAN_TOOLS:
+        reach.home.reads = ws.reads
         return reach.home, rest
     there = reach.workspace(args['project'])
+    # What the call reads is noted where the loop looks for it.
+    there.reads = ws.reads
     if name in reach.writers:
         # Refused before the tool runs, not only where it stages: a tool
         # that reads its target first answered about the other project's
