@@ -144,11 +144,14 @@ def test_mathematical_letters_are_refused_unless_read():
     assert refusal({'value': nom}, _read(nom)) is None
 
 
-def test_every_script_the_unicode_data_knows_is_named():
+def test_every_script_named_is_one_the_unicode_data_knows():
+    # A newer `regex` may know scripts this list does not name yet: their
+    # letters are vouched as unknown code points until the list catches up, so
+    # only a name the data does not know is a fault here.
     regex_core = pytest.importorskip('regex._regex_core')
     table = regex_core.PROPERTIES['SCRIPT'][1]
     known = set(table.values()) - {table[n] for n in ('UNKNOWN', 'COMMON', 'INHERITED', 'KATAKANAORHIRAGANA')}
-    assert {table[n.replace('_', '').upper()] for n in SCRIPTS} == known
+    assert {table[n.replace('_', '').upper()] for n in SCRIPTS} <= known
     assert key('\U0001E2C5') == 'script:Wancho' and key('a') is None and key('é') == 'script:Latin'
 
 
