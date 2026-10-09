@@ -7,6 +7,7 @@ sentence partitioning.
 """
 
 import os
+import unicodedata
 import requests
 from typing import List, Dict, Optional
 
@@ -244,7 +245,9 @@ class AlignmentProcessor:
         text_modifications = []  # List of (position, old_length, new_text) tuples
         
         for trans in non_colliding_transcriptions:
-            segment_text = trans['text'].strip()
+            # Composed, as the server stores text, so the segment and the
+            # words are measured on the text that is stored.
+            segment_text = unicodedata.normalize('NFC', trans['text']).strip()
             if not segment_text:
                 continue
             

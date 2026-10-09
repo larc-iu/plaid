@@ -43,7 +43,9 @@ export function parseCsv(text, delimiter = ',') {
   let quoted = false;
   let seenCell = false;
   const endCell = () => {
-    row.push(cell);
+    // composed, as the server stores text, so a body built of cells and the
+    // tokens measured on it are the text that is stored
+    row.push(cell.normalize('NFC'));
     cell = '';
     seenCell = false;
   };

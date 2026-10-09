@@ -38,6 +38,7 @@
 
 import {
   applyTextOps,
+  composeText,
   composeTextEdits,
   cpLength,
   cpSlice,
@@ -465,7 +466,8 @@ export const alignmentMutations = {
   // chosen to preserve temporal ordering, then creating the alignment token
   // over the inserted range with `{timeBegin, timeEnd}` metadata.
   async createAlignment({ text, timeBegin, timeEnd, speaker }) {
-    const trimmed = (text || '').trim();
+    // composed, as the server stores it, so the segment is measured on it
+    const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
       this.setError('Segment text is required');
       return false;
@@ -532,7 +534,8 @@ export const alignmentMutations = {
   // times and the speaker are written only where they differ from the
   // segment's, with the writer's stamp.
   async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd, speaker, edits = null }) {
-    const trimmed = (text || '').trim();
+    // composed, as the server stores it, so the segment is measured on it
+    const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
       this.setError('Segment text is required');
       return false;

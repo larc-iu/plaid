@@ -1765,7 +1765,11 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     ``_line_starts`` says), and the last runs to the end of the text. A bulk
     create is one layer, so the sentences and the words are two, in one
     batch."""
+    from plaid_client import compose_text
     from .project import project_new_words, split_sentences
+    # Composed, as the server stores it, so the sentences and words are
+    # measured on the text that is stored.
+    text = compose_text(text)[0]
     text_id = new_id()
     new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id))
     lines = split_sentences(text)
@@ -1817,7 +1821,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     the words a Baseline save gives the text it types (``project_new_words``: the
     project's "Tokenize new text", none when it is off). What it creates is
     made under ids from ``new_id()``."""
-    from plaid_client import gaps_to_ops
+    from plaid_client import compose_text, gaps_to_ops
     from .project import find_layer, project_new_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
@@ -1839,7 +1843,14 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
                                 [(t['begin'], t['end']) for t in (read_sents or {}).get('tokens') or []])
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True)
-    region_end = b + len(new)
+    # The server stores the body composed: text written that composes with a
+    # letter beside it becomes one character with it. Every place measured on
+    # the body written is moved onto the composed one, as the server moves its
+    # tokens, and a word left with no text of its own is dropped.
+    new_body, at = compose_text(new_body)
+    planned = [(at(wb), at(we)) for wb, we in planned if at(wb) < at(we)]
+    region_end = at(b + len(new))
+    b = at(b)
 
     raw = client.documents.get(doc_id, include_body=True)
     _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)

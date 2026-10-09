@@ -9,6 +9,7 @@
 import {
   applyMetadataOps,
   applyTextOps,
+  composeText,
   cpLength,
   gapsToOps,
   isReservedMetadataKey,
@@ -115,7 +116,10 @@ export const documentMutations = {
   // `tokenize`: a text made here gets the words of the project's "Tokenize new
   // text" (`_newWords`) in the batch that makes it. The Baseline tab asks for
   // it, scripts do not.
-  async saveBaselineText(newBody, base = this.body, { tokenize = false } = {}) {
+  async saveBaselineText(typedBody, base = this.body, { tokenize = false } = {}) {
+    // As the server stores it, composed, so the sentences and words made with
+    // it are measured on the text that is stored.
+    const newBody = composeText(typedBody).text;
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
@@ -284,7 +288,7 @@ export const documentMutations = {
           // The tokens after it are stamped with the version from before the
           // batch, so the edit is stamped too, and checked first.
           const info = this.layerInfo;
-          const body = applyTextOps(plan.base, ops);
+          const body = composeText(applyTextOps(plan.base, ops)).text;
           await this._client.batched(async (b) => {
             b.texts.edit(textId, ops, undefined, { base: plan.digest, versioned: true });
             if (plan.seed) {
@@ -371,10 +375,16 @@ export const documentMutations = {
       plan.base = stored.body;
     }
     plan.digest = stored.digest;
-    const body = applyTextOps(plan.base, gapsToOps(plan.gaps));
+    // The server stores the body composed: text typed that composes with a
+    // letter beside it becomes one character with it. The words are measured
+    // on the body typed and moved onto the composed one, as the server moves
+    // its tokens, and a word left with no text of its own is dropped.
+    const { text: body, at } = composeText(applyTextOps(plan.base, gapsToOps(plan.gaps)));
     plan.seed =
       cpLength(body) > 0 && (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
-    plan.words = this._newWords(plan.base, plan.gaps);
+    plan.words = this._newWords(plan.base, plan.gaps)
+      .map((w) => ({ ...w, begin: at(w.begin), end: at(w.end) }))
+      .filter((w) => w.begin < w.end);
     plan.keys = this._client.keySeed?.() ?? null;
   },
 

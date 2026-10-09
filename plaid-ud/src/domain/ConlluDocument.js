@@ -12,6 +12,7 @@ import {
   PROV,
   isReservedMetadataKey,
   applyTextOps,
+  composeText,
   gapsToOps,
   stampInferred,
   wasReplayed,
@@ -286,7 +287,8 @@ export class ConlluDocument extends DocumentModel {
   // answer with `plan` as that run left it.
   async _sendText(text, textLayer, plan, label, onStored) {
     if (!text?.id) {
-      const body = gapsBody(plan.base, plan.gaps);
+      // composed, as the server stores it
+      const body = composeText(gapsBody(plan.base, plan.gaps)).text;
       await this._client.texts.create(textLayer.id, this.id, body);
       onStored?.(body, null);
       return;

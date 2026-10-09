@@ -185,7 +185,9 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
   parser.on('closetag', (node) => {
     switch (node.name) {
       case 'ANNOTATION_VALUE':
-        if (currentAnnotation) currentAnnotation.value = textBuffer ?? '';
+        // composed, as the server stores text, so the body and the tokens
+        // measured on it are the text that is stored
+        if (currentAnnotation) currentAnnotation.value = (textBuffer ?? '').normalize('NFC');
         textBuffer = null;
         break;
       case 'PROPERTY':

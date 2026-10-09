@@ -2,6 +2,7 @@
 // docs/native-format.md). Pure: bytes in, parsed structures out.
 
 import { unzipSync } from 'fflate';
+import { composeText } from '@larc-iu/plaid-client';
 import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
 
 export class ArchiveError extends Error {
@@ -10,6 +11,30 @@ export class ArchiveError extends Error {
     this.name = 'ArchiveError';
   }
 }
+
+// `v` with every string in it composed (NFC), as the server stores text, and,
+// with `at`, every `begin` and `end` (an offset into the document's
+// baseline.body, all `n` code points of it) moved as composing the body moves
+// it. An archive written from text stored decomposed then imports onto the
+// text as stored, its tokens over the same letters.
+const composed = (v, at = null, n = 0) => {
+  if (typeof v === 'string') return v.normalize('NFC');
+  if (Array.isArray(v)) return v.map((x) => composed(x, at, n));
+  if (!v || typeof v !== 'object') return v;
+  const out = {};
+  for (const [k, x] of Object.entries(v)) {
+    const offset = at && (k === 'begin' || k === 'end') && Number.isInteger(x) && x >= 0 && x <= n;
+    out[k.normalize('NFC')] = offset ? at(x) : composed(x, at, n);
+  }
+  return out;
+};
+
+const composedDocument = (data) => {
+  const body = data?.baseline?.body;
+  if (typeof body !== 'string') return composed(data);
+  const { at } = composeText(body);
+  return composed(data, at, [...body].length);
+};
 
 /**
  * @param {Uint8Array} bytes - the .zip archive
@@ -42,7 +67,10 @@ export function readNativeArchive(bytes) {
     }
   };
 
-  const manifest = json('project.json');
+  // The archive's own file names are looked up as written (`raw`), and
+  // everything else is read composed.
+  const raw = json('project.json');
+  const manifest = composed(raw);
   if (manifest.format !== 'plaid-igt') {
     throw new ArchiveError(
       `Unrecognized format ${JSON.stringify(manifest.format)}. Expected "plaid-igt"`,
@@ -69,15 +97,18 @@ export function readNativeArchive(bytes) {
     vocabNames.add(row.name);
   }
 
-  const vocabularies = (manifest.vocabularies || []).map((row) => ({
+  const vocabularies = (manifest.vocabularies || []).map((row, i) => ({
     ...row,
-    data: json(row.file),
+    data: composed(json(raw.vocabularies[i].file)),
   }));
-  const documents = (manifest.documents || []).map((row) => ({
-    ...row,
-    data: json(row.file),
-    mediaBytes: row.mediaFile ? (entries[row.mediaFile] ?? null) : null,
-  }));
+  const documents = (manifest.documents || []).map((row, i) => {
+    const files = raw.documents[i];
+    return {
+      ...row,
+      data: composedDocument(json(files.file)),
+      mediaBytes: files.mediaFile ? (entries[files.mediaFile] ?? null) : null,
+    };
+  });
   // A resume finds what an earlier run made by each document's id, so an id
   // missing or repeated would have it take one document for another. It marks
   // a document with the id as a string, so ids are compared as strings.

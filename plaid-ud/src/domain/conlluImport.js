@@ -10,6 +10,17 @@ import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// The parsed file with every string in it composed (NFC), as the server
+// stores text, so the text built of the forms and the tokens measured on it
+// are the text that is stored. Composed after parsing, value by value, so a
+// value that begins with a mark never composes with the `=` or tab before it.
+const composed = (v) => {
+  if (typeof v === 'string') return v.normalize('NFC');
+  if (Array.isArray(v)) return v.map(composed);
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k.normalize('NFC'), composed(x)]));
+};
 const HEADLESS = 'the head is not a row of the sentence.';
 const SELF_HEAD = 'the head is the word itself.';
 const NO_HEAD = 'no head is given.';
@@ -73,7 +84,7 @@ export async function importConlluDocument(
   if (!name || !name.trim()) throw new Error('Document name is required');
   if (!conlluText || !conlluText.trim()) throw new Error('No content to import');
 
-  const parsedData = parseCoNLLU(conlluText);
+  const parsedData = composed(parseCoNLLU(conlluText));
   if (parsedData.sentences.length === 0) {
     throw new Error('No valid sentences found in CoNLL-U data');
   }
