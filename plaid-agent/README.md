@@ -345,7 +345,9 @@ crosses the boundary, so code cannot write; the plan card stays the contract.
 `load()` takes a name, an id or an entry of `documents()`, and returns dicts
 and lists. Monty runs no `__getattr__`, so an attribute read the model writes
 (`doc.sentences`) is rewritten to a key read before the code runs
-(`core.sandbox.keyed`), leaving method calls, builtins and modules alone.
+(`core.sandbox.keyed`), leaving method calls, builtins, modules and reads
+inside a `try` that catches AttributeError alone. Tracebacks show the code as
+the model wrote it.
 
 The worker binary ships inside the `pydantic-monty-runtime` wheel for the
 platforms it is built for. Where it is missing (an unsupported platform, a
