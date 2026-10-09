@@ -676,7 +676,7 @@ _KEEP = object()
 
 def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str] = None,
                   documents: Optional[List[Dict[str, Any]]] = None, expansion: Any = _KEEP,
-                  writing: Any = _KEEP, **fields):
+                  writing: Any = _KEEP, undecided: bool = False, **fields):
     """The change an approval writes on the plan ``plan_id``: ``status``
     (with ``note`` for the model and ``fields`` on the card, `settle_plan`),
     or with no status, the plan's ``documents`` as the run holds them (the
@@ -684,11 +684,12 @@ def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str
     ``expansion``, what its scopes resolved to on that run (`plan.Expansion`),
     None to forget it, and ``writing`` (`plan.WRITING`), falsy to drop it.
     A plan already settled (see `WROTE` for the one exception), or one that
-    is gone, leaves the record as it is."""
+    is gone, leaves the record as it is, or with ``undecided`` (a run about to
+    send its first change, `plan.writing`) is not written at all."""
     def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         index, item = find_plan(stored, plan_id)
         if item is None:
-            return stored
+            return None if undecided else stored
         if status is not None:
             was = item.get('status')
             # A plan settled meanwhile keeps that outcome, unless this run
@@ -699,7 +700,7 @@ def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str
             return settle_plan(stored, index, status, note, **fields)
         plan = item.get('plan') or {}
         if item.get('status') is not None:
-            return stored
+            return None if undecided else stored
         new = dict(plan)
         if documents is not None and 'documents' in plan:
             new['documents'] = json.loads(json.dumps(documents))
@@ -710,7 +711,7 @@ def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str
                 new['expansion'] = json.loads(json.dumps(expansion))
         if writing is not _KEEP:
             if writing:
-                new['writing'] = True
+                new['writing'] = writing
             else:
                 new.pop('writing', None)
         if new == plan:

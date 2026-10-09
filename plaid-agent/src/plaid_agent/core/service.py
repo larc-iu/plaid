@@ -85,8 +85,8 @@ from .conversation import (ConversationStore, MissingConversation, assistant_ite
 from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
-                   PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, drawable, expanding, forget_held,
-                   holding, outcome_unknown, writing)
+                   PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, drawable, expanding,
+                   forget_held, holding, outcome_unknown, writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -844,13 +844,14 @@ class BaseAssistantService(BaseService):
         # released: a lock that lapsed refuses every later write this client
         # makes while the block runs, the record's too, which would leave the
         # card pending over a plan that stopped partway.
-        def remember():
+        def remember(undecided=False):
             """Write the plan's documents as the run holds them, what its
             scopes resolved to and whether it may have written, the approval
-            still pending."""
+            still pending. ``undecided``: only on a plan the record still has
+            undecided under this approval (`plan.writing`)."""
             return self._write(store, conv_id, plan_settling(plan_id, documents=plan.get('documents'),
                                                              expansion=plan.get(EXPANSION),
-                                                             writing=plan.get(WRITING)),
+                                                             writing=plan.get(WRITING), undecided=undecided),
                                request_id, model, pending=(meta or {}).get('pending'))
         expansion = Expansion(plan, remember)
 
@@ -859,7 +860,7 @@ class BaseAssistantService(BaseService):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
                                                  index, conv, settled, remember, stamp_mode, contributor, store,
                                                  response_helper, conv_id, proposed_by(item),
-                                                 item['service'], expansion, plan=plan)
+                                                 item['service'], expansion, plan=plan, run=request_id)
         except DocumentsBusy as e:
             settled()
             name = next((d.get('name') for d in documents
@@ -903,7 +904,7 @@ class BaseAssistantService(BaseService):
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, remember, stamp_mode, contributor, store,
-                           response_helper, conv_id, detail, proposer, expansion=None, plan=None):
+                           response_helper, conv_id, detail, proposer, expansion=None, plan=None, run=True):
         """The staleness check and the writes, under the documents' locks.
         ``detail`` and ``proposer`` are the model and version, and the service
         id, of the turn that proposed the plan: the writes name that assistant
@@ -929,7 +930,16 @@ class BaseAssistantService(BaseService):
             return out_of_date(stale)
         plan = {} if plan is None else plan
 
+        # A run again of a plan whose earlier run may have written keeps the
+        # mark, the versions that run held and what its scopes found, whatever
+        # stops this one before it writes: some of the plan may be in the
+        # project already.
+        was = plan.get(WRITING)
+
         def nothing_written():
+            if was:
+                plan[WRITING] = was
+                return
             # The next approval holds the versions the documents have then,
             # finds what they hold then, and may be discarded meanwhile.
             forget_held(documents)
@@ -937,13 +947,13 @@ class BaseAssistantService(BaseService):
                 expansion.forget()
             plan.pop(WRITING, None)
         try:
-            writing(client, plan, documents, remember)
-        except RecordFull as e:
-            def full(e=e):
+            writing(client, plan, documents, lambda: remember(undecided=True), run=run)
+        except (RecordFull, PlanMovedOn) as e:
+            def stopped(e=e):
                 nothing_written()
                 settled()
-                response_helper.error(str(e))
-            return full
+                response_helper.error(str(e) if isinstance(e, RecordFull) else _moved_on(store, conv_id, plan_id))
+            return stopped
         response_helper.progress(10, 'Applying changes…')
         # One operation of kind assistant-plan, naming the conversation, the
         # plan and the assistant that proposed it, so the audit log says which
@@ -1002,7 +1012,7 @@ class BaseAssistantService(BaseService):
             def failed(e=e):
                 why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
                 if not written:
-                    # Nothing landed.
+                    # Nothing landed on this run.
                     nothing_written()
                     settled()
                     response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
@@ -1102,6 +1112,23 @@ class BaseAssistantService(BaseService):
         self._applied_plans[plan_id] = {'status': status, 'note': note, 'fields': dict(fields or {})}
         while len(self._applied_plans) > 500:
             del self._applied_plans[next(iter(self._applied_plans))]
+
+
+def _moved_on(store: ConversationStore, conv_id: str, plan_id: str) -> str:
+    """Why an approval found the record moved on before it sent anything
+    (`plan.PlanMovedOn`), as the page says it."""
+    try:
+        conv, _ = store.load(conv_id)
+    except Exception:  # noqa: BLE001 - only the wording depends on it
+        conv = None
+    if not conv:
+        return 'This conversation was deleted. Nothing was written.'
+    _, item = find_plan(conv, plan_id)
+    if item is not None and item.get('status') == 'discarded':
+        return 'The plan was discarded. Nothing was written.'
+    if item is not None and item.get('status') is not None:
+        return 'The plan was decided in another tab. Nothing was written.'
+    return 'This conversation was changed in another tab. Nothing was written.'
 
 
 def _positive_int(text: str) -> int:

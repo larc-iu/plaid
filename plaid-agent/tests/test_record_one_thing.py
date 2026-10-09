@@ -86,7 +86,7 @@ def test_a_run_marks_the_plan_writing_before_its_first_change_is_sent():
 
     svc.execute_plan = execute
     svc.process_request(_request(client, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
-    assert seen == [True]
+    assert seen == ['r9'], 'marked, naming the run'
     conv, _ = store.load('c1')
     # Settled, so compacted: the mark goes with the rest of what approving needed.
     assert conv['display'][1]['status'] == 'applied'
@@ -111,14 +111,75 @@ def test_a_run_that_certainly_wrote_nothing_drops_the_mark():
     assert meta['pending'] is None
 
 
-def test_writing_marks_once_and_in_the_same_write_as_the_held_versions():
+def test_every_run_marks_the_plan_in_one_write_naming_the_run():
+    """A run again writes the record before it sends anything too: that write
+    is where an approval meets a discard of the same plan (REV-FX12)."""
     plan = {'id': PLAN1}
     calls = []
     client = FakeClient()
-    writing(client, plan, [], lambda: calls.append(dict(plan)))
-    assert plan[WRITING] is True and len(calls) == 1
-    writing(client, plan, [], lambda: calls.append(dict(plan)))
-    assert len(calls) == 1, 'a run again finds it marked'
+    writing(client, plan, [], lambda: calls.append(dict(plan)) or True, run='r1')
+    assert plan[WRITING] == 'r1' and len(calls) == 1
+    writing(client, plan, [], lambda: calls.append(dict(plan)) or True, run='r2')
+    assert len(calls) == 2 and calls[-1][WRITING] == 'r2'
+
+
+def _discard_before_the_first_send(client, svc):
+    """Another tab's discard lands after the approval read the record and
+    before its run marks the plan: a write held up past the discard's claim
+    (REV-FX12)."""
+    real = svc._stale
+
+    def stale(*a, **k):
+        store = ConversationStore(client, 'u@x', 'p1', 'igt')
+        conv, meta = store.load('c1')
+        conv['display'][1]['status'] = 'discarded'
+        conv['messages'].append({'role': 'user', 'content': '(note) The user discarded the plan; nothing was changed.'})
+        store.save('c1', conv, meta)
+        return real(*a, **k)
+
+    svc._stale = stale
+
+
+def test_an_approval_never_writes_a_plan_discarded_before_its_first_change():
+    client = FakeClient()
+    store = _seed_plan(client)
+    svc = _service()
+    _discard_before_the_first_send(client, svc)
+    helper = Helper(request_id='r9')
+    svc.process_request(_request(client, approve={'plan_id': PLAN1}), helper)
+    assert helper.errors == ['The plan was discarded. Nothing was written.']
+    assert not [k for k, _ in client.calls if k.startswith(('spans.', 'batch', 'tokens.'))]
+    conv, meta = store.load('c1')
+    assert conv['display'][1]['status'] == 'discarded'
+    assert not any('applied' in (m.get('content') or '') for m in conv['messages'])
+    assert meta['pending'] is None
+
+
+def test_a_run_again_that_writes_nothing_keeps_the_mark_and_the_held_versions():
+    """Its earlier run may have written: the plan stays one that cannot be
+    discarded as if nothing had happened, and a later run repeats the earlier
+    run's requests."""
+    client = FakeClient()
+    store = _seed_plan(client)
+    conv, meta = store.load('c1')
+    conv['display'][1]['interrupted'] = True
+    conv['display'][1]['plan'][WRITING] = 'r-first'
+    conv['display'][1]['plan']['documents'][0][core_plan.HELD_FROM] = 7
+    store.save('c1', conv, meta)
+    svc = _service()
+
+    def execute(*a, **k):
+        raise PlanError('refused', applied=0, total=1)
+
+    svc.execute_plan = execute
+    helper = Helper(request_id='r9')
+    svc.process_request(_request(client, approve={'plan_id': PLAN1}), helper)
+    assert helper.errors and 'Nothing was written' in helper.errors[0]
+    conv, meta = store.load('c1')
+    plan = conv['display'][1]['plan']
+    assert conv['display'][1]['status'] is None
+    assert plan.get(WRITING) == 'r-first'
+    assert plan['documents'][0].get(core_plan.HELD_FROM) == 7
 
 
 def test_a_record_too_full_for_the_approval_says_the_conversation_is_full():
