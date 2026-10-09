@@ -206,3 +206,97 @@ describe('alignSurfaces', () => {
     expect(alignSurfaces('uno dos', 0, 3, ['uno', 'dos'])).toBeNull();
   });
 });
+
+// A tone mark that is a word of its own right after "ka" keeps "ka" and the
+// mark apart in the stored text (Luke, 2026-10-09). Every cell is read
+// composed, so the line is read decomposed to find the words, and the body is
+// composed with the words' edges: only that character stays decomposed, and
+// the text is created with those edges, as the server keeps it.
+describe('a word that begins inside a character', () => {
+  const body = 'ká ma café';
+  const word = (id, begin, content, gloss) => ({
+    id,
+    begin,
+    end: begin + [...content].length,
+    content,
+    metadata: {},
+    annotations: {},
+    orthographies: {},
+    morphemes: [
+      {
+        id: `${id}m`,
+        begin,
+        end: begin + [...content].length,
+        content,
+        metadata: { form: content },
+        annotations: { Gloss: { value: gloss } },
+      },
+    ],
+  });
+  const tokens = [
+    word('w1', 0, 'ka', 'go'),
+    word('w2', 2, '́', 'H'),
+    word('w3', 4, 'ma', 'there'),
+    word('w4', 7, 'café', 'coffee'),
+  ];
+  const doc = () => ({
+    document: { id: 'd1', name: 'Tone', mediaUrl: null, metadata: {} },
+    body,
+    sortedSentences: [
+      makeSentence({
+        begin: 0,
+        end: [...body].length,
+        tokens,
+        pieces: [
+          { type: 'token', ...tokens[0] },
+          { type: 'token', ...tokens[1] },
+          { type: 'gap', content: ' ' },
+          { type: 'token', ...tokens[2] },
+          { type: 'gap', content: ' ' },
+          { type: 'token', ...tokens[3] },
+        ],
+      }),
+    ],
+    alignmentTokens: [],
+  });
+
+  it('comes back with the mark a word of its own on its own letter', () => {
+    const { build } = exportThenRead([doc()]);
+    const [d] = build.documents;
+    expect(d.body).toBe(body);
+    const chars = [...d.body];
+    expect(d.words.map((w) => chars.slice(w.begin, w.end).join(''))).toEqual([
+      'ka',
+      '́',
+      'ma',
+      'café',
+    ]);
+    expect(d.words.every((w) => w.end > w.begin)).toBe(true);
+    // an unsegmented word's gloss is the word's
+    expect(d.words.map((w) => w.fields.Gloss)).toEqual(['go', 'H', 'there', 'coffee']);
+    expect(d.tokenEdges).toContain(2);
+    expect(build.warnings.join('\n')).not.toMatch(/aligned by position/);
+  });
+
+  it('reads a line with no such word composed, as before', () => {
+    const plain = doc();
+    plain.body = 'ká ma café';
+    plain.sortedSentences[0].end = [...plain.body].length;
+    const t = (id, begin, content, gloss) => ({
+      type: 'token',
+      ...word(id, begin, content, gloss),
+    });
+    const words = [t('w1', 0, 'ká', 'go'), t('w3', 3, 'ma', 'there'), t('w4', 6, 'café', 'coffee')];
+    plain.sortedSentences[0].tokens = words;
+    plain.sortedSentences[0].pieces = [
+      words[0],
+      { type: 'gap', content: ' ' },
+      words[1],
+      { type: 'gap', content: ' ' },
+      words[2],
+    ];
+    const [d] = exportThenRead([plain]).build.documents;
+    expect(d.body).toBe('ká ma café');
+    expect(d.tokenEdges).toBeNull();
+  });
+});

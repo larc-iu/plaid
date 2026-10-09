@@ -101,6 +101,7 @@ export async function importDocument({
       ? withoutStamps(doc.metadata)
       : (id) => importStamp(doc.metadata, doc.id, id),
     body: doc.body,
+    tokenEdges: doc.tokenEdges,
     onDocument,
     sentences: doc.sentences,
     progress,

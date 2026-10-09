@@ -259,6 +259,7 @@ async function importDocument({
     name: doc.name,
     metadata: (id) => importStamp(doc.metadata, doc.id, id),
     body: doc.body,
+    tokenEdges: doc.tokenEdges,
     sentences: doc.sentences,
     progress,
     check,

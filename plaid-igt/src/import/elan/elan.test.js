@@ -2063,3 +2063,73 @@ describe('speakers of tiers with no participant', () => {
     );
   });
 });
+
+// A tone mark that is a word of its own right after "ka" keeps "ka" and the
+// mark apart in the stored text (Luke, 2026-10-09). The file is read
+// composed, so the utterance is read decomposed to find its words, and the
+// body is composed with the words' edges: only that character stays
+// decomposed, and the text is created with those edges, as the server keeps it.
+describe('a word that begins inside a character', () => {
+  const file = (text, words) =>
+    toolboxFile('Ana', [
+      {
+        id: 'a1',
+        text,
+        begin: 0,
+        end: 1000,
+        words: words.map(([form, gloss], i) => ({
+          id: `w${i + 1}`,
+          form,
+          previous: i ? `w${i}` : null,
+          morphs: [{ id: `m${i + 1}`, form, gloss }],
+        })),
+      },
+    ]);
+
+  it('places the mark on its own letter, the rest composed', () => {
+    const { build } = buildFrom([
+      [
+        file('ká ma café', [
+          ['ka', 'go'],
+          ['́', 'H'],
+          ['ma', 'there'],
+          ['café', 'coffee'],
+        ]),
+        'tone.eaf',
+      ],
+    ]);
+    const [doc] = build.documents;
+    expect(doc.body).toBe('ká ma café');
+    const chars = [...doc.body];
+    expect(doc.words.map((w) => chars.slice(w.begin, w.end).join(''))).toEqual([
+      'ka',
+      '́',
+      'ma',
+      'café',
+    ]);
+    expect(doc.words.map((w) => w.morphemes.map((m) => m.fields))).toEqual([
+      [{ ge: 'go' }],
+      [{ ge: 'H' }],
+      [{ ge: 'there' }],
+      [{ ge: 'coffee' }],
+    ]);
+    expect(doc.tokenEdges).toContain(2);
+    expect(doc.alignments.map((a) => [a.begin, a.end])).toEqual([[0, 11]]);
+    expect(doc.warnings).toEqual([]);
+  });
+
+  it('reads an utterance whose words are all there composed, as before', () => {
+    const { build } = buildFrom([
+      [
+        file('ká ma', [
+          ['ká', 'go'],
+          ['ma', 'there'],
+        ]),
+        'plain.eaf',
+      ],
+    ]);
+    const [doc] = build.documents;
+    expect(doc.body).toBe('ká ma');
+    expect(doc.tokenEdges).toBeNull();
+  });
+});

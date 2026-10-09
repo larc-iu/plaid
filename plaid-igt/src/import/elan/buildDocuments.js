@@ -25,7 +25,15 @@
 // TIME goes back to seconds: EAF stores milliseconds, Plaid's alignment layer
 // stores seconds in metadata.timeBegin/timeEnd.
 
-import { makeCpIndexer, matchesAt, alignWords, alignSurfaces, cutsAWord } from '../align.js';
+import {
+  makeCpIndexer,
+  matchesAt,
+  alignWords,
+  alignSurfaces,
+  cutsAWord,
+  composeOnEdges,
+  placingSpelling,
+} from '../align.js';
 import { ROLES, nodeLabel, groupRoles, groupValues } from './schema.js';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
 import { joinPhrase } from '../flex/flextextParser.js';
@@ -34,7 +42,7 @@ import { chainOrder } from './readEaf.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
 import { mayOverlap } from '../../domain/alignmentTimes.js';
-import { nameKey } from '@ui/lib/nameKey.js';
+import { nameKey, sameName } from '@ui/lib/nameKey.js';
 
 // A value that is only punctuation (or symbols), as FLEx's punctuation is.
 const PUNCTUATION = /^[\p{P}\p{S}]+$/u;
@@ -662,19 +670,44 @@ function buildGroup(files, nodes, roles, options = {}) {
     }
 
     // --- synthesize the baseline -------------------------------------------
+    // Word forms: the mapped tier, whitespace collapsed as the utterance's
+    // is, so a word holding a tab or a line break is still found in the text.
+    const formsOf = (anns) =>
+      anns.map((a) =>
+        String(a.value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      );
     const pieces = [];
     let bodyU16 = '';
     for (const u of orderUtterances(utterances)) {
-      const text = u.rebuilt
+      let text = u.rebuilt
         ? u.rebuilt.text
         : String(u.ann.value ?? '')
             .replace(/\s+/g, ' ')
             .trim();
+      // A word that begins or ends inside a character of the utterance (a
+      // tone mark that is a word of its own) is found in it only decomposed
+      // (placingSpelling), and the piece is then read decomposed throughout.
+      let decomposed = false;
+      if (!u.rebuilt && wordNodes.length && text) {
+        const spelled = placingSpelling(
+          text,
+          formsOf(childrenOn(u.ann, u.tier, wordNodes)),
+          (t, forms) => {
+            const exact = alignSurfaces(t, 0, t.length, forms);
+            return exact && !cutsAWord(t, exact.spans) ? exact.spans : null;
+          },
+        );
+        ({ text, decomposed } = spelled);
+      }
       const beginU16 = bodyU16.length;
       bodyU16 += text;
-      pieces.push({ ...u, text, beginU16, endU16: bodyU16.length });
+      pieces.push({ ...u, text, decomposed, beginU16, endU16: bodyU16.length });
       bodyU16 += '\n';
     }
+    // As the piece is spelled: decomposed where it was read so.
+    const spelledAs = (piece, s) => (piece.decomposed ? String(s ?? '').normalize('NFD') : s);
     const body = bodyU16.replace(/\n$/, '');
     const toCp = makeCpIndexer(body);
     // The sentence layer PARTITIONS the text, so the sentence tokens have to
@@ -728,7 +761,7 @@ function buildGroup(files, nodes, roles, options = {}) {
           body,
           piece.beginU16,
           piece.endU16,
-          segments.map((s) => s.value),
+          segments.map((s) => spelledAs(piece, s.value)),
         );
         let placed = 0;
         segments.forEach((seg, i) => {
@@ -778,13 +811,7 @@ function buildGroup(files, nodes, roles, options = {}) {
         }));
       } else if (wordNodes.length) {
         wordAnns = childrenOn(piece.ann, piece.tier, wordNodes);
-        // Whitespace collapsed as the utterance's is, so a word holding a tab
-        // or a line break is still found in the text.
-        const forms = wordAnns.map((a) =>
-          String(a.value ?? '')
-            .replace(/\s+/g, ' ')
-            .trim(),
-        );
+        const forms = formsOf(wordAnns).map((f) => spelledAs(piece, f));
         // Our own export writes each word as it stands in the text, so a word
         // that holds a space ("West Bengal") is placed where its text is. When
         // the forms are not all there in order, or would cut a word of the
@@ -814,7 +841,9 @@ function buildGroup(files, nodes, roles, options = {}) {
             if (!span) return;
             const inText = body.slice(span.beginU16, span.endU16);
             const onTier = forms[wi];
-            if (onTier && inText && inText !== onTier) respelled.push(`${onTier} → ${inText}`);
+            if (onTier && inText && !sameName(inText, onTier)) {
+              respelled.push(`${nameKey(onTier)} → ${nameKey(inText)}`);
+            }
           });
           if (respelled.length) {
             docWarnings.push(
@@ -886,7 +915,7 @@ function buildGroup(files, nodes, roles, options = {}) {
           kept.length === 1 &&
           !only.morphType &&
           !Object.keys(only.fields).length &&
-          only.form === body.slice(span.beginU16, span.endU16);
+          sameName(only.form, body.slice(span.beginU16, span.endU16));
         let morphemes = kept;
         if (bare) morphemes = [];
         else if (kept.length === 1 && !only.form) morphemes = [{ ...only, form: null }];
@@ -941,14 +970,23 @@ function buildGroup(files, nodes, roles, options = {}) {
       if (name) metadata[MEDIA_FILE_FIELD] = String(name).split('/').pop();
     }
 
+    // Composed as the server stores it with these tokens on it: an utterance
+    // read decomposed keeps only the character a word edge falls inside so.
+    const kept = keepTimeRule(alignments, alignmentUtterances, docWarnings);
+    const composed = composeOnEdges(
+      body,
+      [...sentences, ...words, ...kept].flatMap((t) => [t.begin, t.end]),
+    );
+    const moved = (t) => ({ ...t, begin: composed.at(t.begin), end: composed.at(t.end) });
     documents.push({
       id: eaf.fileName,
       name: eaf.documentName,
       metadata,
-      body,
-      sentences,
-      words,
-      alignments: keepTimeRule(alignments, alignmentUtterances, docWarnings),
+      body: composed.body,
+      tokenEdges: composed.tokenEdges,
+      sentences: sentences.map(moved),
+      words: words.map(moved),
+      alignments: kept.map(moved),
       // The File the user picked for this .eaf, when they picked one (see
       // matchMediaFiles). The CLDF importer carries media as bytes because its
       // zip already holds them in memory; here the file is on disk and a

@@ -6,6 +6,7 @@
 // Matching is case-folded because a stored form routinely differs in case from
 // the surface it came from (the text says "За", the analysis stores "за").
 
+import { composeText } from '@larc-iu/plaid-client';
 import { countOf } from '@ui/lib/plural.js';
 import { isPictograph, isPunctOrSymbol } from '../domain/punctuationClasses.js';
 
@@ -338,4 +339,48 @@ export function cutsAWord(body, spans) {
     }
     return false;
   });
+}
+
+const nfd = (s) => String(s ?? '').normalize('NFD');
+
+/**
+ * The spelling of a line to place its words in. Each cell an importer reads
+ * is composed (NFC), so a word that ends between a letter and a mark that
+ * composes with it (`ka`, then a tone mark that is a word of its own, in
+ * `ká`) is not in the line as read. Decomposed (NFD), the line and its words
+ * hold it again. `places(text, forms)` says whether the forms are found in
+ * the text as the importer finds them. Returns `{ text, forms, decomposed }`:
+ * the line and the words as given when they are found so, else decomposed
+ * when that finds them and leaves no letter of the line outside a word
+ * (`cutsAWord`). A body built of such lines is composed with its tokens'
+ * edges (`composeOnEdges`), which keeps only the character a word edge falls
+ * inside decomposed, as the server stores it (Luke, 2026-10-09).
+ */
+export function placingSpelling(text, forms, places) {
+  const given = { text, forms, decomposed: false };
+  if (!forms.length || places(text, forms)) return given;
+  const t = nfd(text);
+  if (t === text) return given;
+  const f = forms.map(nfd);
+  const spans = places(t, f);
+  return spans && !cutsAWord(t, spans) ? { text: t, forms: f, decomposed: true } : given;
+}
+
+/**
+ * `body` composed as the server composes a text whose tokens begin and end at
+ * `edges` (code points): every character composed but one a token edge falls
+ * inside (plaid-client `composeText` with the edges as cuts). Returns
+ * `{ body, at, tokenEdges }`: `at` moves an offset of `body` onto the composed
+ * one, and `tokenEdges` (the edges moved, null when the body is all composed)
+ * is what the text is created with, so the server stores it as composed here.
+ */
+export function composeOnEdges(body, edges) {
+  const cuts = new Set(edges);
+  const { text, at } = composeText(body, cuts);
+  const kept = text !== text.normalize('NFC');
+  return {
+    body: text,
+    at,
+    tokenEdges: kept ? [...new Set([...cuts].map(at))].sort((a, b) => a - b) : null,
+  };
 }

@@ -452,3 +452,68 @@ describe('a category named in more than one writing system', () => {
     }
   });
 });
+
+// A tone mark that is a word of its own right after "ka" keeps "ka" and the
+// mark apart in the stored text (Luke, 2026-10-09). The phrase's line is read
+// composed, so the paragraph is read decomposed to find its words, and the
+// body is composed with the words' edges: only that character stays
+// decomposed, and the text is created with those edges.
+describe('a word that begins inside a character', () => {
+  const word = (form, gloss) => `
+              <word>
+                <item type="txt" lang="xx">${form}</item>
+                <item type="gls" lang="en">${gloss}</item>
+              </word>`;
+  const file = (line, words) => `<?xml version="1.0" encoding="utf-8"?>
+<document version="2">
+  <interlinear-text guid="t-tone">
+    <item type="title" lang="en">Tone</item>
+    <paragraphs>
+      <paragraph>
+        <phrases>
+          <phrase>
+            <item type="txt" lang="xx">${line}</item>
+            <words>${words.map(([f, g]) => word(f, g)).join('')}
+            </words>
+          </phrase>
+        </phrases>
+      </paragraph>
+    </paragraphs>
+  </interlinear-text>
+  <languages><language lang="xx" vernacular="true"/><language lang="en"/></languages>
+</document>`;
+  const build = (line, words) =>
+    buildDocuments(parseFlextextFiles([{ name: 'tone.flextext', xml: file(line, words) }]))
+      .documents[0];
+
+  it('places the mark on its own letter, the rest composed', () => {
+    const doc = build('ká ma café', [
+      ['ka', 'go'],
+      ['́', 'H'],
+      ['ma', 'there'],
+      ['café', 'coffee'],
+    ]);
+    expect(doc.warnings).toEqual([]);
+    expect(doc.body).toBe('ká ma café');
+    const chars = [...doc.body];
+    expect(doc.words.map((w) => chars.slice(w.begin, w.end).join(''))).toEqual([
+      'ka',
+      '́',
+      'ma',
+      'café',
+    ]);
+    expect(doc.words.map((w) => w.gloss.en)).toEqual(['go', 'H', 'there', 'coffee']);
+    expect(doc.tokenEdges).toContain(2);
+    expect(doc.sentences.map((s) => [s.begin, s.end])).toEqual([[0, 11]]);
+  });
+
+  it('reads a phrase whose words are all there composed, as before', () => {
+    const doc = build('ká ma', [
+      ['ká', 'go'],
+      ['ma', 'there'],
+    ]);
+    expect(doc.body).toBe('ká ma');
+    expect(doc.words.map((w) => doc.body.slice(w.begin, w.end))).toEqual(['ká', 'ma']);
+    expect(doc.tokenEdges).toBeNull();
+  });
+});

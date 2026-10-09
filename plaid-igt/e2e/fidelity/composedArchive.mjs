@@ -5,6 +5,11 @@
 //
 //   node --import ./e2e/live/aliases.mjs e2e/fidelity/composedArchive.mjs [--keep]
 //
+// The glued project then goes out as CLDF and as ELAN and comes back as a
+// new project with the mark still a word of its own on its own letter: those
+// importers read a line decomposed where a word begins inside a character,
+// and create the text with its tokens' edges.
+//
 // fixtures/mark-word-glued.zip is an archive written decomposed with a tone
 // mark that is a word of its own right after "ka" (what a text edit makes of
 // "ka, a space, the mark, ma" when the space goes). fixtures/mark-word-spaced.zip has the space,
@@ -72,16 +77,35 @@ async function markWord(client, projectId) {
   return null;
 }
 
-async function roundTrip(client, label, projectId) {
-  const before = await markWord(client, projectId);
-  if (!before) return fail(`${label}: no text with the mark word`);
-  const zero = before.tokens.filter((t) => t.parent && t.begin === t.end);
+// Whether the project's text keeps "ka" and its mark apart, the mark a token
+// of its own, and no token with no text. Says what is wrong, else nothing.
+async function markKept(client, label, projectId) {
+  const found = await markWord(client, projectId);
+  if (!found) return fail(`${label}: no text with the mark word`);
+  const zero = found.tokens.filter((t) => t.parent && t.begin === t.end);
   if (zero.length) fail(`${label}: ${zero.length} token(s) left with no text`);
-  const at = cpIndexOf(before.text.body, 'ka\u0301');
+  const at = cpIndexOf(found.text.body, 'ka\u0301');
   if (at < 0) fail(`${label}: "ka" and its mark are not kept apart in the stored text`);
-  else if (!before.tokens.some((t) => t.begin === at + 2 && t.end === at + 3)) {
+  else if (!found.tokens.some((t) => t.begin === at + 2 && t.end === at + 3)) {
     fail(`${label}: the mark has no token of its own`);
   }
+  return found;
+}
+
+// The project out as `format` and in again as a new one, the mark kept.
+async function throughFormat(client, label, projectId, format) {
+  const before = failures;
+  const exported = await exportProject(client, projectId, format);
+  const again = await importProject(client, format, exported.bytes, `${label} ${format}`);
+  await markKept(client, `${label} through ${format}`, again.projectId);
+  if (failures === before) {
+    console.log(`  ok   ${label}: out as ${format} and in again, the mark kept (${secs()})`);
+  }
+}
+
+async function roundTrip(client, label, projectId) {
+  const before = await markKept(client, label, projectId);
+  if (!before) return;
   const exported = await exportProject(client, projectId, 'native');
   const again = await importProject(client, 'native', exported.bytes, `${label} again`);
   const diffs = diffSnapshots(
@@ -114,6 +138,13 @@ try {
       'Glued',
     );
     await roundTrip(client, 'glued archive', glued.projectId);
+    for (const format of ['cldf', 'elan']) {
+      try {
+        await throughFormat(client, 'glued archive', glued.projectId, format);
+      } catch (err) {
+        fail(`glued archive through ${format}: ${err.message}`);
+      }
+    }
   } catch (err) {
     fail(`glued archive: ${err.message}`);
   }

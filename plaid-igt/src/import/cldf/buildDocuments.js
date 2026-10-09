@@ -23,7 +23,16 @@
 // "=" does mean clitic, and inferring just that inverts the exporter's joiner
 // rule exactly, so a round trip reproduces the same joints.
 
-import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords, alignSurfaces } from '../align.js';
+import {
+  makeCpIndexer,
+  splitAnalyzed,
+  surfaceOf,
+  alignWords,
+  alignSurfaces,
+  composeOnEdges,
+  placingSpelling,
+} from '../align.js';
+import { sameName } from '@ui/lib/nameKey.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
@@ -351,8 +360,9 @@ const asInt = (v) => {
 
 /**
  * @returns {{documents, languages, lexicon, schema, stats, warnings}}
- *   documents: [{id, name, metadata, body, sentences, words, warnings}]
- *   All begin/end are CODE POINTS in body space.
+ *   documents: [{id, name, metadata, body, tokenEdges, sentences, words, warnings}]
+ *   All begin/end are CODE POINTS in body space. `tokenEdges` is what the
+ *   text is created with (see composeOnEdges), null for a body all composed.
  */
 export function buildCldfDocuments(dataset, options = {}) {
   const o = { ...deriveImportOptions(dataset), ...options };
@@ -575,8 +585,19 @@ export function buildCldfDocuments(dataset, options = {}) {
       if (lang) objectLanguageIds.add(lang);
       const metaLang = cell(examples, row, 'metaLanguageReference');
       if (metaLang) primaryMetaLanguageIds.add(metaLang);
-      texts.push(text);
-      parsed.push({ row, analyzed, text });
+      // Our own export writes each word as it stands in the text. A word that
+      // begins or ends inside a character (a tone mark that is a word of its
+      // own) stands there only in the line decomposed (placingSpelling).
+      const surfaces = ownExamples ? String(row[SURFACE_COLUMN] ?? '') : '';
+      const surfaceList =
+        surfaces && surfaces.split('\t').length === analyzed.length ? surfaces.split('\t') : null;
+      const spelled = placingSpelling(
+        text,
+        surfaceList ?? [],
+        (t, forms) => alignSurfaces(t, 0, t.length, forms)?.spans ?? null,
+      );
+      texts.push(spelled.text);
+      parsed.push({ row, analyzed, text: spelled.text, surfaceList, placeBy: spelled.forms });
     }
     if (!parsed.length) continue;
 
@@ -589,7 +610,7 @@ export function buildCldfDocuments(dataset, options = {}) {
     const words = [];
     let offset = 0;
 
-    parsed.forEach(({ row, analyzed, text }, si) => {
+    parsed.forEach(({ row, analyzed, text, surfaceList, placeBy }, si) => {
       const beginU16 = offset;
       // The sentence layer partitions the text, so each sentence absorbs its
       // trailing newline and the last one runs to the end of the body.
@@ -623,11 +644,8 @@ export function buildCldfDocuments(dataset, options = {}) {
       });
 
       const glosses = list(examples, row, 'gloss');
-      const surfaces = ownExamples ? String(row[SURFACE_COLUMN] ?? '') : '';
-      const surfaceList =
-        surfaces && surfaces.split('\t').length === analyzed.length ? surfaces.split('\t') : null;
       const exact = surfaceList
-        ? alignSurfaces(body, beginU16, beginU16 + text.length, surfaceList)
+        ? alignSurfaces(body, beginU16, beginU16 + text.length, placeBy)
         : null;
       const { spans, warnings: alignWarnings } =
         exact ?? alignWords(body, beginU16, beginU16 + text.length, analyzed);
@@ -708,7 +726,7 @@ export function buildCldfDocuments(dataset, options = {}) {
           (morphemes.length === 1 &&
             !only.morphType &&
             unvalued &&
-            only.form === body.slice(span.beginU16, span.endU16)) ||
+            sameName(only.form, body.slice(span.beginU16, span.endU16))) ||
           (unvalued && surfaceList?.[wi] === word);
         words.push({
           begin: toCp(span.beginU16),
@@ -730,6 +748,13 @@ export function buildCldfDocuments(dataset, options = {}) {
         : { contributionId: key },
       docWarnings,
     );
+    // Composed as the server stores it with these tokens on it: a line read
+    // decomposed keeps only the character a word edge falls inside so.
+    const composed = composeOnEdges(
+      body,
+      [...sentences, ...words].flatMap((t) => [t.begin, t.end]),
+    );
+    const moved = (t) => ({ ...t, begin: composed.at(t.begin), end: composed.at(t.end) });
     documents.push({
       id: key || 'cldf',
       // A ContributionTable names the text; a grouping column's value is the
@@ -738,9 +763,10 @@ export function buildCldfDocuments(dataset, options = {}) {
       // Only meaningful in PER_EXAMPLE mode, where a document IS one example.
       exampleId: o.groupBy === PER_EXAMPLE ? key : null,
       metadata: contribution?.metadata || {},
-      body,
-      sentences,
-      words,
+      body: composed.body,
+      tokenEdges: composed.tokenEdges,
+      sentences: sentences.map(moved),
+      words: words.map(moved),
       mediaBytes: media?.bytes ?? null,
       mediaName: media?.name ?? null,
       warnings: docWarnings,
