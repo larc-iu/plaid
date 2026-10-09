@@ -77,10 +77,11 @@ That last step also strips camera metadata, so GPS coordinates embedded in a pho
 You may set or remove your own picture, and an admin may set or remove anyone's.
 A user with no picture is shown their initials instead.
 
-An image, audio or video element cannot send an `Authorization` header, so a picture's or a recording's URL carries a **link token** in its query string, never a sign-in token.
-A link token opens one kind of resource and is refused everywhere else, as a bearer token and as `?token=` included.
+A sign-in or API token is read from the `Authorization` header only, never from a URL, where it would land in access logs and in anything the URL is copied into.
+An image, audio or video element cannot send that header, so a picture's or a recording's URL carries a **link token** in its query string instead.
+A link token opens one kind of resource and is refused everywhere else, as a bearer token included.
 
-* `POST /api/v1/avatar-link` answers `{token, expires-at}`. The token opens any user's picture as `GET /api/v1/users/:id/avatar?avatar-token=...`. `users.avatarUrl(id, avatarHash)` in JavaScript (async) and `users.avatar_url(id, avatar_hash)` in Python mint one token per client, keep it until ten minutes of it are left, and build the URL with it. `users.avatarToken()` (`users.avatar_token()`) answers the token itself.
+* `POST /api/v1/avatar-link` answers `{token, expires-at}`. The token opens any user's picture as `GET /api/v1/users/:id/avatar?avatar-token=...`. `users.avatarUrl(id, avatarHash)` in JavaScript (async) and `users.avatar_url(id, avatar_hash)` in Python mint one token per client, keep it until ten minutes of it are left (half its life, for one made near the end of a sign-in), and build the URL with it. `users.avatarToken()` (`users.avatar_token()`) answers the token itself.
 * `POST /api/v1/documents/:id/media/link` answers `{url, expires-at}`: the document's `media-url` with a `media-token` that opens that one recording, for as long as its user can read the project.
 
 A link token lasts `[media] avatar_link_ttl_seconds` (a day) or `[media] link_ttl_seconds` (six hours), and never longer than the credential that made it.

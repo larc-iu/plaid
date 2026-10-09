@@ -163,7 +163,7 @@
 ;;
 ;; A route marks the audience it takes with `:plaid/link-token`, and
 ;; `wrap-read-jwt` reads that audience's parameter there and on no other
-;; route. A link token is refused as a bearer or `?token=` credential on
+;; route. A link token is refused as a bearer credential on
 ;; every route, and on a route marked for another audience.
 
 (def media-audience
@@ -250,7 +250,7 @@
                     (contains? token-data :link/api-token)))))
 
 (defn- link-misuse-refusal
-  "The refusal of a link token sent as a bearer or `?token=` credential."
+  "The refusal of a link token sent as a bearer credential."
   [token-data]
   (if (= avatar-audience (:aud token-data))
     "This token opens profile pictures only."
@@ -677,12 +677,14 @@
 (defn wrap-read-jwt
   "Reitit middleware that looks for JWT tokens in either:
   1. \"Authorization: Bearer ...\" header (standard approach)
-  2. \"token\" query parameter (for EventSource compatibility)
-  3. a link token's parameter (\"media-token\", \"avatar-token\"), on a route
-     marked `:plaid/link-token` with its audience only, when neither of the
-     others is there (see Link tokens above)
+  2. a link token's parameter (\"media-token\", \"avatar-token\"), on a route
+     marked `:plaid/link-token` with its audience only, when there is no
+     header (see Link tokens above)
 
-  A link token is refused as 1 or 2, on every route.
+  A login or API token is never read from the URL: one there lands in access
+  logs, proxies and anything a URL is copied into, and both clients send it
+  as a header, event streams included. A link token is refused as 1, on every
+  route.
 
   On success, token data is stored in the request map under :jwt-data."
   [handler]
@@ -694,26 +696,20 @@
           ;; credential, so it counts as absent, and the route's own gate
           ;; refuses the request as unsigned.
           one (fn [k] (let [v (get-in request [:query-params k])] (when (string? v) v)))
-          query-token (one "token")
-          link-audience (when (and (not bearer?) (nil? query-token))
-                          (link-route-audience request))
+          link-audience (when-not bearer? (link-route-audience request))
           link-token (when link-audience (one (link-token-params link-audience)))]
       (cond (nil? secret-key)
             (do (log/error "Secret key not found in request! Are middlewares properly ordered?" nil)
                 {:status 500 :body {:error (str "Improperly configured server. Contact admin.")}})
 
-            ;; No auth header, no query token, no link token
-            (and (not bearer?) (nil? query-token) (str/blank? link-token))
+            ;; No auth header, no link token
+            (and (not bearer?) (str/blank? link-token))
             (handler request)
 
             :else
-            (let [source (cond bearer? "header"
-                               query-token "query"
-                               :else (link-token-params link-audience))
-                  link? (not (or bearer? query-token))
-                  token (cond bearer? (subs auth-header 7)
-                              query-token query-token
-                              :else link-token)
+            (let [source (if bearer? "header" (link-token-params link-audience))
+                  link? (not bearer?)
+                  token (if bearer? (subs auth-header 7) link-token)
                   token-data (try (jwt/unsign token secret-key)
                                   (catch Exception e e))
                   ;; An API token carries a `:token/id` claim; a session token
@@ -773,8 +769,7 @@
                      :body {:error (str "Token invalid. Obtain a new token.")}})
 
                 ;; A link token opens its own route through its own
-                ;; parameter and nothing else: never as a bearer or `?token=`
-                ;; credential.
+                ;; parameter and nothing else: never as a bearer credential.
                 (and (not link?) (link-claims? token-data))
                 {:status 401
                  :body {:error (link-misuse-refusal token-data)}}

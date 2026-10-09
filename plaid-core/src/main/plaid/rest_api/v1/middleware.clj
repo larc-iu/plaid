@@ -258,11 +258,11 @@
 
 (defn- redact-query-string
   "Percent-encoded query string with any sensitive parameter's value
-  replaced. The ones that matter are `token` and the link tokens:
-  EventSource, media and image elements cannot send an Authorization
-  header, so a stream request carries its JWT in the query and a media link
-  or a picture's URL its link token, and the access line is read by everyone
-  who can read the log."
+  replaced. The ones that matter are the link tokens: media and image
+  elements cannot send an Authorization header, so a media link or a
+  picture's URL carries its link token, and the access line is read by
+  everyone who can read the log. `token` is redacted as well: core no longer
+  reads a login token from the URL, but a caller may still send one."
   [qs]
   (when-not (str/blank? qs)
     (->> (str/split qs #"&")

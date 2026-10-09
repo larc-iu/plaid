@@ -168,6 +168,10 @@
           (is (= 401 (:status (rest-handler (anonymous :get (str "/api/v1/projects/" pid "/listen?media-token=" token)))))))
         (testing "on another document's recording"
           (is (= 401 (:status (get-anon (str "/api/v1/documents/" other "/media?media-token=" token))))))
+        (testing "a login token in the URL opens nothing: it is read from the header only"
+          (is (= 401 (:status (rest-handler (anonymous :get (str "/api/v1/projects?token=" fix/admin-token))))))
+          (is (= 401 (:status (rest-handler (anonymous :get (str "/api/v1/projects/" pid "/listen?token=" fix/admin-token))))))
+          (is (= 401 (:status (get-anon (str media-path "?token=" fix/admin-token))))))
         (testing "given twice, a media token or a query token is no credential, and no 500"
           (is (= 401 (:status (get-anon (str media-path "?media-token=" token "&media-token=" token)))))
           (is (= 401 (:status (rest-handler (anonymous :get (str "/api/v1/projects/" pid "/listen?token=" fix/admin-token "&token=" fix/admin-token)))))))
