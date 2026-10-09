@@ -198,20 +198,28 @@ test('the plan card groups a change under its document, links the word, and Disc
   await expect(page.getByText('Discarded')).toBeVisible();
 });
 
-test('a turn whose request is gone offers Retry and clears the pending marker', async ({
-  page,
-}) => {
-  const id = await seedConversation({
-    title: 'e2e lost turn',
+// A marker names a request its page may not have sent yet (it claims the
+// conversation first, then writes the message, then sends it), so a page that
+// finds no such request asks again for up to 15 seconds from when the marker
+// was set (`SUBMIT_GRACE_MS` in plaid-ui jobs.js) before it takes it as lost.
+const lostTurn = (title, startedAt) =>
+  seedConversation({
+    title,
     messages: [{ role: 'user', content: 'Anything there?' }],
     display: [{ kind: 'user', text: 'Anything there?' }],
     pending: {
       kind: 'turn',
       requestId: randomUUID(), // the server has never heard of it
       serviceId: 'igt:assist:e2e',
-      startedAt: new Date().toISOString(),
+      startedAt,
     },
   });
+
+test('a turn whose request is gone offers Retry and clears the pending marker', async ({
+  page,
+}) => {
+  // Left by a page that went away a minute ago.
+  const id = await lostTurn('e2e lost turn', new Date(Date.now() - 60 * 1000).toISOString());
   await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
   await expect(page.getByText('No answer came back for this message.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
@@ -220,6 +228,20 @@ test('a turn whose request is gone offers Retry and clears the pending marker', 
     .toBeNull();
   // Not listed as unfinished any more.
   await expect(page.getByText('unfinished')).toHaveCount(0);
+});
+
+test('a turn just marked whose request never comes ends the same way after the wait', async ({
+  page,
+}) => {
+  const id = await lostTurn('e2e lost young turn', new Date().toISOString());
+  await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
+  await expect(page.getByText('No answer came back for this message.')).toBeVisible({
+    timeout: 25000,
+  });
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect
+    .poll(async () => (await client.userData.get(userId, key('meta', id))).value.pending)
+    .toBeNull();
 });
 
 test('the tab opens on a new conversation, and the sidebar links each saved one', async ({
