@@ -36,6 +36,12 @@ export function eventPayload(eventType, parsed) {
   return payload;
 }
 
+// Tell the client a stream of its own dropped or opened (a stand-in client in
+// a test may not listen).
+function tell(client, hook) {
+  try { client[hook]?.(); } catch (_) { /* the stream must not die of it */ }
+}
+
 /**
  * Create an SSE connection to the listen endpoint using fetch-based streaming.
  * Automatically handles heartbeat confirmations and event parsing.
@@ -147,6 +153,8 @@ export function createSSEConnection(client, projectId, onEvent, path) {
       isConnected = true;
       sseConnection.readyState = 1; // OPEN
       lastWarning.delete(url);
+      // After a drop the server may have restarted with other limits.
+      tell(client, '_noteStreamOpened');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -219,10 +227,13 @@ export function createSSEConnection(client, projectId, onEvent, path) {
         }
       }
     } finally {
+      // Ended without a close() of this side's own: a drop.
+      const dropped = !isClosed;
       clearIdleTimer();
       isConnected = false;
       isClosed = true;
       sseConnection.readyState = 2; // CLOSED
+      if (dropped) tell(client, '_noteStreamDropped');
     }
   })();
 

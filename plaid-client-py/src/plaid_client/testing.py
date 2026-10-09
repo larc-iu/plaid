@@ -986,7 +986,8 @@ class FakeClient:
         #: ``{'kind', 'id', 'entity', 'by'}`` in order (see ``_cascade``)
         self.cascaded = []
         self.server = types.SimpleNamespace(limits=lambda: dict(self.limits),
-                                            info=lambda: {'limits': dict(self.limits)})
+                                            info=lambda: {'limits': dict(self.limits)},
+                                            refresh=lambda: {'limits': dict(self.limits)})
 
     # -- recording --
     def new_id(self, prefix):

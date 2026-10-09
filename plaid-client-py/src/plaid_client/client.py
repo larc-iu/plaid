@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 import urllib.parse
 import uuid
@@ -1400,8 +1401,9 @@ class UserDataResource(_Resource):
     def put(self, user_id: str, key: str, value: Any, version: int | None = None) -> Any:
         """Create or replace one entry. ``value`` is any JSON, up to the
         server's ``user_data_value_bytes`` (``server.limits()``, 5 MB by
-        default), and is refused with 413 over it. Answers ``{key,
-        updated_at, version}``.
+        default), and is refused with 413 over it, after which
+        ``server.limits()`` answers the figure the server has now. Answers
+        ``{key, updated_at, version}``.
 
         The server stores it verbatim, but this client recases object keys on
         the way out and back like any other body (``my_key`` <-> ``my-key``),
@@ -1416,9 +1418,19 @@ class UserDataResource(_Resource):
         ``version`` and ``updated_at`` on the error's ``response_data``: read
         it again and make the change on what is there.
         """
-        return self._request('PUT', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
-                             body=value, no_batch=True,
-                             **({'query_params': {'version': version}} if version is not None else {}))
+        try:
+            return self._request('PUT', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+                                 body=value, no_batch=True,
+                                 **({'query_params': {'version': version}} if version is not None else {}))
+        except PlaidAPIError as e:
+            if e.status == 413:
+                # The cap may have changed since it was read: the caller
+                # deciding what to do next reads the server's figure now.
+                try:
+                    self._client.server.refresh()
+                except Exception:  # noqa: BLE001 - the 413 is the answer either way
+                    pass
+            raise
 
     def delete(self, user_id: str, key: str) -> Any:
         """Delete one entry; 404 if absent."""
@@ -3396,25 +3408,52 @@ class TokensResource(_Resource):
                              body=_body_of(begin=begin, end=end), audit_message=audit_message)
 
 
+class ServerFacts:
+    """``GET /info`` as a client last read it, and whether it may be out of
+    date. The limits change only when the server restarts with another
+    configuration, and a restart always drops this client's streams, so a
+    stream that drops marks the facts stale and the next stream to open reads
+    them again (:meth:`PlaidClient._note_stream_opened`). A 413 from a
+    user-data write reads them again too. A service hands its facts to the
+    clients it makes for its requesters, so a turn reads none of its own.
+    """
+
+    def __init__(self):
+        self.info: Any = None
+        self.stale = False
+        self.lock = threading.Lock()
+
+
 class ServerResource(_Resource):
-    """Server-level facts. Fetched at most once: the limits cannot change while
-    the server is up, and a caller asking "will this file be accepted" should
-    not pay a round trip to find out."""
+    """Server-level facts. Read once, and again only when they may have
+    changed: after this client's connection to the server was lost and came
+    back, or after the server refused a user-data write as too large. A caller
+    asking "will this file be accepted" does not pay a round trip to find out.
+    """
 
     def info(self) -> Any:
         """This server's version and the limits it enforces. Sizes are in
         bytes. Unauthenticated."""
-        cached = getattr(self._client, '_server_info', None)
-        if cached is None:
-            cached = self._request('GET', '/api/v1/info')
-            # Only a success is cached: a client that starts before the server
-            # is up would otherwise never see the limits at all.
-            self._client._server_info = cached
-        return cached
+        facts = self._client._server_facts
+        with facts.lock:
+            if facts.info is None:
+                # Only a success is kept: a client that starts before the
+                # server is up would otherwise never see the limits at all.
+                facts.info = self._request('GET', '/api/v1/info')
+            return facts.info
 
     def limits(self) -> Any:
         """Just the limits, which is what a caller almost always wants."""
         return self.info()['limits']
+
+    def refresh(self) -> Any:
+        """Read ``GET /info`` again and answer it. The facts known before are
+        kept when the server does not answer, and the error is raised."""
+        facts = self._client._server_facts
+        with facts.lock:
+            facts.info = self._request('GET', '/api/v1/info')
+            facts.stale = False
+            return facts.info
 
     def health(self) -> Any:
         """Liveness, version and database size.
@@ -3881,8 +3920,30 @@ class PlaidClient:
         self.session = req_lib.Session()
         # Who hears that a request is being sent again (on_retry).
         self._retry_listeners: list = []
+        # GET /info as last read (``server.info()``).
+        self._server_facts = ServerFacts()
 
         _install_resources(self)
+
+    def _note_stream_dropped(self) -> None:
+        """A stream of this client ended without being closed here: the
+        server may have restarted, with other limits."""
+        self._server_facts.stale = True
+
+    def _note_stream_opened(self) -> None:
+        """A stream of this client is open. After a drop, the limits are read
+        again, once however many streams reopen."""
+        facts = self._server_facts
+        if not facts.stale:
+            return
+        with facts.lock:
+            if not facts.stale:
+                return
+            try:
+                facts.info = self._request('GET', '/api/v1/info')
+                facts.stale = False
+            except Exception as e:  # noqa: BLE001 - the figures known before stand, the next open asks again
+                logging.getLogger(__name__).debug('Could not read the server limits again: %s', e)
 
     def on_retry(self, listener):
         """Hear every time a request is sent again: after a 503 (the database

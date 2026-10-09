@@ -112,6 +112,18 @@ class StreamClosed(ConnectionError):
     close made on this side, which leaves ``error`` None."""
 
 
+def _tell(client, hook):
+    """Tell the client a stream of its own dropped or opened (a stand-in
+    client in a test may not listen)."""
+    note = getattr(client, hook, None)
+    if note is None:
+        return
+    try:
+        note()
+    except Exception:  # noqa: BLE001 - the stream must not die of it
+        logger.debug('Stream hook %s raised', hook, exc_info=True)
+
+
 class SSEConnection:
     """SSE connection to the listen endpoint using streaming requests.
 
@@ -252,6 +264,8 @@ class SSEConnection:
             self._ready_state = 1  # OPEN
             self._settled.set()
             _note_connection_opened(url)
+            # After a drop the server may have restarted with other limits.
+            _tell(self._client, '_note_stream_opened')
 
             event_type = ''
             data = ''
@@ -298,7 +312,11 @@ class SSEConnection:
             if not self._is_closed:
                 _log_connection_error(e, getattr(self, '_url', None))
         finally:
+            # Ended without a close() of this side's own: a drop.
+            dropped = not self._is_closed
             self._is_connected = False
             self._is_closed = True
             self._ready_state = 2  # CLOSED
             self._settled.set()
+            if dropped:
+                _tell(self._client, '_note_stream_dropped')

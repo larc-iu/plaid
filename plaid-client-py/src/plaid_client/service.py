@@ -444,6 +444,12 @@ class BaseService(ABC):
             token = request_data.pop('delegated_token', None)
             if token:
                 requester = PlaidClient(self.client.base_url, token)
+                # The server's limits as this service read them, kept current
+                # by its own connection (see ServerFacts), so a request reads
+                # no GET /info of its own.
+                facts = getattr(self.client, '_server_facts', None)
+                if facts is not None:
+                    requester._server_facts = facts
                 request_data['requester_client'] = requester
             elif self.delegation:
                 response_helper.error(f"{self.service_name} acts on the requester's behalf but "

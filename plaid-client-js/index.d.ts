@@ -816,10 +816,12 @@ interface AuthBundle {
   logoutEverywhere(): Promise<void>;
 }
 
-/** Server-level facts. `info` is fetched at most once per client. */
+/** Server-level facts. `info` is read once per client, and again after a stream of the client dropped and reopened, or a private data write was refused with 413. */
 interface ServerBundle {
   info(): Promise<{ limits: ServerLimits }>;
   limits(): Promise<ServerLimits>;
+  /** Read `GET /info` again. The facts known before are kept when the server does not answer. */
+  refresh(): Promise<{ limits: ServerLimits }>;
   health(): Promise<ServerHealth>;
 }
 

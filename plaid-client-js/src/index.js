@@ -361,8 +361,31 @@ class PlaidClient {
     this._authErrorFired = false;
     // Who hears that a request is being sent again (onRetry).
     this._retryListeners = new Set();
+    // GET /info as last read (`server.info()`), and whether a stream of this
+    // client dropped since.
+    this._serverFacts = { info: null, stale: false };
 
     this._installResources();
+  }
+
+  /**
+   * A stream of this client ended without being closed here: the server may
+   * have restarted, with other limits.
+   */
+  _noteStreamDropped() {
+    this._serverFacts.stale = true;
+  }
+
+  /**
+   * A stream of this client is open. After a drop the limits are read again,
+   * once however many streams reopen.
+   */
+  _noteStreamOpened() {
+    if (!this._serverFacts.stale) return;
+    this.server.refresh().catch(() => {
+      // The figures known before stand, and the next open asks again.
+      this._serverFacts.stale = true;
+    });
   }
 
   /**
@@ -1022,10 +1045,13 @@ class PlaidClient {
         }),
     };
 
-    // Server-level facts. Fetched at most once: the limits cannot change while
-    // the server is up, and a caller asking "will this file be accepted" should
-    // not pay a round trip to find out.
-    let infoPromise = null;
+    // Server-level facts. Read once, and again only when they may have
+    // changed: after this client's connection to the server was lost and came
+    // back (a restart, the only way the limits change, always drops it), or
+    // after the server refused a private data write as too large. A caller
+    // asking "will this file be accepted" does not pay a round trip to find
+    // out. The facts live on the client (`_serverFacts`), so a batch opened
+    // on it reads the same.
     this.server = {
       /**
        * This server's version and the limits it enforces, e.g.
@@ -1033,15 +1059,36 @@ class PlaidClient {
        * Sizes are in bytes. Unauthenticated.
        */
       info: () => {
-        if (!infoPromise) {
-          infoPromise = this._request("GET", "/api/v1/info").catch((err) => {
-            // A failure must not be cached: a client that starts before the
+        const facts = this._serverFacts;
+        if (!facts.info) {
+          const asked = this._request("GET", "/api/v1/info").catch((err) => {
+            // A failure must not be kept: a client that starts before the
             // server is up would never see the limits at all.
-            infoPromise = null;
+            if (facts.info === asked) facts.info = null;
             throw err;
           });
+          facts.info = asked;
         }
-        return infoPromise;
+        return facts.info;
+      },
+      /**
+       * Read `GET /info` again and resolve to it. Until it answers, a reader
+       * waits for it. The facts known before are kept when the server does
+       * not answer, and the error is thrown.
+       */
+      refresh: () => {
+        const facts = this._serverFacts;
+        const before = facts.info;
+        facts.stale = false;
+        const fresh = this._request("GET", "/api/v1/info");
+        const held = fresh.catch((err) => {
+          if (facts.info === held) facts.info = before;
+          if (before) return before;
+          throw err;
+        });
+        held.catch(() => {});
+        facts.info = held;
+        return fresh;
       },
       /** Just the limits, which is what a caller almost always wants. */
       limits: async () => (await this.server.info()).limits,
@@ -1487,7 +1534,9 @@ class PlaidClient {
       /**
        * Create or replace one private data entry. `value` is any JSON, up to
        * the server's `userDataValueBytes` (`server.limits()`, 5 MB by
-       * default), and is refused with 413 over it. Not audited, not batchable.
+       * default), and is refused with 413 over it, after which
+       * `server.limits()` answers the figure the server has now. Not audited,
+       * not batchable.
        *
        * The server stores it verbatim, but this client recases object keys on
        * the way out and back like any other body (`myKey` <-> `my-key`), so a
@@ -1508,16 +1557,26 @@ class PlaidClient {
        * @param {number} [opts.version] - The version this write was made from
        * @returns {Promise<{key: string, updatedAt: string, version: number}>}
        */
-      put: (userId, key, value, { version } = {}) =>
-        this._request(
-          "PUT",
-          `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
-          {
-            body: value,
-            noBatch: true,
-            queryParams: { version },
-          },
-        ),
+      put: async (userId, key, value, { version } = {}) => {
+        try {
+          return await this._request(
+            "PUT",
+            `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
+            {
+              body: value,
+              noBatch: true,
+              queryParams: { version },
+            },
+          );
+        } catch (err) {
+          if (err?.status === 413) {
+            // The cap may have changed since it was read: the caller deciding
+            // what to do next reads the server's figure now.
+            await this.server.refresh().catch(() => {});
+          }
+          throw err;
+        }
+      },
       /**
        * Delete one private data entry; 404 if absent.
        * @param {string} userId
