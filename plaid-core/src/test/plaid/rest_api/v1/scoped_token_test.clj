@@ -78,6 +78,13 @@
       (let [k (str "igt:assistant:" p ":conv:1")]
         (is (= 200 (:status (call admin :put (str "/api/v1/users/admin@example.com/data/" k) {:messages []}))))
         (is (= 200 (:status (call admin :get (str "/api/v1/users/admin@example.com/data/" k)))))))
+    (testing "a listing of the user's own data by a prefix naming the project as a whole segment"
+      (let [k (str "igt:assistant:" p ":file:c1:f1:part:0")
+            prefix (str "igt:assistant:" p ":file:c1:")]
+        (is (= 200 (:status (call admin :put (str "/api/v1/users/admin@example.com/data/" k) "x"))))
+        (let [resp (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=" prefix))]
+          (is (= 200 (:status resp)))
+          (is (= [k] (mapv :key (-> resp :body :entries)))))))
     (testing "a batch of operations inside the project"
       (is (= 200 (:status (call admin :post "/api/v1/batch"
                                 [{:path (str "/api/v1/projects/" p) :method "get"}])))))))
@@ -98,7 +105,12 @@
                                  :scope {:project-ids [(str p) (str q)]}})))))
     (testing "the user's data under a key naming another project, and a listing"
       (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data/igt:assistant:" q ":conv:1")))))
-      (is (= 403 (:status (call admin :get "/api/v1/users/admin@example.com/data")))))
+      (is (= 403 (:status (call admin :get "/api/v1/users/admin@example.com/data"))))
+      (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" q ":")))))
+      (testing "a prefix whose project is cut short, or a pattern beside it, reaches past the project"
+        (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" p)))))
+        (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" p
+                                                  ":&pattern=*")))))))
     (testing "a batch reaching another project fails whole"
       (is (not (ok? (call admin :post "/api/v1/batch"
                           [{:path (str "/api/v1/projects/" p) :method "get"}

@@ -588,14 +588,24 @@
 (defn user-data-token-scope
   "`:plaid/token-scope` for the private data routes: one entry at a time,
   whose key names a project in scope as one of its colon-separated segments
-  (an assistant's conversation lives under `<app>:assistant:<project>:...`).
-  A listing is refused: it would read the entries of every project at once.
-  That the user is the token's own is `self-or-admin`'s, with admin
-  already taken away."
+  (an assistant's conversation lives under `<app>:assistant:<project>:...`),
+  or a listing by a prefix that names a project in scope as one of its whole
+  segments, with no pattern, which reads only entries of that project (the
+  files of one conversation, `<app>:assistant:<project>:file:<id>:`, which
+  the assistant service deletes with it). Any other listing is refused: it
+  would read the entries of every project at once. That the user is the
+  token's own is `self-or-admin`'s, with admin already taken away."
   [request scope]
-  (let [k (-> request :parameters :path :key)]
-    (when-not (and k (some #(in-scope? scope %) (str/split k #":")))
-      scope-refusal)))
+  (let [k (-> request :parameters :path :key)
+        {:keys [prefix pattern]} (-> request :parameters :query)]
+    (if k
+      (when-not (some #(in-scope? scope %) (str/split k #":"))
+        scope-refusal)
+      ;; The last piece of a prefix may be a segment cut short, which would
+      ;; match longer ones too, so only the pieces before it count.
+      (when-not (and (string? prefix) (nil? pattern)
+                     (some #(in-scope? scope %) (butlast (str/split prefix #":" -1))))
+        scope-refusal))))
 
 (defn operation-group-token-scope
   "`:plaid/token-scope` for `/operation-groups/:id`: a scoped token may
