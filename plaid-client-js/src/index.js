@@ -2217,6 +2217,28 @@ class PlaidClient {
           binaryResponse: true,
         }),
       /**
+       * Get a link that plays the document's recording without an
+       * Authorization header, for an audio or video element's `src`, which
+       * cannot send one. `url` is the document's media URL with a
+       * `media-token` added, resolved against the client's base URL. The token
+       * opens only this recording, for this user, and the server refuses it on
+       * every other route. It expires at `expiresAt` (an ISO-8601 instant, six
+       * hours on by default), and sooner when the user signs out, changes
+       * password or loses access to the project: ask for a new link then. A
+       * document with no recording is a 404. Writes nothing, so it takes no
+       * Idempotency-Key and goes over the wire when made on a batch.
+       * @param {string} documentId - The document ID
+       * @returns {Promise<{url: string, expiresAt: string}>}
+       */
+      mediaLink: async (documentId) => {
+        const link = await this._request(
+          "POST",
+          `/api/v1/documents/${documentId}/media/link`,
+          { outOfBand: true },
+        );
+        return { ...link, url: `${this.baseUrl}${link.url}` };
+      },
+      /**
        * Upload a media file for a document. Uses Apache Tika for content validation.
        * A document that already has a recording refuses it with a 409
        * (`media-exists`, and the current `media-url`): delete that one first.

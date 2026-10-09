@@ -1127,6 +1127,12 @@ interface DocumentsBundle {
     options?: { keepAlive?: boolean },
   ): Promise<T>;
   getMedia(documentId: string): Promise<ArrayBuffer>;
+  /**
+   * A URL that plays the recording without an Authorization header (for an
+   * audio or video element's `src`). Its token opens only this recording and
+   * expires at `expiresAt`, or sooner on sign-out. A 404 when there is none.
+   */
+  mediaLink(documentId: string): Promise<{ url: string; expiresAt: string }>;
   uploadMedia(
     documentId: string,
     file: File,

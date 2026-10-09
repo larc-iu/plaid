@@ -2159,6 +2159,28 @@ class DocumentsResource(_Resource):
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
                              binary_response=True)
 
+    def media_link(self, document_id: str) -> Any:
+        """Get a link that plays the document's recording without an
+        Authorization header, for an audio or video element, which cannot send
+        one.
+
+        Answers ``{'url': ..., 'expires_at': ...}``. ``url`` is the document's
+        media URL with a ``media-token`` added, resolved against the client's
+        base URL. The token opens only this recording, for this user, and the
+        server refuses it on every other route. It expires at ``expires_at``
+        (an ISO-8601 instant, six hours on by default), and sooner when the
+        user signs out, changes password or loses access to the project: ask
+        for a new link then. A document with no recording is a 404. Writes
+        nothing, so it takes no Idempotency-Key and goes over the wire when
+        made on a batch.
+
+        Args:
+            document_id: The document ID
+        """
+        link = self._request('POST', f'/api/v1/documents/{document_id}/media/link',
+                             out_of_band=True)
+        return {**link, 'url': f"{self._client.base_url}{link['url']}"}
+
     def upload_media(self, document_id: str, file, audit_message=None, *,
                      on_progress=None) -> Any:
         """Upload a media file for a document. Uses Apache Tika for content validation.

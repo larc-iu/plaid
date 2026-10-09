@@ -101,6 +101,12 @@ avatar_size_px = 512
 # real photo well under it.
 avatar_max_upload_mb = 5
 
+# Lifetime, in seconds, of a media link: the URL an app hands an audio or
+# video element so it can stream a recording without a login token in the URL.
+# A link also stops working when its user signs out or changes password.
+# Default is six hours.
+# link_ttl_seconds = 21600
+
 # -----------------------------------------------------------------------------
 # Private user data
 # -----------------------------------------------------------------------------

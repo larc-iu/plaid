@@ -209,8 +209,12 @@
   the body of `POST /invites/{lookup,redeem}` and one in the 201 body that
   mints it, and a code is a credential that creates an account or sets a
   password on one. The match is on the whole local name, so `status-code`
-  is untouched."
-  #{"password" "token" "authorization" "secret-key" "code"})
+  is untouched.
+
+  `media-token` is the credential a media link carries in its URL (see
+  Media links in `plaid.rest-api.v1.auth`), so it is in the query string
+  of every request a playing recording makes."
+  #{"password" "token" "authorization" "secret-key" "code" "media-token"})
 
 (defn- redact-key?
   "True if key `k` should have its value replaced with <redacted>.
@@ -246,9 +250,10 @@
 
 (defn- redact-query-string
   "Percent-encoded query string with any sensitive parameter's value
-  replaced. The one that matters is `token`: EventSource cannot send an
-  Authorization header, so a stream request carries its JWT in the query,
-  and the access line is read by everyone who can read the log."
+  replaced. The ones that matter are `token` and `media-token`:
+  EventSource and media elements cannot send an Authorization header, so
+  a stream request carries its JWT in the query and a media link its media
+  token, and the access line is read by everyone who can read the log."
   [qs]
   (when-not (str/blank? qs)
     (->> (str/split qs #"&")

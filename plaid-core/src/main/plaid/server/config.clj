@@ -97,6 +97,7 @@
    [["media" "max_file_size_mb"]          [:plaid.media/config :max-file-size-mb]                            identity]
    [["media" "avatar_size_px"]            [:plaid.media/config :avatar-size-px]                              identity]
    [["media" "avatar_max_upload_mb"]      [:plaid.media/config :avatar-max-upload-mb]                        identity]
+   [["media" "link_ttl_seconds"]          [:plaid.media/config :link-ttl-seconds]                            identity]
 
    [["user_data" "max_value_mb"]          [:plaid.sql.user-data/config :max-value-mb]                        identity]
 

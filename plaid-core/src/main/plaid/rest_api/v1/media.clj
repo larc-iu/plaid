@@ -4,11 +4,13 @@
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.media.storage :as media]
             [plaid.sql.document :as doc]
+            [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
             [plaid.util.canonical :as canonical]
             [ring.util.response :as response]
             [taoensso.timbre :as log])
-  (:import [java.io FileInputStream InputStream]))
+  (:import [java.io FileInputStream InputStream]
+           [java.time Instant]))
 
 (def ^:private error-status
   "HTTP status for each `:error-kind` `plaid.media.storage` reports. Reading
@@ -236,7 +238,12 @@
     {:get {:summary (str "Get media file for a document. Fetch it through the document's "
                          "<body>media-url</body>, whose <body>?v=</body> names the file's version: that "
                          "response may be cached for a year and still changes the moment the file is "
-                         "replaced. A bare request is served with an ETag and must revalidate.")
+                         "replaced. A bare request is served with an ETag and must revalidate. "
+                         "A request with no Authorization header may carry <body>media-token</body> "
+                         "from a media link (POST <body>/media/link</body>) instead.")
+           ;; `wrap-read-jwt` reads `?media-token=` here and on no other route.
+           :plaid/media-token true
+           :parameters {:query [:map [:media-token {:optional true} string?]]}
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
            :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers
                           query-params :query-params}]
@@ -313,4 +320,26 @@
                            (if (:success result)
                              (prm/assoc-document-version-in-header {:status 204} db document-id)
                              {:status (:code result 500)
-                              :body (prm/error-body result)})))}}]])
+                              :body (prm/error-body result)})))}}]
+
+   ["/link"
+    {:post {:plaid/idempotency false
+            :summary (str "Get a link that plays the document's recording without an Authorization "
+                          "header, for an audio or video element, which cannot send one. "
+                          "<body>url</body> is the <body>media-url</body> with a "
+                          "<body>media-token</body> added. The token in it opens only this recording, "
+                          "for the caller, and is refused on every other route. It expires at "
+                          "<body>expires-at</body>, and sooner when the caller signs out, changes "
+                          "password or loses access to the project. Writes nothing. "
+                          "404 when the document has no recording.")
+            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
+            :handler (fn [{{{:keys [document-id]} :path} :parameters
+                           db :db user-id :user/id secret-key :secret-key jwt-data :jwt-data}]
+                       (if-let [url (media/media-url document-id)]
+                         (if-let [{:keys [token exp]} (pra/issue-media-token! db secret-key user-id
+                                                                              document-id jwt-data)]
+                           {:status 200
+                            :body {:url (str url "&media-token=" token)
+                                   :expires-at (psc/instant->iso (Instant/ofEpochSecond exp))}}
+                           {:status 401 :body {:error "Token invalid because user does not exist."}})
+                         {:status 404 :body {:error "No media file found"}}))}}]])

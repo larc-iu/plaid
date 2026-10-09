@@ -144,6 +144,77 @@
                       (vec (distinct (map (comp str/lower-case str) project-ids)))
                       (when (and runner (not= runner (:user/id account))) runner)))))
 
+;; ---------------------------------------------------------------------------
+;; Media links
+;; ---------------------------------------------------------------------------
+;;
+;; A `<video>` or `<audio>` element cannot send an Authorization header, so a
+;; page that plays a recording as a stream puts a credential in the URL. A
+;; session token there would land in access logs and in "Copy video address",
+;; so the URL carries a media token instead: short-lived, good for ONE
+;; document's recording and refused everywhere else. `wrap-read-jwt` reads it
+;; from `?media-token=` only on a route marked `:plaid/media-token` (GET
+;; `/documents/:id/media`) and refuses it as a bearer or `?token=` credential
+;; on every route.
+
+(def media-audience
+  "The `:aud` claim of a media token. A token carrying it is accepted only as
+  `?media-token=` on the media route, and a token without it never is."
+  "media")
+
+(def ^:private default-media-link-ttl-seconds
+  "Default lifetime of a media link: six hours, long enough to listen through
+  a long session with the page open."
+  (* 6 60 60))
+
+(defn media-link-ttl-seconds
+  "Lookup the configured media-link TTL (`:plaid.media/config
+  :link-ttl-seconds`), read at call time like `jwt-ttl-seconds`."
+  []
+  (get-in config [:plaid.media/config :link-ttl-seconds] default-media-link-ttl-seconds))
+
+(defn issue-media-token!
+  "Sign a media token for `user-id` that opens the recording of `document-id`
+  and nothing else. It rides `password_changes` as a session token does, so a
+  logout or a password change revokes it. `jwt-data` is the claims of the
+  credential the request came with: the token expires no later than that
+  credential (`not-after` as in `issue-delegated-token!`), a scoped caller's
+  scope and runner travel with it so `wrap-read-jwt` narrows it the same way,
+  and an API token's id travels with it, so revoking that token closes the
+  link too. Returns `{:token :exp}` (`exp` in unix seconds), or nil if the
+  user is missing."
+  [db secret-key user-id document-id jwt-data]
+  (when-let [account (user/get-internal db user-id)]
+    (let [now (quot (System/currentTimeMillis) 1000)
+          not-after (:exp jwt-data)
+          exp (cond-> (+ now (media-link-ttl-seconds))
+                (number? not-after) (min (long not-after)))]
+      {:exp exp
+       :token (jwt/sign (cond-> {:user/id (:user/id account)
+                                 :version (:user/password-changes account)
+                                 :exp exp
+                                 :aud media-audience
+                                 :media/document (str/lower-case (str document-id))}
+                          (:scope/projects jwt-data) (assoc :scope/projects (:scope/projects jwt-data))
+                          (:scope/runner jwt-data) (assoc :scope/runner (:scope/runner jwt-data))
+                          (:token/id jwt-data) (assoc :media/api-token (:token/id jwt-data)))
+                        secret-key)})))
+
+(defn- media-claims?
+  "Does `token-data` carry a media token's claims?"
+  [token-data]
+  (boolean (and (map? token-data)
+                (or (contains? token-data :aud)
+                    (contains? token-data :media/document)))))
+
+(defn- media-route?
+  "Does the matched route take `?media-token=` for this method? A batch's
+  operation never does: it is authenticated by the batch's own credential."
+  [request]
+  (and (nil? (get request log-buffer/sub-request-key))
+       (true? (get-in request [:reitit.core/match :result (:request-method request)
+                               :data :plaid/media-token]))))
+
 (defn issue-api-token!
   "Mint + persist a named API token and return the signed JWT — the ONLY time
   the signed credential is ever produced (show-once). `owner` is the user the
@@ -528,45 +599,73 @@
                                  @(:passed scope) (handler request)
                                  :else scope-refusal))))})))})
 
+(defn- media-token-refusal
+  "Why the media token `token-data` (already verified as signed and unexpired)
+  does not open this request, or nil when it does: it must carry the media
+  audience and name the document in the path, and the API token it was
+  minted under, if any, must still be active. The account checks are the
+  session token's, made by `wrap-read-jwt` itself."
+  [db request token-data]
+  (let [path-params (:path-params request)
+        path-document (some-> (or (get path-params :document-id) (get path-params "document-id"))
+                              str str/lower-case)
+        api-token-id (:media/api-token token-data)]
+    (cond
+      (not= media-audience (:aud token-data))
+      "Token invalid. Obtain a new token."
+
+      (or (nil? path-document) (not= path-document (some-> (:media/document token-data) str str/lower-case)))
+      "This link opens another recording."
+
+      (and api-token-id (not (api-token/active? db api-token-id)))
+      "Token revoked or unknown.")))
+
 (defn wrap-read-jwt
   "Reitit middleware that looks for JWT tokens in either:
   1. \"Authorization: Bearer ...\" header (standard approach)
   2. \"token\" query parameter (for EventSource compatibility)
+  3. \"media-token\" query parameter, on the media route only, when neither
+     of the others is there (see Media links above)
+
+  A media token is refused as 1 or 2, on every route.
 
   On success, token data is stored in the request map under :jwt-data."
   [handler]
   (fn [{:keys [db] :as request}]
     (let [secret-key (:secret-key request)
           auth-header (get-in request [:headers "authorization"])
-          query-token (get-in request [:query-params "token"])]
+          bearer? (and auth-header (.startsWith ^String auth-header "Bearer "))
+          query-token (get-in request [:query-params "token"])
+          media-token (when (and (not bearer?) (nil? query-token) (media-route? request))
+                        (get-in request [:query-params "media-token"]))]
       (cond (nil? secret-key)
             (do (log/error "Secret key not found in request! Are middlewares properly ordered?" nil)
                 {:status 500 :body {:error (str "Improperly configured server. Contact admin.")}})
 
-            ;; No auth header and no query token
-            (and (or (nil? auth-header) (not (.startsWith auth-header "Bearer ")))
-                 (nil? query-token))
+            ;; No auth header, no query token, no media token
+            (and (not bearer?) (nil? query-token) (str/blank? media-token))
             (handler request)
 
             :else
-            (let [token (cond
-                          ;; Prefer header if available
-                          (and auth-header (.startsWith auth-header "Bearer "))
-                          (subs auth-header 7)
-
-                          ;; Fall back to query parameter
-                          query-token
-                          query-token
-
-                          :else nil)
+            (let [source (cond bearer? "header"
+                               query-token "query"
+                               :else "media-token")
+                  media? (= source "media-token")
+                  token (cond bearer? (subs auth-header 7)
+                              query-token query-token
+                              :else media-token)
                   token-data (try (jwt/unsign token secret-key)
                                   (catch Exception e e))
                   ;; An API token carries a `:token/id` claim; a session token
                   ;; does not. The two diverge on revocation: session tokens
                   ;; ride `password_changes`, API tokens ride the
                   ;; `api_tokens.revoked_at` row (and survive password changes).
-                  api-token-id (and (map? token-data) (:token/id token-data))
+                  ;; A media token never takes the API-token branch: it rides
+                  ;; `password_changes` whatever minted it.
+                  api-token-id (and (map? token-data) (not media?) (:token/id token-data))
                   user (and (map? token-data) (user/get-internal db (:user/id token-data)))
+                  media-refusal (when (and media? (map? token-data))
+                                  (media-token-refusal db request token-data))
                   ;; A scoped token (see `*token-scope*`): the handlers get a
                   ;; user record without admin, and the gates get the scope.
                   scope (when-let [projects (and (map? token-data) (token-projects token-data))]
@@ -583,16 +682,15 @@
                             ;; that wrap-logging already redacts.
                             (log/debug (str "Authenticated user " (:user/id token-data)
                                             (when api-token-id (str " via API token " api-token-id))
-                                            " (source: "
-                                            (if (and auth-header (.startsWith auth-header "Bearer "))
-                                              "header" "query")
-                                            ")"))
+                                            " (source: " source ")"))
                             ;; Hand the validated identity back out to the
                             ;; access log, which runs outside this middleware
                             ;; so that the requests refused below still get a
                             ;; line. See `log-buffer/identity-key`.
                             (some-> ^clojure.lang.Volatile (get request log-buffer/identity-key)
-                                    (vreset! {:user (:user/id token-data) :token api-token-id}))
+                                    (vreset! {:user (:user/id token-data)
+                                              :token (or api-token-id
+                                                         (when media? (:media/api-token token-data)))}))
                             (binding [*token-scope* scope]
                               (handler (cond-> (assoc request
                                                       :jwt-data token-data
@@ -613,6 +711,16 @@
                 (do (log-jwt-rejection! token ^Exception token-data)
                     {:status 401
                      :body {:error (str "Token invalid. Obtain a new token.")}})
+
+                ;; A media token opens one recording through `?media-token=`
+                ;; and nothing else: never as a bearer or `?token=` credential.
+                (and (not media?) (media-claims? token-data))
+                {:status 401
+                 :body {:error "This token opens one recording only."}}
+
+                media-refusal
+                {:status 401
+                 :body {:error media-refusal}}
 
                 (nil? user)
                 {:status 401
