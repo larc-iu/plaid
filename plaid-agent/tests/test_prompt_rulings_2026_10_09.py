@@ -46,3 +46,13 @@ def test_add_triple_shows_a_triple_between_two_events():
     example with document-creation-time only."""
     d = _description(UMR_TOOLS, 'add_triple')
     assert '(s4e :before s2e) between two events says s2e happened before s4e' in d
+
+
+def test_igt_says_it_again_beside_the_note_that_names_the_open_document():
+    """The prompt line alone left the local model reading "the third word"
+    as sentence 1's in 3 of 3 runs. The note that names the open document
+    sits beside the question, so igt's says it there too."""
+    from plaid_agent.igt.service import NO_SENTENCE_NOTE, AssistantService
+    kind, name, note = AssistantService.document_place(AssistantService.__new__(AssistantService), 'Text 1')
+    assert (kind, name) == ('document', 'Text 1') and '"Text 1"' in note and note.endswith(NO_SENTENCE_NOTE)
+    assert 'ask which sentence before planning anything' in NO_SENTENCE_NOTE

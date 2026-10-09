@@ -36,6 +36,11 @@ access.
 """
 
 
+NO_SENTENCE_NOTE = ('A word or morpheme named by its place ("the third word") or by a form the text holds more '
+                    'than once, with no sentence named, is in no particular sentence: ask which sentence before '
+                    'planning anything.')
+
+
 class AssistantService(BaseAssistantService):
     APP = 'igt'
     APP_LABEL = 'IGT Assistant'
@@ -91,6 +96,14 @@ class AssistantService(BaseAssistantService):
             # the document's own, so this app answers for a document too.
             return self.document_place(ws.corpus.ref_name(where.get('id')))
         return super().place(ws, where)
+
+    def document_place(self, name: Optional[str]) -> Optional[tuple]:
+        # The open text is a default for WHICH DOCUMENT, never for which
+        # sentence. Said here as well as in the prompt, beside the note that
+        # names the document, since the model otherwise read "the third word"
+        # as the third word of sentence 1 and planned it.
+        place = super().document_place(name)
+        return (*place[:2], place[2] + ' ' + NO_SENTENCE_NOTE) if place else None
 
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         return resolve_citations(ws, text)
