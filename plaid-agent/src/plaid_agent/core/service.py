@@ -958,7 +958,7 @@ class BaseAssistantService(BaseService):
         # One operation of kind assistant-plan, naming the conversation, the
         # plan and the assistant that proposed it, so the audit log says which
         # writes a plan made. The app's own operation inside flattens into it.
-        label = f'Assistant: {summary}'
+        label = audit_label(summary)
         source = service_source(proposer)
         ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
         try:
@@ -1178,6 +1178,28 @@ def proposed_by(item: Dict[str, Any]) -> Dict[str, Any]:
     version of the turn that proposed the plan, which may not be the ones
     running when it is approved."""
     return {k: item[k] for k in ('model', 'version') if item.get(k)}
+
+
+#: The longest audit label a plan's operation carries, in code points. It
+#: goes in the request's URL (``?group-message=``), percent-encoded, and the
+#: core keeps 1,000 UTF-16 units of it, so a plan naming many rules stays
+#: well inside both.
+AUDIT_LABEL_MAX = 400
+
+
+def audit_label(summary: str) -> str:
+    """The label of a plan's operation, which History and the audit feed
+    show: ``Assistant: <the plan's summary>``, cut short with an ellipsis
+    past :data:`AUDIT_LABEL_MAX`, and every isolate the cut leaves open
+    closed."""
+    from .bidi import PDI
+    from .plan import clip_caption
+    label = f'Assistant: {summary}'
+    if len(label) <= AUDIT_LABEL_MAX:
+        return label
+    cut = clip_caption(label, AUDIT_LABEL_MAX - 1)
+    opened = sum(cut.count(c) for c in '\u2066\u2067\u2068') - cut.count(PDI)
+    return cut + PDI * max(0, opened) + '…'
 
 
 def _sentence(text: str) -> str:

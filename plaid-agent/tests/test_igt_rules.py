@@ -431,3 +431,31 @@ def test_an_analysis_for_a_form_past_the_cap_is_refused_whatever_the_rows_hold(m
     _words_engine(client, 3, 3)
     out = call_tool(w, 'set_analysis_for_form', {'form': 'kuru1', 'morphemes': [{'form': 'kuru1'}]})
     assert 'occurs more than 2 times' in out and not w.ops
+
+
+# --- a plan's summary names every rule (H12-RULES-3) --------------------------------
+
+def test_a_plans_summary_names_every_rule_and_separates_thousands():
+    from plaid_agent.core import opkind
+    from plaid_agent.igt.plan import KIND, summarize
+    rule = lambda a, b, n: {'kind': 'bulk_scope', 'matched': [], 'change': f'Gloss "{a}" → "{b}"', 'count': n,
+                            'unit': ['value', 'values']}
+    ops = [rule(f'L{i}', f'M{i}', 1000 + i) for i in range(10)]
+    said = summarize(ops)
+    assert said.count('Gloss "') == 10 and 'field values' not in said
+    assert said.startswith('Gloss "L0" → "M0" (1,000 values), Gloss "L1" → "M1" (1,001 values)')
+    assert said.endswith('Gloss "L9" → "M9" (1,009 values)')
+    # what is not a rule is counted by kind, with separators too
+    many = [{'kind': 'set_span', 'compact': True, 'count': 10777}]
+    assert opkind.summarize(KIND, many, opkind.stored_count) == '10,777 field values'
+
+
+def test_the_audit_label_of_a_long_plan_is_cut_with_its_isolates_closed():
+    from plaid_agent.core.bidi import FSI, PDI
+    from plaid_agent.core.service import AUDIT_LABEL_MAX, audit_label
+    assert audit_label('2 field values') == 'Assistant: 2 field values'
+    long = ', '.join(f'Gloss "{FSI}كتاب{i}{PDI}" → "{FSI}كتب{i}{PDI}" (1,000 values)' for i in range(40))
+    label = audit_label(long)
+    assert label.startswith('Assistant: Gloss') and label.endswith('…')
+    assert len(label) <= AUDIT_LABEL_MAX + 2
+    assert label.count(FSI) == label.count(PDI)

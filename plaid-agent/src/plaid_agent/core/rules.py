@@ -440,11 +440,6 @@ def pattern_words(pattern: str, regex: bool) -> Tuple[str, bool]:
     return f'matching {qrx(pattern)}', True
 
 
-#: Rules a plan's one-line summary names in their own words. The rest are
-#: counted with the plan's other changes.
-SUMMARY_RULES = 3
-
-
 def phrase(op: Dict[str, Any]) -> str:
     """A rule in the plan's summary: ``Field "VASP" → "ASP" (1,240 values)``."""
     unit = op.get('unit') or ('change', 'changes')
@@ -452,13 +447,13 @@ def phrase(op: Dict[str, Any]) -> str:
 
 
 def named(ops: Iterable[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """(the first :data:`SUMMARY_RULES` rules that write anything, as
-    :func:`phrase` says them, every other op): a plan's summary names those
-    rules and counts the rest by kind."""
+    """(every rule that writes anything, as :func:`phrase` says it, every
+    other op): a plan's summary names each rule in its words, however many
+    there are, and counts the rest by kind (H12-RULES-3)."""
     said: List[str] = []
     rest: List[Dict[str, Any]] = []
     for op in ops:
-        if is_rule(op) and op.get('change') and total(op) > 0 and len(said) < SUMMARY_RULES:
+        if is_rule(op) and op.get('change') and total(op) > 0:
             said.append(phrase(op))
         else:
             rest.append(op)

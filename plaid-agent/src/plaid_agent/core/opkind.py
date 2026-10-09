@@ -488,7 +488,7 @@ def summarize(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
     if not c:
         return 'no changes'
     items = c.most_common() if common_first else list(c.items())
-    return ', '.join(f'{n} {one if n == 1 else many}' for (one, many), n in items)
+    return ', '.join(f'{n:,} {one if n == 1 else many}' for (one, many), n in items)
 
 
 def stored_count(spec: OpKind, op: Dict[str, Any]) -> int:
