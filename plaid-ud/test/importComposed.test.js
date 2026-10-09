@@ -54,3 +54,22 @@ test('a decomposed file is imported composed, tokens and values', async () => {
   assert.ok(values.includes('pʰá'));
   assert.ok(!values.some((v) => typeof v === 'string' && v !== v.normalize('NFC')));
 });
+
+test('a form that begins with a mark, joined to the one before, composes across the join', async () => {
+  // no `# text`: the text is the forms, the first with no space after it
+  const input = [
+    '1\tpa\tpa\tNOUN\t_\t_\t0\troot\t_\tSpaceAfter=No',
+    '2\t́x\t́x\tNOUN\t_\t_\t1\tdep\t_\t_',
+  ].join('\n');
+  const info = getUdLayerInfo(rawDocFromConllu(input.normalize('NFC'), 'm'));
+  const client = recordingClient();
+  await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
+  const body = client.calls.texts[0];
+  assert.equal(body, body.normalize('NFC'));
+  const chars = [...body];
+  const words = client.calls.tokens
+    .flat()
+    .filter((t) => t.tokenLayerId === info.wordTokenLayer?.id)
+    .map((t) => chars.slice(t.begin, t.end).join(''));
+  assert.deepEqual(words, ['pá', 'x']);
+});

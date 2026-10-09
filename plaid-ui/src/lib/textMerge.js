@@ -701,6 +701,40 @@ function joinRanges(ranges) {
   return out;
 }
 
+/**
+ * `gaps` made on `base`, which is not composed (NFC), moved onto `base`
+ * composed: `{ base, gaps }`, or null when `base` is composed or a gap's edge
+ * has no place in it. An edge has its place where the text before it and the
+ * text after it compose apart to the composed base (never between a letter
+ * and a mark that composes with it), so the moved gaps make the same text,
+ * canonically, as the gaps did.
+ */
+function ontoComposed(base, gaps) {
+  const composed = base.normalize('NFC');
+  if (composed === base) return null;
+  const chars = [...base];
+  const placeOf = new Map();
+  const place = (p) => {
+    if (!placeOf.has(p)) {
+      const before = chars.slice(0, p).join('').normalize('NFC');
+      const after = chars.slice(p).join('').normalize('NFC');
+      placeOf.set(p, before + after === composed ? cpCount(before) : null);
+    }
+    return placeOf.get(p);
+  };
+  const moved = [];
+  for (const g of gaps) {
+    const start = place(g.start);
+    const end = place(g.end);
+    if (start == null || end == null) return null;
+    if (moved.length && start < moved[moved.length - 1].end) return null;
+    moved.push({ ...g, start, end });
+  }
+  const same =
+    applyGaps(composed, moved).normalize('NFC') === applyGaps(base, gaps).normalize('NFC');
+  return same ? { base: composed, gaps: moved } : null;
+}
+
 // Whether two ranges [lo, hi] overlap or meet.
 const near = (p, q) => p[0] <= q[1] && q[0] <= p[1];
 
@@ -726,6 +760,14 @@ export function rebaseEdits(base, gaps, stored) {
   base = String(base ?? '');
   stored = String(stored ?? '');
   if (stored === base) return { gaps };
+  // The server stores text composed (NFC), so a base typed decomposed comes
+  // back composed: the gaps go onto the base composed first.
+  const onto = stored.normalize('NFC') === stored ? ontoComposed(base, gaps) : null;
+  if (onto) {
+    base = onto.base;
+    gaps = onto.gaps;
+    if (stored === base) return { gaps };
+  }
   const mine = applyGaps(base, gaps);
   if (mine === base) return { gaps: [] };
   const conflict = { conflict: true };

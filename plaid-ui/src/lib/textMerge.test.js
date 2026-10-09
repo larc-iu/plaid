@@ -816,3 +816,36 @@ describe('rebaseEdits', () => {
     expect(stats.merged).toBeGreaterThan(3000);
   });
 });
+
+describe('rebaseEdits onto a text the server composed', () => {
+  const G = (start, end, value) => ({ start, end, value });
+  const onto = (stored, result) => applyTextOps(stored, gapsToOps(result.gaps));
+  // what was sent, an acute typed after the a of `ba`, came back composed
+  const base = 'pata bá ko';
+  const stored = 'pata bá ko';
+
+  it('moves what was typed since onto the composed text', () => {
+    // `y` typed after `bá`, and `z` at the end
+    const result = rebaseEdits(base, [G(8, 8, 'y'), G(11, 11, 'z')], stored);
+    expect(result).toEqual({ gaps: [G(7, 7, 'y'), G(10, 10, 'z')] });
+    expect(onto(stored, result)).toBe('pata báy koz');
+  });
+
+  it('moves it beside someone else’s change too', () => {
+    const theirs = 'pata bá ko mi';
+    const result = rebaseEdits(base, [G(0, 0, 'x')], theirs);
+    expect(onto(theirs, result)).toBe('xpata bá ko mi');
+  });
+
+  it('does not place an edge between a letter and the mark composed with it', () => {
+    // a dot below typed between the a and its acute: no place in `bá`
+    const result = rebaseEdits(base, [G(7, 7, '̣')], 'pata bá ko!');
+    expect(result).toEqual({ conflict: true });
+  });
+
+  it('leaves a text the server did not compose as it was', () => {
+    const theirs = 'pata bá ko mi';
+    const result = rebaseEdits(base, [G(0, 0, 'x')], theirs);
+    expect(onto(theirs, result)).toBe('xpata bá ko mi');
+  });
+});

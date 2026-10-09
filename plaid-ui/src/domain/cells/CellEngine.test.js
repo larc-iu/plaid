@@ -84,6 +84,17 @@ describe('a refused edit', () => {
     expect(engine.unsentOf('k')).toEqual({ typed: 'ab', saved: 'a' });
   });
 
+  it('measures the stored value as the server composed it the same as the value typed decomposed', () => {
+    // dóg typed as o and a combining acute landed, and the server stored it composed
+    const { engine, heard } = setup({ stored: { k: 'd\u00f3g' } });
+    const t1 = engine.sending('k', { saved: '', typed: 'do\u0301g' });
+    const t2 = engine.sending('k', { saved: 'do\u0301g', typed: 'do\u0301gs' });
+    expect(engine.settle(t1, { landed: true }).kind).toBe('landed');
+    expect(engine.settle(t2, refused()).kind).toBe('putBack');
+    expect(heard.map((e) => e.kind)).toEqual(['keptInCell']);
+    expect(engine.display('k', 'd\u00f3g')).toBe('do\u0301gs');
+  });
+
   it('with newer typing in its focused cell records nothing', () => {
     const views = { k: cellView({ focused: true, typed: 'newer' }) };
     const { engine, heard } = setup({ stored: { k: 'theirs' }, views });

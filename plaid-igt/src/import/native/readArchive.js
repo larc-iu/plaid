@@ -16,7 +16,8 @@ export class ArchiveError extends Error {
 // with `at`, every `begin` and `end` (an offset into the document's
 // baseline.body, all `n` code points of it) moved as composing the body moves
 // it. An archive written from text stored decomposed then imports onto the
-// text as stored, its tokens over the same letters.
+// text as stored, its tokens over the same letters. A `metadata` map or a
+// `value` is an app's own data, whose `begin` or `end` is no offset.
 const composed = (v, at = null, n = 0) => {
   if (typeof v === 'string') return v.normalize('NFC');
   if (Array.isArray(v)) return v.map((x) => composed(x, at, n));
@@ -24,7 +25,8 @@ const composed = (v, at = null, n = 0) => {
   const out = {};
   for (const [k, x] of Object.entries(v)) {
     const offset = at && (k === 'begin' || k === 'end') && Number.isInteger(x) && x >= 0 && x <= n;
-    out[k.normalize('NFC')] = offset ? at(x) : composed(x, at, n);
+    const inner = k === 'metadata' || k === 'value' ? null : at;
+    out[k.normalize('NFC')] = offset ? at(x) : composed(x, inner, n);
   }
   return out;
 };

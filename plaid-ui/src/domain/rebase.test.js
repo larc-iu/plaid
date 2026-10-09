@@ -131,6 +131,19 @@ describe('an edit refused because the document moved on', () => {
     expect(untouched(change, base, elsewhere)).toBe(true);
   });
 
+  it('reads a value this page showed as typed and the server stored composed as no change', () => {
+    // the page shows d\u00f3g as typed, o and a combining acute: the read has it composed
+    const shown = doc({ glosses: [gloss('s1', 't1', 'DEF'), gloss('s2', 't2', 'do\u0301g')] });
+    const change = edit(shown, (d) => {
+      glossLayer(d).spans[1].value = 'do\u0301gs';
+    });
+    const now = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF'), gloss('s2', 't2', 'd\u00f3g')],
+    });
+    expect(untouched(change, shown, now)).toBe(true);
+  });
+
   it('judges a change to a word by the text it covers', () => {
     const split = edit(base, (d) => {
       words(d)[2] = { id: 't3', begin: 8, end: 11 };

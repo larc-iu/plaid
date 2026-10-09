@@ -74,7 +74,7 @@ describe('importers read text composed', () => {
           begin: 0,
           end: 7,
           words: [
-            { begin: 0, end: 3, text: `p${A}` },
+            { begin: 0, end: 3, text: `p${A}`, metadata: { begin: 4, end: 7 } },
             { begin: 4, end: 7, text: `b${A}` },
           ],
         },
@@ -95,7 +95,7 @@ describe('importers read text composed', () => {
     expect(data.baseline.body).toBe('pá bá');
     expect(data.sentences[0]).toMatchObject({ begin: 0, end: 5 });
     expect(data.sentences[0].words).toEqual([
-      { begin: 0, end: 2, text: 'pá' },
+      { begin: 0, end: 2, text: 'pá', metadata: { begin: 4, end: 7 } },
       { begin: 3, end: 5, text: 'bá' },
     ]);
   });

@@ -431,7 +431,8 @@ function undoGaps(base, gaps) {
  */
 export function storedHolds(base, gaps, stored) {
   const mine = applyTextOps(base, gapsToOps(gaps));
-  if (stored === mine) return true;
+  // stored composed (NFC), as the server stores every text
+  if (stored === mine || stored === mine.normalize('NFC')) return true;
   const moved = rebaseEdits(base, gaps, stored);
   if (!moved.conflict && moved.gaps.length === 0) return true;
   const back = rebaseEdits(mine, undoGaps(base, gaps), stored);

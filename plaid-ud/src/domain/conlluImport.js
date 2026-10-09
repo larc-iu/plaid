@@ -1,4 +1,4 @@
-import { cpSlicer, uuidv7 } from '@larc-iu/plaid-client';
+import { composeText, cpSlicer, uuidv7 } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`, for the same reason
 // ConlluDocument.js gives: the `node --test` suite has no alias.
 import { normalizeFeature } from '../utils/feats.js';
@@ -10,6 +10,30 @@ import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// The hierarchy over its text as the server stores it, composed (NFC). Each
+// value is composed already, but a form that begins with a mark, joined to the
+// one before it with no space, can compose across the join: the text is
+// composed whole and every offset moves with it (plaid-client `composeText`).
+const composedHierarchy = (hierarchy) => {
+  const { text, at } = composeText(hierarchy.text);
+  if (text === hierarchy.text) return hierarchy;
+  const moved = new Set();
+  const move = (x) => {
+    if (moved.has(x)) return;
+    moved.add(x);
+    x.begin = at(x.begin);
+    x.end = at(x.end);
+  };
+  hierarchy.sentences.forEach((s) => {
+    move(s);
+    s.words.forEach((w) => {
+      move(w);
+      w.morphemes.forEach(move);
+    });
+  });
+  return { ...hierarchy, text };
+};
 
 // The parsed file with every string in it composed (NFC), as the server
 // stores text, so the text built of the forms and the tokens measured on it
@@ -163,7 +187,7 @@ export async function importConlluDocument(
       return s.tokens.map((t) => planEnhancedRow(t, t.deps, hasDeps && !t.depsUnreadable));
     });
 
-    const hierarchy = buildConlluHierarchy(parsedData);
+    const hierarchy = composedHierarchy(buildConlluHierarchy(parsedData));
 
     // Rows a dependency relation will touch: its target (the row carrying
     // the DEPREL) and its source (the row that one names as HEAD). Each

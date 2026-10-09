@@ -52,12 +52,13 @@ const isEntity = (v) =>
 const isEntityList = (v) => Array.isArray(v) && v.length > 0 && v.every(isEntity);
 
 // An entity's fields as text that does not depend on how the row was shaped:
-// keys in order, a null field the same as none, pending ids as the server's.
-// A row this page showed before the server answered has the page's shape
-// (its own key order, no `precedence: null`) until the next read, and is not
-// a change someone else made.
+// keys in order, a null field the same as none, pending ids as the server's,
+// text composed (NFC) as the server stores it. A row this page showed before
+// the server answered has the page's shape (its own key order, no
+// `precedence: null`, a value as typed) until the next read, and is not a
+// change someone else made.
 function canonical(key, value) {
-  if (typeof value === 'string') return settledId(value);
+  if (typeof value === 'string') return settledId(value).normalize('NFC');
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
   const out = {};
   for (const k of Object.keys(value).sort()) if (value[k] != null) out[k] = value[k];

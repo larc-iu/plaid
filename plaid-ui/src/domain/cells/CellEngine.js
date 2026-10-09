@@ -53,6 +53,12 @@ const REJECTED = new Set([422]);
 
 const settlePending = settleKey;
 
+// Two values the same: the server stores text composed (NFC), so a value
+// typed decomposed comes back composed and is the same value.
+const same = (a, b) =>
+  a === b ||
+  (typeof a === 'string' && typeof b === 'string' && a.normalize('NFC') === b.normalize('NFC'));
+
 export class CellEngine {
   /**
    * - `read(key)`: the value stored now, '' for none, or undefined when the
@@ -180,7 +186,7 @@ export class CellEngine {
    */
   display(key, stored) {
     const u = this._unsent.get(this._canonical(key));
-    return u && stored === u.saved ? u.typed : stored;
+    return u && same(stored, u.saved) ? u.typed : stored;
   }
 
   // A drawn cell told something now, or after `flushViews` while a
@@ -323,7 +329,7 @@ export class CellEngine {
       return { kind: 'gone', typed, status };
     }
     if (this._rejected.has(status) && isConstraintViolation(outcome.error)) {
-      const shown = now === typed && !outcome.readBack ? base : now;
+      const shown = same(now, typed) && !outcome.readBack ? base : now;
       view?.showStored?.(shown, { conflict: false });
       this._changed(key);
       return { kind: 'rejected', typed, stored: shown, status };
@@ -331,14 +337,14 @@ export class CellEngine {
     // Read again after the refusal and holding the typed value: the edit is
     // stored (its answer was lost on the way back), or someone stored the
     // same.
-    if (outcome.readBack && now === typed) {
+    if (outcome.readBack && same(now, typed)) {
       view?.showStored?.(now, { conflict: false });
       this._changed(key);
       return { kind: 'landedUnheard', typed, stored: now, status };
     }
     // Still showing the edit itself: the read after the refusal did not come.
-    const stored = now === typed ? base : now;
-    if (stored !== base) {
+    const stored = same(now, typed) ? base : now;
+    if (!same(stored, base)) {
       this.conflict(key, typed, stored, null, ticket.entityIds, outcome.since);
       return { kind: 'conflict', typed, stored, recut: null, status };
     }
@@ -393,7 +399,7 @@ export class CellEngine {
     this._take(k);
     this._putBacks.delete(k);
     this._taken.delete(k);
-    if (typed === stored) {
+    if (same(typed, stored)) {
       this._conflicts.delete(k);
       this._changed(key, quiet);
       return;
@@ -441,7 +447,7 @@ export class CellEngine {
     let changed = false;
     for (const [k, t] of [...this._taken]) {
       const now = this._readNow(t.key);
-      if (now === t.saved) continue;
+      if (same(now, t.saved)) continue;
       this._taken.delete(k);
       changed = true;
       if (now !== undefined) this._conflict(t.key, t.typed, now, null, null, true);
@@ -454,9 +460,9 @@ export class CellEngine {
         changed = true;
         continue;
       }
-      if (now === u.saved) continue;
+      if (same(now, u.saved)) continue;
       changed = true;
-      if (now === undefined || now === u.typed) {
+      if (now === undefined || same(now, u.typed)) {
         this._take(k);
         this._tellView(u.key, (view) => view?.update?.());
       } else {
@@ -464,7 +470,7 @@ export class CellEngine {
       }
     }
     for (const [k, c] of [...this._conflicts]) {
-      if (this._readNow(c.key) === c.stored) continue;
+      if (same(this._readNow(c.key), c.stored)) continue;
       this._conflicts.delete(k);
       this._tellView(c.key, (view) => view?.update?.());
       changed = true;
