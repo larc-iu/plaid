@@ -472,6 +472,40 @@
     (testing "a later edit of an imported value is checked"
       (assert-status 422 (call :patch (str "/api/v1/spans/" sid) {:value "QQQ"})))))
 
+(deftest an-imported-value-stored-with-escapes-stays-imported
+  ;; A core before 2026-10-09 stored дом as "дом" and a/b as
+  ;; "a\/b", in the row and in its audit image. Writing the same value again
+  ;; (as a conversion through the API does) is no edit of it, and the import
+  ;; that set it still keeps it when the list is declared again.
+  (let [{:keys [lemma] :as s} (setup!)
+        import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
+        sids {"дом" ((:span s) "cat") "a/b" ((:span s) "sat")}
+        escaped (fn [v] (json/write-str v))]
+    (assert-status 200 (declare! "span" lemma "igt" [{:type "value-set" :values all-words}]))
+    (doseq [[v sid] sids]
+      (assert-status 200 (api-call admin-request {:method :patch :path (str "/api/v1/spans/" sid import-q)
+                                                  :body {:value v}})))
+    (doseq [[v sid] sids]
+      (psc/execute! db ["UPDATE spans SET value = ? WHERE id = ?" (escaped v) sid])
+      (psc/execute! db [(str "UPDATE audit_writes SET post_image = json_set(post_image, '$.value', ?)"
+                             " WHERE target_id = ? AND op_id IN (SELECT o.id FROM operations o"
+                             " JOIN operation_groups g ON g.id = o.group_id WHERE g.kind = 'import')")
+                        (escaped v) sid]))
+    (is (= [(escaped "дом")]
+           (map #(get (json/read-str (:post_image %)) "value")
+                (psc/q db [(str "SELECT a.post_image FROM audit_writes a JOIN operations o ON o.id = a.op_id"
+                                " JOIN operation_groups g ON g.id = o.group_id"
+                                " WHERE a.target_id = ? AND g.kind = 'import'") (sids "дом")]))))
+    (is (= "\"\\u0434\\u043e\\u043c\"" (:value (psc/fetch-by-id db :spans (sids "дом")))))
+    (testing "the same value written again by a person is stored, with its letters"
+      (doseq [[v sid] sids]
+        (assert-status 200 (call :patch (str "/api/v1/spans/" sid) {:value v}))
+        (is (= (psc/write-json v) (:value (psc/fetch-by-id db :spans sid))))))
+    (testing "and declaring a narrower list leaves the imported values"
+      (assert-status 200 (declare! "span" lemma "igt" [{:type "value-set" :values (vec (remove #{"cat"} all-words))}])))
+    (testing "a real edit of one is still checked"
+      (assert-status 422 (call :patch (str "/api/v1/spans/" (sids "дом")) {:value "дома"})))))
+
 ;; ============================================================
 ;; single-span
 ;; ============================================================

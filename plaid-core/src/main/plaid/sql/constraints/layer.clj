@@ -973,8 +973,10 @@
   by a write in an operation group of kind import, or by a copy or a
   restore, read from the audit log: the oldest write of the newest run of
   writes that left the value as it is. `key-of` reads what counts as the
-  value off a row and off an audit image (the value column by default)."
-  [tx table rows & {:keys [key-of] :or {key-of :value}}]
+  value off a row and off an audit image (the value, read from its JSON text
+  by default: an image from a core before 2026-10-09 holds the text with
+  `\\u` escapes where the row holds the letters)."
+  [tx table rows & {:keys [key-of] :or {key-of (comp read-value :value)}}]
   (let [current (into {} (map (fn [r] [(u (:id r)) (key-of r)])) rows)
         audit (q-chunks tx (partial value-history-chunk table) (keys current))]
     (->> (group-by (comp u :target_id) audit)

@@ -132,6 +132,17 @@
       [(get m "prov" (get m :prov)) (get m "provConfirmed" (get m :provConfirmed))])
     ::unknown))
 
+(defn- same-value?
+  "Whether two stored JSON texts of a value hold the same value. One value
+  has had two stored spellings (`\"\\u0434\"` from a core before
+  2026-10-09, `\"д\"` now), so text that differs is read before it counts
+  as a change."
+  [a b]
+  (or (= a b)
+      (and (string? a) (string? b)
+           (try (= (psc/read-json a) (psc/read-json b))
+                (catch Exception _ false)))))
+
 (defn- note-write!
   "Record one audited write of a row a layer constraint may speak of into
   `*pending*`. Keeps, per row, its layer and document, whether it is gone,
@@ -150,7 +161,11 @@
           group (:group-id op)
           insert? (= change :insert)
           delete? (= change :delete)
-          changed? (fn [k] (or insert? (and pre post (not= (get pre k) (get post k)))))
+          changed? (fn [k] (or insert?
+                               (and pre post
+                                    (if (= k :value)
+                                      (not (same-value? (get pre k) (get post k)))
+                                      (not= (get pre k) (get post k))))))
           layer-key (case table-name
                       "tokens" :token_layer_id
                       "spans" :span_layer_id
