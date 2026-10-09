@@ -31,11 +31,31 @@ const composed = (v, at = null, n = 0) => {
   return out;
 };
 
+// Every `begin` and `end` in `v` that is an offset into the body of `n` code
+// points, as `composed` reads them: where the document's tokens begin and end.
+export const tokenEdges = (v, n, out = new Set()) => {
+  if (Array.isArray(v)) {
+    for (const x of v) tokenEdges(x, n, out);
+  } else if (v && typeof v === 'object') {
+    for (const [k, x] of Object.entries(v)) {
+      if ((k === 'begin' || k === 'end') && Number.isInteger(x) && x >= 0 && x <= n) out.add(x);
+      else if (k !== 'metadata' && k !== 'value') tokenEdges(x, n, out);
+    }
+  }
+  return out;
+};
+
+// The body is composed as the server composes it with these tokens on it: a
+// character one of them begins or ends inside stays decomposed, so a mark
+// that is a token of its own keeps its letters. The text is created with the
+// same edges (`tokenEdges`), so the server stores it so too.
 const composedDocument = (data) => {
   const body = data?.baseline?.body;
   if (typeof body !== 'string') return composed(data);
-  const { at } = composeText(body);
-  return composed(data, at, [...body].length);
+  const n = [...body].length;
+  const { text, at } = composeText(body, tokenEdges(data, n));
+  const out = composed(data, at, n);
+  return { ...out, baseline: { ...out.baseline, body: text } };
 };
 
 /**

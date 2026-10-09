@@ -161,7 +161,8 @@
   [["coverage.mjs" "the kitchen sink still holds every catalogued feature"]
    ["roundTrip.mjs" "every format reads back what it wrote, or its loss list says why not"]
    ["validate.mjs" "every export passes its own format's validator"]
-   ["mirror.mjs" "the editor shows what the server keeps after each reshape, and asks about what it deletes"]])
+   ["mirror.mjs" "the editor shows what the server keeps after each reshape, and asks about what it deletes"]
+   ["composedArchive.mjs" "an archive whose text keeps a mark apart for its own token imports, and round trips identical"]])
 
 (defn run-fidelity! []
   (ensure-repo-root!)

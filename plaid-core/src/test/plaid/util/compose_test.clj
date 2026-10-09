@@ -34,11 +34,51 @@
     (is (= "x한y" (:text (canonical/compose s))))
     (is (= [0 1 2 2 2 3] (positions s)))))
 
-(deftest a-token-of-a-lone-mark-is-left-zero-width
+(deftest a-token-of-a-lone-mark-is-left-zero-width-only-with-no-cuts
   (let [{:keys [at]} (canonical/compose "ta\u0301")]
-    ;; morphemes "ta" [0 2] and the tone [2 3]
+    ;; with no token edges known, the edge between a and its mark goes after á
     (is (= [0 2] [(at 0) (at 2)]))
     (is (= [2 2] [(at 2) (at 3)]))))
+
+(defn- positions-cut [s cuts]
+  (let [{:keys [at]} (canonical/compose s cuts)] (mapv at (range (inc (cps s))))))
+
+(deftest a-token-edge-inside-a-character-keeps-it-decomposed
+  (testing "morphemes ta [0 2] and the tone [2 3]: each keeps its own letters"
+    (let [{:keys [text at]} (canonical/compose "ta\u0301" #{0 2 3})]
+      (is (= "ta\u0301" text))
+      (is (= [0 2 3] (mapv at [0 2 3])))))
+  (testing "only the character the edge falls in stays decomposed"
+    (let [s "ba\u0301 ka\u0301 e\u0301"
+          cuts #{0 3 4 6 7 8 10}
+          {:keys [text]} (canonical/compose s cuts)]
+      (is (= "bá ka\u0301 é" text))
+      (is (= [0 1 2 2 3 4 5 6 7 8 8] (positions-cut s cuts)))))
+  (testing "an edge between e and its dot, and the acute after"
+    (is (= "e\u0323\u0301" (:text (canonical/compose "e\u0323\u0301" #{1}))))
+    ;; between the dot and the acute the halves compose apart: all composed
+    (is (= "\u1EB9\u0301" (:text (canonical/compose "e\u0323\u0301" #{2})))))
+  (testing "Hangul jamo: the final as a morpheme of its own"
+    (let [s "\u1100\u1161\u11A8"
+          {:keys [text at]} (canonical/compose s #{0 2 3})]
+      (is (= "\uAC00\u11A8" text))
+      (is (= [0 1 2] (mapv at [0 2 3])))))
+  (testing "a cut where composing changes nothing composes as without it"
+    (is (= (positions "pʰa\u0301 ba\u0301") (positions-cut "pʰa\u0301 ba\u0301" #{0 4 5 8})))
+    (is (= "pʰá bá" (:text (canonical/compose "pʰa\u0301 ba\u0301" #{0 4 5 8})))))
+  (testing "a body kept decomposed is composed no further with its edges moved"
+    (let [s "xka\u0301\u0323y"
+          cuts #{1 3 5}
+          {:keys [text at]} (canonical/compose s cuts)]
+      (is (= text (:text (canonical/compose text (set (map at cuts))))))))
+  (testing "a composed text is itself whatever the cuts"
+    (let [s "pʰá b"]
+      (is (identical? s (:text (canonical/compose s #{1 2 3})))))))
+
+(deftest nfc-but-keeps-what-the-stored-body-keeps
+  (is (= "ká mi" (canonical/nfc-but "ka\u0301 mi" "ká")))
+  (is (= "ka\u0301 mé" (canonical/nfc-but "ka\u0301 me\u0301" "ka\u0301 me")))
+  (is (= "ká" (canonical/nfc-but "ka\u0301" nil))))
 
 (deftest marks-reorder-inside-their-piece
   ;; dot below (ccc 220) after acute (230) is reordered and composes
@@ -80,11 +120,36 @@
                   :when (= text (str pre (nfc (sub p (alength cs)))))]
             (is (= (cps pre) (ps p)) (pr-str s p))))))))
 
+(deftest random-texts-and-cuts-keep-every-token-its-own-letters
+  (let [rnd (java.util.Random. 20261010)]
+    (dotimes [_ 3000]
+      (let [s (apply str (repeatedly (.nextInt rnd 12) #(alphabet (.nextInt rnd (count alphabet)))))
+            n (cps s)
+            cuts (into (sorted-set) (repeatedly (.nextInt rnd 5) #(.nextInt rnd (inc n))))
+            {:keys [text at]} (canonical/compose s cuts)
+            ps (mapv at (range (inc n)))
+            cs (.toArray (.codePoints ^String s))
+            sub (fn [^String x a b] (let [xs (.toArray (.codePoints x))] (String. xs (int a) (int (- b a)))))]
+        (is (= (nfc s) (nfc text)) (pr-str s cuts))
+        (is (apply <= ps) (pr-str s cuts))
+        (is (= (cps text) (peek ps)) (pr-str s cuts))
+        ;; between two cuts, the same text as before, never none
+        (doseq [[a b] (partition 2 1 (concat [0] cuts [n]))
+                :when (< a b)]
+          (is (< (at a) (at b)) (pr-str s cuts a b))
+          (is (= (nfc (String. cs (int a) (int (- b a)))) (nfc (sub text (at a) (at b))))
+              (pr-str s cuts a b)))
+        ;; composing again with the cuts moved changes nothing
+        (is (= text (:text (canonical/compose text (map at cuts)))) (pr-str s cuts))
+        ;; with no cut inside a character composing changes, it is NFC
+        (when (= text (:text (canonical/compose s nil)))
+          (is (= (nfc s) text)))))))
+
 (deftest the-clients-compose-as-the-core-does
   ;; made by this function, read by both clients' tests
-  (doseq [{:strs [input text at]} (json/read-str (slurp (io/file "../plaid-client-js/test/fixtures/compose.json")))]
-    (is (= text (:text (canonical/compose input))) (pr-str input))
-    (is (= at (positions input)) (pr-str input))))
+  (doseq [{:strs [input cuts text at]} (json/read-str (slurp (io/file "../plaid-client-js/test/fixtures/compose.json")))]
+    (is (= text (:text (canonical/compose input cuts))) (pr-str input cuts))
+    (is (= at (positions-cut input cuts)) (pr-str input cuts))))
 
 (deftest data-is-composed-keys-and-all-but-the-raw-keys
   (let [v {:name "ba\u0301" (keyword "gle\u0301") ["e\u0301" 1 nil] "k\u0301" {:password "a\u0301"}}

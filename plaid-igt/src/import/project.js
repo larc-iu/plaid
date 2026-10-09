@@ -145,7 +145,9 @@ export function resolveIgtTargets(project, fields = []) {
  * `createTokens(specs)` answers the new ids and lets an engine route the call
  * through its own writer (the archive import rewrites references in metadata
  * as it goes); without it the partition is written straight. `onText` is told the new text's id before
- * anything is written on it.
+ * anything is written on it. `tokenEdges`, where the tokens to come begin and
+ * end, go with the text (plaid-client `texts.create`), for a body a token edge
+ * keeps decomposed.
  */
 export async function createDocumentShell({
   client,
@@ -154,6 +156,7 @@ export async function createDocumentShell({
   name,
   metadata,
   body,
+  tokenEdges = null,
   sentences,
   textMetadata = undefined,
   keepEmptyText = false,
@@ -183,6 +186,7 @@ export async function createDocumentShell({
     documentId,
     body ?? '',
     typeof textMetadata === 'function' ? textMetadata() : textMetadata,
+    ...(tokenEdges?.length ? [undefined, { tokenEdges }] : []),
   );
   const textId = text.id ?? text;
   onText?.(textId);

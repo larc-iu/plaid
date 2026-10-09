@@ -163,6 +163,43 @@ function mapEdge(p, gaps, edge) {
   return p + shift;
 }
 
+// Where an edge at `p` goes when `gaps` are saved, for composing the body:
+// moved by the change before it, an end where text is inserted after it
+// (the token before takes the text), a begin there before it, and a place
+// inside a stretch typed over or deleted at that stretch's start (a begin)
+// or at the end of what was typed there (an end).
+function cutAfter(p, gaps, edge) {
+  let shift = 0;
+  for (const { start, end, value } of gaps) {
+    const delta = cpLength(value) - (end - start);
+    if (start === end) {
+      if (p > start || (edge === 'end' && p === start)) shift += delta;
+      continue;
+    }
+    if (p >= end) shift += delta;
+    else if (p > start) return edge === 'begin' ? start + shift : start + shift + cpLength(value);
+  }
+  return p + shift;
+}
+
+/**
+ * Where the tokens of `tokenLayers` begin and end once `gaps` are saved, the
+ * cuts the server composes the new body by (plaid-client `composeText`): a
+ * character a token edge falls inside stays decomposed. Text typed where one
+ * token ends goes to it, as the server's plain rule gives it (plaid-core
+ * `apply-plain-gaps`), so a token that also begins there begins after it.
+ */
+export function edgesAfterGaps(tokenLayers, gaps) {
+  const tokens = (tokenLayers || []).flatMap((layer) => layer.tokens || []);
+  const ends = new Set(tokens.map((t) => t.end));
+  const out = new Set();
+  for (const t of tokens) {
+    out.add(cutAfter(t.begin, gaps, ends.has(t.begin) ? 'end' : 'begin'));
+    out.add(cutAfter(t.end, gaps, 'end'));
+  }
+  return out;
+}
+
 /**
  * Show `gaps` (plaid-client `composeTextEdits`: `{ start, end, value }` in
  * code points of the body, in order, apart) on the raw document in place,

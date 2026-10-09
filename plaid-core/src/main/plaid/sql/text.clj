@@ -84,7 +84,10 @@
   enforces this; we pre-check for a clean 409).
 
   `:text/id` names the new text's id (a client's UUIDv7), else the server
-  mints one.
+  mints one. `:text/edges`, optional, are the code-point offsets where the
+  tokens the caller makes next begin and end: a character one of them falls
+  inside stays decomposed (see `canonical/compose`), so a body written with
+  a mark of its own token (an archive of such a text) keeps its offsets.
 
   Returns {:success true :extra <new-id>} on success."
   ([db attrs user-id] (create db attrs user-id nil))
@@ -132,9 +135,9 @@
         (try
           (crud/insert! tx :texts
                         {:id new-id
-                         ;; stored composed, as all text is: no token is on
-                         ;; it yet
-                         :body (canonical/nfc body-str)
+                         ;; stored composed, as all text is, except a
+                         ;; character the tokens to come will cut (`:text/edges`)
+                         :body (:text (canonical/compose body-str (:text/edges attrs)))
                          :document_id document
                          :text_layer_id layer})
           (catch Exception e
@@ -178,8 +181,11 @@
           edits (when (map? change) (vec (:edits change)))
           ;; A whole new body is composed before it is diffed, so a body sent
           ;; decomposed differs from the stored one only where it was changed.
+          ;; A character the stored body keeps decomposed (a token edge
+          ;; between its letter and its mark) is left as sent, so it is no
+          ;; change either.
           new-body-or-ops (cond (map? change) edits
-                                (string? change) (canonical/nfc change)
+                                (string? change) (canonical/nfc-but change (:body text-row))
                                 :else change)
           text-map (row->text text-row)
           token-rows (psc/q db {:select [:*]
@@ -226,18 +232,23 @@
           ;; Checked on the result, so explicit ops' inserted text is
           ;; covered as well as a whole new body.
           _ (storable/assert-storable! "Text body" sent-body)
+          deleted-set (set deleted-ids)
           ;; The body is stored composed. Text an edit inserted that composes
-          ;; with a letter beside it becomes one character with it, and a
-          ;; token edge between them moves to after that character, so it
-          ;; stays with the token that held the letter (see
-          ;; `canonical/compose`). Every token's offsets go through the same
-          ;; map, which keeps their order, so nothing is refused for it.
-          {new-body :text at :at} (canonical/compose sent-body)
+          ;; with a letter beside it becomes one character with it, except
+          ;; where a token edge falls between them: there the character stays
+          ;; decomposed, so each token keeps its own characters and none is
+          ;; left with no text (see `canonical/compose`). Every token's
+          ;; offsets go through the same map, which keeps their order, so
+          ;; nothing is refused for it.
+          {new-body :text at :at} (canonical/compose
+                                   sent-body
+                                   (into #{} (comp (remove #(deleted-set (:token/id %)))
+                                                   (mapcat (juxt :token/begin :token/end)))
+                                         (concat sent-tokens sent-heads sent-made)))
           move (fn [t] (-> t (update :token/begin at) (update :token/end at)))
           new-tokens (mapv move sent-tokens)
           heads (mapv move sent-heads)
-          made (mapv move sent-made)
-          deleted-set (set deleted-ids)]
+          made (mapv move sent-made)]
       {:new-body new-body
        ;; Code-point length: feeds compensate-partition-layers! /
        ;; validate-partition!, which compare it against (code-point)

@@ -160,39 +160,86 @@
   else to the next such place, at the latest the piece's composed END, so an
   edge between a letter and the mark that composes with it moves to after
   the composed character, which stays with the token that held its letter,
-  and a mark that does not compose stays out of it. Inside a piece composing left alone a
-  position keeps its place. `f` never reverses two positions, so tokens that
-  did not overlap still do not, a partition still tiles and a child stays
-  inside its parent. A token that held only such a mark is left zero-width.
+  and a mark that does not compose stays out of it. Inside a piece composing
+  left alone a position keeps its place. `f` never reverses two positions,
+  so tokens that did not overlap still do not, a partition still tiles and a
+  child stays inside its parent.
+
+  `cuts` are the code-point positions of `s` where a token begins or ends
+  (Luke, 2026-10-09). A piece with a cut inside it is composed in parts, one
+  between each two cuts, so a character whose letter and mark belong to two
+  tokens stays decomposed there: each token keeps its own characters, every
+  cut goes to the end of its composed part, and composing never leaves a
+  token zero-width. The text is then canonically equivalent to `s`, and NFC
+  everywhere but at those characters. Composing it again with the cuts moved
+  by `f` changes nothing.
 
   A string already composed comes back as itself with the identity map."
-  [^String s]
-  (if (Normalizer/isNormalized s Normalizer$Form/NFC)
-    {:text s :at identity}
-    (let [cps (.toArray (.codePoints s))
-          n (alength cps)
-          at (int-array (inc n))
+  ([s] (compose s nil))
+  ([^String s cuts]
+   (if (Normalizer/isNormalized s Normalizer$Form/NFC)
+     {:text s :at identity}
+     (let [cps (.toArray (.codePoints s))
+           n (alength cps)
+           ^BitSet cut-at (let [b (BitSet. (inc n))]
+                            (doseq [c cuts :when (and (int? c) (< 0 c n))] (.set b (int c)))
+                            b)
+           at (int-array (inc n))
+           sb (StringBuilder.)
+           ;; a piece with a cut strictly inside it composes in parts
+           parts (fn [^longs p]
+                   (let [start (aget p 0) end (aget p 1)
+                         inner (loop [i (.nextSetBit cut-at (int (inc start))) acc []]
+                                 (if (and (>= i 0) (< i end))
+                                   (recur (.nextSetBit cut-at (int (inc i))) (conj acc i))
+                                   acc))]
+                     (if (empty? inner)
+                       [p]
+                       (mapv (fn [[a b]] (long-array [a b]))
+                             (partition 2 1 (concat [start] inner [end]))))))]
+       (loop [ps (seq (mapcat parts (pieces cps))) out 0]
+         (if-let [^longs p (first ps)]
+           (let [start (aget p 0)
+                 end (aget p 1)
+                 src (cps->str cps start end)
+                 c (nfc src)
+                 c-len (.codePointCount c 0 (.length c))]
+             (.append sb c)
+             (if (identical? c src)
+               (doseq [i (range start end)] (aset at (int i) (int (+ out (- i start)))))
+               (do (aset at (int start) (int out))
+                   (refine-inside! at cps start end out c c-len)))
+             (recur (next ps) (+ out c-len)))
+           (aset at n (int out))))
+       (let [text (.toString sb)]
+         ;; The pieces compose apart exactly as the whole does (with cuts,
+         ;; to a text canonically equivalent to it). Should that ever not
+         ;; hold, nothing is stored on a guess.
+         (when-not (if (.isEmpty cut-at) (= text (nfc s)) (= (nfc text) (nfc s)))
+           (throw (ex-info "The text could not be composed." {:code 500})))
+         {:text text :at (fn [p] (long (aget at (int p))))})))))
+
+(defn nfc-but
+  "`s` composed (NFC), except each stretch of it spelled as a stretch `kept`
+  holds decomposed: a character a stored body keeps decomposed because a
+  token edge falls inside it (see `compose`). A whole body sent back with
+  that character as it was read is then no change there. Composed as a
+  whole when `kept` is itself composed."
+  ^String [^String s ^String kept]
+  (if (or (nil? kept) (Normalizer/isNormalized kept Normalizer$Form/NFC))
+    (nfc s)
+    (let [k (.toArray (.codePoints kept))
+          held (into #{}
+                     (keep (fn [^longs p]
+                             (let [src (cps->str k (aget p 0) (aget p 1))]
+                               (when-not (= src (nfc src)) src))))
+                     (pieces k))
+          cps (.toArray (.codePoints s))
           sb (StringBuilder.)]
-      (loop [ps (seq (pieces cps)) out 0]
-        (if-let [^longs p (first ps)]
-          (let [start (aget p 0)
-                end (aget p 1)
-                src (cps->str cps start end)
-                c (nfc src)
-                c-len (.codePointCount c 0 (.length c))]
-            (.append sb c)
-            (if (identical? c src)
-              (doseq [i (range start end)] (aset at (int i) (int (+ out (- i start)))))
-              (do (aset at (int start) (int out))
-                  (refine-inside! at cps start end out c c-len)))
-            (recur (next ps) (+ out c-len)))
-          (aset at n (int out))))
-      (let [text (.toString sb)]
-        ;; The pieces compose apart exactly as the whole does. Should that
-        ;; ever not hold, nothing is stored on a guess.
-        (when-not (= text (nfc s))
-          (throw (ex-info "The text could not be composed." {:code 500})))
-        {:text text :at (fn [p] (long (aget at (int p))))}))))
+      (doseq [^longs p (pieces cps)]
+        (let [src (cps->str cps (aget p 0) (aget p 1))]
+          (.append sb (if (held src) src (nfc src)))))
+      (.toString sb))))
 
 ;; ============================================================
 ;; Composing a request's strings

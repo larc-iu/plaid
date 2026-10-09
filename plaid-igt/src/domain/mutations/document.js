@@ -25,6 +25,7 @@ import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
 import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
+import { edgesAfterGaps } from '../textEdits.js';
 import { readIgnoredTokens, readTokenizeNewText } from '../igtConfig.js';
 import { newTextWords } from '../newTextWords.js';
 import { underKeys } from './alignment.js';
@@ -117,11 +118,14 @@ export const documentMutations = {
   // text" (`_newWords`) in the batch that makes it. The Baseline tab asks for
   // it, scripts do not.
   async saveBaselineText(typedBody, base = this.body, { tokenize = false } = {}) {
-    // As the server stores it, composed, so the sentences and words made with
-    // it are measured on the text that is stored.
-    const newBody = composeText(typedBody).text;
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
+    // A new text as the server stores it, composed, so the sentences and
+    // words made with it are measured on the text that is stored. A body
+    // saved over a text goes as typed: the server composes it beside the
+    // stored one, which may keep a character decomposed where a token edge
+    // falls inside it.
+    const newBody = primaryTextLayer?.text?.id ? typedBody : composeText(typedBody).text;
     const sentenceTokenLayer = info.sentenceTokenLayer;
 
     if (!primaryTextLayer) {
@@ -288,7 +292,10 @@ export const documentMutations = {
           // The tokens after it are stamped with the version from before the
           // batch, so the edit is stamped too, and checked first.
           const info = this.layerInfo;
-          const body = composeText(applyTextOps(plan.base, ops)).text;
+          const body = composeText(
+            applyTextOps(plan.base, ops),
+            edgesAfterGaps(info.primaryTextLayer?.tokenLayers, plan.gaps),
+          ).text;
           await this._client.batched(async (b) => {
             b.texts.edit(textId, ops, undefined, { base: plan.digest, versioned: true });
             if (plan.seed) {
@@ -376,10 +383,14 @@ export const documentMutations = {
     }
     plan.digest = stored.digest;
     // The server stores the body composed: text typed that composes with a
-    // letter beside it becomes one character with it. The words are measured
-    // on the body typed and moved onto the composed one, as the server moves
-    // its tokens, and a word left with no text of its own is dropped.
-    const { text: body, at } = composeText(applyTextOps(plan.base, gapsToOps(plan.gaps)));
+    // letter beside it becomes one character with it, unless a token edge
+    // falls between them. The words are measured on the body typed and moved
+    // onto the composed one, as the server moves its tokens, and a word left
+    // with no text of its own is dropped.
+    const { text: body, at } = composeText(
+      applyTextOps(plan.base, gapsToOps(plan.gaps)),
+      edgesAfterGaps(this.layerInfo.primaryTextLayer?.tokenLayers, plan.gaps),
+    );
     plan.seed =
       cpLength(body) > 0 && (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
     plan.words = this._newWords(plan.base, plan.gaps)

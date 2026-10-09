@@ -26,12 +26,13 @@
 // or document whose metadata has no room for those marks is named on the
 // project's import record instead (`unmarkedLedger`).
 
-import { ROLES, createdIds } from '@larc-iu/plaid-client';
+import { ROLES, cpLength, createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
+import { tokenEdges } from './readArchive.js';
 import {
   declareOtherLayerRules,
   hasOtherTokens,
@@ -528,6 +529,9 @@ async function importNativeDocument({
         id,
       ),
     body,
+    // where the tokens begin and end, so the server composes the body as it
+    // was read (a character a token edge falls inside stays decomposed)
+    tokenEdges: body === body.normalize('NFC') ? null : [...tokenEdges(docData, cpLength(body))],
     // A text the archive names is made even when its body is empty: it may
     // hold metadata and comments of its own.
     keepEmptyText: docData.baseline?.textId != null,

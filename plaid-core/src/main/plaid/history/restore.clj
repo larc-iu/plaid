@@ -130,10 +130,14 @@
 (defn- compose-target
   "The rows of an earlier time composed, as every write stores text: each
   body with the offsets of the tokens on it moved by `canonical/compose`,
-  values, metadata and the document's name. A time before the stored text
-  was composed comes back composed."
+  which keeps a character decomposed where one of those tokens begins or
+  ends inside it, values, metadata and the document's name. A time before
+  the stored text was composed comes back composed."
   [tgt]
-  (let [composed (into {} (map (fn [t] [(:id t) (canonical/compose (:body t))])) (:texts tgt))
+  (let [edges (reduce (fn [m t] (update m (:text_id t) (fnil conj #{}) (:begin t) (:end_ t)))
+                      {} (:tokens tgt))
+        composed (into {} (map (fn [t] [(:id t) (canonical/compose (:body t) (get edges (:id t)))]))
+                       (:texts tgt))
         at-of (fn [text-id] (or (:at (get composed text-id)) identity))]
     (-> tgt
         (update :document #(-> % compose-meta (update :name canonical/nfc)))

@@ -112,12 +112,20 @@ function refineInside(at, cps, b, e, out, c, len) {
  * letter and the mark that composes with it moves to after the composed
  * character, and a mark that does not compose stays out of it. `at` never
  * reverses two positions.
+ *
+ * `cuts` are the code-point positions of `s` where the text's tokens begin
+ * and end. A piece with a cut inside it composes in parts, one between each
+ * two cuts, so a character whose letter and mark belong to two tokens stays
+ * decomposed, each token keeps its own characters, and none is left with no
+ * text. The server composes every body with its tokens' edges.
  */
-export function composeText(s) {
+export function composeText(s, cuts = null) {
   const text0 = s ?? '';
   if (text0.normalize('NFC') === text0) return { text: text0, at: (p) => p };
   const cps = [...text0];
   const n = cps.length;
+  const cutAt = new Set();
+  for (const c of cuts ?? []) if (Number.isInteger(c) && c > 0 && c < n) cutAt.add(c);
   const pieces = [];
   let start = 0;
   for (let i = 1; i <= n; i += 1) {
@@ -135,10 +143,22 @@ export function composeText(s) {
     pieces.push([start, i]);
     start = i;
   }
+  // a piece with a cut strictly inside it composes in parts
+  const parts = [];
+  for (const [b, e] of pieces) {
+    let from = b;
+    for (let i = b + 1; i < e; i += 1) {
+      if (cutAt.has(i)) {
+        parts.push([from, i]);
+        from = i;
+      }
+    }
+    parts.push([from, e]);
+  }
   const at = new Int32Array(n + 1);
   let text = '';
   let out = 0;
-  for (const [b, e] of pieces) {
+  for (const [b, e] of parts) {
     const src = cps.slice(b, e).join('');
     const c = src.normalize('NFC');
     const len = [...c].length;
@@ -152,6 +172,9 @@ export function composeText(s) {
     out += len;
   }
   at[n] = out;
-  if (text !== text0.normalize('NFC')) throw new Error('The text could not be composed.');
+  const expected = text0.normalize('NFC');
+  if ((cutAt.size ? text.normalize('NFC') : text) !== expected) {
+    throw new Error('The text could not be composed.');
+  }
   return { text, at: (p) => at[p] };
 }

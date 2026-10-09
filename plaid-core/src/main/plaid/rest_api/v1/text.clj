@@ -26,13 +26,17 @@
 (def text-routes
   ["/texts"
 
-   ["" {:post {:summary (str "Create a new text in a document's text layer. A text is simply a container for one "
+   ;; `body` reaches `plaid.sql.text` as sent, which composes it with the
+   ;; `token-edges` (see `prm/compose-text`).
+   ["" {:plaid/raw-text #{:body}
+        :post {:summary (str "Create a new text in a document's text layer. A text is simply a container for one "
                              "long string in <body>body</body> for a given layer."
                              "\n"
                              "\n<body>text-layer-id</body>: the text's associated layer."
                              "\n<body>document-id</body>: the text's associated document."
                              "\n<body>body</body>: the string which is the content of this text."
-                             "\n<body>id</body>: optional, the new text's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a text since deleted, is refused with 409 and <body>id-taken</body>.")
+                             "\n<body>id</body>: optional, the new text's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a text since deleted, is refused with 409 and <body>id-taken</body>."
+                             "\n<body>token-edges</body>: optional, the code-point offsets where the tokens the client makes next on this text begin and end. The body is stored composed (NFC), except a character one of these falls inside, which stays as sent, so a mark that is a token of its own keeps its place.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
@@ -42,12 +46,14 @@
                                    [:text-layer-id :uuid]
                                    [:document-id :uuid]
                                    [:body string?]
+                                   [:token-edges {:optional true} [:vector :int]]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [id text-layer-id document-id body metadata]} :body} :parameters db :db user-id :user/id}]
+               :handler (fn [{{{:keys [id text-layer-id document-id body token-edges metadata]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs (cond-> {:text/layer text-layer-id
                                                :text/document document-id
                                                :text/body body}
-                                        (some? id) (assoc :text/id id))
+                                        (some? id) (assoc :text/id id)
+                                        (seq token-edges) (assoc :text/edges token-edges))
                                 result (txt/create db attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-version-in-header

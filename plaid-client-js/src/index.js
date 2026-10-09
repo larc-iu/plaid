@@ -1155,6 +1155,11 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} body - The request body
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage]
+       * @param {{id?: string, tokenEdges?: number[]}} [options] - `id`: the new text's id, a UUIDv7
+       *   this client minted. `tokenEdges`: the code-point offsets where the tokens made next on
+       *   this text begin and end. The body is stored composed, except a character one of them
+       *   falls inside, which stays as sent (see composeText).
        */
       create: (
         textLayerId,
@@ -1162,7 +1167,7 @@ class PlaidClient {
         body,
         metadata,
         auditMessage,
-        { id } = {},
+        { id, tokenEdges } = {},
       ) =>
         this._request("POST", "/api/v1/texts", {
           auditMessage,
@@ -1171,6 +1176,7 @@ class PlaidClient {
             "text-layer-id": textLayerId,
             "document-id": documentId,
             body,
+            "token-edges": tokenEdges,
             metadata,
           }),
         }),

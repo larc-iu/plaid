@@ -256,3 +256,68 @@
       (is (= [0 2 "bá"] (extent w)))
       (is (= [0 2 "bá"] (extent m)))
       (is (= "glóss" (:span/value (:body (get-span admin-request s))))))))
+
+;; Luke, 2026-10-09: a character whose letter and mark belong to two tokens
+;; stays decomposed, so composing never leaves a token with no text.
+
+(deftest a-space-deleted-before-a-mark-word-keeps-both-words
+  (let [{:keys [doc tl words morphs gloss]} (project-with-words)
+        ;; "ka", a tone mark as a word of its own, "ma"
+        text (id-of (create-text admin-request tl doc "ka \u0301 ma"))
+        wk (id-of (create-token admin-request words text 0 2))
+        wm (id-of (create-token admin-request words text 3 4))
+        mm (id-of (create-token admin-request morphs text 3 4))
+        g (id-of (create-span admin-request gloss [mm] "H"))
+        _ (id-of (create-token admin-request words text 5 7))
+        base (-> (get-text admin-request text) :body :text/digest)]
+    (testing "the edit leaves ka and its mark in two words, decomposed"
+      (let [res (edit! text {:edits [{:type "delete" :index 2 :value 1}] :base base})]
+        (assert-ok res)
+        (is (= "ka\u0301 ma" (:text/body (:body res))))
+        (is (= (digest/text-digest "ka\u0301 ma") (:text/digest (:body res))))
+        (is (= [0 2 "ka"] (extent wk)))
+        (is (= [2 3 "\u0301"] (extent wm)))
+        (is (= [2 3 "\u0301"] (extent mm)))
+        (is (= "H" (:span/value (:body (get-span admin-request g)))))))
+    (testing "the whole body sent back as read, with more typed, changes nothing there"
+      (assert-ok (edit! text {:body "ka\u0301 ma x"}))
+      (is (= "ka\u0301 ma x" (body-of text)))
+      (is (= [2 3 "\u0301"] (extent wm))))
+    (testing "the whole body sent composed is a change of that character"
+      (assert-ok (edit! text {:body "k\u00e1 ma x"}))
+      (is (= "k\u00e1 ma x" (body-of text))))))
+
+(deftest a-text-is-created-decomposed-where-its-tokens-will-cut-a-character
+  (let [{:keys [proj doc tl words morphs]} (project-with-words)
+        create (fn [doc body edges]
+                 (api-call admin-request {:method :post :path "/api/v1/texts"
+                                          :body (cond-> {:text-layer-id tl :document-id doc :body body}
+                                                  edges (assoc :token-edges edges))}))
+        text (id-of (create doc "ka\u0301 me\u0301" [0 2 3 4 7]))]
+    (is (= "ka\u0301 m\u00e9" (body-of text)) "only the character an edge falls in")
+    (testing "an archive's words and morphemes, the mark one of its own, go in one bulk create"
+      (assert-created (bulk-create-tokens admin-request [{:token-layer-id words :text text :begin 0 :end 2}
+                                                         {:token-layer-id words :text text :begin 2 :end 3}
+                                                         {:token-layer-id words :text text :begin 4 :end 6}]))
+      (assert-created (bulk-create-tokens admin-request [{:token-layer-id morphs :text text :begin 0 :end 2}
+                                                         {:token-layer-id morphs :text text :begin 2 :end 3}])))
+    (testing "with no edges the body is composed whole"
+      (let [doc2 (create-test-document admin-request proj "D2")
+            t2 (id-of (create doc2 "ka\u0301 me\u0301" nil))]
+        (is (= "k\u00e1 m\u00e9" (body-of t2)))))))
+
+(deftest a-restore-keeps-a-character-its-tokens-cut
+  (let [{:keys [doc tl words]} (project-with-words)
+        text (id-of (create-text admin-request tl doc "ka \u0301"))
+        wk (id-of (create-token admin-request words text 0 2))
+        wm (id-of (create-token admin-request words text 3 4))
+        base (-> (get-text admin-request text) :body :text/digest)
+        _ (assert-ok (edit! text {:edits [{:type "delete" :index 2 :value 1}] :base base}))
+        ts (:ts (psc/q1 db {:select [:ts] :from [:operations] :order-by [[:ts :desc]] :limit 1}))]
+    (assert-ok (edit! text {:body "ka\u0301 more"}))
+    (assert-ok (api-call admin-request {:method :post
+                                        :path (str "/api/v1/documents/" doc "/restore?as-of="
+                                                   (java.net.URLEncoder/encode (str ts) "UTF-8"))}))
+    (is (= "ka\u0301" (body-of text)))
+    (is (= [0 2 "ka"] (extent wk)))
+    (is (= [2 3 "\u0301"] (extent wm)))))

@@ -1044,11 +1044,14 @@ Four things are kept exactly as sent: private user data, passwords, a query (whi
 
 A body sent decomposed is stored composed, and its length can shrink.
 Token offsets are always offsets in the body as stored, so make tokens on the stored body: the answer to a write that saved a body carries it, and so does every read.
-When a save composes text that was typed beside a letter it composes with, the letter and the mark become one character, and a token edge that fell between them moves to after that character, so the character stays with the token that held the letter.
-A token that covered only such a mark is left zero-width there.
+When a save composes text that was typed beside a letter it composes with, the letter and the mark become one character, and the character stays with the token that held the letter.
+One exception: where a token begins or ends between a letter and a mark that would compose with it (a tone mark that is a morpheme or a word of its own), that character stays decomposed, so each token keeps its own characters and none is left with no text.
+The body is then NFC everywhere but there, and a later save composes the character once no token edge falls inside it.
 A mark that composes with nothing before it stays a character of its own, in the token that held it: `ẹ́` typed as `e`, a dot below and an acute is stored as `ẹ` and the acute, and a token over the acute alone still covers it.
 Nothing is refused for it.
-An app that makes tokens in the same batch as a body it sends can measure them on the composed body with the clients' `composeText(body)` (JavaScript) or `compose_text(body)` (Python): the server stores its `text`, and a token measured at `[b, e)` on the body sent is at `[at(b), at(e))` in it.
+A whole body sent back with such a character as it was read is no change there.
+`POST /texts` takes `token-edges`, the offsets where the tokens the client makes next begin and end, so a body written with a mark of its own token (an archive of such a text) keeps it decomposed.
+An app that makes tokens in the same batch as a body it sends can measure them on the composed body with the clients' `composeText(body, cuts)` (JavaScript) or `compose_text(body, cuts)` (Python), `cuts` being where the text's tokens begin and end: the server stores its `text`, and a token measured at `[b, e)` on the body sent is at `[at(b), at(e))` in it.
 
 === Changing a text's body
 

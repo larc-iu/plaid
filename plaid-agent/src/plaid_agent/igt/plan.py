@@ -1844,10 +1844,12 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True)
     # The server stores the body composed: text written that composes with a
-    # letter beside it becomes one character with it. Every place measured on
-    # the body written is moved onto the composed one, as the server moves its
-    # tokens, and a word left with no text of its own is dropped.
-    new_body, at = compose_text(new_body)
+    # letter beside it becomes one character with it, unless a token edge
+    # falls between them. Every place measured on the body written is moved
+    # onto the composed one, as the server moves its tokens, and a word left
+    # with no text of its own is dropped.
+    new_body, at = compose_text(new_body, _edges_after_gaps(
+        [t for layer in (tl or {}).get('token_layers') or [] for t in layer.get('tokens') or []], gaps))
     planned = [(at(wb), at(we)) for wb, we in planned if at(wb) < at(we)]
     region_end = at(b + len(new))
     b = at(b)
@@ -1886,6 +1888,42 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         except PlaidAPIError as e:
             if not words_refused(e):
                 raise
+
+
+def _cut_after(p: int, gaps: List[Dict[str, Any]], end: bool) -> int:
+    """Where a token edge at ``p`` goes when ``gaps`` are saved, for composing
+    the body: moved by the change before it, an end where text is inserted
+    after it (the token before takes the text), a begin there before it, and
+    a place inside a stretch typed over or deleted at its start (a begin) or
+    at the end of what was typed there (an end). Mirror of plaid-igt's
+    ``domain/textEdits.js`` ``cutAfter``."""
+    shift = 0
+    for g in gaps:
+        start, stop, value = g['start'], g['end'], g['value']
+        delta = len(value) - (stop - start)
+        if start == stop:
+            if p > start or (end and p == start):
+                shift += delta
+            continue
+        if p >= stop:
+            shift += delta
+        elif p > start:
+            return start + shift + (len(value) if end else 0)
+    return p + shift
+
+
+def _edges_after_gaps(tokens, gaps: List[Dict[str, Any]]) -> set:
+    """Where ``tokens`` (every token on the text) begin and end once ``gaps``
+    are saved: the cuts the server composes the new body by, so a character a
+    token edge falls inside stays decomposed (``compose_text``). Text typed
+    where one token ends goes to it, as the server's plain rule gives it, so a
+    token that also begins there begins after it."""
+    ends = {t['end'] for t in tokens}
+    out = set()
+    for t in tokens:
+        out.add(_cut_after(t['begin'], gaps, t['begin'] in ends))
+        out.add(_cut_after(t['end'], gaps, True))
+    return out
 
 
 def _region_gaps(old: str, new: str, at: int) -> List[Dict[str, Any]]:

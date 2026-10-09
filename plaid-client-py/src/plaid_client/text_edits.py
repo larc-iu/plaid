@@ -201,7 +201,7 @@ def _refine_inside(at, s, b, e, pos, c):
         at[i] = nxt
 
 
-def compose_text(s):
+def compose_text(s, cuts=None):
     """``s`` composed (Unicode NFC), as the server stores every text, and where
     each code-point position of ``s`` goes in it: ``(text, at)``, ``at(p)`` for
     every p in [0, len(s)]. Mirror of the server's
@@ -217,11 +217,18 @@ def compose_text(s):
     between a letter and the mark that composes with it moves to after the
     composed character, and a mark that does not compose stays out of it.
     ``at`` never reverses two positions.
+
+    ``cuts`` are the code-point positions of ``s`` where the text's tokens
+    begin and end. A piece with a cut inside it composes in parts, one between
+    each two cuts, so a character whose letter and mark belong to two tokens
+    stays decomposed, each token keeps its own characters, and none is left
+    with no text. The server composes every body with its tokens' edges.
     """
     s = s or ''
     if unicodedata.is_normalized('NFC', s):
         return s, (lambda p: p)
     n = len(s)
+    cut_at = {c for c in (cuts or ()) if isinstance(c, int) and 0 < c < n}
     pieces = []
     start = 0
     for i in range(1, n + 1):
@@ -236,10 +243,19 @@ def compose_text(s):
                 continue
         pieces.append([start, i])
         start = i
+    # a piece with a cut strictly inside it composes in parts
+    parts = []
+    for b, e in pieces:
+        frm = b
+        for i in range(b + 1, e):
+            if i in cut_at:
+                parts.append((frm, i))
+                frm = i
+        parts.append((frm, e))
     at = [0] * (n + 1)
     out = []
     pos = 0
-    for b, e in pieces:
+    for b, e in parts:
         src = s[b:e]
         c = _nfc(src)
         out.append(c)
@@ -252,6 +268,6 @@ def compose_text(s):
         pos += len(c)
     at[n] = pos
     text = ''.join(out)
-    if text != _nfc(s):
+    if (_nfc(text) if cut_at else text) != _nfc(s):
         raise ValueError('The text could not be composed.')
     return text, (lambda p: at[p])

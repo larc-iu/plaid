@@ -378,7 +378,8 @@ interface TextsBundle {
     body: string,
     metadata?: any,
     auditMessage?: string,
-    opts?: { id?: string },
+    /** `tokenEdges`: where the tokens made next begin and end, so a character one falls inside stays decomposed. */
+    opts?: { id?: string; tokenEdges?: number[] },
   ): Promise<any>;
   get(textId: string): Promise<any>;
   delete(textId: string, auditMessage?: string): Promise<any>;
@@ -1742,9 +1743,13 @@ export function cpSlicer(s: string): (begin: number, end?: number) => string;
 /**
  * `s` composed (Unicode NFC), as the server stores every text, and where each
  * code-point position of `s` goes in it: a token measured at [b, e) on `s` is
- * at [at(b), at(e)) in `text`. Mirror of the server's composition.
+ * at [at(b), at(e)) in `text`. Mirror of the server's composition. `cuts`, the
+ * text's token edges: a character one falls inside stays decomposed.
  */
-export function composeText(s: string): { text: string; at: (p: number) => number };
+export function composeText(
+  s: string,
+  cuts?: Iterable<number> | null,
+): { text: string; at: (p: number) => number };
 /** UTF-16 index -> code-point index in `s`. */
 export function utf16ToCp(s: string, u: number): number;
 /** Like indexOf, but the result and `fromCp` are code-point indices; -1 if absent. */

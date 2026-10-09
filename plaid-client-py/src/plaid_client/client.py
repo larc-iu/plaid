@@ -911,7 +911,8 @@ class SpansResource(_Resource):
 
 class TextsResource(_Resource):
     def create(self, text_layer_id: str, document_id: str, body: str,
-               metadata: Any = _UNSET, audit_message=None, *, id: str | None = None) -> Any:
+               metadata: Any = _UNSET, audit_message=None, *, id: str | None = None,
+               token_edges: list | None = None) -> Any:
         """Create a new text in a document's text layer.
 
         A text is a container for one long string in ``body`` for a given layer.
@@ -926,10 +927,16 @@ class TextsResource(_Resource):
                 minted (``plaid_client.uuid7()``), so a create sent again after
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
+            token_edges: Optional. The code-point offsets where the tokens
+                made next on this text begin and end. The body is stored
+                composed, except a character one of them falls inside, which
+                stays as sent (see ``compose_text``).
         """
         return self._request('POST', '/api/v1/texts',
                              body=_body_of(id=_UNSET if id is None else id, text_layer_id=text_layer_id, document_id=document_id,
-                                           body=body, metadata=metadata), audit_message=audit_message)
+                                           body=body,
+                                           token_edges=_UNSET if token_edges is None else list(token_edges),
+                                           metadata=metadata), audit_message=audit_message)
 
     def get(self, text_id: str) -> Any:
         """Get a text.
