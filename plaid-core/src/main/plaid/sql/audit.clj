@@ -519,6 +519,16 @@
                    :member? [:= (no-index :user_id) user-id]}
                [start-time end-time] opts)))
 
+(defn- not-repair
+  "WHERE that leaves out an operation in a group of kind `repair`: an app's
+  repair when a document opens, or a conversion of stored data run through
+  the API (Luke's ruling, 2026-10-09). A repair is nobody's edit, so no
+  per-person fact read from the log counts it. It stays in every audit read,
+  labelled by its kind. `group-col` is the operation's `group_id` column."
+  [group-col]
+  [:not [:exists {:select [1] :from [[:operation_groups :g]]
+                  :where [:and [:= :g.id group-col] [:= :g.kind "repair"]]}]])
+
 (defn last-edits-in-project
   "`{document-id -> ts}`: when `user-id` last wrote to each document in
   `project-id`. One grouped read, in the spirit of `comment/count-in-project`,
@@ -530,9 +540,10 @@
   (this app, another one, a script through a client library, a service)
   without any of them having to remember to stamp a field.
 
-  An app's repair on open (an operation in a group of kind `repair`) is not
-  an edit: opening a document never makes it the opener's last edit
-  (H9-FIRST-OPEN-5).
+  A repair (an operation in a group of kind `repair`, see `not-repair`) is
+  not an edit: opening a document never makes it the opener's last edit
+  (H9-FIRST-OPEN-5), and a conversion run over stored data never makes it
+  the runner's.
 
   `idx_operations_user_ts` serves the scan, and one person's own rows are the
   small side of a table that holds everybody's."
@@ -545,8 +556,7 @@
                               [:= :o.project_id project-id]
                               [:= :o.user_id user-id]
                               [:not= :o.document_id nil]
-                              [:not [:exists {:select [1] :from [[:operation_groups :g]]
-                                              :where [:and [:= :g.id :o.group_id] [:= :g.kind "repair"]]}]]]
+                              (not-repair :o.group_id)]
                    :group-by [:o.document_id]})))
 
 (defn get-audit-log
@@ -560,9 +570,10 @@
    (audit-page db {:source [:operations]} [start-time end-time] opts)))
 
 (defn- tally-scope
-  "WHERE for the aggregate reads: an optional project scope plus the window."
+  "WHERE for the aggregate reads: an optional project scope plus the window,
+  and never a repair, which is nobody's activity (`not-repair`)."
   [project-id start-time end-time]
-  (conj-where (cond-> (ts-where start-time end-time)
+  (conj-where (cond-> (conj (ts-where start-time end-time) (not-repair :operations.group_id))
                 project-id (conj [:= :project_id project-id]))))
 
 (defn- tally-daily
@@ -600,6 +611,9 @@
   One grouped scan, served by `idx_operations_project_ts` when a project is
   given. No post-images are read: this counts operations, it does not
   reconstruct anything, which is why it costs nothing like an as-of read.
+
+  An operation in a `repair` group is not counted (`not-repair`): a repair
+  is nobody's activity. It still shows in the feed.
 
   Only users who did something appear. Whoever wants \"and these members did
   nothing\" holds the roster already (a project's ACL, or the user directory)

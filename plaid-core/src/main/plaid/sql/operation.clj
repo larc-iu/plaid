@@ -310,10 +310,11 @@
   (when-let [g (:group-id psaw/*op*)]
     (= "repair" (:kind (psc/q1 tx {:select [:kind] :from :operation_groups :where [:= :id g]})))))
 
-(defn- modified-at
+(defn modified-at
   "What a write leaves as a document's `modified_at`: the operation's time,
-  or the time it had for a repair on open, so that looking at a document
-  never makes it the latest edited (H9-FIRST-OPEN-5)."
+  or the time it had for a repair (on open, or a conversion of stored data),
+  so that looking at a document never makes it the latest edited
+  (H9-FIRST-OPEN-5). `pre` is the document row before the write."
   [tx pre ts]
   (if (repair-op? tx) (:modified_at pre) ts))
 

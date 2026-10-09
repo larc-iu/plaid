@@ -360,7 +360,7 @@ The kind is one of this list. The server refuses any other value with a 400, so 
 |none
 
 |`repair`
-|A repair an app makes by itself when a document opens.
+|A repair an app makes by itself when a document opens, or a conversion of stored data run through the API. A repair is nobody's edit: it is shown in History and the audit log, labelled, but never counted as anyone's last edit or activity.
 |none
 
 |`review`
@@ -468,7 +468,7 @@ const more = await c.documents.auditPage(documentId, {
 
 `my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project.
 It returns a `{document id: timestamp}` map, and a document the caller has never written to is simply absent.
-A write in an operation of kind `repair` (an app's repair when a document opens) is not counted, and it leaves the document's `time-modified` where it was, so opening a document never makes it the last edited.
+A write in an operation of kind `repair` (an app's repair when a document opens, or a conversion of stored data) is not counted, and it leaves the document's `time-modified` where it was, so opening a document never makes it the last edited.
 Its version still moves.
 
 [,python]

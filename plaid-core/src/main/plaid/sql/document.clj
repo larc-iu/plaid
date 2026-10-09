@@ -410,7 +410,8 @@
 
 (defn merge
   "Update mutable document fields. Currently supports :document/name.
-  Always bumps `version` and `modified_at`."
+  Always bumps `version`, and `modified_at` unless the write is a repair
+  (`op/modified-at`)."
   [db eid m user-id]
   (submit-operation! [tx db {:type :document/update
                              :project (project-id db eid)
@@ -428,7 +429,7 @@
                      (let [existing (psc/fetch-by-id tx :documents eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Document" eid) {:code 404 :id eid})))
-                       (let [attrs (cond-> {:modified_at (psc/now-iso)
+                       (let [attrs (cond-> {:modified_at (op/modified-at tx existing (op/op-ts))
                                             :version (inc (or (:version existing) 1))}
                                      (some? (:document/name m))
                                      (assoc :name (:document/name m)))]
