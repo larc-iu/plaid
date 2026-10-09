@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { clampResize, freeStretch } from '../../../domain/alignmentTimes.js';
 import { useWaveform } from './useWaveform.js';
+import { readTimelineView, writeTimelineView } from './timelineView.js';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -13,6 +14,9 @@ const WHEEL_LINE_HEIGHT = 16;
 // above MAX_ZOOM a minute of audio is six thousand pixels.
 export const MIN_ZOOM = 4;
 export const MAX_ZOOM = 100;
+// How long a zoom or a scroll rests before the view is kept.
+const VIEW_SAVE_DELAY_MS = 400;
+
 // The drawn stretch is let grow to this many screens before it is cut back.
 const DRAWN_SCREENS_MAX = 5;
 
@@ -121,6 +125,37 @@ export const useTimelineOperations = (mediaOps) => {
     return next;
   }, [mediaOps.duration, handlePixelsPerSecondChange]);
 
+  // The view the timeline opens on: where this document's was left, else the
+  // whole recording fitted to the width. Returns the zoom it chose, or null
+  // when there is nothing to measure yet.
+  const openView = useCallback(() => {
+    const container = timelineContainerRef.current;
+    const duration = mediaOps.duration;
+    if (!container || !duration) return null;
+    const view = readTimelineView(mediaOps.document?.id ?? null);
+    const chosen = view ? clampZoom(view.pixelsPerSecond) : fitToWidth();
+    if (chosen === null) return null;
+    if (view) {
+      const left = Math.min(view.left, duration);
+      if (chosen === mediaOps.pixelsPerSecond) {
+        // The zoom is already this one, so nothing re-renders to put the
+        // scroll back: put it back here.
+        container.scrollLeft = left * chosen;
+      } else {
+        zoomAnchorRef.current = { timeAtPointer: left, pointerX: 0 };
+        handlePixelsPerSecondChange(chosen);
+      }
+    }
+    openedRef.current = true;
+    return chosen;
+  }, [
+    mediaOps.duration,
+    mediaOps.document?.id,
+    mediaOps.pixelsPerSecond,
+    fitToWidth,
+    handlePixelsPerSecondChange,
+  ]);
+
   // Bring the drawn stretch back over the screen when the screen has left it,
   // or when it has grown to many screens (a zoom in), which would put back on
   // the page what windowing keeps off it.
@@ -143,6 +178,40 @@ export const useTimelineOperations = (mediaOps) => {
     });
   }, []);
   useLayoutEffect(updateDrawn, [updateDrawn, mediaOps.duration, mediaOps.pixelsPerSecond]);
+
+  // This document's view (zoom, and the time at the left edge) is kept as it
+  // changes, for the next time the tab opens on it (timelineView.js). Not
+  // before the view it opened on has been put back: the first frame, fitted
+  // or at 0, would otherwise be kept over the one being restored.
+  const documentId = mediaOps.document?.id ?? null;
+  const openedRef = useRef(false);
+  const saveTimerRef = useRef(null);
+  const saveView = useCallback(() => {
+    const container = timelineContainerRef.current;
+    const pps = pixelsPerSecondRef.current;
+    if (!openedRef.current || !container || !(pps > 0) || !durationRef.current) return;
+    writeTimelineView(documentId, { pixelsPerSecond: pps, left: container.scrollLeft / pps });
+  }, [documentId]);
+  const scheduleSave = useCallback(() => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(saveView, VIEW_SAVE_DELAY_MS);
+  }, [saveView]);
+  // Leaving the tab keeps what was there at that moment.
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current === null) return;
+      clearTimeout(saveTimerRef.current);
+      saveView();
+    },
+    [saveView],
+  );
+  useEffect(() => {
+    if (openedRef.current) scheduleSave();
+  }, [mediaOps.pixelsPerSecond, scheduleSave]);
+  const handleTimelineScroll = useCallback(() => {
+    updateDrawn();
+    scheduleSave();
+  }, [updateDrawn, scheduleSave]);
   useEffect(() => {
     const container = timelineContainer;
     if (!container || typeof ResizeObserver === 'undefined') return undefined;
@@ -554,7 +623,8 @@ export const useTimelineOperations = (mediaOps) => {
     attachTimelineContainer,
 
     // State setters for external use
-    handleTimelineScroll: updateDrawn,
+    handleTimelineScroll,
+    openView,
 
     // Constants
     TIMELINE_HEIGHT,

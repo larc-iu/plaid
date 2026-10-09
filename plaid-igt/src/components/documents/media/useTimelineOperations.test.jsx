@@ -4,6 +4,7 @@ import { fakeRaf } from '@/test/fakeRaf.js';
 import { useMediaOperations } from './useMediaOperations.js';
 import { useTimelineOperations } from './useTimelineOperations.js';
 import { createPlaybackClock } from './playbackClock.js';
+import { readTimelineView, writeTimelineView } from './timelineView.js';
 
 // The timeline's two moving parts: the needle, which follows the tab's
 // playback clock with no render, and the drag that makes a selection.
@@ -474,5 +475,72 @@ describe('useTimelineOperations: a drag beside other segments', () => {
     await mouse(h, 'mouseup', 80);
     expect(ops.setSelection).toHaveBeenLastCalledWith({ start: 5, end: 8 });
     await h.unmount();
+  });
+});
+
+describe('useTimelineOperations: the view kept per document', () => {
+  // The scrolling box a test can scroll: jsdom lays nothing out.
+  const box = (h) => h.container.firstChild;
+
+  it('opens where the document was left, and keeps where it is left next', async () => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    try {
+      writeTimelineView('doc-7', { pixelsPerSecond: 10, left: 12 });
+      const ops = makeOps({ document: { id: 'doc-7' }, pixelsPerSecond: 10 });
+      const h = await mount(ops);
+      await h.step(() => h.api.openView());
+      expect(box(h).scrollLeft).toBe(120);
+
+      // Scrolled on, and left to rest.
+      box(h).scrollLeft = 300;
+      await h.step(() => h.api.handleTimelineScroll());
+      await h.step(() => vi.advanceTimersByTime(500));
+      expect(readTimelineView('doc-7')).toEqual({ pixelsPerSecond: 10, left: 30 });
+      await h.unmount();
+    } finally {
+      vi.useRealTimers();
+      localStorage.clear();
+    }
+  });
+
+  it('keeps nothing before the view it opens on is back', async () => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    try {
+      writeTimelineView('doc-8', { pixelsPerSecond: 10, left: 12 });
+      const h = await mount(makeOps({ document: { id: 'doc-8' }, pixelsPerSecond: 10 }));
+      await h.step(() => h.api.handleTimelineScroll());
+      await h.step(() => vi.advanceTimersByTime(500));
+      expect(readTimelineView('doc-8')).toEqual({ pixelsPerSecond: 10, left: 12 });
+      await h.unmount();
+    } finally {
+      vi.useRealTimers();
+      localStorage.clear();
+    }
+  });
+
+  it('a document never opened is fitted, as before', async () => {
+    localStorage.clear();
+    const ops = makeOps({ document: { id: 'doc-9' } });
+    const h = await mount(ops);
+    Object.defineProperty(box(h), 'clientWidth', { value: 608, configurable: true });
+    await h.step(() => h.api.openView());
+    // (608 - 8) px over a 60 s recording.
+    expect(ops.setPixelsPerSecond).toHaveBeenCalledWith(10);
+    await h.unmount();
+  });
+
+  it('a zoom other than the one kept is put back through the zoom', async () => {
+    localStorage.clear();
+    writeTimelineView('doc-10', { pixelsPerSecond: 40, left: 5 });
+    const ops = makeOps({ document: { id: 'doc-10' }, pixelsPerSecond: 10 });
+    const h = await mount(ops);
+    await h.step(() => h.api.openView());
+    expect(ops.setPixelsPerSecond).toHaveBeenCalledWith(40);
+    await h.setInputs({ args: [{ ...ops, pixelsPerSecond: 40 }] });
+    expect(box(h).scrollLeft).toBe(200);
+    await h.unmount();
+    localStorage.clear();
   });
 });

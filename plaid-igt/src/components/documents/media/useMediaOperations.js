@@ -23,6 +23,8 @@ import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { keys } from '@/lib/keymap.js';
 import { createPlaybackClock } from './playbackClock.js';
 import { RUNNING_TIME_MS } from './useThrottledValue.js';
+import { readTimelineView } from './timelineView.js';
+import { clampZoom } from './useTimelineOperations.js';
 
 // Hotkeys ignore key events from form fields, with one exception: the tab's
 // own boxes (transcript rows, time boxes, the alignment popover) sit under a
@@ -154,7 +156,12 @@ export const useMediaOperations = () => {
     (id) => setSegmentFocusRequest({ id, at: Date.now() }),
     [],
   );
-  const [pixelsPerSecond, setPixelsPerSecond] = useState(25);
+  // The zoom this document's timeline was left at, so the first frame is
+  // drawn at it (the timeline puts its scroll back once the length is known).
+  const [pixelsPerSecond, setPixelsPerSecond] = useState(() => {
+    const view = readTimelineView(doc.document.id);
+    return view ? clampZoom(view.pixelsPerSecond) : 25;
+  });
   const [isUploading, setIsUploading] = useState(false);
   // `{ name, loaded, total }` while a file is going up, else null. `total`
   // is the request body (the file plus a few bytes of multipart framing).

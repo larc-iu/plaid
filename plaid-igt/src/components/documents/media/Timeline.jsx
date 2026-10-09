@@ -177,16 +177,18 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
   const onPixelsPerSecondChange = timelineOps.zoomTo;
   const { fitToWidth } = timelineOps;
 
-  // Fit the recording to the lane once, when its duration first arrives. Not
-  // on every duration change and never after a person has zoomed themselves:
-  // `fittedFor` remembers which recording was fitted, so switching tabs and
-  // coming back does not undo their zoom.
-  const fittedFor = React.useRef(null);
+  // Open on the view this document was left at, or the whole recording
+  // fitted to the lane, once, when the duration first arrives. Not on every
+  // duration change and never after a person has zoomed themselves: `opened`
+  // remembers which recording was opened. Leaving the tab unmounts all of
+  // this, and the view comes back from where it was kept (timelineView.js).
+  const { openView } = timelineOps;
+  const opened = React.useRef(null);
   React.useEffect(() => {
     const duration = mediaOps.duration;
-    if (!duration || fittedFor.current === duration) return;
-    if (fitToWidth() !== null) fittedFor.current = duration;
-  }, [mediaOps.duration, fitToWidth]);
+    if (!duration || opened.current === duration) return;
+    if (openView() !== null) opened.current = duration;
+  }, [mediaOps.duration, openView]);
 
   // Register autoScrollToTime with mediaOps
   React.useEffect(() => {
