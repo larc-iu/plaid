@@ -13,6 +13,15 @@ from ..core import filetools, sandbox
 from .project import IgtDoc, word_ref
 from .workspace import Workspace
 
+IGT_SHAPE = '''\
+A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
+  doc = load("Text 1")          # or load(d) for d in documents()
+  s = doc["sentences"][2]       # {"ref": "s3", "text", "fields", "words"}
+  w = s["words"][1]             # {"ref": "s3.w2", "surface", "fields", "link", "morphemes", ...}
+  m = w["morphemes"][0]         # {"ref": "s3.w2.m1", "form", "type", "fields", "link", "review"}
+  m["fields"].get("Gloss")      # a field by the project's own name, "" when empty
+'''
+
 IGT_HELP = '''
 THE SHAPE load(document) RETURNS:
   {"id", "name", "metadata": {...}, "sentences": [
@@ -94,8 +103,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
-    return sandbox.run_tool(ws, code, api)
+    return sandbox.run_tool(ws, code, api, IGT_SHAPE)
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(IGT_HELP, filetools.code_help(ws), ws)
+    return sandbox.help_text(IGT_HELP, filetools.code_help(ws), ws, IGT_SHAPE)

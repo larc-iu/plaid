@@ -13,14 +13,24 @@ from ..core import filetools, sandbox
 from .project import UdDoc, word_ref
 from .tools import Workspace
 
+UD_SHAPE = '''\
+A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
+  doc = load("Text 1")          # or load(d) for d in documents()
+  s = doc["sentences"][2]       # {"ref": "s3", "text", "metadata", "words"}
+  w = s["words"][1]             # {"ref": "s3.w2", "id": 2, "form", "lemma", "upos", "xpos", "feats",
+                                #  "head", "deprel", "token", "mwt", "review"}
+  w["head"]                     # the "id" of the head word in the same sentence, 0 for the root
+'''
+
 UD_HELP = '''
 THE SHAPE load(document) RETURNS:
   {"id", "name", "metadata": {...}, "sentences": [
      {"ref": "s3", "text": "...", "metadata": {...}, "words": [
-        {"ref": "s3.w2", "form", "lemma", "upos", "xpos", "feats", "head", "deprel",
+        {"ref": "s3.w2", "id": 2, "form", "lemma", "upos", "xpos", "feats", "head", "deprel",
          "token": <the surface token>, "mwt": true when the token holds several words,
          "review": {"lemma": "human"|"machine"|"contributed"|"verified", ... , "deprel": ...}}, ...]}, ...]}
-  An empty column is "". head is a number (0 for the root) or None. review names, per column, who made
+  An empty column is "". id is the word's CoNLL-U ID, a number. head is the id of its head (0 for the
+  root) or None. review names, per column, who made
   the value and whether it has been confirmed: "machine" and "contributed" are what ~ and ^ mark.
   feats is the whole FEATS string ("Case=Nom|Number=Sing"); split it on "|".
 
@@ -41,10 +51,10 @@ EXAMPLES
   for d in documents():
       doc = load(d["id"])
       for s in doc["sentences"]:
-          by_id = {w["ref"].split(".w")[1]: w for w in s["words"]}
+          by_id = {w["id"]: w for w in s["words"]}
           for w in s["words"]:
               if w["deprel"] == "cop" and w["head"]:
-                  h = by_id.get(str(w["head"]))
+                  h = by_id.get(w["head"])
                   if h and h["upos"] not in ("NOUN", "ADJ", "PROPN"):
                       hits.append((doc["name"], w["ref"], h["form"], h["upos"]))
   print(len(hits)); print(hits[:15])
@@ -74,7 +84,7 @@ def view(doc: UdDoc) -> Dict[str, Any]:
             if w.relation_id:
                 review['deprel'] = prov_state(w.relation_metadata)
             words.append({
-                'ref': word_ref(s, w), 'form': w.form, 'lemma': w.value('lemma'),
+                'ref': word_ref(s, w), 'id': w.index, 'form': w.form, 'lemma': w.value('lemma'),
                 'upos': w.value('upos'), 'xpos': w.value('xpos'), 'feats': w.value('features'),
                 'head': w.head, 'deprel': w.deprel or '', 'token': w.token.surface if w.token else w.form,
                 'mwt': w.is_part_of_mwt, 'review': review})
@@ -92,8 +102,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
-    return sandbox.run_tool(ws, code, api)
+    return sandbox.run_tool(ws, code, api, UD_SHAPE)
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(UD_HELP, filetools.code_help(ws), ws)
+    return sandbox.help_text(UD_HELP, filetools.code_help(ws), ws, UD_SHAPE)

@@ -14,6 +14,15 @@ from ..core import filetools, sandbox
 from .project import UmrDoc, ilg_lines, penman_of, resolve_ilg
 from .tools import Workspace
 
+UMR_SHAPE = '''\
+A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
+  doc = load("Text 1")          # or load(d) for d in documents()
+  s = doc["sentences"][2]       # {"ref": "s3", "text", "words", "lines", "penman", "nodes", "relations",
+                                #  "triples"}
+  n = s["nodes"][0]             # {"ref": "s3.s3p", "var", "concept", "attrs", "alignment", "root"}
+  n["attrs"]                    # [{"rel": ":aspect", "value": "state"}, ...]
+'''
+
 UMR_HELP = '''
 THE SHAPE load(document) RETURNS:
   {"id", "name", "metadata": {...}, "sentences": [
@@ -106,8 +115,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
-    return sandbox.run_tool(ws, code, api)
+    return sandbox.run_tool(ws, code, api, UMR_SHAPE)
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(UMR_HELP, filetools.code_help(ws), ws)
+    return sandbox.help_text(UMR_HELP, filetools.code_help(ws), ws, UMR_SHAPE)

@@ -19,6 +19,7 @@ tools exist only where a search backend is configured: a model that cannot
 run code is never told that it can.
 """
 
+import ast
 import atexit
 import threading
 from typing import Any, Callable, Dict, List, Optional
@@ -40,6 +41,77 @@ TURN_EXEC_SECONDS = 600.0          # interpreter time over a whole turn's calls,
 MODULES = ('re', 'json', 'math', 'collections', 'itertools', 'functools', 'datetime', 'unicodedata')
 
 NAMES = ('run_code', 'code_help')
+
+
+# What every turn's worker defines before the model's first run: the reader
+# :func:`keyed` sends an attribute read through. Monty runs no __getattr__ and
+# no subclass of dict, so a value that answers both doc["sentences"] and
+# doc.sentences cannot be built. The model writes both (a quarter of the
+# failed run_code calls of the 2026-10-08 benchmark were doc.sentences on
+# what load() returns), so the attribute form is turned into the key form
+# before the code runs. A key that is not there names the keys that are.
+PRELUDE = '''
+def _plaid_attr_(o, name):
+    if type(o) is dict:
+        if name in o:
+            return o[name]
+        raise AttributeError('no "' + name + '" here. Its keys: ' + ', '.join([repr(k) for k in o]))
+    return getattr(o, name)
+'''
+
+# Attribute names a dict could never mean as a key in a model's code (every
+# method and attribute of the builtin types), and the names that are modules
+# or types rather than data. An attribute read of either kind is left as
+# written, so str.lower or math.pi never pass through the reader.
+_BUILTIN_ATTRS = frozenset(name for t in (str, bytes, list, tuple, dict, set, frozenset, int, float, complex,
+                                          bool, BaseException, type(None), object)
+                           for name in dir(t))
+_MODULE_NAMES = frozenset(MODULES + ('str', 'bytes', 'list', 'tuple', 'dict', 'set', 'frozenset', 'int', 'float',
+                                     'complex', 'bool', 'object', 'type'))
+
+
+def keyed(code: str) -> str:
+    """``code`` with every attribute read that may be a key of a loaded
+    document sent through the prelude's reader: ``doc.sentences`` becomes
+    ``_plaid_attr_(doc, 'sentences')``, which reads the key of a dict and the
+    attribute of anything else. A method call (``w.get(...)``,
+    ``s.lower()``), an assignment, a builtin's own attribute and a module's
+    are left alone. The text around each read is untouched, so line numbers
+    in a traceback still match the code the model wrote. Code that does not
+    parse is returned as it is, for the sandbox to report."""
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return code
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    reads = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Load) and id(n) not in called
+             and n.attr not in _BUILTIN_ATTRS
+             and not (isinstance(n.value, ast.Name) and n.value.id in _MODULE_NAMES)]
+    if not reads:
+        return code
+    src = code.encode('utf-8')
+    starts, at = [], 0
+    for line in src.splitlines(keepends=True):
+        starts.append(at)
+        at += len(line)
+    starts.append(at)
+
+    def pos(line: int, col: int) -> int:
+        return starts[line - 1] + col
+
+    edits = []
+    for n in reads:
+        value_end = pos(n.value.end_lineno, n.value.end_col_offset)
+        end = pos(n.end_lineno, n.end_col_offset)
+        # What lies between the value and the name: a closing bracket,
+        # space, a comment, then the dot. The last dot is the attribute's.
+        dot = value_end + src[value_end:end].rindex(b'.')
+        edits.append((dot, end, f', {n.attr!r})'.encode('utf-8')))
+        edits.append((pos(n.lineno, n.col_offset), None, b'_plaid_attr_('))
+    for at, end, text in sorted(edits, key=lambda e: e[0], reverse=True):
+        src = src[:at] + text + src[at if end is None else end:]
+    return src.decode('utf-8')
 
 
 class CodeError(Exception):
@@ -98,6 +170,7 @@ class Session:
                                                  'max_memory': MEMORY_BYTES,
                                                  'max_suspensions': MAX_SUSPENSIONS})
             self._session = self._cm.__enter__()
+            self._session.feed_run(PRELUDE, external_lookup={})
         return self._session
 
     def close(self) -> None:
@@ -109,33 +182,46 @@ class Session:
                 pass
 
 
-def _explain(e) -> str:
+def _explain(e, shape: str = '') -> str:
     """The sandbox's error, with a line about what the sandbox has where the
-    error is about what it lacks."""
+    error is about what it lacks, and the shape of a loaded document where
+    the error is a key the code guessed."""
     text = e.display(format='traceback') if hasattr(e, 'display') else str(e)
     text = text.strip()
-    if 'ModuleNotFoundError' in text:
+    if 'ModuleNotFoundError' in text or 'ImportError' in text:
         text += ('\nThe sandbox has these modules and no others: ' + ', '.join(MODULES)
-                 + '. Everything about the project comes through documents(), load(), query() and plan().')
+                 + ', and not every name in each of them. Everything about the project comes through '
+                 'documents(), load(), query() and plan().')
+    if "'list' object is not an iterator" in text:
+        text += '\nA generator expression is a list in this sandbox: write next(iter(...)).'
+    if shape and ('KeyError' in text or 'Its keys:' in text):
+        text += '\nWhat load() returns:\n' + shape
     return text
 
 
-def run(code: str, api: Dict[str, Callable], *, session: Session) -> str:
+def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '') -> str:
     """Run ``code`` with ``api`` as its host functions, in ``session``: the
     turn's own worker, so names persist from one call to the next. Returns
     what it printed and the value of its last expression, capped. Raises
-    :class:`CodeError` with the reason when it did not finish."""
+    :class:`CodeError` with the reason when it did not finish. ``shape`` is
+    the app's short example of a loaded document, added to an error about a
+    key the code guessed."""
     reason = available()
     if reason:
         raise CodeError(f'Code cannot run on this assistant: {reason}.')
     if not isinstance(code, str) or not code.strip():
         raise CodeError('Give code to run, as a string.')
-    from pydantic_monty import CollectString, MontyCrashedError, MontyRuntimeError
+    from pydantic_monty import (CollectString, MontyCrashedError, MontyRuntimeError, MontySyntaxError,
+                                MontyTypingError)
     printed = CollectString(max_bytes=4 * 1024 * 1024)
     try:
-        value = session.get().feed_run(code, external_lookup=dict(api), print_callback=printed)
+        value = session.get().feed_run(keyed(code), external_lookup=dict(api), print_callback=printed)
     except MontyRuntimeError as e:
-        raise CodeError(_explain(e) + _partial(printed))
+        raise CodeError(_explain(e, shape) + _partial(printed))
+    except (MontySyntaxError, MontyTypingError) as e:
+        # Code that does not parse is the code's fault, said in the parser's
+        # words. It used to fall through to "a fault in the tool".
+        raise CodeError('The code could not be read: ' + _explain(e))
     except MontyCrashedError as e:
         session.close()  # the worker is gone; the next call gets a new one, and starts over
         if getattr(e, 'timed_out', False):
@@ -170,6 +256,7 @@ def _truncate(s: str, cap: int = OUTPUT_MAX) -> str:
 
 
 HELP = '''\
+{shape}
 run_code runs Python you write, in a sandbox with no filesystem, no network and no packages: only the
 standard-library modules {modules}. It is for a question the reads do not answer directly: a loop over
 many documents, a join between two columns, a tally under your own conditions, a check across the corpus.
@@ -177,7 +264,8 @@ It is not for what a single tool already answers.
 
 The project reaches the code through four functions, and nothing else:
   documents()                 -> [{{"id", "name"}}, ...] every document in the project
-  load(document)              -> a plain-data view of one document (its shape is below); by id or name
+  load(document)              -> a plain-data view of one document (its shape is below); by id, by name,
+                                 or by an entry of documents()
   query(q)                    -> the engine's answer to a query object, as query_help describes it
                                  (layers by name; "results" holds the rows as plain dicts)
   plan(tool, **args)          -> stage a proposal through a plan tool by name, with the same arguments
@@ -185,6 +273,8 @@ The project reaches the code through four functions, and nothing else:
                                  the user approves the plan afterwards, exactly as with the tools.
 Names persist between run_code calls in one turn (a tally built by one call can be read by the next);
 the next turn starts clean.
+What load() returns is dicts and lists, and a key also reads as an attribute: doc.sentences is
+doc["sentences"].
 Print what you want to see; the value of the last expression is returned too. Output is capped at
 {output_max} characters, so summarize in the code rather than printing everything. A turn's run_code
 calls share one budget of {turn_seconds:.0f} seconds of computation between them; loading a document is
@@ -201,13 +291,15 @@ OTHER PROJECTS
 '''
 
 
-def help_text(app_half: str, extra: str = '', ws=None) -> str:
-    """The shared half, the app's half, and whatever this conversation adds to
-    both: the files the user attached (see :func:`.filetools.code_help`),
-    the files the turn can give the user (:func:`.filetools.save_help`),
-    and the other projects the turn may read, when there are any."""
+def help_text(app_half: str, extra: str = '', ws=None, shape: str = '') -> str:
+    """The app's short example of a loaded document first, then the shared
+    half, the app's half, and whatever this conversation adds to both: the
+    files the user attached (see :func:`.filetools.code_help`), the files the
+    turn can give the user (:func:`.filetools.save_help`), and the other
+    projects the turn may read, when there are any."""
     from . import filetools
-    out = (HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX, turn_seconds=TURN_EXEC_SECONDS)
+    out = (HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX, turn_seconds=TURN_EXEC_SECONDS,
+                       shape='{shape}').replace('{shape}\n', shape.strip('\n') + '\n\n' if shape else '')
            + app_half + extra + filetools.save_help(ws))
     reach = getattr(ws, 'reach', None)
     if reach is not None and reach.others:
@@ -310,6 +402,10 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
         return [{'id': d['id'], 'name': d.get('name') or ''} for d in workspace(project).documents()]
 
     def load(document, project=None):
+        # An entry of documents() is what a loop over it holds, and five of
+        # the benchmark's failed calls handed one in.
+        if isinstance(document, dict) and ('id' in document or 'name' in document):
+            document = document.get('id') or document.get('name')
         w = workspace(project)
         if id(w) not in loads:
             loads[id(w)] = load_proxy(w, view_of(w) if view_of and w is not ws else view)
@@ -362,13 +458,14 @@ def noted(ws, api: Dict[str, Callable]) -> Dict[str, Callable]:
     return {name: (f if name in _WRITERS else wrap(name, f)) for name, f in api.items()}
 
 
-def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]]) -> str:
+def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]], shape: str = '') -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what
-    the app lets the code see."""
+    the app lets the code see, and ``shape`` its short example of a loaded
+    document."""
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
     try:
-        return run(code, noted(ws, api(ws)), session=ws.code)
+        return run(code, noted(ws, api(ws)), session=ws.code, shape=shape)
     except CodeError as e:
         raise ToolError(str(e))

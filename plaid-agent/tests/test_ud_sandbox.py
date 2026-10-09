@@ -23,6 +23,8 @@ def test_the_view_is_plain_data_with_references_and_review_states(ws):
     w = v['sentences'][0]['words'][3]
     assert w['ref'] == 's1.w4' and w['form'] == 'mar' and w['upos'] == 'NOUN' and w['deprel'] == 'obl'
     assert w['head'] == 1 and w['review']['upos'] == 'machine' and w['review']['lemma'] == 'human'
+    # A word's CoNLL-U ID, which a head names.
+    assert w['id'] == 4 and v['sentences'][0]['words'][w['head'] - 1]['id'] == w['head']
     al = v['sentences'][0]['words'][1]
     assert al['form'] == 'a' and al['token'] == 'al' and al['mwt']
 
