@@ -107,13 +107,22 @@ def value_of(table: str, image: Optional[Dict[str, Any]]):
     return image.get(field[0]) if field else None
 
 
+def field_of(table: str, image: Dict[str, Any], field: str):
+    """A field of an image as it compares: a span's or a relation's value
+    decoded, since one value has had two stored spellings (a core before
+    2026-10-09 wrote "\\u0434" and "a\\/b" where one now writes the letters),
+    and the audit log keeps the old images."""
+    v = image.get(field)
+    return decoded(v) if field == 'value' and table in ('spans', 'relations') else v
+
+
 def value_key(table: str, image: Optional[Dict[str, Any]]):
     """Everything that makes the entity's value, for comparing two images."""
     if not image:
         return None
     if table == 'tokens':
         return ((image.get('metadata') or {}).get('form'),)
-    return tuple(image.get(f) for f in VALUE_FIELDS.get(table, ()))
+    return tuple(field_of(table, image, f) for f in VALUE_FIELDS.get(table, ()))
 
 
 def change_category(table: str, prev: Optional[Dict[str, Any]], cur: Optional[Dict[str, Any]]) -> Tuple[str, List[str]]:
@@ -126,7 +135,7 @@ def change_category(table: str, prev: Optional[Dict[str, Any]], cur: Optional[Di
     for k in sorted(set(prev) | set(cur)):
         if k in ('metadata', 'id', 'document_id'):
             continue
-        if prev.get(k) != cur.get(k):
+        if field_of(table, prev, k) != field_of(table, cur, k):
             changed.append(k)
     pm, cm = prev.get('metadata') or {}, cur.get('metadata') or {}
     meta_changed = sorted(k for k in set(pm) | set(cm) if pm.get(k) != cm.get(k))

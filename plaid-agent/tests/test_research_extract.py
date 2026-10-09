@@ -63,6 +63,16 @@ def test_changes_are_classed_on_folded_images():
     assert value_of('tokens', {'metadata': {'form': '-ar'}}) == '-ar'
 
 
+def test_a_value_written_again_in_its_other_spelling_is_no_change():
+    # a core before 2026-10-09 stored дом and a/b with escapes, one now
+    # stores the letters, and the audit log keeps both images
+    old = {'id': 's', 'value': '"\\u0434\\u043e\\u043c"', 'tokens': ['t1'], 'metadata': {}}
+    assert change_category('spans', old, {**old, 'value': '"дом"'}) == ('none', [])
+    rel = {'id': 'r', 'value': '"a\\/b"', 'source_span_id': 'a', 'target_span_id': 'b', 'metadata': {}}
+    assert change_category('relations', rel, {**rel, 'value': '"a/b"'}) == ('none', [])
+    assert change_category('relations', rel, {**rel, 'value': '"a/c"'})[0] == 'value'
+
+
 def test_provenance_states():
     assert prov_state(None) == 'human'
     assert prov_state({'prov': 'inferred'}) == 'machine'
