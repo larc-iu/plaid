@@ -156,6 +156,18 @@ export const heldElsewhere = (holder, tab, now) => {
   return Number.isFinite(at) && now - at <= LEASE_MS;
 };
 
+// The holder to go by: the entry's, or a take another tab of this browser
+// announced (`takenBy`, {conv, tab, at}, `at` when it was heard, the server's
+// clock) before the entry says so. Once the entry names that tab, or holds
+// newer news, the entry decides, so a hold taken with Continue here lapses
+// like any other when its tab stops renewing.
+export const shownHolder = (takenBy, convId, holder) => {
+  if (!takenBy || takenBy.conv !== convId) return holder ?? null;
+  const said = Date.parse(holder?.at || '');
+  if (holder?.tab === takenBy.tab || (Number.isFinite(said) && said >= takenBy.at)) return holder;
+  return { tab: takenBy.tab, at: new Date(takenBy.at).toISOString() };
+};
+
 // Say to the other tabs of this browser that this one took a conversation.
 export const announce = (conv) => {
   const c = channel();
@@ -209,10 +221,7 @@ export const useHold = ({
   }, []);
   useEffect(() => setTakenBy(null), [convId]);
 
-  const holder =
-    takenBy && takenBy.conv === convId
-      ? { tab: takenBy.tab, at: new Date(now).toISOString() }
-      : meta?.holder;
+  const holder = shownHolder(takenBy, convId, meta?.holder);
   const mine = !!holder?.tab && holder.tab === tab;
   // The holder is a closed tab of this browser: its lock has been free for a
   // while, longer than a reload takes.
@@ -340,7 +349,8 @@ export const useHold = ({
     if (!c) return undefined;
     c.onmessage = (e) => {
       const { conv, tab: other, left } = e.data || {};
-      if (conv && other && other !== state.id) setTakenBy({ conv, tab: other });
+      if (conv && other && other !== state.id)
+        setTakenBy({ conv, tab: other, at: serverNow(store.client) });
       setNow(serverNow(store.client));
       // A tab went away: look whether it closed once its lock is let go.
       if (left) setTimeout(() => setNow(serverNow(store.client)), 300);

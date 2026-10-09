@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { LEASE_MS, announce, closedHere, heldElsewhere } from './hold.js';
+import { LEASE_MS, announce, closedHere, heldElsewhere, shownHolder } from './hold.js';
 
 // One tab acts on a conversation at a time (Luke's ruling, 2026-10-09). The
 // service decides with its own clock; the page reads the hold the same way,
@@ -83,5 +83,33 @@ describe('announce', () => {
     expect(posted[0][0]).toBe('plaid-assistant');
     expect(posted[0][1].conv).toBe('c1');
     expect(posted[0][1].tab).toBeTruthy();
+  });
+});
+
+describe('shownHolder', () => {
+  const now = Date.parse('2026-10-09T12:00:00.000Z');
+  const taken = { conv: 'c1', tab: 'b', at: now - 1000 };
+
+  it('is a take another tab of this browser announced, before the entry says so', () => {
+    const holder = shownHolder(taken, 'c1', { tab: 'a', at: at(now - 60_000) });
+    expect(holder).toEqual({ tab: 'b', at: at(now - 1000) });
+    expect(heldElsewhere(holder, 'a', now)).toBe(true);
+  });
+
+  it('lapses like any hold when that tab stops renewing', () => {
+    const later = now + LEASE_MS + 2000;
+    expect(
+      heldElsewhere(shownHolder(taken, 'c1', { tab: 'a', at: at(now - 60_000) }), 'a', later),
+    ).toBe(false);
+    // The entry names the tab that took it: the entry's time decides.
+    const entry = { tab: 'b', at: at(now - 500) };
+    expect(shownHolder(taken, 'c1', entry)).toBe(entry);
+    expect(heldElsewhere(shownHolder(taken, 'c1', entry), 'a', later)).toBe(false);
+  });
+
+  it('gives way to newer news in the entry, and is not about another conversation', () => {
+    const entry = { tab: 'c', at: at(now) };
+    expect(shownHolder(taken, 'c1', entry)).toBe(entry);
+    expect(shownHolder(taken, 'c2', null)).toBe(null);
   });
 });
