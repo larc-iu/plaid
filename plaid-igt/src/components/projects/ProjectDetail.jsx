@@ -43,6 +43,12 @@ import { notifyNotAMaintainer } from '@ui/hooks/useManagedProject.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
+import { statusOf } from '@ui/lib/errors.js';
+
+// What the server answers for a project id that names nothing: 400 for one
+// that is no id at all (a mistyped route), 404 for one that is not there.
+const NOT_FOUND = new Set([400, 404]);
+const NOT_FOUND_TEXT = 'Project not found.';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -145,7 +151,8 @@ export const ProjectDetail = () => {
         logout('expired');
         return;
       }
-      setError('Failed to load the project');
+      // A path naming no project (a mistyped link) is not worth a Retry.
+      setError(NOT_FOUND.has(statusOf(err)) ? NOT_FOUND_TEXT : 'Failed to load the project');
       console.error('Error fetching data:', err);
     } finally {
       if (!token.cancelled) setLoading(false);
@@ -251,7 +258,10 @@ export const ProjectDetail = () => {
 
   if (error || !project) {
     return (
-      <LoadError className={FORM_PAGE_WIDTH} onRetry={() => fetchData(live.current)}>
+      <LoadError
+        className={FORM_PAGE_WIDTH}
+        onRetry={error === NOT_FOUND_TEXT ? undefined : () => fetchData(live.current)}
+      >
         {error || 'The requested project could not be found.'}
       </LoadError>
     );

@@ -391,3 +391,28 @@ describe('reading the project again from a settings page', () => {
     await view.unmount();
   });
 });
+
+describe('a path that names no project', () => {
+  it('says the project is not found, with no Retry', async () => {
+    // A mistyped route such as /projects/import-flex, which the server
+    // refuses as no id at all.
+    const refused = Object.assign(new Error('Bad request'), { status: 400 });
+    auth.client = {
+      projects: {
+        get: async () => Promise.reject(refused),
+        listDocuments: async () => Promise.reject(refused),
+      },
+    };
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/import-flex']}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<ProjectDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    expect(view.container.textContent).toContain('Project not found.');
+    expect(view.container.textContent).not.toContain('Retry');
+    await view.unmount();
+  });
+});

@@ -46,6 +46,7 @@ import { scopeBadgeClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { countOf } from '@ui/lib/plural.js';
 import { readTextFile } from '@ui/lib/textFile.js';
+import { sameName } from '@ui/lib/nameKey.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { readyRecordings } from '@/utils/readyRecordings';
 
@@ -376,7 +377,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         const recorded = readImportState(project.config)?.vocabId;
         return (
           (vocabs.some((v) => v.id === recorded) ? recorded : null) ??
-          vocabs.find((v) => v.name === vocabName)?.id ??
+          vocabs.find((v) => sameName(v.name, vocabName))?.id ??
           null
         );
       },
@@ -915,7 +916,11 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   onClick={startImport}
                   disabled={!projectName.trim() || selectedTexts.size === 0 || !lexiconChoiceValid}
                 >
-                  {projectIdRef.current ? (
+                  {runError ? (
+                    <>
+                      <RefreshCw className="h-4 w-4" /> Retry import
+                    </>
+                  ) : projectIdRef.current ? (
                     <>
                       <RefreshCw className="h-4 w-4" /> Resume import
                     </>

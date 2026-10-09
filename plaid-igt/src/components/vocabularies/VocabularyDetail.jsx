@@ -80,6 +80,7 @@ import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer.jsx';
 import { fullTimestamp } from '@ui/lib/formatTime.js';
+import { sameName } from '@ui/lib/nameKey.js';
 import { useVocabHistory } from './useVocabHistory';
 
 // A tab the past state does not reach. The trigger is an anchor, which the
@@ -768,7 +769,7 @@ export const VocabularyDetail = () => {
   };
 
   const handleDelete = async () => {
-    if (confirmDeleteName !== vocabulary.name) {
+    if (!sameName(confirmDeleteName, vocabulary.name)) {
       notifyError('The entered name does not match the vocabulary name', 'Name does not match');
       return;
     }
@@ -1179,8 +1180,9 @@ export const VocabularyDetail = () => {
 
                       <div className="flex items-end gap-2">
                         <div className="flex flex-1 flex-col gap-1.5">
-                          <Label>Vocabulary name</Label>
+                          <Label htmlFor="vocabulary-rename">Vocabulary name</Label>
                           <Input
+                            id="vocabulary-rename"
                             placeholder="Enter vocabulary name"
                             value={editedName}
                             onChange={(event) => setEditedName(event.target.value)}
@@ -1264,10 +1266,11 @@ export const VocabularyDetail = () => {
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-1.5">
-                <Label>
+                <Label htmlFor="vocabulary-new-name">
                   Vocabulary name <span className="text-destructive">*</span>
                 </Label>
                 <Input
+                  id="vocabulary-new-name"
                   placeholder="Enter vocabulary name"
                   value={editedName}
                   onChange={(event) => setEditedName(event.target.value)}
@@ -1334,8 +1337,11 @@ export const VocabularyDetail = () => {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label>Type “{vocabulary?.name}” to confirm</Label>
+              <Label htmlFor="vocabulary-delete-confirm">
+                Type “{vocabulary?.name}” to confirm
+              </Label>
               <Input
+                id="vocabulary-delete-confirm"
                 placeholder="Enter vocabulary name"
                 value={confirmDeleteName}
                 onChange={(event) => setConfirmDeleteName(event.target.value)}
@@ -1356,7 +1362,7 @@ export const VocabularyDetail = () => {
             <Button
               variant="destructive"
               onClick={handleDelete}
-              disabled={confirmDeleteName !== vocabulary?.name}
+              disabled={!sameName(confirmDeleteName, vocabulary?.name)}
             >
               <Trash2 className="h-4 w-4" /> Delete vocabulary
             </Button>

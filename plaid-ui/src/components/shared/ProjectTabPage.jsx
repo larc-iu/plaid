@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { statusOf } from '../../lib/errors.js';
 import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
 
@@ -20,6 +21,10 @@ import { Loading } from './Loading.jsx';
  * `children` is called with the loaded project, and is not rendered at all
  * until there is one.
  */
+// What the server answers for a project id that names nothing: 400 for one
+// that is no id at all, 404 for one that is not there.
+const NOT_FOUND = new Set([400, 404]);
+
 export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
   const { projectId } = useParams();
   const { getClient } = useAuth();
@@ -45,7 +50,8 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
       })
       .catch((err) => {
         console.error('Failed to load project:', err);
-        if (alive) setFailed(true);
+        // A path naming no project (a mistyped link) is not worth a Retry.
+        if (alive) setFailed(NOT_FOUND.has(statusOf(err)) ? 'missing' : true);
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -60,6 +66,7 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
 
   let body = null;
   if (loading) body = <Loading />;
+  else if (failed === 'missing' && !project) body = <LoadError>Project not found.</LoadError>;
   else if (failed && !project) {
     body = (
       <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to load the project</LoadError>
