@@ -596,6 +596,7 @@ Hovering over it gives both, with the counts behind them.
 A conversation fills up as it grows, because every turn sends the whole thread again and every answer is kept.
 Past 85 percent of either limit the bar turns amber and the panel says which limit is close, and a new conversation starts with room again.
 A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
+A message too long for the room left is not sent, and says so.
 A plan waiting in it can still be approved or discarded.
 An answer too large to store is shown once, without its plan, and marked as not saved.
 A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had.

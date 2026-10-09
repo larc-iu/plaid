@@ -500,6 +500,8 @@ A second header line under the header, such as a row of column keys, is left out
 A file named `.csv` or `.tsv` is read with that separator.
 Spreadsheet files such as `.xlsx` or `.ods` are read once saved as CSV or TSV.
 A column that is empty in every row is not imported.
+A header names a field in any capitals, so BİLGİ is the field bilgi and ΛΟΓΟΣ is Λόγος, and a field's name inside a longer header, such as 词义 in 词义（英文）, maps that column.
+A column left out can be given any field that no other column has.
 **The same value on every row** gives a field one value for each entry, such as a source or a status, where no column holds it.
 When an import stops partway, **Back to review** shows the rows again with what already landed counted as present, so the rest can be imported.
 When the entries change between the review and **Import** so that the import would write something else, nothing is written and the review is shown again.
@@ -911,6 +913,7 @@ A change to something a person made or accepted is marked **Accepted**, counted 
 A change over the whole project, such as replacing a gloss everywhere, is one row: the change, how many values it changes in how many documents, and how many of them replace accepted work.
 **Show where** lists the documents with their counts and a few examples.
 A value that two such changes reach is counted once, on the later one.
+A change whose values a later one changes again says so on its row: 0 changes when the later one takes them all, and the change that takes them.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
 If your work is reviewed in this project, what you approve is your own contribution and waits for a reviewer, as anything you enter does.
@@ -1035,6 +1038,7 @@ Hovering over it gives both, with the counts behind them.
 A conversation fills up as it grows, because every turn sends the whole thread again and every answer is kept.
 Past 85 percent of either limit the bar turns amber and the panel says which limit is close, and a new conversation starts with room again.
 A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
+A message too long for the room left is not sent, and says so.
 A plan waiting in it can still be approved or discarded.
 An answer too large to store is shown once, without its plan, and marked as not saved.
 A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had. A change over the whole project is kept whole.
@@ -1288,6 +1292,8 @@ Type what to find, and choose whether a match **contains** it, **is exactly** it
 Contains ignores case, in any script.
 The other two do not.
 Ignoring case never makes the dotless ı or the dotted İ an i, since they are letters of their own in Turkic orthographies.
+Each kind of match finds text however its accents are typed: an á typed as one character finds one stored as a and an accent, and the reverse.
+An accent searched for on its own finds it where it is stored as a character of its own after its letter.
 
 A regular expression is read the same way in Search, in Bulk Edit, in a vocabulary's **Replace**, and by the Assistant.
 `\w` is a letter, mark, digit or underscore in any script, the zero-width joiner and non-joiner included, `\d` a digit in any script, `\s` any space, the no-break space included, and `\b` the edge of a word.

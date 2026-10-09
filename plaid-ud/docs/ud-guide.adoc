@@ -535,6 +535,7 @@ Hovering over it gives both, with the counts behind them.
 A conversation fills up as it grows, because every turn sends the whole thread again and every answer is kept.
 Past 85 percent of either limit the bar turns amber and the panel says which limit is close, and a new conversation starts with room again.
 A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
+A message too long for the room left is not sent, and says so.
 A plan waiting in it can still be approved or discarded.
 An answer too large to store is shown once, without its plan, and marked as not saved.
 A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had.
@@ -590,6 +591,8 @@ A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the f
 
 In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. In a pattern, `re"..."` takes the regular expression exactly as written, so `re"\w"` and `re"\p{IsArabic}"` work as typed and `re"\."` is a full stop. Write `\"` for a quote inside it. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it. A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
 A token another app added is not searched until someone with Writer access opens its document.
+
+A value or a regular expression finds text however its accents are typed: `lemma="á"` finds an á typed as one character and one stored as a and an accent. An accent searched for on its own finds it where it is stored as a character of its own after its letter.
 
 === Counting instead of reading
 
