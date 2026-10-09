@@ -3,6 +3,7 @@ import { PlaidClient } from '@larc-iu/plaid-client';
 
 import { renderComponent } from '../../test/renderComponent.jsx';
 import { UserAvatar } from './UserAvatar.jsx';
+import { signedInAgain } from '../../lib/signInAgain.js';
 
 // Radix shows the image only once the browser says it loaded, which the test
 // DOM never does. This one loads every picture at once.
@@ -226,6 +227,25 @@ describe('UserAvatar', () => {
     );
     await r.step(async () => {});
     expect(client.users.avatarUrl).toHaveBeenCalledTimes(2);
+    expect(img(r.container)?.getAttribute('src')).toBe('http://core/a?avatar-token=for-login-2');
+    await r.unmount();
+  });
+
+  it('asks again when another tab signs this one back in, with no other render', async () => {
+    const client = {
+      token: 'login-1',
+      users: { avatarUrl: vi.fn(async () => `http://core/a?avatar-token=for-${client.token}`) },
+    };
+    const r = await renderComponent(
+      <UserAvatar client={client} userId="ada@x.org" displayName="Ada Lovelace" avatarHash="h1" />,
+    );
+    await r.step(async () => {});
+    // What services/auth.js does on taking a login in place.
+    await r.step(async () => {
+      client.token = 'login-2';
+      signedInAgain();
+    });
+    await r.step(async () => {});
     expect(img(r.container)?.getAttribute('src')).toBe('http://core/a?avatar-token=for-login-2');
     await r.unmount();
   });

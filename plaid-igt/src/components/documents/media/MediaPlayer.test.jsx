@@ -185,3 +185,51 @@ describe('a recording whose length the header does not give', () => {
     await view.unmount();
   });
 });
+
+describe('the element failing to read its link', () => {
+  const failWith = async (view, code) => {
+    const element = view.container.querySelector('video');
+    Object.defineProperty(element, 'error', { value: { code }, configurable: true });
+    await view.step(() => element.dispatchEvent(new Event('error')));
+  };
+  const tryAgain = (container) =>
+    all(container, 'button').find((b) => b.textContent === 'Try again');
+
+  it('says nothing while a new link is on its way', async () => {
+    const ops = mediaOps({ relinkMedia: vi.fn(() => true), retryMedia: vi.fn() });
+    const view = await renderComponent(<MediaPlayer mediaOps={ops} canWrite />);
+    await failWith(view, 2);
+    expect(ops.relinkMedia).toHaveBeenCalledWith(2);
+    expect(banner(view.container)).toBe('none');
+    await view.unmount();
+  });
+
+  it('offers Try again for a dropped connection, and clears for the new link', async () => {
+    const ops = mediaOps({ relinkMedia: vi.fn(() => false), retryMedia: vi.fn() });
+    const view = await renderComponent(<MediaPlayer mediaOps={ops} canWrite />);
+    await failWith(view, 2);
+    expect(view.container.textContent).toContain('The recording stopped loading.');
+    await view.step(() => tryAgain(view.container).click());
+    expect(ops.retryMedia).toHaveBeenCalledTimes(1);
+    expect(banner(view.container)).toBe('none');
+
+    await failWith(view, 4);
+    expect(banner(view.container)).toBe('shown');
+    expect(tryAgain(view.container)).toBeTruthy();
+    // The new link arrives: the old link's error goes with it.
+    await view.rerender(
+      <MediaPlayer mediaOps={{ ...ops, authenticatedMediaUrl: 'blob:other' }} canWrite />,
+    );
+    expect(banner(view.container)).toBe('none');
+    await view.unmount();
+  });
+
+  it('offers nothing for a file that does not decode', async () => {
+    const ops = mediaOps({ relinkMedia: vi.fn(() => false), retryMedia: vi.fn() });
+    const view = await renderComponent(<MediaPlayer mediaOps={ops} canWrite />);
+    await failWith(view, 3);
+    expect(banner(view.container)).toBe('shown');
+    expect(tryAgain(view.container)).toBeUndefined();
+    await view.unmount();
+  });
+});

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { notifySuccess, notifyWithAction } from '../lib/notify.js';
 import { hasUnsavedDraft } from '../hooks/useUnsavedDraft.js';
 import { anyDocumentSaving } from '../hooks/useSavingGuard.js';
+import { signedInAgain } from '../lib/signInAgain.js';
 
 // The session every app in this repo holds: one backend, one JWT, one set of
 // localStorage keys. The keys are deliberately NOT prefixed with `appPrefix`,
@@ -165,6 +166,7 @@ const adoptToken = (token) => {
   }
   toast.dismiss(signInLost.toastId);
   signInLost = null;
+  signedInAgain();
   notifySuccess('Signed in');
 };
 if (typeof window !== 'undefined') {

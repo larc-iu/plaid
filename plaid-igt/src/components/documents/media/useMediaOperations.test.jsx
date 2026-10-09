@@ -287,18 +287,47 @@ describe('useMediaOperations: the recording', () => {
     await h.unmount();
   });
 
-  it('a link about to run out is renewed again', async () => {
+  it('a link that stops working hours later is renewed again', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
     const h = await mountMedia();
     const el = fakeMediaElement([]);
     await loadRecording(h, el);
-    await h.step(() => h.api.relinkMedia(MEDIA_ERR_NETWORK));
+    expect(h.api.relinkMedia(MEDIA_ERR_NETWORK)).toBe(true);
     await h.step(async () => {
-      links[1].resolve({ url: 'link:a2', expiresAt: new Date(Date.now() + 1000).toISOString() });
+      links[1].resolve(link('a2'));
       await settle();
     });
-    await h.step(() => h.api.handleMediaLoaded('link:a2'));
+    // A minute on, a second failure is not the link's.
+    now += 60 * 1000;
+    expect(h.api.relinkMedia(MEDIA_ERR_NETWORK)).toBe(false);
+    // Hours on, it is.
+    now += 6 * 3600 * 1000;
     expect(h.api.relinkMedia(MEDIA_ERR_NETWORK)).toBe(true);
     expect(links).toHaveLength(3);
+    await h.unmount();
+  });
+
+  it('Try again after a refused first link reads the whole file as well', async () => {
+    const h = await mountMedia();
+    await h.step(async () => {
+      links[0].reject(Object.assign(new Error('Service unavailable'), { status: 503 }));
+      await settle();
+    });
+    expect(fetches).toHaveLength(0);
+    await h.step(() => h.api.retryMedia());
+    await h.step(async () => {
+      links[1].resolve(link('a2'));
+      await settle();
+    });
+    expect(h.api.authenticatedMediaUrl).toBe('link:a2');
+    expect(fetches.map((f) => f.url)).toEqual(['link:a2']);
+    await h.step(async () => {
+      fetches[0].resolve(recording('a'));
+      await settle();
+    });
+    expect(h.api.mediaBlob.name).toBe('a');
+    expect(h.api.mediaBlobKey).toBe('/api/v1/documents/doc-1/media?v=a');
     await h.unmount();
   });
 

@@ -123,7 +123,10 @@ const autoGrow = (el) => {
     return;
   }
   el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight}px`;
+  // The height includes the border (border-box), which scrollHeight does not:
+  // without it the text was clipped by its width and the box shrank as its
+  // first letter was typed.
+  el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
 };
 
 // "3 annotations and 1 vocabulary link on this text." A link or annotation

@@ -249,6 +249,16 @@
             (is (= 401 (:status (get-anon url))))))
         (is (some? qid))))))
 
+(deftest two-links-minted-at-once-differ
+  (with-media-dir* {}
+    (fn []
+      (let [[_ did] (project-with-media! "Fresh links")
+            a (-> (link! admin-request did) :body :url)
+            b (-> (link! admin-request did) :body :url)]
+        (is (not= a b))
+        (is (= 200 (:status (get-anon a))))
+        (is (= 200 (:status (get-anon b))))))))
+
 (deftest the-access-log-redacts-the-media-token
   (with-media-dir* {}
     (fn []

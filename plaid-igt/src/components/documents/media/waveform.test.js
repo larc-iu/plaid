@@ -134,3 +134,16 @@ describe('peaksOfInSlices', () => {
     expect(Array.from(sliced.peaks)).toEqual(Array.from(whole.peaks));
   });
 });
+
+it('stops reading once the recording is no longer wanted', async () => {
+  const samples = new Float32Array(90 * 16000);
+  let pauses = 0;
+  const out = await peaksOfInSlices([samples], 90, {
+    pause: async () => {
+      pauses += 1;
+    },
+    cancelled: () => pauses >= 1,
+  });
+  expect(out).toBeNull();
+  expect(pauses).toBe(1);
+});

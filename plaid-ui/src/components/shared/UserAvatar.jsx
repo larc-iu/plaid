@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.jsx';
 import { cn } from '../../lib/utils.js';
 import { initials } from '../../lib/initials.js';
+import { useSignInAgain } from '../../lib/signInAgain.js';
 
 // The last URL each client resolved for a user and hash. An avatar that
 // mounts again (a list re-rendered, a menu reopened) starts from it instead of
@@ -46,6 +47,8 @@ export function UserAvatar({
   // The login the URL was resolved under. Signed out and in again in another
   // tab, the client takes the new login in place, and a picture that failed
   // under the old one is asked for again.
+  // Read on every render, and a render comes with each new login in place.
+  useSignInAgain();
   const login = typeof client?.token === 'string' ? client.token : null;
   // The URL that failed to load, once, so a new avatar token is asked for in
   // its place: the token dies with the login it was minted under. A second

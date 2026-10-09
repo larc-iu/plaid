@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { Slider } from '@ui/components/ui/slider';
 import {
@@ -25,6 +25,10 @@ import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
 import { VadDetection } from './VadDetection.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 import { useClockTime } from './playbackClock.js';
+
+// MediaError codes, named here since jsdom has no MediaError.
+const MEDIA_ERR_NETWORK = 2;
+const MEDIA_ERR_DECODE = 3;
 
 // The seek bar moves every frame while the recording plays, so it reads the
 // clock itself and is the only thing that re-renders with it.
@@ -69,7 +73,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   } = mediaOps;
 
   const mediaRef = useRef(null);
+  // `{message, retry}`: what went wrong with the element, and whether a new
+  // link could cure it (anything but a file that does not decode).
   const [mediaError, setMediaError] = useState(null);
+  // A new link or a new recording starts with no error of the old one's.
+  useEffect(() => setMediaError(null), [mediaUrl]);
   // 'unknown' until loadedmetadata tells us whether the file has a picture: an
   // audio-only file must never show the big black video box (it used to,
   // because the default was 'video' and the box only hid once metadata said
@@ -135,7 +143,10 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
         // playing.
         if (error?.name === 'AbortError' || error?.name === 'NotAllowedError') return;
         console.error('Media playback error:', error);
-        setMediaError('This browser cannot play this format. Use MP4, WebM, MP3, or WAV.');
+        setMediaError({
+          message: 'This browser cannot play this format. Use MP4, WebM, MP3, or WAV.',
+          retry: false,
+        });
       }
     }
   };
@@ -198,21 +209,26 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
 
           {/* Media error. `mediaLoadError` is the request for the media link
               failing; `mediaError` is the element failing to read or play
-              what the link gave it, after one new link was tried. */}
+              what the link gave it, after a new link was tried. */}
           {(mediaLoadError || mediaError) && (
             <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
               <p className="text-sm font-medium text-destructive">Playback error</p>
               <p className="text-sm text-muted-foreground">
-                {mediaLoadError ? `Failed to load media: ${mediaLoadError}` : mediaError}
+                {mediaLoadError ? `Failed to load media: ${mediaLoadError}` : mediaError.message}
               </p>
               {/* A link refused while signed out works again once signed
-                  back in, and nothing else would ask for it. */}
-              {mediaLoadError && mediaOps.retryMedia && (
+                  back in, a dropped connection once it is back, and nothing
+                  else would ask for it. A file that does not decode would
+                  fail the same way. */}
+              {(mediaLoadError || mediaError.retry) && mediaOps.retryMedia && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-2"
-                  onClick={() => mediaOps.retryMedia()}
+                  onClick={() => {
+                    setMediaError(null);
+                    mediaOps.retryMedia();
+                  }}
                 >
                   Try again
                 </Button>
@@ -276,9 +292,17 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               // A link stops working when it expires or the session ends. The
               // element says only that it failed, so a new link is tried once
               // before the failure is put down to the file.
-              if (mediaOps.relinkMedia?.(e.currentTarget.error?.code)) return;
+              const code = e.currentTarget.error?.code;
+              if (mediaOps.relinkMedia?.(code)) return;
               console.error('Media error:', e);
-              setMediaError('Failed to load media. This format may not be supported.');
+              setMediaError(
+                code === MEDIA_ERR_NETWORK
+                  ? { message: 'The recording stopped loading.', retry: true }
+                  : {
+                      message: 'Failed to load media. This format may not be supported.',
+                      retry: code !== MEDIA_ERR_DECODE,
+                    },
+              );
             }}
             preload="auto"
           />

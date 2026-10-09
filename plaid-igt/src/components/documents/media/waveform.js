@@ -94,19 +94,38 @@ const BUCKETS_PER_SLICE = 20_000;
 /**
  * peaksOf, a slice at a time, handing the page back between slices. A long
  * recording is twenty million samples, and read in one go they froze the tab
- * for most of a second as it opened.
+ * for most of a second as it opened. Resolves to null, having stopped, once
+ * `cancelled()` says the recording is no longer wanted.
  */
-export const peaksOfInSlices = async (channels, duration, { pause = nextTask } = {}) => {
+export const peaksOfInSlices = async (
+  channels,
+  duration,
+  { pause = nextTask, cancelled = () => false } = {},
+) => {
   const peaks = new Float32Array(bucketCount(duration));
   const length = Math.max(0, ...channels.map((c) => c.length));
   for (let from = 0; from < peaks.length; from += BUCKETS_PER_SLICE) {
     fillPeaks(peaks, channels, length, from, Math.min(peaks.length, from + BUCKETS_PER_SLICE));
-    if (from + BUCKETS_PER_SLICE < peaks.length) await pause();
+    if (from + BUCKETS_PER_SLICE < peaks.length) {
+      await pause();
+      if (cancelled()) return null;
+    }
   }
   return { peaks, level: levelOf(peaks) };
 };
 
-const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+// The next task, through a message rather than a timer: a tab in the
+// background runs a chain of zero timers once a second, which made a long
+// recording's envelope take most of a minute there.
+const nextTask = () =>
+  new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
 
 /**
  * The bars for one window: each is `{x, y, width, height}` in the drawn

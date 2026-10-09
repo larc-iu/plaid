@@ -44,8 +44,11 @@ const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
 
 // MediaError.MEDIA_ERR_DECODE, named here since jsdom has no MediaError.
 const MEDIA_ERR_DECODE = 3;
-// A link this close to running out is renewed whatever has been tried.
-const RELINK_BEFORE_EXPIRY_MS = 60 * 1000;
+// A link is renewed by itself at most this often. A link lasts hours, so one
+// that stops working is renewed at once, while a recording that fails for
+// another reason is not asked for again and again. Measured on the page's own
+// clock, which a wrong system clock cannot move.
+const RELINK_INTERVAL_MS = 5 * 60 * 1000;
 
 // How long an ASR service may say NOTHING before the page gives up waiting.
 // Not a cap on the run: the client's clock restarts on every progress event.
@@ -239,18 +242,23 @@ export const useMediaOperations = () => {
   const [media, setMedia] = useState({ url: null, blob: null, key: null });
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [mediaLoadError, setMediaLoadError] = useState(null);
-  // A link that stopped working is asked for again (see relinkMedia). `tried`
-  // and `expiresAt` keep that from becoming a loop over a file that fails for
-  // some other reason: once a new link has been asked for, another is asked
-  // for only when the one in hand is about to run out.
-  const relinkRef = useRef({ key: null, tried: false, expiresAt: 0, resume: null });
+  // A link that stopped working is asked for again (see relinkMedia).
+  // `renewedAt` is when that last happened by itself, so it cannot become a
+  // loop over a file that fails for some other reason.
+  const relinkRef = useRef({ key: null, renewedAt: null, resume: null });
+  // The whole-file read of the recording on screen, for a renewal to start
+  // when the first link never arrived and so never started it.
+  const readWholeRef = useRef(null);
+  const mediaBlobRef = useRef(null);
+  mediaBlobRef.current = media.blob;
 
   useEffect(() => {
     // Clear eagerly so a stale recording never shows under a new (or deleted)
     // media file while the requests below are still in flight.
     setMedia({ url: null, blob: null, key: null });
     setMediaLoadError(null);
-    relinkRef.current = { key: mediaSrcUrl, tried: false, expiresAt: 0, resume: null };
+    relinkRef.current = { key: mediaSrcUrl, renewedAt: null, resume: null };
+    readWholeRef.current = null;
     // The element may still be reading the old link, and an error from it is
     // not this recording's. Another recording starts at its start, and so does
     // the needle.
@@ -266,6 +274,7 @@ export const useMediaOperations = () => {
     setIsLoadingMedia(true);
 
     const readWhole = async (url) => {
+      readWholeRef.current = null;
       try {
         const response = await fetch(url, { signal: reading.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -273,8 +282,11 @@ export const useMediaOperations = () => {
         if (!cancelled) setMedia((m) => ({ ...m, blob }));
       } catch (error) {
         // The player does not need it. The waveform draws a flat line and
-        // detection stays off, which say enough.
-        if (!cancelled) console.error('Failed to read the whole recording:', error);
+        // detection stays off, which say enough, until a renewed link reads
+        // it again.
+        if (cancelled) return;
+        readWholeRef.current = readWhole;
+        console.error('Failed to read the whole recording:', error);
       }
     };
 
@@ -282,11 +294,11 @@ export const useMediaOperations = () => {
       try {
         const link = await client.documents.mediaLink(documentId);
         if (cancelled) return;
-        relinkRef.current.expiresAt = Date.parse(link.expiresAt) || 0;
         setMedia((m) => ({ ...m, url: link.url, key: mediaSrcUrl }));
         readWhole(link.url);
       } catch (error) {
         if (cancelled) return;
+        readWholeRef.current = readWhole;
         console.error('Failed to load media:', error);
         setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
       } finally {
@@ -306,10 +318,11 @@ export const useMediaOperations = () => {
     ({ force = false } = {}) => {
       const relink = relinkRef.current;
       if (!relink.key) return false;
-      if (!force && relink.tried && Date.now() < relink.expiresAt - RELINK_BEFORE_EXPIRY_MS) {
+      const now = performance.now();
+      if (!force && relink.renewedAt !== null && now - relink.renewedAt < RELINK_INTERVAL_MS) {
         return false;
       }
-      relink.tried = true;
+      if (!force) relink.renewedAt = now;
       const el = mediaElementRef.current;
       relink.resume =
         el && mediaUrlRef.current ? { time: el.currentTime, playing: !el.paused } : null;
@@ -319,8 +332,11 @@ export const useMediaOperations = () => {
         .mediaLink(documentId)
         .then((link) => {
           if (relinkRef.current.key !== key) return;
-          relinkRef.current.expiresAt = Date.parse(link.expiresAt) || 0;
-          setMedia((m) => ({ ...m, url: link.url }));
+          // The same link again (it cannot be, as core mints them, but a
+          // player handed the src it has does nothing at all) is reloaded.
+          if (link.url === mediaUrlRef.current) mediaElementRef.current?.load();
+          setMedia((m) => ({ ...m, url: link.url, key }));
+          if (!mediaBlobRef.current) readWholeRef.current?.(link.url);
         })
         .catch((error) => {
           if (relinkRef.current.key !== key) return;

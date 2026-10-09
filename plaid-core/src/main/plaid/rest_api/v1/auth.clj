@@ -222,7 +222,13 @@
                                        {:user/id (:user/id account)
                                         :version (:user/password-changes account)
                                         :exp exp
-                                        :aud audience})
+                                        :aud audience
+                                        ;; Two links minted in one second
+                                        ;; were otherwise the same string, so
+                                        ;; a page asking for a new link after
+                                        ;; a failure got the failed one back
+                                        ;; and its player never tried again.
+                                        :link/nonce (str (random-uuid))})
                           (:scope/projects jwt-data) (assoc :scope/projects (:scope/projects jwt-data))
                           (:scope/runner jwt-data) (assoc :scope/runner (:scope/runner jwt-data))
                           (:token/id jwt-data) (assoc :link/api-token (:token/id jwt-data)))

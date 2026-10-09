@@ -78,9 +78,11 @@ export function useWaveform({ mediaBlob, mediaKey, duration }) {
     }
     (async () => {
       try {
-        const envelope = await peaksOfInSlices(await decodeForEnvelope(mediaBlob), duration);
+        const envelope = await peaksOfInSlices(await decodeForEnvelope(mediaBlob), duration, {
+          cancelled: () => cancelled,
+        });
         // A decode the recording has moved on from is kept nowhere.
-        if (cancelled) return;
+        if (cancelled || !envelope) return;
         if (key) rememberEnvelope(key, envelope);
         setState({ blob: mediaBlob, envelope });
       } catch (error) {
