@@ -701,23 +701,65 @@ function joinRanges(ranges) {
   return out;
 }
 
+const MARK = /^\p{M}$/u;
+
+// The stretches of `s` composing changes nothing across (plaid-client's
+// `composeText`, plaid-core's `canonical/pieces`): cut before each code point
+// that is not a mark, a piece joined to the one before when the two compose
+// together (Hangul jamo, a vowel sign). As strings, in order.
+function pieces(s) {
+  const cps = [...s];
+  const out = [];
+  let start = 0;
+  for (let i = 1; i <= cps.length; i += 1) {
+    if (i < cps.length && MARK.test(cps[i])) continue;
+    const piece = cps.slice(start, i).join('');
+    const last = out[out.length - 1];
+    if (last != null && cps[start].codePointAt(0) >= 0x300) {
+      if ((last + piece).normalize('NFC') !== last.normalize('NFC') + piece.normalize('NFC')) {
+        out[out.length - 1] = last + piece;
+        start = i;
+        continue;
+      }
+    }
+    out.push(piece);
+    start = i;
+  }
+  return out;
+}
+
 /**
- * `gaps` made on `base`, which is not composed (NFC), moved onto `base`
- * composed: `{ base, gaps }`, or null when `base` is composed or a gap's edge
- * has no place in it. An edge has its place where the text before it and the
- * text after it compose apart to the composed base (never between a letter
- * and a mark that composes with it), so the moved gaps make the same text,
- * canonically, as the gaps did.
+ * `s` spelled as the server spells it beside `stored`: composed (NFC), but a
+ * stretch `stored` holds decomposed is left as it is, a character the server
+ * keeps decomposed because a token edge falls inside it (plaid-core
+ * `canonical/nfc-but`). Composed whole when `stored` is.
  */
-function ontoComposed(base, gaps) {
-  const composed = base.normalize('NFC');
+function spelledLike(s, stored) {
+  if (stored.normalize('NFC') === stored) return s.normalize('NFC');
+  const held = new Set(pieces(stored).filter((p) => p !== p.normalize('NFC')));
+  return pieces(s)
+    .map((p) => (held.has(p) ? p : p.normalize('NFC')))
+    .join('');
+}
+
+/**
+ * `gaps` made on `base` moved onto `base` spelled as `stored` spells it,
+ * composed but where `stored` keeps a character decomposed (`spelledLike`):
+ * `{ base, gaps }`, or null when `base` is spelled so already or a gap's edge
+ * has no place in it. An edge has its place where the text before it and the
+ * text after it, each spelled so, make the spelled base (never between a
+ * letter and a mark that composes with it), so the moved gaps make the same
+ * text, canonically, as the gaps did.
+ */
+function ontoComposed(base, gaps, stored) {
+  const composed = spelledLike(base, stored);
   if (composed === base) return null;
   const chars = [...base];
   const placeOf = new Map();
   const place = (p) => {
     if (!placeOf.has(p)) {
-      const before = chars.slice(0, p).join('').normalize('NFC');
-      const after = chars.slice(p).join('').normalize('NFC');
+      const before = spelledLike(chars.slice(0, p).join(''), stored);
+      const after = spelledLike(chars.slice(p).join(''), stored);
       placeOf.set(p, before + after === composed ? cpCount(before) : null);
     }
     return placeOf.get(p);
@@ -761,8 +803,9 @@ export function rebaseEdits(base, gaps, stored) {
   stored = String(stored ?? '');
   if (stored === base) return { gaps };
   // The server stores text composed (NFC), so a base typed decomposed comes
-  // back composed: the gaps go onto the base composed first.
-  const onto = stored.normalize('NFC') === stored ? ontoComposed(base, gaps) : null;
+  // back composed: the gaps go onto the base composed first, but for a
+  // character the stored text keeps decomposed (a token edge inside it).
+  const onto = ontoComposed(base, gaps, stored);
   if (onto) {
     base = onto.base;
     gaps = onto.gaps;

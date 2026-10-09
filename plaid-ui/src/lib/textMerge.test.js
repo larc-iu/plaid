@@ -849,3 +849,32 @@ describe('rebaseEdits onto a text the server composed', () => {
     expect(onto(theirs, result)).toBe('xpata bá ko mi');
   });
 });
+
+// The server keeps a character decomposed where a token edge falls inside it
+// (a tone mark that is a word of its own right after "ka", Luke 2026-10-09)
+// and composes the rest. Text typed decomposed elsewhere comes back composed
+// beside it, which is no change by anyone else.
+describe('rebaseEdits onto a text that keeps a character decomposed', () => {
+  const G = (start, end, value) => ({ start, end, value });
+  const onto = (stored, result) => applyTextOps(stored, gapsToOps(result.gaps));
+  // sent: "me" and an acute typed after it, beside the kept "ka" + acute
+  const base = 'ká mé';
+  const stored = 'ká mé';
+
+  it('moves what was typed since onto the text as stored', () => {
+    const result = rebaseEdits(base, [G(7, 7, 'x')], stored);
+    expect(result).toEqual({ gaps: [G(6, 6, 'x')] });
+    expect(onto(stored, result)).toBe('ká méx');
+  });
+
+  it('moves it beside someone else’s change too', () => {
+    const theirs = 'ká mé ko';
+    const result = rebaseEdits(base, [G(0, 0, 'x')], theirs);
+    expect(onto(theirs, result)).toBe('xká mé ko');
+  });
+
+  it('places an edge between the kept letter and its mark', () => {
+    const result = rebaseEdits(base, [G(2, 2, 'y')], stored);
+    expect(onto(stored, result)).toBe('kaý mé');
+  });
+});
