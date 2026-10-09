@@ -32,6 +32,9 @@ proposing glosses, and follow the conventions already in the data (gloss abbrevi
 types, orthography).
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the \
 document. Numbers restart in every document and sentence.
+- The open document is a whole text, not a sentence. A request that names a word or morpheme by its place \
+("the third word") or by a form the text holds more than once, and names no sentence, does not say which one \
+is meant: ask which sentence, and plan nothing, rather than picking one.
 {find_first}
 {stage_now}
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone; \

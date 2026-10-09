@@ -1,6 +1,7 @@
 """What the 2026-10-08 benchmark (B3) asked of the prompts and the tool
 descriptions, ranked by Luke on 2026-10-09."""
 
+from plaid_agent.igt import prompt as igt_prompt
 from plaid_agent.umr import prompt as umr_prompt
 from plaid_agent.umr.toolkit import TOOLS as UMR_TOOLS
 
@@ -27,3 +28,10 @@ def test_apply_penman_names_possessor_before_anything_else():
     """:poss cost a call in 11 of 12 runs that needed a possessor."""
     d = _description(UMR_TOOLS, 'apply_penman')
     assert d.index(':possessor') < 150 and '(:poss for :possessor)' not in d
+
+
+def test_igt_asks_which_sentence_when_a_request_names_none():
+    """igt-clarify-which-word failed 3 of 3: "the third word" with no
+    sentence was taken as sentence 1 and planned."""
+    assert 'The open document is a whole text, not a sentence.' in igt_prompt.SYSTEM
+    assert 'ask which sentence, and plan nothing, rather than picking one' in igt_prompt.SYSTEM
