@@ -20,6 +20,7 @@ const { notifySuccess, notifyError } = await import('../../lib/notify.js');
 const { MemoryRouter } = await import('react-router-dom');
 const { renderComponent, byText } = await import('../../test/renderComponent.jsx');
 const { documentsBundle } = await import('../../test/fakeClient.js');
+const { fakeAssistantService } = await import('../../test/fakeAssistantService.js');
 const { AssistantChat } = await import('./AssistantChat.jsx');
 const { AssistantPanel } = await import('./AssistantPanel.jsx');
 const { AssistantTab } = await import('./AssistantTab.jsx');
@@ -47,7 +48,7 @@ const SERVICE = {
   serviceId: 'igt:assist:one',
   serviceName: 'Assistant one',
   online: true,
-  extras: { tasks: ['assist'], app: 'igt', model: 'sonnet' },
+  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet' },
 };
 
 const META = {
@@ -82,11 +83,14 @@ const fakeClient = () => {
     ['igt:assistant:p1:meta:c1', META],
     ['igt:assistant:p1:conv:c1', CONV],
   ]);
+  // The assistant: it writes the record, the page only asks.
+  const assistant = fakeAssistantService(records);
   return {
     records,
+    assistant,
     messages: {
       discoverServices: vi.fn().mockResolvedValue([SERVICE]),
-      requestService: vi.fn().mockResolvedValue({ message: 'Applied 1 change.' }),
+      requestService: vi.fn(assistant.requestService),
       attachServiceRequest: vi.fn().mockResolvedValue({}),
       cancelServiceRequest: vi.fn().mockResolvedValue({}),
     },
@@ -110,6 +114,11 @@ const fakeClient = () => {
     },
   };
 };
+
+// What the page asked the service for, by op, in order. An open tab also
+// holds the conversation it shows (`hold`).
+const asked = (client, op) =>
+  client.messages.requestService.mock.calls.map((c) => c[2]).filter((d) => !op || d.op === op);
 
 const base = (client) => ({
   projectId: 'p1',
@@ -171,10 +180,8 @@ describe('AssistantPanel', () => {
     const m = await mount(<AssistantPanel {...base(client)} projectName="A project" />);
     await flush(m);
     await approve(m);
-    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
-    expect(client.messages.requestService.mock.calls[0][2].approve).toMatchObject({
-      planId: 'plan-1',
-    });
+    expect(asked(client, 'approve')).toHaveLength(1);
+    expect(asked(client, 'approve')[0]).toMatchObject({ planId: 'plan-1' });
     expect(notifySuccess).not.toHaveBeenCalled();
     await m.unmount();
   });
@@ -227,7 +234,7 @@ describe('AssistantTab', () => {
     );
     await flush(m);
     await approve(m);
-    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(asked(client, 'approve')).toHaveLength(1);
     expect(notifySuccess).toHaveBeenCalledTimes(1);
     await m.unmount();
   });
@@ -281,9 +288,44 @@ describe('AssistantChat with no way to track the conversation', () => {
     expect(m.container.textContent).toContain('gloss it');
     await m.step(() => m.container.querySelector('[data-testid="delete"]').click());
     await flush(m);
-    expect(client.userData.delete).toHaveBeenCalledTimes(2);
+    // The service deletes it: the page writes nothing.
+    expect(asked(client, 'delete')).toHaveLength(1);
+    expect(client.userData.delete).not.toHaveBeenCalled();
+    expect(client.records.has('igt:assistant:p1:conv:c1')).toBe(false);
     expect(m.container.textContent).not.toContain('gloss it');
     expect(notifyError).not.toHaveBeenCalled();
+    await m.unmount();
+  });
+
+  it('deletes it itself when no assistant is online', async () => {
+    // Luke, 2026-10-09: the one write the page makes. Deleting your own
+    // conversation does not wait on an operator.
+    const client = fakeClient();
+    client.messages.discoverServices.mockResolvedValue([]);
+    client.records.set('igt:assistant:p1:file:c1:f1:part:0', 'x');
+    const m = await mount(
+      <AssistantChat
+        {...base(client)}
+        conversationId="c1"
+        renderSidebar={({ listProps }) => (
+          <button
+            type="button"
+            data-testid="delete"
+            onClick={() => listProps.onDelete(listProps.rows[0])}
+          />
+        )}
+      />,
+    );
+    await flush(m);
+    await m.step(() => m.container.querySelector('[data-testid="delete"]').click());
+    await flush(m);
+    expect(client.messages.requestService).not.toHaveBeenCalled();
+    expect(client.userData.delete.mock.calls.map((c) => c[1])).toEqual([
+      'igt:assistant:p1:file:c1:f1:part:0',
+      'igt:assistant:p1:conv:c1',
+      'igt:assistant:p1:meta:c1',
+    ]);
+    expect([...client.records.keys()]).toEqual([]);
     await m.unmount();
   });
 
@@ -339,30 +381,33 @@ describe('AssistantChat attachments', () => {
     await typeAndSend(m, 'which of these are new?');
     await flush(m, 8);
 
-    const puts = client.userData.put.mock.calls.map((c) => c[1]);
-    const part = puts.findIndex((k) => k.startsWith('igt:assistant:p1:file:c1:'));
-    const record = puts.indexOf('igt:assistant:p1:conv:c1');
-    expect(part).toBeGreaterThanOrEqual(0);
-    expect(part).toBeLessThan(record);
-    expect(client.records.get(puts[part])).toBe(TEXT);
+    const ops = asked(client)
+      .map((d) => d.op)
+      .filter((op) => op !== 'hold');
+    expect(ops).toEqual(['attach', 'send']);
+    const [attach] = asked(client, 'attach');
+    expect(attach.file.parts.join('')).toBe(TEXT);
+    const part = [...client.records.keys()].find((k) => k.startsWith('igt:assistant:p1:file:c1:'));
+    expect(client.records.get(part)).toBe(TEXT);
 
-    const sent = client.userData.put.mock.calls[record][2];
-    const asked = sent.display.at(-1);
-    expect(asked).toMatchObject({ kind: 'user', text: 'which of these are new?' });
-    expect(asked.files).toEqual([
+    const [send] = asked(client, 'send');
+    expect(send.text).toBe('which of these are new?');
+    expect(send.files).toEqual([
       expect.objectContaining({ name: 'wordlist.csv', bytes: TEXT.length, lines: 2, chunks: 1 }),
     ]);
-    expect(JSON.stringify(sent)).not.toContain('nis,milk');
-    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(send)).not.toContain('nis,milk');
+    const stored = client.records.get('igt:assistant:p1:conv:c1').display.at(-1);
+    expect(stored.files[0].id).toBe(attach.file.id);
+    expect(client.userData.put).not.toHaveBeenCalled();
     await m.unmount();
   });
 
   it('sends nothing when the file cannot be stored, and keeps the message and the file', async () => {
     const client = fakeClient();
-    const put = client.userData.put.getMockImplementation();
-    client.userData.put.mockImplementation(async (userId, key, value) => {
-      if (key.includes(':file:')) throw Object.assign(new Error('too large'), { status: 413 });
-      return put(userId, key, value);
+    const answer = client.messages.requestService.getMockImplementation();
+    client.messages.requestService.mockImplementation(async (...a) => {
+      if (a[2].op === 'attach') throw Object.assign(new Error('too large'), { status: 413 });
+      return answer(...a);
     });
     const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
     await flush(m);
@@ -370,7 +415,7 @@ describe('AssistantChat attachments', () => {
     await flush(m);
     await typeAndSend(m, 'which of these are new?');
     await flush(m, 8);
-    expect(client.messages.requestService).not.toHaveBeenCalled();
+    expect(asked(client, 'send')).toEqual([]);
     expect(notifyError).toHaveBeenCalled();
     expect(m.container.querySelector('textarea').value).toBe('which of these are new?');
     expect(m.container.querySelector('[aria-label="Remove wordlist.csv"]')).not.toBeNull();
@@ -415,7 +460,8 @@ describe('AssistantChat attachments', () => {
     expect(retry).not.toBeNull();
     await m.step(() => retry.click());
     await flush(m, 8);
-    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(asked(client, 'retry')).toHaveLength(1);
+    expect(asked(client, 'attach')).toEqual([]);
     const record = client.records.get('igt:assistant:p1:conv:c1');
     expect(record.display.at(-1)).toMatchObject({ kind: 'user', text: 'gloss it' });
     expect(record.display.at(-1).files).toBeUndefined();

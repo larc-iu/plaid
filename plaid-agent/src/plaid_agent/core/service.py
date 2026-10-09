@@ -384,8 +384,8 @@ class BaseAssistantService(BaseService):
         # namespaced by app, so an app that offered a foreign assistant sent
         # every turn to a service that could not find the conversation.
         self.extras['model'] = self.cfg.model
-        # And which version of it, for the conversation's sidebar entry, which
-        # the browser rewrites too.
+        # And which version of it, for the page's row of a conversation just
+        # sent, drawn before the service writes the entry.
         self.extras['version'] = self.version
         self.extras['app'] = self.APP
         # Which requests it takes: the pages that send ops (and write nothing
@@ -1075,7 +1075,7 @@ class BaseAssistantService(BaseService):
             # The user's message stays in the model transcript, as the turn
             # stamped it, so the next message ("go on", "I meant the second
             # one") is read with what it follows. Retry takes it off before
-            # sending it again (`rewindForRetry`). What the turn did before it
+            # sending it again (`rewind_for_retry`). What the turn did before it
             # stopped stays on the item, for the record.
             steps, calls = turn_trace(e)
             self._write(store, conv_id,

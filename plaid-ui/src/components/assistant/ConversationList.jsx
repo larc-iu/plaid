@@ -11,6 +11,7 @@ import {
   Globe,
   History,
   Trash2,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Loading } from '../shared/Loading.jsx';
@@ -115,8 +116,11 @@ export const ConversationRows = ({
   hrefFor,
   onPick = null,
   onDelete,
+  // Rename a row: `(row, title)`. Not offered while no assistant is online.
+  onRename = null,
 }) => {
   const confirm = useConfirm();
+  const [renaming, setRenaming] = useState(null);
   const askDelete = async (m) => {
     const ok = await confirm({
       title: `Delete “${m.title || 'New conversation'}”?`,
@@ -145,7 +149,15 @@ export const ConversationRows = ({
           activeId === m.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
         )}
       >
-        {m.draft ? (
+        {renaming === m.id ? (
+          <RenameBox
+            title={m.title || ''}
+            onDone={(title) => {
+              setRenaming(null);
+              if (title != null) onRename?.(m, title);
+            }}
+          />
+        ) : m.draft ? (
           <div className="min-w-0 flex-1 text-left">{row}</div>
         ) : onPick && !other ? (
           // Still a link to the conversation on the Assistant screen, so it
@@ -166,6 +178,16 @@ export const ConversationRows = ({
             {row}
           </Link>
         )}
+        {!m.draft && onRename && renaming !== m.id && (
+          <button
+            type="button"
+            onClick={() => setRenaming(m.id)}
+            title="Rename conversation"
+            className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
         {!m.draft && (
           <button
             type="button"
@@ -179,6 +201,32 @@ export const ConversationRows = ({
       </div>
     );
   });
+};
+
+// The name of a conversation being changed, in place of its row. Enter keeps
+// it, Escape or leaving the box puts the old one back.
+const RenameBox = ({ title, onDone }) => {
+  const [value, setValue] = useState(title);
+  return (
+    <input
+      autoFocus
+      aria-label="Conversation name"
+      value={value}
+      maxLength={200}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onDone(value);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onDone(null);
+        }
+      }}
+      onBlur={() => onDone(null)}
+      className="min-w-0 flex-1 rounded border bg-background px-1.5 py-0.5 text-sm"
+    />
+  );
 };
 
 // Past conversations in the docked panel. The panel is a third of a screen

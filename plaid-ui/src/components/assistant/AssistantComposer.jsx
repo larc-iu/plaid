@@ -41,6 +41,10 @@ export const AssistantComposer = ({
   // offers a new conversation beside it, which takes the typed text along.
   notice = null,
   offerNew = false,
+  // Another tab or device holds the conversation: it is shown read-only, and
+  // Continue here takes it (hold.js).
+  held = false,
+  onContinueHere = null,
   // How full the thread is, from the newest reply that reported it.
   usage = null,
   // The stored record's size against the server's cap, as {bytes, cap}.
@@ -94,7 +98,7 @@ export const AssistantComposer = ({
     if (mentions.handleKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!full && !offerNew) onSend();
+      if (!full && !offerNew && !held) onSend();
     }
   };
 
@@ -153,7 +157,19 @@ export const AssistantComposer = ({
           record has a limit of its own, the server's cap, and the note names
           whichever limit is close. A full record offers the new conversation
           right here, since nothing more can be sent into it. */}
-      {notice ? (
+      {held ? (
+        <div
+          role="status"
+          className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-muted-foreground"
+        >
+          <span>Open in another tab.</span>
+          {onContinueHere && (
+            <Button type="button" size="sm" variant="outline" onClick={onContinueHere}>
+              Continue here
+            </Button>
+          )}
+        </div>
+      ) : notice ? (
         <div
           role="status"
           className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-warning-foreground"
@@ -312,7 +328,7 @@ export const AssistantComposer = ({
           type="button"
           size="sm"
           onClick={() => onSend()}
-          disabled={!canSend || !text.trim() || attaching || full || offerNew}
+          disabled={!canSend || !text.trim() || attaching || full || offerNew || held}
           title="Send"
         >
           <Send className="h-4 w-4" />

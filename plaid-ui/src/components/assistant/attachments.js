@@ -14,10 +14,11 @@
 // keys and reads what a turn actually needs
 // (plaid-agent/src/plaid_agent/core/files.py).
 //
-// Nothing is written until the message is SENT. A file picked and then thought
-// better of leaves nothing behind, and the parts are written under the
-// conversation the message actually goes to rather than whichever one was open
-// when the paperclip was clicked.
+// Nothing is stored until the message is SENT. The page cuts the text into
+// parts and asks the assistant service to store them (`attach`, one request a
+// file, plaid_agent/core/ops.py), under the conversation the message actually
+// goes to rather than whichever one was open when the paperclip was clicked.
+// A file picked and then thought better of leaves nothing behind.
 
 import { statusOf } from '../../lib/errors.js';
 import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
@@ -76,28 +77,10 @@ const VALUE_BYTES = 1_000_000;
 // measure below is exact, so this is small on purpose.
 const HEADROOM = 1024;
 
-// An orphan is a file whose conversation does not exist. It can only happen
-// when a send got as far as writing the parts and no further, so a file younger
-// than this is much more likely to be one still being written than one left
-// behind.
-const ORPHAN_AGE_MS = 60 * 60 * 1000;
-
 const filePrefix = (app, projectId, convId) => `${app}:assistant:${projectId}:file:${convId}:`;
-
-const allFilesPrefix = (app, projectId) => `${app}:assistant:${projectId}:file:`;
 
 const partKey = (app, projectId, convId, fileId, n) =>
   `${filePrefix(app, projectId, convId)}${fileId}:part:${n}`;
-
-// Which conversation a file key belongs to. The conversation is IN the key, so
-// a listing of keys alone says what belongs to what: nothing has to be read to
-// find out, and a listing with values would drag down every part of every file.
-export const convOfFileKey = (app, projectId, key) => {
-  const head = allFilesPrefix(app, projectId);
-  if (typeof key !== 'string' || !key.startsWith(head)) return null;
-  const cut = key.slice(head.length).indexOf(':');
-  return cut > 0 ? key.slice(head.length, head.length + cut) : null;
-};
 
 const suffixOf = (name) => {
   const cut = (name || '').lastIndexOf('.');
@@ -322,22 +305,6 @@ export const valueBudget = async (client) => {
   }
 };
 
-// Write the parts of every pending file under one conversation. Called from the
-// job that sends the message, before the record is written, so a file that
-// cannot be stored stops the message rather than going with it as a reference
-// to nothing.
-export const uploadAttachments = async (store, convId, pending) => {
-  const { client, userId, app, projectId } = store;
-  if (!userId || !pending?.length) return;
-  for (const file of pending) {
-    for (let n = 0; n < file.parts.length; n += 1) {
-      // In order, and awaited: up to the server's cap apiece, and the store is the same
-      // one the conversation itself is about to be written to.
-      await client.userData.put(userId, partKey(app, projectId, convId, file.id, n), file.parts[n]);
-    }
-  }
-};
-
 // A file a reply made for the user (the assistant's save_file), read back whole.
 // Its parts are where an attachment's are, and its reference rides on the reply
 // with `made: true`.
@@ -374,66 +341,4 @@ export const blobOf = (name, text) => {
   const suffix = suffixOf(name);
   const marked = suffix === '.csv' || suffix === '.tsv' ? `\uFEFF${text}` : text;
   return new Blob([marked], { type: `${MIME[suffix] || 'text/plain'};charset=utf-8` });
-};
-
-// Every key a conversation's files are stored under. Listed rather than worked
-// out from the record, so a file whose reference never reached the record (a
-// send that failed between the two writes) is still found and still deleted.
-const fileKeysOf = async (store, projectId, convId) => {
-  const { client, userId, app } = store;
-  const entries = await client.userData.list(userId, {
-    prefix: filePrefix(app, projectId, convId),
-    pageSize: 1000,
-  });
-  return (entries || []).map((e) => e.key);
-};
-
-// Delete everything attached to one conversation. Part of deleting it: a
-// transcript is gone from the moment its keys are, and its files would
-// otherwise sit in the store with nothing left that names them.
-export const deleteConversationFiles = async (store, projectId, convId) => {
-  const { client, userId } = store;
-  if (!userId) return;
-  const keys = await fileKeysOf(store, projectId, convId);
-  await Promise.all(keys.map((key) => client.userData.delete(userId, key).catch(() => {})));
-};
-
-// Files left by a send that wrote the parts and then could not write the
-// record. Nothing else can make one: the parts are written inside the send, and
-// a conversation that is deleted takes its files with it.
-//
-// `liveIds` is every conversation this project has. A listing of KEYS is enough
-// to find the rest, so this costs one narrow read and usually deletes nothing.
-const swept = new Set();
-
-// For a test: the guard above is a page-load's worth of memory, not a fact
-// about the store.
-export const resetSweep = () => swept.clear();
-
-export const sweepOrphanFiles = async (store, liveIds) => {
-  const { client, userId, app, projectId } = store;
-  if (!userId) return 0;
-  // Once per project per page load. Nothing makes an orphan while the page is
-  // open except a failure this same page just reported.
-  const tag = `${app}:${projectId}`;
-  if (swept.has(tag)) return 0;
-  swept.add(tag);
-  const entries = await client.userData.list(userId, {
-    prefix: allFilesPrefix(app, projectId),
-    pageSize: 1000,
-  });
-  const live = new Set(liveIds || []);
-  // By the server's clock, which stamped `updatedAt` (the listing just read
-  // sets it): a browser clock an hour fast would take a file being written.
-  const old = client.serverNow().getTime() - ORPHAN_AGE_MS;
-  const doomed = (entries || []).filter((e) => {
-    const conv = convOfFileKey(app, projectId, e.key);
-    if (!conv || live.has(conv)) return false;
-    // A file younger than the window is most likely one being written right
-    // now, by this tab or another.
-    const at = Date.parse(e.updatedAt || '');
-    return !Number.isFinite(at) || at < old;
-  });
-  await Promise.all(doomed.map((e) => client.userData.delete(userId, e.key).catch(() => {})));
-  return doomed.length;
 };

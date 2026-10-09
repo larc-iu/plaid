@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
-import { deleteConversation, jobFor, readMetas, upsert } from './jobs.js';
+import { ask, deleteConversation, jobFor, metaOf, readMetas, upsert } from './jobs.js';
 
 // The saved conversations behind whichever surface is showing one: the rows,
 // how wide the read reaches, the names of the other projects a row may belong
@@ -77,26 +77,50 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
   removedRef.current = onRemoved;
 
   // `m` is the WHOLE row, because a row from another project is deleted under
-  // that project's keys and only the row knows which.
+  // that project's keys and only the row knows which. The row goes at once,
+  // and comes back if the delete is turned down.
   const remove = useCallback(
-    async (m) => {
+    async (m, { tab = null } = {}) => {
       const j = jobFor(m.id);
-      if (j) {
-        notifyError(
-          j.done
-            ? 'That conversation is still being saved.'
-            : j.kind === 'apply'
-              ? 'That conversation is still applying changes.'
-              : 'That conversation is still waiting for an answer.',
-        );
+      if (j && j.kind === 'apply') {
+        notifyError('That conversation is still applying changes.');
         return;
       }
+      setRows((prev) => prev.filter((row) => row.id !== m.id));
       try {
-        await deleteConversation(store, m);
-        setRows((prev) => prev.filter((row) => row.id !== m.id));
+        await deleteConversation(store, m, { tab });
         removedRef.current?.(m.id);
       } catch (e) {
-        notifyError(humanizeError(e, 'Failed to delete the conversation.'));
+        setRows(upsert(m));
+        notifyError(
+          e?.refused ? e.message : humanizeError(e, 'Failed to delete the conversation.'),
+        );
+      }
+    },
+    [store],
+  );
+
+  // A conversation's name, shown at once and asked of `service`. Rows of
+  // another project are renamed under their own project's keys.
+  const rename = useCallback(
+    async (m, title, { service, tab = null } = {}) => {
+      const name = (title || '').replace(/\s+/g, ' ').trim();
+      if (!name || name === m.title || !service) return;
+      const own = { ...store, projectId: m.projectId || store.projectId };
+      setRows(upsert({ ...m, title: name }));
+      try {
+        const result = await ask(own, service, m.id, 'rename', { title: name }, { tab });
+        const meta = metaOf(own, result);
+        if (result?.kind === 'refused') {
+          if (result.why === 'gone') setRows((prev) => prev.filter((row) => row.id !== m.id));
+          else setRows(upsert(m));
+          notifyError(result.message);
+        } else if (meta) {
+          setRows(upsert(meta));
+        }
+      } catch (e) {
+        setRows(upsert(m));
+        notifyError(humanizeError(e, 'Failed to rename the conversation.'));
       }
     },
     [store],
@@ -114,5 +138,6 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
     applyMeta,
     forget,
     remove,
+    rename,
   };
 };

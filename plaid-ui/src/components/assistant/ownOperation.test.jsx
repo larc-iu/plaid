@@ -64,13 +64,12 @@ describe('a request that is its own action, made while an edit is saving', () =>
       store: storeOf(client),
       service: { serviceId: 'igt:assist' },
       conv,
-      prevMeta: null,
       plan,
       asHuman: false,
     });
     await j.promise;
     expect(sent).toHaveLength(1);
-    expect(sent[0].approve['plan-id']).toBe('plan1');
+    expect(sent[0]).toMatchObject({ op: 'approve', 'plan-id': 'plan1' });
     expect(sent[0]).not.toHaveProperty('operation-group');
     expect(client.operationGroup?.kind).toBe('guess-adoption');
   });
@@ -82,7 +81,7 @@ describe('a request that is its own action, made while an edit is saving', () =>
       store: storeOf(client),
       service: { serviceId: 'igt:assist' },
       conv,
-      prevMeta: null,
+      text: 'gloss it',
     });
     await j.promise;
     expect(sent).toHaveLength(1);

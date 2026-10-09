@@ -8,7 +8,7 @@ import { notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
-import { answeredLast, hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
+import { answeredLast, hidesStopped, retryNote, stoppedIn } from './resume.js';
 import { itemTime } from './itemTime.js';
 import {
   atProjectCap,
@@ -25,8 +25,6 @@ import {
   readStoredFile,
   refOf,
   refuse,
-  sweepOrphanFiles,
-  uploadAttachments,
   valueBudget,
 } from './attachments.js';
 import { assertAdapter } from './adapterContract.js';
@@ -42,25 +40,25 @@ import { useAssistantChoice } from './useAssistantChoice.js';
 import { useConversationList } from './useConversationList.js';
 import { useResumeConversation } from './useResumeConversation.js';
 import {
+  DELETED,
+  aboutOf,
+  ask,
   attachJob,
-  buildMeta,
   changesTheView,
-  declinedLine,
-  discardPlan,
   followable,
   jobFor,
   mayHaveWritten,
+  metaOf,
   newConversation,
   nothingLanded,
-  planDiscarded,
   readConv,
-  recordAhead,
   startApply,
   startTurn,
   stopJob,
   jobListeners,
   jobs,
 } from './jobs.js';
+import { useHold } from './hold.js';
 
 // A chat with whatever `assist` service(s) the operator runs (see
 // ../../../../plaid-agent): the transcript, the composer, the plans it comes
@@ -83,15 +81,16 @@ import {
 // tool calls and results included) and what the person sees (`display`).
 // Conversations are private to the user and follow them across devices.
 //
-// Who writes it: this appends the user's message and marks the conversation
-// pending, then submits a request naming the conversation. The service loads
-// the record, works, and writes the outcome back BEFORE reporting the request
-// done. So the reply lands whether or not this page is still open; the request
-// stream only carries progress, and its end is the cue to read the record
-// again. A page that comes back to a pending conversation rejoins the request
-// by id (the id is minted here and stored in `pending` before submitting) and
-// reads the record when that ends; if the request is gone (the server
-// restarted, or it expired), the record is settled here instead.
+// Who writes it: the assistant service, and nothing else. This sends a
+// request for everything the reader does (a message, a retry, an approval, a
+// discard, a file, a rename, a delete, holding the conversation) and reads the
+// record (jobs.js). The service appends the message, works, and writes the
+// outcome back BEFORE reporting the request done. So the reply lands whether
+// or not this page is still open; the request stream only carries progress,
+// and its end is the cue to read the record again. A page that comes back to
+// a pending conversation rejoins the request by id. One tab acts on a
+// conversation at a time, and the others show it read-only with Continue here
+// (hold.js).
 //
 // The assistant never writes during a turn; a turn that would change data
 // comes back with a plan, shown as a list of concrete changes with Approve /
@@ -181,13 +180,11 @@ export const AssistantChat = ({
 
   const [active, setActive] = useState(newConversation); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
-  // Drawn again when a write changed only the stored size of what is shown.
-  const [, setSizeTick] = useState(0);
   const activeRef = useRef(active);
   activeRef.current = active;
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
-  // A send or retry reading the record before it writes: a second press in
-  // that moment is the same send, not another one.
+  // A send storing its files: a second press in that moment is the same send,
+  // not another one.
   const sendingRef = useRef(false);
   // Why the last thing asked of this conversation was not done, said above the
   // composer: work under way elsewhere, or the conversation deleted. Held with
@@ -450,6 +447,7 @@ export const AssistantChat = ({
         return;
       }
       if (j.done && j.result.meta) applyMeta(j.result.meta);
+      else if (j.done && j.outcome?.meta) applyMeta({ ...j.outcome.meta, projectId: j.projectId });
       // A conversation deleted elsewhere leaves the list.
       if (j.done && j.gone) forgetRow(j.id);
       // A plan that landed changed the project, so whatever is showing it
@@ -465,12 +463,9 @@ export const AssistantChat = ({
         if ((j.declined || j.gone) && j.why)
           setNotice({ convId: j.id, text: j.why, gone: !!j.gone });
         else if (!j.declined || j.cleared) setNotice((n) => (n?.gone ? n : null));
-        // A message that could not be saved was not sent. It comes back to
-        // the composer, unless the record kept it after all (then the tab
-        // offers to send it again) or something new has been typed since.
-        if (j.unsent && (j.declined || j.result.conv.display.at(-1)?.kind !== 'user')) {
-          setInput((typed) => typed || j.unsent);
-        }
+        // A message the record never took was not sent. It comes back to
+        // the composer, unless something new has been typed since.
+        if (j.unsent && !j.recorded) setInput((typed) => typed || j.unsent);
         // An answer that landed late (after the page stopped waiting for it)
         // arrives while the reader may be typing somewhere else.
         if (!j.late) inputRef.current?.focus();
@@ -523,89 +518,108 @@ export const AssistantChat = ({
   const usage = useMemo(() => latestUsage(active?.display), [active?.display]);
   const spend = useMemo(() => totalSpend(active?.display), [active?.display]);
 
-  // How full the stored record is: its size as the page last wrote or read it
-  // (`rev.bytes`, jobs.js) against the server's cap on one value.
-  const [recordCap, setRecordCap] = useState(null);
-  useEffect(() => {
-    let live = true;
-    Promise.resolve()
-      .then(() => client.server.limits())
-      .then((limits) => {
-        const cap = limits?.userDataValueBytes;
-        if (live && Number.isInteger(cap) && cap > 0) setRecordCap(cap);
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [client]);
-  const recordSize = active?.rev?.bytes;
+  // How full the stored record is, as the service last wrote it on the entry
+  // (`size`, the server's own count against its cap on one value).
+  const sizeBytes = activeMeta?.size?.bytes;
+  const sizeCap = activeMeta?.size?.cap;
   const record = useMemo(
-    () => (recordCap && recordSize > 0 ? { bytes: recordSize, cap: recordCap } : null),
-    [recordCap, recordSize],
+    () => (sizeCap > 0 && sizeBytes > 0 ? { bytes: sizeBytes, cap: sizeCap } : null),
+    [sizeBytes, sizeCap],
   );
 
-  const canSend = !!service && !busy && !attaching;
+  // The record changed underneath (another tab or device worked in it): read
+  // again, unless a job here is about to read it anyway.
+  const reread = useCallback(() => {
+    const id = activeRef.current?.id;
+    if (!id || activeRef.current?.draft || jobFor(id)) return;
+    readConv(store, id)
+      .then(({ conv, meta }) => {
+        if (activeRef.current?.id !== id || jobFor(id)) return;
+        activeRef.current = conv;
+        setActive(conv);
+        if (meta) applyMeta(meta);
+      })
+      .catch(() => {});
+  }, [store, applyMeta]);
+  const held = useHold({
+    store,
+    service,
+    convId: active?.draft ? null : (active?.id ?? null),
+    saved: !!active && !active.draft,
+    meta: activeMeta,
+    applyMeta,
+    onChanged: reread,
+    onGone: () => {
+      const id = activeRef.current?.id;
+      if (!id) return;
+      forgetRow(id);
+      setNotice({ convId: id, text: DELETED, gone: true });
+    },
+    docked: !toastOnApply,
+  });
+  const readOnly = held.readOnly;
+  const continueHere = async () => {
+    setNotice(null);
+    const result = await held.continueHere();
+    const id = activeRef.current?.id;
+    const m = result?.meta;
+    if (result?.kind === 'done' && id && followable(m?.pending) && !jobFor(id)) {
+      try {
+        const read = await readConv(store, id);
+        if (activeRef.current?.id === id && followable(read.meta?.pending) && !jobFor(id)) {
+          showJob(attachJob({ store, conv: read.conv, meta: read.meta, docked: !toastOnApply }));
+        }
+      } catch {
+        // The next check reads it.
+      }
+    }
+  };
 
-  // `files` is given on a RETRY, where the message is sent again with the
-  // references its first attempt carried: those parts are already stored, so
-  // nothing is written for them a second time. A retry sends the OLD message,
-  // so the composer (text, files, chip) is the reader's next one and is left
-  // as it is.
-  const send = async (textOverride, files = null, projects = null) => {
-    const retry = files !== null;
+  const canSend = !!service && !busy && !attaching && !readOnly;
+
+  const send = async (textOverride) => {
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend || sendingRef.current) return;
     sendingRef.current = true;
     try {
-      await sendNow(typed, retry, files, projects);
+      await sendNow(typed);
     } finally {
       sendingRef.current = false;
     }
   };
-  const sendNow = async (typed, retry, files, projects) => {
+  const sendNow = async (typed) => {
     setStopped(null);
     setNotice(null);
     // The chip is the reference the question is about, said the way the
     // assistant addresses one. A question that already names it is left alone.
-    const text = !retry && focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
-    // Sending is what turns a draft into a saved conversation, so the flag
-    // does not travel with it.
-    let base = activeRef.current ?? newConversation();
-    // The record may hold an answer this page never saw (it gave up waiting,
-    // and the service wrote it later). The message goes after it, rather than
-    // writing the page's older copy over it. A retry has read it already.
-    if (!retry) {
-      const ahead = await recordAhead(
-        store,
-        base,
-        list.rows.find((m) => m.id === base.id),
-      );
-      if (activeRef.current?.id !== base.id) return;
-      if (ahead) {
-        base = ahead.conv;
-        activeRef.current = ahead.conv;
-        setActive(ahead.conv);
-        applyMeta(ahead.meta);
-        // Work is under way there (asked or approved in another tab): it is
-        // followed here, and the message waits in the composer.
-        if (followable(ahead.meta?.pending)) {
-          if (!jobFor(base.id)) {
-            attachJob({ store, conv: base, meta: ahead.meta, docked: !toastOnApply });
-          }
-          setNotice({ convId: base.id, text: declinedLine(ahead) });
-          return;
-        }
-      }
-    }
-    const pending = retry ? [] : attachments;
+    const text = focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
+    const base = activeRef.current ?? newConversation();
+    const tab = held.tab;
+    const pending = attachments;
     if (pending.length) {
-      // The files before anything else: a file that cannot be stored stops the
+      // The files before the message: a file that cannot be stored stops the
       // send, and the composer is left exactly as it was, with the file still
       // on it, so pressing Enter again is the whole of the retry.
       setAttaching(true);
       try {
-        await uploadAttachments(store, base.id, pending);
+        for (const f of pending) {
+          const result = await ask(
+            store,
+            service,
+            base.id,
+            'attach',
+            {
+              file: { id: f.id, name: f.name, bytes: f.bytes, lines: f.lines, parts: f.parts },
+            },
+            { tab },
+          );
+          if (result?.kind === 'refused') {
+            const m = metaOf(store, result);
+            if (m) applyMeta(m);
+            setNotice({ convId: base.id, text: result.message, gone: result.why === 'gone' });
+            return;
+          }
+        }
       } catch (e) {
         notifyError(humanizeError(e, 'Failed to attach the file. Nothing was sent.'));
         return;
@@ -617,44 +631,48 @@ export const AssistantChat = ({
       // sending this message into a different thread would point it at them.
       if (activeRef.current?.id !== base.id) return;
     }
-    if (!retry) {
-      setInput('');
-      setAttachments([]);
-      onClearFocus?.();
-    }
+    setInput('');
+    setAttachments([]);
+    onClearFocus?.();
     // The display item carries the place as data, for the chip on the message.
     // The model's copy is stamped by the service, which owns every word the
     // model reads, and only when the place has changed since the last turn.
-    const sent = files || pending.map(refOf);
+    const sent = pending.map(refOf);
     // The other projects this message reads. The service reads them off the
-    // last user message and nowhere else, so a retry carries its own again.
-    const joined = retry ? projects || [] : projectsToSend(reach, projectId);
+    // last user message and nowhere else.
+    const joined = projectsToSend(reach, projectId);
+    const asked = {
+      kind: 'user',
+      text,
+      createdAt: itemTime(),
+      ...(where ? { where } : {}),
+      ...(sent.length ? { files: sent } : {}),
+      ...(joined.length ? { projects: joined } : {}),
+    };
+    // Shown at once, as the service will store it.
     const conv = {
       id: base.id,
-      // The versions of the record the message is written over.
-      rev: base.rev,
       messages: [...base.messages, { role: 'user', content: text }],
-      display: [
-        ...base.display,
-        {
-          kind: 'user',
-          text,
-          createdAt: itemTime(),
-          // Sent again with Retry, below the attempt that did not finish.
-          ...(retry ? { retry: true } : {}),
-          ...(where ? { where } : {}),
-          ...(sent.length ? { files: sent } : {}),
-          ...(joined.length ? { projects: joined } : {}),
-        },
-      ],
+      display: [...base.display, asked],
     };
     const prevMeta = list.rows.find((m) => m.id === conv.id);
     openSeq.current++; // sending settles which conversation is open
     activeRef.current = conv;
     setActive(conv);
     if (convIdRef.current !== conv.id) setConvId(conv.id, { replace: true });
-    applyMeta(buildMeta(store, prevMeta, conv, service));
-    showJob(startTurn({ store, service, conv, prevMeta, where }));
+    const j = startTurn({
+      store,
+      service,
+      conv,
+      where,
+      text,
+      files: sent,
+      projects: joined,
+      create: !!base.draft,
+      tab,
+    });
+    applyMeta(shownMeta(prevMeta, conv, projectId, service, where, tab, j));
+    showJob(j);
   };
 
   // Files picked, dropped or pasted. They are READ here and stored nowhere:
@@ -732,19 +750,6 @@ export const AssistantChat = ({
     inputRef.current?.focus();
   };
 
-  // Files left behind by a send that stored them and then could not write the
-  // record, which is the only way one is made. Once per project, and only once
-  // the list has really been READ: a failed listing looks exactly like a user
-  // with no conversations, and this would take that for "none of these are
-  // live" and delete every file it found.
-  useEffect(() => {
-    if (!list.loaded || !userId) return;
-    const live = list.rows.filter((m) => m.projectId === projectId).map((m) => m.id);
-    sweepOrphanFiles(store, live).catch((e) => {
-      console.warn('[Assistant] could not sweep abandoned attachments', e);
-    });
-  }, [list.loaded, list.rows, store, userId, projectId]);
-
   // A file a reply made (the assistant's save_file), saved to the user's disk.
   const downloadFile = useCallback(
     async (file) => {
@@ -770,47 +775,14 @@ export const AssistantChat = ({
 
   // Send the user's last message again, whether the turn was lost (its
   // request went away with the server or the service), failed or was stopped.
-  // The attempt stays in the conversation above the message sent again.
-  //
-  // The record is read first. An answer the service wrote after this page
-  // stopped waiting for it (a server restart lost the request, not the turn)
-  // is shown instead of asking again, and is never written over.
-  const retryTurn = async () => {
-    let conv = activeRef.current;
-    if (!conv || !canSend || sendingRef.current) return;
-    sendingRef.current = true;
-    let ahead;
-    try {
-      ahead = await recordAhead(
-        store,
-        conv,
-        list.rows.find((m) => m.id === conv.id),
-      );
-    } finally {
-      sendingRef.current = false;
-    }
-    if (activeRef.current?.id !== conv.id) return;
-    if (ahead) {
-      conv = ahead.conv;
-      activeRef.current = conv;
-      setActive(conv);
-      applyMeta(ahead.meta);
-      if (followable(ahead.meta?.pending)) {
-        if (!jobFor(conv.id)) {
-          attachJob({ store, conv, meta: ahead.meta, docked: !toastOnApply });
-        }
-        setNotice({ convId: conv.id, text: declinedLine(ahead) });
-        return;
-      }
-      const last = conv.display.at(-1)?.kind;
-      if (last !== 'user' && last !== 'error') return;
-    }
-    const rewound = rewindForRetry(conv, {
-      stopped: !ahead && !!stoppedIn(stopped, conv.id),
-    });
-    if (!rewound) return;
-    activeRef.current = rewound.conv;
-    send(rewound.text, rewound.files, rewound.projects);
+  // The attempt stays in the conversation above the message sent again: the
+  // service rewinds the record and asks it again.
+  const retryTurn = () => {
+    const conv = activeRef.current;
+    if (!conv || conv.draft || !canSend) return;
+    setStopped(null);
+    setNotice(null);
+    showJob(startTurn({ store, service, conv, retry: true, tab: held.tab }));
   };
 
   // Stop a turn: the service is asked to stop, and does so between steps.
@@ -834,93 +806,70 @@ export const AssistantChat = ({
         store,
         service,
         conv,
-        prevMeta: list.rows.find((m) => m.id === conv.id),
         plan,
         asHuman,
         docked: !toastOnApply,
+        tab: held.tab,
       }),
     );
   };
 
-  // Found by its plan's id, on whichever copy the write is made (the record
-  // as stored, when another write landed first), see `planDiscarded`. Shown
-  // at once, and written under a claim on the conversation (`discardPlan`):
-  // turned down while other work runs there (an approval of this very plan in
-  // another tab, which the card then follows), and the record is shown as it
+  // Shown at once, then asked of the service, which settles the plan in the
+  // record, or turns it down (an approval of it under way, a plan that may be
+  // partly written, the conversation deleted), and the record is shown as it
   // is.
   const discard = async (index) => {
     const conv = activeRef.current;
     const item = conv?.display[index];
     const planId = item?.plan?.id;
-    if (!conv || !planId) return;
-    // A plan that may be partly written is discarded only while its documents
-    // still show that nothing was, asked again now.
-    const clear = mayHaveWritten(item) && (await nothingLanded(store, item));
-    if (activeRef.current !== conv) return;
-    if (mayHaveWritten(item) && !clear) {
-      setUnwritten((was) => {
-        const now = new Set(was);
-        now.delete(planId);
-        return now;
-      });
-      notifyWarning(
-        'Some of its changes may be written. Apply again to finish them.',
-        'Not discarded',
-      );
-      return;
+    if (!conv || !planId || !service || readOnly) return;
+    const shown = shownDiscarded(conv, index);
+    if (shown) {
+      activeRef.current = shown;
+      setActive(shown);
     }
-    const next = planDiscarded(conv, planId, { unwritten: clear });
-    if (!next) return;
     setNotice(null);
-    activeRef.current = next;
-    setActive(next);
-    const prevMeta = list.rows.find((m) => m.id === conv.id);
-    if (prevMeta) applyMeta(buildMeta(store, prevMeta, next, null, prevMeta.pending ?? null));
-    const written = await discardPlan({
-      store,
-      conv,
-      prevMeta,
-      planId,
-      shown: next,
-      unwritten: clear,
-    });
-    if (!written || activeRef.current !== next) {
-      // Not written (said so): the record as it was.
-      if (written === false && activeRef.current === next) {
-        activeRef.current = conv;
-        setActive(conv);
+    const back = async () => {
+      try {
+        const read = await readConv(store, conv.id);
+        if (activeRef.current?.id !== conv.id) return;
+        activeRef.current = read.conv;
+        setActive(read.conv);
+        if (read.meta) applyMeta(read.meta);
+      } catch (e) {
+        if (e?.status === 404 && activeRef.current?.id === conv.id) {
+          forgetRow(conv.id);
+          activeRef.current = conv;
+          setActive(conv);
+          setNotice({ convId: conv.id, text: DELETED, gone: true });
+        }
       }
+    };
+    let result;
+    try {
+      result = await ask(store, service, conv.id, 'discard', { planId }, { tab: held.tab });
+    } catch (e) {
+      notifyError(humanizeError(e, 'Failed to discard the plan.'), 'Not discarded');
+      await back();
       return;
     }
-    if (written.declined) {
-      if (written.gone) {
-        forgetRow(conv.id);
-        activeRef.current = conv;
-        setActive(conv);
-        setNotice({ convId: conv.id, text: declinedLine(null, { gone: true }), gone: true });
-        return;
+    const m = metaOf(store, result);
+    if (m) applyMeta(m);
+    if (result?.kind === 'refused') {
+      if (result.why === 'written' || result.why === 'decided') {
+        notifyWarning(result.message, 'Not discarded');
+        if (result.why === 'written') {
+          setUnwritten((was) => {
+            const now = new Set(was);
+            now.delete(planId);
+            return now;
+          });
+        }
+      } else {
+        setNotice({ convId: conv.id, text: result.message, gone: result.why === 'gone' });
       }
-      const { conv: now, meta: nowMeta } = written.fresh;
-      activeRef.current = now;
-      setActive(now);
-      applyMeta(nowMeta);
-      if (followable(nowMeta?.pending) && !jobFor(now.id)) {
-        showJob(
-          attachJob({ store, conv: now, meta: nowMeta, docked: !toastOnApply, reread: true }),
-        );
-      }
-      if (nowMeta?.pending) setNotice({ convId: now.id, text: declinedLine(written.fresh) });
-      return;
     }
-    if (written.conv === next) {
-      // Written as it is shown: only its size changed (`rev.bytes`, set on
-      // the copy by the write), which the meter reads when drawn.
-      setSizeTick((n) => n + 1);
-    } else {
-      activeRef.current = written.conv;
-      setActive(written.conv);
-    }
-    applyMeta(written.meta);
+    await back();
   };
 
   const display = active?.display || [];
@@ -955,7 +904,10 @@ export const AssistantChat = ({
     opening,
     loading: list.loading,
     hrefFor: (m) => adapter.convHref(m.projectId, m.id),
-    onDelete: list.remove,
+    onDelete: (m) => list.remove(m, { tab: held.tab }),
+    // A rename goes to the conversation's own project's assistant, which is
+    // the one answering here for a row of this project.
+    onRename: service ? (m, title) => list.rename(m, title, { service, tab: held.tab }) : null,
   };
   // Which plans of the conversation may be partly written yet show nothing
   // written in their documents, read whenever that set may have changed.
@@ -1102,7 +1054,7 @@ export const AssistantChat = ({
                   results={results}
                   {...turnContext(display, i)}
                   homeName={projectName}
-                  canWrite={canWrite}
+                  canWrite={canWrite && !readOnly}
                   contributor={contributor}
                   busy={!!busy}
                   interrupted={!!d.interrupted}
@@ -1199,6 +1151,8 @@ export const AssistantChat = ({
           canSend={canSend}
           pendingPlan={pendingPlan}
           notice={noticeHere?.text ?? null}
+          held={readOnly && !!service}
+          onContinueHere={continueHere}
           offerNew={!!noticeHere?.gone}
           usage={usage}
           record={record}
@@ -1226,4 +1180,58 @@ export const AssistantChat = ({
       </section>
     </>
   );
+};
+
+const TITLE_MAX = 60;
+
+const titleFrom = (text) => {
+  const t = text.replace(/\s+/g, ' ').trim();
+  return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1)}…` : t;
+};
+
+// The sidebar row for a message just sent, drawn at once as the service will
+// write it (plaid_agent/core/conversation.py `build_meta`): the title from the
+// first message, where it began, this tab holding it, the turn under way.
+const shownMeta = (prev, conv, projectId, service, where, tab, j) => {
+  const now = new Date().toISOString();
+  return {
+    ...(prev || {}),
+    id: conv.id,
+    projectId,
+    title: prev?.title || titleFrom(conv.display.find((d) => d.kind === 'user')?.text || ''),
+    createdAt: prev?.createdAt || now,
+    updatedAt: now,
+    serviceId: prev?.serviceId || service?.serviceId || null,
+    model: prev?.model || service?.extras?.model || null,
+    turns: conv.display.filter((d) => d.kind === 'user').length,
+    about: prev?.about || aboutOf(where),
+    holder: { tab, at: now },
+    pending: {
+      kind: 'turn',
+      requestId: j.requestId,
+      serviceId: service?.serviceId,
+      startedAt: now,
+    },
+  };
+};
+
+// The conversation with the plan at `index` shown discarded, as the service
+// will settle it: an undecided plan discarded, one out of date dismissed.
+// Null when there is nothing to show.
+const shownDiscarded = (conv, index) => {
+  const d = conv.display[index];
+  if (!d?.plan) return null;
+  const at = itemTime();
+  let next;
+  if (d.status === 'stale') {
+    if (d.dismissed) return null;
+    next = { ...d, dismissed: true, dismissedAt: at };
+  } else if (d.status == null) {
+    next = { ...d, status: 'discarded', settledAt: at };
+  } else {
+    return null;
+  }
+  const display = [...conv.display];
+  display[index] = next;
+  return { ...conv, display };
 };

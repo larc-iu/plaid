@@ -12,7 +12,6 @@ import {
   reachChanged,
   withProjects,
 } from './projectReach.js';
-import { rewindForRetry } from './resume.js';
 import { linkLabel, linkifyCitations } from './citations.js';
 import { conversationToMarkdown } from './exportMarkdown.js';
 
@@ -141,24 +140,6 @@ describe('the words', () => {
 
   it('names each project that could not be read', () => {
     expect(couldNotOpen([C])).toBe('Lamkang C could not be opened.');
-  });
-});
-
-describe('rewindForRetry', () => {
-  // The service reads the set off the last user message only, so a retry that
-  // dropped it would read the home project alone, and say nothing.
-  it('carries the message’s own projects', () => {
-    const out = rewindForRetry({
-      id: 'c1',
-      messages: [],
-      display: [user([B], 'compare'), { kind: 'error', text: 'boom' }],
-    });
-    expect(out.projects).toEqual([B]);
-  });
-
-  it('carries none for a message that had none', () => {
-    const out = rewindForRetry({ id: 'c1', messages: [], display: [user(null)] });
-    expect(out.projects).toEqual([]);
   });
 });
 

@@ -9,7 +9,7 @@ vi.mock('../../lib/notify.js', () => ({
 const { notifyError } = await import('../../lib/notify.js');
 const { renderComponent } = await import('../../test/renderComponent.jsx');
 const { useConversationList } = await import('./useConversationList.js');
-const { buildMeta, jobs } = await import('./jobs.js');
+const { metaOf, jobs } = await import('./jobs.js');
 
 // The saved conversations behind both surfaces: which keys the read asks for,
 // what widening to every project changes, and what a delete does to the row.
@@ -31,6 +31,14 @@ const fakeClient = (entries, projects = []) => ({
       prefix ? entries.filter((e) => e.key.startsWith(prefix)) : entries,
     ),
     delete: vi.fn().mockResolvedValue(undefined),
+  },
+  // No assistant online: a delete is the page's own (the one write it makes).
+  messages: {
+    discoverServices: vi.fn().mockResolvedValue([]),
+    requestService: vi.fn(async (pid, sid, data) => ({
+      kind: 'done',
+      meta: { ...meta(data.conversationId, '2026-09-09T00:00:00Z'), title: data.title },
+    })),
   },
   projects: { list: vi.fn().mockResolvedValue(projects) },
 });
@@ -169,12 +177,29 @@ describe('useConversationList', () => {
     const { box, read, step, unmount } = await mount(client);
     await step(() => box.list.reload());
     expect(read()).toBe('a@here');
-    await step(() =>
-      box.list.applyMeta(
-        buildMeta(box.list.store, { id: 'a' }, { id: 'a', messages: [], display: [] }, null),
-      ),
-    );
+    // An entry a request answers with is stamped with the project it was
+    // asked under.
+    await step(() => box.list.applyMeta(metaOf(box.list.store, { meta: { id: 'a' } })));
     expect(read()).toBe('a@here');
+    await unmount();
+  });
+
+  it('renames a row at once, as the assistant writes it', async () => {
+    const client = fakeClient([
+      { key: 'igt:assistant:here:meta:a', value: meta('a', '2026-09-09T00:00:00Z') },
+    ]);
+    const { box, step, unmount } = await mount(client);
+    await step(() => box.list.reload());
+    const service = { serviceId: 'igt:assist:one' };
+    await step(() => box.list.rename(box.list.rows[0], '  Verbs   again ', { service, tab: 't1' }));
+    expect(client.messages.requestService.mock.calls[0][2]).toMatchObject({
+      conversationId: 'a',
+      op: 'rename',
+      title: 'Verbs again',
+      tab: 't1',
+    });
+    expect(box.list.rows[0].title).toBe('Verbs again');
+    expect(client.userData.delete).not.toHaveBeenCalled();
     await unmount();
   });
 

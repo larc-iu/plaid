@@ -668,7 +668,6 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     An undecided plan is never compacted: it can still be approved.
     Every write of the record runs this over every settled plan, and it
     answers the same item when there is nothing to drop.
-    Mirrored by ``compactPlan`` in plaid-ui.
     """
     plan = item.get('plan')
     if not plan or item.get('status') is None:
@@ -760,9 +759,11 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
     record's budget (`prune`).
 
     Made on the stored record: the items before the question are taken as
-    stored (a plan discarded meanwhile stays discarded), an unanswered or
-    stopped line the browser wrote for this question gives way to the
-    outcome, and a note the browser added to the transcript is kept. Nothing
+    stored (a plan settled meanwhile stays as it is), an error line another
+    request wrote for this question gives way to the outcome, and a note
+    another request added to the transcript is kept. With one writer per
+    conversation (`ops`) that is the backstop for a second assistant process
+    and a late write, kept on purpose. Nothing
     is written when the question is no longer there (the conversation was
     rewound or replaced) or a newer question follows it (the user moved on),
     and the record is left as it is when it already holds ``item``."""
@@ -1077,8 +1078,9 @@ def rewind_for_retry(conv: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dic
     :data:`LOST_LINE`). Only the model transcript goes back to before that
     question, so the model reads it once, and a note written after it (a plan
     decided since) stays. ``question`` is the display item asked again, with
-    its files, the projects it read and where it was asked from. As plaid-ui
-    ``rewindForRetry`` did."""
+    its files, the projects it read and where it was asked from. The page's
+    ``rewindForRetry`` made this before the service was the record's only
+    writer."""
     display = list(conv.get('display') or [])
     kinds = [d.get('kind') if isinstance(d, dict) else None for d in display]
     if 'user' not in kinds or answered_last(display):

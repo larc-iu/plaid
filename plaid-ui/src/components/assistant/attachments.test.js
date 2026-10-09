@@ -1,19 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   MAX_BYTES,
   NotUtf8Error,
   chunk,
-  convOfFileKey,
   lineCount,
   blobOf,
   readAttachment,
   readStoredFile,
   refOf,
   refuse,
-  resetSweep,
   storedBytes,
-  sweepOrphanFiles,
-  uploadAttachments,
 } from './attachments.js';
 
 // What an attached file becomes on its way to the store. The measure has to be
@@ -42,32 +38,6 @@ const serverBytes = (s) => {
     .replace(/\//g, '\\/');
   return new TextEncoder().encode(json).length;
 };
-
-const store = (over = {}) => {
-  const records = new Map(Object.entries(over.records || {}));
-  return {
-    records,
-    store: {
-      userId: 'u1',
-      app: 'igt',
-      projectId: 'p1',
-      client: {
-        userData: {
-          put: vi.fn(async (userId, key, value) => records.set(key, value)),
-          delete: vi.fn(async (userId, key) => records.delete(key)),
-          list: vi.fn(async (userId, { prefix }) =>
-            [...records.entries()]
-              .filter(([key]) => key.startsWith(prefix))
-              .map(([key, v]) => ({ key, updatedAt: v.updatedAt })),
-          ),
-        },
-        serverNow: over.serverNow || (() => new Date()),
-      },
-    },
-  };
-};
-
-beforeEach(() => resetSweep());
 
 describe('storedBytes', () => {
   it.each([
@@ -159,18 +129,12 @@ describe('what may be attached', () => {
   });
 });
 
-describe('storing a file', () => {
-  it('writes every part under the conversation, and the message carries only the reference', async () => {
-    const { records, store: s } = store();
+describe('what a message carries of a file', () => {
+  it('is the reference alone, and the parts the service stores join back to the text', async () => {
     const file = fileOf('wordlist.csv', 'хьун,вода\n'.repeat(400));
     const pending = await readAttachment(file, 1500);
     expect(pending.parts.length).toBeGreaterThan(1);
-    await uploadAttachments(s, 'c1', [pending]);
-    const keys = [...records.keys()];
-    expect(keys).toEqual(
-      pending.parts.map((_, n) => `igt:assistant:p1:file:c1:${pending.id}:part:${n}`),
-    );
-    expect(keys.map((k) => records.get(k)).join('')).toBe('хьун,вода\n'.repeat(400));
+    expect(pending.parts.join('')).toBe('хьун,вода\n'.repeat(400));
     const ref = refOf(pending);
     expect(ref).toEqual({
       id: pending.id,
@@ -180,51 +144,6 @@ describe('storing a file', () => {
       chunks: pending.parts.length,
     });
     expect(JSON.stringify(ref)).not.toContain('вода');
-  });
-
-  it('reads the conversation off a file key', () => {
-    expect(convOfFileKey('igt', 'p1', 'igt:assistant:p1:file:c9:f1:part:0')).toBe('c9');
-    expect(convOfFileKey('igt', 'p1', 'igt:assistant:p2:file:c9:f1:part:0')).toBeNull();
-  });
-});
-
-describe('sweepOrphanFiles', () => {
-  const OLD = '2020-01-01T00:00:00Z';
-
-  it('deletes an old file whose conversation is gone, and nothing else', async () => {
-    const { records, store: s } = store({
-      records: {
-        'igt:assistant:p1:file:live:f1:part:0': { updatedAt: OLD },
-        'igt:assistant:p1:file:gone:f2:part:0': { updatedAt: OLD },
-        'igt:assistant:p1:file:fresh:f3:part:0': { updatedAt: new Date().toISOString() },
-      },
-    });
-    expect(await sweepOrphanFiles(s, ['live'])).toBe(1);
-    expect([...records.keys()].sort()).toEqual([
-      'igt:assistant:p1:file:fresh:f3:part:0',
-      'igt:assistant:p1:file:live:f1:part:0',
-    ]);
-  });
-
-  // The store stamps `updatedAt` by its own clock, so a browser clock hours
-  // fast must not make a file written a moment ago look old.
-  it("judges a file's age by the server's clock", async () => {
-    const serverNow = () => new Date(Date.now() - 3 * 60 * 60e3);
-    const { records, store: s } = store({
-      serverNow,
-      records: {
-        'igt:assistant:p1:file:gone:f1:part:0': { updatedAt: serverNow().toISOString() },
-      },
-    });
-    expect(await sweepOrphanFiles(s, [])).toBe(0);
-    expect([...records.keys()]).toEqual(['igt:assistant:p1:file:gone:f1:part:0']);
-  });
-
-  it('runs once a page load, per project', async () => {
-    const { store: s } = store();
-    await sweepOrphanFiles(s, []);
-    await sweepOrphanFiles(s, []);
-    expect(s.client.userData.list).toHaveBeenCalledTimes(1);
   });
 });
 

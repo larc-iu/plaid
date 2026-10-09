@@ -15,6 +15,7 @@ const { notifyError } = await import('../../lib/notify.js');
 const { MemoryRouter } = await import('react-router-dom');
 const { renderComponent, all, byText } = await import('../../test/renderComponent.jsx');
 const { documentsBundle } = await import('../../test/fakeClient.js');
+const { fakeAssistantService } = await import('../../test/fakeAssistantService.js');
 const { AssistantChat } = await import('./AssistantChat.jsx');
 const { jobs, serviceCache } = await import('./jobs.js');
 
@@ -41,9 +42,12 @@ const SERVICE = {
   serviceId: 'igt:assist:one',
   serviceName: 'Assistant one',
   online: true,
-  extras: { tasks: ['assist'], app: 'igt', model: 'sonnet', maxProjects: 5 },
+  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet', maxProjects: 5 },
 };
-const OLD_SERVICE = { ...SERVICE, extras: { tasks: ['assist'], app: 'igt', model: 'sonnet' } };
+const OLD_SERVICE = {
+  ...SERVICE,
+  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet' },
+};
 
 const B = { id: 'pB', name: 'Lamkang B' };
 const C = { id: 'pC', name: 'Lamkang C' };
@@ -77,11 +81,13 @@ const fakeClient = ({ service = SERVICE, conv = CONV, where = {} } = {}) => {
     ['igt:assistant:p1:meta:c1', META],
     ['igt:assistant:p1:conv:c1', conv],
   ]);
+  // The assistant: it writes the record, the page only asks.
+  const assistant = fakeAssistantService(records);
   return {
     records,
     messages: {
       discoverServices: vi.fn(async (pid) => (pid === 'p1' ? [service] : (where[pid] ?? []))),
-      requestService: vi.fn().mockResolvedValue({}),
+      requestService: vi.fn(assistant.requestService),
       attachServiceRequest: vi.fn().mockResolvedValue({}),
       cancelServiceRequest: vi.fn().mockResolvedValue({}),
     },
@@ -142,8 +148,13 @@ const typeAndSend = (m, value) =>
 const lastAsked = (client) =>
   client.records.get('igt:assistant:p1:conv:c1').display.findLast((d) => d.kind === 'user');
 
-// The other projects the last request named for its token (`opts.projectIds`).
-const sentProjectIds = (client) => client.messages.requestService.mock.calls.at(-1)[6].projectIds;
+// The requests that asked for a turn (a send or a retry), not the hold on the
+// conversation an open tab takes.
+const turnCalls = (client) =>
+  client.messages.requestService.mock.calls.filter((c) => ['send', 'retry'].includes(c[2].op));
+
+// The other projects the last turn named for its token (`opts.projectIds`).
+const sentProjectIds = (client) => turnCalls(client).at(-1)[6].projectIds;
 
 const chip = (m, name) => m.container.querySelector(`[aria-label="Remove ${name}"]`);
 
@@ -187,7 +198,7 @@ describe('AssistantChat and other projects', () => {
     await typeAndSend(m, 'and -ki?');
     await flush(m, 8);
     expect(lastAsked(client)).toMatchObject({ text: 'and -ki?', projects: [B] });
-    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(turnCalls(client)).toHaveLength(1);
     expect(sentProjectIds(client)).toEqual([B.id]);
     expect(chip(m, 'Lamkang B')).not.toBeNull();
     await m.unmount();
@@ -406,7 +417,7 @@ describe('AssistantChat and other projects', () => {
     await m.step(() => chip(m, 'Lamkang B').click());
     await m.step(() => byText(m.container, 'button', 'Retry').click());
     await flush(m, 8);
-    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(turnCalls(client)).toHaveLength(1);
     expect(lastAsked(client)).toMatchObject({ text: 'compare -ka', projects: [B] });
     expect(sentProjectIds(client)).toEqual([B.id]);
     await m.unmount();

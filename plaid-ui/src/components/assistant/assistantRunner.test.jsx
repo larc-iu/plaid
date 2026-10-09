@@ -14,7 +14,7 @@ const svc = (id, over = {}) => ({
   serviceId: id,
   serviceName: `Assistant ${id}`,
   online: true,
-  extras: { model: `model/${id}`, app: 'igt', tasks: ['assist'] },
+  extras: { model: `model/${id}`, app: 'igt', record: 2, tasks: ['assist'] },
   ...over,
 });
 

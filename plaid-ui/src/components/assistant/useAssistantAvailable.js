@@ -23,9 +23,19 @@ import { serviceCache } from './jobs.js';
 //
 // A service someone else runs, where its runner is not a maintainer, takes no
 // one's requests but its runner's (`servesYou`), so it is not offered.
+//
+// And only one that writes the conversation record itself, taking a request
+// for each thing the reader does (`extras.record` 2, plaid_agent/core/ops.py):
+// this page writes none of it. The assistants are restarted with a deploy.
+const RECORD_PROTOCOL = 2;
+
 export const assistantsAmong = (services, app) =>
   filterServicesByTask(services || [], TASKS.ASSIST).filter(
-    (s) => s.online !== false && s.extras?.app === app && s.servesYou !== false,
+    (s) =>
+      s.online !== false &&
+      s.extras?.app === app &&
+      s.extras?.record === RECORD_PROTOCOL &&
+      s.servesYou !== false,
   );
 
 // Who runs an assistant, for the line beside its name: "run by Ana", or "run
