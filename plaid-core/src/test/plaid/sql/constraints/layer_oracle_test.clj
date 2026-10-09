@@ -15,7 +15,11 @@
       the step itself wrote in that respect (a direct violation must be
       refused, never remedied),
     - what core stored equals this namespace's own model of the remedies
-      applied to that state.
+      applied to that state,
+    - the audit log folded at the latest operation equals the stored rows
+      (no row went without its audit row, and History shows no ghost),
+    - a restore brought back the state at its time, and half the accepted
+      restores are undone at once by a restore to the moment before.
 
   Seeds use `java.util.SplittableRandom`. `PLAID_ORACLE_SEEDS` sets how many
   (default 40); a failing seed is printed for replay."
@@ -24,6 +28,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.history.read :as hread]
+            [plaid.history.restore :as restore]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call with-clean-db]]
@@ -533,6 +538,8 @@
         cfg (assoc (setup! r) :exempt exempt)
         doc (:doc cfg)
         history (volatile! [(last-ts)])
+        ;; The time just before the last restore, when its undo comes next.
+        undo (volatile! nil)
         stats (volatile! {:refused 0 :accepted 0 :remedied 0})
         fail (fn [what & data] (is false (str "seed " seed ": " what " " (pr-str data))) (reduced :failed))]
     (is (empty? (violations cfg (snapshot doc))) (str "seed " seed ": the fixture breaks a rule"))
@@ -540,9 +547,13 @@
       (when (< i steps)
         (let [before (snapshot doc)
               ts0 (last-ts)
-              kind (n-of r 11)
+              undo-at @undo
+              _ (vreset! undo nil)
+              kind (if undo-at 10 (n-of r 11))
               [what resp]
               (cond
+                undo-at [[:restore undo-at :undo]
+                         (call :post (str "/api/v1/documents/" doc "/restore?as-of=" undo-at))]
                 (< kind 4) (let [op (word-op r cfg before)] [op (when op (send! op))])
                 (< kind 7) (let [op (structural-op r cfg before (body-of (:txt cfg)))] [op (when op (send! op))])
                 (< kind 9) (let [ops (vec (keep identity (for [_ (range (+ 2 (n-of r 7)))]
@@ -570,6 +581,15 @@
                 (cond
                   (nil? resp) :skip
                   (seq left) (fail "a rule is broken after" what status left)
+                  ;; No row went without its audit row: the log folds to the
+                  ;; live rows, and History reads what the tables hold.
+                  (not= (snapshot-at doc (last-ts)) after)
+                  (let [[only-history only-stored] (clojure.data/diff (snapshot-at doc (last-ts)) after)]
+                    (fail "history differs from the stored rows after" what status
+                          {:only-history only-history :only-stored only-stored}))
+                  (pos? (:total (restore/preview db doc (java.time.Instant/parse (last-ts)))))
+                  (fail "a restore to the latest time would change rows after" what status
+                        (restore/preview db doc (java.time.Instant/parse (last-ts))))
                   (= 422 status)
                   (do (vswap! stats update :refused inc)
                       (when (not= before after) (fail "a refused step changed rows" what)))
@@ -587,7 +607,18 @@
                     (vswap! stats update :accepted inc)
                     (when remedied? (vswap! stats update :remedied inc))
                     (vswap! history conj (last-ts))
+                    (when (= :restore (first what))
+                      (vswap! stats update :restores (fnil inc 0))
+                      (when (= :undo (nth what 2 nil)) (vswap! stats update :undos (fnil inc 0)))
+                      (when (chance r 0.5) (vreset! undo ts0)))
                     (cond
+                      (and (= :restore (first what)) (seq own)
+                           (not= (snapshot-at doc (second what)) (snapshot-at doc (:ts (last own)))))
+                      (let [[only-then only-now] (clojure.data/diff (snapshot-at doc (second what))
+                                                                    (snapshot-at doc (:ts (last own))))]
+                        (fail "a restore did not bring back the state at its time" what
+                              {:only-then only-then :only-now only-now}))
+
                       (some #(not (remediable (:type %))) vs)
                       (fail "an unremediable rule was broken and the step accepted" what vs)
 
@@ -614,4 +645,5 @@
     (testing "the steps exercise refusals, acceptances and remedies"
       (is (pos? (:refused @totals 0)) (pr-str @totals))
       (is (pos? (:remedied @totals 0)) (pr-str @totals))
-      (is (pos? (:imports @totals 0)) (pr-str @totals)))))
+      (is (pos? (:imports @totals 0)) (pr-str @totals))
+      (is (pos? (:undos @totals 0)) (pr-str @totals)))))
