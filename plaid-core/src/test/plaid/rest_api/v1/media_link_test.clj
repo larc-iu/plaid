@@ -168,6 +168,9 @@
           (is (= 401 (:status (rest-handler (anonymous :get (str "/api/v1/projects/" pid "/listen?media-token=" token)))))))
         (testing "on another document's recording"
           (is (= 401 (:status (get-anon (str "/api/v1/documents/" other "/media?media-token=" token))))))
+        (testing "given twice, a media token or a query token is no credential, and no 500"
+          (is (= 401 (:status (get-anon (str media-path "?media-token=" token "&media-token=" token)))))
+          (is (= 401 (:status (rest-handler (anonymous :get (str "/api/v1/projects/" pid "/listen?token=" fix/admin-token "&token=" fix/admin-token)))))))
         (testing "a session token passed as media-token lacks the audience"
           (is (= 401 (:status (get-anon (str media-path "?media-token=" fix/admin-token))))))
         (testing "a media token with the right claims but the wrong signature"
@@ -254,7 +257,10 @@
                                            :fn (fn [data] (swap! lines conj (force (:msg_ data))))}}})
         (try
           (is (= 200 (:status (get-anon url))))
+          ;; The name percent-encoded is the same parameter to the route.
+          (is (= 200 (:status (get-anon (str/replace url "media-token=" "media%2Dtoken=")))))
           (finally (log/merge-config! {:appenders {k nil}})))
         (let [blob (str/join "\n" @lines)]
           (is (str/includes? blob "media-token=<redacted>"))
+          (is (str/includes? blob "media%2Dtoken=<redacted>"))
           (is (not (str/includes? blob token))))))))

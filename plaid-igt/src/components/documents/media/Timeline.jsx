@@ -39,6 +39,25 @@ const segmentColors = (speaker, speakers, resizing) => {
   };
 };
 
+// Exactly the recording's length at this zoom, where the track itself may be
+// stretched to fill the box: what is placed as a share of the recording is
+// placed inside one of these. It takes no pointer itself, so a press on it is
+// a press on the track.
+const ScaleLayer = ({ width, children }) => (
+  <div
+    style={{
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: `${width}px`,
+      pointerEvents: 'none',
+    }}
+  >
+    {children}
+  </div>
+);
+
 // The waveform for one stretch of the recording, drawn straight onto the
 // canvas whenever the stretch or the zoom changes. Between a zoom and its
 // redraw the old picture is stretched to the new width, since its box is a
@@ -119,6 +138,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   backgroundColor: 'hsl(var(--primary) / 0.06)',
                   border: '1px dashed hsl(var(--primary) / 0.7)',
                   cursor: 'pointer',
+                  pointerEvents: 'auto',
                   zIndex: 2,
                 }}
                 onClick={(e) => {
@@ -251,10 +271,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               style={{
                 position: 'relative',
                 height: `${TIMELINE_HEIGHT}px`,
-                // Exactly the recording's length at this zoom, never stretched
-                // to the box: the needle and the proposals are placed as
-                // shares of this width.
                 width: `${timelineWidth}px`,
+                minWidth: '100%',
                 cursor: !canCreateSelection ? 'default' : isDragging ? 'grabbing' : 'pointer',
                 backgroundColor: 'hsl(var(--muted) / 0.5)',
                 userSelect: 'none',
@@ -267,13 +285,15 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               {/* Waveform, for the drawn stretch only, so it stays sharp at
                   every zoom on a recording of any length. */}
               {waveformEnvelope && duration > 0 && (
-                <WaveformCanvas
-                  envelope={waveformEnvelope}
-                  from={drawn.from}
-                  to={drawn.to}
-                  duration={duration}
-                  pixelsPerSecond={pixelsPerSecond}
-                />
+                <ScaleLayer width={timelineWidth}>
+                  <WaveformCanvas
+                    envelope={waveformEnvelope}
+                    from={drawn.from}
+                    to={drawn.to}
+                    duration={duration}
+                    pixelsPerSecond={pixelsPerSecond}
+                  />
+                </ScaleLayer>
               )}
 
               {/* Loading indicator for waveform */}
@@ -403,7 +423,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   ones, outlined rather than filled, so the difference is
                   visible at a glance. Memoized so the playhead moving does not
                   re-render a long recording's worth of them. */}
-              {proposalBlocks}
+              <ScaleLayer width={timelineWidth}>{proposalBlocks}</ScaleLayer>
 
               {/* Alignment tokens */}
               {getVisibleTokens().map((token) => {

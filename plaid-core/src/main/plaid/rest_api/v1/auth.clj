@@ -635,9 +635,13 @@
     (let [secret-key (:secret-key request)
           auth-header (get-in request [:headers "authorization"])
           bearer? (and auth-header (.startsWith ^String auth-header "Bearer "))
-          query-token (get-in request [:query-params "token"])
+          ;; A parameter given twice arrives as a vector. It names no one
+          ;; credential, so it counts as absent, and the route's own gate
+          ;; refuses the request as unsigned.
+          one (fn [k] (let [v (get-in request [:query-params k])] (when (string? v) v)))
+          query-token (one "token")
           media-token (when (and (not bearer?) (nil? query-token) (media-route? request))
-                        (get-in request [:query-params "media-token"]))]
+                        (one "media-token"))]
       (cond (nil? secret-key)
             (do (log/error "Secret key not found in request! Are middlewares properly ordered?" nil)
                 {:status 500 :body {:error (str "Improperly configured server. Contact admin.")}})

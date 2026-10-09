@@ -42,6 +42,11 @@ const isActivatable = (t) =>
 
 const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
 
+// MediaError.MEDIA_ERR_DECODE, named here since jsdom has no MediaError.
+const MEDIA_ERR_DECODE = 3;
+// A link this close to running out is renewed whatever has been tried.
+const RELINK_BEFORE_EXPIRY_MS = 60 * 1000;
+
 // How long an ASR service may say NOTHING before the page gives up waiting.
 // Not a cap on the run: the client's clock restarts on every progress event.
 // It needs to be this long because a transcriber's model pass is one blocking
@@ -223,8 +228,9 @@ export const useMediaOperations = () => {
   // and seeks by range at once.
   //
   // The waveform and speech detection still read the whole file, so it is
-  // fetched as well, with a real header, behind the player and never holding
-  // it up.
+  // fetched as well, through the same link (this page's own session, never
+  // whichever login another tab left in storage), behind the player and never
+  // holding it up.
   const mediaSrcUrl = doc.document.mediaUrl;
   const documentId = doc.document.id;
   // `url` is the link the element plays. `key` is the versioned media URL,
@@ -233,29 +239,52 @@ export const useMediaOperations = () => {
   const [media, setMedia] = useState({ url: null, blob: null, key: null });
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [mediaLoadError, setMediaLoadError] = useState(null);
-  // A link that stopped working (it expired, or the session ended) is asked
-  // for again once per recording, picking up where playback was.
-  const relinkRef = useRef({ key: null, tried: false, resume: null });
+  // A link that stopped working is asked for again (see relinkMedia). `tried`
+  // and `expiresAt` keep that from becoming a loop over a file that fails for
+  // some other reason: once a new link has been asked for, another is asked
+  // for only when the one in hand is about to run out.
+  const relinkRef = useRef({ key: null, tried: false, expiresAt: 0, resume: null });
 
   useEffect(() => {
     // Clear eagerly so a stale recording never shows under a new (or deleted)
     // media file while the requests below are still in flight.
     setMedia({ url: null, blob: null, key: null });
     setMediaLoadError(null);
-    relinkRef.current = { key: mediaSrcUrl, tried: false, resume: null };
+    relinkRef.current = { key: mediaSrcUrl, tried: false, expiresAt: 0, resume: null };
+    // The element may still be reading the old link, and an error from it is
+    // not this recording's. Another recording starts at its start, and so does
+    // the needle.
+    mediaElementRef.current?.pause();
+    setCurrentTime(0);
     if (!mediaSrcUrl) {
       setIsLoadingMedia(false);
       return undefined;
     }
 
     let cancelled = false;
+    const reading = new AbortController();
     setIsLoadingMedia(true);
+
+    const readWhole = async (url) => {
+      try {
+        const response = await fetch(url, { signal: reading.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        if (!cancelled) setMedia((m) => ({ ...m, blob }));
+      } catch (error) {
+        // The player does not need it. The waveform draws a flat line and
+        // detection stays off, which say enough.
+        if (!cancelled) console.error('Failed to read the whole recording:', error);
+      }
+    };
 
     (async () => {
       try {
         const link = await client.documents.mediaLink(documentId);
         if (cancelled) return;
+        relinkRef.current.expiresAt = Date.parse(link.expiresAt) || 0;
         setMedia((m) => ({ ...m, url: link.url, key: mediaSrcUrl }));
+        readWhole(link.url);
       } catch (error) {
         if (cancelled) return;
         console.error('Failed to load media:', error);
@@ -265,48 +294,60 @@ export const useMediaOperations = () => {
       }
     })();
 
-    (async () => {
-      try {
-        const response = await fetch(mediaSrcUrl, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const blob = await response.blob();
-        if (!cancelled) setMedia((m) => ({ ...m, blob, key: mediaSrcUrl }));
-      } catch (error) {
-        // The player does not need it. The waveform draws a flat line and
-        // detection stays off, which say enough.
-        if (!cancelled) console.error('Failed to read the whole recording:', error);
-      }
-    })();
-
     return () => {
       cancelled = true;
+      reading.abort();
     };
-  }, [client, documentId, mediaSrcUrl]);
+  }, [client, documentId, mediaSrcUrl, setCurrentTime]);
 
-  // The element could not read its link. Ask for a new one, once, and carry
-  // on from where playback was: a link minted hours ago has expired. Returns
-  // whether it is trying again, so the player says nothing until it is not.
-  const relinkMedia = useCallback(() => {
-    const relink = relinkRef.current;
-    if (!relink.key || relink.tried) return false;
-    relink.tried = true;
-    const el = mediaElementRef.current;
-    relink.resume = el ? { time: el.currentTime, playing: !el.paused } : null;
-    const key = relink.key;
-    client.documents
-      .mediaLink(documentId)
-      .then((link) => {
-        if (relinkRef.current.key === key) setMedia((m) => ({ ...m, url: link.url }));
-      })
-      .catch((error) => {
-        if (relinkRef.current.key !== key) return;
-        console.error('Failed to load media:', error);
-        setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
-      });
-    return true;
-  }, [client, documentId]);
+  // Ask for a new link and carry on from where playback was. `force` is the
+  // person asking (Try again), which is always honoured.
+  const renewLink = useCallback(
+    ({ force = false } = {}) => {
+      const relink = relinkRef.current;
+      if (!relink.key) return false;
+      if (!force && relink.tried && Date.now() < relink.expiresAt - RELINK_BEFORE_EXPIRY_MS) {
+        return false;
+      }
+      relink.tried = true;
+      const el = mediaElementRef.current;
+      relink.resume =
+        el && mediaUrlRef.current ? { time: el.currentTime, playing: !el.paused } : null;
+      const key = relink.key;
+      setMediaLoadError(null);
+      client.documents
+        .mediaLink(documentId)
+        .then((link) => {
+          if (relinkRef.current.key !== key) return;
+          relinkRef.current.expiresAt = Date.parse(link.expiresAt) || 0;
+          setMedia((m) => ({ ...m, url: link.url }));
+        })
+        .catch((error) => {
+          if (relinkRef.current.key !== key) return;
+          console.error('Failed to load media:', error);
+          setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
+        });
+      return true;
+    },
+    [client, documentId],
+  );
+
+  // The element could not read its link. A link stops working when it
+  // expires or the session ends, and the element says only that it failed,
+  // with a code: a file that does not decode is the file's fault, and a new
+  // link would fail the same way. Returns whether a new link is on its way,
+  // so the player says nothing until it is not.
+  const relinkMedia = useCallback(
+    (code) => {
+      if (code === MEDIA_ERR_DECODE) return false;
+      // No link for this recording has been handed over yet: the error is
+      // the old recording's.
+      if (!mediaUrlRef.current) return false;
+      return renewLink();
+    },
+    [renewLink],
+  );
+  const retryMedia = useCallback(() => renewLink({ force: true }), [renewLink]);
 
   // A recording deleted or replaced by someone else is said so once the
   // document is read again (recordingChange.js), with what a write refused
@@ -348,6 +389,7 @@ export const useMediaOperations = () => {
   const handleMediaLoaded = useCallback((url) => {
     loadedUrlRef.current = url;
     setLoadedUrl(url);
+    setMediaLoadError(null);
     // A new link for the same recording goes on from where the old one was.
     const resume = relinkRef.current.resume;
     const el = mediaElementRef.current;
@@ -1037,6 +1079,7 @@ export const useMediaOperations = () => {
     project,
     authenticatedMediaUrl,
     relinkMedia,
+    retryMedia,
     mediaBlob,
     mediaBlobKey,
     isLoadingMedia,

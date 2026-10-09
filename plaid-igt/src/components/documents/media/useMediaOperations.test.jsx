@@ -54,7 +54,14 @@ const mediaLink = vi.fn(() => {
   links.push(d);
   return d.promise;
 });
-const link = (name) => ({ url: `link:${name}`, expiresAt: '2026-10-09T23:00:00Z' });
+// Good for six hours, as the server's are.
+const link = (name) => ({
+  url: `link:${name}`,
+  expiresAt: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+});
+// MediaError codes.
+const MEDIA_ERR_NETWORK = 2;
+const MEDIA_ERR_DECODE = 3;
 
 beforeEach(() => {
   fetches = [];
@@ -108,28 +115,30 @@ const EMPTY = { url: null, loading: false, error: null };
 const LOADING = { url: null, loading: true, error: null };
 
 describe('useMediaOperations: the recording', () => {
-  it('a link that arrives after the tab closes is never shown', async () => {
+  it('a link that arrives after the tab closes is never shown, and fetches nothing', async () => {
     const h = await mountMedia();
     expect(links).toHaveLength(1);
     expect(h.seq).toEqual([EMPTY, LOADING]);
 
     await h.unmount();
     links[0].resolve(link('a'));
-    fetches[0].resolve(recording('a'));
     await settle();
     await settle();
+    expect(fetches).toHaveLength(0);
     expect(h.seq).toEqual([EMPTY, LOADING]);
   });
 
-  it('the player has its link before the whole file has arrived', async () => {
+  it('the player has its link before the whole file, which is read through the link', async () => {
     const h = await mountMedia();
-    expect(fetches.map((f) => f.url)).toEqual(['/api/v1/documents/doc-1/media?v=a']);
+    expect(fetches).toHaveLength(0);
     await h.step(async () => {
       links[0].resolve(link('a'));
       await settle();
     });
     expect(h.api.authenticatedMediaUrl).toBe('link:a');
     expect(h.api.mediaBlob).toBeNull();
+    // Through the link: this page's own session, never a token from storage.
+    expect(fetches.map((f) => f.url)).toEqual(['link:a']);
 
     await h.step(async () => {
       fetches[0].resolve(recording('a'));
@@ -140,6 +149,18 @@ describe('useMediaOperations: the recording', () => {
     await h.unmount();
   });
 
+  it('leaving stops the whole-file read', async () => {
+    const h = await mountMedia();
+    await h.step(async () => {
+      links[0].resolve(link('a'));
+      await settle();
+    });
+    const { signal } = global.fetch.mock.calls[0][1];
+    expect(signal.aborted).toBe(false);
+    await h.unmount();
+    expect(signal.aborted).toBe(true);
+  });
+
   it('a recording swapped mid-request keeps the new one, whichever answer lands first', async () => {
     const h = await mountMedia();
     await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
@@ -147,7 +168,10 @@ describe('useMediaOperations: the recording', () => {
 
     await h.step(async () => {
       links[1].resolve(link('b'));
-      fetches[1].resolve(recording('b'));
+      await settle();
+    });
+    await h.step(async () => {
+      fetches[0].resolve(recording('b'));
       await settle();
     });
     expect(h.api.authenticatedMediaUrl).toBe('link:b');
@@ -155,10 +179,10 @@ describe('useMediaOperations: the recording', () => {
     // The recording the tab left behind answers late.
     await h.step(async () => {
       links[0].resolve(link('a'));
-      fetches[0].resolve(recording('a'));
       await settle();
     });
 
+    expect(fetches).toHaveLength(1);
     expect(h.seq).toEqual([EMPTY, LOADING, { url: 'link:b', loading: false, error: null }]);
     expect(h.api.mediaBlob.name).toBe('b');
     await h.unmount();
@@ -200,6 +224,9 @@ describe('useMediaOperations: the recording', () => {
     const h = await mountMedia();
     await h.step(async () => {
       links[0].resolve(link('a'));
+      await settle();
+    });
+    await h.step(async () => {
       fetches[0].resolve({ ok: false, status: 500 });
       await settle();
     });
@@ -208,7 +235,7 @@ describe('useMediaOperations: the recording', () => {
     await h.unmount();
   });
 
-  it('a link that stops working is asked for again once, and playback goes on from where it was', async () => {
+  it('a link that stops working is asked for again, and playback goes on from where it was', async () => {
     const h = await mountMedia();
     const el = fakeMediaElement([], { currentTime: 0, paused: true });
     await loadRecording(h, el);
@@ -218,7 +245,7 @@ describe('useMediaOperations: the recording', () => {
     // The element failed to read its link (it expired, say).
     let again;
     await h.step(() => {
-      again = h.api.relinkMedia();
+      again = h.api.relinkMedia(MEDIA_ERR_NETWORK);
     });
     expect(again).toBe(true);
     expect(links).toHaveLength(2);
@@ -235,10 +262,77 @@ describe('useMediaOperations: the recording', () => {
     expect(el.currentTime).toBe(42);
     expect(el.play).toHaveBeenCalled();
     expect(h.api.mediaReady).toBe(true);
+    await h.unmount();
+  });
 
-    // A second failure is the file's, not the link's.
-    expect(h.api.relinkMedia()).toBe(false);
+  it('a file that keeps failing is not asked for again and again', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await loadRecording(h, el);
+    // A file that does not decode fails the same way on any link.
+    expect(h.api.relinkMedia(MEDIA_ERR_DECODE)).toBe(false);
+    expect(links).toHaveLength(1);
+
+    // One new link for a failure that might be the link's...
+    await h.step(() => h.api.relinkMedia(MEDIA_ERR_NETWORK));
+    await h.step(async () => {
+      links[1].resolve(link('a2'));
+      await settle();
+    });
+    await h.step(() => h.api.handleMediaLoaded('link:a2'));
+    // ...and not another while that one is good for hours yet, though it
+    // loaded: a file that fails at the same place every time would loop.
+    expect(h.api.relinkMedia(MEDIA_ERR_NETWORK)).toBe(false);
     expect(links).toHaveLength(2);
+    await h.unmount();
+  });
+
+  it('a link about to run out is renewed again', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await loadRecording(h, el);
+    await h.step(() => h.api.relinkMedia(MEDIA_ERR_NETWORK));
+    await h.step(async () => {
+      links[1].resolve({ url: 'link:a2', expiresAt: new Date(Date.now() + 1000).toISOString() });
+      await settle();
+    });
+    await h.step(() => h.api.handleMediaLoaded('link:a2'));
+    expect(h.api.relinkMedia(MEDIA_ERR_NETWORK)).toBe(true);
+    expect(links).toHaveLength(3);
+    await h.unmount();
+  });
+
+  it('a renewal refused while signed out can be tried again by hand', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await loadRecording(h, el);
+    await h.step(() => h.api.relinkMedia(MEDIA_ERR_NETWORK));
+    await h.step(async () => {
+      links[1].reject(Object.assign(new Error('Token invalid'), { status: 401 }));
+      await settle();
+    });
+    expect(h.api.mediaLoadError).not.toBeNull();
+
+    // Signed back in, the person presses Try again.
+    await h.step(() => h.api.retryMedia());
+    expect(h.api.mediaLoadError).toBeNull();
+    await h.step(async () => {
+      links[2].resolve(link('a3'));
+      await settle();
+    });
+    expect(h.api.authenticatedMediaUrl).toBe('link:a3');
+    await h.unmount();
+  });
+
+  it("an error before this recording's link is handed over is the old recording's", async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([], { currentTime: 30, paused: false });
+    await loadRecording(h, el);
+    await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
+    // The old link is still being read, and fails.
+    expect(h.api.relinkMedia(MEDIA_ERR_NETWORK)).toBe(false);
+    expect(el.pause).toHaveBeenCalled();
+    expect(h.api.currentTime).toBe(0);
     await h.unmount();
   });
 

@@ -205,6 +205,18 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               <p className="text-sm text-muted-foreground">
                 {mediaLoadError ? `Failed to load media: ${mediaLoadError}` : mediaError}
               </p>
+              {/* A link refused while signed out works again once signed
+                  back in, and nothing else would ask for it. */}
+              {mediaLoadError && mediaOps.retryMedia && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => mediaOps.retryMedia()}
+                >
+                  Try again
+                </Button>
+              )}
             </div>
           )}
 
@@ -264,7 +276,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               // A link stops working when it expires or the session ends. The
               // element says only that it failed, so a new link is tried once
               // before the failure is put down to the file.
-              if (mediaOps.relinkMedia?.()) return;
+              if (mediaOps.relinkMedia?.(e.currentTarget.error?.code)) return;
               console.error('Media error:', e);
               setMediaError('Failed to load media. This format may not be supported.');
             }}

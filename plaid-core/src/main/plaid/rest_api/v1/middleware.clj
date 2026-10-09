@@ -248,6 +248,13 @@
     (seq? x) (doall (map redact-sensitive x))
     :else x))
 
+(defn- decode-query-name
+  "A query parameter's name as the server reads it, or as written when it
+  does not decode."
+  [k]
+  (try (java.net.URLDecoder/decode ^String k "UTF-8")
+       (catch IllegalArgumentException _ k)))
+
 (defn- redact-query-string
   "Percent-encoded query string with any sensitive parameter's value
   replaced. The ones that matter are `token` and `media-token`:
@@ -259,7 +266,9 @@
     (->> (str/split qs #"&")
          (map (fn [pair]
                 (let [[k v] (str/split pair #"=" 2)]
-                  (if (and v (redact-key? k)) (str k "=<redacted>") pair))))
+                  ;; Read the name as the server reads it: `media%2Dtoken`
+                  ;; is `media-token` to the route, and was logged whole.
+                  (if (and v (redact-key? (decode-query-name k))) (str k "=<redacted>") pair))))
          (str/join "&"))))
 
 (defn- access-record
