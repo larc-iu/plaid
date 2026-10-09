@@ -186,6 +186,17 @@
 
 (def ^:private never [:= [:inline 1] [:inline 0]])
 
+(defn- holds-class
+  "Expression `x`, which has no type of its own (a decoded JSON value, a
+  metadata path, a token's surface), holds a value of type `cls`. Beside an
+  equality with a typed column it keeps SQLite from converting `x` to the
+  column's type, and leaves the column bare, so its index still serves the
+  equality (`typeless` would not)."
+  [x cls]
+  (case cls
+    :numeric [:in [:typeof (fn-arg x)] [[:inline "integer"] [:inline "real"]]]
+    :text [:= [:typeof (fn-arg x)] [:inline "text"]]))
+
 (defn- atomic-pred
   "`= literal` for a scalar value, `IN (…)` for a vector (value alternation).
   `enc` encodes each literal to its stored form. A text literal compares
@@ -1227,8 +1238,20 @@
                                        (not= (cls t other) (cls other t)))
                                 (typeless s)
                                 s)))]
-    (if (and (#{:= :!=} op) lit (:sql other) (canonical? (:lit lit)))
+    (cond
+      (and (#{:= :!=} op) lit (:sql other) (canonical? (:lit lit)))
       (add-where! st [(pred-honeysql-op op) (canonical-text (typed other lit)) (canonical/nfc (:lit lit))])
+
+      ;; an equality of a typed column with an expression of no type
+      ;; (`["=", "?h.id", "?e.metadata.parent"]`): the column stays bare, so
+      ;; its index serves the join, and the expression must hold the column's
+      ;; type, so a string still never equals a number
+      (and (= op :=) (not lit)
+           (not= (some? (column-class (:sql ta))) (some? (column-class (:sql tb)))))
+      (let [[c x] (if (column-class (:sql ta)) [ta tb] [tb ta])]
+        (add-where! st [:and [:= (:sql c) (:sql x)] (holds-class (:sql x) (column-class (:sql c)))]))
+
+      :else
       (add-where! st [(pred-honeysql-op op) (typed ta tb) (typed tb ta)]))))
 
 (defn- compile-regex-pred!

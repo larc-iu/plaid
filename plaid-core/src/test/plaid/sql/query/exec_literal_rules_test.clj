@@ -10,8 +10,11 @@
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
             [plaid.test-helpers :as h]
+            [plaid.query.ast :as ast]
             [plaid.sql.common :as psc]
+            [plaid.sql.query.compile :as qc]
             [plaid.sql.query.exec :as qe]
+            [plaid.sql.query.resolve :as qr]
             [plaid.util.canonical :as canonical]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -191,6 +194,33 @@
                                                         ["=" "?t.begin" "?v.form"]]})))))
     (testing "a token's surface against a number"
       (is (= #{} (tok ["=" "?t.value" 3.0]))))))
+
+(deftest a-typed-column-equal-to-an-expression-keeps-its-index-and-its-type
+  ;; igt's headword query joins an entry's id to another's `parent` metadata.
+  ;; The id column stays bare, so its index serves the join (wrapped, the join
+  ;; read every pair of entries and timed out on a lexicon of 10,000), and a
+  ;; string still never equals a number.
+  (let [{:keys [tokl t2 v1 v2 v3]} (build!)
+        meta! (fn [v m] (psc/execute! db {:insert-into :entity_metadata
+                                          :values (for [[k x] m] {:entity_type "vocab-item" :entity_id (str v)
+                                                                  :key k :value (psc/write-json x)})}))
+        _ (meta! v2 {"parent" (str v1) "n" 3 "s" "3"})
+        _ (meta! v3 {"n" 3.0 "s" "3.0"})
+        q (fn [& where] {"find" ["?a" "?b"] "where" (vec where)})
+        pairs (fn [body] (set (map (fn [r] (mapv str r)) (:results (run body)))))
+        head-q (q ["vocab" "?a"] ["vocab" "?b"] ["=" "?a.id" "?b.metadata.parent"])]
+    (is (= #{[(str v1) (str v2)]} (pairs head-q)))
+    (is (not (str/includes? (pr-str (qc/compile-query (qr/resolve-query db "admin@example.com"
+                                                                        (first (ast/expand head-q)))))
+                            ":||"))
+        "the id column is compared bare")
+    (testing "begin, an integer column, against a metadata number and a metadata string"
+      (is (= #{[(str t2) (str v2)] [(str t2) (str v3)]}
+             (pairs (q ["token" "?a" {"layer" tokl}] ["vocab" "?b"] ["=" "?a.begin" "?b.metadata.n"]))))
+      (is (= #{} (pairs (q ["token" "?a" {"layer" tokl}] ["vocab" "?b"] ["=" "?a.begin" "?b.metadata.s"])))))
+    (testing "form, a text column, against a metadata string and a metadata number"
+      (is (= #{[(str v3) (str v3)]} (pairs (q ["vocab" "?a"] ["vocab" "?b"] ["=" "?b.metadata.s" "?a.form"]))))
+      (is (= #{} (pairs (q ["vocab" "?a"] ["vocab" "?b"] ["=" "?a.form" "?b.metadata.n"])))))))
 
 (deftest a-metadata-key-typed-decomposed-finds-the-composed-key
   (let [{:keys [s1 s2]} (build!)]
