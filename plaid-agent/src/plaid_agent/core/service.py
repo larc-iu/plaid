@@ -84,9 +84,9 @@ from .conversation import (ConversationStore, MissingConversation, assistant_ite
                            proposed_changes, prune, record_budget, turn_ending)
 from . import rules
 from .opkind import ROW
-from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, PlanError, PlanOutOfDate, RecordFull,
-                   ScopeMoved, documents_to_lock, drawable, expanding, forget_held, holding, outcome_unknown,
-                   writing)
+from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
+                   PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, drawable, expanding, forget_held,
+                   holding, outcome_unknown, writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -1038,6 +1038,21 @@ class BaseAssistantService(BaseService):
                 response_helper.complete({'kind': 'applied', 'partial': True, 'applied': written_n,
                                           'counts': [], 'message': said})
             return failed
+        except ExpansionUnreadable as e:
+            # The record is there because an earlier run began writing, so
+            # some of the plan may stand. Nothing more is sent, and the plan
+            # settles as partly applied: approved again it would send other
+            # requests than that run did under the same keys.
+            def unreadable(e=e):
+                outcome = 'An earlier run may have written some of these changes. History shows them.'
+                note = (f'(note) The plan was not applied again: {e}. An earlier run may have written some of '
+                        'its changes. Nothing more was written.')
+                fields = {'written': [], 'outcome': outcome}
+                self._remember_applied(plan_id, 'partial', note, fields)
+                settled('partial', note, **fields)
+                response_helper.error(f'Not applied again: {e}. An earlier run may have written some of its '
+                                      'changes, which History shows. Ask the assistant to plan the rest again.')
+            return unreadable
         except ValueError as e:
             def rejected(e=e):
                 nothing_written()

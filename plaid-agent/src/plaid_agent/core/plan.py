@@ -356,6 +356,17 @@ def rule_known(op: Dict[str, Any]) -> List[Any]:
             + [v for _k, v in sorted((op.get('args') or {}).items())])
 
 
+class ExpansionUnreadable(Exception):
+    """What an earlier run of a plan recorded (:class:`Expansion`) does not
+    read back: a digest that does not match, a damaged record, or one written
+    in another shape. That run began writing, so some of the plan may stand,
+    and a run again that resolved its scopes afresh would send other requests
+    under the keys the earlier run used. Nothing more is sent."""
+
+    def __init__(self):
+        super().__init__('what the earlier run of this plan found cannot be read back')
+
+
 class Expansion:
     """What the scopes of one plan resolved to, kept on the plan
     (:data:`EXPANSION`, by row) from the first run of an approval, written
@@ -387,7 +398,10 @@ class Expansion:
         stored = (self.plan.get(EXPANSION) or {}).get(str(op.get(ROW)))
         if stored is None or ROW not in op:
             return None
-        return unpack_found(stored, rule_known(op))
+        try:
+            return unpack_found(stored, rule_known(op))
+        except Exception as e:  # noqa: BLE001 - every way a record fails to read back is one refusal
+            raise ExpansionUnreadable() from e
 
     def record(self, op: Dict[str, Any], found: List[Dict[str, Any]]) -> None:
         if ROW not in op:
