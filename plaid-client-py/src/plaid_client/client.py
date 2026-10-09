@@ -209,6 +209,23 @@ def _op_types_param(op_types):
     return joined or None
 
 
+AVATAR_TOKEN_RENEW_S = 600
+"""An avatar token is minted again once less than this many seconds are left
+of it."""
+
+
+def _parse_instant(s: str) -> datetime:
+    """An ISO-8601 instant as the server writes it (nanoseconds, a ``Z``)."""
+    m = re.match(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$', s)
+    if not m:
+        raise ValueError(f'Not an ISO-8601 instant: {s!r}')
+    base, frac, zone = m.groups()
+    dt = datetime.fromisoformat(base + ('+00:00' if zone == 'Z' else zone))
+    if frac:
+        dt = dt.replace(microsecond=int(frac[:6].ljust(6, '0')))
+    return dt
+
+
 class _Resource:
     def __init__(self, client):
         self._client = client
@@ -1244,10 +1261,37 @@ class UsersResource(_Resource):
         return self._request('DELETE', f'/api/v1/users/{id}/avatar',
                              audit_message=audit_message)
 
+    def avatar_token(self) -> dict:
+        """A token that shows any user's profile picture without an
+        Authorization header, for an HTML image element, which cannot send
+        one. Answers ``{'token': ..., 'expires_at': ...}`` (``expires_at`` an
+        ISO-8601 instant, a day on by default). The server refuses it on every
+        route but the picture, and it stops working when the user signs out or
+        changes password.
+
+        One token serves the whole client: it is kept and handed out again
+        until under ten minutes of it remain, calls made from several threads
+        while one is being minted share that request, and it is dropped when
+        the client's token changes. avatar_url() uses it.
+        """
+        owner = self._client.client if isinstance(self._client, PlaidBatch) else self._client
+        with owner._avatar_token_lock:
+            cached = owner._avatar_token
+            if cached and cached['for_token'] == owner.token:
+                left = (_parse_instant(cached['link']['expires_at'])
+                        - owner.server_now()).total_seconds()
+                if left > AVATAR_TOKEN_RENEW_S:
+                    return dict(cached['link'])
+            for_token = owner.token
+            owner._avatar_token = None
+            link = owner._request('POST', '/api/v1/avatar-link', out_of_band=True)
+            owner._avatar_token = {'for_token': for_token, 'link': link}
+            return dict(link)
+
     def avatar_url(self, id: str, avatar_hash: str | None = None) -> str:
-        """URL for a user's profile picture, with the session token in the
-        query string so it works in contexts that cannot set an Authorization
-        header (an HTML image element, say).
+        """URL for a user's profile picture, for an HTML image element. The
+        URL carries the client's avatar token (see avatar_token()), never the
+        login token.
 
         Pass the user record's ``avatar_hash`` whenever you have it: the URL
         then addresses that exact picture, so it can be cached indefinitely and
@@ -1257,7 +1301,7 @@ class UsersResource(_Resource):
             id: The user ID
             avatar_hash: The user record's ``avatar_hash``
         """
-        params = {'token': self._client.token}
+        params = {'avatar-token': self.avatar_token()['token']}
         if avatar_hash:
             params['v'] = avatar_hash
         return f'{self._client.base_url}/api/v1/users/{id}/avatar?{urlencode(params)}'
@@ -3946,6 +3990,10 @@ class PlaidClient:
         # operation(). Shape: {'id', 'message', 'kind', 'ref', 'depth', 'written', 'refined',
         # 'frames'}, each frame {'keys', 'count', 'minted', 'depth', 'owned'}.
         self._operation_group: dict | None = None
+        # The avatar token, as users.avatar_token() last minted it, and the
+        # lock that lets one thread mint it while the others wait.
+        self._avatar_token: dict | None = None
+        self._avatar_token_lock = threading.Lock()
         self.session = req_lib.Session()
         # Who hears that a request is being sent again (on_retry).
         self._retry_listeners: list = []

@@ -1,6 +1,22 @@
+import { useEffect, useState } from 'react';
+
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.jsx';
 import { cn } from '../../lib/utils.js';
 import { initials } from '../../lib/initials.js';
+
+// The last URL each client resolved for a user and hash. An avatar that
+// mounts again (a list re-rendered, a menu reopened) starts from it instead of
+// from initials. The client keeps the token in it alive, and the effect below
+// asks again anyway, so a renewed token replaces it.
+const resolved = new WeakMap();
+
+const lastUrl = (client, key) => resolved.get(client)?.get(key) ?? null;
+
+const remember = (client, key, url) => {
+  let urls = resolved.get(client);
+  if (!urls) resolved.set(client, (urls = new Map()));
+  urls.set(key, url);
+};
 
 /**
  * A user's profile picture, falling back to their initials.
@@ -10,6 +26,10 @@ import { initials } from '../../lib/initials.js';
  * so pass it whenever you have it. Omitting it still works, just with a short
  * cache window. When it is explicitly null the user has no picture and no
  * request is made at all.
+ *
+ * The URL comes from `client.users.avatarUrl`, which resolves once the
+ * client holds an avatar token. Every avatar on a page shares that one token,
+ * and the initials show until the URL arrives, and for good if it cannot.
  */
 export function UserAvatar({
   client,
@@ -20,7 +40,36 @@ export function UserAvatar({
   fallbackClassName,
   ...props
 }) {
-  const src = client && userId ? client.users.avatarUrl(userId, avatarHash) : null;
+  const wanted = Boolean(client && userId && avatarHash !== null);
+  const key = `${userId}\n${avatarHash ?? ''}`;
+  const [answer, setAnswer] = useState(null);
+
+  useEffect(() => {
+    if (!wanted) return undefined;
+    let live = true;
+    Promise.resolve()
+      .then(() => client.users.avatarUrl(userId, avatarHash))
+      .then(
+        (url) => {
+          if (url) remember(client, key, url);
+          if (live) setAnswer({ client, key, url: url ?? null });
+        },
+        () => {
+          if (live) setAnswer({ client, key, url: null });
+        },
+      );
+    return () => {
+      live = false;
+    };
+  }, [wanted, client, userId, avatarHash, key]);
+
+  // An answer for other props is never shown, not even for the one render
+  // before the effect above asks again.
+  const src = !wanted
+    ? null
+    : answer && answer.client === client && answer.key === key
+      ? answer.url
+      : lastUrl(client, key);
 
   return (
     // `key` remounts the root whenever the picture changes or goes away. Radix

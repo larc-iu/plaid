@@ -155,6 +155,9 @@ const OPERATION_KINDS = [
  */
 export const BACKUP_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** An avatar token is minted again once less than this is left of it. */
+const AVATAR_TOKEN_RENEW_MS = 10 * 60 * 1000;
+
 /**
  * A batch is the client with a different `_request` (see `queueRequest`) and
  * its own copy of the bundles. Everything else resolves to the client through
@@ -1401,23 +1404,63 @@ class PlaidClient {
           }),
         }),
       /**
-       * Build a URL for a user's profile picture, suitable for use directly as
-       * an `<img>` src. An image element cannot send an Authorization header,
-       * so the session token rides in the query string, the same way document
-       * media does.
+       * A token that shows any user's profile picture without an
+       * Authorization header, for an `<img>`, which cannot send one. Resolves
+       * to `{ token, expiresAt }` (`expiresAt` an ISO-8601 instant, a day on by
+       * default). The server refuses it on every route but the picture, and
+       * it stops working when the user signs out or changes password.
+       *
+       * One token serves the whole client: it is kept and handed out again
+       * until under ten minutes of it remain, calls made while one is being
+       * minted share that request, and it is dropped when the client's token
+       * changes. avatarUrl() uses it.
+       * @returns {Promise<{token: string, expiresAt: string}>}
+       */
+      avatarToken: () => {
+        // A batch is a view of its client and shares the client's token.
+        const owner = this.client ?? this;
+        const cached = owner._avatarToken;
+        if (cached && cached.forToken === owner.token) {
+          if (cached.pending) return cached.pending;
+          const left = Date.parse(cached.link.expiresAt) - owner.serverNow().getTime();
+          if (left > AVATAR_TOKEN_RENEW_MS) return Promise.resolve(cached.link);
+        }
+        const entry = { forToken: owner.token, pending: null, link: null };
+        entry.pending = owner
+          ._request("POST", "/api/v1/avatar-link", { outOfBand: true })
+          .then(
+            (link) => {
+              entry.pending = null;
+              entry.link = link;
+              return link;
+            },
+            (e) => {
+              if (owner._avatarToken === entry) owner._avatarToken = null;
+              throw e;
+            },
+          );
+        owner._avatarToken = entry;
+        return entry.pending;
+      },
+      /**
+       * Build a URL for a user's profile picture, for an `<img>` src. The
+       * URL carries the client's avatar token (see avatarToken()), never the
+       * login token.
        *
        * Pass the user record's `avatarHash` as the second argument whenever you
        * have it: the URL then addresses that exact picture, so the browser can
        * cache it indefinitely and still pick up a replacement the moment the
-       * user changes it. Returns null when the user has no picture, so callers
-       * can fall back to initials without a wasted request.
+       * user changes it. Resolves to null when `avatarHash` is null (the user
+       * has no picture), so callers can fall back to initials without a
+       * wasted request.
        * @param {string} id - The user ID
-       * @param {string} [avatarHash] - The user record's `avatarHash`
-       * @returns {string|null}
+       * @param {string|null} [avatarHash] - The user record's `avatarHash`
+       * @returns {Promise<string|null>}
        */
-      avatarUrl: (id, avatarHash) => {
+      avatarUrl: async (id, avatarHash) => {
         if (avatarHash === null) return null;
-        const params = new URLSearchParams({ token: this.token });
+        const { token } = await this.users.avatarToken();
+        const params = new URLSearchParams({ "avatar-token": token });
         if (avatarHash) params.set("v", avatarHash);
         return `${this.baseUrl}/api/v1/users/${id}/avatar?${params}`;
       },

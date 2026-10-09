@@ -419,8 +419,10 @@ interface UsersBundle {
     isAdmin?: boolean,
     auditMessage?: string,
   ): Promise<any>;
-  /** URL for a user's profile picture, usable as an <img> src. Null when avatarHash is explicitly null. */
-  avatarUrl(id: string, avatarHash?: string | null): string | null;
+  /** A token that shows any user's profile picture, kept per client and renewed when under ten minutes remain. */
+  avatarToken(): Promise<{ token: string; expiresAt: string }>;
+  /** URL for a user's profile picture, usable as an <img> src, carrying the avatar token. Null when avatarHash is explicitly null. */
+  avatarUrl(id: string, avatarHash?: string | null): Promise<string | null>;
   getAvatar(id: string): Promise<any>;
   setAvatar(id: string, file: File | Blob, auditMessage?: string): Promise<any>;
   deleteAvatar(id: string, auditMessage?: string): Promise<any>;
