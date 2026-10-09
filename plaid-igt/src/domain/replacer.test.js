@@ -73,9 +73,28 @@ describe('buildReplacer', () => {
     expect(run('kat', 'contains', 'cat', ['te\u0301kst kat']).out).toEqual(['te\u0301kst cat']);
     expect(run('\u00e1', 'contains', 'e\u0301', ['a\u0301']).out).toEqual(['e\u0301']);
     expect(run('(p.)\u00e1', 'regex', '$1a', [nfd]).out).toEqual(['p\u02b0a.PL']);
-    expect(run('a', 'contains', 'o', ['p\u02b0a\u0301']).out).toEqual([null]);
+    expect(run('a', 'contains', 'o', ['p\u02b0\u00e1']).out).toEqual([null]);
+    // Both spellings in one value are rewritten.
+    expect(run('\u00e1', 'contains', 'X', ['\u00e1 a\u0301']).out).toEqual(['X X']);
     expect(run('\u00e9', 'contains', 'E', ['\u{10400}e\u0301']).out).toEqual(['\u{10400}E']);
     expect(run('\uac00', 'contains', '\ub098', ['\u1100\u1161x']).out).toEqual(['\ub098x']);
+  });
+
+  // REV-FX11: the server keeps every match the value as stored gives, so a
+  // tone mark respelled on its own is rewritten where it is stored as a mark.
+  it('rewrites a mark on its own where the value stores it as a mark', () => {
+    expect(run('\u0301', 'contains', '\u0300', ['p\u02b0a\u0301', 'p\u02b0\u00e1']).out).toEqual([
+      'p\u02b0a\u0300',
+      null,
+    ]);
+    expect(run('\u0301', 'regex', '\u0300', ['\u014b\u0301']).out).toEqual(['\u014b\u0300']);
+  });
+
+  // Luke, 2026-10-08: exact compares canonically equivalent text as equal.
+  it('matches an exact value however its accents are encoded', () => {
+    expect(
+      run('p\u02b0\u00e1', 'exact', 'X', ['p\u02b0a\u0301', 'p\u02b0\u00e1', 'p\u02b0a']).out,
+    ).toEqual(['X', 'X', null]);
   });
 
   it('matches nothing without something to find', () => {

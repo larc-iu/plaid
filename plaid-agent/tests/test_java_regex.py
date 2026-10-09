@@ -127,11 +127,15 @@ def _differences(rows):
     assigned = _oracle([_hexed(r'\p{Cn}', s) for s in SUBJECTS])
     known = [s for s, a in zip(SUBJECTS, assigned) if a == '0']
     assert len(known) > 0.9 * len(SUBJECTS)
-    # The server's REGEXP reads the pattern and the value in NFC, as the local
-    # matcher does (H10-SCRIPTS-5), and the oracle is Java's engine alone.
-    lines = [_hexed(nfc(sent), nfc(s)) for _, _, sent in rows for s in known]
-    answers = _oracle(lines)
-    assert len(answers) == len(lines)
+    # The server's REGEXP matches a value as stored, or in NFC with the
+    # pattern in NFC, as the local matcher does (H10-SCRIPTS-5, REV-FX11).
+    # The oracle is Java's engine alone, so it is asked both and either
+    # counts (a pattern that does not compile once composed counts as no).
+    pairs = [(sent, s) for _, _, sent in rows for s in known]
+    raw = _oracle([_hexed(sent, s) for sent, s in pairs])
+    composed = _oracle([_hexed(nfc(sent), nfc(s)) for sent, s in pairs])
+    assert len(raw) == len(composed) == len(pairs)
+    answers = ['1' if '1' in (a, b) else a for a, b in zip(raw, composed)]
     differ = []
     k = 0
     for p, o, _ in rows:

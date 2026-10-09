@@ -6,11 +6,14 @@
 //
 // `contains` and `regex` go through translatePattern, the same reading of the
 // pattern that Search sends to the server, so a value is rewritten here
-// exactly when the server's search finds it. The server reads the pattern and
-// the value in NFC, so `pʰá` typed composed finds it stored decomposed, and so
-// does this: the match is found in the composed value, the place it covers is
+// exactly when the server's search finds it. The server matches a value as
+// stored, or in NFC with the pattern in NFC, so `pʰá` typed composed finds it
+// stored decomposed, and so does this: a match in the composed value is
 // mapped back onto the value as stored, and only that place is rewritten,
-// with the replacement as typed (plaid-agent's core/replace.py, the same rule).
+// with the replacement as typed (plaid-agent's core/replace.py, the same
+// rule). A value whose composed text holds no match is rewritten where the
+// pattern matches it as stored (a tone mark respelled on its own). `exact`
+// compares canonically equivalent text as equal, as the server's equality does.
 
 import { translatePattern } from '@ui/domain/javaRegex.js';
 
@@ -140,14 +143,17 @@ export function buildReplacer(find, matchType, replacement) {
     return { apply: (value) => ((value ?? '') === '' ? next : null), error: null };
   }
   if (!find) return { apply: never, error: null };
+  // The pattern as typed and in NFC: a value matches as stored, or in NFC
+  // with the pattern in NFC, as the server's search decides.
+  let raw = null;
   let re = null;
   if (matchType === 'regex' || matchType === 'contains') {
-    const { source, error } = translatePattern(
-      nfc(find),
-      matchType === 'contains' ? { literal: true, caseInsensitive: true } : {},
-    );
-    if (error) return { apply: never, error };
-    re = new RegExp(source, 'gu');
+    const options = matchType === 'contains' ? { literal: true, caseInsensitive: true } : {};
+    const typed = translatePattern(find, options);
+    if (typed.error) return { apply: never, error: typed.error };
+    raw = new RegExp(typed.source, 'gu');
+    const composed = nfc(find) === find ? typed : translatePattern(nfc(find), options);
+    re = composed.error ? raw : new RegExp(composed.source, 'gu');
   }
   const hasCapital = (s) => Array.from(s ?? '').some(isUpper);
   const keepCase = matchType === 'contains' && !hasCapital(find) && !hasCapital(replacement);
@@ -155,27 +161,37 @@ export function buildReplacer(find, matchType, replacement) {
     const v = value ?? '';
     if (v === '') return null;
     let next;
+    const replaceIn = (text, pattern) =>
+      matchType === 'regex'
+        ? text.replace(pattern, replacement)
+        : // A function replacer so `$` in a literal replacement stays literal.
+          text.replace(pattern, keepCase ? (m) => matchCase(m, replacement) : () => replacement);
     if (matchType === 'exact') {
-      if (v !== find) return null;
+      // Canonically equivalent text is the same text, as the server's
+      // equality reads it: `pʰá` composed is `pʰá` stored decomposed.
+      if (nfc(v) !== nfc(find)) return null;
       next = replacement;
     } else {
+      const n = nfc(v);
       re.lastIndex = 0;
-      if (!re.test(nfc(v))) return null;
-      re.lastIndex = 0;
-      if (v !== nfc(v)) {
-        next = replaceCanonical(v, re, (m) =>
-          matchType === 'regex'
-            ? expand(replacement, m)
-            : keepCase
-              ? matchCase(m[0], replacement)
-              : replacement,
-        );
-      } else {
+      if (re.test(n)) {
+        re.lastIndex = 0;
         next =
-          matchType === 'regex'
-            ? v.replace(re, replacement)
-            : // A function replacer so `$` in a literal replacement stays literal.
-              v.replace(re, keepCase ? (m) => matchCase(m, replacement) : () => replacement);
+          v === n
+            ? replaceIn(v, re)
+            : replaceCanonical(v, re, (m) =>
+                matchType === 'regex'
+                  ? expand(replacement, m)
+                  : keepCase
+                    ? matchCase(m[0], replacement)
+                    : replacement,
+              );
+      } else {
+        // Only the text as stored matches (a mark on its own), or nothing.
+        raw.lastIndex = 0;
+        if (!raw.test(v)) return null;
+        raw.lastIndex = 0;
+        next = replaceIn(v, raw);
       }
     }
     return next === v ? null : next;

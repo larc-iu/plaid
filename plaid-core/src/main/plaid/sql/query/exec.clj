@@ -37,10 +37,10 @@
             [plaid.sql.vocab-item :as vocab-item]
             [plaid.sql.vocab-link :as vocab-link]
             [plaid.sql.document :as document]
-            [plaid.sql.text :as text])
+            [plaid.sql.text :as text]
+            [plaid.util.canonical :as canonical])
   (:import [org.sqlite SQLiteConnection Function]
            [java.lang.reflect Method]
-           [java.text Normalizer Normalizer$Form]
            [java.util.regex Pattern]
            [java.util.concurrent ConcurrentHashMap]))
 
@@ -91,31 +91,69 @@
       (subSequence [_ a b] (.subSequence s a b))
       (^String toString [_] s))))
 
-(defn- nfc
-  "`s` in Unicode NFC, read without a copy when it already is."
-  ^String [^String s]
-  (if (Normalizer/isNormalized s Normalizer$Form/NFC)
-    s
-    (Normalizer/normalize s Normalizer$Form/NFC)))
+(def ^:private ^Method m-value-type
+  (doto (.getDeclaredMethod Function "value_type" (into-array Class [Integer/TYPE]))
+    (.setAccessible true)))
+(def ^:private ^Method m-result-text
+  (doto (.getDeclaredMethod Function "result" (into-array Class [String]))
+    (.setAccessible true)))
+(def ^:private ^Method m-result-null
+  (doto (.getDeclaredMethod Function "result" (into-array Class []))
+    (.setAccessible true)))
+
+(defn- composed-pattern
+  "`p` in NFC, compiled, or nil when it already is NFC (the pattern as typed
+  then says it all) or when composing it makes it something Java cannot
+  compile (a letter after a backslash taking a mark: `\\e` and U+0301)."
+  [^String p]
+  (let [n (canonical/nfc p)]
+    (when-not (identical? n p)
+      (try (cached-pattern n) (catch Exception _ nil)))))
 
 (defn- regexp-function
   "A REGEXP(pattern, value) UDF: 1 if `value` contains a match for the Java
-  regex `pattern`, else 0. Both are read in NFC, so text matches whatever is
-  canonically equivalent to it: `pʰá` typed composed finds it stored
-  decomposed (a + U+0301), and the reverse. Compiled patterns are cached.
-  Patterns are validated for syntax at query-validation time, so compile here
-  won't see a bad one. The value is wrapped in an interruptible CharSequence
-  so a runaway pattern can be aborted by the query watchdog (ReDoS guard)."
+  regex `pattern`, else 0. A value matches as stored, or in NFC with the
+  pattern in NFC, so text matches whatever is canonically equivalent to it:
+  `pʰá` typed composed finds it stored decomposed (a + U+0301), and the
+  reverse, while every match the stored text gives is kept (a combining mark
+  searched for on its own still finds it in a value stored decomposed).
+  Compiled patterns are cached. Patterns are validated for syntax at
+  query-validation time, so compile here won't see a bad one. The value is
+  wrapped in an interruptible CharSequence so a runaway pattern can be
+  aborted by the query watchdog (ReDoS guard)."
   []
   (proxy [Function] []
     (xFunc []
-      (let [pat (.invoke m-value-text this (object-array [(int 0)]))
-            s   (.invoke m-value-text this (object-array [(int 1)]))
-            hit (if (and pat s (.find (.matcher (cached-pattern (nfc pat)) (interruptible-cs (nfc s))))) 1 0)]
+      (let [^String pat (.invoke m-value-text this (object-array [(int 0)]))
+            ^String s   (.invoke m-value-text this (object-array [(int 1)]))
+            found? (fn [^java.util.regex.Pattern p ^String v] (.find (.matcher p (interruptible-cs v))))
+            hit (if (and pat s
+                         (or (found? (cached-pattern pat) s)
+                             (let [ns (canonical/nfc s)
+                                   np (composed-pattern pat)]
+                               (cond
+                                 np (found? np ns)
+                                 (identical? ns s) false
+                                 :else (found? (cached-pattern pat) ns)))))
+                  1 0)]
         (.invoke m-result-int this (object-array [(int hit)]))))))
 
+(def ^:private sqlite-null 5)
+
+(defn- nfc-function
+  "A PLAID_NFC(value) UDF: the value's text in Unicode NFC, NULL for NULL. An
+  equality with a text that has another canonically equivalent spelling
+  compares the stored value through it (`plaid.sql.query.compile`)."
+  []
+  (proxy [Function] []
+    (xFunc []
+      (if (= sqlite-null (.invoke m-value-type this (object-array [(int 0)])))
+        (.invoke m-result-null this (object-array []))
+        (.invoke m-result-text this (object-array [(canonical/nfc (.invoke m-value-text this (object-array [(int 0)])))]))))))
+
 (defn- register-regexp! [^SQLiteConnection sqlite]
-  (Function/create sqlite "REGEXP" (regexp-function)))
+  (Function/create sqlite "REGEXP" (regexp-function))
+  (Function/create sqlite "PLAID_NFC" (nfc-function)))
 
 (def ^:private default-limit
   "Rows returned when the query specifies no :limit."
@@ -192,7 +230,7 @@
   [^java.sql.Connection conn f deadline]
   (let [sqlite (.unwrap conn SQLiteConnection)
         ndb (.getDatabase sqlite)
-        _ (register-regexp! sqlite)            ; make REGEXP() available for this query
+        _ (register-regexp! sqlite)            ; make REGEXP() and PLAID_NFC() available for this query
         done (atom false)
         worker (promise)
         fut (future (deliver worker (Thread/currentThread))

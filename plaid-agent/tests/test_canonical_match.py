@@ -21,8 +21,20 @@ def test_a_composed_pattern_finds_a_decomposed_value_and_the_reverse():
     assert matcher('pʰá')(NFD)
     assert matcher('pʰá')('pʰá')
     assert matcher('PʰÁ', case_insensitive=True)(NFD)
-    # A bare letter is not found inside an accented one.
-    assert not matcher('a.', literal=False)(NFD.replace('.PL', ''))
+    # A bare letter is not found inside a composed accented one.
+    assert not matcher('a.', literal=False)('p\u02b0\u00e1')
+
+
+def test_every_match_the_stored_text_gives_is_kept():
+    # REV-FX11: a mark searched for on its own (a high tone) still finds it
+    # in a value stored decomposed, as the server's REGEXP does.
+    assert matcher('\u0301')(NFD)
+    assert matcher('\u0301')('\u014b\u0301')
+    assert not matcher('\u0301')('p\u02b0\u00e1')
+    # A tone mark respelled on its own in a value stored decomposed.
+    assert rep('\u0301', '\u0300', NFD) == 'p\u02b0a\u0300.PL'
+    # A letter matches inside a decomposed one as stored, as it always has.
+    assert matcher('a.', literal=False)('p\u02b0a\u0301')
 
 
 def test_a_replacement_rewrites_the_place_it_matched_and_keeps_the_rest_as_stored():
@@ -34,7 +46,9 @@ def test_a_replacement_rewrites_the_place_it_matched_and_keeps_the_rest_as_store
     assert rep('á', 'é', 'á') == 'é'
     # A group carries what it captured.
     assert rep(r'(p.)á', r'\1a', NFD, regex=True) == 'pʰa.PL'
-    assert rep('a', 'o', 'pʰá') == 'pʰá'
+    assert rep('a', 'o', 'pʰá') == 'pʰá'
+    # A composed match comes first: both spellings in one value are rewritten.
+    assert rep('á', 'X', 'á á') == 'X X'
 
 
 def test_offsets_are_code_points_and_compositions_across_starters_map_whole():

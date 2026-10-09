@@ -298,6 +298,21 @@ describe('collectOccurrenceRows / tallyCandidates / analysisLabel', () => {
     expect(rows[1].signature).not.toBe(rows[2].signature);
   });
 
+  it('finds a form however its accents are encoded, as the search does', () => {
+    const accented = new IgtDocument({
+      raw: buildRawDoc({
+        body: 'ka\u0301t k\u00e1t',
+        words: [
+          { id: 'w-1', begin: 0, end: 4 },
+          { id: 'w-2', begin: 5, end: 8 },
+        ],
+      }),
+      client: makeFakeClient(),
+    });
+    expect(collectOccurrenceRows(accented, 'k\u00e1t').map((r) => r.id)).toEqual(['w-1', 'w-2']);
+    expect(collectOccurrenceRows(accented, 'ka\u0301t').map((r) => r.id)).toEqual(['w-1', 'w-2']);
+  });
+
   it('candidates are the distinct analyses, most common first', () => {
     const rows = collectOccurrenceRows(doc, 'kat');
     const c = tallyCandidates(rows);

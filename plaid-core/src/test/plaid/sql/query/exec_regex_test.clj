@@ -8,7 +8,8 @@
                                     db admin-request]]
             [plaid.test-helpers :as h]
             [plaid.sql.query.exec :as qe]
-            [plaid.query.ast :as ast]))
+            [plaid.query.ast :as ast]
+            [plaid.util.canonical :as canonical]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -204,3 +205,77 @@
       (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "pʰá"}}]]))))
     (testing "a bare letter does not match inside an accented one"
       (is (= #{"pʰa"} (values [["span" "?s" {"layer" sl "value" {"regex" "a$"}}]]))))))
+
+(deftest regex-keeps-every-match-the-stored-text-gives
+  ;; REV-FX11: reading the value only in NFC lost what a pattern found in the
+  ;; value as stored. A combining acute searched for on its own (high tone)
+  ;; no longer found it in "pʰá" stored decomposed. A value matches as stored
+  ;; or in NFC.
+  (let [pid  (h/create-test-project admin-request "RxMark")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "gloss"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "a b c"))
+        mk   (fn [b v] (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v))
+        nfd  "p\u02b0a\u0301"
+        nfc  "p\u02b0\u00e1"
+        eng  "\u014b\u0301"]
+    (mk 0 nfd)
+    (mk 2 nfc)
+    (mk 4 eng)
+    (testing "a combining mark alone finds it where it is stored as a mark"
+      (is (= #{nfd eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\u0301"}}]]))))
+    (testing "a class of marks too"
+      (is (= #{nfd eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\\p{M}"}}]]))))
+    (testing "and a composed pattern still finds both spellings of the letter"
+      (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "\u00e1$"}}]]))))))
+
+(deftest equality-matches-canonically-equivalent-text
+  ;; Luke, 2026-10-08: igt Search's "is exactly" and Bulk Edit's exact match
+  ;; find composed and decomposed spellings of the same text, as a regex
+  ;; does. Every equality with a text literal in the query language does.
+  (let [pid  (h/create-test-project admin-request "EqNfd")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "gloss"))
+        doc  (h/create-test-document admin-request pid "d")
+        nfd  "p\u02b0a\u0301"
+        nfc  "p\u02b0\u00e1"
+        text (id (h/create-text admin-request txtl doc (str nfd " " nfc " pa K xy")))
+        tok  (fn [b e] (id (h/create-token admin-request tokl text b e)))
+        mk   (fn [b e v] (h/create-span admin-request sl [(tok b e)] v))
+        tokens (fn [where] (set (map first (:results (qe/run db "admin@example.com" {"find" ["?t"] "where" where})))))]
+    (mk 0 4 nfd)
+    (mk 5 8 nfc)
+    (mk 9 11 "p\u02b0a")
+    (mk 12 13 "\u212a")
+    (doseq [lit [nfc nfd]]
+      (testing (str "a bare value " (pr-str lit) " finds both spellings and nothing else")
+        (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" lit}]]))))
+      (testing "a list beside a text with one spelling"
+        (is (= #{nfd nfc "p\u02b0a"} (values [["span" "?s" {"layer" sl "value" [lit "p\u02b0a"]}]]))))
+      (testing "= and != and in"
+        (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl}] ["=" "?s.value" lit]])))
+        (is (= #{"p\u02b0a" "\u212a"} (values [["span" "?s" {"layer" sl}] ["!=" "?s.value" lit]])))
+        (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl}] ["in" "?s.value" [lit]]]))))
+      (testing "a token's surface"
+        (is (= 2 (count (tokens [["token" "?t" {"layer" tokl "value" lit}]]))))))
+    (testing "a metadata value keeps to its type: a text equals a string, never an array"
+      (let [md (fn [b v] (h/create-span admin-request sl [(tok b (inc b))] "m" {"form" v}))]
+        (md 14 nfd)
+        (md 15 [nfc])
+        (is (= 1 (count (values [["span" "?s" {"layer" sl "metadata" {"form" nfc}}]]))))
+        (is (= 0 (count (values [["span" "?s" {"layer" sl "metadata" {"form" (str "[\"" nfc "\"]")}}]]))))))
+    (testing "KELVIN SIGN is K"
+      (is (= #{"\u212a"} (values [["span" "?s" {"layer" sl "value" "K"}]]))))
+    (testing "a text with one spelling compares the stored text"
+      (is (= #{"p\u02b0a"} (values [["span" "?s" {"layer" sl "value" "p\u02b0a"}]]))))))
+
+(deftest only-spelling-is-exact-about-which-texts-have-another
+  (testing "texts no other string is canonically equivalent to, compared by the index"
+    (doseq [s ["walking" "VASP.3SG" "\u0643\u062a\u0627\u0628" "\u0441\u043b\u043e\u0432\u043e" "" "a-b c"]]
+      (is (canonical/only-spelling? s) (pr-str s))))
+  (testing "texts with another spelling"
+    (doseq [s ["\u00e1" "a\u0301" "K" "\u212a" "\uac00" "\u1100\u1161" "\u0995\u09be" "\u8c48" "x\u0302"]]
+      (is (not (canonical/only-spelling? s)) (pr-str s)))))

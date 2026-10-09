@@ -8,8 +8,8 @@
 // not, E when the pattern does not compile. The same call the server's REGEXP
 // function makes (plaid.query.clauses/compile-regex): Pattern.compile with
 // UNICODE_CHARACTER_CLASS, so \w, \d, \s and \b read every script, then find.
-// The server reads the pattern and the value in NFC first, so a caller that
-// stands for the server normalizes what it sends.
+// The server matches a value as stored, or in NFC with the pattern in NFC,
+// so a caller that stands for the server asks both and takes either.
 //
 // scripts: prints every Unicode script this Java knows (but Unknown), one per
 // line, as `<name>\t<hex of its first code point>`, for the translators'

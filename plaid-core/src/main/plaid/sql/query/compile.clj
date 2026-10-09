@@ -29,7 +29,8 @@
             [plaid.query.ast :as ast]
             [plaid.query.clauses :as clauses]
             [plaid.sql.common :as psc]
-            [plaid.sql.query.resolve :as qr]))
+            [plaid.sql.query.resolve :as qr]
+            [plaid.util.canonical :as canonical]))
 
 (def ^:private entity-table
   {:span :spans :token :tokens :relation :relations :vocab :vocab_items
@@ -132,13 +133,41 @@
 ;; Pass B: ensure every var has a table + scope predicate + filters
 ;; ---------------------------------------------------------------------------
 
+(defn- canonical?
+  "Whether an equality with literal `v` has to compare canonically equivalent
+  text: a text with another spelling of it (`pʰá` composed or as a and
+  U+0301). Any other literal compares the stored form, by its index."
+  [v]
+  (and (string? v) (not (canonical/only-spelling? v))))
+
+(defn- canonical-text
+  "`text` (the column's text, decoded) read in NFC, to compare with a literal
+  in NFC. PLAID_NFC is a UDF registered with REGEXP (exec.clj)."
+  [text]
+  [:plaid_nfc text])
+
 (defn- atomic-pred
   "`= literal` for a scalar value, `IN (…)` for a vector (value alternation).
-  `enc` encodes each literal to its stored form."
-  [col v enc]
-  (if (vector? v)
-    [:in col (mapv enc v)]
-    [:= col (enc v)]))
+  `enc` encodes each literal to its stored form. A text literal compares
+  canonically equivalent text as equal, as a regex does: a literal with
+  another spelling (`canonical?`) is compared in NFC with `text`, the column's
+  decoded text, and every other literal with the stored form."
+  [col v enc text]
+  (let [;; A JSON column keeps to the type: a text literal equals a stored
+        ;; string, never an array whose JSON reads the same.
+        canon-pred (fn [op lits]
+                     (cond->> [op (canonical-text text) lits]
+                       (identical? enc psc/write-json) (conj [:and [:= [:json_type col] [:inline "text"]]])))]
+    (if (vector? v)
+      (let [{canon true plain false} (group-by canonical? v)
+            canon (when (seq canon) (canon-pred :in (mapv canonical/nfc canon)))]
+        (cond
+          (nil? canon) [:in col (mapv enc v)]
+          (empty? plain) canon
+          :else [:or [:in col (mapv enc plain)] canon]))
+      (if (canonical? v)
+        (canon-pred := (canonical/nfc v))
+        [:= col (enc v)]))))
 
 (defn- regex-pred
   "Portable case-(in)sensitive regex match of `col` against `pattern`.
@@ -167,10 +196,10 @@
     (regex-pred regex-col (:regex v) (boolean (some-> (:flags v) (str/includes? "i"))))
 
     (and (map? v) (contains? v :literal))
-    (atomic-pred col (:literal v) enc)
+    (atomic-pred col (:literal v) enc regex-col)
 
     :else
-    (atomic-pred col v enc)))
+    (atomic-pred col v enc regex-col)))
 
 (defn- emit-match! [st col v enc regex-col]
   (add-where! st (value-pred col v enc regex-col)))
@@ -420,7 +449,7 @@
   in-scope id(s) resolve attached."
   [st a kind cs constraints]
   (when (contains? cs :name)
-    (add-where! st (atomic-pred (col a :name) (:name cs) identity)))
+    (add-where! st (atomic-pred (col a :name) (:name cs) identity (col a :name))))
   ;; structural slots: join this layer's FK to its referenced parent layer
   (doseq [[slot _parent-kind] (clauses/layer-slots-for kind)
           :when (contains? cs slot)]
@@ -603,7 +632,8 @@
                                     :where [:and [:= (col s :id) (col r reached)]
                                             [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
                    (contains? cmap :value)
-                   (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))
+                   (conj (atomic-pred (col r :value) (:value cmap) psc/write-json
+                                      [:json_extract (col r :value) [:inline "$"]])))))
          base (case (first from)
                 nil {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
                      :from [(relations-by r0 :layer)]
@@ -1134,8 +1164,13 @@
   (let [[op a b] clause
         ta (resolve-term st a)
         tb (resolve-term st b)
-        side (fn [t other] (if (contains? t :lit) ((or (:enc other) identity) (:lit t)) (:sql t)))]
-    (add-where! st [(pred-honeysql-op op) (side ta tb) (side tb ta)])))
+        side (fn [t other] (if (contains? t :lit) ((or (:enc other) identity) (:lit t)) (:sql t)))
+        ;; `=` and `!=` with a text literal that has another spelling compare
+        ;; canonically equivalent text as equal (`atomic-pred`).
+        [lit other] (cond (contains? ta :lit) [ta tb] (contains? tb :lit) [tb ta])]
+    (if (and (#{:= :!=} op) lit (:sql other) (canonical? (:lit lit)))
+      (add-where! st [(pred-honeysql-op op) (canonical-text (:sql other)) (canonical/nfc (:lit lit))])
+      (add-where! st [(pred-honeysql-op op) (side ta tb) (side tb ta)]))))
 
 (defn- compile-regex-pred!
   "Compile `[:~ field-path regex-spec]` to a REGEXP match. The LHS is always a
@@ -1156,7 +1191,7 @@
   [st clause]
   (let [[_ lhs members] clause
         {:keys [sql enc]} (resolve-term st lhs)]
-    (add-where! st (atomic-pred sql (vec members) (or enc identity)))))
+    (add-where! st (atomic-pred sql (vec members) (or enc identity) sql))))
 
 ;; ---------------------------------------------------------------------------
 ;; Assemble

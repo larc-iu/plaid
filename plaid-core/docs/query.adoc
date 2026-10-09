@@ -273,10 +273,17 @@ anywhere unless you anchor it with `^` / `$`. Stick to common syntax
 (`. * + ? [ ] ^ $ |`) for patterns that port to other regex engines. A malformed
 pattern, or one longer than 4,096 characters, is a 400.
 
-The pattern and the value are both read in Unicode NFC, so a pattern matches
-text that is canonically equivalent to it: `pʰá` typed composed finds it stored
-decomposed (`a` and U+0301), and the reverse. An equality (`=`, a bare value or
-a `literal`) compares the stored text exactly.
+A value matches when the pattern finds a match in it as stored, or in its
+Unicode NFC form with the pattern in NFC. So a pattern matches text that is
+canonically equivalent to it: `pʰá` typed composed finds it stored decomposed
+(`a` and U+0301), and the reverse. A combining mark searched for on its own
+finds it wherever a value stores it as a mark.
+
+An equality with a text (a bare value, a list of values, a `literal`, `=`,
+`!=` and `in`) compares canonically equivalent text as equal too: `pʰá`
+composed equals it decomposed. A text that has no other spelling (most text
+without combining marks) is compared as stored, by the index. An equality
+between two values (the same variable in two clauses) compares them as stored.
 
 Character classes read every script. Patterns are compiled with Java's
 `UNICODE_CHARACTER_CLASS`, so the classes take Java's Unicode definitions:

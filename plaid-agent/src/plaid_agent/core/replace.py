@@ -17,12 +17,14 @@ Anchoring is the next half: ``whole`` anchors the PATTERN rather than
 switching to ``fullmatch``, so a group captured in a whole-value pattern can
 still be written back into the replacement.
 
-And a value matches as the server's search finds it, in NFC
-(:func:`.java_regex.nfc`): a pattern typed composed finds ``pʰá`` stored
-decomposed. The match is found in the composed text, the place it covers is
+And a value matches as the server's search finds it, as stored or in NFC
+with the pattern in NFC (:func:`.java_regex.matcher`): a pattern typed
+composed finds ``pʰá`` stored decomposed. A match in the composed text is
 mapped back onto the value as stored, code point for code point, and only
 that place is rewritten, with the replacement as typed. The rest of the value
-keeps its own spelling.
+keeps its own spelling. A value whose composed text holds no match is
+rewritten where the pattern matches it as stored (a combining mark replaced
+on its own, a tone mark respelled).
 """
 
 import bisect
@@ -31,7 +33,7 @@ from typing import Callable, List, Tuple
 
 import regex
 
-from .java_regex import PatternError, compile_local, nfc
+from .java_regex import PatternError, compile_pair, nfc
 
 
 def _pieces(s: str) -> List[Tuple[str, str]]:
@@ -93,8 +95,8 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
         raise error('Give a pattern.')
     replacement = '' if replacement is None else str(replacement)
     try:
-        compiled = compile_local(nfc(pattern), literal=not regex_mode,
-                                 case_insensitive=not case_sensitive, whole=whole)
+        compiled, composed = compile_pair(pattern, literal=not regex_mode,
+                                          case_insensitive=not case_sensitive, whole=whole)
     except PatternError as e:
         raise error(f'That pattern cannot be used: {e}')
     # A literal replacement is text, not a template: every backslash in it
@@ -103,12 +105,16 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
 
     def apply(value: str) -> str:
         try:
-            if unicodedata.is_normalized('NFC', value):
+            n = nfc(value)
+            if composed.search(n) is None:
+                # Only the text as stored matches (a mark on its own), or
+                # nothing does.
                 return compiled.sub(template, value)
-            composed = nfc(value)
+            if n is value:
+                return composed.sub(template, value)
             start, end = _mapper(value)
             out, last = [], 0
-            for m in compiled.finditer(composed):
+            for m in composed.finditer(n):
                 a, b = max(start(m.start()), last), max(end(m.end()), last)
                 out.append(value[last:a])
                 out.append(m.expand(template))

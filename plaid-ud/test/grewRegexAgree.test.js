@@ -121,6 +121,11 @@ test('a rewrite matches a lemma stored decomposed for a pattern typed composed',
       .map((n) => n.form);
   assert.deepEqual(forms('pattern { X [lemma=re"p\u02b0\u00e1"] }'), ['kitab']);
   assert.deepEqual(forms('pattern { X [lemma=re"a$"] }'), ['x']);
+  // REV-FX11: a mark on its own still finds it stored as a mark, as the
+  // server's REGEXP finds it in the value as stored.
+  assert.deepEqual(forms('pattern { X [lemma=re"\u0301"] }'), ['kitab']);
+  // An equality compares canonically equivalent text as equal, as core's does.
+  assert.deepEqual(forms('pattern { X [lemma="p\u02b0\u00e1"] }'), ['kitab']);
 });
 
 test('a regex the two engines would read apart is refused where it is written', () => {

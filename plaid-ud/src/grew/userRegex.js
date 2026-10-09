@@ -28,9 +28,7 @@ const translate = (v) => {
   const key = keyOf(v);
   let t = translations.get(key);
   if (!t) {
-    // In NFC, as the server reads it, so it matches the value's NFC form
-    // (`localMatches`).
-    t = translatePattern(String(v.pattern).normalize('NFC'), {
+    t = translatePattern(String(v.pattern), {
       caseInsensitive: normalizeFlags(v.flags) === 'i',
     });
     translations.set(key, t);
@@ -62,7 +60,33 @@ const localRegExp = (v) => {
   return re;
 };
 
-/** Whether the local matcher finds the pattern in `actual`. The server reads
- * the value in NFC, so a pattern typed composed finds a form stored
- * decomposed, and so does this. */
-export const localMatches = (v, actual) => localRegExp(v).test(String(actual).normalize('NFC'));
+const composedRegExps = new Map();
+
+// The pattern in NFC as a RegExp, or null when it already is NFC or cannot
+// be read once composed (the pattern as typed then says it all).
+const composedRegExp = (v) => {
+  const key = keyOf(v);
+  if (!composedRegExps.has(key)) {
+    const pattern = String(v.pattern);
+    const composed = pattern.normalize('NFC');
+    const t =
+      composed === pattern
+        ? null
+        : translatePattern(composed, { caseInsensitive: normalizeFlags(v.flags) === 'i' });
+    composedRegExps.set(key, t && !t.error ? new RegExp(t.source, 'u') : null);
+  }
+  return composedRegExps.get(key);
+};
+
+/** Whether the local matcher finds the pattern in `actual`, as the server's
+ * REGEXP decides: in the value as stored, or in its NFC form with the pattern
+ * in NFC. So a pattern typed composed finds a form stored decomposed, and a
+ * mark searched for on its own still finds it stored as a mark. */
+export const localMatches = (v, actual) => {
+  const s = String(actual);
+  if (localRegExp(v).test(s)) return true;
+  const n = s.normalize('NFC');
+  const composed = composedRegExp(v);
+  if (composed) return composed.test(n);
+  return n !== s && localRegExp(v).test(n);
+};

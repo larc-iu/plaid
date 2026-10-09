@@ -837,17 +837,41 @@ def compile_local(pattern: str, *, literal: bool = False, case_insensitive: bool
 
 
 def nfc(s: str) -> str:
-    """``s`` in Unicode NFC. The server reads a pattern and a value so before
-    it matches them, so text matches whatever is canonically equivalent to it
-    (``pʰá`` typed composed and stored decomposed)."""
+    """``s`` in Unicode NFC, the same object when it already is."""
     return s if unicodedata.is_normalized('NFC', s) else unicodedata.normalize('NFC', s)
+
+
+def compile_pair(pattern: str, **kw):
+    """``pattern`` compiled as typed and in NFC, as the server's REGEXP reads
+    it: a value matches as stored, or in NFC with the pattern in NFC. The NFC
+    one is the first when the pattern already is NFC, or when composing makes
+    it a pattern that cannot be used. Raises :class:`PatternError` for a
+    pattern that cannot be used as typed."""
+    raw = compile_local(pattern, **kw)
+    composed = nfc(pattern)
+    if composed is pattern:
+        return raw, raw
+    try:
+        return raw, compile_local(composed, **kw)
+    except PatternError:
+        return raw, raw
 
 
 def matcher(pattern: str, *, literal: bool = False, case_insensitive: bool = False,
             whole: bool = False) -> Callable[[Optional[str]], bool]:
     """Whether a value holds a match, exactly as the server's search decides
-    it, both read in NFC (:func:`nfc`). Raises :class:`PatternError` for a
-    pattern that cannot be used."""
-    compiled = compile_local(nfc(pattern), literal=literal, case_insensitive=case_insensitive,
-                             whole=whole)
-    return lambda value: compiled.search(nfc(value or '')) is not None
+    it: as stored, or in NFC with the pattern in NFC, so text matches whatever
+    is canonically equivalent to it (``pʰá`` typed composed and stored
+    decomposed) and a mark searched for on its own still finds it stored as a
+    mark. Raises :class:`PatternError` for a pattern that cannot be used."""
+    raw, composed = compile_pair(pattern, literal=literal, case_insensitive=case_insensitive, whole=whole)
+
+    def match(value: Optional[str]) -> bool:
+        v = value or ''
+        if raw.search(v) is not None:
+            return True
+        n = nfc(v)
+        if composed is raw and n is v:
+            return False
+        return composed.search(n) is not None
+    return match

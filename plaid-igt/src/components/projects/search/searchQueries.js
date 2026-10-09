@@ -8,7 +8,9 @@
 // project that owns those layers (lexicon queries are scoped by the
 // project's linked vocab ids).
 //
-// Match semantics: exact = literal equality (case-sensitive);
+// Match semantics: exact = literal equality (case-sensitive, canonically
+// equivalent text equal: core's equality reads a text with another spelling
+// in NFC);
 // contains = the text as a substring, in any case;
 // regex = the user's pattern, read as Java syntax, case-sensitive.
 // contains and regex go through translatePattern (plaid-ui domain/javaRegex.js), which

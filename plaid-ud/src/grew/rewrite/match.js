@@ -433,7 +433,9 @@ function checkFeatItem(node, fi) {
 function matchValue(actual, value) {
   switch (value.type) {
     case 'lit':
-      return String(actual) === String(value.value);
+      // Canonically equivalent text is equal, as the server's equality
+      // reads it (a lemma typed composed is the lemma stored decomposed).
+      return String(actual).normalize('NFC') === String(value.value).normalize('NFC');
     case 'any':
       return true;
     case 'regex':

@@ -14,8 +14,9 @@
 //                server moves the links).
 //
 // Match semantics are the Search tab's (searchQueries.js): `contains` is a
-// case-insensitive literal, `exact` is whole-value equality, `regex` is a
-// Java pattern with $1-style groups in the replacement. The documents come
+// case-insensitive literal, `exact` is whole-value equality (canonically
+// equivalent text is equal), `regex` is a Java pattern with $1-style groups
+// in the replacement. The documents come
 // from the server's search and the rows from buildReplacer in the browser,
 // and both read the pattern through translatePattern (plaid-ui domain/javaRegex.js),
 // so they match the same values.
@@ -260,14 +261,16 @@ export function collectFieldRows(doc, target, apply) {
 
 // ---- reanalyze ----------------------------------------------------------------
 
-// Every occurrence of `form` (exact) in `doc`, with the analysis it currently
-// carries (null when unanalyzed or pure-machine) and that analysis's
-// signature so identical analyses can be tallied and compared.
+// Every occurrence of `form` (exact, with canonically equivalent text the
+// same text, as the server's search reads it) in `doc`, with the analysis it
+// currently carries (null when unanalyzed or pure-machine) and that
+// analysis's signature so identical analyses can be tallied and compared.
 export function collectOccurrenceRows(doc, form, ignoredCfg = null) {
   const rows = [];
+  const wanted = form.normalize('NFC');
   (doc.sentences || []).forEach((s, idx) => {
     for (const t of s.tokens || []) {
-      if (t.content !== form) continue;
+      if ((t.content ?? '').normalize('NFC') !== wanted) continue;
       const analysis = extractAnalysis(t);
       rows.push({
         id: t.id,
