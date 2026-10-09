@@ -12,8 +12,7 @@ import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
 // gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.
 import { phraseSpeakerFor } from './flextext.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
-
-const cpLen = (s) => [...(s ?? '')].length;
+import { displayWidth, padToWidth } from '@ui/lib/displayWidth.js';
 
 /**
  * selection: { orthographies: [name], wordFields: [name], morphFields: [name],
@@ -102,7 +101,7 @@ export function sentenceTierLines(sentence, selection) {
   return lines;
 }
 
-/** One sentence as column-aligned plain text (code-point padding). */
+/** One sentence as column-aligned plain text, padded by display width. */
 export function formatSentencePlain(sentence, selection) {
   const lines = sentenceTierLines(sentence, selection)
     // Drop a tier that has no values in THIS sentence (e.g. an enabled-but-
@@ -114,11 +113,11 @@ export function formatSentencePlain(sentence, selection) {
   const cellLines = lines.filter((l) => l.kind === 'cells');
   const n = cellLines[0]?.cells.length ?? 0;
   const widths = Array.from({ length: n }, (_, i) =>
-    Math.max(...cellLines.map((l) => cpLen(l.cells[i]))),
+    Math.max(...cellLines.map((l) => displayWidth(l.cells[i]))),
   );
   const out = cellLines.map((l) =>
     l.cells
-      .map((c, i) => c + ' '.repeat(widths[i] - cpLen(c)))
+      .map((c, i) => padToWidth(c, widths[i]))
       .join('  ')
       .trimEnd(),
   );

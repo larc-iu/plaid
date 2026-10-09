@@ -18,6 +18,7 @@ import {
   serializePenman,
   relationProblem,
 } from './penman.js';
+import { displayWidth, padToWidth } from '../../../../plaid-ui/src/lib/displayWidth.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -661,10 +662,12 @@ export function serializeUmrFile({ sentences }) {
     // follows, and one always does. The text has its own line below.
     out.push(`# :: snt${sentence.snt ?? sentence.index}`);
     const ilg = ilgLinesToWrite(sentence);
-    const width = Math.max(0, ...ilg.map((line) => modernHeader(line).length + 1));
+    // Headers padded to one column by display width, so a header with an
+    // accent or a wide character lines up as well.
+    const width = Math.max(0, ...ilg.map((line) => displayWidth(modernHeader(line)) + 1));
     ilg.forEach((line) => {
       const items = line.items.map(oneLine).join(' ');
-      out.push(`${`${oneLine(modernHeader(line))}:`.padEnd(width + 1)}${items}`);
+      out.push(`${padToWidth(`${oneLine(modernHeader(line))}:`, width + 1)}${items}`);
     });
     out.push('');
 

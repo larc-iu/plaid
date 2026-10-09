@@ -42,7 +42,7 @@ describe('sentenceTierLines', () => {
 });
 
 describe('formatSentencePlain', () => {
-  it('pads columns by code points and labels free lines', () => {
+  it('pads columns by display width and labels free lines', () => {
     const s = makeSentence({
       begin: 0,
       end: 5,
@@ -62,6 +62,41 @@ describe('formatSentencePlain', () => {
     });
     const out = formatSentencePlain(s, { morphFields: ['Gloss'], sentFields: ['Translation'] });
     expect(out.split('\n')).toEqual(['𝕒𝕒  b', 'x   yy', 'Translation: ok']);
+  });
+
+  it('lines up words whose marks do not compose and wide characters (H12-IO-5)', () => {
+    const word = (forms, glosses) => ({
+      content: forms.join(''),
+      annotations: {},
+      morphemes: forms.map((form, i) => ({
+        metadata: { form },
+        annotations: { Gloss: { value: glosses[i] } },
+      })),
+    });
+    const thai = makeSentence({
+      begin: 0,
+      end: 8,
+      tokens: [
+        word(['\u0e01\u0e38\u0e48', '\u0e07'], ['a', 'b']),
+        word(['\u0e1b\u0e49\u0e32'], ['aunt']),
+      ],
+    });
+    expect(formatSentencePlain(thai, { morphFields: ['Gloss'] }).split('\n')).toEqual([
+      '\u0e01\u0e38\u0e48-\u0e07  \u0e1b\u0e49\u0e32',
+      'a-b  aunt',
+    ]);
+    const hangul = makeSentence({
+      begin: 0,
+      end: 6,
+      tokens: [
+        word(['\ud55c', '\uae00'], ['han', 'geul']),
+        word(['\uac00', '\u11a8'], ['ga', 'k']),
+      ],
+    });
+    expect(formatSentencePlain(hangul, { morphFields: ['Gloss'] }).split('\n')).toEqual([
+      '\ud55c-\uae00     \uac00-\u11a8',
+      'han-geul  ga-k',
+    ]);
   });
 
   it('drops tiers with no values in this sentence (no blank lines)', () => {

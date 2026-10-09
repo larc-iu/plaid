@@ -21,6 +21,7 @@
 import { canNameWord, joinMorphemes } from './affixMarkers.js';
 import { boundByPieces, glossSmallCaps } from './tagsets.js';
 import { isTexSpecial, texEscape, texLine } from './tex.js';
+import { displayWidth, padToWidth } from '../../../plaid-ui/src/lib/displayWidth.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -31,8 +32,6 @@ export const COPY_FORMATS = [
 ];
 
 export const COPY_FORMAT_STORAGE_KEY = 'plaid_igt_copy_format';
-
-const cpLen = (s) => [...(s ?? '')].length;
 
 /** A morpheme's display form: the user-editable metadata.form when the key
  * exists (it may legitimately be ''), else the raw baseline content. Shared
@@ -147,11 +146,11 @@ export function formatPlain(sentence, fields) {
   const lines = tiers(sentence, fields);
   const n = lines[0].cells.length;
   const widths = Array.from({ length: n }, (_, i) =>
-    Math.max(...lines.map((l) => cpLen(l.cells[i]))),
+    Math.max(...lines.map((l) => displayWidth(l.cells[i]))),
   );
   const out = lines.map((l) =>
     l.cells
-      .map((c, i) => c + ' '.repeat(widths[i] - cpLen(c)))
+      .map((c, i) => padToWidth(c, widths[i]))
       .join('  ')
       .trimEnd(),
   );
