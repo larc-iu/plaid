@@ -16,6 +16,11 @@
 // over (core rewrites a value that IS the copied document's id to the copy's,
 // and leaves a string that only contains it), so a copy keeps a stamp naming
 // another document and is never taken for the one the import made.
+//
+// A source id and a name are compared composed (`nameKey`): the server stores
+// the stamp and every name composed, and a file name from macOS is not.
+
+import { nameKey } from '@ui/lib/nameKey.js';
 
 /** `<document id>:<source id>`, written at creation. */
 const SOURCE_KEY = 'importSource';
@@ -42,7 +47,7 @@ export const importStamp = (metadata, sourceId, documentId, done = false) => {
   const { [DONE_KEY]: _, ...rest } = metadata || {};
   return {
     ...rest,
-    [SOURCE_KEY]: `${documentId}:${sourceId}`,
+    [SOURCE_KEY]: `${documentId}:${nameKey(sourceId)}`,
     ...(done ? { [DONE_KEY]: true } : {}),
   };
 };
@@ -70,25 +75,26 @@ export async function priorImports(client, projectId) {
   const bySource = new Map();
   for (const d of docs) {
     const source = stampedSource(d);
-    if (source) bySource.set(source, d);
+    if (source) bySource.set(nameKey(source), d);
   }
-  const names = new Set(listed.map((d) => d.name));
+  const names = new Set(listed.map((d) => nameKey(d.name)));
   return {
-    find: (sourceId) => bySource.get(String(sourceId)) ?? null,
+    find: (sourceId) => bySource.get(nameKey(sourceId)) ?? null,
     done: (doc) => doc?.metadata?.[DONE_KEY] === true,
-    /** Every document name in the project, for naming a copy beside one. */
+    /** Every document name in the project, composed, for naming a copy beside one. */
     names,
   };
 }
 
 /**
- * A name not yet in `taken`, made from `base` the way a file manager does it:
- * "Story (2)", then "Story (3)". Adds the result to `taken`, so a run that
- * makes several copies never hands out one name twice.
+ * A name not yet in `taken` (composed names), made from `base` the way a file
+ * manager does it: "Story (2)", then "Story (3)". Adds the result to `taken`,
+ * so a run that makes several copies never hands out one name twice.
  */
 export function unusedName(base, taken) {
-  let name = base;
-  for (let n = 2; taken.has(name); n += 1) name = `${base} (${n})`;
+  const composed = nameKey(base);
+  let name = composed;
+  for (let n = 2; taken.has(name); n += 1) name = `${composed} (${n})`;
   taken.add(name);
   return name;
 }

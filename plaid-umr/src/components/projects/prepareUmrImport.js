@@ -2,6 +2,7 @@
 // export page (ProjectImportExport.jsx).
 import { importTarget, importUmrDocument } from '../../domain/umrImport.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
+import { sameName } from '@ui/lib/nameKey.js';
 
 // Per file, the id its new document is created under, kept while the page is
 // open across every import of that file (the same name, size and time), so an
@@ -39,7 +40,9 @@ export const prepareImport = async ({ client, project, projectId }) => {
     // a graph refuses the file (importTarget). Otherwise the file becomes a
     // new document, with a note when a document of that name was there. One
     // audit-log operation either way, labeled with the document name.
-    const matches = (existingDocs || []).filter((d) => d.name === name);
+    // Composed both, as the server stores a name: a file name from macOS is
+    // decomposed.
+    const matches = (existingDocs || []).filter((d) => sameName(d.name, name));
     if (matches.length > 1) {
       throw new Error(
         `${matches.length} documents are named "${name}". Rename the file, or the documents.`,

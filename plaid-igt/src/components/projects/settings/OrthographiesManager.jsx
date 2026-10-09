@@ -6,6 +6,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Loading } from '@ui/components/shared/Loading.jsx';
+import { nameKey } from '@ui/lib/nameKey.js';
 
 // Predefined orthography setup
 const DEFAULT_ORTHOGRAPHIES = [
@@ -121,7 +122,7 @@ export const OrthographiesManager = ({
 
     // Check for duplicate names (case insensitive)
     const isDuplicate = orthographies.some(
-      (orth) => orth.name.toLowerCase() === trimmedName.toLowerCase(),
+      (orth) => nameKey(orth.name).toLowerCase() === nameKey(trimmedName).toLowerCase(),
     );
 
     if (isDuplicate) {
@@ -194,7 +195,9 @@ export const OrthographiesManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newOrthographyName.trim();
     if (!trimmedName) return false;
-    return orthographies.some((orth) => orth.name.toLowerCase() === trimmedName.toLowerCase());
+    return orthographies.some(
+      (orth) => nameKey(orth.name).toLowerCase() === nameKey(trimmedName).toLowerCase(),
+    );
   };
 
   const handleMoveOrthography = async (orthographyName, direction) => {

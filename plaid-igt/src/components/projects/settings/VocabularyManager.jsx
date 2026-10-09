@@ -13,6 +13,7 @@ import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { countOf } from '@ui/lib/plural.js';
+import { nameKey } from '@ui/lib/nameKey.js';
 
 // A row the user may not link: an unlinked vocabulary whose row says so
 // (`canLink: false`, set by the screen that loaded it). A linked row is always
@@ -184,7 +185,7 @@ export const VocabularyManager = ({
 
     // Check for duplicate names (case insensitive)
     const isDuplicate = vocabularies.some(
-      (vocab) => vocab.name.toLowerCase() === trimmedName.toLowerCase(),
+      (vocab) => nameKey(vocab.name).toLowerCase() === nameKey(trimmedName).toLowerCase(),
     );
 
     if (isDuplicate) {
@@ -224,7 +225,9 @@ export const VocabularyManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newVocabName.trim();
     if (!trimmedName) return false;
-    return vocabularies.some((vocab) => vocab.name.toLowerCase() === trimmedName.toLowerCase());
+    return vocabularies.some(
+      (vocab) => nameKey(vocab.name).toLowerCase() === nameKey(trimmedName).toLowerCase(),
+    );
   };
 
   // What the arrows order is the LINKED vocabularies among themselves, since

@@ -5,6 +5,7 @@ import { appRoutes } from '../../lib/uiConfig.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { DELETE_BUTTON_CLASS } from '../../lib/destructive.js';
+import { nameKey } from '../../lib/nameKey.js';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog.jsx';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -29,7 +30,8 @@ export const DeleteProjectCard = ({ project }) => {
   const [typed, setTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  const matches = typed.trim().toLowerCase() === project.name.trim().toLowerCase();
+  const matches =
+    nameKey(typed).trim().toLowerCase() === nameKey(project.name).trim().toLowerCase();
 
   const openConfirm = () => {
     setTyped('');

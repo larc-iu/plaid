@@ -21,6 +21,7 @@ import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { mediaUploadFailure } from '../mediaUpload.js';
 import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
+import { sameName } from '@ui/lib/nameKey.js';
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
@@ -413,7 +414,9 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
     const names = lexiconNames(build.lexicon);
     for (const name of names) {
       const vocab =
-        names.length === 1 && vocabs.length === 1 ? vocabs[0] : vocabs.find((v) => v.name === name);
+        names.length === 1 && vocabs.length === 1
+          ? vocabs[0]
+          : vocabs.find((v) => sameName(v.name, name));
       if (!vocab) {
         warnings.push(
           `No project vocabulary named "${name}" was created, so its entries were skipped.`,

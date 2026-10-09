@@ -34,6 +34,7 @@ import { chainOrder } from './readEaf.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
 import { mayOverlap } from '../../domain/alignmentTimes.js';
+import { nameKey } from '@ui/lib/nameKey.js';
 
 // A value that is only punctuation (or symbols), as FLEx's punctuation is.
 const PUNCTUATION = /^[\p{P}\p{S}]+$/u;
@@ -110,10 +111,7 @@ const mediaBasename = (eaf) => {
  * normalization, since macOS writes `ó` as `o` plus a combining accent where
  * Windows (and so FieldWorks and most .eaf files) writes one character.
  */
-export const matchKey = (name) =>
-  String(name || '')
-    .normalize('NFC')
-    .toLowerCase();
+export const matchKey = (name) => nameKey(name).toLowerCase();
 
 /** A file name without its extension, as matchKey compares it. */
 const stem = (name) =>
@@ -179,8 +177,8 @@ export function matchMediaFiles(eafs, mediaFiles, { shared = false } = {}) {
  */
 export const defaultFieldName = (node) => {
   const flex = parseElanFlexTierName(nodeLabel(node));
-  if (flex?.level === 'word' && flex.itemType === 'txt' && flex.ws) return flex.ws;
-  return nodeLabel(node);
+  if (flex?.level === 'word' && flex.itemType === 'txt' && flex.ws) return nameKey(flex.ws);
+  return nameKey(nodeLabel(node));
 };
 
 /** Resolve the mapping to role → the schema nodes holding it. */
@@ -473,7 +471,7 @@ function buildGroup(files, nodes, roles, options = {}) {
     })),
   );
   const nameOf = (node) =>
-    (fieldNames[node.key] || fieldWorksNames[node.key] || defaultFieldName(node)).trim();
+    nameKey(fieldNames[node.key] || fieldWorksNames[node.key] || defaultFieldName(node)).trim();
 
   const documents = [];
   const stats = {

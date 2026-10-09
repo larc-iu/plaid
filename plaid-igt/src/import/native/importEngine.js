@@ -57,6 +57,7 @@ import {
 } from '../../domain/igtConfig.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 import { humanizeError } from '@ui/lib/errors.js';
+import { sameName } from '@ui/lib/nameKey.js';
 import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
@@ -1057,7 +1058,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const itemIdMap = new Map();
   for (const vocab of archive.vocabularies) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const target = projectVocabs.find((v) => v.name === vocab.name);
+    const target = projectVocabs.find((v) => sameName(v.name, vocab.name));
     if (!target) {
       warnings.push(`Vocabulary "${vocab.name}" is not in the project. Its entries were skipped.`);
       continue;

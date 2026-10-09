@@ -45,6 +45,7 @@ import {
   wordLayerConstraints,
 } from '../../../domain/igtConstraints.js';
 import { ensureLayerConstraints } from '../../../../../plaid-ui/src/lib/layerConstraints.js';
+import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
@@ -457,7 +458,7 @@ async function executeProjectSetupImpl({
     const madeVocabs = { ...(readImportState(existingProject?.config)?.vocabsMade ?? {}) };
     let unlinked = null;
     const madeEarlier = async (name) => {
-      const recordedId = madeVocabs[name];
+      const recordedId = madeVocabs[nameKey(name)];
       if (!existingProject || !recordedId) return null;
       if (!unlinked) {
         const linkedIds = new Set(linkedVocabs.map((v) => v.id));
@@ -469,13 +470,13 @@ async function executeProjectSetupImpl({
         }
         unlinked = all.filter((v) => !linkedIds.has(v.id));
       }
-      return unlinked.find((v) => v.id === recordedId && v.name === name) ?? null;
+      return unlinked.find((v) => v.id === recordedId && sameName(v.name, name)) ?? null;
     };
 
     for (const vocab of enabledVocabs) {
       try {
         if (vocab.isCustom && vocab.id.startsWith('new-')) {
-          const alreadyLinked = linkedVocabs.find((v) => v.name === vocab.name);
+          const alreadyLinked = linkedVocabs.find((v) => sameName(v.name, vocab.name));
           if (alreadyLinked) {
             vocabulariesProcessed.push(alreadyLinked);
             continue;
@@ -487,7 +488,7 @@ async function executeProjectSetupImpl({
             // Said before it is linked, so a run that dies in between leaves
             // a record naming it and the next one finishes it rather than
             // making a second.
-            madeVocabs[vocab.name] = newVocab.id;
+            madeVocabs[nameKey(vocab.name)] = newVocab.id;
             await onVocabCreated?.(newVocab.id, { ...madeVocabs });
           }
           // A new vocabulary starts with the core fields plus Status and its
