@@ -35,6 +35,8 @@ import io
 import json
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from plaid_client.http import PlaidAPIError
+
 # Suffixes read as a table of rows. Everything else attached is read as text,
 # except JSON, which is a table when it parses as a list of objects.
 TABLE_SUFFIXES = ('.csv', '.tsv', '.tab')
@@ -413,13 +415,12 @@ def chunk(text: str, budget: int) -> List[str]:
 
 
 def value_budget(client) -> int:
-    """What one stored part may weigh: the server's published cap less the
-    room for the key."""
-    try:
-        cap = (client.server.limits() or {}).get('user_data_value_bytes')
-    except Exception:  # noqa: BLE001 - a server that will not say gets the fallback
-        cap = None
-    return (cap if isinstance(cap, int) and cap > 0 else VALUE_BYTES) - VALUE_HEADROOM
+    """What one stored part may weigh: the server's published cap
+    (`conversation.value_cap`, the figure the server has now) less the room
+    for the key."""
+    from .conversation import value_cap
+    cap = value_cap(client)
+    return (cap if cap is not None else VALUE_BYTES) - VALUE_HEADROOM
 
 
 class FileKeeper:
@@ -455,11 +456,36 @@ class FileKeeper:
                 return known
         import uuid
         client = self.store.client
-        if self.budget is None:
-            self.budget = value_budget(client)
         file_id = str(uuid.uuid4())
-        parts = chunk(text, self.budget)
         base = file_key(self.store.app, self.store.project_id, self.conv_id, file_id)
+        # Cut to the cap the server has now. A part refused as too large
+        # under a cap the server no longer has (core restarted with another,
+        # and the client read it again on the 413) is cut again to it, once.
+        budget = self.budget if self.budget is not None else value_budget(client)
+        try:
+            parts, written = self._store_parts(client, base, text, budget)
+        except PlaidAPIError as e:
+            if e.status != 413 or self.budget is not None or value_budget(client) == budget:
+                raise
+            parts, written = self._store_parts(client, base, text, value_budget(client))
+        self._keys.extend(written)
+        lines = text.count('\n') + (0 if text.endswith('\n') or not text else 1)
+        ref = {'id': file_id, 'name': name, 'bytes': len(text.encode('utf-8')), 'lines': lines,
+               'chunks': len(parts)}
+        if source:
+            ref['source'] = source
+        a = Attachment(ref, lambda fid, n: None)
+        a._text = text
+        files.add(a)
+        # The name the model is told, which `Attachments.of` gives it again
+        # from the same order when the conversation is next read.
+        self.refs.append({**ref, 'name': name})
+        return a
+
+    def _store_parts(self, client, base: str, text: str, budget: int) -> Tuple[List[str], List[str]]:
+        """``text`` cut to ``budget`` and stored under ``base``: (parts,
+        keys). Nothing is left stored when a part is refused."""
+        parts = chunk(text, budget)
         written: List[str] = []
         try:
             for n, part in enumerate(parts):
@@ -475,19 +501,7 @@ class FileKeeper:
                 except Exception:  # noqa: BLE001 - what is left goes with the conversation
                     pass
             raise
-        self._keys.extend(written)
-        lines = text.count('\n') + (0 if text.endswith('\n') or not text else 1)
-        ref = {'id': file_id, 'name': name, 'bytes': len(text.encode('utf-8')), 'lines': lines,
-               'chunks': len(parts)}
-        if source:
-            ref['source'] = source
-        a = Attachment(ref, lambda fid, n: None)
-        a._text = text
-        files.add(a)
-        # The name the model is told, which `Attachments.of` gives it again
-        # from the same order when the conversation is next read.
-        self.refs.append({**ref, 'name': name})
-        return a
+        return parts, written
 
     def save(self, files: 'Attachments', name: str, text: str) -> Attachment:
         """Store ``text`` as a file this turn MADE for the user (``save_file``),

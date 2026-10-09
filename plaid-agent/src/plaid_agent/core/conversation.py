@@ -185,12 +185,16 @@ class ConversationStore:
         again and refused the same way) and leave it as it is. A sidebar
         entry refused that way is rebuilt from what is stored, over the
         transcript this request wrote. Raises :class:`RecordMoved` after
-        :data:`WRITE_TRIES` refusals in a row."""
+        :data:`WRITE_TRIES` refusals in a row. A transcript refused as too
+        large (413) under a cap other than the one the server reports now
+        (core restarted with another) is made once more, so ``change`` fits
+        it to the cap there is."""
         ckey = conv_key(self.app, self.project_id, conv_id)
         mkey = meta_key(self.app, self.project_id, conv_id)
         # The sidebar entry is read afresh (it is small): it says whether the
         # user moved on while this request worked.
         self._forget(mkey)
+        refitted = False
         for _ in range(WRITE_TRIES):
             conv, meta = self._latest(ckey), self._latest(mkey)
             if not isinstance(conv, dict) or not isinstance(meta, dict) or not _owns(meta, request_id):
@@ -203,10 +207,17 @@ class ConversationStore:
                 # Every settled plan as it is kept (`compact_plan`), as the
                 # browser writes them too.
                 new = {**new, 'display': compact_settled(new['display'])}
+                cap = value_cap(self.client)
                 try:
                     self._put(ckey, {'messages': new['messages'], 'display': new['display']},
                               guarded=True)
                 except PlaidAPIError as e:
+                    if e.status == 413 and not refitted and value_cap(self.client) != cap:
+                        # The client read the cap again on the 413, and it is
+                        # not the one ``change`` fitted the record to (core
+                        # restarted with another): made once more, on it.
+                        refitted = True
+                        continue
                     if not _moved(e):
                         raise
                     self._forget(ckey, mkey)
@@ -805,18 +816,26 @@ def conversation_bytes(conv: Dict[str, Any]) -> int:
     return _bytes({'messages': conv.get('messages') or [], 'display': conv.get('display') or []})
 
 
-def record_budget(client, default: int = CONVERSATION_BUDGET) -> int:
-    """What the service may fill of the cap the server enforces on one stored
-    value, which it publishes at ``GET /info``: the cap less the browser's
-    room (`RECORD_HEADROOM`). A server that does not report one gets the
-    fallback, which is what the budget was before anybody asked."""
+def value_cap(client) -> Optional[int]:
+    """The cap the server enforces on one stored value, as it publishes it
+    at ``GET /info`` (``user_data_value_bytes``), or None when it does not
+    say. Read from the client every time: the client reads ``/info`` again
+    when its connection to the server comes back and after a 413, so the
+    figure is the one the server has now, never a copy taken at startup."""
     try:
         reported = (client.server.limits() or {}).get('user_data_value_bytes')
     except Exception:  # noqa: BLE001 - an unreachable or older server just has no figure
-        return default
-    if not (isinstance(reported, int) and reported > 0):
-        return default
-    return int(reported * RECORD_HEADROOM)
+        return None
+    return reported if isinstance(reported, int) and reported > 0 else None
+
+
+def record_budget(client, default: int = CONVERSATION_BUDGET) -> int:
+    """What the service may fill of the cap the server enforces on one stored
+    value (`value_cap`): the cap less the browser's room (`RECORD_HEADROOM`).
+    A server that does not report one gets the fallback, which is what the
+    budget was before anybody asked."""
+    cap = value_cap(client)
+    return default if cap is None else int(cap * RECORD_HEADROOM)
 
 
 def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
