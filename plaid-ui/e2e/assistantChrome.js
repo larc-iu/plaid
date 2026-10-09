@@ -25,7 +25,7 @@ export const assistantStub = (app, over = {}) => [
     serviceId: `${app}:assist:test`,
     serviceName: `${app.toUpperCase()} Assistant (test)`,
     description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', app, tasks: ['assist'] },
+    extras: { model: 'test/model', app, record: 2, tasks: ['assist'] },
     tasks: ['assist'],
     online: true,
     ...over,

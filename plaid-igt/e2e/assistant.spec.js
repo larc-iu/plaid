@@ -7,10 +7,11 @@ import { agentUnavailable, startIgtAssistant } from './assistantService.js';
 // The Assistant tab, without a model: conversations are records in the
 // user's key/value store that the service writes, so a plan can be seeded
 // straight into one (the ops name real layers, tokens, and spans of the
-// "E2E IGT Fixture" project) and the tab is driven from there. Applying a
-// plan needs an `assist` service online: that test starts the real one
-// against a scripted model (assistantService.js), and skips only where the
-// plaid-agent Python env is missing.
+// "E2E IGT Fixture" project) and the tab is driven from there. The service is
+// the record's only writer, so Discard, a lost turn's settling and Approve
+// need an `assist` service online: those tests start the real one against a
+// scripted model (assistantService.js), and skip only where the plaid-agent
+// Python env is missing.
 //
 // Covers: the plan card (grouped under the document, the word linked into
 // the editor), Discard, a turn whose request is gone (Retry offered and the
@@ -35,6 +36,7 @@ const seedConversation = async ({
   pending = null,
   title,
   updatedAt = new Date().toISOString(),
+  serviceId = 'igt:assist:e2e',
 }) => {
   const id = randomUUID();
   seeded.push(id);
@@ -44,7 +46,7 @@ const seedConversation = async ({
     title,
     createdAt: updatedAt,
     updatedAt,
-    serviceId: 'igt:assist:e2e',
+    serviceId,
     model: 'e2e/model',
     turns: 1,
     pending,
@@ -170,10 +172,52 @@ test.beforeEach(async ({ page }) => {
   await seedAuth(page);
 });
 
+// The real assistant online on the fixture project for `fn`, then stopped
+// and forgotten, so no offline assistant is left there.
+const withAssistant = async (serviceId, fn) => {
+  const unavailable = agentUnavailable();
+  test.skip(!!unavailable, unavailable);
+  const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
+  try {
+    await expect
+      .poll(
+        async () =>
+          (await client.messages.discoverServices(projectId)).some(
+            (s) => s.serviceId === serviceId && s.online,
+          ),
+        { timeout: 90_000, message: () => `the assistant never came online:\n${service.log()}` },
+      )
+      .toBe(true);
+    await fn();
+  } finally {
+    await test.info().attach('assistant service log', {
+      body: service.log(),
+      contentType: 'text/plain',
+    });
+    await service.stop();
+    await expect
+      .poll(
+        () =>
+          client.messages.discardService(projectId, serviceId).then(
+            () => true,
+            () => false,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+  }
+};
+
 test('the plan card groups a change under its document, links the word, and Discard settles it', async ({
   page,
 }) => {
-  const id = await seedConversation(planConversation('E2E-DISCARD'));
+  test.setTimeout(150_000);
+  const serviceId = 'igt:assist:e2e-discard';
+  await withAssistant(serviceId, () => discardSettles(page, serviceId));
+});
+
+const discardSettles = async (page, serviceId) => {
+  const id = await seedConversation({ ...planConversation('E2E-DISCARD'), serviceId });
   await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
   const card = page.locator('text=Proposed changes').locator('..').locator('..');
   await expect(card).toBeVisible();
@@ -196,52 +240,39 @@ test('the plan card groups a change under its document, links the word, and Disc
     .toBe('discarded');
   await page.reload();
   await expect(page.getByText('Discarded')).toBeVisible();
-});
+};
 
-// A marker names a request its page may not have sent yet (it claims the
-// conversation first, then writes the message, then sends it), so a page that
-// finds no such request asks again for up to 15 seconds from when the marker
-// was set (`SUBMIT_GRACE_MS` in plaid-ui jobs.js) before it takes it as lost.
-const lostTurn = (title, startedAt) =>
-  seedConversation({
-    title,
-    messages: [{ role: 'user', content: 'Anything there?' }],
-    display: [{ kind: 'user', text: 'Anything there?' }],
-    pending: {
-      kind: 'turn',
-      requestId: randomUUID(), // the server has never heard of it
-      serviceId: 'igt:assist:e2e',
-      startedAt,
-    },
-  });
-
+// A marker the service wrote for a request that died with it (the service
+// restarted): the server no longer knows the request, and the service
+// settles the marker on the next request about the conversation, which the
+// page sends once its rejoin ends.
 test('a turn whose request is gone offers Retry and clears the pending marker', async ({
   page,
 }) => {
-  // Left by a page that went away a minute ago.
-  const id = await lostTurn('e2e lost turn', new Date(Date.now() - 60 * 1000).toISOString());
-  await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
-  await expect(page.getByText('No answer came back for this message.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
-  await expect
-    .poll(async () => (await client.userData.get(userId, key('meta', id))).value.pending)
-    .toBeNull();
-  // Not listed as unfinished any more.
-  await expect(page.getByText('unfinished')).toHaveCount(0);
-});
-
-test('a turn just marked whose request never comes ends the same way after the wait', async ({
-  page,
-}) => {
-  const id = await lostTurn('e2e lost young turn', new Date().toISOString());
-  await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
-  await expect(page.getByText('No answer came back for this message.')).toBeVisible({
-    timeout: 25000,
+  test.setTimeout(150_000);
+  const serviceId = 'igt:assist:e2e-lost';
+  await withAssistant(serviceId, async () => {
+    const id = await seedConversation({
+      title: 'e2e lost turn',
+      serviceId,
+      messages: [{ role: 'user', content: 'Anything there?' }],
+      display: [{ kind: 'user', text: 'Anything there?' }],
+      pending: {
+        kind: 'turn',
+        requestId: randomUUID(), // the server has never heard of it
+        serviceId,
+        startedAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      },
+    });
+    await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
+    await expect(page.getByText('No answer came back for this message.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect
+      .poll(async () => (await client.userData.get(userId, key('meta', id))).value.pending)
+      .toBeNull();
+    // Not listed as unfinished any more.
+    await expect(page.getByText('unfinished')).toHaveCount(0);
   });
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
-  await expect
-    .poll(async () => (await client.userData.get(userId, key('meta', id))).value.pending)
-    .toBeNull();
 });
 
 test('the tab opens on a new conversation, and the sidebar links each saved one', async ({

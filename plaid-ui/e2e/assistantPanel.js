@@ -47,7 +47,7 @@ export const assistantPanelHarness = ({
     ...assistantStub(app, {
       serviceId: `${app}:assist:other`,
       serviceName: `${app.toUpperCase()} Assistant (other)`,
-      extras: { model: 'other/model', app, tasks: ['assist'] },
+      extras: { model: 'other/model', app, record: 2, tasks: ['assist'] },
     }),
   ];
 

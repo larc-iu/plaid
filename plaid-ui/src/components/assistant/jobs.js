@@ -289,7 +289,11 @@ const finishJob = async (j, store) => {
     result = await readConv(store, j.id);
   } catch (e) {
     if (e?.status !== 404) console.error('[Assistant] could not read the conversation back', e);
-    if (e?.status === 404 || j.gone) {
+    if (e?.status === 404 && j.create && !j.recorded && !j.gone) {
+      // A first message the service never took: the conversation was never
+      // made, and is a new one again, its text back in the composer.
+      result = { conv: { id: j.id, messages: [], display: [], draft: true }, meta: null };
+    } else if (e?.status === 404 || j.gone) {
       j.gone = true;
       j.why = DELETED;
       // The conversation as it was shown, without the message that was not
@@ -394,6 +398,7 @@ export const startTurn = ({
     conv,
     asked,
     tab,
+    create,
     unsent: retry ? null : text,
     progress: 'Thinking…',
   });

@@ -37,7 +37,10 @@ export const assistantProjectsTests = ({
   const key = (kind, id) => `${app}:assistant:${home()}:${kind}:${id}`;
 
   // Online wherever discovery is asked, except in the one project it does not
-  // run in. A turn is never answered: the request is refused at once.
+  // run in. A turn is never answered: the request is refused at once, and
+  // what each one asked for is kept in `asked` (the assistant service, not
+  // the page, writes the record, so the request is where the set shows).
+  const asked = [];
   const withAssistant = async (page) => {
     await page.route('**/api/v1/projects/*/services', (route) => {
       const there = route.request().url().includes(`/projects/${unserved().id}/`);
@@ -47,9 +50,14 @@ export const assistantProjectsTests = ({
         body: JSON.stringify(there ? [] : [service]),
       });
     });
-    await page.route('**/api/v1/projects/*/services/*/requests*', (route) =>
-      route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }),
-    );
+    await page.route('**/api/v1/projects/*/services/*/requests*', (route) => {
+      try {
+        asked.push(route.request().postDataJSON());
+      } catch {
+        // Not a body this spec reads.
+      }
+      return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    });
   };
 
   const seed = async (display) => {
@@ -144,23 +152,15 @@ export const assistantProjectsTests = ({
     await page.getByRole('option', { name: B.name, exact: true }).click();
     await expect(page.getByRole('button', { name: `Remove ${B.name}` })).toBeVisible();
 
-    // Sent, the set is on the message, where the service reads it.
+    // Sent, the set goes with the message, which the service stores on it and
+    // reads it from. This stub refuses the request, so the message is not
+    // taken and comes back to the box.
     const box = page.getByPlaceholder(/Message the assistant/);
     await box.fill('what is in the other one?');
     await box.press('Enter');
-    await expect(page).toHaveURL(/conversation=/);
-    const id = new URL(page.url().replace('#', '')).searchParams.get('conversation');
-    seeded.push(id);
-    // The conversation is on screen before its write lands, and a read before
-    // then is a 404, which would end the poll at once.
     await expect
-      .poll(async () => {
-        const got = await client()
-          .userData.get(userId(), key('conv', id))
-          .catch(() => null);
-        return got?.value?.display?.find((d) => d.kind === 'user')?.projects ?? null;
-      })
+      .poll(() => asked.find((d) => d?.op === 'send')?.projects ?? null)
       .toEqual([{ id: B.id, name: B.name }]);
-    await expect(page.getByText(`With ${B.name}`)).toBeVisible();
+    await expect(box).toHaveValue('what is in the other one?');
   });
 };

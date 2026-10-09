@@ -238,6 +238,37 @@ describe('a message', () => {
   });
 });
 
+describe('a first message the service never took', () => {
+  it('leaves a new conversation, not a deleted one, with the text back in the composer', async () => {
+    const client = fakeClient();
+    client.records.clear();
+    client.messages.requestService.mockImplementation(async (...a) => {
+      if (a[2].op === 'send') throw Object.assign(new Error('Unavailable'), { status: 503 });
+      return client.assistant.requestService(...a);
+    });
+    const m = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1']}>
+        <AssistantChat
+          projectId="p1"
+          projectName="Lamkang A"
+          client={client}
+          userId="u1"
+          canWrite
+          adapter={ADAPTER}
+          conversationId={null}
+        />
+      </MemoryRouter>,
+    );
+    await flush(m);
+    await typeAndSend(m, 'First words.');
+    await flush(m, 10);
+    expect(m.container.querySelector('textarea').value).toBe('First words.');
+    expect(m.container.textContent).not.toContain('This conversation was deleted.');
+    expect(m.container.querySelector('.overflow-y-auto').textContent).not.toContain('First words.');
+    await m.unmount();
+  });
+});
+
 describe('one tab at a time', () => {
   it('takes a conversation nobody holds when it opens it', async () => {
     const client = fakeClient();
