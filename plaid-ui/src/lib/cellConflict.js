@@ -9,6 +9,10 @@
 // value filled in, none of which names the row), the one person other than
 // this one who wrote anything since the document the edit was made on, when
 // there is exactly one. Otherwise nobody ("Someone").
+//
+// A repair (an operation of kind `repair`: an app's repair when a document
+// opens, or a conversion of stored data) is nobody's change, so it is never
+// the one named (Luke's ruling, 2026-10-09).
 
 import { settledId } from '../domain/pendingIds.js';
 
@@ -36,14 +40,15 @@ async function whoChanged(client, documentId, entityIds, me, since = null) {
   const from = since ? instant(since) : null;
   if (ids.length === 0 && !from) return null;
   const page = await client.documents.auditPage(documentId, { order: 'desc', limit: RECENT });
-  const all = (page?.entries ?? []).filter((e) => e.user?.id);
+  const logged = (page?.entries ?? []).filter((e) => e.user?.id);
+  const all = logged.filter((e) => e.kind !== 'repair');
   const unseen = from ? all.filter((e) => (instant(e.time) ?? '') > from) : all;
   const wrote = (e) => (e.ops ?? []).some((op) => ids.some((id) => op.description?.includes(id)));
   const at = unseen.findIndex(wrote);
   if (at < 0) {
     // The log page may not reach back to `since`: then who wrote in the
     // window is not known.
-    const reaches = all.length < RECENT || unseen.length < all.length;
+    const reaches = logged.length < RECENT || logged.some((e) => (instant(e.time) ?? '') <= from);
     return from && reaches ? soleAuthor(unseen, me) : null;
   }
   const entry = unseen[at];

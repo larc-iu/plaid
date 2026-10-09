@@ -161,6 +161,45 @@ describe('announceCells', () => {
     });
   });
 
+  // A repair (kind `repair`) is nobody's change: a conversion run as
+  // another account after B's edit leaves B named (FX16-REPAIR).
+  it('names the person past a repair that changed the cell after them', async () => {
+    const { announce, said } = setup([
+      {
+        user: { id: 'admin@x.com', displayName: 'admin' },
+        kind: 'repair',
+        ops: [{ description: 'span s1' }],
+      },
+      { user: { id: 'b@x.com', displayName: 'b' }, ops: [{ description: 'span s1' }] },
+    ]);
+    announce({ kind: 'conflict', key: 'k', typed: 'x', stored: 'DOG', entityIds: ['s1'] });
+    await flush();
+    expect(said).toEqual([['warn', 'b changed this to DOG.']]);
+  });
+
+  it('names nobody for a change only a repair made', async () => {
+    const SINCE = '2026-10-05T01:00:00.5Z';
+    const { announce, said } = setup([
+      {
+        user: { id: 'admin@x.com', displayName: 'admin' },
+        kind: 'repair',
+        time: '2026-10-05T01:00:05Z',
+        ops: [{ description: 'Bulk update 26 tokens' }],
+      },
+      { user: { id: 'b@x.com', displayName: 'b' }, time: '2026-10-05T01:00:00Z', ops: [] },
+    ]);
+    announce({
+      kind: 'conflict',
+      key: 'k',
+      typed: 'x',
+      stored: 'DOG',
+      entityIds: ['w1'],
+      since: SINCE,
+    });
+    await flush();
+    expect(said).toEqual([['warn', 'Someone changed this to DOG.']]);
+  });
+
   it('says a value is kept in its cell, and names one that was lost', () => {
     const { announce, said } = setup();
     announce({ kind: 'keptInCell', key: 'k', field: 'Gloss' });
