@@ -379,3 +379,94 @@
                 (str "round " round " history coherent"))
             (is (zero? (-> (restore! admin-request doc-id t :dry-run true) :body :total))
                 (str "round " round " second restore is a no-op"))))))))
+
+;; ============================================================
+;; What a kept row still names waits for its update
+;; ============================================================
+
+(defn- small-document!
+  "A text \"a b c\" with a word layer, a span layer and a relation layer,
+  one span on each word. Returns the ids."
+  []
+  (let [proj (create-test-project admin-request "Order")
+        tl (-> (create-text-layer admin-request proj "Text") :body :id)
+        word (-> (create-token-layer admin-request tl "Words") :body :id)
+        sl (-> (create-span-layer admin-request word "Lemma") :body :id)
+        rl (-> (create-relation-layer admin-request sl "Deps") :body :id)
+        doc-id (create-test-document admin-request proj "Doc")
+        text-id (-> (create-text admin-request tl doc-id "a b c") :body :id)
+        span-on (fn [b]
+                  (let [t (-> (create-token admin-request word text-id b (inc b)) :body :id)]
+                    [t (-> (create-span admin-request sl [t] "x") :body :id)]))]
+    {:proj proj :tl tl :word word :sl sl :rl rl :doc-id doc-id :text-id text-id :span-on span-on}))
+
+(defn- coherent? [doc-id]
+  (= (live doc-id) (comparable (hread/get-with-layer-data-at db doc-id (latest-op-ts)))))
+
+(deftest a-relation-moved-to-a-newer-span-comes-back
+  ;; The relation's source moves after T to a span made after T. The
+  ;; restore deletes that span and must set the relation back first, or
+  ;; the foreign key cascade takes the relation with no audit row.
+  (let [{:keys [doc-id rl span-on]} (small-document!)
+        [_ a] (span-on 0)
+        [_ c] (span-on 4)
+        rel (-> (create-relation admin-request rl a c "nsubj") :body :id)
+        t (latest-op-ts)
+        snapshot (live doc-id)
+        [_ b] (span-on 2)]
+    (assert-ok (update-relation-source admin-request rel b))
+    (assert-ok (restore! admin-request doc-id t))
+    (is (= a (-> (get-relation admin-request rel) :body :relation/source)))
+    (assert-status 404 (get-span admin-request b))
+    (is (= snapshot (live doc-id)))
+    (is (coherent? doc-id) "history shows no relation that is gone")
+    (is (= [["document/restore" "update"]]
+           (mapv (juxt :op_type :change_type)
+                 (psc/q db {:select [:o.op_type :aw.change_type] :from [[:audit_writes :aw]]
+                            :join [[:operations :o] [:= :o.id :aw.op_id]]
+                            :where [:and [:= :aw.target_id (parse-uuid (str rel))] [:= :o.op_type "document/restore"]]})))
+        "the restore records the relation's move back")))
+
+(deftest a-span-moved-to-a-newer-token-comes-back
+  (let [{:keys [doc-id word text-id span-on]} (small-document!)
+        [t0 s] (span-on 0)
+        t (latest-op-ts)
+        snapshot (live doc-id)
+        t1 (-> (create-token admin-request word text-id 2 3) :body :id)]
+    (assert-ok (update-span-tokens admin-request s [t1]))
+    (assert-ok (restore! admin-request doc-id t))
+    (is (= [t0] (-> (get-span admin-request s) :body :span/tokens)))
+    (assert-status 404 (get-token admin-request t1))
+    (is (= snapshot (live doc-id)))
+    (is (coherent? doc-id))))
+
+(deftest a-text-replaced-in-its-layer-comes-back
+  ;; A document holds one text per text layer, so the newer text gives up
+  ;; its place before the text of T is inserted again.
+  (let [{:keys [doc-id tl word text-id span-on]} (small-document!)
+        _ (span-on 0)
+        t (latest-op-ts)
+        snapshot (live doc-id)]
+    (assert-no-content (delete-text admin-request text-id))
+    (let [newer (-> (create-text admin-request tl doc-id "x y") :body :id)]
+      (create-token admin-request word newer 0 1)
+      (assert-ok (restore! admin-request doc-id t))
+      (assert-status 404 (get-text admin-request newer))
+      (assert-ok (get-text admin-request text-id))
+      (is (= snapshot (live doc-id)))
+      (is (coherent? doc-id)))))
+
+(deftest a-delete-that-would-cascade-is-refused
+  ;; The plan never asks for one, and the check stands behind it: a span
+  ;; a relation still names is not deleted under the relation.
+  (let [{:keys [rl span-on]} (small-document!)
+        [_ a] (span-on 0)
+        [_ c] (span-on 4)
+        rel (-> (create-relation admin-request rl a c "nsubj") :body :id)]
+    (let [e (try (#'restore/refuse-cascade! db :spans [c]) nil
+                 (catch clojure.lang.ExceptionInfo e e))]
+      (is (some? e))
+      (is (= 500 (:code (ex-data e))))
+      (is (= :relations (:dependent (ex-data e)))))
+    (is (nil? (#'restore/refuse-cascade! db :relations [rel])))
+    (assert-ok (get-relation admin-request rel))))

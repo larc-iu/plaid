@@ -19,6 +19,16 @@
     - a row present on both sides is set back where its columns, its
       token list or its metadata differ.
 
+  The order is what keeps every change audited. A row to delete that a
+  row which stays still names (a span a kept relation now joins, a token
+  a kept span or link now covers, a text a kept token is on) waits until
+  the inserts and the updates have moved that row off it. Every other
+  row to delete goes first, so a text that stands in a text layer's one
+  place gives it up before the text of T comes back. Each delete checks
+  that nothing outside the rows it removes still names them, and refuses
+  the whole operation otherwise, so a cascade never removes a row
+  without its audit row.
+
   Every write goes through the audited helpers with a full post-image,
   so history after a restore reads correctly (the as-of fold rebuilds a
   resurrected id from its new insert row) and the restore is itself
@@ -180,14 +190,35 @@
 ;; Applying it
 ;; ============================================================
 
+(def ^:private dependents
+  "For each table, the rows a foreign key cascade would delete with its
+  rows, as `[table column]`. A span's and a vocab link's own junction rows
+  go with it and are not listed: its audit row covers them."
+  {:spans [[:relations :source_span_id] [:relations :target_span_id]]
+   :tokens [[:span_tokens :token_id] [:vocab_link_tokens :token_id]]
+   :texts [[:tokens :text_id]]})
+
+(defn- refuse-cascade!
+  "Throw when a row of `table` among `ids` is still named by a row that
+  would be deleted with it, unaudited, by a foreign key cascade."
+  [tx table ids]
+  (doseq [[dtable col] (get dependents table)]
+    (when-let [row (first (drows/q-in tx dtable col ids))]
+      (log/error "Restore refused: deleting" (name table) (get row col)
+                 "would cascade into" (name dtable))
+      (throw (ex-info "The restore could not be applied, and nothing was changed."
+                      {:code 500 :table table :id (get row col) :dependent dtable})))))
+
 (defn- delete-rows!
   "Delete `rows` of `table`, audited, by the primary key in chunks, and their
-  metadata. Each delete cascades (a span into its relations and junction
-  rows), so the statistics are made safe for that first."
+  metadata. Refuses (see `refuse-cascade!`) when a row that stays still names
+  one of them. A span's own junction rows go with it, so the statistics are
+  made safe for that cascade first."
   [tx table rows]
   (when (seq rows)
-    (cascade-stats/prepare! tx)
     (let [ids (mapv :id rows)]
+      (refuse-cascade! tx table ids)
+      (cascade-stats/prepare! tx)
       (crud/delete-ids! tx table ids)
       (doseq [chunk (partition-all drows/chunk-size ids)]
         (metadata/sweep-metadata! tx (get drows/entity-type table) (vec chunk))))))
@@ -213,23 +244,49 @@
       (doseq [u updates :when (:meta? u)]
         (metadata/replace-metadata! tx etype (:id u) (meta-of (:row u)))))))
 
-(defn- apply-plan! [tx doc-id p]
-  ;; Deletes bottom-up, so nothing is swept by a foreign-key cascade.
-  (delete-rows! tx :relations (get-in p [:relations :delete]))
-  (delete-rows! tx :vocab_links (get-in p [:vocab_links :delete]))
-  (delete-rows! tx :spans (get-in p [:spans :delete]))
-  (delete-rows! tx :tokens (get-in p [:tokens :delete]))
-  (delete-rows! tx :texts (get-in p [:texts :delete]))
-  ;; The document row.
-  (when-let [n (:name p)]
-    (crud/update-by-id! tx :documents doc-id {:name n}))
-  (when (:document-metadata? p)
-    (metadata/replace-metadata! tx "document" doc-id (:document-metadata p)))
-  ;; Inserts top-down, then the in-place changes.
-  (doseq [table [:texts :tokens :spans :relations :vocab_links]]
-    (drows/insert-rows! tx table (get-in p [table :insert])))
-  (doseq [table [:texts :tokens :spans :relations :vocab_links]]
-    (update-rows! tx table (get-in p [table :update]))))
+(defn- held-deletes
+  "The rows to delete that a row which stays still names, as
+  `{table #{id}}`: they wait for the updates. A row that is deleted later
+  holds what it names too (a span that waits holds its tokens)."
+  [p cur]
+  (let [kept (fn [table cur-rows]
+               (let [gone (set (map :id (get-in p [table :delete])))]
+                 (remove #(contains? gone (:id %)) cur-rows)))
+        doomed (fn [table] (set (map :id (get-in p [table :delete]))))
+        rels (kept :relations (:relations cur))
+        spans-held (into #{} (comp (mapcat (juxt :source_span_id :target_span_id))
+                                   (filter (doomed :spans)))
+                         rels)
+        holders (concat (kept :spans (:spans cur))
+                        (filter #(contains? spans-held (:id %)) (:spans cur))
+                        (kept :vocab_links (:vocab-links cur)))
+        tokens-held (into #{} (comp (mapcat drows/tokens-of) (filter (doomed :tokens))) holders)
+        token-holders (concat (kept :tokens (:tokens cur))
+                              (filter #(contains? tokens-held (:id %)) (:tokens cur)))
+        texts-held (into #{} (comp (map :text_id) (filter (doomed :texts))) token-holders)]
+    {:spans spans-held :tokens tokens-held :texts texts-held}))
+
+(defn- apply-plan!
+  "Deletes bottom-up of what nothing that stays names, inserts top-down,
+  updates, then deletes bottom-up of what waited for the updates. No
+  delete is swept by a foreign key cascade (`delete-rows!` refuses one)."
+  [tx doc-id p cur]
+  (let [held (held-deletes p cur)
+        deletes (fn [table pred] (filterv #(pred (contains? (get held table #{}) (:id %)))
+                                          (get-in p [table :delete])))]
+    (doseq [table [:relations :vocab_links :spans :tokens :texts]]
+      (delete-rows! tx table (deletes table not)))
+    ;; The document row.
+    (when-let [n (:name p)]
+      (crud/update-by-id! tx :documents doc-id {:name n}))
+    (when (:document-metadata? p)
+      (metadata/replace-metadata! tx "document" doc-id (:document-metadata p)))
+    (doseq [table [:texts :tokens :spans :relations :vocab_links]]
+      (drows/insert-rows! tx table (get-in p [table :insert])))
+    (doseq [table [:texts :tokens :spans :relations :vocab_links]]
+      (update-rows! tx table (get-in p [table :update])))
+    (doseq [table [:spans :tokens :texts]]
+      (delete-rows! tx table (deletes table identity)))))
 
 ;; ============================================================
 ;; Validating the result
@@ -308,7 +365,7 @@
   (let [[tgt skipped] (prune-target db (target-rows! db doc-id ts))
         cur (drows/read-rows db doc-id)
         p (assoc (plan tgt cur) :document-metadata (meta-of (:document tgt)))]
-    {:plan p :skipped skipped :summary (summarize p skipped)}))
+    {:plan p :current cur :skipped skipped :summary (summarize p skipped)}))
 
 (defn preview
   "What restoring `doc-id` to `ts` would change, without writing. Throws
@@ -328,7 +385,7 @@
              :document doc-id
              :description (str "Restore document to " (hread/->ts-iso ts))
              :user user-id}]
-     (let [{:keys [plan summary]} (build tx doc-id ts)]
-       (apply-plan! tx doc-id plan)
+     (let [{:keys [plan current summary]} (build tx doc-id ts)]
+       (apply-plan! tx doc-id plan current)
        (validate-final-state! tx doc-id)
        summary))))
