@@ -342,6 +342,10 @@ It reaches the project through four host functions only: `documents()`,
 `load(document)`, `query(q)`, and `plan(tool, ...)`, which stages a proposal
 through the same plan tools and guards the model uses directly. No client
 crosses the boundary, so code cannot write; the plan card stays the contract.
+`load()` takes a name, an id or an entry of `documents()`, and returns dicts
+and lists. Monty runs no `__getattr__`, so an attribute read the model writes
+(`doc.sentences`) is rewritten to a key read before the code runs
+(`core.sandbox.keyed`), leaving method calls, builtins and modules alone.
 
 The worker binary ships inside the `pydantic-monty-runtime` wheel for the
 platforms it is built for. Where it is missing (an unsupported platform, a
