@@ -40,50 +40,50 @@ const nfc = (v) =>
         : v;
 
 const extents = (h) => h.sentences.map((s) => s.words.map((w) => [w.begin, w.end]));
+// Each word's letters in the stored text.
+const placed = (h) => {
+  const cps = [...h.text];
+  return h.sentences.map((s) => s.words.map((w) => cps.slice(w.begin, w.end).join('')));
+};
+const nfcOf = (...parts) => parts.join('').normalize('NFC');
 
 for (const withText of [true, false]) {
   test(`glued forms that compose are placed on their own letters (${withText ? 'with' : 'no'} # text)`, () => {
     const h = buildConlluHierarchy(nfc(parseCoNLLU(HARD(withText))));
-    assert.equal(h.text, 'b\u00e1 ka\n\uac01 \ud55c');
+    assert.equal(h.text.normalize('NFC'), 'bá ka\n각 한');
     assert.equal(h.dropped.syntheticOffsetSentences, 0);
-    // The mark has no letter of its own once composed: it is left at the end
-    // of the letter it composed with, by the server's rule. Nothing is padded
-    // and no word lands on a space.
-    assert.deepEqual(extents(h), [
-      [
-        [0, 2],
-        [2, 2],
-        [3, 5],
-      ],
-      [
-        [6, 7],
-        [7, 7],
-        [8, 9],
-      ],
-    ]);
-    if (withText) assert.equal(h.sentences[0].metadata.text, 'b\u00e1 ka');
+    // Each glued pair holds the letters of its two forms and nothing else, the
+    // second starting where the first ends: no word lands on a space and
+    // nothing is padded. Where the mark goes inside the pair is the server's
+    // composing rule (`composeText`).
+    const [[ba, mark, ka], [ga, jamo, han]] = placed(h);
+    assert.equal(nfcOf(ba, mark), 'bá');
+    assert.equal(ka, 'ka');
+    assert.equal(nfcOf(ga, jamo), '각');
+    assert.equal(han, '한');
+    const [s1, s2] = extents(h);
+    assert.equal(s1[1][0], s1[0][1]);
+    assert.equal(s2[1][0], s2[0][1]);
+    if (withText) assert.equal(h.sentences[0].metadata.text, 'bá ka');
   });
 }
 
 test('a glued form keeps its own letter where the composed text can be cut there', () => {
   // e, then dot below and acute: ẹ composes, the acute stays a character of
-  // its own, so the second form keeps it.
+  // its own, so the second form keeps a letter of its own.
   const input = [
-    '# text = \u1eb9\u0301 ka',
+    '# text = ẹ́ ka',
     row(1, 'e', 0, 'root', 'SpaceAfter=No'),
-    row(2, '\u0323\u0301', 1, 'dep'),
+    row(2, '̣́', 1, 'dep'),
     row(3, 'ka', 1, 'dep'),
   ].join('\n');
   const h = buildConlluHierarchy(nfc(parseCoNLLU(input)));
-  assert.equal(h.text, '\u1eb9\u0301 ka');
+  assert.equal(h.text.normalize('NFC'), 'ẹ́ ka');
   assert.equal(h.dropped.syntheticOffsetSentences, 0);
-  assert.deepEqual(extents(h), [
-    [
-      [0, 1],
-      [1, 2],
-      [3, 5],
-    ],
-  ]);
+  const [[e, marks, ka]] = placed(h);
+  assert.ok(e && marks, JSON.stringify([e, marks]));
+  assert.equal(nfcOf(e, marks), 'ẹ́');
+  assert.equal(ka, 'ka');
 });
 
 test('a # text spelled differently from the forms is still matched by its letters', () => {

@@ -460,10 +460,17 @@ export function buildConlluHierarchy(parsedData) {
 }
 
 // The hierarchy over its text as the server stores it, composed (NFC), with
-// every offset moved by the server's rule: an edge inside a composed sequence
-// goes to where the sequence can be cut, else to its end.
+// every offset moved by the server's rule, told where the words begin and
+// end (`composeText`'s cuts, the `tokenEdges` the text is created with).
 function composedHierarchy(hierarchy) {
-  const { text, at } = composeText(hierarchy.text);
+  const cuts = new Set();
+  hierarchy.sentences.forEach((s) =>
+    s.words.forEach((w) => {
+      cuts.add(w.begin);
+      cuts.add(w.end);
+    }),
+  );
+  const { text, at } = composeText(hierarchy.text, cuts);
   if (text === hierarchy.text) return hierarchy;
   hierarchy.sentences.forEach((s) => {
     s.begin = at(s.begin);

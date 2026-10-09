@@ -416,6 +416,11 @@ export async function importConlluDocument(
     await client.batched(async (b) => {
       b.texts.create(textLayer.id, createdDocumentId, hierarchy.text, undefined, undefined, {
         id: textId,
+        // Where the words begin and end, which the server composes the body
+        // by, only when a character is left decomposed for them.
+        ...(hierarchy.text !== hierarchy.text.normalize('NFC') && {
+          tokenEdges: [...new Set(wordOps.flatMap((op) => [op.begin, op.end]))],
+        }),
       });
       b.tokens.bulkCreate(sentenceOps);
       if (wordOps.length > 0) b.tokens.bulkCreate(wordOps);

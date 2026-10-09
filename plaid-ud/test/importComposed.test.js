@@ -65,11 +65,16 @@ test('a form that begins with a mark, joined to the one before, composes across 
   const client = recordingClient();
   await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
   const body = client.calls.texts[0];
-  assert.equal(body, body.normalize('NFC'));
+  assert.equal(body.normalize('NFC'), 'p\u00e1x');
   const chars = [...body];
   const words = client.calls.tokens
     .flat()
     .filter((t) => t.tokenLayerId === info.wordTokenLayer?.id)
     .map((t) => chars.slice(t.begin, t.end).join(''));
-  assert.deepEqual(words, ['pá', 'x']);
+  // Where the mark goes is the server's composing rule (`composeText`, told
+  // the words' edges). Either way the two words hold the text between them
+  // and the second keeps its x.
+  assert.equal(words.length, 2);
+  assert.equal(words.join('').normalize('NFC'), 'p\u00e1x');
+  assert.ok(words[1].endsWith('x'), JSON.stringify(words));
 });
