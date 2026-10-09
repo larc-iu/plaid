@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 
 // Drawing the timeline's waveform. Decoding a recording is the slow half and
@@ -8,8 +8,8 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 //
 // The end state hides that entirely: a decode that lands after the recording
 // changed draws the wrong waveform, and the next scroll or zoom quietly draws
-// the right one over it. What is asserted here is the sequence of images the
-// timeline actually SHOWED.
+// the right one over it. What is asserted here is the sequence of pictures the
+// timeline actually DREW.
 //
 // The arithmetic (peaks, windows, bars) is waveform.js's own test. Here it is
 // the seam, so a channel's samples ARE the bar heights and the drawn image is
@@ -42,7 +42,7 @@ const { decodeShared, shareCalls } = vi.hoisted(() => {
 });
 vi.mock('../../../domain/vad/sharedDecode.js', () => ({ decodeShared }));
 
-const { useWaveform } = await import('./useWaveform.js');
+const { useWaveform, drawWaveform } = await import('./useWaveform.js');
 
 // A recording, named by its versioned URL (which is also the envelope cache's
 // key, so every test needs its own).
@@ -61,20 +61,28 @@ const decoded = (samples) => ({ samples: Float32Array.from(samples), shared: fal
 let api;
 let seq;
 
-// Every DISTINCT image the timeline has shown, in order.
-const Probe = ({ blob, timelineWidth = 400 }) => {
-  const containerRef = useRef({ clientWidth: 300 });
-  const view = useWaveform({
-    mediaBlob: blob,
-    mediaKey: blob?.key ?? null,
-    duration: 2,
-    timelineWidth,
-    scrollLeft: 0,
-    containerRef,
-  });
+// A canvas that keeps the heights of the bars drawn on it.
+const fakeCanvas = () => {
+  const bars = [];
+  return {
+    bars,
+    width: 0,
+    height: 0,
+    getContext: () => ({ scale() {}, fillStyle: '', fillRect: (x, y, w, h) => bars.push(h) }),
+  };
+};
+
+// Every DISTINCT picture the timeline has drawn, in order, as the timeline
+// draws it: the hook's envelope onto a canvas.
+const Probe = ({ blob, pixelsPerSecond = 200 }) => {
+  const view = useWaveform({ mediaBlob: blob, mediaKey: blob?.key ?? null, duration: 2 });
   api = view;
   useEffect(() => {
-    if (view.image && seq[seq.length - 1] !== view.image) seq.push(view.image);
+    if (!view.envelope) return;
+    const canvas = fakeCanvas();
+    drawWaveform(canvas, view.envelope, { from: 0, to: 2, duration: 2, pixelsPerSecond });
+    const picture = `drawn:${canvas.bars.join(',')}`;
+    if (seq[seq.length - 1] !== picture) seq.push(picture);
   });
   return null;
 };
@@ -95,19 +103,6 @@ beforeEach(() => {
   // No decode of its own at any rate: a full-rate one ran out of memory.
   window.AudioContext = undefined;
   window.OfflineAudioContext = undefined;
-  URL.createObjectURL = (blob) => `drawn:${blob.tag}`;
-  URL.revokeObjectURL = () => {};
-  const realCreateElement = document.createElement.bind(document);
-  vi.spyOn(document, 'createElement').mockImplementation((tag) => {
-    if (tag !== 'canvas') return realCreateElement(tag);
-    const bars = [];
-    return {
-      width: 0,
-      height: 0,
-      getContext: () => ({ scale() {}, fillStyle: '', fillRect: (x, y, w, h) => bars.push(h) }),
-      toBlob: (cb) => cb({ tag: bars.join(',') }),
-    };
-  });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -158,7 +153,7 @@ describe('the timeline waveform', () => {
 
     // A scroll or a zoom on the recording that is up. It must be drawn from
     // its own amplitudes, not from the ones the abandoned decode left behind.
-    await view.rerender(<Probe blob={second} timelineWidth={600} />);
+    await view.rerender(<Probe blob={second} pixelsPerSecond={300} />);
     await settle(view);
     expect(seq).toEqual(['drawn:7,8,9']);
     await view.unmount();
@@ -213,9 +208,9 @@ describe('the timeline waveform', () => {
     const view = await renderComponent(<Probe blob={blob} />);
     await view.step(() => decodes[0].finish(Promise.reject(new Error('Unable to decode'))));
     await settle(view);
-    await view.rerender(<Probe blob={blob} timelineWidth={600} />);
+    await view.rerender(<Probe blob={blob} pixelsPerSecond={300} />);
     await settle(view);
-    await view.rerender(<Probe blob={blob} timelineWidth={800} />);
+    await view.rerender(<Probe blob={blob} pixelsPerSecond={400} />);
     await settle(view);
     expect(decodes).toHaveLength(1);
     expect(notifyWarning).toHaveBeenCalledTimes(1);

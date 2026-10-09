@@ -10,6 +10,7 @@ import {
 } from '@ui/components/ui/tooltip';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useTimelineOperations, clampZoom, MIN_ZOOM, MAX_ZOOM } from './useTimelineOperations.js';
+import { drawWaveform } from './useWaveform.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
@@ -38,6 +39,32 @@ const segmentColors = (speaker, speakers, resizing) => {
   };
 };
 
+// The waveform for one stretch of the recording, drawn straight onto the
+// canvas whenever the stretch or the zoom changes. Between a zoom and its
+// redraw the old picture is stretched to the new width, since its box is a
+// share of the track.
+const WaveformCanvas = ({ envelope, from, to, duration, pixelsPerSecond }) => {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(() => {
+    drawWaveform(ref.current, envelope, { from, to, duration, pixelsPerSecond });
+  }, [envelope, from, to, duration, pixelsPerSecond]);
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: `${(from / duration) * 100}%`,
+        width: `${((to - from) / duration) * 100}%`,
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 1,
+      }}
+    />
+  );
+};
+
 export const Timeline = ({ mediaOps, readOnly = false }) => {
   const { doc } = useDocumentCtx();
 
@@ -55,7 +82,6 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     pixelsPerSecond,
   } = mediaOps;
 
-  const currentTime = mediaOps.currentTime;
   const speakers = doc.knownSpeakers;
 
   // Overlapping segments (cross-talk) stack in lanes instead of painting over
@@ -65,42 +91,50 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     [doc.alignmentTokens],
   );
 
-  const proposals = mediaOps.vad?.proposals;
-  const requestSegmentFocus = mediaOps.requestSegmentFocus;
-  const proposalBlocks = React.useMemo(
-    () =>
-      (proposals || []).map((p) => (
-        <div
-          key={p.id}
-          data-vad-proposal={p.id}
-          style={{
-            position: 'absolute',
-            left: `${p.timeBegin * pixelsPerSecond}px`,
-            width: `${Math.max(1, (p.timeEnd - p.timeBegin) * pixelsPerSecond)}px`,
-            top: 0,
-            bottom: 0,
-            backgroundColor: 'hsl(var(--primary) / 0.06)',
-            border: '1px dashed hsl(var(--primary) / 0.7)',
-            cursor: 'pointer',
-            zIndex: 2,
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            requestSegmentFocus(p.id);
-          }}
-          title={`Proposed segment (${formatTime(p.timeBegin)} - ${formatTime(p.timeEnd)})`}
-        />
-      )),
-    [proposals, pixelsPerSecond, requestSegmentFocus],
-  );
-
   // Use timeline operations hook directly
   const timelineOps = useTimelineOperations(mediaOps);
+  const { drawn } = timelineOps;
+  const duration = mediaOps.duration;
+
+  const proposals = mediaOps.vad?.proposals;
+  const requestSegmentFocus = mediaOps.requestSegmentFocus;
+  // Placed as shares of the recording rather than in pixels, so a zoom, which
+  // only changes the track's width, re-renders none of them.
+  const proposalBlocks = React.useMemo(
+    () =>
+      !duration
+        ? null
+        : (proposals || [])
+            .filter((p) => p.timeEnd >= drawn.from && p.timeBegin <= drawn.to)
+            .map((p) => (
+              <div
+                key={p.id}
+                data-vad-proposal={p.id}
+                style={{
+                  position: 'absolute',
+                  left: `${(p.timeBegin / duration) * 100}%`,
+                  width: `max(1px, ${((p.timeEnd - p.timeBegin) / duration) * 100}%)`,
+                  top: 0,
+                  bottom: 0,
+                  backgroundColor: 'hsl(var(--primary) / 0.06)',
+                  border: '1px dashed hsl(var(--primary) / 0.7)',
+                  cursor: 'pointer',
+                  zIndex: 2,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  requestSegmentFocus(p.id);
+                }}
+                title={`Proposed segment (${formatTime(p.timeBegin)} - ${formatTime(p.timeEnd)})`}
+              />
+            )),
+    [proposals, drawn, duration, requestSegmentFocus],
+  );
+
   const {
     isDragging,
     tempSelection,
-    waveformImage,
-    waveformBox,
+    waveformEnvelope,
     isLoadingWaveform,
     isResizing,
     resizingToken,
@@ -115,7 +149,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     timelineRef,
     needleRef,
     attachTimelineContainer,
-    setTimelineScrollLeft,
+    handleTimelineScroll,
     autoScrollToTime,
     TIMELINE_HEIGHT,
   } = timelineOps;
@@ -209,7 +243,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               borderRadius: '4px',
               paddingTop: '50px',
             }}
-            onScroll={(e) => setTimelineScrollLeft(e.target.scrollLeft)}
+            onScroll={handleTimelineScroll}
           >
             <div
               ref={timelineRef}
@@ -217,8 +251,10 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               style={{
                 position: 'relative',
                 height: `${TIMELINE_HEIGHT}px`,
+                // Exactly the recording's length at this zoom, never stretched
+                // to the box: the needle and the proposals are placed as
+                // shares of this width.
                 width: `${timelineWidth}px`,
-                minWidth: '100%',
                 cursor: !canCreateSelection ? 'default' : isDragging ? 'grabbing' : 'pointer',
                 backgroundColor: 'hsl(var(--muted) / 0.5)',
                 userSelect: 'none',
@@ -228,25 +264,15 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               onMouseUp={canCreateSelection ? handleMouseUp : undefined}
               onMouseLeave={handleMouseUp} // End drag if mouse leaves timeline
             >
-              {/* Waveform Background */}
-              {waveformImage && waveformBox.width > 0 && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    // The image covers the stretch of timeline it was drawn
-                    // for, not the whole of it: only what is on screen (plus a
-                    // screen either side) is rendered, so it stays sharp at
-                    // every zoom on a recording of any length.
-                    left: `${waveformBox.left}px`,
-                    width: `${waveformBox.width}px`,
-                    height: `${TIMELINE_HEIGHT}px`,
-                    backgroundImage: `url(${waveformImage})`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundSize: '100% 100%',
-                    pointerEvents: 'none',
-                    zIndex: 1,
-                  }}
+              {/* Waveform, for the drawn stretch only, so it stays sharp at
+                  every zoom on a recording of any length. */}
+              {waveformEnvelope && duration > 0 && (
+                <WaveformCanvas
+                  envelope={waveformEnvelope}
+                  from={drawn.from}
+                  to={drawn.to}
+                  duration={duration}
+                  pixelsPerSecond={pixelsPerSecond}
                 />
               )}
 
@@ -357,14 +383,16 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               {/* Current time indicator */}
               <div
                 ref={needleRef}
+                // Placed by the clock (useTimelineOperations), never here.
                 style={{
                   position: 'absolute',
-                  left: `${(currentTime || 0) * pixelsPerSecond}px`,
+                  left: 0,
                   top: 0,
                   bottom: 0,
                   width: '1px',
                   backgroundColor: 'hsl(var(--destructive))',
                   pointerEvents: 'none',
+                  willChange: 'transform',
                   zIndex: 10,
                 }}
               />

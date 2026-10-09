@@ -11,8 +11,10 @@ vi.mock('./VadDetection.jsx', () => ({ VadDetection: () => null }));
 vi.mock('./MediaHelp.jsx', () => ({ MediaHelp: () => null, MediaHelpButton: () => null }));
 
 const { MediaPlayer } = await import('./MediaPlayer.jsx');
+const { createPlaybackClock } = await import('./playbackClock.js');
 
 const mediaOps = (over = {}) => ({
+  clock: createPlaybackClock(),
   authenticatedMediaUrl: 'blob:rec',
   mediaReady: true,
   handleMediaLoaded: vi.fn(),

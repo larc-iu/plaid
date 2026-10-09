@@ -13,6 +13,9 @@ const WHEEL_LINE_HEIGHT = 16;
 // above MAX_ZOOM a minute of audio is six thousand pixels.
 export const MIN_ZOOM = 4;
 export const MAX_ZOOM = 100;
+// The drawn stretch is let grow to this many screens before it is cut back.
+const DRAWN_SCREENS_MAX = 5;
+
 export const clampZoom = (px) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, px));
 // Left short of the container's full width so the last segment's right edge is
 // not flush against the scroll boundary.
@@ -36,8 +39,12 @@ export const useTimelineOperations = (mediaOps) => {
   const [resizingToken, setResizingToken] = useState(null);
   const [tempTokenBounds, setTempTokenBounds] = useState(null);
 
-  // Virtualization state
-  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
+  // The stretch of the recording drawn, in seconds: the screen and a screen
+  // either side. Segments, proposals and the waveform outside it are not on
+  // the page at all (a recording with speech detection run has a thousand
+  // proposals, and every one was laid out again at every zoom step). It moves
+  // only when the screen leaves it, not with every pixel of a scroll.
+  const [drawn, setDrawn] = useState({ from: 0, to: 0 });
 
   // Refs
   const timelineRef = useRef(null);
@@ -51,7 +58,6 @@ export const useTimelineOperations = (mediaOps) => {
     timelineContainerRef.current = node;
     setTimelineContainer(node);
   }, []);
-  const animationFrameRef = useRef(null);
   // A resize in progress: the token, which edge, and the bounds the last move
   // computed. In a ref because the move and the release are separate native
   // events, and the release must commit what the last move worked out rather
@@ -83,7 +89,7 @@ export const useTimelineOperations = (mediaOps) => {
       const old = mediaOps.pixelsPerSecond;
       if (container && old > 0) {
         const width = container.clientWidth;
-        const needleX = (mediaOps.currentTime ?? 0) * old - container.scrollLeft;
+        const needleX = mediaOps.clock.get() * old - container.scrollLeft;
         const anchorX = needleX >= 0 && needleX <= width ? needleX : width / 2;
         zoomAnchorRef.current = {
           timeAtPointer: (container.scrollLeft + anchorX) / old,
@@ -92,7 +98,7 @@ export const useTimelineOperations = (mediaOps) => {
       }
       handlePixelsPerSecondChange(newPixelsPerSecond);
     },
-    [mediaOps.pixelsPerSecond, mediaOps.currentTime, handlePixelsPerSecondChange],
+    [mediaOps.pixelsPerSecond, mediaOps.clock, handlePixelsPerSecondChange],
   );
 
   // The whole recording across the lane, the way ELAN and Praat fit a file to
@@ -115,38 +121,46 @@ export const useTimelineOperations = (mediaOps) => {
     return next;
   }, [mediaOps.duration, handlePixelsPerSecondChange]);
 
-  // Calculate visible tokens for virtualization
-  const getVisibleTokens = useCallback(() => {
-    if (!timelineContainerRef.current || !mediaOps.duration || mediaOps.pixelsPerSecond <= 0) {
-      return doc.alignmentTokens || [];
-    }
-
-    const containerWidth = timelineContainerRef.current.clientWidth;
-    const scrollLeft = timelineScrollLeft;
-
-    // Calculate visible time range with buffer
-    const bufferTime = 10; // seconds of buffer on each side
-    const visibleTimeStart = Math.max(0, scrollLeft / mediaOps.pixelsPerSecond - bufferTime);
-    const visibleTimeEnd = Math.min(
-      mediaOps.duration,
-      (scrollLeft + containerWidth) / mediaOps.pixelsPerSecond + bufferTime,
-    );
-
-    // Filter tokens that intersect with visible range
-    return (doc.alignmentTokens || []).filter((token) => {
-      const tokenStart = token.metadata?.timeBegin || 0;
-      const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
-
-      // Check if token intersects with visible range
-      return tokenEnd >= visibleTimeStart && tokenStart <= visibleTimeEnd;
+  // Bring the drawn stretch back over the screen when the screen has left it,
+  // or when it has grown to many screens (a zoom in), which would put back on
+  // the page what windowing keeps off it.
+  const durationRef = useRef(0);
+  durationRef.current = mediaOps.duration;
+  const pixelsPerSecondRef = useRef(mediaOps.pixelsPerSecond);
+  pixelsPerSecondRef.current = mediaOps.pixelsPerSecond;
+  const updateDrawn = useCallback(() => {
+    const container = timelineContainerRef.current;
+    const duration = durationRef.current;
+    const pps = pixelsPerSecondRef.current;
+    if (!container || !duration || !(pps > 0)) return;
+    const from = container.scrollLeft / pps;
+    const span = Math.max(1, container.clientWidth) / pps;
+    const to = Math.min(duration, from + span);
+    setDrawn((d) => {
+      const covered = d.from <= from && Math.min(d.to, duration) >= to;
+      if (covered && d.to - d.from <= span * DRAWN_SCREENS_MAX) return d;
+      return { from: Math.max(0, from - span), to: Math.min(duration, to + span) };
     });
-  }, [
-    timelineContainerRef,
-    mediaOps.duration,
-    mediaOps.pixelsPerSecond,
-    timelineScrollLeft,
-    doc.alignmentTokens,
-  ]);
+  }, []);
+  useLayoutEffect(updateDrawn, [updateDrawn, mediaOps.duration, mediaOps.pixelsPerSecond]);
+  useEffect(() => {
+    const container = timelineContainer;
+    if (!container || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(updateDrawn);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [timelineContainer, updateDrawn]);
+
+  // The segments in the drawn stretch.
+  const getVisibleTokens = useCallback(
+    () =>
+      (doc.alignmentTokens || []).filter((token) => {
+        const tokenStart = token.metadata?.timeBegin || 0;
+        const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
+        return tokenEnd >= drawn.from && tokenStart <= drawn.to;
+      }),
+    [drawn, doc.alignmentTokens],
+  );
 
   const getTimeFromPosition = useCallback(
     (clientX) => {
@@ -464,84 +478,56 @@ export const useTimelineOperations = (mediaOps) => {
       anchor.timeAtPointer * mediaOps.pixelsPerSecond - anchor.pointerX,
     );
     container.scrollLeft = nextScrollLeft;
-    setTimelineScrollLeft(nextScrollLeft);
-  }, [mediaOps.pixelsPerSecond]);
+    updateDrawn();
+  }, [mediaOps.pixelsPerSecond, updateDrawn]);
 
-  // Smooth needle movement with auto-scroll
-  useEffect(() => {
-    const updateNeedle = () => {
-      if (
-        needleRef.current &&
-        timelineRef.current &&
-        mediaElement &&
-        mediaOps.pixelsPerSecond > 0
-      ) {
-        const currentTime = mediaElement.currentTime;
-        const position = currentTime * mediaOps.pixelsPerSecond;
-        needleRef.current.style.left = `${position}px`;
-
-        // Auto-scroll to keep needle in view
-        const box = timelineContainerRef.current; // The scrollable Box
-        if (box) {
-          const containerWidth = box.clientWidth;
-          const scrollLeft = box.scrollLeft;
-          const scrollRight = scrollLeft + containerWidth;
-
-          // Add some padding so needle doesn't stick to edge
-          const padding = containerWidth * 0.1; // 10% padding
-
-          // Check if needle is off-screen and auto-scroll
-          if (position < scrollLeft + padding) {
-            // Needle going off left side
-            box.scrollLeft = Math.max(0, position - padding);
-          } else if (position > scrollRight - padding) {
-            // Needle going off right side
-            box.scrollLeft = position - containerWidth + padding;
-          }
-        }
-      }
-
-      if (mediaOps.isPlaying && mediaElement) {
-        animationFrameRef.current = requestAnimationFrame(updateNeedle);
-      }
+  // The needle follows the clock, every frame while playing, without a
+  // render. It moves by a transform on a layer of its own, so a frame of
+  // playback repaints nothing under it: moved by `left`, it had the timeline
+  // repainted every frame, a thousand dashed proposal outlines included. React
+  // never sets its position, since a render with the tab's
+  // few-times-a-second time would pull it back.
+  const isPlayingRef = useRef(mediaOps.isPlaying);
+  isPlayingRef.current = mediaOps.isPlaying;
+  const { clock } = mediaOps;
+  useLayoutEffect(() => {
+    const place = (time) => {
+      const needle = needleRef.current;
+      const duration = durationRef.current;
+      if (!needle || !duration) return;
+      needle.style.transform = `translateX(${Math.min(time, duration) * pixelsPerSecondRef.current}px)`;
+      // While playing, keep the needle on screen, a tenth of the width in
+      // from the edge it is heading for.
+      const box = timelineContainerRef.current;
+      if (!box || !isPlayingRef.current) return;
+      const position = time * pixelsPerSecondRef.current;
+      const width = box.clientWidth;
+      const padding = width * 0.1;
+      if (position < box.scrollLeft + padding) box.scrollLeft = Math.max(0, position - padding);
+      else if (position > box.scrollLeft + width - padding)
+        box.scrollLeft = position - width + padding;
     };
+    place(clock.get());
+    return clock.subscribe(place);
+  }, [clock, mediaOps.duration, mediaOps.pixelsPerSecond]);
 
-    if (mediaOps.isPlaying && mediaElement) {
-      animationFrameRef.current = requestAnimationFrame(updateNeedle);
-    } else {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    }
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [mediaOps.isPlaying, mediaElement, mediaOps.pixelsPerSecond]);
-
-  // The waveform picture: decoded once, redrawn for the stretch on screen.
+  // The waveform's envelope: the recording decoded once.
   const waveform = useWaveform({
     mediaBlob: mediaOps.mediaBlob,
     mediaKey: mediaOps.mediaBlobKey ?? null,
     duration: mediaOps.duration,
-    timelineWidth,
-    scrollLeft: timelineScrollLeft,
-    containerRef: timelineContainerRef,
   });
 
   return {
     // State
     isDragging,
     tempSelection,
-    waveformImage: waveform.image,
-    waveformBox: waveform.box,
+    waveformEnvelope: waveform.envelope,
     isLoadingWaveform: waveform.loading,
+    drawn,
     isResizing,
     resizingToken,
     tempTokenBounds,
-    timelineScrollLeft,
     timelineWidth,
 
     // Calculations
@@ -568,7 +554,7 @@ export const useTimelineOperations = (mediaOps) => {
     attachTimelineContainer,
 
     // State setters for external use
-    setTimelineScrollLeft,
+    handleTimelineScroll: updateDrawn,
 
     // Constants
     TIMELINE_HEIGHT,

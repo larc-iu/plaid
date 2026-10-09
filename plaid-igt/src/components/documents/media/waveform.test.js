@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { barsFor, covers, peaksOf, windowFor } from './waveform.js';
+import { barsFor, peaksOf } from './waveform.js';
 
 const SR = 16000;
 // Three seconds: silence, a loud second, silence.
@@ -61,33 +61,6 @@ describe('peaksOf, across channels', () => {
   });
 });
 
-describe('windowFor', () => {
-  it('reaches a screen either side, clamped to the timeline', () => {
-    expect(windowFor(5000, 1000, 20000)).toEqual({ left: 4000, width: 3000 });
-    expect(windowFor(0, 1000, 20000)).toEqual({ left: 0, width: 2000 });
-    expect(windowFor(19000, 1000, 20000)).toEqual({ left: 18000, width: 2000 });
-    // Shorter than one screen: the whole thing.
-    expect(windowFor(0, 1000, 400)).toEqual({ left: 0, width: 400 });
-  });
-});
-
-describe('covers', () => {
-  const drawn = { left: 4000, width: 3000 };
-  it('holds while the viewport is inside what was drawn', () => {
-    expect(covers(drawn, 5000, 1000)).toBe(true);
-    expect(covers(drawn, 4000, 1000)).toBe(true);
-    expect(covers(drawn, 6000, 1000)).toBe(true);
-  });
-  it('fails once the viewport runs off either edge', () => {
-    expect(covers(drawn, 3999, 1000)).toBe(false);
-    expect(covers(drawn, 6001, 1000)).toBe(false);
-    expect(covers({ left: 0, width: 0 }, 0, 1000)).toBe(false);
-  });
-});
-
-// The point of drawing only a window is that a bar still lands on the time it
-// belongs to. Get this wrong and the waveform lies about where a boundary is,
-// which is worse than the blur it replaced.
 describe('barsFor', () => {
   const { peaks, level } = peaksOf([burst()], 3);
   const tallest = (bars) => bars.reduce((a, b) => (b.height > a.height ? b : a));

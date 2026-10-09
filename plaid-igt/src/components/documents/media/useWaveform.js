@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyWarning } from '@/utils/feedback';
 import { decodeShared } from '../../../domain/vad/sharedDecode.js';
-import {
-  MAX_CANVAS_WIDTH,
-  TIMELINE_HEIGHT,
-  barsFor,
-  covers,
-  peaksOf,
-  windowFor,
-} from './waveform.js';
+import { MAX_CANVAS_WIDTH, TIMELINE_HEIGHT, barsFor, peaksOf } from './waveform.js';
 
 // Drawing the timeline's waveform: decode once, redraw the stretch on screen.
 //
 // Two costs, kept apart. DECODING is slow and does not depend on the view, so
 // it happens once per recording and produces an amplitude envelope; every zoom
-// and scroll is drawn from that, in a millisecond or two. See waveform.js for
-// why only a window is drawn.
+// and scroll is drawn from that, in a millisecond or two, straight onto a
+// canvas on the timeline. (It used to be drawn off screen and encoded to a PNG
+// for a CSS background, which cost more than the drawing and arrived a beat
+// after the zoom it was for.) See waveform.js for why only a window is drawn.
 //
 // There used to be a localStorage cache of the finished PNG, keyed by a hash
 // over the recording's bytes and the full timeline width. It cannot survive
@@ -56,141 +51,87 @@ const themeColor = (name, alpha) => {
 // the voice on one channel still draws it.
 const decodeForEnvelope = async (blob) => [(await decodeShared(blob)).samples];
 
-const canvasFor = (width) => {
-  const pixelRatio = window.devicePixelRatio || 1;
-  const canvas = window.document.createElement('canvas');
-  canvas.width = Math.min(Math.max(1, Math.round(width * pixelRatio)), MAX_CANVAS_WIDTH);
-  canvas.height = TIMELINE_HEIGHT * pixelRatio;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(pixelRatio, pixelRatio);
-  return { canvas, ctx, drawWidth: canvas.width / pixelRatio };
-};
-
 /**
- * @param {Blob|null} mediaBlob    the recording, already fetched for playback
+ * The recording's amplitude envelope, decoded once per recording.
+ *
+ * @param {Blob|null} mediaBlob    the recording, already fetched
  * @param {string|null} mediaKey   names that recording and its version (the
  *                                 document's `mediaUrl`)
  * @param {number} duration        seconds
- * @param {number} timelineWidth   the timeline's full width in its own pixels
- * @param {number} scrollLeft      how far along it is scrolled
- * @param {{current: HTMLElement|null}} containerRef  the scrolling box
- * @returns {{image: string|null, box: {left: number, width: number}, loading: boolean}}
+ * @returns {{envelope: {peaks: Float32Array, level: number}|null|'failed', loading: boolean}}
+ *   `'failed'` when the recording could not be decoded, which draws a flat line.
  */
-export function useWaveform({
-  mediaBlob,
-  mediaKey,
-  duration,
-  timelineWidth,
-  scrollLeft,
-  containerRef,
-}) {
-  const [image, setImage] = useState(null);
-  const [box, setBox] = useState({ left: 0, width: 0 });
-  const [loading, setLoading] = useState(false);
-  // The envelope in hand, what the image on screen was drawn from, and a
-  // decode already running that a second draw can join rather than repeat: a
-  // decode of an hour-long recording is hundreds of megabytes of PCM.
-  const envelopeRef = useRef({ blob: null, peaks: null, level: 1 });
-  const drawnRef = useRef({ blob: null, timelineWidth: 0, left: 0, width: 0 });
-  const decodeRef = useRef(null);
-  // The recording whose decode failed and was said so, so a redraw (a scroll,
-  // a typed row) draws the flat line again without a second notice.
+export function useWaveform({ mediaBlob, mediaKey, duration }) {
+  const [state, setState] = useState({ blob: null, envelope: null });
+  // The recording whose decode failed and was said so, so a second look at it
+  // draws the flat line again without a second notice.
   const failedRef = useRef(null);
 
-  // Object URLs are revoked as they are replaced, and on the way out.
   useEffect(() => {
-    return () => {
-      if (image && image.startsWith('blob:')) URL.revokeObjectURL(image);
-    };
-  }, [image]);
-
-  useEffect(() => {
+    if (!mediaBlob || !duration) return undefined;
     let cancelled = false;
-    let retry = null;
-    const draw = async () => {
-      if (!mediaBlob || !duration || timelineWidth < 100) return;
-      const view = containerRef.current?.clientWidth || 0;
-      // The window is measured off the scrolling box, so there is nothing to
-      // draw until it has a width. Nothing else would fire the effect again
-      // once it does, so ask for the next frame rather than give up.
-      if (!view) {
-        retry = requestAnimationFrame(draw);
-        return;
-      }
-      const drawn = drawnRef.current;
-      if (
-        drawn.blob === mediaBlob &&
-        drawn.timelineWidth === timelineWidth &&
-        covers(drawn, scrollLeft, view)
-      ) {
-        return;
-      }
-      const at = windowFor(scrollLeft, view, timelineWidth);
-      setLoading(true);
+    const key = mediaKey || null;
+    const cached = key ? envelopeCache.get(key) : null;
+    if (cached) {
+      setState({ blob: mediaBlob, envelope: cached });
+      return undefined;
+    }
+    (async () => {
       try {
-        if (envelopeRef.current.blob !== mediaBlob) {
-          const key = mediaKey || null;
-          const cached = key ? envelopeCache.get(key) : null;
-          if (cached) {
-            envelopeRef.current = { blob: mediaBlob, ...cached };
-          } else {
-            if (decodeRef.current?.blob !== mediaBlob) {
-              decodeRef.current = {
-                blob: mediaBlob,
-                promise: (async () => {
-                  const envelope = peaksOf(await decodeForEnvelope(mediaBlob), duration);
-                  return key ? rememberEnvelope(key, envelope) : envelope;
-                })(),
-              };
-            }
-            const envelope = await decodeRef.current.promise;
-            // The recording on screen may have changed while this decode ran.
-            // Its envelope is not the one being drawn from, and leaving it here
-            // makes the ref name a recording nobody is looking at.
-            if (cancelled) return;
-            envelopeRef.current = { blob: mediaBlob, ...envelope };
-          }
-        }
+        const envelope = peaksOf(await decodeForEnvelope(mediaBlob), duration);
+        // A decode the recording has moved on from is kept nowhere.
         if (cancelled) return;
-        const { peaks, level } = envelopeRef.current;
-        const { canvas, ctx, drawWidth } = canvasFor(at.width);
-        ctx.fillStyle = themeColor('--primary', 0.35);
-        for (const bar of barsFor({ peaks, level, ...at, timelineWidth, drawWidth })) {
-          ctx.fillRect(bar.x, bar.y, bar.width, bar.height);
-        }
-        publish(canvas, at);
+        if (key) rememberEnvelope(key, envelope);
+        setState({ blob: mediaBlob, envelope });
       } catch (error) {
         if (failedRef.current !== mediaBlob) {
           failedRef.current = mediaBlob;
           console.error('Failed to generate waveform:', error);
           notifyWarning('The timeline shows a flat line.', 'Waveform unavailable');
         }
-        // No amplitudes, so a flat centreline rather than randomised bars,
-        // which would read as a genuine signal.
-        const { canvas, ctx, drawWidth } = canvasFor(at.width);
-        ctx.fillStyle = themeColor('--primary', 0.3);
-        ctx.fillRect(0, TIMELINE_HEIGHT / 2, drawWidth, 1);
-        publish(canvas, at);
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setState({ blob: mediaBlob, envelope: 'failed' });
       }
-    };
-
-    const publish = (canvas, at) => {
-      drawnRef.current = { blob: mediaBlob, timelineWidth, left: at.left, width: at.width };
-      canvas.toBlob((blob) => {
-        if (!blob || cancelled) return;
-        setBox({ left: at.left, width: at.width });
-        setImage(URL.createObjectURL(blob));
-      });
-    };
-
-    draw();
+    })();
     return () => {
       cancelled = true;
-      if (retry) cancelAnimationFrame(retry);
     };
-  }, [mediaBlob, mediaKey, duration, timelineWidth, scrollLeft, containerRef]);
+  }, [mediaBlob, mediaKey, duration]);
 
-  return { image, box, loading };
+  const current = state.blob === mediaBlob ? state.envelope : null;
+  return { envelope: current, loading: !!mediaBlob && !!duration && !current };
+}
+
+/**
+ * Draw the envelope for the stretch `from`..`to` seconds into `canvas`, at the
+ * zoom `pixelsPerSecond`, sized for the screen it is on. Synchronous and a few
+ * milliseconds: there is no image to encode, the canvas is the picture.
+ */
+export function drawWaveform(canvas, envelope, { from, to, duration, pixelsPerSecond }) {
+  if (!canvas || !(duration > 0) || !(to > from)) return;
+  const pixelRatio = window.devicePixelRatio || 1;
+  const width = (to - from) * pixelsPerSecond;
+  canvas.width = Math.min(Math.max(1, Math.round(width * pixelRatio)), MAX_CANVAS_WIDTH);
+  canvas.height = TIMELINE_HEIGHT * pixelRatio;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.scale(canvas.width / width, pixelRatio);
+  if (envelope === 'failed') {
+    // No amplitudes, so a flat centreline rather than randomised bars, which
+    // would read as a genuine signal.
+    ctx.fillStyle = themeColor('--primary', 0.3);
+    ctx.fillRect(0, TIMELINE_HEIGHT / 2, width, 1);
+    return;
+  }
+  const timelineWidth = duration * pixelsPerSecond;
+  ctx.fillStyle = themeColor('--primary', 0.35);
+  for (const bar of barsFor({
+    peaks: envelope.peaks,
+    level: envelope.level,
+    left: from * pixelsPerSecond,
+    width,
+    timelineWidth,
+    drawWidth: width,
+  })) {
+    ctx.fillRect(bar.x, bar.y, bar.width, bar.height);
+  }
 }

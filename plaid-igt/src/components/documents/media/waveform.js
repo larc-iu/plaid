@@ -17,10 +17,6 @@ const MIN_BAR_HEIGHT = 2;
 /** Browsers refuse a canvas much wider than this. */
 export const MAX_CANVAS_WIDTH = 16384;
 
-// Screens of timeline drawn either side of the one on show, so a scroll of
-// less than a screen never waits for a redraw.
-const WINDOW_MARGIN_SCREENS = 1;
-
 // Buckets the decoded audio is reduced to, once, so every zoom and scroll
 // redraws from these instead of decoding again. 500 a second is 2 ms per
 // bucket, finer than the timeline is ever zoomed, and the cap keeps an
@@ -75,18 +71,6 @@ export const peaksOf = (channels, duration) => {
     sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * PEAK_NORMALIZE_PERCENTILE))];
   return { peaks, level: Math.max(level, MIN_NORMALIZE_LEVEL) };
 };
-
-/** The stretch of timeline to draw for a viewport, clamped to the timeline. */
-export const windowFor = (scrollLeft, viewWidth, timelineWidth) => {
-  const margin = viewWidth * WINDOW_MARGIN_SCREENS;
-  const left = Math.max(0, Math.floor(scrollLeft - margin));
-  const right = Math.min(timelineWidth, Math.ceil(scrollLeft + viewWidth + margin));
-  return { left, width: Math.max(1, right - left) };
-};
-
-/** Is what is drawn still covering the viewport? */
-export const covers = (drawn, scrollLeft, viewWidth) =>
-  drawn.width > 0 && drawn.left <= scrollLeft && drawn.left + drawn.width >= scrollLeft + viewWidth;
 
 /**
  * The bars for one window: each is `{x, y, width, height}` in the drawn

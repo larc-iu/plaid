@@ -3,16 +3,14 @@ import { mountDocumentHook, fakeDocument, fakeClient } from '@/test/mountDocumen
 import { fakeRaf } from '@/test/fakeRaf.js';
 import { useMediaOperations } from './useMediaOperations.js';
 import { useTimelineOperations } from './useTimelineOperations.js';
+import { createPlaybackClock } from './playbackClock.js';
 
-// The timeline's two moving parts: the needle, drawn frame by frame off the
-// recording's own clock, and the drag that makes a selection.
+// The timeline's two moving parts: the needle, which follows the tab's
+// playback clock with no render, and the drag that makes a selection.
 //
-// Both are invisible to a test that reads the end state. The needle's loop
-// reschedules itself, so the last frame always wins and a frame drawn from the
-// wrong clock is painted over; the drag keeps its origin in React state, so a
-// second gesture could carry the first one's start. What is asserted here is
-// the sequence of needle positions the timeline actually SHOWED, and what each
-// gesture did with the pointer it was handed.
+// The drag keeps its origin in React state, so a second gesture could carry
+// the first one's start. What is asserted here is where the needle was SHOWN
+// after each step, and what each gesture did with the pointer it was handed.
 //
 // One `step` per event, because that is what a browser does: mousedown and
 // mouseup are discrete, and React commits between them. Two events inside one
@@ -33,47 +31,60 @@ const fakeMediaElement = (over = {}) => ({ currentTime: 0, duration: 60, ...over
 
 // The media tab's operations object, as the timeline sees it. A fresh one per
 // render in the app, so nothing here may depend on its identity.
-const makeOps = (over = {}) => ({
-  doc: { alignmentTokens: over.alignmentTokens ?? [] },
-  // Both, as the real operations object carries them: the ref for the media
-  // tab's own imperative work, the state for everything that has to re-render
-  // when the element arrives. The timeline must read the state.
-  mediaElement: 'mediaElement' in over ? over.mediaElement : fakeMediaElement(),
-  mediaElementRef: { current: over.mediaElement ?? null },
-  // The element has read the file, which is when the length is known.
-  mediaReady: true,
-  duration: 60,
-  pixelsPerSecond: 10,
-  currentTime: 0,
-  isPlaying: false,
-  selection: null,
-  popoverOpened: false,
-  mediaBlob: null,
-  setCurrentTime: vi.fn(),
-  setPlayingSelection: vi.fn(),
-  setSelection: vi.fn(),
-  setPopoverOpened: vi.fn(),
-  setPixelsPerSecond: vi.fn(),
-  ...over,
-});
+const makeOps = (over = {}) => {
+  const clock = over.clock ?? createPlaybackClock();
+  return {
+    clock,
+    doc: { alignmentTokens: over.alignmentTokens ?? [] },
+    // Both, as the real operations object carries them: the ref for the media
+    // tab's own imperative work, the state for everything that has to re-render
+    // when the element arrives. The timeline must read the state.
+    mediaElement: 'mediaElement' in over ? over.mediaElement : fakeMediaElement(),
+    mediaElementRef: { current: over.mediaElement ?? null },
+    // The element has read the file, which is when the length is known.
+    mediaReady: true,
+    duration: 60,
+    pixelsPerSecond: 10,
+    currentTime: 0,
+    isPlaying: false,
+    selection: null,
+    popoverOpened: false,
+    mediaBlob: null,
+    setCurrentTime: vi.fn((t) => clock.set(t)),
+    setPlayingSelection: vi.fn(),
+    setSelection: vi.fn(),
+    setPopoverOpened: vi.fn(),
+    setPixelsPerSecond: vi.fn(),
+    ...over,
+  };
+};
 
 // The bit of the Timeline the hook needs to exist: a scrolling box, the lane
 // that takes the pointer, and the needle it moves.
+// Every render of the lane is counted, so a test can say that something
+// happened with no render at all.
+let renderCount = 0;
 const lane = (ops) => (
-  <div ref={ops.attachTimelineContainer}>
-    <div
-      ref={ops.timelineRef}
-      data-testid="lane"
-      onMouseDown={ops.handleMouseDown}
-      onMouseMove={ops.handleMouseMove}
-      onMouseUp={ops.handleMouseUp}
-    >
-      <div ref={ops.needleRef} data-testid="needle" />
+  renderCount++,
+  (
+    <div ref={ops.attachTimelineContainer}>
+      <div
+        ref={ops.timelineRef}
+        data-testid="lane"
+        onMouseDown={ops.handleMouseDown}
+        onMouseMove={ops.handleMouseMove}
+        onMouseUp={ops.handleMouseUp}
+      >
+        <div ref={ops.needleRef} data-testid="needle" />
+      </div>
     </div>
-  </div>
+  )
 );
 
-const needle = (h) => h.container.querySelector('[data-testid="needle"]').style.left;
+const needle = (h) => h.container.querySelector('[data-testid="needle"]').style.transform;
+// Where the needle stands for a time, at the fakes' zoom of 10 px/s unless
+// another is named.
+const at = (seconds, pps = 10) => `translateX(${seconds * pps}px)`;
 
 // One pointer event, committed before the next one is sent. `clientX` is a
 // pixel on the lane, which starts at 0 in this environment, so at 10 px/s a
@@ -88,15 +99,12 @@ const mouse = (h, type, clientX) =>
 const mount = (ops, extra = {}) =>
   mountDocumentHook(useTimelineOperations, { args: [ops], render: lane, ...extra });
 
-describe('useTimelineOperations: the needle loop', () => {
-  it('a click during playback lands the needle where the pointer was', async () => {
+describe('useTimelineOperations: the needle', () => {
+  it('a click lands the needle where the pointer was', async () => {
     const media = fakeMediaElement();
     const ops = makeOps({ isPlaying: true, mediaElement: media });
     const h = await mount(ops);
-
-    const shown = [];
-    await h.step(() => raf.pump());
-    shown.push(needle(h));
+    expect(needle(h)).toBe(at(0));
 
     // A press and a release within a tenth of a second of each other is a
     // click, not a drag: it seeks rather than selecting.
@@ -104,11 +112,7 @@ describe('useTimelineOperations: the needle loop', () => {
     await mouse(h, 'mouseup', 50.5);
     expect(media.currentTime).toBe(5);
     expect(ops.setSelection).not.toHaveBeenCalled();
-
-    await h.step(() => raf.pump());
-    shown.push(needle(h));
-
-    expect(shown).toEqual(['0px', '50px']);
+    expect(needle(h)).toBe(at(5));
     await h.unmount();
   });
 
@@ -135,10 +139,9 @@ describe('useTimelineOperations: the needle loop', () => {
   it('a drag makes a selection and leaves playback where it was', async () => {
     const media = fakeMediaElement({ currentTime: 2 });
     const ops = makeOps({ isPlaying: true, mediaElement: media });
+    ops.clock.set(2);
     const h = await mount(ops);
-
-    await h.step(() => raf.pump());
-    expect(needle(h)).toBe('20px');
+    expect(needle(h)).toBe(at(2));
 
     await mouse(h, 'mousedown', 50);
     await mouse(h, 'mousemove', 200);
@@ -146,18 +149,14 @@ describe('useTimelineOperations: the needle loop', () => {
     expect(ops.setSelection).toHaveBeenCalledWith({ start: 5, end: 20 });
     expect(ops.setPopoverOpened).toHaveBeenLastCalledWith(true);
     expect(media.currentTime).toBe(2);
-
-    await h.step(() => raf.pump());
-    expect(needle(h)).toBe('20px');
+    expect(needle(h)).toBe(at(2));
     await h.unmount();
   });
 
-  it('a second drag started before the first frame lands uses its own origin', async () => {
+  it('a second drag uses its own origin', async () => {
     const ops = makeOps({ isPlaying: true });
     const h = await mount(ops);
 
-    // No pump between the two gestures: nothing has been drawn since the
-    // first one, which is exactly when an origin kept in state could be stale.
     await mouse(h, 'mousedown', 50);
     await mouse(h, 'mousemove', 200);
     await mouse(h, 'mouseup', 200);
@@ -169,59 +168,47 @@ describe('useTimelineOperations: the needle loop', () => {
 
     await mouse(h, 'mouseup', 320);
     expect(ops.setSelection).toHaveBeenLastCalledWith({ start: 30, end: 32 });
-    expect(raf.pending).toBe(1);
     await h.unmount();
   });
 
-  it('unmounting cancels the frame it had scheduled', async () => {
-    const h = await mount(makeOps({ isPlaying: true }));
-    expect(raf.pending).toBe(1);
-
-    // The loop reschedules itself, so there is always exactly one outstanding.
-    await h.step(() => raf.pump());
-    expect(raf.pending).toBe(1);
-
-    await h.unmount();
-    expect(raf.pending).toBe(0);
-    expect(raf.pump()).toBe(0);
-  });
-
-  it('pausing cancels the frame, and playing again starts a new loop', async () => {
-    const h = await mount(makeOps({ isPlaying: true }));
-    expect(raf.pending).toBe(1);
-
-    await h.setInputs({ args: [makeOps({ isPlaying: false })] });
-    expect(raf.pending).toBe(0);
-
-    await h.setInputs({ args: [makeOps({ isPlaying: true })] });
-    expect(raf.pending).toBe(1);
-    await h.unmount();
-    expect(raf.pending).toBe(0);
-  });
-
-  it('draws no needle while the recording is paused', async () => {
-    const h = await mount(
-      makeOps({ isPlaying: false, mediaElement: fakeMediaElement({ currentTime: 3 }) }),
-    );
-    expect(raf.pending).toBe(0);
-    expect(needle(h)).toBe('');
+  it('follows the clock with no render, and a render never pulls it back', async () => {
+    const ops = makeOps({ isPlaying: true });
+    const h = await mount(ops);
+    const renders = renderCount;
+    // What the tab's playback loop does every frame.
+    ops.clock.set(4);
+    expect(needle(h)).toBe(at(4));
+    expect(renderCount).toBe(renders);
+    // The tab's React time lags the clock while playing. A render with it
+    // leaves the needle where the clock put it.
+    await h.setInputs({ args: [{ ...ops, currentTime: 3.8 }] });
+    expect(needle(h)).toBe(at(4));
     await h.unmount();
   });
 
-  it('reads the element from the tab state, never from the ref beside it', async () => {
-    const el = fakeMediaElement();
-    const h = await mount(
-      makeOps({ isPlaying: true, mediaElement: null, mediaElementRef: { current: el } }),
-    );
-    expect(raf.pending).toBe(0);
+  it('a zoom moves the needle with the track', async () => {
+    const ops = makeOps();
+    ops.clock.set(6);
+    const h = await mount(ops);
+    await h.setInputs({ args: [{ ...ops, pixelsPerSecond: 40 }] });
+    expect(needle(h)).toBe(at(6, 40));
     await h.unmount();
+  });
+
+  it('stops following the clock once unmounted', async () => {
+    const ops = makeOps();
+    const h = await mount(ops);
+    const el = h.container.querySelector('[data-testid="needle"]');
+    await h.unmount();
+    ops.clock.set(9);
+    expect(el.style.transform).toBe(at(0));
   });
 });
 
 // The seam between the player and the timeline: the player mounts the element
 // and the timeline draws from it. Both hooks run here, over one fake document.
-// With no recording on it nothing is fetched. With one, the fetch answers at
-// once with a file named for the recording.
+// With no recording on it nothing is asked for. With one, the link and the
+// fetch answer at once, named for the recording.
 const usePlayerAndTimeline = (showElement) => {
   const mediaOps = useMediaOperations();
   const timelineOps = useTimelineOperations(mediaOps);
@@ -241,20 +228,20 @@ const mountBoth = (showElement, { recording = null } = {}) => {
       'fetch',
       vi.fn(async () => ({ ok: true, status: 200, blob: async () => ({ name: recording }) })),
     );
-    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => `blob:${blob.name}`);
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   }
+  const mediaLink = async () => ({ url: `link:${recording}`, expiresAt: '2026-10-09T23:00:00Z' });
   return mountDocumentHook(usePlayerAndTimeline, {
     doc: fakeDocument({ document: { mediaUrl: recording && `/media?v=${recording}` } }),
-    ctx: { client: fakeClient(), canWrite: true },
+    ctx: { client: fakeClient({ documents: { mediaLink } }), canWrite: true },
     args: [showElement],
     render: playerAndLane,
   });
 };
 
 describe('the timeline and the player', () => {
-  it('the needle loop starts on the first frame after the element mounts', async () => {
+  it('the playback loop starts on the first frame after the element mounts', async () => {
     const h = await mountBoth(false);
+    await h.step(() => h.api.mediaOps.handleDurationChange(60));
     // Playback is already running when the element arrives, which is the case
     // a ref read during render can never see.
     await h.step(() => h.api.mediaOps.handlePlayingChange(true));
@@ -268,11 +255,32 @@ describe('the timeline and the player', () => {
     const el = h.container.querySelector('[data-testid="player"]');
     el.currentTime = 4;
     await h.step(() => raf.pump());
-    expect(needle(h)).toBe('100px');
+    expect(needle(h)).toBe(at(4, 25));
 
     // And it goes again when the element does.
     await h.setInputs({ args: [false] });
     expect(raf.pending).toBe(0);
+    await h.unmount();
+  });
+
+  it('a frame of playback re-renders neither hook; the tab takes the time a few times a second', async () => {
+    const h = await mountBoth(true);
+    await h.step(() => h.api.mediaOps.handleDurationChange(60));
+    await h.step(() => h.api.mediaOps.handlePlayingChange(true));
+    const el = h.container.querySelector('[data-testid="player"]');
+    // The first frame shows the time at once.
+    el.currentTime = 1;
+    await h.step(() => raf.pump(1000));
+    const renders = renderCount;
+    el.currentTime = 1.016;
+    await h.step(() => raf.pump(1016));
+    expect(needle(h)).toBe(at(1.016, 25));
+    expect(renderCount).toBe(renders);
+    expect(h.api.mediaOps.currentTime).toBe(1);
+    // A fifth of a second on, the tab's time catches up.
+    el.currentTime = 1.2;
+    await h.step(() => raf.pump(1200));
+    expect(h.api.mediaOps.currentTime).toBe(1.2);
     await h.unmount();
   });
 
@@ -284,7 +292,7 @@ describe('the timeline and the player', () => {
     // re-render it causes fills a ref in before the mouseup seeks.
     const h = await mountBoth(false, { recording: 'rec' });
     await h.step(() => new Promise((r) => setTimeout(r, 0)));
-    expect(h.api.mediaOps.authenticatedMediaUrl).toBe('blob:rec');
+    expect(h.api.mediaOps.authenticatedMediaUrl).toBe('link:rec');
     // A recording with no duration has no positions to click on.
     await h.step(() => h.api.mediaOps.handleDurationChange(60));
     expect(h.container.querySelector('[data-testid="player"]')).toBeNull();
@@ -294,7 +302,7 @@ describe('the timeline and the player', () => {
     expect(el.currentTime).toBe(0);
     // The element reads the file. It has not re-rendered anything the
     // timeline reads the element from.
-    await h.step(() => h.api.mediaOps.handleMediaLoaded('blob:rec'));
+    await h.step(() => h.api.mediaOps.handleMediaLoaded('link:rec'));
 
     // Nothing has re-rendered since the commit that mounted it, which is the
     // state a ref read during render can never leave.
@@ -322,7 +330,7 @@ describe('the timeline before the recording has loaded', () => {
     expect(el.currentTime).toBe(0);
     expect(h.api.mediaOps.currentTime).toBe(0);
 
-    await h.step(() => h.api.mediaOps.handleMediaLoaded('blob:rec'));
+    await h.step(() => h.api.mediaOps.handleMediaLoaded('link:rec'));
     await h.step(() => h.api.timelineOps.handleTimelineClick(3));
     expect(el.currentTime).toBe(3);
     expect(h.api.mediaOps.currentTime).toBe(3);

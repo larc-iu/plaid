@@ -57,6 +57,13 @@ import { shownOrRefused } from './shownOrRefused.js';
 const SPEAKER_LIST_ID = 'transcript-speaker-options';
 // One frozen array, so "no proposals" is a stable dependency.
 const EMPTY = [];
+
+// A row scrolled out of the list's box is laid out and painted by nobody. The
+// browser's every frame walks the whole page, and a recording with speech
+// detection run has a thousand rows: drawing them all every frame of playback
+// was most of what a frame cost. The rows stay in the page, so focus, find
+// and screen readers reach them as before.
+const ROW_OFFSCREEN = '[content-visibility:auto] [contain-intrinsic-size:auto_2.75rem]';
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
@@ -205,6 +212,15 @@ const SegmentRow = memo(function SegmentRow({
   }, [cells, cellKey, text, storedSpeaker, dirty, setDraft]);
 
   useLayoutEffect(() => autoGrow(textRef.current), [draft]);
+  const tokenId = token.id;
+  const attachText = useCallback(
+    (el) => {
+      textRef.current = el;
+      registerText(tokenId, el);
+      autoGrow(el);
+    },
+    [registerText, tokenId],
+  );
 
   const revert = () => {
     setDraft(text);
@@ -317,6 +333,7 @@ const SegmentRow = memo(function SegmentRow({
       data-row-time={timeBeginOf(token)}
       className={cn(
         'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border px-2 py-1.5',
+        ROW_OFFSCREEN,
         active && 'border-primary/60 bg-primary/5',
       )}
     >
@@ -383,11 +400,7 @@ const SegmentRow = memo(function SegmentRow({
       ) : (
         <div className="flex flex-col gap-0.5">
           <Textarea
-            ref={(el) => {
-              textRef.current = el;
-              registerText(token.id, el);
-              autoGrow(el);
-            }}
+            ref={attachText}
             value={draft}
             rows={1}
             spellCheck={false}
@@ -602,6 +615,7 @@ const ProposalRow = memo(function ProposalRow({
       data-row-time={proposal.timeBegin}
       className={cn(
         'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5',
+        ROW_OFFSCREEN,
         active && 'bg-muted/60',
       )}
       onFocus={() => onFocusRow(proposal)}
@@ -683,6 +697,16 @@ const NewSegmentRow = memo(function NewSegmentRow({
   const canCreate = ready && draft.trim().length > 0;
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
+  // Stable, so the running clock's re-renders do not hand the box over again
+  // and measure it each time, which is a layout of the whole tab.
+  const attachText = useCallback(
+    (el) => {
+      ref.current = el;
+      if (textRef) textRef.current = el;
+      autoGrow(el);
+    },
+    [textRef],
+  );
 
   // What the row holds only because a refused segment put it back, so a
   // second refusal can tell it from text the user typed.
@@ -768,11 +792,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
       />
       <div className="flex flex-col gap-1">
         <Textarea
-          ref={(el) => {
-            ref.current = el;
-            if (textRef) textRef.current = el;
-            autoGrow(el);
-          }}
+          ref={attachText}
           value={draft}
           rows={1}
           spellCheck={false}
@@ -1145,6 +1165,78 @@ export function TranscriptList({
 
   const prevEnd = segments.reduce((max, t) => Math.max(max, timeEndOf(t)), 0);
 
+  // The rows as elements, built again only when a row's own props change. The
+  // list re-renders with the tab's running clock, and walking a thousand rows
+  // of speech detection's proposals to find each one unchanged was most of
+  // what a frame of playback cost.
+  const rowElements = useMemo(
+    () =>
+      rows.map((row) =>
+        row.kind === 'segment' ? (
+          <SegmentRow
+            key={row.key}
+            token={row.token}
+            index={row.index}
+            text={cpSlice(body, row.token.begin, row.token.end)}
+            active={row.token.id === activeId}
+            playing={row.token.id === playingId}
+            canPlay={canPlay}
+            readOnly={readOnly}
+            duration={duration}
+            onFocusRow={handleFocusRow}
+            onCommit={handleCommit}
+            onCommitTime={handleCommitTime}
+            onAdvance={handleAdvance}
+            onStep={handleStep}
+            onDelete={handleDelete}
+            lossFor={lossFor}
+            onPlayToggle={handlePlayToggle}
+            registerText={registerText}
+            cells={cells}
+            cellKey={segmentKey(row.token)}
+          />
+        ) : (
+          <ProposalRow
+            key={row.key}
+            proposal={row.proposal}
+            active={row.proposal.id === activeId}
+            playing={row.proposal.id === playingId}
+            canPlay={canPlay}
+            onFocusRow={handleFocusProposal}
+            onAccept={handleAccept}
+            onAdvance={handleAdvance}
+            onStep={handleStep}
+            onDiscard={handleDiscardProposal}
+            onPlayToggle={handlePlayToggleProposal}
+            registerText={registerText}
+          />
+        ),
+      ),
+    [
+      rows,
+      body,
+      activeId,
+      playingId,
+      canPlay,
+      readOnly,
+      duration,
+      handleFocusRow,
+      handleCommit,
+      handleCommitTime,
+      handleAdvance,
+      handleStep,
+      handleDelete,
+      lossFor,
+      handlePlayToggle,
+      registerText,
+      cells,
+      handleFocusProposal,
+      handleAccept,
+      handleDiscardProposal,
+      handlePlayToggleProposal,
+    ],
+  );
+
   return (
     <div className="rounded-lg border bg-card p-4" ref={containerRef}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1241,47 +1333,7 @@ export function TranscriptList({
               : 'No segments yet. Add one below, drag on the timeline, detect speech, or run a transcription service.'}
           </p>
         )}
-        {rows.map((row) =>
-          row.kind === 'segment' ? (
-            <SegmentRow
-              key={row.key}
-              token={row.token}
-              index={row.index}
-              text={cpSlice(body, row.token.begin, row.token.end)}
-              active={row.token.id === activeId}
-              playing={row.token.id === playingId}
-              canPlay={canPlay}
-              readOnly={readOnly}
-              duration={duration}
-              onFocusRow={handleFocusRow}
-              onCommit={handleCommit}
-              onCommitTime={handleCommitTime}
-              onAdvance={handleAdvance}
-              onStep={handleStep}
-              onDelete={handleDelete}
-              lossFor={lossFor}
-              onPlayToggle={handlePlayToggle}
-              registerText={registerText}
-              cells={cells}
-              cellKey={segmentKey(row.token)}
-            />
-          ) : (
-            <ProposalRow
-              key={row.key}
-              proposal={row.proposal}
-              active={row.proposal.id === activeId}
-              playing={row.proposal.id === playingId}
-              canPlay={canPlay}
-              onFocusRow={handleFocusProposal}
-              onAccept={handleAccept}
-              onAdvance={handleAdvance}
-              onStep={handleStep}
-              onDiscard={handleDiscardProposal}
-              onPlayToggle={handlePlayToggleProposal}
-              registerText={registerText}
-            />
-          ),
-        )}
+        {rowElements}
       </div>
       {!readOnly && (
         <div className="mt-1.5">

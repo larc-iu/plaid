@@ -15,18 +15,16 @@ vi.mock('@/utils/feedback', async (importOriginal) => ({
   notifyWarning: vi.fn(),
 }));
 
-// The media tab's operations hook, at the one seam where it can fall behind
-// the document on screen: the authenticated fetch that turns the recording
-// into a blob the <video> can play.
+// The media tab's operations hook, at the seams where it can fall behind the
+// document on screen: the media link the <video> streams, and the whole file
+// fetched behind it for the waveform and speech detection.
 //
-// The end state hides everything interesting about it. A response for a
+// The end state hides everything interesting about them. An answer for a
 // recording the tab has already left behind still arrives, and the next thing
 // that changes quietly draws the right one over it, so a test that reads only
-// what the hook ended on cannot tell a guarded fetch from an unguarded one.
+// what the hook ended on cannot tell a guarded request from an unguarded one.
 // What is asserted here is the sequence of `{url, loading, error}` the tab
-// actually SHOWED, plus what was done with the object URLs, which is where an
-// unguarded response leaves its other mark: one that is created and never
-// revoked, pinning the whole download for the life of the tab.
+// actually SHOWED.
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -49,15 +47,19 @@ const recording = (name) => ({
 });
 
 let fetches;
-let created;
-let revoked;
-let realCreateObjectURL;
-let realRevokeObjectURL;
+// One deferred per media link asked for, in order.
+let links;
+const mediaLink = vi.fn(() => {
+  const d = deferred();
+  links.push(d);
+  return d.promise;
+});
+const link = (name) => ({ url: `link:${name}`, expiresAt: '2026-10-09T23:00:00Z' });
 
 beforeEach(() => {
   fetches = [];
-  created = [];
-  revoked = [];
+  links = [];
+  mediaLink.mockClear();
   localStorage.clear();
   notifyInfo.mockClear();
   notifyWarning.mockClear();
@@ -69,21 +71,11 @@ beforeEach(() => {
       return d.promise;
     }),
   );
-  realCreateObjectURL = URL.createObjectURL;
-  realRevokeObjectURL = URL.revokeObjectURL;
-  URL.createObjectURL = vi.fn((blob) => {
-    const url = `blob:${blob.name}`;
-    created.push(url);
-    return url;
-  });
-  URL.revokeObjectURL = vi.fn((url) => revoked.push(url));
   // The fetch failures below are reported, and the report is not the subject.
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
-  URL.createObjectURL = realCreateObjectURL;
-  URL.revokeObjectURL = realRevokeObjectURL;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -100,7 +92,7 @@ const withMedia = (mediaUrl, over = {}) =>
 
 const mountMedia = async (opts = {}) => {
   const doc = opts.doc ?? withMedia('/api/v1/documents/doc-1/media?v=a');
-  const client = opts.client ?? fakeClient();
+  const client = opts.client ?? fakeClient({ documents: { mediaLink } });
   const locks = opts.locks ?? fakeWriteLock();
   doc.client = client;
   const h = await mountDocumentHook(useMediaOperations, {
@@ -115,56 +107,67 @@ const mountMedia = async (opts = {}) => {
 const EMPTY = { url: null, loading: false, error: null };
 const LOADING = { url: null, loading: true, error: null };
 
-describe('useMediaOperations: fetching the recording', () => {
-  it('a response that arrives after the tab closes is never turned into a URL', async () => {
+describe('useMediaOperations: the recording', () => {
+  it('a link that arrives after the tab closes is never shown', async () => {
     const h = await mountMedia();
-    expect(fetches).toHaveLength(1);
+    expect(links).toHaveLength(1);
     expect(h.seq).toEqual([EMPTY, LOADING]);
 
     await h.unmount();
+    links[0].resolve(link('a'));
     fetches[0].resolve(recording('a'));
     await settle();
     await settle();
-
-    // Nothing was created, so there is nothing left pinned: an unguarded
-    // response would create an object URL after the cleanup that revokes it.
-    expect(created).toEqual([]);
-    expect(revoked).toEqual([]);
     expect(h.seq).toEqual([EMPTY, LOADING]);
   });
 
-  it('a recording swapped mid-fetch keeps the new one, whichever response lands first', async () => {
+  it('the player has its link before the whole file has arrived', async () => {
     const h = await mountMedia();
-    await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
-    expect(fetches.map((f) => f.url)).toEqual([
-      '/api/v1/documents/doc-1/media?v=a',
-      '/api/v1/documents/doc-1/media?v=b',
-    ]);
-
+    expect(fetches.map((f) => f.url)).toEqual(['/api/v1/documents/doc-1/media?v=a']);
     await h.step(async () => {
-      fetches[1].resolve(recording('b'));
+      links[0].resolve(link('a'));
       await settle();
     });
-    expect(h.api.authenticatedMediaUrl).toBe('blob:b');
+    expect(h.api.authenticatedMediaUrl).toBe('link:a');
+    expect(h.api.mediaBlob).toBeNull();
 
-    // The recording the tab left behind answers late.
     await h.step(async () => {
       fetches[0].resolve(recording('a'));
       await settle();
     });
-
-    expect(h.seq).toEqual([EMPTY, LOADING, { url: 'blob:b', loading: false, error: null }]);
-    expect(created).toEqual(['blob:b']);
-    expect(h.api.mediaBlob.name).toBe('b');
-
+    expect(h.api.mediaBlob.name).toBe('a');
+    expect(h.api.mediaBlobKey).toBe('/api/v1/documents/doc-1/media?v=a');
     await h.unmount();
-    expect(revoked).toEqual(['blob:b']);
   });
 
-  it('a failed fetch says so, and a failure for the recording that was swapped away does not', async () => {
+  it('a recording swapped mid-request keeps the new one, whichever answer lands first', async () => {
+    const h = await mountMedia();
+    await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
+    expect(links).toHaveLength(2);
+
+    await h.step(async () => {
+      links[1].resolve(link('b'));
+      fetches[1].resolve(recording('b'));
+      await settle();
+    });
+    expect(h.api.authenticatedMediaUrl).toBe('link:b');
+
+    // The recording the tab left behind answers late.
+    await h.step(async () => {
+      links[0].resolve(link('a'));
+      fetches[0].resolve(recording('a'));
+      await settle();
+    });
+
+    expect(h.seq).toEqual([EMPTY, LOADING, { url: 'link:b', loading: false, error: null }]);
+    expect(h.api.mediaBlob.name).toBe('b');
+    await h.unmount();
+  });
+
+  it('a refused link says so, and a failure for the recording that was swapped away does not', async () => {
     const failed = await mountMedia();
     await failed.step(async () => {
-      fetches[0].resolve({ ok: false, status: 404 });
+      links[0].reject(Object.assign(new Error('No media file found'), { status: 404 }));
       await settle();
     });
     expect(failed.seq).toEqual([
@@ -174,11 +177,11 @@ describe('useMediaOperations: fetching the recording', () => {
     ]);
     await failed.unmount();
 
-    fetches.length = 0;
+    links.length = 0;
     const h = await mountMedia();
     await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
     await h.step(async () => {
-      fetches[0].reject(new Error('the network went away'));
+      links[0].reject(new Error('the network went away'));
       await settle();
     });
     // The failure belongs to a recording nobody is looking at any more.
@@ -186,16 +189,63 @@ describe('useMediaOperations: fetching the recording', () => {
     expect(h.api.isLoadingMedia).toBe(true);
 
     await h.step(async () => {
-      fetches[1].resolve(recording('b'));
+      links[1].resolve(link('b'));
       await settle();
     });
-    expect(h.seq).toEqual([EMPTY, LOADING, { url: 'blob:b', loading: false, error: null }]);
+    expect(h.seq).toEqual([EMPTY, LOADING, { url: 'link:b', loading: false, error: null }]);
     await h.unmount();
   });
 
-  it('a document with no recording fetches nothing and shows nothing', async () => {
+  it('a whole file that cannot be read leaves the player alone', async () => {
+    const h = await mountMedia();
+    await h.step(async () => {
+      links[0].resolve(link('a'));
+      fetches[0].resolve({ ok: false, status: 500 });
+      await settle();
+    });
+    expect(h.seq).toEqual([EMPTY, LOADING, { url: 'link:a', loading: false, error: null }]);
+    expect(h.api.mediaBlob).toBeNull();
+    await h.unmount();
+  });
+
+  it('a link that stops working is asked for again once, and playback goes on from where it was', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([], { currentTime: 0, paused: true });
+    await loadRecording(h, el);
+    el.currentTime = 42;
+    el.paused = false;
+
+    // The element failed to read its link (it expired, say).
+    let again;
+    await h.step(() => {
+      again = h.api.relinkMedia();
+    });
+    expect(again).toBe(true);
+    expect(links).toHaveLength(2);
+    await h.step(async () => {
+      links[1].resolve(link('a2'));
+      await settle();
+    });
+    expect(h.api.authenticatedMediaUrl).toBe('link:a2');
+    expect(h.api.mediaReady).toBe(false);
+
+    // The new link loads from the start, and is put back where the old one was.
+    el.currentTime = 0;
+    await h.step(() => h.api.handleMediaLoaded('link:a2'));
+    expect(el.currentTime).toBe(42);
+    expect(el.play).toHaveBeenCalled();
+    expect(h.api.mediaReady).toBe(true);
+
+    // A second failure is the file's, not the link's.
+    expect(h.api.relinkMedia()).toBe(false);
+    expect(links).toHaveLength(2);
+    await h.unmount();
+  });
+
+  it('a document with no recording asks for nothing and shows nothing', async () => {
     const h = await mountMedia({ doc: withMedia(null) });
     expect(fetches).toHaveLength(0);
+    expect(links).toHaveLength(0);
     expect(h.seq).toEqual([EMPTY]);
     await h.unmount();
   });
@@ -223,15 +273,15 @@ const refusedPlay = (refusals) =>
     };
   });
 
-// The recording downloaded, and read by the element the tab plays through.
+// The recording's link, read by the element the tab plays through.
 const loadRecording = async (h, el) => {
   await h.step(async () => {
-    fetches[0].resolve(recording('a'));
+    links[0].resolve(link('a'));
     await settle();
     await settle();
   });
   await h.step(() => h.api.setMediaElement(el));
-  await h.step(() => h.api.handleMediaLoaded('blob:a'));
+  await h.step(() => h.api.handleMediaLoaded('link:a'));
 };
 
 // The element the tab plays through.
@@ -243,6 +293,8 @@ const fakeMediaElement = (refusals, over = {}) => ({
   duration: 10,
   play: refusedPlay(refusals),
   pause: vi.fn(),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
   ...over,
 });
 
@@ -303,10 +355,13 @@ describe('useMediaOperations: playing one stretch', () => {
     expect(el.currentTime).toBe(2);
     expect(h.api.playingSelection).toBeNull();
     expect(raf.pending).toBe(0);
+    // What the element says of the pause.
+    await h.step(() => h.api.handlePlayingChange(false));
 
     // With looping on, the end of the stretch is its start again.
     await h.step(() => h.api.setLoopSegment(true));
     await h.step(() => h.api.playRange({ start: 1, end: 2 }));
+    await h.step(() => h.api.handlePlayingChange(true));
     el.currentTime = 2.01;
     await h.step(() => raf.pump());
     expect(el.pause).toHaveBeenCalledTimes(1);
@@ -479,7 +534,7 @@ describe('useMediaOperations: detecting speech', () => {
 describe('useMediaOperations: playing before the recording has loaded', () => {
   const arrive = async (h, name) => {
     await h.step(async () => {
-      fetches[fetches.length - 1].resolve(recording(name));
+      links[links.length - 1].resolve(link(name));
       await settle();
       await settle();
     });
@@ -513,18 +568,18 @@ describe('useMediaOperations: playing before the recording has loaded', () => {
     const el = fakeMediaElement([]);
     await h.step(() => h.api.setMediaElement(el));
 
-    // Still downloading.
+    // The link is still on its way.
     await tryEverything(h);
     expect(untouched(h, el)).toEqual(UNTOUCHED);
 
-    // Downloaded and handed to the element, which has not read it yet.
+    // Handed to the element, which has not read it yet.
     await arrive(h, 'a');
-    expect(h.api.authenticatedMediaUrl).toBe('blob:a');
+    expect(h.api.authenticatedMediaUrl).toBe('link:a');
     await tryEverything(h);
     expect(untouched(h, el)).toEqual(UNTOUCHED);
 
     // The element has read it.
-    await h.step(() => h.api.handleMediaLoaded('blob:a'));
+    await h.step(() => h.api.handleMediaLoaded('link:a'));
     expect(h.api.mediaReady).toBe(true);
     await h.step(() => h.api.playRange({ start: 1, end: 2 }));
     expect(el.currentTime).toBe(1);
@@ -540,18 +595,18 @@ describe('useMediaOperations: playing before the recording has loaded', () => {
     const el = fakeMediaElement([]);
     await h.step(() => h.api.setMediaElement(el));
     await arrive(h, 'a');
-    await h.step(() => h.api.handleMediaLoaded('blob:a'));
+    await h.step(() => h.api.handleMediaLoaded('link:a'));
     expect(h.api.mediaReady).toBe(true);
 
     await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
     expect(h.api.mediaReady).toBe(false);
     await arrive(h, 'b');
     // The old file's metadata, reported late, is not the new file's.
-    await h.step(() => h.api.handleMediaLoaded('blob:a'));
+    await h.step(() => h.api.handleMediaLoaded('link:a'));
     await tryEverything(h);
     expect(untouched(h, el)).toEqual(UNTOUCHED);
 
-    await h.step(() => h.api.handleMediaLoaded('blob:b'));
+    await h.step(() => h.api.handleMediaLoaded('link:b'));
     expect(h.api.mediaReady).toBe(true);
     await h.unmount();
   });

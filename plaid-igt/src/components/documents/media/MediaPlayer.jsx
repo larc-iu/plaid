@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { Slider } from '@ui/components/ui/slider';
 import {
@@ -24,6 +24,22 @@ import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
 import { VadDetection } from './VadDetection.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
+import { useClockTime } from './playbackClock.js';
+
+// The seek bar moves every frame while the recording plays, so it reads the
+// clock itself and is the only thing that re-renders with it.
+const SeekBar = ({ clock, max, onSeek, disabled }) => {
+  const time = useClockTime(clock);
+  return (
+    <Slider
+      value={[time || 0]}
+      max={max}
+      onValueChange={([v]) => onSeek(v)}
+      disabled={disabled}
+      className="flex-1"
+    />
+  );
+};
 
 export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) => {
   // Destructure what we need from mediaOps
@@ -60,13 +76,13 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   // otherwise — and stayed if the file never loaded).
   const [mediaType, setMediaType] = useState('unknown');
   const [helpOpen, setHelpOpen] = useState(false);
-  // The file arrives whole after the tab opens (see useMediaOperations), and a
-  // skip or a seek made before the element has it is lost: the element is at 0
-  // with no duration, and stays there once the file lands. So the transport
+  // The element gets its link a moment after the tab opens (see
+  // useMediaOperations), and a skip or a seek made before it has read the
+  // recording's metadata is lost: the element is at 0 with no duration, and
+  // stays there once the metadata lands. So the transport
   // waits until this URL's metadata has loaded (`ready`, kept by the hook, which
   // gates the keys and the transcript rows the same way), and again for a new
   // file.
-  const animationFrameRef = useRef(null);
   // A WebM from MediaRecorder carries no duration, and the element reports
   // Infinity at loadedmetadata. A seek past the end makes it read the file to
   // its end and learn the real one, which arrives as a durationchange. While
@@ -141,33 +157,6 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
     }
   };
 
-  // RAF-based smooth time updates for progress bar
-  useEffect(() => {
-    const updateTime = () => {
-      if (mediaRef.current && onTimeUpdate) {
-        onTimeUpdate(mediaRef.current.currentTime);
-      }
-
-      if (isPlaying && mediaRef.current) {
-        animationFrameRef.current = requestAnimationFrame(updateTime);
-      }
-    };
-
-    if (isPlaying && mediaRef.current) {
-      animationFrameRef.current = requestAnimationFrame(updateTime);
-    } else {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    }
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isPlaying, onTimeUpdate]);
-
   return (
     <TooltipProvider>
       <div className="rounded-lg border bg-card p-4">
@@ -207,10 +196,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
         <div className="flex flex-col gap-4">
           {helpOpen && <MediaHelp />}
 
-          {/* Media error. `mediaLoadError` is the fetch that builds the blob
-              failing; `mediaError` is the element rejecting what it got. The
-              fetch is what surfaces an auth/network failure now that <video>
-              never talks to the server itself. */}
+          {/* Media error. `mediaLoadError` is the request for the media link
+              failing; `mediaError` is the element failing to read or play
+              what the link gave it, after one new link was tried. */}
           {(mediaLoadError || mediaError) && (
             <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
               <p className="text-sm font-medium text-destructive">Playback error</p>
@@ -220,8 +208,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
             </div>
           )}
 
-          {/* The whole file has to arrive before anything is playable, so say
-              so rather than showing an inert player. */}
+          {/* Until the link arrives the player is inert, so say so. */}
           {isLoadingMedia && <p className="text-sm text-muted-foreground">Loading media…</p>}
 
           {/* Media Element - Use video element for everything since it can play both video and audio */}
@@ -236,7 +223,6 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               borderRadius: '8px',
               display: mediaType === 'video' ? 'block' : 'none',
             }}
-            onTimeUpdate={() => {}} // RAF handles time updates now
             onPlay={() => {
               onPlayingChange && onPlayingChange(true);
             }}
@@ -275,6 +261,10 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               }
             }}
             onError={(e) => {
+              // A link stops working when it expires or the session ends. The
+              // element says only that it failed, so a new link is tried once
+              // before the failure is put down to the file.
+              if (mediaOps.relinkMedia?.()) return;
               console.error('Media error:', e);
               setMediaError('Failed to load media. This format may not be supported.');
             }}
@@ -386,12 +376,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               <span className="text-sm text-muted-foreground">{formatTime(duration || 0)}</span>
             </div>
 
-            <Slider
-              value={[currentTime || 0]}
+            <SeekBar
+              clock={mediaOps.clock}
               max={duration || 100}
-              onValueChange={([v]) => seekTo(v)}
+              onSeek={seekTo}
               disabled={!ready}
-              className="flex-1"
             />
           </div>
 

@@ -21,6 +21,8 @@ import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { keys } from '@/lib/keymap.js';
+import { createPlaybackClock } from './playbackClock.js';
+import { RUNNING_TIME_MS } from './useThrottledValue.js';
 
 // Hotkeys ignore key events from form fields, with one exception: the tab's
 // own boxes (transcript rows, time boxes, the alignment popover) sit under a
@@ -104,8 +106,6 @@ export const useMediaOperations = () => {
 
   const project = doc.project;
 
-  // Refs for RAF and monitoring
-  const selectionMonitorRef = useRef(null);
   const mediaElementRef = useRef(null);
   const autoScrollToTimeRef = useRef(null);
 
@@ -117,8 +117,19 @@ export const useMediaOperations = () => {
   // some unrelated change happened to re-render it.
   const [mediaElement, setMediaElementState] = useState(null);
 
-  // Local media UI state.
-  const [currentTime, setCurrentTime] = useState(0);
+  // Local media UI state. The position is two things: `clock`, exact and
+  // updated every frame while playing, for the needle and the seek bar, and
+  // `currentTime`, React state that follows it a few times a second while
+  // playing and exactly otherwise, for everything else (playbackClock.js).
+  const [clock] = useState(createPlaybackClock);
+  const [currentTime, setCurrentTimeState] = useState(0);
+  const setCurrentTime = useCallback(
+    (time) => {
+      clock.set(time);
+      setCurrentTimeState(time);
+    },
+    [clock],
+  );
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.8);
@@ -203,48 +214,48 @@ export const useMediaOperations = () => {
   });
 
   // The media endpoint needs auth, and a <video src> can't carry an
-  // Authorization header. We used to work around that with `?token=<jwt>` on
-  // the URL, which put a 30-day login token everywhere a URL travels: proxy
-  // access logs, and whatever the user gets from "Copy video address". Instead
-  // fetch the bytes once with a real header and hand the element a blob: URL,
-  // which is meaningless outside this page and dies with the tab. The blob is
-  // also what the timeline decodes for its waveform, so this is one download
-  // where it used to be two.
+  // Authorization header. A login token in the URL (`?token=`) put a 30-day
+  // credential in proxy logs and in "Copy video address", and handing the
+  // element a blob: URL of the whole file instead meant nothing played until
+  // every byte had arrived. So the element gets a media LINK
+  // (`documents.mediaLink`): the recording's URL with a token that opens that
+  // one recording, for a few hours, and nothing else. The element streams it
+  // and seeks by range at once.
+  //
+  // The waveform and speech detection still read the whole file, so it is
+  // fetched as well, with a real header, behind the player and never holding
+  // it up.
   const mediaSrcUrl = doc.document.mediaUrl;
-  // `key` is the versioned URL the blob was fetched from, which names it for
-  // anything cached per recording (the waveform), and changes with the blob.
+  const documentId = doc.document.id;
+  // `url` is the link the element plays. `key` is the versioned media URL,
+  // which names the recording for anything cached per recording (the
+  // waveform). `blob` is the whole file, once it has arrived.
   const [media, setMedia] = useState({ url: null, blob: null, key: null });
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [mediaLoadError, setMediaLoadError] = useState(null);
+  // A link that stopped working (it expired, or the session ended) is asked
+  // for again once per recording, picking up where playback was.
+  const relinkRef = useRef({ key: null, tried: false, resume: null });
 
   useEffect(() => {
-    // Clear eagerly so a stale blob never shows under a new (or deleted)
-    // media file while the fetch below is still in flight.
+    // Clear eagerly so a stale recording never shows under a new (or deleted)
+    // media file while the requests below are still in flight.
     setMedia({ url: null, blob: null, key: null });
     setMediaLoadError(null);
+    relinkRef.current = { key: mediaSrcUrl, tried: false, resume: null };
     if (!mediaSrcUrl) {
       setIsLoadingMedia(false);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
-    let objectUrl = null;
     setIsLoadingMedia(true);
 
     (async () => {
       try {
-        const response = await fetch(mediaSrcUrl, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        if (!response.ok) {
-          const failed = new Error(`HTTP ${response.status}`);
-          failed.status = response.status;
-          throw failed;
-        }
-        const blob = await response.blob();
+        const link = await client.documents.mediaLink(documentId);
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setMedia({ url: objectUrl, blob, key: mediaSrcUrl });
+        setMedia((m) => ({ ...m, url: link.url, key: mediaSrcUrl }));
       } catch (error) {
         if (cancelled) return;
         console.error('Failed to load media:', error);
@@ -254,12 +265,48 @@ export const useMediaOperations = () => {
       }
     })();
 
+    (async () => {
+      try {
+        const response = await fetch(mediaSrcUrl, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        if (!cancelled) setMedia((m) => ({ ...m, blob, key: mediaSrcUrl }));
+      } catch (error) {
+        // The player does not need it. The waveform draws a flat line and
+        // detection stays off, which say enough.
+        if (!cancelled) console.error('Failed to read the whole recording:', error);
+      }
+    })();
+
     return () => {
       cancelled = true;
-      // Without this the downloaded file stays pinned for the life of the tab.
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [mediaSrcUrl]);
+  }, [client, documentId, mediaSrcUrl]);
+
+  // The element could not read its link. Ask for a new one, once, and carry
+  // on from where playback was: a link minted hours ago has expired. Returns
+  // whether it is trying again, so the player says nothing until it is not.
+  const relinkMedia = useCallback(() => {
+    const relink = relinkRef.current;
+    if (!relink.key || relink.tried) return false;
+    relink.tried = true;
+    const el = mediaElementRef.current;
+    relink.resume = el ? { time: el.currentTime, playing: !el.paused } : null;
+    const key = relink.key;
+    client.documents
+      .mediaLink(documentId)
+      .then((link) => {
+        if (relinkRef.current.key === key) setMedia((m) => ({ ...m, url: link.url }));
+      })
+      .catch((error) => {
+        if (relinkRef.current.key !== key) return;
+        console.error('Failed to load media:', error);
+        setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
+      });
+    return true;
+  }, [client, documentId]);
 
   // A recording deleted or replaced by someone else is said so once the
   // document is read again (recordingChange.js), with what a write refused
@@ -301,6 +348,14 @@ export const useMediaOperations = () => {
   const handleMediaLoaded = useCallback((url) => {
     loadedUrlRef.current = url;
     setLoadedUrl(url);
+    // A new link for the same recording goes on from where the old one was.
+    const resume = relinkRef.current.resume;
+    const el = mediaElementRef.current;
+    if (resume && el) {
+      relinkRef.current.resume = null;
+      el.currentTime = resume.time;
+      if (resume.playing) el.play().catch(() => {});
+    }
   }, []);
   // The element, only once it has its file.
   const playableElement = useCallback(() => {
@@ -366,9 +421,56 @@ export const useMediaOperations = () => {
     autoScrollToTimeRef.current = fn;
   }, []);
 
-  const handleTimeUpdate = useCallback((time) => {
-    setCurrentTime(time);
-  }, []);
+  const handleTimeUpdate = setCurrentTime;
+  const playingSelectionRef = useRef(playingSelection);
+  playingSelectionRef.current = playingSelection;
+  const loopSegmentRef = useRef(loopSegment);
+  loopSegmentRef.current = loopSegment;
+
+  // While playing, one loop reads the element's clock every frame into `clock`
+  // and into React state no more often than RUNNING_TIME_MS, and ends a
+  // stretch being played at its end. A seek made any
+  // other way (a loop back to a segment's start, a keyboard seek) shows the
+  // moment it lands, playing or not.
+  useEffect(() => {
+    const el = mediaElement;
+    if (!el) return undefined;
+    const sync = () => setCurrentTime(el.currentTime);
+    el.addEventListener('seeked', sync);
+    if (!isPlaying) {
+      sync();
+      return () => el.removeEventListener('seeked', sync);
+    }
+    let frame = null;
+    let shownAt = 0;
+    const tick = (now) => {
+      // A stretch being played ends at its end: back to its start when
+      // looping, else snapped to the end and paused.
+      const range = playingSelectionRef.current;
+      if (range && el.currentTime >= range.end) {
+        if (loopSegmentRef.current) {
+          el.currentTime = range.start;
+        } else {
+          el.currentTime = range.end;
+          el.pause();
+          setPlayingSelection(null);
+          setCurrentTime(range.end);
+          return;
+        }
+      }
+      clock.set(el.currentTime);
+      if (now - shownAt >= RUNNING_TIME_MS) {
+        shownAt = now;
+        setCurrentTimeState(el.currentTime);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener('seeked', sync);
+    };
+  }, [mediaElement, isPlaying, clock, setCurrentTime]);
 
   // The recording's own clock, for a write that must not use a displayed
   // (throttled) time: the element is the truth, the state is a picture of it.
@@ -410,7 +512,7 @@ export const useMediaOperations = () => {
         autoScrollToTimeRef.current(0);
       }
     }
-  }, [playableElement]);
+  }, [playableElement, setCurrentTime]);
 
   const handleSkipToEnd = useCallback(() => {
     if (playableElement() && duration) {
@@ -423,7 +525,7 @@ export const useMediaOperations = () => {
         autoScrollToTimeRef.current(duration);
       }
     }
-  }, [duration, playableElement]);
+  }, [duration, playableElement, setCurrentTime]);
 
   // Play one stretch of the recording and stop (or loop) at its end. Setting
   // currentTime moves the official playback position at once, so play() picks
@@ -439,7 +541,7 @@ export const useMediaOperations = () => {
       setPlayingSelection({ start: range.start, end: range.end });
       el.play().catch(() => {});
     },
-    [playableElement],
+    [playableElement, setCurrentTime],
   );
 
   // Play a stretch the way a transcriber expects of a segment they paused in:
@@ -460,7 +562,7 @@ export const useMediaOperations = () => {
       setPlayingSelection({ start: range.start, end: range.end });
       el.play().catch(() => {});
     },
-    [playableElement],
+    [playableElement, setCurrentTime],
   );
 
   const handlePlaySelection = useCallback(() => {
@@ -496,7 +598,7 @@ export const useMediaOperations = () => {
       setPlayingSelection(null);
       if (autoScrollToTimeRef.current) autoScrollToTimeRef.current(t);
     },
-    [duration, playableElement],
+    [duration, playableElement, setCurrentTime],
   );
 
   const handlePlaybackRateChange = useCallback((rate) => {
@@ -919,46 +1021,6 @@ export const useMediaOperations = () => {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [selection, isPlaying, playRangeFromHere, seekBy, playableElement]);
 
-  // Monitor range playback: at the end of the range, loop back to its start
-  // when looping is on, otherwise snap to the end and pause.
-  useEffect(() => {
-    const monitorSelection = () => {
-      if (playingSelection && mediaElementRef.current && isPlaying) {
-        const t = mediaElementRef.current.currentTime;
-        if (t >= playingSelection.end) {
-          if (loopSegment) {
-            mediaElementRef.current.currentTime = playingSelection.start;
-          } else {
-            mediaElementRef.current.currentTime = playingSelection.end;
-            mediaElementRef.current.pause();
-            setPlayingSelection(null);
-            return; // Stop monitoring
-          }
-        }
-      }
-
-      if (playingSelection && isPlaying) {
-        selectionMonitorRef.current = requestAnimationFrame(monitorSelection);
-      }
-    };
-
-    if (playingSelection && isPlaying) {
-      selectionMonitorRef.current = requestAnimationFrame(monitorSelection);
-    } else {
-      if (selectionMonitorRef.current) {
-        cancelAnimationFrame(selectionMonitorRef.current);
-        selectionMonitorRef.current = null;
-      }
-    }
-
-    return () => {
-      if (selectionMonitorRef.current) {
-        cancelAnimationFrame(selectionMonitorRef.current);
-        selectionMonitorRef.current = null;
-      }
-    };
-  }, [playingSelection, isPlaying, loopSegment]);
-
   // Trigger service discovery on component mount
   useEffect(() => {
     if (project.id) {
@@ -974,6 +1036,7 @@ export const useMediaOperations = () => {
     document: doc.document,
     project,
     authenticatedMediaUrl,
+    relinkMedia,
     mediaBlob,
     mediaBlobKey,
     isLoadingMedia,
@@ -986,6 +1049,7 @@ export const useMediaOperations = () => {
     mediaReady,
     currentTime,
     setCurrentTime,
+    clock,
     duration,
     isPlaying,
     volume,
