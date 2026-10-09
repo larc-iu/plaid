@@ -324,9 +324,9 @@ test('the log names the account behind each request, and this page itself stays 
   await expect(rows.first()).toBeVisible({ timeout: 20000 });
 
   const requests = page.locator('table').last().locator('tbody tr');
-  // The button's accessible name is the account it shows, and `exact` because
+  // The link's accessible name is the account it shows, and `exact` because
   // an email is a substring of plenty of other text on the page.
-  const accounts = page.getByRole('button', { name: readToken().userId, exact: true });
+  const accounts = page.getByRole('link', { name: readToken().userId, exact: true });
   expect(
     await accounts.count(),
     'the requests this test just made should be attributed',
@@ -336,7 +336,11 @@ test('the log names the account behind each request, and this page itself stays 
   expect(paths.length).toBeGreaterThan(0);
   expect(paths.some((p) => p.includes('/admin/logs'))).toBe(false);
 
-  // Picking an account off a row narrows to it, and says so.
+  // Picking an account off a row narrows to it, says so, and puts it in the
+  // address, so a reload keeps the filter.
   await accounts.first().click();
+  await expect(page.getByRole('button', { name: 'Clear account filter' })).toBeVisible();
+  await expect(page).toHaveURL(/[?&]account=/);
+  await page.reload();
   await expect(page.getByRole('button', { name: 'Clear account filter' })).toBeVisible();
 });
