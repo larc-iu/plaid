@@ -459,3 +459,15 @@ def test_the_audit_label_of_a_long_plan_is_cut_with_its_isolates_closed():
     assert label.startswith('Assistant: Gloss') and label.endswith('…')
     assert len(label) <= AUDIT_LABEL_MAX + 2
     assert label.count(FSI) == label.count(PDI)
+
+
+def test_other_case_is_said_of_the_exceptions_whatever_case_the_pattern_is_typed_in():
+    # "pros" typed in lower case, case ignored: the PROS labels are what it
+    # mostly finds, and the English gloss is the one to look at
+    store = {'sp-g1': 'PROSP:EXP', 'sp-x2': 'PROS', 'sp-x3': 'leprosy', 'sp-y1': 'PROS', 'sp-y2': 'leprosy'}
+    _client, w = _ws(store)
+    _replace(w, 'pros', 'PROSP', case_sensitive=False)
+    [row] = w.plan_payload()['changes']
+    got = [(t['from'], t['notes']) for t in row['rule'][rules.TRANSITIONS]]
+    assert got == [('leprosy', ['inside a word', 'other case']), ('PROSP:EXP', ['inside a word']),
+                   ('PROS', [])]

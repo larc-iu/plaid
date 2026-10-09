@@ -315,56 +315,68 @@ def _letter(ch: str) -> bool:
     return unicodedata.category(ch)[0] in 'LM'
 
 
-def surprises(pattern: str, regex: bool, whole: bool, case_sensitive: bool) -> Callable[[str], List[str]]:
-    """What is unexpected about a value a replacement matches, as notes
-    (:data:`INSIDE_WORD`, :data:`OTHER_CASE`): a match with a letter on both
-    sides of one of its edges is part of a longer word (``PROS`` in
-    ``PROSP:EXP`` or ``leprosy``), and a match the same pattern does not find
-    with case kept is found only by ignoring case (``sg`` for ``SG``). The
-    pattern is read as the server reads it (:mod:`.java_regex`)."""
+def surprises(pattern: str, regex: bool, whole: bool, case_sensitive: bool):
+    """What a replacement finds in a value, for :func:`transitions` to note
+    what is unexpected about it: ``(inside a longer word, the texts it
+    matched, whether case was ignored)``. A match with a letter on both sides
+    of one of its edges is part of a longer word (``PROS`` in ``PROSP:EXP``
+    or ``leprosy``). The pattern is read as the server reads it
+    (:mod:`.java_regex`)."""
     from .java_regex import PatternError, compile_pair, nfc
     try:
         _, found = compile_pair(pattern, literal=not regex, case_insensitive=not case_sensitive, whole=whole)
-        _, exact = compile_pair(pattern, literal=not regex, case_insensitive=False, whole=whole)
     except PatternError:
-        return lambda value: []
+        return lambda value: (False, [], not case_sensitive)
 
-    def notes(value: str) -> List[str]:
+    def seen(value: str):
         n = nfc(value or '')
-        out: List[str] = []
+        inside, texts = False, []
         for m in found.finditer(n):
             a, b = m.span()
-            if (not whole and b > a and INSIDE_WORD not in out
+            texts.append(m.group(0))
+            if (not whole and b > a
                     and ((0 < a < len(n) and _letter(n[a - 1]) and _letter(n[a]))
                          or (0 < b < len(n) and _letter(n[b - 1]) and _letter(n[b])))):
-                out.append(INSIDE_WORD)
-            if not case_sensitive and OTHER_CASE not in out:
-                e = exact.match(n, a)
-                if e is None or e.end() != b:
-                    out.append(OTHER_CASE)
-        return out
-    return notes
+                inside = True
+        return inside, texts, not case_sensitive
+    return seen
 
 
 def transitions(found: List[Dict[str, Any]], pair_of: Callable[[Dict[str, Any]], Tuple[str, str]],
-                notes: Callable[[str], List[str]] = lambda v: [],
-                cap: int = TRANSITIONS_MAX) -> Tuple[List[Dict[str, Any]], List[int]]:
+                seen=None, cap: int = TRANSITIONS_MAX) -> Tuple[List[Dict[str, Any]], List[int]]:
     """(every distinct change a rule makes, ``[{from, to, count, notes}]``, up
     to ``cap``, and ``[distinct changes left out, values they hold]``). A
-    change with notes (:func:`surprises`) comes first, then the rest, each
-    most frequent first, so a rewrite nobody meant is never hidden behind a
-    thousand that look alike. A match inside a word is noted only when the
-    rule's other changes are not all so."""
+    change with notes comes first, then the rest, each most frequent first, so
+    a rewrite nobody meant is never hidden behind a thousand that look alike.
+
+    The notes (``seen``, :func:`surprises`) mark the exceptions to how the
+    rule mostly matches: :data:`INSIDE_WORD` when the match is part of a
+    longer word and the rule's other changes are not all so (a letter
+    respelled matches inside words everywhere), and, with case ignored,
+    :data:`OTHER_CASE` when the text it matched differs only in case from the
+    spelling most of its matches have (``pros`` in ``leprosy`` beside a
+    thousand ``PROS``)."""
     counts: Dict[Tuple[str, str], int] = {}
     for o in found:
         pair = pair_of(o)
         counts[pair] = counts.get(pair, 0) + 1
-    rows = [{'from': a, 'to': b, 'count': n, 'notes': notes(a)} for (a, b), n in counts.items()]
-    # A rule that matches inside words everywhere (a letter respelled) is
-    # meant to: only the exceptions to how it mostly matches are noted.
-    if rows and all(INSIDE_WORD in r['notes'] for r in rows):
-        for r in rows:
-            r['notes'] = [x for x in r['notes'] if x != INSIDE_WORD]
+    looks = {pair: (seen(pair[0]) if seen else (False, [], False)) for pair in counts}
+    # the spelling most matches have, by the values they are in
+    spelled: Dict[str, int] = {}
+    for pair, (_, texts, _blind) in looks.items():
+        for t in set(texts):
+            spelled[t] = spelled.get(t, 0) + counts[pair]
+    usual = max(spelled.items(), key=lambda kv: (kv[1], kv[0]))[0] if spelled else None
+    all_inside = bool(looks) and all(inside for inside, _, _ in looks.values())
+    rows = []
+    for (a, b), n in counts.items():
+        inside, texts, blind = looks[(a, b)]
+        notes = []
+        if inside and not all_inside:
+            notes.append(INSIDE_WORD)
+        if blind and usual is not None and any(t != usual and t.casefold() == usual.casefold() for t in texts):
+            notes.append(OTHER_CASE)
+        rows.append({'from': a, 'to': b, 'count': n, 'notes': notes})
     rows.sort(key=lambda r: (not r['notes'], -r['count'], r['from'], r['to']))
     rest = rows[cap:]
     return rows[:cap], [len(rest), sum(r['count'] for r in rest)]

@@ -506,10 +506,10 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
         out[CARD][rules.PARTIAL] = rules.partial_line(op['partial'], unit)
     if op.get('tool') in _TRANSITION_TOOLS:
         a = op.get('args') or {}
-        notes = (rules.surprises(a.get('pattern') or '', bool(a.get('regex')), bool(a.get('whole')),
-                                 bool(a.get('case_sensitive')))
-                 if op.get('tool') == 'replace_in_field' else (lambda v: []))
-        rows, more = rules.transitions(kept, lambda o: (_was(ws, o), _becomes(o)), notes)
+        seen = (rules.surprises(a.get('pattern') or '', bool(a.get('regex')), bool(a.get('whole')),
+                                bool(a.get('case_sensitive')))
+                if op.get('tool') == 'replace_in_field' else None)
+        rows, more = rules.transitions(kept, lambda o: (_was(ws, o), _becomes(o)), seen)
         out[CARD][rules.TRANSITIONS] = rows
         out[CARD][rules.TRANSITIONS_MORE] = more
     return out
