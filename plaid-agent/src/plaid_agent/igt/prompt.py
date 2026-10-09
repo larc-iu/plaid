@@ -32,9 +32,10 @@ proposing glosses, and follow the conventions already in the data (gloss abbrevi
 types, orthography).
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the \
 document. Numbers restart in every document and sentence.
-- The open document is a whole text, not a sentence. A request that names a word or morpheme by its place \
-("the third word") or by a form the text holds more than once, and names no sentence, does not say which one \
-is meant: ask which sentence, and plan nothing, rather than picking one.
+- The open document is a whole text, not a sentence, and the user is not pointing at any sentence in it. A \
+request that names a word or morpheme by its place ("the third word") or by a form the text holds more than \
+once, and names no sentence, does NOT mean sentence 1: ask which sentence they mean, and plan nothing, rather \
+than picking one.
 {find_first}
 {stage_now}
 {user_values}

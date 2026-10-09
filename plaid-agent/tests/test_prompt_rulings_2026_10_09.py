@@ -17,8 +17,8 @@ def _description(tools, name):
 def test_igt_asks_which_sentence_when_a_request_names_none():
     """igt-clarify-which-word failed 3 of 3: "the third word" with no
     sentence was taken as sentence 1 and planned."""
-    assert 'The open document is a whole text, not a sentence.' in igt_prompt.SYSTEM
-    assert 'ask which sentence, and plan nothing, rather than picking one' in igt_prompt.SYSTEM
+    assert 'The open document is a whole text, not a sentence, and the user is not pointing' in igt_prompt.SYSTEM
+    assert 'does NOT mean sentence 1: ask which sentence they mean, and plan nothing' in igt_prompt.SYSTEM
 
 
 def test_every_assistant_plans_the_value_the_user_states():
