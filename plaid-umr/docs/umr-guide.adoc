@@ -525,14 +525,19 @@ An out-of-date plan can still be discarded, which removes its buttons and leaves
 Ask again to have it planned on the current text.
 Approving a plan on a document that another run (Draft, a parser) is writing to is refused with nothing written. Approve again once the run has finished.
 A plan approved in two tabs at once is applied once. The other tab shows it applied when the first has finished.
+A plan being applied in another tab cannot be discarded. The card shows it applying.
 
 A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
 Ask the assistant to finish it.
+A plan whose applying was cut off reads **Not finished**, with **Apply again**, which finishes it.
+When some of its changes may already be written, the card says so and offers no **Discard**. History can undo what was written.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 If the server restarts while the assistant works, the answer appears when it is ready, and **Retry** then shows it rather than asking again.
+When the assistant itself is restarted, an open tab finds it again within 15 seconds.
 A message sent while a turn asked in another tab is still under way in the same conversation is not sent.
 It stays in the message box, and that turn's answer is shown when it comes.
+The same holds while a plan is being applied, and the line above the message box reads `The changes are being applied.`
 **Stop** ends a turn early, even while the model is still working on its answer.
 The conversation then reads `You stopped this turn.` with **Retry**.
 A turn the model does not finish ends with the reason and **Retry**.
@@ -542,6 +547,7 @@ The Markdown names the files attached to each question and the PDFs a reply fetc
 **Download as web page** saves the conversation as one HTML file that looks like the Assistant tab and opens in any browser, offline. It shows a table the assistant made when it is small, names every other file with its size, and leaves out the cited examples, tool outputs and made tables from a project you can no longer open, saying so at the top.
 Your server's administrator can read them.
 Deleting a conversation asks first, and cannot be undone. What its plans applied stays.
+A conversation deleted in another tab or on another device says so when you send, approve or discard in it, and **New conversation** there takes your message along.
 
 == Other projects
 
