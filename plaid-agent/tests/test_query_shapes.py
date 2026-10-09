@@ -64,3 +64,18 @@ def test_a_well_formed_query_is_unchanged():
                                          ['seq', {'layer': 'Word'}, ['span', {'layer': 'G'}, 'as', '?a']]],
          'return': 'entities', 'limit': 5}
     assert parse_query(q) == q
+
+
+def test_tuples_built_in_code_read_as_lists():
+    # run_code hands query() a tuple as a tuple, and the wire always took one.
+    q = parse_query({'find': ('?w',), 'where': [('token', '?w', {'layer': 'Word'}),
+                                                ('or', (('=', '?w.value', 'a'),), [{'token': '?w'}])]})
+    assert q == {'find': ['?w'], 'where': [['token', '?w', {'layer': 'Word'}],
+                                           ['or', [['=', '?w.value', 'a']], [['token', '?w', {}]]]]}
+
+
+def test_an_or_written_with_a_colon_is_checked_as_an_or():
+    with pytest.raises(QueryRefused, match='"or" takes groups'):
+        parse_query({'find': ['?e'], 'where': [[':or', ['=', '?e.value', 'A']]]})
+    q = parse_query({'find': ['?e'], 'where': [[':not', {'span': '?e', 'value': 'A'}]]})
+    assert q['where'] == [[':not', ['span', '?e', {'value': 'A'}]]]

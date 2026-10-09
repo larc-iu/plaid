@@ -125,6 +125,9 @@ def parse_query(query: Any) -> Dict[str, Any]:
             query = json.loads(query)
         except json.JSONDecodeError as e:
             raise QueryRefused(f'query must be a JSON object ({e})')
+    # A query built in run_code may hold tuples, which the wire has always
+    # carried as lists. The shape checks below read them as lists too.
+    query = _lists(query)
     if not isinstance(query, dict) or 'where' not in query:
         raise QueryRefused('query must be an object with at least "where" (call query_help for '
                            'the language)')
@@ -141,6 +144,14 @@ def parse_query(query: Any) -> Dict[str, Any]:
         query['find'] = _find(query['find'])
     query['where'] = _where(query['where'])
     return query
+
+
+def _lists(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return [_lists(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _lists(v) for k, v in value.items()}
+    return value
 
 
 # The entity clauses, whose second item is the variable they bind.
@@ -196,10 +207,11 @@ def _clause(clause: Any) -> Any:
         raise QueryRefused('Each "where" clause is a list that starts with its kind or operator: ' + CLAUSE_SHAPE
                            + '. Got ' + _shown(clause) + '.')
     op = clause[0]
+    head = op[1:] if op.startswith(':') else op  # the engine reads ":or" as "or"
     if op.startswith('?'):
         raise QueryRefused('A predicate puts its operator first: ["=", "?s.value", "x"], not ["?s.value", '
                            '"=", "x"]. Got ' + _shown(clause) + '.')
-    if op == 'or':
+    if head == 'or':
         groups = clause[1:]
         if not groups or not all(isinstance(g, list) and g and all(isinstance(c, (list, dict)) for c in g)
                                  for g in groups):
@@ -207,7 +219,7 @@ def _clause(clause: Any) -> Any:
                                '...]], e.g. ["or", [["=", "?g.value", "A"]], [["=", "?g.value", "B"]]]. Got '
                                + _shown(clause) + '.')
         return [op, *[[_clause(c) for c in g] for g in groups]]
-    if op == 'not':
+    if head == 'not':
         return [op, *[_clause(c) for c in clause[1:]]]
     return clause
 
