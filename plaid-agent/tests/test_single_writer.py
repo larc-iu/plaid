@@ -26,7 +26,7 @@ OTHER_TAB = 'tab-b'
 
 
 def _req(client, op, tab=TAB, conv='c1', **fields):
-    return {'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'conversation_id': conv,
+    return {'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'delegated_projects': ['p1'], 'conversation_id': conv,
             'tab': tab, 'op': op, **fields}
 
 
@@ -66,7 +66,7 @@ def test_a_request_with_no_op_is_from_an_old_page_and_is_refused_with_a_reload_l
     client = FakeClient()
     _seed_plan(client)
     helper = Helper(request_id='r9')
-    _service().process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1',
+    _service().process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'delegated_projects': ['p1'],
                                 'conversation_id': 'c1', 'approve': {'plan_id': PLAN1}}, helper)
     assert helper.errors == [STALE_PAGE] == ['This page is out of date. Reload it to keep going.']
     assert not client.payloads('spans.create')

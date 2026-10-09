@@ -56,7 +56,7 @@ def test_a_plan_approved_after_a_restart_on_another_model_names_the_one_that_pro
     svc.service_id = f'{spec["app"]}:assist:other-model'
     written = len(client.calls)
     helper = Helper(request_id='r9')
-    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
+    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'], 'delegated_projects': [spec['pid']],
                          'conversation_id': 'c1', 'op': 'approve', **{'plan_id': plan['id']}}, helper)
     assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
     client.calls[:] = client.calls[written:]
@@ -85,7 +85,7 @@ def test_a_plan_staged_before_turns_named_their_service_is_refused_with_a_messag
     svc.service_id = f'{spec["app"]}:assist:fake'
     written = len(client.calls)
     helper = Helper(request_id='r9')
-    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
+    svc.process_request({'op': 'send', 'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'], 'delegated_projects': [spec['pid']],
                          'conversation_id': 'c1', 'op': 'approve', **{'plan_id': plan['id']}}, helper)
     assert not helper.done
     [said] = helper.errors

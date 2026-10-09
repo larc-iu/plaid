@@ -71,7 +71,7 @@ def _request(client, **extra):
     approve = extra.pop('approve', None)
     op = ({'op': 'approve', **approve} if approve is not None
           else {'op': 'send', 'text': 'Which words are unglossed?'})
-    return {'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'conversation_id': 'c1',
+    return {'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'delegated_projects': ['p1'], 'conversation_id': 'c1',
             'tab': 't1', **op, **extra}
 
 
@@ -267,7 +267,7 @@ def test_a_send_to_a_conversation_that_is_not_there_is_refused_as_deleted():
     assert helper.done == [{'kind': 'refused', 'why': 'gone', 'message': 'This conversation was deleted.'}]
     assert not client.user_data.store, 'nothing written'
     helper = Helper()
-    _service().process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1'}, helper)
+    _service().process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1', 'delegated_projects': ['p1']}, helper)
     assert helper.errors == ['Missing conversation_id']
 
 

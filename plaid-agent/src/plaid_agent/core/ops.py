@@ -46,6 +46,9 @@ RECORD_PROTOCOL = 2
 #: no op. The page writes it as the turn's error line, or shows it as a toast.
 STALE_PAGE = 'This page is out of date. Reload it to keep going.'
 
+#: A request whose data names a project other than the one it was posted to.
+ANOTHER_PROJECT = 'This assistant was asked about another project.'
+
 CONVERSATION_FULL = 'This conversation is full, so the message was not sent. Start a new conversation to go on.'
 MESSAGE_TOO_LONG = ('This message is too long for the room left in this conversation, so it was not sent. '
                     'Shorten it or start a new conversation.')

@@ -274,7 +274,7 @@ def test_a_turn_with_no_other_projects_is_todays_turn(app, monkeypatch):
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
     svc = _svc(app)
-    svc.process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
+    svc.process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid, 'delegated_projects': [pid],
                          'conversation_id': 'c1'}, _Helper())
     assert seen['reach'] is None and seen['transcript'][-1]['content'] == 'Compare.'
     project = svc.load_project(c, pid)
@@ -300,7 +300,7 @@ def test_a_projects_list_that_names_no_other_project_is_todays_turn(app, project
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
     svc = _svc(app)
-    svc.process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
+    svc.process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid, 'delegated_projects': [pid],
                          'conversation_id': 'c1'}, _Helper())
     assert seen['reach'] is None and seen['transcript'][-1]['content'] == 'Compare.'
     assert seen['system'] == svc.system_prompt(svc.load_project(c, pid), web=False)

@@ -13,7 +13,8 @@ reads are limited to what they may read, approved edits are attributed to
 them in the audit log, and the record is theirs.
 
 Request data:
-    project_id       the project (a service instance may serve many)
+    project_id       the project, which must be the one the request was posted
+                     to (``delegated_projects[0]``, the turn's own project)
     conversation_id  the conversation
     tab              the tab that sent it, which must hold the conversation
                      (`ops.hold_free`) for an op that acts inside it
@@ -84,7 +85,7 @@ from .conversation import (DISCARDED_NOTE, MESSAGE_ROOM, ConversationStore, Miss
                            prune, record_budget, rewind_for_retry, settle_plan, title_from, turn_ending,
                            user_item, value_cap)
 from .files import store_parts, sweep_orphan_files
-from .ops import (CONVERSATION_FULL, MESSAGE_TOO_LONG, OPS, RECORD_PROTOCOL, STALE_PAGE, about_of, busy_why,
+from .ops import (ANOTHER_PROJECT, CONVERSATION_FULL, MESSAGE_TOO_LONG, OPS, RECORD_PROTOCOL, STALE_PAGE, about_of, busy_why,
                   hold_free, refused)
 from . import rules
 from .opkind import ROW
@@ -448,11 +449,20 @@ class BaseAssistantService(BaseService):
 
     def process_request(self, request_data: dict, response_helper) -> None:
         client = request_data.get('requester_client')
-        project_id = request_data.get('project_id')
+        # The turn works in the project the request was posted to, which core
+        # puts first among the projects the requester's token reaches. A
+        # request whose data names another project is refused, so a turn never
+        # runs in a project this assistant was not started on.
+        scope = request_data.get('delegated_projects') or ()
+        project_id = scope[0] if scope else None
         user_id = request_data.get('requester_id')
         conv_id = request_data.get('conversation_id')
         if client is None or not project_id or not user_id:
             response_helper.error('Missing project_id or requester credentials')
+            return
+        named = request_data.get('project_id')
+        if named and named != project_id:
+            response_helper.error(ANOTHER_PROJECT)
             return
         if not conv_id:
             response_helper.error('Missing conversation_id')
