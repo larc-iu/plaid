@@ -79,8 +79,11 @@ PARSE_SILENCE_S = 10 * 60
 class Context:
     """What one run of the executor carries between its passes."""
 
-    def __init__(self, client, ops, stamps: Stamps, counts: Counter, notes: List[str], b: TrackingBatcher):
+    def __init__(self, client, ops, stamps: Stamps, counts: Counter, notes: List[str], b: TrackingBatcher,
+                 project=None):
         self.client = client
+        # The project the plan writes in, which a guideline is created in.
+        self.project = project
         self.ops = ops
         self.stamps = stamps
         self.stamp = stamps.stamp
@@ -689,7 +692,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, counts=counts,
                                                   notes=notes, stamps=stamps, tracker=tracker,
-                                                  ids=ids))
+                                                  ids=ids, project=project))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
@@ -760,14 +763,15 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
-             ids: Optional[Minter] = None) -> Dict[str, int]:
+             ids: Optional[Minter] = None, project=None) -> Dict[str, int]:
     # An unknown plan operation kind, one that should have been resolved away,
     # or one staged for a pass below that does not exist refuses before any
     # pass runs rather than being written as nothing under a label saying it
     # was applied.
     ok.check_applicable(KIND, ops, STAGES, first=0)
     with client.operation(label):
-        ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker, ids=ids))
+        ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker, ids=ids),
+                      project=project)
         b = ctx.b
         b.expect(ops)
 
