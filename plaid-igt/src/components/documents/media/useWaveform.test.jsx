@@ -19,7 +19,7 @@ const { notifyWarning } = vi.hoisted(() => ({ notifyWarning: vi.fn() }));
 vi.mock('@/utils/feedback', () => ({ notifyWarning }));
 vi.mock('./waveform.js', async (importOriginal) => ({
   ...(await importOriginal()),
-  peaksOf: (channels) => ({ peaks: channels[0], level: 1 }),
+  peaksOfInSlices: async (channels) => ({ peaks: channels[0], level: 1 }),
   barsFor: ({ peaks }) => [...peaks].map((h, i) => ({ x: i, y: 0, width: 1, height: h })),
 }));
 

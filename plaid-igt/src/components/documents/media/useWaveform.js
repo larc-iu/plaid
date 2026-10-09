@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyWarning } from '@/utils/feedback';
 import { decodeShared } from '../../../domain/vad/sharedDecode.js';
-import { MAX_CANVAS_WIDTH, TIMELINE_HEIGHT, barsFor, peaksOf } from './waveform.js';
+import { MAX_CANVAS_WIDTH, TIMELINE_HEIGHT, barsFor, peaksOfInSlices } from './waveform.js';
 
 // Drawing the timeline's waveform: decode once, redraw the stretch on screen.
 //
@@ -78,7 +78,7 @@ export function useWaveform({ mediaBlob, mediaKey, duration }) {
     }
     (async () => {
       try {
-        const envelope = peaksOf(await decodeForEnvelope(mediaBlob), duration);
+        const envelope = await peaksOfInSlices(await decodeForEnvelope(mediaBlob), duration);
         // A decode the recording has moved on from is kept nowhere.
         if (cancelled) return;
         if (key) rememberEnvelope(key, envelope);

@@ -46,15 +46,13 @@ const MIN_NORMALIZE_LEVEL = 0.005;
  * @param {Float32Array[]} channels  one array of samples per channel
  * @returns {{peaks: Float32Array, level: number}}
  */
-export const peaksOf = (channels, duration) => {
-  const buckets = Math.max(
-    1,
-    Math.min(MAX_PEAK_BUCKETS, Math.ceil((duration || 1) * PEAK_BUCKETS_PER_SECOND)),
-  );
-  const peaks = new Float32Array(buckets);
-  const length = Math.max(0, ...channels.map((c) => c.length));
-  const per = length / buckets;
-  for (let i = 0; i < buckets; i += 1) {
+const bucketCount = (duration) =>
+  Math.max(1, Math.min(MAX_PEAK_BUCKETS, Math.ceil((duration || 1) * PEAK_BUCKETS_PER_SECOND)));
+
+// Buckets `from` to `to` of the envelope, written into `peaks`.
+const fillPeaks = (peaks, channels, length, from, to) => {
+  const per = length / peaks.length;
+  for (let i = from; i < to; i += 1) {
     const start = Math.floor(i * per);
     const end = Math.min(length, Math.max(start + 1, Math.floor((i + 1) * per)));
     let peak = 0;
@@ -66,11 +64,49 @@ export const peaksOf = (channels, duration) => {
     }
     peaks[i] = peak;
   }
-  const sorted = Float32Array.from(peaks).sort();
-  const level =
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * PEAK_NORMALIZE_PERCENTILE))];
-  return { peaks, level: Math.max(level, MIN_NORMALIZE_LEVEL) };
 };
+
+// Peaks the level is read from: all of them for a short recording, an even
+// sample of a long one. An hour's million were sorted whole, a tenth of a
+// second with the page frozen, for a percentile a sample gives as well.
+const LEVEL_SAMPLE = 50_000;
+const levelOf = (peaks) => {
+  const step = Math.max(1, Math.floor(peaks.length / LEVEL_SAMPLE));
+  const sample = new Float32Array(Math.ceil(peaks.length / step));
+  for (let i = 0, k = 0; i < peaks.length; i += step, k += 1) sample[k] = peaks[i];
+  sample.sort();
+  const level =
+    sample[Math.min(sample.length - 1, Math.floor(sample.length * PEAK_NORMALIZE_PERCENTILE))];
+  return Math.max(level, MIN_NORMALIZE_LEVEL);
+};
+
+export const peaksOf = (channels, duration) => {
+  const peaks = new Float32Array(bucketCount(duration));
+  const length = Math.max(0, ...channels.map((c) => c.length));
+  fillPeaks(peaks, channels, length, 0, peaks.length);
+  return { peaks, level: levelOf(peaks) };
+};
+
+// Buckets reduced between two looks at the page: about a hundredth of a
+// second of work on a laptop.
+const BUCKETS_PER_SLICE = 20_000;
+
+/**
+ * peaksOf, a slice at a time, handing the page back between slices. A long
+ * recording is twenty million samples, and read in one go they froze the tab
+ * for most of a second as it opened.
+ */
+export const peaksOfInSlices = async (channels, duration, { pause = nextTask } = {}) => {
+  const peaks = new Float32Array(bucketCount(duration));
+  const length = Math.max(0, ...channels.map((c) => c.length));
+  for (let from = 0; from < peaks.length; from += BUCKETS_PER_SLICE) {
+    fillPeaks(peaks, channels, length, from, Math.min(peaks.length, from + BUCKETS_PER_SLICE));
+    if (from + BUCKETS_PER_SLICE < peaks.length) await pause();
+  }
+  return { peaks, level: levelOf(peaks) };
+};
+
+const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
  * The bars for one window: each is `{x, y, width, height}` in the drawn

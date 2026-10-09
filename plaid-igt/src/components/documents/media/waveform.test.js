@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { barsFor, peaksOf } from './waveform.js';
+import { barsFor, peaksOf, peaksOfInSlices } from './waveform.js';
 
 const SR = 16000;
 // Three seconds: silence, a loud second, silence.
@@ -112,5 +112,25 @@ describe('barsFor', () => {
     expect(barsFor({ peaks, level, left: 0, width: 10, timelineWidth: 0, drawWidth: 10 })).toEqual(
       [],
     );
+  });
+});
+
+describe('peaksOfInSlices', () => {
+  it('reads what peaksOf reads, handing the page back between slices', async () => {
+    // A minute at 16 kHz is 30,000 buckets: two slices.
+    const samples = Float32Array.from(
+      { length: 60 * 16000 },
+      (_, i) => Math.sin(i / 7) * ((i % 9973) / 9973),
+    );
+    let pauses = 0;
+    const sliced = await peaksOfInSlices([samples], 60, {
+      pause: async () => {
+        pauses += 1;
+      },
+    });
+    const whole = peaksOf([samples], 60);
+    expect(pauses).toBe(1);
+    expect(sliced.level).toBe(whole.level);
+    expect(Array.from(sliced.peaks)).toEqual(Array.from(whole.peaks));
   });
 });

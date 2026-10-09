@@ -106,8 +106,22 @@ const unitStepOf = (e) => (keys.is('media.prevRow', e) ? -1 : keys.is('media.nex
 
 // A textarea that grows with its content, so a long utterance is never a
 // one-line slot you scroll inside.
+//
+// The browser sizes the box itself where it can (`field-sizing: content`, the
+// class on each box). Where it cannot, the box is measured, which is a layout
+// of the whole page: a recording with a thousand speech-detection proposals
+// measured a thousand empty boxes on opening the tab, a second or more of
+// nothing on screen. An empty box is one line and is not measured.
+const SIZES_ITSELF =
+  typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
+    ? CSS.supports('field-sizing', 'content')
+    : false;
 const autoGrow = (el) => {
-  if (!el) return;
+  if (!el || SIZES_ITSELF) return;
+  if (!el.value) {
+    el.style.height = '';
+    return;
+  }
   el.style.height = 'auto';
   el.style.height = `${el.scrollHeight}px`;
 };
@@ -408,7 +422,7 @@ const SegmentRow = memo(function SegmentRow({
             aria-label={`Segment ${index + 1} text`}
             aria-describedby={conflict ? noteId : undefined}
             className={cn(
-              'min-h-8 resize-none py-1.5 font-text text-sm',
+              'min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]',
               conflict && 'border-amber-500 focus-visible:ring-amber-500',
             )}
             onChange={(e) => {
@@ -651,7 +665,7 @@ const ProposalRow = memo(function ProposalRow({
         placeholder="Proposed segment"
         compose
         aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, text`}
-        className="min-h-8 resize-none py-1.5 font-text text-sm"
+        className="min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]"
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={commit}
@@ -799,7 +813,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
           placeholder="New segment"
           compose
           aria-label="New segment text"
-          className="min-h-8 resize-none py-1.5 font-text text-sm"
+          className="min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
         />
