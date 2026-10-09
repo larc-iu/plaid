@@ -446,7 +446,8 @@
 
 (deftest text-combining-mark-typed-at-a-words-end-joins-the-word
   ;; An accent typed as a separate mark after `cafe` makes the word `café`,
-  ;; through a whole body and through an explicit insert (ruled 2026-09-27).
+  ;; through a whole body and through an explicit insert (ruled 2026-09-27),
+  ;; stored composed as one character (Luke, 2026-10-09).
   (let [proj (create-test-project admin-request "TextCombiningMarkProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -461,10 +462,10 @@
                    (assert-ok t)
                    ((juxt :token/begin :token/end :token/value) (:body t))))]
     (assert-ok (update-text admin-request text-id (str "cafe" acute " latte")))
-    (is (= [0 5 (str "cafe" acute)] (extent cafe)))
-    (is (= [6 11 "latte"] (extent latte)))
-    (assert-ok (update-text admin-request text-id [{:type "insert" :index 11 :value acute}]))
-    (is (= [6 12 (str "latte" acute)] (extent latte)))))
+    (is (= [0 4 "caf\u00e9"] (extent cafe)))
+    (is (= [5 10 "latte"] (extent latte)))
+    (assert-ok (update-text admin-request text-id [{:type "insert" :index 10 :value acute}]))
+    (is (= [5 10 "latt\u00e9"] (extent latte)))))
 
 (deftest text-body-letter-doubled-at-a-sentence-start-in-a-save-with-another-edit
   ;; `tat! a. tat big` to `tot! aa. tat big` in one save: the diff puts the

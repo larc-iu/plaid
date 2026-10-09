@@ -4425,6 +4425,7 @@ export {
   cpSlicer,
   utf16ToCp,
   cpIndexOf,
+  composeText,
 } from "./codepoint.js";
 export { composeTextEdits, gapsToOps, applyTextOps } from "./textEdits.js";
 export {

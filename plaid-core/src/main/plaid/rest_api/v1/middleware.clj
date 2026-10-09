@@ -5,6 +5,7 @@
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
             [plaid.sql.operation-group :as og]
+            [plaid.util.canonical :as canonical]
             [taoensso.timbre :as log]
             [clojure.string :as str]
             [clojure.data.json :as json])
@@ -670,7 +671,7 @@
 
 (defn- raw-query-param
   "Pull the raw `<pname>=` value out of the request's query string
-  (URL-decoded), or nil if absent. Read from the raw query string — not
+  (URL-decoded and composed), or nil if absent. Read from the raw query string — not
   `:parameters` — because these audit params are not declared in route
   OpenAPI schemas, so reitit/malli request coercion (`:strip-extra-keys
   true` + closed schemas) drops them before middleware would see them. Same
@@ -687,9 +688,12 @@
               (when (and (pos? eq)
                          (= pname (str/lower-case (subs p 0 eq))))
                 (let [v (subs p (inc eq))]
-                  (try
-                    (java.net.URLDecoder/decode v "UTF-8")
-                    (catch IllegalArgumentException _ v))))))
+                  ;; composed, as every query parameter is (see
+                  ;; `compose-text`)
+                  (canonical/nfc
+                   (try
+                     (java.net.URLDecoder/decode v "UTF-8")
+                     (catch IllegalArgumentException _ v)))))))
           (str/split qs #"&"))))
 
 (defn- normalize-template-key
@@ -827,3 +831,52 @@
 
         :else
         (handler request)))))
+
+;; ============================================================
+;; Text is stored composed
+;; ============================================================
+
+(defn- password-key?
+  "A body key that holds a password, at any depth: a secret is compared as
+  it was typed, so it is never composed."
+  [k]
+  (boolean (re-find #"(?i)password" (if (keyword? k) (name k) (str k)))))
+
+(defn- compose-request
+  "`request` with every string of its body, every query parameter and every
+  path parameter composed (NFC), except the top-level body keys in `raw-keys` and any
+  password."
+  [request raw-keys]
+  (let [body (:body-params request)
+        body' (if (and (map? body) (seq raw-keys))
+                (let [kept (select-keys body raw-keys)]
+                  (merge (canonical/compose-data (apply dissoc body raw-keys) password-key?) kept))
+                (canonical/compose-data body password-key?))]
+    (cond-> request
+      (some? body) (assoc :body-params body')
+      (:query-params request) (update :query-params canonical/compose-data (constantly false))
+      ;; a config key, a user data key or a name can come by the path
+      (:path-params request) (update :path-params canonical/compose-data (constantly false)))))
+
+(def compose-text
+  "Core stores all text composed (Unicode NFC, Luke 2026-10-09). This
+  composes every string of a request's body, map keys included, and every
+  query and path parameter before the route reads them, so a name, a value, a form,
+  metadata, a config, a comment or a guideline is stored composed whatever
+  route or batch it came by. A batch re-dispatches each of its operations
+  through the router, so each operation is composed by its own route's rule.
+
+  A route's data `:plaid/raw-text` says what is left as sent: `true` for
+  the whole request (a batch, whose operations are composed one by one,
+  a query, private user data, client events, service messages), or a set of
+  top-level body keys (a text's `body` and `edits`, which
+  `plaid.sql.text` composes with its token offsets). A password is never
+  composed. Runs after the body is decoded and before request coercion."
+  {:name ::compose-text
+   :compile (fn [route-data _]
+              (let [raw (:plaid/raw-text route-data)]
+                (when-not (true? raw)
+                  (let [raw-keys (if (set? raw) raw #{})]
+                    (fn [handler]
+                      (fn [request]
+                        (handler (compose-request request raw-keys))))))))})

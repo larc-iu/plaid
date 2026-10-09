@@ -16,6 +16,7 @@
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.token :as token]
+            [plaid.util.canonical :as canonical]
             [plaid.util.codepoint :as cp]
             [plaid.util.digest :as digest]
             [plaid.util.storable-text :as storable])
@@ -131,7 +132,9 @@
         (try
           (crud/insert! tx :texts
                         {:id new-id
-                         :body body-str
+                         ;; stored composed, as all text is: no token is on
+                         ;; it yet
+                         :body (canonical/nfc body-str)
                          :document_id document
                          :text_layer_id layer})
           (catch Exception e
@@ -173,7 +176,11 @@
       (throw (ex-info text-changed {:code 409 :id eid :text-changed true})))
     (let [old-body (:body text-row)
           edits (when (map? change) (vec (:edits change)))
-          new-body-or-ops (if (map? change) edits change)
+          ;; A whole new body is composed before it is diffed, so a body sent
+          ;; decomposed differs from the stored one only where it was changed.
+          new-body-or-ops (cond (map? change) edits
+                                (string? change) (canonical/nfc change)
+                                :else change)
           text-map (row->text text-row)
           token-rows (psc/q db {:select [:*]
                                 :from [:tokens]
@@ -203,22 +210,33 @@
                                layer-rows))
           opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
-          {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads made :made}
+          {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}
           (cond
             edits (ta/plain-edits old-body tokens edits partitioning deciders opts)
             (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops tokens partitioning deciders opts)
             :else (ta/apply-text-edits (vec new-body-or-ops) text-map tokens))
-          new-body (:text/body new-text)
+          sent-body (:text/body new-text)
           ;; The steps above only move edits between equivalent places, so
           ;; a diffed body comes out as sent, and edits as they make the body
           ;; applied in turn. Should one of them ever get that wrong, the
           ;; save fails rather than store a body nobody typed.
-          _ (when (or (and (string? new-body-or-ops) (not= new-body new-body-or-ops))
-                      (and edits (not= new-body (ta/edit-ops-body edits old-body))))
+          _ (when (or (and (string? new-body-or-ops) (not= sent-body new-body-or-ops))
+                      (and edits (not= sent-body (ta/edit-ops-body edits old-body))))
               (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
           ;; Checked on the result, so explicit ops' inserted text is
           ;; covered as well as a whole new body.
-          _ (storable/assert-storable! "Text body" new-body)
+          _ (storable/assert-storable! "Text body" sent-body)
+          ;; The body is stored composed. Text an edit inserted that composes
+          ;; with a letter beside it becomes one character with it, and a
+          ;; token edge between them moves to after that character, so it
+          ;; stays with the token that held the letter (see
+          ;; `canonical/compose`). Every token's offsets go through the same
+          ;; map, which keeps their order, so nothing is refused for it.
+          {new-body :text at :at} (canonical/compose sent-body)
+          move (fn [t] (-> t (update :token/begin at) (update :token/end at)))
+          new-tokens (mapv move sent-tokens)
+          heads (mapv move sent-heads)
+          made (mapv move sent-made)
           deleted-set (set deleted-ids)]
       {:new-body new-body
        ;; Code-point length: feeds compensate-partition-layers! /

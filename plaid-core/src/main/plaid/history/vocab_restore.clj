@@ -24,6 +24,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.util.canonical :as canonical]
             [plaid.util.storable-text :as storable]))
 
 (defn- meta-of [row] (or (:metadata row) {}))
@@ -33,7 +34,9 @@
   [db vocab-id item-id ts]
   (when (nil? (psc/fetch-by-id db :vocab_layers vocab-id))
     (throw (ex-info (psc/err-msg-not-found "Vocab layer" vocab-id) {:code 404 :id vocab-id})))
-  (or (hread/vocab-item-row-at db vocab-id item-id ts)
+  (or (some-> (hread/vocab-item-row-at db vocab-id item-id ts)
+              ;; composed, as every write stores text
+              (canonical/compose-data (constantly false)))
       (throw (ex-info "The entry did not exist at that time." {:code 400 :id item-id}))))
 
 (defn- plan

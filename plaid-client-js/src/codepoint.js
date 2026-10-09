@@ -71,3 +71,62 @@ export function cpIndexOf(s, sub, fromCp = 0) {
   const u = s.indexOf(sub, cpToUtf16(s, fromCp));
   return u < 0 ? -1 : utf16ToCp(s, u);
 }
+
+const MARK = /^\p{M}$/u;
+
+/**
+ * `s` composed (Unicode NFC), as the server stores every text, and where each
+ * code-point position of `s` goes in it: `{ text, at }`, `at(p)` for every p
+ * in [0, cpLength(s)]. Mirror of the server's `plaid.util.canonical/compose`,
+ * for an app that measures tokens on a body it is about to send: the server
+ * stores `text`, and a token measured at [b, e) on `s` is at [at(b), at(e)).
+ *
+ * `s` is cut before each code point that is not a mark, a piece joined to the
+ * one before when the two compose together (Hangul jamo, a vowel sign), and
+ * each piece composes on its own. A position inside a piece composing changed
+ * goes to that piece's composed end, so an edge between a letter and the mark
+ * that composes with it moves to after the composed character. `at` never
+ * reverses two positions.
+ */
+export function composeText(s) {
+  const text0 = s ?? '';
+  if (text0.normalize('NFC') === text0) return { text: text0, at: (p) => p };
+  const cps = [...text0];
+  const n = cps.length;
+  const pieces = [];
+  let start = 0;
+  for (let i = 1; i <= n; i += 1) {
+    if (i < n && MARK.test(cps[i])) continue;
+    const last = pieces[pieces.length - 1];
+    if (last && cps[start].codePointAt(0) >= 0x300) {
+      const a = cps.slice(last[0], last[1]).join('');
+      const b = cps.slice(start, i).join('');
+      if ((a + b).normalize('NFC') !== a.normalize('NFC') + b.normalize('NFC')) {
+        last[1] = i;
+        start = i;
+        continue;
+      }
+    }
+    pieces.push([start, i]);
+    start = i;
+  }
+  const at = new Int32Array(n + 1);
+  let text = '';
+  let out = 0;
+  for (const [b, e] of pieces) {
+    const src = cps.slice(b, e).join('');
+    const c = src.normalize('NFC');
+    const len = [...c].length;
+    text += c;
+    if (c === src) {
+      for (let i = b; i < e; i += 1) at[i] = out + (i - b);
+    } else {
+      at[b] = out;
+      for (let i = b + 1; i < e; i += 1) at[i] = out + len;
+    }
+    out += len;
+  }
+  at[n] = out;
+  if (text !== text0.normalize('NFC')) throw new Error('The text could not be composed.');
+  return { text, at: (p) => at[p] };
+}

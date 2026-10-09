@@ -50,6 +50,7 @@
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :refer [submit-operation!]]
+            [plaid.util.canonical :as canonical]
             [taoensso.timbre :as log])
   (:import (clojure.lang ExceptionInfo)))
 
@@ -105,6 +106,45 @@
                      vec)]
     [(assoc tgt :texts texts :tokens tokens :spans spans :relations relations :vocab-links links)
      skipped]))
+
+;; ============================================================
+;; Composed, as all stored text is
+;; ============================================================
+
+(defn compose-json-text
+  "A JSON column's text (a span's or relation's value) with every string in
+  it composed, or `s` itself when nothing changes."
+  [s]
+  (if-not (string? s)
+    s
+    (let [v (try (psc/read-json s) (catch Exception _ ::unreadable))]
+      (if (= ::unreadable v)
+        s
+        (let [v' (canonical/compose-data v (constantly false))]
+          (if (identical? v v') s (psc/write-json v')))))))
+
+(defn- compose-meta [row]
+  (cond-> row
+    (map? (:metadata row)) (update :metadata canonical/compose-data (constantly false))))
+
+(defn- compose-target
+  "The rows of an earlier time composed, as every write stores text: each
+  body with the offsets of the tokens on it moved by `canonical/compose`,
+  values, metadata and the document's name. A time before the stored text
+  was composed comes back composed."
+  [tgt]
+  (let [composed (into {} (map (fn [t] [(:id t) (canonical/compose (:body t))])) (:texts tgt))
+        at-of (fn [text-id] (or (:at (get composed text-id)) identity))]
+    (-> tgt
+        (update :document #(-> % compose-meta (update :name canonical/nfc)))
+        (assoc :texts (mapv (fn [t] (compose-meta (assoc t :body (:text (get composed (:id t))))))
+                            (:texts tgt)))
+        (assoc :tokens (mapv (fn [t] (let [at (at-of (:text_id t))]
+                                       (-> t compose-meta (update :begin at) (update :end_ at))))
+                             (:tokens tgt)))
+        (assoc :spans (mapv #(-> % compose-meta (update :value compose-json-text)) (:spans tgt)))
+        (assoc :relations (mapv #(-> % compose-meta (update :value compose-json-text)) (:relations tgt)))
+        (assoc :vocab-links (mapv compose-meta (:vocab-links tgt))))))
 
 ;; ============================================================
 ;; The diff
@@ -362,7 +402,7 @@
 (defn- build
   "Target (pruned), current, plan and skips, from one connection."
   [db doc-id ts]
-  (let [[tgt skipped] (prune-target db (target-rows! db doc-id ts))
+  (let [[tgt skipped] (prune-target db (compose-target (target-rows! db doc-id ts)))
         cur (drows/read-rows db doc-id)
         p (assoc (plan tgt cur) :document-metadata (meta-of (:document tgt)))]
     {:plan p :current cur :skipped skipped :summary (summarize p skipped)}))

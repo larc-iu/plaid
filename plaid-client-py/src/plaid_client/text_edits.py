@@ -19,6 +19,7 @@ keystrokes came, which is also how the server reads an edit.
 """
 
 import json
+import unicodedata
 
 
 def _is_int(x):
@@ -173,3 +174,62 @@ def apply_text_ops(body, ops):
         index = op['index']
         body = body[:index] + typed + body[index + delete:]
     return body
+
+
+def _nfc(s):
+    return unicodedata.normalize('NFC', s)
+
+
+def compose_text(s):
+    """``s`` composed (Unicode NFC), as the server stores every text, and where
+    each code-point position of ``s`` goes in it: ``(text, at)``, ``at(p)`` for
+    every p in [0, len(s)]. Mirror of the server's
+    ``plaid.util.canonical/compose``, for a script that measures tokens on a
+    body it is about to send: the server stores ``text``, and a token measured
+    at [b, e) on ``s`` is at [at(b), at(e)).
+
+    ``s`` is cut before each code point that is not a mark, a piece joined to
+    the one before when the two compose together (Hangul jamo, a vowel sign),
+    and each piece composes on its own. A position inside a piece composing
+    changed goes to that piece's composed end, so an edge between a letter and
+    the mark that composes with it moves to after the composed character.
+    ``at`` never reverses two positions.
+    """
+    s = s or ''
+    if unicodedata.is_normalized('NFC', s):
+        return s, (lambda p: p)
+    n = len(s)
+    pieces = []
+    start = 0
+    for i in range(1, n + 1):
+        if i < n and unicodedata.category(s[i]).startswith('M'):
+            continue
+        if pieces and ord(s[start]) >= 0x300:
+            last = pieces[-1]
+            a, b = s[last[0]:last[1]], s[start:i]
+            if _nfc(a + b) != _nfc(a) + _nfc(b):
+                last[1] = i
+                start = i
+                continue
+        pieces.append([start, i])
+        start = i
+    at = [0] * (n + 1)
+    out = []
+    pos = 0
+    for b, e in pieces:
+        src = s[b:e]
+        c = _nfc(src)
+        out.append(c)
+        if c == src:
+            for i in range(b, e):
+                at[i] = pos + (i - b)
+        else:
+            at[b] = pos
+            for i in range(b + 1, e):
+                at[i] = pos + len(c)
+        pos += len(c)
+    at[n] = pos
+    text = ''.join(out)
+    if text != _nfc(s):
+        raise ValueError('The text could not be composed.')
+    return text, (lambda p: at[p])

@@ -1732,6 +1732,13 @@ export function cpLength(s: string): number;
 export function cpSlice(s: string, begin: number, end?: number): string;
 /** Prebuilt slicer for many code-point slices of one string (spreads once). */
 export function cpSlicer(s: string): (begin: number, end?: number) => string;
+
+/**
+ * `s` composed (Unicode NFC), as the server stores every text, and where each
+ * code-point position of `s` goes in it: a token measured at [b, e) on `s` is
+ * at [at(b), at(e)) in `text`. Mirror of the server's composition.
+ */
+export function composeText(s: string): { text: string; at: (p: number) => number };
 /** UTF-16 index -> code-point index in `s`. */
 export function utf16ToCp(s: string, u: number): number;
 /** Like indexOf, but the result and `fromCp` are code-point indices; -1 if absent. */

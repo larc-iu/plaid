@@ -5,6 +5,7 @@
             [plaid.media.storage :as media]
             [plaid.sql.document :as doc]
             [plaid.sql.operation :as op]
+            [plaid.util.canonical :as canonical]
             [ring.util.response :as response]
             [taoensso.timbre :as log])
   (:import [java.io FileInputStream InputStream]))
@@ -278,7 +279,10 @@
                         (log/debug "Request keys:" (keys request))
                         (log/debug "File data:" file)
                         (if file
-                          (let [filename (:filename file)
+                          (let [;; composed, as all stored text is: it
+                                ;; names the upload in History, and macOS
+                                ;; sends file names decomposed
+                                filename (some-> (:filename file) canonical/nfc)
                                 temp-file (:tempfile file)]
                             (log/debug "File details - filename:" filename "temp-file exists:" (some? temp-file))
                             (if temp-file

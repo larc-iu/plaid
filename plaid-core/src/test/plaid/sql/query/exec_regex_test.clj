@@ -7,6 +7,7 @@
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
             [plaid.test-helpers :as h]
+            [plaid.sql.common :as psc]
             [plaid.sql.query.exec :as qe]
             [plaid.query.ast :as ast]
             [plaid.util.canonical :as canonical]))
@@ -23,6 +24,22 @@
   (let [r (qe/run db "admin@example.com" {"find" ["?s"] "where" where})]
     (set (map (fn [[sid]] (:span/value (:body (h/get-span admin-request sid))))
               (:results r)))))
+
+;; Core stores text composed since 2026-10-09, and the rows stored before stay
+;; as they were until the one-off conversion runs. These write a value or a
+;; body straight to the database, as a core before composing stored it.
+(defn- stored-before! [span-resp v]
+  (psc/execute! db {:update :spans :set {:value (psc/write-json v)} :where [:= :id (str (id span-resp))]})
+  span-resp)
+
+(defn- body-stored-before! [text-id body]
+  (psc/execute! db {:update :texts :set {:body body} :where [:= :id (str text-id)]}))
+
+(defn- placeholder
+  "A body as long as `s` in code points, for tokens made before `s` is put
+  in its place."
+  [^String s]
+  (apply str (map #(if (= 32 %) " " "x") (.toArray (.codePoints s)))))
 
 (defn- build!
   "A lemma span layer with values walking / walks / talked / ran / WALK."
@@ -193,7 +210,7 @@
         sl   (id (h/create-span-layer admin-request tokl "gloss"))
         doc  (h/create-test-document admin-request pid "d")
         text (id (h/create-text admin-request txtl doc "a b c"))
-        mk   (fn [b v] (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v))
+        mk   (fn [b v] (stored-before! (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v) v))
         nfd  "pʰá.PL"
         nfc  "pʰá"]
     (mk 0 nfd)
@@ -217,7 +234,7 @@
         sl   (id (h/create-span-layer admin-request tokl "gloss"))
         doc  (h/create-test-document admin-request pid "d")
         text (id (h/create-text admin-request txtl doc "a b c"))
-        mk   (fn [b v] (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v))
+        mk   (fn [b v] (stored-before! (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v) v))
         nfd  "p\u02b0a\u0301"
         nfc  "p\u02b0\u00e1"
         eng  "\u014b\u0301"]
@@ -242,9 +259,11 @@
         doc  (h/create-test-document admin-request pid "d")
         nfd  "p\u02b0a\u0301"
         nfc  "p\u02b0\u00e1"
-        text (id (h/create-text admin-request txtl doc (str nfd " " nfc " pa K xy")))
+        body (str nfd " " nfc " pa K xy")
+        text (id (h/create-text admin-request txtl doc (placeholder body)))
+        _    (body-stored-before! text body)
         tok  (fn [b e] (id (h/create-token admin-request tokl text b e)))
-        mk   (fn [b e v] (h/create-span admin-request sl [(tok b e)] v))
+        mk   (fn [b e v] (stored-before! (h/create-span admin-request sl [(tok b e)] v) v))
         tokens (fn [where] (set (map first (:results (qe/run db "admin@example.com" {"find" ["?t"] "where" where})))))]
     (mk 0 4 nfd)
     (mk 5 8 nfc)
@@ -262,7 +281,11 @@
       (testing "a token's surface"
         (is (= 2 (count (tokens [["token" "?t" {"layer" tokl "value" lit}]]))))))
     (testing "a metadata value keeps to its type: a text equals a string, never an array"
-      (let [md (fn [b v] (h/create-span admin-request sl [(tok b (inc b))] "m" {"form" v}))]
+      (let [md (fn [b v]
+                 (let [r (h/create-span admin-request sl [(tok b (inc b))] "m" {"form" v})]
+                   (psc/execute! db {:update :entity_metadata :set {:value (psc/write-json v)}
+                                     :where [:and [:= :entity_id (str (id r))] [:= :key "form"]]})
+                   r))]
         (md 14 nfd)
         (md 15 [nfc])
         (is (= 1 (count (values [["span" "?s" {"layer" sl "metadata" {"form" nfc}}]]))))

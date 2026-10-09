@@ -134,9 +134,13 @@
              api-token-routes
              ;; The routes a scoped token may use with no project gate in
              ;; front, each with its own check. See `pra/token-scope-gate`.
-             ["" {:plaid/token-scope pra/user-data-token-scope} user-data-routes]
+             ;; Left as sent (`prm/compose-text`): private user data is
+             ;; the app's own state, a batch's operations are composed one
+             ;; by one, a query matches canonically on its own, client events
+             ;; are telemetry and service messages are relayed, not stored.
+             ["" {:plaid/token-scope pra/user-data-token-scope :plaid/raw-text true} user-data-routes]
              project-routes
-             message-routes
+             ["" {:plaid/raw-text true} message-routes]
              text-routes
              text-layer-routes
              token-layer-routes
@@ -148,13 +152,13 @@
              audit-routes
              admin-routes
              operation-group-routes
-             ["" {:plaid/token-scope pra/each-operation-token-scope} batch-routes]
+             ["" {:plaid/token-scope pra/each-operation-token-scope :plaid/raw-text true} batch-routes]
              vocab-item-routes
              vocab-link-routes
              comment-routes
-             client-event-routes
+             ["" {:plaid/raw-text true} client-event-routes]
              guideline-routes
-             ["" {:plaid/token-scope pra/query-token-scope} query-routes]]
+             ["" {:plaid/token-scope pra/query-token-scope :plaid/raw-text true} query-routes]]
 
             [""
              {:middleware [prm/wrap-route-as-of]}
@@ -223,6 +227,10 @@
                                        ;; still JSON-encodes. See its docstring.
                                        prm/wrap-malformed-json-400
                                        muuntaja/format-request-middleware
+                                       ;; After the body is decoded, before
+                                       ;; coercion reads it: text is stored
+                                       ;; composed. Also per batch sub-op.
+                                       prm/compose-text
                                        coercion/coerce-response-middleware
                                        ;; Outside coercion: a caller with no token gets
                                        ;; 401 and learns nothing about the schema.

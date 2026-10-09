@@ -1034,6 +1034,21 @@ A text object looks something like this:
 `digest` identifies the body: it is the SHA-256 of the body's UTF-8 bytes, in lowercase hex.
 Every read of a text carries it, both `GET /texts/{id}` and a document read with its body.
 
+[[composed-text]]
+=== Composed text
+
+Plaid stores all text composed, in Unicode Normalization Form C (NFC).
+An `á` sent as `a` followed by a combining acute accent (U+0301) is stored as the one character `á`.
+This holds for a text's body and for every other string a write sends: span and relation values, metadata keys and values, names, vocabulary forms and fields, configs and constraints, guidelines, comments, display names, and the `?audit-message=` and `?group-message=` labels.
+Four things are kept exactly as sent: private user data, passwords, a query (which matches canonically equivalent text on its own, see the query manual), and client events.
+
+A body sent decomposed is stored composed, and its length can shrink.
+Token offsets are always offsets in the body as stored, so make tokens on the stored body: the answer to a write that saved a body carries it, and so does every read.
+When a save composes text that was typed beside a letter it composes with, the letter and the mark become one character, and a token edge that fell between them moves to after that character, so the character stays with the token that held the letter.
+A token that covered only such a mark is left zero-width there.
+Nothing is refused for it.
+An app that makes tokens in the same batch as a body it sends can measure them on the composed body with the clients' `composeText(body)` (JavaScript) or `compose_text(body)` (Python): the server stores its `text`, and a token measured at `[b, e)` on the body sent is at `[at(b), at(e))` in it.
+
 === Changing a text's body
 
 `PATCH /texts/{id}` changes the body in one of two forms, and the tokens over the text follow the change.
@@ -1053,6 +1068,7 @@ Indices are code points, and each operation's index is in the body as the operat
 
 Only the net change counts: typing a word one letter at a time and inserting it at once are the same edit, and a letter deleted and typed back is no change.
 Every change stays exactly where it was made.
+The body the edits make is then composed (see <<composed-text>>), and the answer carries the body as stored and its digest, which is the `base` of the next edit.
 
 The tokens of every token layer take a change the same way, whichever app or script made the layer:
 

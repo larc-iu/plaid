@@ -60,7 +60,11 @@
    ["/:text-id"
     {:parameters {:path [:map [:text-id :uuid]]}}
 
-    ["" {:get {:summary "Get a text."
+    ;; `body` and `edits` reach `plaid.sql.text` as sent: an edit's
+    ;; indices count the text it inserts as sent, and the save composes the
+    ;; body it makes with the token offsets (see `prm/compose-text`).
+    ["" {:plaid/raw-text #{:body :edits}
+         :get {:summary "Get a text."
                :middleware [[pra/wrap-reader-required get-project-id]]
                :handler (fn [{{{:keys [text-id]} :path} :parameters db :db}]
                           (let [text (txt/get db text-id)]

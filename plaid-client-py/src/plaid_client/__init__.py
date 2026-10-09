@@ -56,7 +56,7 @@ from plaid_client.roles import (
     read_role,
     find_by_role,
 )
-from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_ops
+from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_ops, compose_text
 
 __all__ = [
     "value_set_allows",
@@ -116,4 +116,5 @@ __all__ = [
     "compose_text_edits",
     "gaps_to_ops",
     "apply_text_ops",
+    "compose_text",
 ]

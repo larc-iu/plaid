@@ -11,6 +11,7 @@
                                     assert-created assert-ok
                                     with-admin with-test-users with-clean-db]]
             [plaid.test-helpers :refer :all]
+            [plaid.util.canonical :as canonical]
             [plaid.util.storable-text :as storable]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -111,9 +112,10 @@
         created (call :post "/api/v1/texts" {:text-layer-id tl :document-id doc :body fine})
         tid (-> created :body :id)]
     (is (= 201 (:status created)))
-    (is (= fine (-> (get-text admin-request tid) :body :text/body)))
+    ;; stored composed: e and U+0301 as one character
+    (is (= (canonical/nfc fine) (-> (get-text admin-request tid) :body :text/body)))
     (is (= 200 (:status (call :patch (str "/api/v1/texts/" tid) {:body (str fine "😁")}))))
-    (is (= (str fine "😁") (-> (get-text admin-request tid) :body :text/body)))
+    (is (= (canonical/nfc (str fine "😁")) (-> (get-text admin-request tid) :body :text/body)))
     (is (= 200 (:status (call :patch (str "/api/v1/documents/" doc) {:name "😀 Doc"}))))
     (is (= "😀 Doc" (-> (call :get (str "/api/v1/documents/" doc) nil) :body :document/name)))
     (testing "a metadata key that is itself JSON"
