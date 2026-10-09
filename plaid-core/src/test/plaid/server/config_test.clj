@@ -296,7 +296,7 @@
                        ["auth" "delegated_token_ttl_seconds"]
                        ["media" "link_ttl_seconds"]
                        ["media" "avatar_link_ttl_seconds"]]
-          v ["0" "-10" "\"3600\"" "1.5"]]
+          v ["0" "-10" "\"3600\"" "1.5" "9223372036854775807"]]
     (let [toml (str "[" section "]\n" k " = " v "\n")
           f (temp-toml toml)]
       (try
@@ -304,7 +304,8 @@
                       nil
                       (catch clojure.lang.ExceptionInfo e e))]
           (is (some? ex) toml)
-          (is (= (str "[" section "] " k " must be a positive whole number of seconds, not "
+          (is (= (str "[" section "] " k " must be a positive whole number of seconds, at most "
+                      "3153600000 (a hundred years), not "
                       (if (= v "\"3600\"") "\"3600\"" v))
                  (some-> ex ex-message))
               toml))

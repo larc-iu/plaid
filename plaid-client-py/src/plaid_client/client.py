@@ -1261,7 +1261,7 @@ class UsersResource(_Resource):
         return self._request('DELETE', f'/api/v1/users/{id}/avatar',
                              audit_message=audit_message)
 
-    def avatar_token(self) -> dict:
+    def avatar_token(self, renew: bool = False) -> dict:
         """A token that shows any user's profile picture without an
         Authorization header, for an HTML image element, which cannot send
         one. Answers ``{'token': ..., 'expires_at': ...}`` (``expires_at`` an
@@ -1270,25 +1270,37 @@ class UsersResource(_Resource):
         changes password.
 
         One token serves the whole client: it is kept and handed out again
-        until under ten minutes of it remain, calls made from several threads
-        while one is being minted share that request, and it is dropped when
-        the client's token changes. avatar_url() uses it.
+        until under ten minutes of it remain (half its life, for one minted
+        near the end of a login), calls made from several threads while one is
+        being minted share that request, and it is dropped when the client's
+        token changes. avatar_url() uses it.
+
+        Args:
+            renew: Mint a new one whatever is kept, for a picture whose URL
+                stopped working (the token ends with the login it was minted
+                under).
         """
         owner = self._client.client if isinstance(self._client, PlaidBatch) else self._client
         with owner._avatar_token_lock:
             cached = owner._avatar_token
-            if cached and cached['for_token'] == owner.token:
-                left = (_parse_instant(cached['link']['expires_at'])
-                        - owner.server_now()).total_seconds()
-                if left > AVATAR_TOKEN_RENEW_S:
+            if cached and cached['for_token'] == owner.token and not renew:
+                expires = _parse_instant(cached['link']['expires_at'])
+                left = (expires - owner.server_now()).total_seconds()
+                # Ten minutes before it runs out, or half its life: near the
+                # end of a login every token minted runs out with the login,
+                # and a fixed ten minutes would mint one on every call.
+                renew_at = min(AVATAR_TOKEN_RENEW_S,
+                               (expires - cached['minted_at']).total_seconds() / 2)
+                if left > renew_at:
                     return dict(cached['link'])
             for_token = owner.token
             owner._avatar_token = None
+            minted_at = owner.server_now()
             link = owner._request('POST', '/api/v1/avatar-link', out_of_band=True)
-            owner._avatar_token = {'for_token': for_token, 'link': link}
+            owner._avatar_token = {'for_token': for_token, 'link': link, 'minted_at': minted_at}
             return dict(link)
 
-    def avatar_url(self, id: str, avatar_hash: str | None = None) -> str:
+    def avatar_url(self, id: str, avatar_hash: str | None = None, renew: bool = False) -> str:
         """URL for a user's profile picture, for an HTML image element. The
         URL carries the client's avatar token (see avatar_token()), never the
         login token.
@@ -1300,8 +1312,9 @@ class UsersResource(_Resource):
         Args:
             id: The user ID
             avatar_hash: The user record's ``avatar_hash``
+            renew: Mint a new avatar token first (see avatar_token())
         """
-        params = {'avatar-token': self.avatar_token()['token']}
+        params = {'avatar-token': self.avatar_token(renew=renew)['token']}
         if avatar_hash:
             params['v'] = avatar_hash
         return f'{self._client.base_url}/api/v1/users/{id}/avatar?{urlencode(params)}'

@@ -13,6 +13,25 @@ class LoadedImage {
   removeEventListener() {}
 }
 
+// A browser that fails every picture whose URL names a dead token, after the
+// moment a real load takes, and loads the rest.
+class DeadTokenImage {
+  complete = false;
+  naturalWidth = 0;
+  addEventListener(type, cb) {
+    setTimeout(() => {
+      const dead = String(this.src).includes('dead');
+      if (type === 'error' && dead) cb({ currentTarget: this });
+      if (type === 'load' && !dead) {
+        this.complete = true;
+        this.naturalWidth = 1;
+        cb({ currentTarget: this });
+      }
+    }, 0);
+  }
+  removeEventListener() {}
+}
+
 const img = (container) => container.querySelector('img');
 const fallback = (container) => container.textContent;
 
@@ -152,5 +171,62 @@ describe('UserAvatar', () => {
     );
     expect(img(again.container)?.getAttribute('src')).toBe('http://core/c');
     await again.unmount();
+  });
+
+  it('asks once for a new token when the picture fails, and shows it', async () => {
+    window.Image = DeadTokenImage;
+    const client = {
+      token: 'login',
+      users: {
+        avatarUrl: vi.fn(async (id, hash, options) =>
+          options?.renew
+            ? `http://core/a?avatar-token=fresh&v=${hash}`
+            : `http://core/a?avatar-token=dead&v=${hash}`,
+        ),
+      },
+    };
+    const r = await renderComponent(
+      <UserAvatar client={client} userId="ada@x.org" displayName="Ada Lovelace" avatarHash="h1" />,
+    );
+    for (let i = 0; i < 4; i += 1) await r.step(() => new Promise((res) => setTimeout(res, 5)));
+    expect(client.users.avatarUrl).toHaveBeenLastCalledWith('ada@x.org', 'h1', { renew: true });
+    expect(img(r.container)?.getAttribute('src')).toBe('http://core/a?avatar-token=fresh&v=h1');
+    await r.unmount();
+  });
+
+  it('a picture that fails with a new token too keeps the initials, and asks no more', async () => {
+    window.Image = DeadTokenImage;
+    const client = {
+      token: 'login',
+      users: { avatarUrl: vi.fn(async () => 'http://core/a?avatar-token=dead') },
+    };
+    const r = await renderComponent(
+      <UserAvatar client={client} userId="ada@x.org" displayName="Ada Lovelace" avatarHash="h1" />,
+    );
+    for (let i = 0; i < 6; i += 1) await r.step(() => new Promise((res) => setTimeout(res, 5)));
+    expect(client.users.avatarUrl).toHaveBeenCalledTimes(2);
+    expect(img(r.container)).toBeNull();
+    expect(fallback(r.container)).toBe('AL');
+    await r.unmount();
+  });
+
+  it('asks again when the client takes another login', async () => {
+    const client = {
+      token: 'login-1',
+      users: { avatarUrl: vi.fn(async () => `http://core/a?avatar-token=for-${client.token}`) },
+    };
+    const view = (
+      <UserAvatar client={client} userId="ada@x.org" displayName="Ada Lovelace" avatarHash="h1" />
+    );
+    const r = await renderComponent(view);
+    await r.step(async () => {});
+    client.token = 'login-2';
+    await r.rerender(
+      <UserAvatar client={client} userId="ada@x.org" displayName="Ada Lovelace" avatarHash="h1" />,
+    );
+    await r.step(async () => {});
+    expect(client.users.avatarUrl).toHaveBeenCalledTimes(2);
+    expect(img(r.container)?.getAttribute('src')).toBe('http://core/a?avatar-token=for-login-2');
+    await r.unmount();
   });
 });

@@ -43,12 +43,25 @@ export function UserAvatar({
   const wanted = Boolean(client && userId && avatarHash !== null);
   const key = `${userId}\n${avatarHash ?? ''}`;
   const [answer, setAnswer] = useState(null);
+  // The login the URL was resolved under. Signed out and in again in another
+  // tab, the client takes the new login in place, and a picture that failed
+  // under the old one is asked for again.
+  const login = typeof client?.token === 'string' ? client.token : null;
+  // The URL that failed to load, once, so a new avatar token is asked for in
+  // its place: the token dies with the login it was minted under. A second
+  // failure is the picture's, and the initials stay.
+  const [failed, setFailed] = useState(null);
+  const renew = failed !== null && failed.key === key && failed.login === login;
 
   useEffect(() => {
     if (!wanted) return undefined;
     let live = true;
     Promise.resolve()
-      .then(() => client.users.avatarUrl(userId, avatarHash))
+      .then(() =>
+        renew
+          ? client.users.avatarUrl(userId, avatarHash, { renew: true })
+          : client.users.avatarUrl(userId, avatarHash),
+      )
       .then(
         (url) => {
           if (url) remember(client, key, url);
@@ -61,7 +74,7 @@ export function UserAvatar({
     return () => {
       live = false;
     };
-  }, [wanted, client, userId, avatarHash, key]);
+  }, [wanted, client, userId, avatarHash, key, login, renew]);
 
   // An answer for other props is never shown, not even for the one render
   // before the effect above asks again.
@@ -78,7 +91,15 @@ export function UserAvatar({
     // status stuck at "loaded" and the fallback suppressed: an empty circle
     // where the initials belong.
     <Avatar key={src || 'initials'} className={cn('h-9 w-9', className)} {...props}>
-      {src && <AvatarImage src={src} alt="" />}
+      {src && (
+        <AvatarImage
+          src={src}
+          alt=""
+          onLoadingStatusChange={(status) => {
+            if (status === 'error' && !renew) setFailed({ key, login });
+          }}
+        />
+      )}
       {/* The initials do not scale with the avatar on their own, so anything
           much larger than the default needs to say so. */}
       <AvatarFallback className={cn('text-xs', fallbackClassName)}>

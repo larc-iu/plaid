@@ -1,6 +1,7 @@
 // users.avatarToken asks core for a token an image element can show profile
 // pictures with, and keeps it: one token serves the whole client until under
-// ten minutes of it remain, concurrent calls share one request, and a change
+// ten minutes of it remain (half its life, for one minted near the end of a
+// login), concurrent calls share one request, and a change
 // of the client's login token drops it. users.avatarUrl puts that token, never
 // the login token, in the picture's URL.
 
@@ -91,17 +92,59 @@ test("a null hash resolves to null without a request", async () => {
   assert.equal(seen.length, 0);
 });
 
-test("a token with under ten minutes left is minted again", async () => {
+// The client's clock moved on by `ms`, as its server reckons time.
+const later = (client, ms) => {
+  const real = client.serverNow.bind(client);
+  client.serverNow = () => new Date(real().getTime() + ms);
+};
+
+test("a token is minted again ten minutes before it runs out", async () => {
+  const client = new PlaidClient("http://core", "tok");
+  const { result, seen } = await withFetch([minted("old"), minted("new")], async () => {
+    await client.users.avatarToken();
+    later(client, (24 * 60 - 11) * 60 * 1000);
+    assert.equal((await client.users.avatarToken()).token, "old");
+    later(client, 2 * 60 * 1000);
+    return client.users.avatarToken();
+  });
+  assert.equal(seen.length, 2);
+  assert.equal(result.token, "new");
+});
+
+test("a token minted near the end of a login is kept for half its life", async () => {
+  // The server caps a token at the login's own expiry, so near its end
+  // every token runs out at that moment. Renewed at ten minutes, each call
+  // minted another.
   const client = new PlaidClient("http://core", "tok");
   const { result, seen } = await withFetch(
-    [minted("old", inHours(9 / 60)), minted("new")],
+    [minted("short", inHours(9 / 60)), minted("again", inHours(9 / 60))],
     async () => {
       await client.users.avatarToken();
+      assert.equal((await client.users.avatarToken()).token, "short");
+      later(client, 5 * 60 * 1000);
       return client.users.avatarToken();
     },
   );
   assert.equal(seen.length, 2);
-  assert.equal(result.token, "new");
+  assert.equal(result.token, "again");
+});
+
+test("renew mints a new token whatever is kept, once for a page of pictures", async () => {
+  const client = new PlaidClient("http://core", "tok");
+  const { result, seen } = await withFetch([minted("av1"), minted("av2")], async () => {
+    await client.users.avatarToken();
+    later(client, 60 * 1000);
+    // Every picture on the page failed with the dead token, and each asks.
+    const urls = await Promise.all([
+      client.users.avatarUrl("a@x.org", "h", { renew: true }),
+      client.users.avatarUrl("b@x.org", "h", { renew: true }),
+    ]);
+    urls.push(await client.users.avatarUrl("c@x.org", "h", { renew: true }));
+    return urls;
+  });
+  assert.equal(seen.length, 2);
+  assert.equal(result[0], "http://core/api/v1/users/a@x.org/avatar?avatar-token=av2&v=h");
+  assert.ok(result.every((u) => u.includes("avatar-token=av2")));
 });
 
 test("a change of the client's token drops the cached one", async () => {

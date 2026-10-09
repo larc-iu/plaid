@@ -157,6 +157,9 @@ export const BACKUP_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** An avatar token is minted again once less than this is left of it. */
 const AVATAR_TOKEN_RENEW_MS = 10 * 60 * 1000;
+// An avatar token minted this recently is the renewal a caller asking for one
+// wanted.
+const AVATAR_TOKEN_FRESH_MS = 5 * 1000;
 
 /**
  * A batch is the client with a different `_request` (see `queueRequest`) and
@@ -1411,21 +1414,42 @@ class PlaidClient {
        * it stops working when the user signs out or changes password.
        *
        * One token serves the whole client: it is kept and handed out again
-       * until under ten minutes of it remain, calls made while one is being
-       * minted share that request, and it is dropped when the client's token
-       * changes. avatarUrl() uses it.
+       * until under ten minutes of it remain (half its life, for one minted
+       * near the end of a login), calls made while one is being minted share
+       * that request, and it is dropped when the client's token changes.
+       * avatarUrl() uses it.
+       * @param {{renew?: boolean}} [options] - `renew`: mint a new one
+       *   whatever is kept, unless one was minted in the last few seconds
+       *   (or is being minted), which is shared
        * @returns {Promise<{token: string, expiresAt: string}>}
        */
-      avatarToken: () => {
+      avatarToken: ({ renew = false } = {}) => {
         // A batch is a view of its client and shares the client's token.
         const owner = this.client ?? this;
         const cached = owner._avatarToken;
         if (cached && cached.forToken === owner.token) {
           if (cached.pending) return cached.pending;
-          const left = Date.parse(cached.link.expiresAt) - owner.serverNow().getTime();
-          if (left > AVATAR_TOKEN_RENEW_MS) return Promise.resolve(cached.link);
+          const now = owner.serverNow().getTime();
+          // A renewal shares one minted a moment ago: every picture on a page
+          // fails together when a token dies, and each asks.
+          if (renew && now - cached.mintedAt < AVATAR_TOKEN_FRESH_MS) {
+            return Promise.resolve(cached.link);
+          }
+          const expires = Date.parse(cached.link.expiresAt);
+          // Renewed ten minutes before it runs out, or at half its life when
+          // it was minted for less than twenty: the server caps it at the
+          // login's own expiry, and near the end of a login every token it
+          // mints runs out at that same moment, so a fixed ten minutes asked
+          // for a new one on every call.
+          const renewAt = Math.min(AVATAR_TOKEN_RENEW_MS, (expires - cached.mintedAt) / 2);
+          if (!renew && expires - now > renewAt) return Promise.resolve(cached.link);
         }
-        const entry = { forToken: owner.token, pending: null, link: null };
+        const entry = {
+          forToken: owner.token,
+          pending: null,
+          link: null,
+          mintedAt: owner.serverNow().getTime(),
+        };
         entry.pending = owner
           ._request("POST", "/api/v1/avatar-link", { outOfBand: true })
           .then(
@@ -1455,11 +1479,14 @@ class PlaidClient {
        * wasted request.
        * @param {string} id - The user ID
        * @param {string|null} [avatarHash] - The user record's `avatarHash`
+       * @param {{renew?: boolean}} [options] - `renew`: mint a new avatar
+       *   token first, for a picture its URL failed to load (the token
+       *   stops working when the login it was minted under ends)
        * @returns {Promise<string|null>}
        */
-      avatarUrl: async (id, avatarHash) => {
+      avatarUrl: async (id, avatarHash, { renew = false } = {}) => {
         if (avatarHash === null) return null;
-        const { token } = await this.users.avatarToken();
+        const { token } = await this.users.avatarToken({ renew });
         const params = new URLSearchParams({ "avatar-token": token });
         if (avatarHash) params.set("v", avatarHash);
         return `${this.baseUrl}/api/v1/users/${id}/avatar?${params}`;

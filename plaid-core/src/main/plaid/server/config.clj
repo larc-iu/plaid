@@ -244,15 +244,21 @@
    ["[media] link_ttl_seconds"           [:plaid.media/config :link-ttl-seconds]]
    ["[media] avatar_link_ttl_seconds"    [:plaid.media/config :avatar-link-ttl-seconds]]])
 
+(def ^:private max-lifetime-seconds
+  "The longest token lifetime a setting may give: a hundred years."
+  (* 100 365 24 60 60))
+
 (defn- check-lifetimes!
-  "Refuse a token lifetime that is not a positive whole number of seconds. A
-  string would fail every request that mints such a token, and zero or less
-  would mint tokens already expired."
+  "Refuse a token lifetime that is not a positive whole number of seconds, of
+  at most a hundred years. A string would fail every request that mints such a
+  token, zero or less would mint tokens already expired, and one near the
+  largest number overflows the expiry it is added to."
   [cfg]
   (doseq [[label path] lifetime-settings]
     (let [v (get-in cfg path ::absent)]
-      (when-not (or (= v ::absent) (and (integer? v) (pos? v)))
-        (throw (ex-info (str label " must be a positive whole number of seconds, not " (pr-str v))
+      (when-not (or (= v ::absent) (and (integer? v) (pos? v) (<= v max-lifetime-seconds)))
+        (throw (ex-info (str label " must be a positive whole number of seconds, at most "
+                             max-lifetime-seconds " (a hundred years), not " (pr-str v))
                         {:setting label :value v})))))
   cfg)
 

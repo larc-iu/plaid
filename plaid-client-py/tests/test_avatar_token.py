@@ -1,6 +1,7 @@
 """users.avatar_token asks core for a token an image element can show profile
 pictures with (avatarToken in the JS client), and keeps it: one token serves
-the whole client until under ten minutes of it remain, and a change of the
+the whole client until under ten minutes of it remain (half its life, for one
+minted near the end of a login), and a change of the
 client's login token drops it. users.avatar_url puts that token, never the
 login token, in the picture's URL."""
 
@@ -106,11 +107,42 @@ def test_the_url_never_carries_the_login_token():
     assert '?token=' not in url and '&token=' not in url
 
 
-def test_a_token_with_under_ten_minutes_left_is_minted_again():
+def _later(client, seconds):
+    """The client's clock moved on, as its server reckons time."""
+    real = client.server_now
+    client.server_now = lambda: real() + timedelta(seconds=seconds)
+
+
+def test_a_token_is_minted_again_ten_minutes_before_it_runs_out():
     client = PlaidClient('http://core', 'tok')
-    seen = _answer(client, _minted('old', _in_hours(9 / 60)), _minted('new'))
+    seen = _answer(client, _minted('old'), _minted('new'))
     client.users.avatar_token()
+    _later(client, (24 * 60 - 11) * 60)
+    assert client.users.avatar_token()['token'] == 'old'
+    _later(client, 2 * 60)
     assert client.users.avatar_token()['token'] == 'new'
+    assert len(seen) == 2
+
+
+def test_a_token_minted_near_the_end_of_a_login_is_kept_for_half_its_life():
+    # The server caps a token at the login's own expiry, so near its end every
+    # token runs out at that moment. Renewed at ten minutes, each call minted
+    # another.
+    client = PlaidClient('http://core', 'tok')
+    seen = _answer(client, _minted('short', _in_hours(9 / 60)), _minted('again', _in_hours(9 / 60)))
+    client.users.avatar_token()
+    assert client.users.avatar_token()['token'] == 'short'
+    _later(client, 5 * 60)
+    assert client.users.avatar_token()['token'] == 'again'
+    assert len(seen) == 2
+
+
+def test_renew_mints_a_new_token_whatever_is_kept():
+    client = PlaidClient('http://core', 'tok')
+    seen = _answer(client, _minted('av1'), _minted('av2'))
+    client.users.avatar_token()
+    assert client.users.avatar_url('a@x.org', 'h', renew=True) == \
+        'http://core/api/v1/users/a@x.org/avatar?avatar-token=av2&v=h'
     assert len(seen) == 2
 
 
