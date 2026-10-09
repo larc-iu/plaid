@@ -128,7 +128,9 @@ TOOLS = [
          'limit': limit_arg('frequency_list', 'Rows')},
         ['what']),
     _fn('apply_penman',
-        'PLAN: replace one sentence\'s graph with the PENMAN text you give. The difference against '
+        'PLAN: replace one sentence\'s graph with the PENMAN text you give. Roles are UMR 2.0\'s: a '
+        'new possessor is :possessor, not :poss, though other graphs in the document may still say :poss '
+        '(an edge that already says it is written back as it is). The difference against '
         'the stored graph is worked out for you: nodes are matched BY VARIABLE and relations BY '
         'ROLE AND TARGET, so a node written back with the same variable is kept, one variable '
         'typed over everywhere on a node with the same concept and parents is a rename that keeps '
@@ -136,8 +138,8 @@ TOOLS = [
         'a changed role is a new relation and the old one goes. The text is the ROOT\'s graph, '
         'so a node the root does not reach is left alone. A node this creates is UNALIGNED until '
         'somebody anchors it to words on the canvas. '
-        'Start from what read_document printed and edit it. Roles are a closed set: one UMR does '
-        'not have (:poss for :possessor) is refused unless that node or edge already holds it. '
+        'Start from what read_document printed and edit it. Roles are a closed set: one UMR 2.0 does '
+        'not have is refused unless that node or edge already holds it. '
         'The order you write a node\'s children in is ignored: one already there keeps its place '
         'and a new one goes after them. Set reorder only when the user asks for the children in a '
         'different order.',
