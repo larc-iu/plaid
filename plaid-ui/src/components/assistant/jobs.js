@@ -23,6 +23,11 @@ const LOST_CONTACT =
   'Lost contact with the assistant. It is still working. Reload to pick it back up.';
 
 // The record is at the server's size limit, so a message cannot be added.
+// A write that met another tab's write every time it tried. Not the document
+// editor's "Redo your edit": nothing here is the reader's to redo.
+const KEPT_CHANGING =
+  'This conversation kept changing in another tab, so this was not saved. Reload to see it as it stands.';
+
 const CONVERSATION_FULL =
   'This conversation is full, so the message was not sent. Start a new conversation to go on.';
 
@@ -390,7 +395,9 @@ export const claimConv = (
         (typeof failure === 'function' ? failure(e) : failure) ||
           (e?.status === 413
             ? refusedSize(conv.rev?.bytes, tried)
-            : humanizeError(e, 'Failed to save the conversation.')),
+            : e?.status === 409
+              ? KEPT_CHANGING
+              : humanizeError(e, 'Failed to save the conversation.')),
       );
       return false;
     })
@@ -511,7 +518,9 @@ export const persistConv = (
         (typeof failure === 'function' ? failure(e) : failure) ||
           (e?.status === 413
             ? refusedSize(conv.rev?.bytes, tried)
-            : humanizeError(e, 'Failed to save the conversation.')),
+            : e?.status === 409
+              ? KEPT_CHANGING
+              : humanizeError(e, 'Failed to save the conversation.')),
       );
       return false;
     })
