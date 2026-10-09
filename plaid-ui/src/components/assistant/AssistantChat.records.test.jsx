@@ -321,6 +321,32 @@ describe('one tab at a time', () => {
     await m.unmount();
   });
 
+  it('watches a turn another tab asked without a Stop, until Continue here', async () => {
+    const holder = { tab: 'another-tab', at: new Date().toISOString() };
+    const pending = {
+      kind: 'turn',
+      requestId: 'r-live',
+      serviceId: SERVICE.serviceId,
+      startedAt: new Date().toISOString(),
+    };
+    const client = fakeClient({
+      meta: { ...META, holder, pending },
+      conv: {
+        messages: [...CONV.messages, { role: 'user', content: 'and now?' }],
+        display: [...CONV.display, { kind: 'user', text: 'and now?' }],
+      },
+    });
+    const m = await mount(client);
+    await flush(m, 10);
+    expect(m.container.textContent).toContain('Open in another tab.');
+    expect(m.container.textContent).toContain('Thinking');
+    expect(button(m, 'Stop')).toBeUndefined();
+    await m.step(() => button(m, 'Continue here').click());
+    await flush(m, 10);
+    expect(button(m, 'Stop')).toBeTruthy();
+    await m.unmount();
+  });
+
   it('takes a conversation whose holder stopped renewing, without a click', async () => {
     const holder = { tab: 'another-tab', at: new Date(Date.now() - 6 * 60 * 1000).toISOString() };
     const client = fakeClient({ meta: { ...META, holder } });

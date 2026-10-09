@@ -422,6 +422,27 @@ describe('AssistantChat attachments', () => {
     await m.unmount();
   });
 
+  it('keeps the message and the file when the service turns the message down', async () => {
+    const client = fakeClient();
+    const answer = client.messages.requestService.getMockImplementation();
+    client.messages.requestService.mockImplementation(async (...a) => {
+      if (a[2].op === 'send') {
+        return { kind: 'refused', why: 'busy', message: 'The changes are being applied.' };
+      }
+      return answer(...a);
+    });
+    const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
+    await flush(m);
+    await drop(m, [FILE]);
+    await flush(m);
+    await typeAndSend(m, 'which of these are new?');
+    await flush(m, 8);
+    expect(asked(client, 'send')).toHaveLength(1);
+    expect(m.container.querySelector('textarea').value).toBe('which of these are new?');
+    expect(m.container.querySelector('[aria-label="Remove wordlist.csv"]')).not.toBeNull();
+    await m.unmount();
+  });
+
   it('refuses a file it cannot read, and says why', async () => {
     const client = fakeClient();
     const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);

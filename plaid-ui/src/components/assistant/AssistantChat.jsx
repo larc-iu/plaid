@@ -468,7 +468,12 @@ export const AssistantChat = ({
         else if (!j.declined || j.cleared) setNotice((n) => (n?.gone ? n : null));
         // A message the record never took was not sent. It comes back to
         // the composer, unless something new has been typed since.
-        if (j.unsent && !j.recorded) setInput((typed) => typed || j.unsent);
+        if (j.unsent && !j.recorded) {
+          setInput((typed) => typed || j.unsent);
+          // And the files it carried, stored already and stored again on the
+          // next send.
+          if (j.unsentFiles?.length) setAttachments((now) => (now.length ? now : j.unsentFiles));
+        }
         // An answer that landed late (after the page stopped waiting for it)
         // arrives while the reader may be typing somewhere else.
         if (!j.late) inputRef.current?.focus();
@@ -683,6 +688,7 @@ export const AssistantChat = ({
       create: !!base.draft,
       tab,
     });
+    j.unsentFiles = pending;
     applyMeta(shownMeta(prevMeta, conv, projectId, service, where, tab, j));
     showJob(j);
   };
@@ -801,6 +807,8 @@ export const AssistantChat = ({
   // Only turns can be stopped: an apply's writes are already under way, and
   // abandoning one would hide what landed.
   const stopTurn = () => {
+    // A turn another tab asked is that tab's to stop.
+    if (readOnly) return undefined;
     // Remember that the silence after this was asked for. Without it the retry
     // banner below tells the user "No answer came back for this message", which
     // blames the model for the user's own click.
@@ -1132,7 +1140,7 @@ export const AssistantChat = ({
                   {/* The only moving part when the service goes quiet, and the
                     difference between "this is slow" and "this is dead". */}
                   <span className="tabular-nums text-xs">{formatElapsed(elapsedMs)}</span>
-                  {busy === 'turn' && (
+                  {busy === 'turn' && !readOnly && (
                     <Button
                       type="button"
                       size="sm"

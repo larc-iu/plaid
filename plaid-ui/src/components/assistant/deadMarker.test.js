@@ -12,7 +12,7 @@ vi.mock('../../lib/notify.js', () => ({
   notifyWarning: vi.fn(),
 }));
 
-const { attachJob, jobs } = await import('./jobs.js');
+const { attachJob, jobs, serviceCache } = await import('./jobs.js');
 const { fakeAssistantService } = await import('../../test/fakeAssistantService.js');
 
 const KEYS = { meta: 'igt:assistant:p1:meta:c1', conv: 'igt:assistant:p1:conv:c1' };
@@ -64,7 +64,10 @@ const setup = ({ fails = { status: 404 } } = {}) => {
   return { records, client, store: { client, userId: 'u1', app: 'igt', projectId: 'p1' } };
 };
 
-beforeEach(() => jobs.clear());
+beforeEach(() => {
+  jobs.clear();
+  serviceCache.clear();
+});
 
 describe('a rejoin of a request whose service went away', () => {
   it('asks the service to settle it, and shows the plan as it then stands', async () => {
@@ -80,6 +83,26 @@ describe('a rejoin of a request whose service went away', () => {
       expect.objectContaining({ op: 'hold', conversationId: 'c1', tab: 'tab-1' }),
     ]);
     expect(result.conv.display[0].interrupted).toBe(true);
+    expect(result.meta.pending).toBe(null);
+  });
+
+  it('asks an assistant that is online when the one that ran it is not', async () => {
+    const t = setup();
+    const assistant = (serviceId) => ({
+      serviceId,
+      tasks: ['assist'],
+      online: true,
+      extras: { app: 'igt', record: 2, tasks: ['assist'] },
+    });
+    serviceCache.set('p1', [assistant('igt:assist:two')]);
+    const read = {
+      conv: { id: 'c1', ...t.records.get(KEYS.conv) },
+      meta: t.records.get(KEYS.meta),
+    };
+    const j = attachJob({ store: t.store, conv: read.conv, meta: read.meta, tab: 'tab-1' });
+    const result = await j.promise;
+    const asked = t.client.messages.requestService.mock.calls.map((c) => [c[1], c[2].op]);
+    expect(asked).toEqual([['igt:assist:two', 'hold']]);
     expect(result.meta.pending).toBe(null);
   });
 

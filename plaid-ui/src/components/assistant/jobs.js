@@ -315,14 +315,21 @@ const finishJob = async (j, store) => {
   // left (a turn's marker cleared, an approval's plan marked interrupted, so
   // its card offers Apply again), and a hold is the one that changes nothing
   // else. A request this page only lost contact with is still running.
-  if (
-    result.meta?.pending?.requestId === j.requestId &&
-    !j.error?.pending &&
-    j.tab &&
-    j.serviceId
-  ) {
+  // Asked of the assistant that ran it when it is online, and otherwise of
+  // any assistant of this app online on the project, which settles a marker
+  // naming one that is not (asking only the one gone was refused every time,
+  // and a read-only tab rejoined and asked again every 15 s).
+  // Before discovery has answered, the one that ran it.
+  const cached = serviceCache.get(store.projectId);
+  const online = cached ? assistantsAmong(cached, store.app) : null;
+  const settler = online
+    ? (online.find((s) => s.serviceId === j.serviceId) ?? online[0] ?? null)
+    : j.serviceId
+      ? { serviceId: j.serviceId }
+      : null;
+  if (result.meta?.pending?.requestId === j.requestId && !j.error?.pending && j.tab && settler) {
     try {
-      await ask(store, { serviceId: j.serviceId }, j.id, 'hold', {}, { tab: j.tab });
+      await ask(store, settler, j.id, 'hold', {}, { tab: j.tab });
       result = await readConv(store, j.id);
     } catch {
       // Not answered now: the next look at the conversation asks again.
