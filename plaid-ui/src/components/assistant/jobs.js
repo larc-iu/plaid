@@ -306,6 +306,24 @@ const finishJob = async (j, store) => {
       result = { conv: j.conv, meta: null };
     }
   }
+  // The request is over and the record still names it: the service that ran
+  // it went away. Any op on the conversation has the service settle what it
+  // left (a turn's marker cleared, an approval's plan marked interrupted, so
+  // its card offers Apply again), and a hold is the one that changes nothing
+  // else. A request this page only lost contact with is still running.
+  if (
+    result.meta?.pending?.requestId === j.requestId &&
+    !j.error?.pending &&
+    j.tab &&
+    j.serviceId
+  ) {
+    try {
+      await ask(store, { serviceId: j.serviceId }, j.id, 'hold', {}, { tab: j.tab });
+      result = await readConv(store, j.id);
+    } catch {
+      // Not answered now: the next look at the conversation asks again.
+    }
+  }
   if (j.kind === 'turn' && j.outcome?.kind === 'turn' && j.outcome.item && j.outcome.warning) {
     result = { ...result, conv: withUnsavedAnswer(result.conv, j.outcome) };
   }
@@ -375,6 +393,7 @@ export const startTurn = ({
     planId: null,
     conv,
     asked,
+    tab,
     unsent: retry ? null : text,
     progress: 'Thinking…',
   });
@@ -491,6 +510,7 @@ export const startApply = ({ store, service, conv, plan, asHuman, docked = false
     requestId,
     planId: plan.id,
     conv,
+    tab,
     progress: 'Applying changes…',
   });
   jobs.set(conv.id, j);
@@ -543,9 +563,11 @@ export const nothingLanded = async (store, item) => {
 // Rejoin the request a conversation's record says is under way (it was
 // submitted from a page that is gone, or from another tab). The record gets
 // the outcome either way; this is for showing progress and refreshing when it
-// lands. A request the server no longer knows (404) is over, and the record
-// shows the question unanswered with Retry.
-export const attachJob = ({ store, conv, meta, docked = false }) => {
+// lands. A request the server no longer knows (404) is over: the service is
+// asked to settle what it left (`finishJob`), and the record then shows the
+// question unanswered with Retry, or the plan Not finished. `tab` is the tab
+// asking.
+export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => {
   const { client, projectId } = store;
   const p = meta.pending;
   const j = newJob({
@@ -558,6 +580,7 @@ export const attachJob = ({ store, conv, meta, docked = false }) => {
     conv,
     recorded: true,
     attached: true,
+    tab,
     progress: p.kind === 'apply' ? 'Applying changes…' : 'Thinking…',
     startedAt: Date.parse(p.startedAt) || Date.now(),
   });

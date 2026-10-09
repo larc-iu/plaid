@@ -183,6 +183,9 @@ export const AssistantChat = ({
   const activeRef = useRef(active);
   activeRef.current = active;
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
+  // This tab's id (hold.js), for the requests made from callbacks declared
+  // above the hold itself.
+  const tabRef = useRef(null);
   // A send storing its files: a second press in that moment is the same send,
   // not another one.
   const sendingRef = useRef(false);
@@ -389,7 +392,7 @@ export const AssistantChat = ({
         // The record is newer than the list (a reply may have landed since).
         if (meta) applyMeta(meta);
         if (followable(meta?.pending) && !jobFor(id)) {
-          attachJob({ store, conv, meta, docked: !toastOnApply });
+          attachJob({ store, conv, meta, docked: !toastOnApply, tab: tabRef.current });
         }
       } catch (e) {
         if (seq === openSeq.current) {
@@ -558,6 +561,7 @@ export const AssistantChat = ({
     docked: !toastOnApply,
   });
   const readOnly = held.readOnly;
+  tabRef.current = held.tab;
   const continueHere = async () => {
     setNotice(null);
     const result = await held.continueHere();
@@ -567,7 +571,15 @@ export const AssistantChat = ({
       try {
         const read = await readConv(store, id);
         if (activeRef.current?.id === id && followable(read.meta?.pending) && !jobFor(id)) {
-          showJob(attachJob({ store, conv: read.conv, meta: read.meta, docked: !toastOnApply }));
+          showJob(
+            attachJob({
+              store,
+              conv: read.conv,
+              meta: read.meta,
+              docked: !toastOnApply,
+              tab: tabRef.current,
+            }),
+          );
         }
       } catch {
         // The next check reads it.
@@ -1055,6 +1067,7 @@ export const AssistantChat = ({
                   {...turnContext(display, i)}
                   homeName={projectName}
                   canWrite={canWrite && !readOnly}
+                  readOnly={readOnly}
                   contributor={contributor}
                   busy={!!busy}
                   interrupted={!!d.interrupted}

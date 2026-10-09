@@ -24,6 +24,9 @@ import { ask, attachJob, followable, jobFor, metaOf, readConv, readMeta } from '
 export const LEASE_MS = 5 * 60 * 1000;
 const RENEW_EVERY_MS = 2 * 60 * 1000;
 const CHECK_EVERY_MS = 15 * 1000;
+// How long a holder's lock stays free before its tab counts as closed: a tab
+// that reloads lets its lock go and takes it again, under the same id.
+const CLOSED_FOR_MS = 5 * 1000;
 
 const TAB_KEY = 'plaid-assistant-tab';
 const TABS_KEY = 'plaid-assistant-tabs';
@@ -78,6 +81,14 @@ const mint = () => {
 
 const locks = () => (typeof navigator !== 'undefined' ? navigator.locks : null) || null;
 
+const channel = () => {
+  try {
+    return typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(CHANNEL) : null;
+  } catch {
+    return null;
+  }
+};
+
 // The tab's id, and a promise that settles once its lock is held.
 const state = (globalThis.__plaidAssistantTab ??= (() => {
   const s = { id: read('sessionStorage', TAB_KEY) || null, ready: null };
@@ -99,6 +110,19 @@ const state = (globalThis.__plaidAssistantTab ??= (() => {
       }).catch(() => resolve(id));
       return undefined;
     });
+  // A tab going away tells the others of this browser, which look again
+  // whether it closed (its lock frees) rather than waiting for their next check.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => {
+      const c = channel();
+      if (!c) return;
+      try {
+        c.postMessage({ left: s.id });
+      } finally {
+        c.close();
+      }
+    });
+  }
   s.ready = (async () => {
     let got = await hold(s.id);
     while (!got) {
@@ -130,14 +154,6 @@ export const heldElsewhere = (holder, tab, now) => {
   if (!holder?.tab || holder.tab === tab) return false;
   const at = Date.parse(holder.at || '');
   return Number.isFinite(at) && now - at <= LEASE_MS;
-};
-
-const channel = () => {
-  try {
-    return typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(CHANNEL) : null;
-  } catch {
-    return null;
-  }
 };
 
 // Say to the other tabs of this browser that this one took a conversation.
@@ -173,7 +189,9 @@ export const useHold = ({
 }) => {
   const [tab, setTab] = useState(state.id);
   const [now, setNow] = useState(() => serverNow(store.client));
-  const [closed, setClosed] = useState(null); // a holder id found closed here
+  // A holder found closed here, {tab, since, sure}: its lock free since then,
+  // and `sure` once that has lasted CLOSED_FOR_MS.
+  const [closed, setClosed] = useState(null);
   const [taking, setTaking] = useState(false);
   // A take announced by another tab of this browser, before the entry says so.
   const [takenBy, setTakenBy] = useState(null);
@@ -196,19 +214,33 @@ export const useHold = ({
       ? { tab: takenBy.tab, at: new Date(now).toISOString() }
       : meta?.holder;
   const mine = !!holder?.tab && holder.tab === tab;
-  const elsewhere =
-    !!service && saved && !!meta && heldElsewhere(holder, tab, now) && closed !== holder?.tab;
-
-  // Whether the holder is a closed tab of this browser, asked when it changes.
+  // The holder is a closed tab of this browser: its lock has been free for a
+  // while, longer than a reload takes.
   const holderTab = holder?.tab ?? null;
+  const closedTab = !!holderTab && closed?.tab === holderTab && closed.sure;
+  const elsewhere = !!service && saved && !!meta && heldElsewhere(holder, tab, now) && !closedTab;
+
+  // Whether the holder is a closed tab of this browser, asked when it changes,
+  // and again once it could have come back from a reload.
   useEffect(() => {
     let live = true;
+    let again = null;
     if (!holderTab || holderTab === tab) return undefined;
-    closedHere(holderTab).then((yes) => live && setClosed(yes ? holderTab : null));
+    closedHere(holderTab).then((yes) => {
+      if (!live) return;
+      const at = Date.now();
+      setClosed((was) => {
+        if (!yes) return null;
+        if (was?.tab !== holderTab) return { tab: holderTab, since: at, sure: false };
+        return at - was.since >= CLOSED_FOR_MS && !was.sure ? { ...was, sure: true } : was;
+      });
+      if (yes) again = setTimeout(() => setNow(serverNow(store.client)), CLOSED_FOR_MS + 100);
+    });
     return () => {
       live = false;
+      clearTimeout(again);
     };
-  }, [holderTab, tab, now]);
+  }, [holderTab, tab, now, store]);
 
   const hold = useCallback(
     async (take = false) => {
@@ -237,12 +269,14 @@ export const useHold = ({
     [store, service, convId],
   );
 
-  // Take a free conversation on open, and again whenever it falls free.
+  // Take a free conversation on open, and again whenever it falls free. A
+  // hold by a closed tab of this browser is taken, since the service still
+  // counts its lease.
   const free = !!service && saved && !!meta && !mine && !elsewhere;
   useEffect(() => {
-    if (free && !taking) hold(false);
+    if (free && !taking) hold(closedTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [free, convId]);
+  }, [free, convId, closedTab]);
 
   // Renew while visible.
   useEffect(() => {
@@ -283,7 +317,7 @@ export const useHold = ({
         readConv(store, convId)
           .then((read) => {
             if (live && !jobFor(convId) && followable(read.meta?.pending)) {
-              attachJob({ store, conv: read.conv, meta: read.meta, docked });
+              attachJob({ store, conv: read.conv, meta: read.meta, docked, tab: state.id });
             }
           })
           .catch(() => {});
@@ -305,9 +339,11 @@ export const useHold = ({
     const c = channel();
     if (!c) return undefined;
     c.onmessage = (e) => {
-      const { conv, tab: other } = e.data || {};
+      const { conv, tab: other, left } = e.data || {};
       if (conv && other && other !== state.id) setTakenBy({ conv, tab: other });
       setNow(serverNow(store.client));
+      // A tab went away: look whether it closed once its lock is let go.
+      if (left) setTimeout(() => setNow(serverNow(store.client)), 300);
     };
     return () => c.close();
   }, [store]);

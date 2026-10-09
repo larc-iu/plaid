@@ -273,6 +273,7 @@ describe('one tab at a time', () => {
     await flush(m, 10);
     expect(m.container.textContent).toContain('Open in another tab.');
     expect(button(m, 'Approve and apply')).toBeUndefined();
+    expect(button(m, 'Discard')).toBeUndefined();
     expect(m.container.querySelector('[title="Send"]').disabled).toBe(true);
     expect(client.records.get(KEYS.meta).holder.tab).toBe('another-tab');
     await m.step(() => button(m, 'Continue here').click());
