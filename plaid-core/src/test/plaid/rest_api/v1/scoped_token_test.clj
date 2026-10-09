@@ -107,6 +107,10 @@
       (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data/igt:assistant:" q ":conv:1")))))
       (is (= 403 (:status (call admin :get "/api/v1/users/admin@example.com/data"))))
       (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" q ":")))))
+      (testing "another user's data, by a prefix naming the project in scope"
+        (is (= 403 (:status (call admin :get (str "/api/v1/users/user2@example.com/data?prefix=igt:assistant:" p ":")))))
+        (is (= 403 (:status (call (scoped "user2@example.com" p) :get
+                                  (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" p ":"))))))
       (testing "a prefix whose project is cut short, or a pattern beside it, reaches past the project"
         (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" p)))))
         (is (= 403 (:status (call admin :get (str "/api/v1/users/admin@example.com/data?prefix=igt:assistant:" p
