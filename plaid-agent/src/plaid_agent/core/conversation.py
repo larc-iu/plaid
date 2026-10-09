@@ -187,17 +187,27 @@ class ConversationStore:
         carries the transcript's ``size``."""
         ckey = conv_key(self.app, self.project_id, conv_id)
         value = {'messages': conv['messages'], 'display': compact_settled(conv['display'])}
-        self._seen[ckey] = (0, None)
-        try:
-            self._put(ckey, value, guarded=True)
-        except PlaidAPIError as e:
-            if _moved(e):
-                return False
-            raise
+        if not self._create(ckey, value):
+            return False
         mkey = meta_key(self.app, self.project_id, conv_id)
-        self._seen[mkey] = (0, None)
-        self._put(mkey, with_size(meta, value, value_cap(self.client)), guarded=True)
+        if not self._create(mkey, with_size(meta, value, value_cap(self.client))):
+            raise RecordMoved(conv_id)
         return True
+
+    def _create(self, key: str, value: Any) -> bool:
+        """Put ``value`` under ``key`` only when there is nothing there.
+        False when the key is taken, unless by this very value: a put whose
+        answer was lost and that was sent again (`_patiently`) is refused as
+        taken by its own first landing."""
+        self._seen[key] = (0, None)
+        try:
+            self._put(key, value, guarded=True)
+            return True
+        except PlaidAPIError as e:
+            if not _moved(e):
+                raise
+        self._forget(key)
+        return self.read(key) == json.loads(json.dumps(value))
 
     def write_meta(self, conv_id: str, change: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]
                    ) -> Optional[Dict[str, Any]]:

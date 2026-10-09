@@ -656,6 +656,9 @@ class BaseAssistantService(BaseService):
                 if item.get('dismissed'):
                     self._done(ctx, meta)
                     return
+            elif item.get('status') == 'discarded':
+                self._done(ctx, meta)
+                return
             elif item.get('status') is not None:
                 self._refuse(ctx, 'decided', meta=meta)
                 return
@@ -674,6 +677,10 @@ class BaseAssistantService(BaseService):
                     display = list(stored['display'])
                     display[index] = {**it, 'dismissed': True, 'dismissed_at': now_iso()}
                     return {'messages': stored['messages'], 'display': display}
+                if it.get('status') == 'discarded':
+                    # Its discard landed (this one's, its answer lost and the
+                    # write made again, or another's): discarded is the outcome.
+                    return stored
                 if it.get('status') is not None:
                     return None
                 return settle_plan(stored, index, 'discarded', DISCARDED_NOTE)
@@ -691,6 +698,8 @@ class BaseAssistantService(BaseService):
     def _op_send(self, ctx, retry: bool = False) -> None:
         data = ctx.data
         with ctx.lock:
+            if self._running_here(ctx):
+                return
             conv, meta = self._prepare(ctx)
             create = bool(data.get('create')) and not retry
             if conv is None and not create:
@@ -793,6 +802,12 @@ class BaseAssistantService(BaseService):
         out = {}
 
         def change(stored):
+            # This request's question already landed (its write was answered
+            # with nothing and made again): rewinding again would take the
+            # question's model copy off and add a lost line under it.
+            if any(isinstance(d, dict) and d.get('request_id') == ctx.request_id for d in stored['display']):
+                out['conv'] = stored
+                return stored
             if retry:
                 again = rewind_for_retry(stored)
                 if again is None:
@@ -829,8 +844,8 @@ class BaseAssistantService(BaseService):
             return None
         mark = {'kind': 'turn', 'request_id': ctx.request_id, 'service_id': self.service_id,
                 'started_at': now_iso()}
-        written = ctx.store.write_meta(ctx.conv_id, lambda m: None if m.get('pending') else
-                                       self._holding(ctx, {**m, 'pending': mark}))
+        written = ctx.store.write_meta(ctx.conv_id, lambda m: m if _marks(m, ctx.request_id) else
+                                       None if m.get('pending') else self._holding(ctx, {**m, 'pending': mark}))
         if written is None:
             self._refuse(ctx, 'gone')
             return None
@@ -839,6 +854,8 @@ class BaseAssistantService(BaseService):
     def _op_approve(self, ctx) -> None:
         plan_id = ctx.data.get('plan_id')
         with ctx.lock:
+            if self._running_here(ctx):
+                return
             conv, meta = self._prepare(ctx)
             if not self._gate(ctx, conv, meta):
                 return
@@ -848,8 +865,8 @@ class BaseAssistantService(BaseService):
                         'plan_id': plan_id, 'as_human': bool(ctx.data.get('as_human')),
                         'started_at': now_iso()}
                 written = ctx.store.write_meta(
-                    ctx.conv_id, lambda m: None if busy_why(m.get('pending')) else
-                    self._holding(ctx, {**m, 'pending': mark}))
+                    ctx.conv_id, lambda m: m if _marks(m, ctx.request_id) else None if busy_why(m.get('pending'))
+                    else self._holding(ctx, {**m, 'pending': mark}))
                 if written is None:
                     now = ctx.store.meta(ctx.conv_id)
                     if now is None:
@@ -870,6 +887,16 @@ class BaseAssistantService(BaseService):
                         {'plan_id': plan_id, 'as_human': ctx.data.get('as_human')}, ctx.request_id, ctx.helper)
         finally:
             self._leave(ctx)
+
+    def _running_here(self, ctx) -> bool:
+        """Whether this very request already runs in this process (core
+        handed it over a second time). Refused as busy, so the model is not
+        asked twice and a plan is not applied twice. Under the lock."""
+        running = self._busy.get(ctx.key) or {}
+        if not ctx.request_id or running.get('request_id') != ctx.request_id:
+            return False
+        self._refuse(ctx, 'busy-apply' if running.get('kind') == 'apply' else 'busy-turn')
+        return True
 
     def _leave(self, ctx) -> None:
         with ctx.lock:
@@ -1638,6 +1665,13 @@ class _Op:
         self.tab = data.get('tab') or None
         self.key = (store.user_id, store.project_id, conv_id)
         self.lock = service._conv_lock(self.key)
+
+
+def _marks(meta, request_id) -> bool:
+    """Whether the entry's marker names this request: its own write of it
+    landed and the answer was lost, so the write made again finds it there."""
+    pending = (meta or {}).get('pending')
+    return bool(request_id) and isinstance(pending, dict) and pending.get('request_id') == request_id
 
 
 def _own_question(conv, meta, request_id) -> Optional[Dict[str, Any]]:

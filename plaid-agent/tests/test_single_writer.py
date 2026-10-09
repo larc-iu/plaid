@@ -504,9 +504,12 @@ def test_discard_settles_an_undecided_plan_and_dismisses_a_stale_one():
     assert helper.done[0]['kind'] == 'done' and helper.done[0]['meta']['holder']['tab'] == TAB
     conv, _ = store.load('c1')
     assert conv['display'][1]['status'] == 'discarded' and conv['messages'][-1]['content'] == DISCARDED_NOTE
+    # A discard of a discarded plan (its first answer lost, or another's that
+    # landed) is done, and writes no second note.
     again = Helper(request_id='d2')
     _service().process_request(_req(client, 'discard', plan_id=PLAN1), again)
-    assert again.done[0]['why'] == 'decided'
+    assert again.done[0]['kind'] == 'done'
+    assert [m['content'] for m in store.load('c1')[0]['messages']].count(DISCARDED_NOTE) == 1
     client2 = FakeClient()
     store2 = _seed_plan(client2, status='stale', request_id=None)
     _set_meta(client2, pending=None)
