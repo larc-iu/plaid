@@ -34,16 +34,51 @@
           (doseq [i (range 1 (alength d))] (.set bits (aget d i)))))
       bits)))
 
+(def ^:private ^BitSet reorders
+  "Code points of a nonzero canonical combining class: two of them side by
+  side can be written in either order when their classes differ (Arabic
+  shadda and a vowel, a Thai vowel below and a tone mark), and the spellings
+  are canonically equivalent. Java has no getter for the class, so it is read
+  from what NFD does: a class above 1 moves after U+0334 (class 1), a class
+  of 1 moves before U+05B0 (class 10). Built once, on first use."
+  (delay
+    (let [bits (BitSet. 0x110000)
+          moves? (fn [^String t] (not (Normalizer/isNormalized t Normalizer$Form/NFD)))]
+      (doseq [cp (range 0x110000)
+              :when (and (Character/isDefined (int cp))
+                         (not (<= 0xD800 cp 0xDFFF)))
+              :let [s (String. (Character/toChars cp))]
+              :when (and (Normalizer/isNormalized s Normalizer$Form/NFD)
+                         (or (moves? (str s "̴")) (moves? (str "ְ" s))))]
+        (.set bits (int cp)))
+      bits)))
+
+(defn- marks-reorder?
+  "Whether `s` holds two code points of a nonzero combining class side by
+  side, whose order another spelling may swap."
+  [^String s]
+  (let [^BitSet bits @reorders
+        cps (.toArray (.codePoints s))]
+    (loop [i 1]
+      (cond
+        (>= i (alength cps)) false
+        (and (.get bits (aget cps i)) (.get bits (aget cps (dec i)))) true
+        :else (recur (inc i))))))
+
 (defn only-spelling?
   "Whether `s` is the only spelling of its text: no other string is
   canonically equivalent to it, so an equality with it can compare the stored
-  text exactly (and use an index). True of almost every ASCII text and of most
-  text in scripts without combining marks."
+  text exactly (and use an index). False when `s` is not NFD, when it holds a
+  code point that some decomposition makes, and when two of its marks could
+  stand in the other order (Arabic shadda and fatha, typed in either order).
+  True of almost every ASCII text and of most text in scripts without
+  combining marks."
   [^String s]
   (and (Normalizer/isNormalized s Normalizer$Form/NFD)
        (let [^BitSet bits @not-alone]
          (not (.anyMatch (.codePoints s) (reify java.util.function.IntPredicate
-                                           (test [_ cp] (.get bits cp))))))))
+                                           (test [_ cp] (.get bits cp))))))
+       (not (marks-reorder? s))))
 
 ;; ============================================================
 ;; Composing a body, with its offsets

@@ -153,28 +153,68 @@
   [text]
   [:plaid_nfc (fn-arg text)])
 
+(def ^:private numeric-columns #{"begin" "end_" "precedence"})
+
+(defn- column-class
+  "The type a table column holds, for a column reference: `:numeric` for an
+  integer column (begin, end, precedence), `:text` for any other column (a
+  name, a form, a body, an id, a stored JSON text). Nil for any other
+  expression (a decoded JSON value, a token's surface, a metadata path),
+  which SQLite compares with no conversion."
+  [x]
+  (when (keyword? x)
+    (if (numeric-columns (peek (str/split (name x) #"\."))) :numeric :text)))
+
+(defn- literal-class
+  "The type of literal `v` as SQLite compares it: a boolean is the number 1
+  or 0."
+  [v]
+  (cond (string? v) :text
+        (or (number? v) (boolean? v)) :numeric))
+
+(defn- typeless
+  "Column `x` read with no column affinity, so a comparison with it converts
+  neither side: a string never equals a number. SQLite converts a literal to
+  the column's type before comparing (`begin = '3'` is true at 3), against
+  the rule that a string never equals a number. Used only where the types
+  differ, since it keeps an index from serving the comparison."
+  [x]
+  (case (column-class x)
+    :numeric [:+ x [:inline 0]]
+    :text [:|| x [:inline ""]]
+    x))
+
+(def ^:private never [:= [:inline 1] [:inline 0]])
+
 (defn- atomic-pred
   "`= literal` for a scalar value, `IN (…)` for a vector (value alternation).
   `enc` encodes each literal to its stored form. A text literal compares
   canonically equivalent text as equal, as a regex does: a literal with
   another spelling (`canonical?`) is compared in NFC with `text`, the column's
-  decoded text, and every other literal with the stored form."
+  decoded text, and every other literal with the stored form. A literal of
+  another type than a typed column holds (`\"3\"` on `begin`, `3` on `form`)
+  equals no row there."
   [col v enc text]
-  (let [;; A JSON column keeps to the type: a text literal equals a stored
+  (let [cls (column-class col)
+        fits? (fn [x] (let [c (literal-class (enc x))] (or (nil? cls) (nil? c) (= c cls))))
+        ;; A JSON column keeps to the type: a text literal equals a stored
         ;; string, never an array whose JSON reads the same.
         canon-pred (fn [op lits]
                      (cond->> [op (canonical-text text) lits]
                        (identical? enc psc/write-json) (conj [:and [:= [:json_type (fn-arg col)] [:inline "text"]]])))]
-    (if (vector? v)
-      (let [{canon true plain false} (group-by canonical? v)
+    (cond
+      (vector? v)
+      (let [v (filterv fits? v)
+            {canon true plain false} (group-by canonical? v)
             canon (when (seq canon) (canon-pred :in (mapv canonical/nfc canon)))]
         (cond
+          (empty? v) never
           (nil? canon) [:in col (mapv enc v)]
           (empty? plain) canon
           :else [:or [:in col (mapv enc plain)] canon]))
-      (if (canonical? v)
-        (canon-pred := (canonical/nfc v))
-        [:= col (enc v)]))))
+      (not (fits? v)) never
+      (canonical? v) (canon-pred := (canonical/nfc v))
+      :else [:= col (enc v)])))
 
 (defn- regex-pred
   "Portable case-(in)sensitive regex match of `col` against `pattern`.
@@ -234,8 +274,6 @@
                       [:= (col em :key) mk]
                       (value-pred (col em :value) spec psc/write-json
                                   [:json_extract (col em :value) [:inline "$"]])]}]))
-
-(def ^:private numeric-columns #{"begin" "end_" "precedence"})
 
 (defn- scalar-class
   "How SQLite treats a bound scalar's column in a comparison: `:json` for a
@@ -1174,10 +1212,24 @@
         side (fn [t other] (if (contains? t :lit) ((or (:enc other) identity) (:lit t)) (:sql t)))
         ;; `=` and `!=` with a text literal that has another spelling compare
         ;; canonically equivalent text as equal (`atomic-pred`).
-        [lit other] (cond (contains? ta :lit) [ta tb] (contains? tb :lit) [tb ta])]
+        [lit other] (cond (contains? ta :lit) [ta tb] (contains? tb :lit) [tb ta])
+        ;; the type a term holds: a typed column's, a literal's (encoded as
+        ;; the other side encodes it), nil for an expression with no type
+        cls (fn [t other] (if (contains? t :lit)
+                            (literal-class ((or (:enc other) identity) (:lit t)))
+                            (column-class (:sql t))))
+        ;; a typed column compared with a term of another type, or of no
+        ;; type, is read with no affinity, so a string never equals a number
+        ;; (`["=", "?t.begin", "3"]` matches nothing)
+        typed (fn [t other] (let [s (side t other)]
+                              (if (and (not (contains? t :lit))
+                                       (column-class s)
+                                       (not= (cls t other) (cls other t)))
+                                (typeless s)
+                                s)))]
     (if (and (#{:= :!=} op) lit (:sql other) (canonical? (:lit lit)))
-      (add-where! st [(pred-honeysql-op op) (canonical-text (:sql other)) (canonical/nfc (:lit lit))])
-      (add-where! st [(pred-honeysql-op op) (side ta tb) (side tb ta)]))))
+      (add-where! st [(pred-honeysql-op op) (canonical-text (typed other lit)) (canonical/nfc (:lit lit))])
+      (add-where! st [(pred-honeysql-op op) (typed ta tb) (typed tb ta)]))))
 
 (defn- compile-regex-pred!
   "Compile `[:~ field-path regex-spec]` to a REGEXP match. The LHS is always a

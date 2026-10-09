@@ -119,6 +119,27 @@
                          " does not support a regex (allowed on " (vec (sort clauses/regex-keys)) ")")))
   (check-regex-spec! (str ":" (name k)) spec))
 
+(defn- check-list-members!
+  "Every member of a list (`label` names it for the message) must be a
+  literal: a string, a number or a boolean, and null too where `null-ok?` (a
+  JSON value, where a bare null matches a stored null). A `{:literal v}`
+  member was unwrapped at parse. A regex or a nested list is a 400 naming
+  the shape that works, never a match against its text."
+  [label members null-ok?]
+  (doseq [m members]
+    (cond
+      (or (clauses/scalar-literal? m) (uuid? m)) nil
+      (and null-ok? (nil? m)) nil
+      (and (map? m) (or (contains? m :regex) (contains? m "regex")))
+      (err! :validate (str label " list holds a regex. A list takes literals only: "
+                           "write one regex for every alternative, {\"regex\": \"^(a|b)$\"}, in place of the list."))
+      (sequential? m)
+      (err! :validate (str label " list holds a list " (pr-str m) ". A list takes literals only: "
+                           "write its members in the outer list."))
+      :else
+      (err! :validate (str label " list may only hold strings, numbers or booleans"
+                           (when null-ok? " or null") ", got: " (pr-str m))))))
+
 (defn- check-literal-spec!
   "Validate a `{:literal v}` spec (`label` for error messages): the escape
   hatch for a metadata value that a bare spelling would read as something
@@ -128,11 +149,10 @@
         v (:literal spec)]
     (when (seq extra)
       (err! :validate (str label " literal spec has unknown key(s) " (vec extra) " (allowed :literal)")))
-    (when (nil? v)
-      (err! :validate (str label " literal must not be null: a metadata key whose value is null "
-                           "is deleted, so no row can hold one")))
-    (when (and (vector? v) (empty? v))
-      (err! :validate (str label " literal list must be non-empty")))))
+    (when (vector? v)
+      (when (empty? v)
+        (err! :validate (str label " literal list must be non-empty")))
+      (check-list-members! label v true))))
 
 (defn- validate-metadata!
   "Validate a :metadata constraint value: a map of metadata-key -> value spec
@@ -156,8 +176,10 @@
                            "{\"regex\": \"…\"} — {\"regex\": \".*\"} matches any row that has "
                            "the key at all. For a value that really does begin with '?', "
                            "write {\"literal\": " (pr-str (str spec)) "}."))
-      (and (vector? spec) (empty? spec))
-      (err! :validate (str ":metadata " (pr-str mk) " list must be non-empty"))
+      (vector? spec)
+      (if (empty? spec)
+        (err! :validate (str ":metadata " (pr-str mk) " list must be non-empty"))
+        (check-list-members! (str ":metadata " (pr-str mk)) spec true))
       (map? spec)
       (cond
         (contains? spec :regex) (check-regex-spec! (str ":metadata " (pr-str mk)) spec)
@@ -198,6 +220,25 @@
               (err! :validate (str ":" (name head) " :item must be a vocab variable, an item id, or a list of "
                                    "item ids, got: " (pr-str x)
                                    " — to match an entry by form, bind it with [\"vocab\" \"?v\" {\"form\" \"…\"}]")))))
+        ;; a :doc is a reference like :item: a document id, a list of them, or a
+        ;; value variable. A document VARIABLE or a name there would compare the
+        ;; FK to a string it can never equal, silently, so it is a 400 here.
+        ;; A document's own :id the same.
+        (doseq [k [:doc :id] :when (contains? cmap k)]
+          (let [x (get cmap k)
+                id? #(or (uuid? %) (clauses/uuid-like? %))
+                var-map? (and (= k :doc) (map? x) (contains? x :var))]
+            (when-not (or var-map? (id? x) (and (vector? x) (seq x) (every? id? x)))
+              (err! :validate
+                    (str ":" (name head) " :" (name k) " must be a document id or a list of document ids"
+                         (when (= k :doc) ", or a value variable {\"var\": \"?dv\"}")
+                         ", got: " (pr-str x)
+                         (cond
+                           (and (= k :doc) (string? x) (str/starts-with? x "?"))
+                           (str ". To join with a document variable " x ", write {\"doc\": {\"var\": \"?dv\"}} "
+                                "and add [\"=\", \"?dv\", \"" x "\"].")
+                           (= k :doc) ". To match a document by its name, bind it with [\"document\", \"?d\", {\"name\": \"…\"}]."
+                           :else ". To match a document by its name, use {\"name\": \"…\"}."))))))
         ;; value shapes: a vector value means "one of" -> IN (alternation, on the
         ;; literal-match keys only); a map value means a regex spec (clauses/regex-keys
         ;; only). A scalar is plain equality.
@@ -211,7 +252,9 @@
                                        " does not support a list value (alternation is allowed on "
                                        (vec (sort clauses/alternation-keys)) ")")))
                 (when (empty? v)
-                  (err! :validate (str ":" (name head) " constraint :" (name k) " list must be non-empty"))))
+                  (err! :validate (str ":" (name head) " constraint :" (name k) " list must be non-empty")))
+                (check-list-members! (str ":" (name head) " constraint :" (name k)) v
+                                     (and (= k :value) (not= head :token))))
             (map? v)
             (cond
               (contains? v :regex) (validate-regex-spec! head k v)
@@ -287,7 +330,9 @@
           (when-let [val (:value cmap)]
             (when (map? val)
               (err! :validate (str ":related* :value must be a literal or a list of literals; "
-                                   "regex and value-variables are not supported on :related* edges"))))))
+                                   "regex and value-variables are not supported on :related* edges")))
+            (when (vector? val)
+              (check-list-members! ":related* :value" val true)))))
 
       (clauses/pred-ops head)
       (do
@@ -325,9 +370,7 @@
           (err! :validate (str "in left-hand side must be a field path or variable, got: " (pr-str lhs))))
         (when-not (and (sequential? members) (seq members))
           (err! :validate (str "in right-hand side must be a non-empty list of literals, got: " (pr-str members))))
-        (when-not (every? clauses/scalar-literal? members)
-          (err! :validate (str "in list may only contain literals, got: "
-                               (pr-str (vec (remove clauses/scalar-literal? members)))))))
+        (check-list-members! "in" members false))
 
       (= head :not)
       (do

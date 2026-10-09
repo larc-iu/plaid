@@ -199,12 +199,10 @@
          (ast/expand {"find" ["?s"]
                       "where" [["span" "?s" {"layer" "MetaProj/gloss"
                                              "metadata" {"k" "?PL"}}]]}))))
-  (testing "a null literal is a 400: a null metadata value deletes the key"
-    (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"must not be null"
-         (ast/expand {"find" ["?s"]
-                      "where" [["span" "?s" {"layer" "MetaProj/gloss"
-                                             "metadata" {"k" {"literal" nil}}}]]}))))
+  (testing "a null literal means a bare null (a stored JSON null), not a 400"
+    (is (seq (ast/expand {"find" ["?s"]
+                          "where" [["span" "?s" {"layer" "MetaProj/gloss"
+                                                 "metadata" {"k" {"literal" nil}}}]]}))))
   (testing "an unknown key beside :literal is a 400"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"unknown key"

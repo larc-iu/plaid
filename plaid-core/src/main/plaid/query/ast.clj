@@ -34,6 +34,7 @@
             [clojure.walk :as walk]
             [plaid.query.clauses :as clauses :refer [err!]]
             [plaid.query.desugar :as desugar]
+            [plaid.util.canonical :as canonical]
             [plaid.query.validate :as validate]))
 
 ;; ---------------------------------------------------------------------------
@@ -55,17 +56,26 @@
 (defn- unwrap-literal
   "The value inside a `{:literal v}` term. Rejects a companion key and a
   non-scalar payload, so the wrapper cannot smuggle a map or a list past the
-  term checks."
+  term checks. A null inside means what a bare null means where it stands."
   [x]
   (let [k (literal-key x)
         extra (remove #{k} (keys x))]
     (when (seq extra)
       (err! :parse (str "A {\"literal\": …} term takes no other key(s), got: " (vec extra))))
     (let [v (get x k)]
-      (when-not (or (string? v) (number? v) (boolean? v))
-        (err! :parse (str "A {\"literal\": …} term must wrap a string, number or boolean, got: "
+      (when-not (or (nil? v) (string? v) (number? v) (boolean? v))
+        (err! :parse (str "A {\"literal\": …} term must wrap a string, number, boolean or null, got: "
                           (pr-str v))))
       v)))
+
+(defn- unwrap-members
+  "A list of literals with each `{:literal v}` member read as `v`: in a list
+  a member is always a literal, so the wrapper says nothing more and is
+  dropped. Any other value passes through."
+  [v]
+  (if (sequential? v)
+    (mapv #(if (literal-key %) (unwrap-literal %) %) v)
+    v))
 
 (defn- ->term
   "Normalize a predicate/aggregate scalar term: a `{:literal v}` wrapper -> the
@@ -116,12 +126,15 @@
                                 ;; can reject it with a clean 400, rather than reduce-kv
                                 ;; throwing an uncaught error here at parse time)
                                 (= k :metadata)
+                                ;; A key is composed (NFC), as every stored key is.
                                 (if (map? v)
                                   (reduce-kv (fn [a mk spec]
-                                               (let [mk (if (keyword? mk) (str (symbol mk)) mk)]
+                                               (let [mk (if (keyword? mk) (str (symbol mk)) mk)
+                                                     mk (if (string? mk) (canonical/nfc mk) mk)]
                                                  (assoc a mk (if (map? spec)
-                                                               (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)
-                                                               spec))))
+                                                               (let [s (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)]
+                                                                 (cond-> s (contains? s :literal) (update :literal unwrap-members)))
+                                                               (unwrap-members spec)))))
                                              {} v)
                                   v)
                                 ;; a map value is a special spec: a regex {:regex ..}
@@ -130,7 +143,7 @@
                                 ;; value is ALWAYS a literal — no `?x` ambiguity.)
                                 (map? v) (let [m2 (reduce-kv (fn [a ik iv] (assoc a (->kw ik) iv)) {} v)]
                                            (cond-> m2 (contains? m2 :var) (update :var clauses/->var)))
-                                :else v))))
+                                :else (unwrap-members v)))))
              {} m))
 
 ;; --- :seq sugar (CQP-style token sequences) --------------------------------
@@ -237,7 +250,7 @@
        (= head :in)      (let [args (rest clause)]
                            (when-not (= (count args) 2)
                              (err! :parse (str "in takes a term and a list, got " (count args) " term(s)")))
-                           [:in (->term (first args)) (second args)])
+                           [:in (->term (first args)) (unwrap-members (second args))])
        :else (into [head]
                    (map (fn [a] (if (map? a) (normalize-constraints a) (clauses/->var a))))
                    (rest clause))))))
@@ -396,7 +409,8 @@
                                                  (when-not (sequential? ob)
                                                    (err! :parse (str ":order-by must be a list of [var attr dir] entries, got: " (pr-str ob))))
                                                  (mapv normalize-order-spec ob)))
-      (contains? m :return) (assoc :return (normalize-return (:return m)))
+      ;; a null :return means the default, as a null :limit does
+      (some? (:return m)) (assoc :return (normalize-return (:return m)))
       (contains? m :as-of)  (assoc :as-of (:as-of m)))))     ; carried so validate can reject it
 
 ;; ---------------------------------------------------------------------------

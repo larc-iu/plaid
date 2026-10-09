@@ -12,7 +12,8 @@
   Split out of `plaid.query.ast` so all three, and the compiler, read one
   definition of the language rather than three."
   (:refer-clojure :exclude [var?])
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [plaid.util.canonical :as canonical]))
 
 ;; ---------------------------------------------------------------------------
 ;; Vars
@@ -197,9 +198,9 @@
 ;; (< > <= >=) are rejected on these, though `=`/`!=` and order-by are fine.
 (def unordered-field-attrs #{:id :doc})
 
-;; A scalar literal: the only thing a binding, an `in` list or a `{:literal …}`
-;; wrapper may carry. Nil is not one — a metadata key whose value is null is
-;; deleted, so no row can hold one.
+;; A scalar literal: what a binding, a list member or an `in` member may be.
+;; A list on a JSON value (a span or relation `value`, a metadata value) may
+;; also hold null, which matches a stored JSON null as a bare null does.
 (defn scalar-literal? [x]
   (or (string? x) (number? x) (boolean? x)))
 
@@ -258,7 +259,9 @@
         parts (str/split n #"\.")]
     (when (some str/blank? parts)
       (err! :parse (str "Malformed field path " (pr-str x) " (empty path segment)")))
-    {field-key {:var (symbol (first parts)) :path (vec (rest parts))}}))
+    ;; every segment composed (NFC), as every stored metadata and config key is;
+    ;; the vocabulary segments are ASCII and stay as they are
+    {field-key {:var (symbol (first parts)) :path (mapv canonical/nfc (rest parts))}}))
 
 (defn field-resolve
   "Interpret a field-ref's `path` against the head var's `kind`. Returns one of

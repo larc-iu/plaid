@@ -193,10 +193,10 @@
 (deftest seq-config-doc-threads-into-token-binds
   (testing ":seq config :doc pins every desugared token bind to that document"
     (let [w (:where (first (branches {"find" ["?s"]
-                                      "where" [["seq" {"layer" "w" "doc" "d1"}
+                                      "where" [["seq" {"layer" "w" "doc" "01a1216e-610b-7000-b1e0-cbd74155c0a2"}
                                                 ["span" {"layer" "pos"} "as" "?s"]]]})))]
-      (is (some (fn [c] (and (= :token (first c)) (= "d1" (:doc (nth c 2))))) w)
-          "the desugared :token clause carries :doc \"d1\""))))
+      (is (some (fn [c] (and (= :token (first c)) (= "01a1216e-610b-7000-b1e0-cbd74155c0a2" (:doc (nth c 2))))) w)
+          "the desugared :token clause carries the :doc"))))
 
 (deftest seq-element-layer-and-doc-belong-to-the-config
   (testing "a :token element's :layer was silently replaced by the seq layer"

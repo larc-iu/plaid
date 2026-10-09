@@ -229,9 +229,11 @@ The field name itself (`begin`, `value`, the `metadata`/`config` word) is part
 of the query language, so it is matched loosely: case and `-`/`_` are ignored,
 and you may spell it in whatever idiom your client uses (`?t.begin` and
 `?t.Begin` are the same). The keys after `metadata`/`config`, though, are your
-data: they are matched exactly, case-sensitive and byte for byte
+data: they are matched exactly and case-sensitive
 (`?s.metadata.caseMarker` is not `?s.metadata.casemarker`), mirroring how
-metadata and config are stored. A key containing a literal `.` can't be reached
+metadata and config are stored. A key is composed (Unicode NFC) before it is
+looked up, as every stored key is, so `fórm` typed with a combining accent
+finds the key `fórm`. A key containing a literal `.` can't be reached
 with a dot path. Use the <<Metadata,`metadata` constraint>> for those. Every
 other character belongs to the key, brackets included: `?s.metadata.m.x[0]`
 reads the key `x[0]`, not the first element of an array `x`. A dot path reads
@@ -281,7 +283,9 @@ finds it wherever a value stores it as a mark.
 
 An equality with a text (a bare value, a list of values, a `literal`, `=`,
 `!=` and `in`) compares canonically equivalent text as equal too: `pʰá`
-composed equals it decomposed. A text that has no other spelling (most text
+composed equals it decomposed, and two marks typed in either order are the
+same text (Arabic shadda before or after fatha, a Thai tone mark before or
+after a vowel below). A text that has no other spelling (most text
 without combining marks) is compared as stored, by the index. An equality
 between two values (the same variable in two clauses) compares them as stored.
 
@@ -342,7 +346,9 @@ consequences:
   always writes `3`, Python writes `3.0` for a float).
 * A predicate compares the decoded value, so numbers compare as numbers:
   `["=", "?s.value", 3]` matches both `3` and `3.0`. A string never equals a
-  number.
+  number, on any field: `{"begin": "3"}` and `["=", "?t.begin", "3"]` match no
+  token, and `{"form": 3}` matches no entry, not even one whose form is the
+  text `3`. Under `<` and `>` a number sorts before any text.
 * A boolean decodes to the number `1` or `0`. `["=", "?s.value", true]` and
   `["=", "?s.value", 1]` both match a stored `true` and a stored `1`, while
   `["=", "?s.value", "true"]` matches nothing. A regex, in a constraint map or
@@ -363,18 +369,23 @@ JSON object. There are some special semantics at play for accomplishing this:
 number `5`, not the string `"5"`, and `{"ok": true}` matches the boolean, not the
 string `"true"`.
 * A list means "any of these", a shorthand for several separate literals, not a
-value to match as a whole. The `genre` example matches a document whose `genre`
+value to match as a whole. Each member is a string, number, boolean or null.
+A `{"literal": …}` member reads as its value. A regex in a list is a 400 (write
+one regex with `|` for the alternatives), and so is a list inside a list. The
+same holds for a list on any other key and for `in`. The `genre` example matches a document whose `genre`
 is the string `"news"` or the string `"opinion"`; it does not match one whose
 `genre` is the array `["news", "opinion"]`.
 * A regex runs against the value's text: for a scalar, the decoded value (a string
 without its surrounding quotes, so `^[0-9]+$` matches the string `"123"`); for an
-array or object, the serialized JSON (for example `["news","opinion"]`). That
+array or object, the serialized JSON (for example `["news","opinion"]`), with
+every letter written as itself (`["café"]`, not `["caf\u00e9"]`). That
 serialized form is the only way a regex reaches inside a non-scalar value.
 * A plain string beginning with `?` is refused with a 400. Metadata is matched,
 never bound, so a variable there could only ever read as a literal that no row
 equals. To match a value that really does begin with `?` (a gloss like `?PL`),
 wrap it: `{"literal": "?PL"}`, beside `{"regex": ...}`. The wrapper takes a
-single value or a list of them, and means exactly what the bare form means.
+single value or a list of them, and means exactly what the bare form means:
+`{"literal": null}` matches a stored null as a bare `null` does.
 
 Some examples:
 
@@ -403,14 +414,17 @@ This is brittle: the regex has to match SQLite's exact serialization (compact, n
 spaces, with object keys in whatever order they were stored), so reach for it only
 as a last resort.
 
-Keys are arbitrary strings, kept verbatim and case-sensitive. The lookup is indexed
+Keys are arbitrary strings, kept verbatim and case-sensitive, and composed
+(Unicode NFC) as every stored key is. The lookup is indexed
 against the entity you have already narrowed to, so it is cheap, but metadata is
 free-form: treat it as a filter on a search you have already narrowed, not a
 primary search key.
 
 === Filtering by document
 
-An annotation's `doc` is its document's ID. To select by document name (or any
+An annotation's `doc` is its document's ID. It takes an ID, a list of IDs,
+or a value variable. A document variable or a name there is a 400, since it
+could never equal an ID. To select by document name (or any
 document property), bind the annotation's `doc` to a value variable and equate it
 to a `document` clause:
 
