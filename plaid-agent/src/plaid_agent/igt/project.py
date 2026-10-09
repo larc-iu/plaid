@@ -427,6 +427,21 @@ def stored_morphemes(w: 'Word') -> List['Morpheme']:
     return [m for m in w.morphemes if not m.virtual]
 
 
+def analyzed(w: 'Word') -> bool:
+    """Whether a word has a segmentation of its own to show: several
+    morphemes, or a stored one that differs from the word or carries a value,
+    a link or a type. A one-morpheme word whose form is its surface counts
+    when its morpheme holds a gloss: shown without seg= it read as
+    unanalyzed, and the model segmented it again, restamping glosses a
+    person had made. A word nobody segmented, or one whose lone morpheme
+    holds nothing, has none."""
+    if len(w.morphemes) > 1:
+        return True
+    return any(not m.virtual and (m.form != w.surface or m.morph_type or m.link
+                                  or any(sp.value not in (None, '') for sp in m.fields.values()))
+               for m in w.morphemes)
+
+
 @dataclass
 class Word:
     id: str
@@ -735,7 +750,7 @@ def segmentation_mark(w: Word) -> str:
 def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = None) -> str:
     parts = [f'w{w.index} {w.surface}']
     seg = segmentation(w)
-    if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
+    if analyzed(w):
         types = [m.morph_type for m in w.morphemes if m.morph_type]
         seg += segmentation_mark(w)
         parts.append(f'seg={seg}' + (f' types={",".join(m.morph_type or "?" for m in w.morphemes)}' if types else ''))
@@ -772,7 +787,8 @@ def render_sentence(s: Sentence, project: IgtProject) -> str:
 
 
 FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one line per word: '
-                 'wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values '
+                 'wN surface | seg=morphemes joined by - (or = at a clitic), on every analyzed word, one of '
+                 'a single morpheme too (a word without seg= is unanalyzed) | <morpheme field>=values '
                  'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
                  'link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared '
                  'by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | '

@@ -731,7 +731,7 @@ Documents (1):
 
 ```text
 Document "Text 1": 2 sentences, 4 words | Date=2020
-Format: [sN] baseline sentence; then sentence fields; then one line per word: wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values in the same order (_ = missing) | <word field>=value | <orthography>=value | link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet reviewed (confirm covers both; discard_analysis removes machine work only). Address items as sN, sN.wN, sN.wN.mN; cite one to the user as <cite doc="<document name>" ref="sN"/>.
+Format: [sN] baseline sentence; then sentence fields; then one line per word: wN surface | seg=morphemes joined by - (or = at a clitic), on every analyzed word, one of a single morpheme too (a word without seg= is unanalyzed) | <morpheme field>=values in the same order (_ = missing) | <word field>=value | <orthography>=value | link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet reviewed (confirm covers both; discard_analysis removes machine work only). Address items as sN, sN.wN, sN.wN.mN; cite one to the user as <cite doc="<document name>" ref="sN"/>.
 Showing s1-s2.
 [s1] Ali-di gam akuna.
   Translation: Ali saw a fish.

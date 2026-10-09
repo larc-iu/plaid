@@ -17,7 +17,7 @@ from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 
-from .project import (Word, Morpheme, document_lines, joiner_between, render_overview, stored_morphemes,
+from .project import (Word, Morpheme, analyzed, document_lines, joiner_between, render_overview, stored_morphemes,
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
@@ -342,7 +342,7 @@ def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
                 if same(w.surface):
                     parts = []
                     seg = segmentation(w)
-                    if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
+                    if analyzed(w):
                         parts.append('seg=' + seg)
                         for f in mfields:
                             line = _bracket_line(w, None, f)

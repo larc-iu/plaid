@@ -1,7 +1,7 @@
 from fixtures import FakeClient, document_raw, project_raw
 
 from plaid_agent.igt.project import (load_project, parse_document, render_document, render_overview,
-                                     resolve, parse_ref, Word, Morpheme, Sentence)
+                                     resolve, parse_ref, render_word, Span, Word, Morpheme, Sentence)
 
 
 def test_load_project_reads_roles_scopes_orthographies_and_lexicons():
@@ -194,3 +194,18 @@ def test_tagsets_reach_the_overview_and_the_prompt():
     del bare['text_layers'][0]['token_layers'][2]['span_layers'][0]['config']['igt']['tagset']
     q = load_project(FakeClient(project=bare), 'p1')
     assert 'Tagsets' not in render_overview(q, []) and 'Tagsets' not in build_system_prompt(q)
+
+
+def test_a_one_morpheme_word_with_a_gloss_shows_its_segmentation():
+    """B3 benchmark, igt-lex-link-sentence: a word of one morpheme whose form
+    is its surface printed no seg=, so it read as unanalyzed and the model
+    segmented it again, restamping the person's gloss as machine-confirmed.
+    Every analyzed word shows seg= now. A lone morpheme that holds nothing
+    still reads as the bare word, as a word nobody segmented does."""
+    p = load_project(FakeClient(), 'p1')
+    d = parse_document(document_raw(), p)
+    gam = d.sentences[0].words[1]
+    assert render_word(gam, p) == 'w2 gam'
+    gam.morphemes[0].fields['Morph Gloss'] = Span(id='sp-x', value='fish', layer_id='x')
+    assert render_word(gam, p) == 'w2 gam | seg=gam | Morph Gloss=fish'
+    assert '  w2 gam | seg=gam | Morph Gloss=fish\n' in render_document(d, p)
