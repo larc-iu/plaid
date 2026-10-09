@@ -204,6 +204,12 @@ def test_a_head_that_would_close_a_cycle_is_refused():
     # w4 hangs below its head, so that head cannot hang below w4
     out = run(ws, 'set_head', document='Viaje', ref=f's1.w{head.index}', head=4, deprel='obl')
     assert 'cycle' in out and not ws.ops
+    # B3 benchmark, ud-fr-cycle: the refusal says what the cycle is and
+    # prescribes no change to another word's head ("Give the head word
+    # another head first" once led the model to remove one the user had
+    # said to leave alone).
+    assert f's1.w4 "{w4.form}" -> s1.w{head.index} "{head.form}"' in out
+    assert 'another head first' not in out and "user's to ask for" in out
     # once w4 is the root, its old head can hang below it: one call, which
     # names where the old root goes, since a sentence has one root
     assert head.head == 0

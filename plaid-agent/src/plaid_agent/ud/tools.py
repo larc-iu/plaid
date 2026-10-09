@@ -169,9 +169,21 @@ class Workspace(BaseWorkspace):
             seen.add(cur)
             cur = heads.get(cur)
         if cur is not None:
-            raise ToolError(f'{op.get("ref") or "That word"} cannot take that head: the head hangs below it '
-                            'in the tree (with the heads this plan gives), so the tree would hold a cycle. '
-                            'Give the head word another head first.')
+            # Say what the cycle is and nothing more. It once ended "Give the
+            # head word another head first", and the model did just that to a
+            # word the user had said to leave alone.
+            names = {w.id: f'{word_ref(sentence, w)} "{clip(w.form)}"' for w in sentence.words}
+            path, at = [], op['head_id']
+            while at is not None and at != op['word_id'] and at not in path:
+                path.append(at)
+                at = heads.get(at)
+            word = names.get(op['word_id'], op.get('ref') or 'That word')
+            head = names.get(op['head_id'], 'that head')
+            chain = ' -> '.join(names.get(i, '?') for i in [*path, op['word_id']])
+            raise ToolError(f'{word} cannot take {head} as its head: {head} hangs below it, through the heads '
+                            f'{chain} (each word, then its head, with the heads this plan gives), so the tree '
+                            'would hold a cycle. Nothing was planned. Any other head that would change is the '
+                            'user\'s to ask for.')
 
     def exclusive_message(self, staging_it: bool) -> str:
         if staging_it:
