@@ -1,5 +1,5 @@
 {
-  "about": "A user id as core stores it (plaid.sql.user/normalize-id): NFC, then every whitespace, control and format character (general categories Z, Cc and Cf) trimmed at either end, then lowercased in the root locale. plaid-core, plaid-client-js and plaid-client-py each run this table.",
+  "about": "A user id as core stores it (plaid.sql.user/normalize-id): NFC, then every whitespace, control and format character (general categories Z, Cc and Cf) trimmed at either end, then lowercased in the root locale, then NFC again (a capital with no composed form can lowercase to a letter that has one). plaid-core, plaid-client-js and plaid-client-py each run this table.",
   "cases": [
     {
       "input": "  B@X.Com ",
@@ -115,6 +115,21 @@
       "input": "a@b\u00fccher.de",
       "id": "a@b\u00fccher.de",
       "what": "a domain outside ASCII stays as typed"
+    },
+    {
+      "input": "J\u030c@X.COM",
+      "id": "\u01f0@x.com",
+      "what": "J and a caron, which has no composed capital, lowercases to j and a caron, which composes"
+    },
+    {
+      "input": "\u01f0@x.com",
+      "id": "\u01f0@x.com",
+      "what": "the same letter typed composed names the same account"
+    },
+    {
+      "input": "H\u0331@X.COM",
+      "id": "\u1e96@x.com",
+      "what": "h with a line below, composed only in lowercase"
     }
   ]
 }

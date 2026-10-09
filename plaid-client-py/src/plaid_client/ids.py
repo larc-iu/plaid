@@ -76,11 +76,13 @@ _ID_EDGES = frozenset(('Zs', 'Zl', 'Zp', 'Cc', 'Cf'))
 def normalize_user_id(user_id):
     """A user id as the server stores it.
 
-    A user's id is their email address, kept in NFC, trimmed of every
-    whitespace, control and format character at either end and lowercased,
-    so ``Ana@Example.org`` and ``ana@example.org`` name one account. Compare
-    a typed address with an id through this. The rule is core's
-    (``plaid.sql.user/normalize-id``), checked against its case table.
+    A user's id is their email address, trimmed of every whitespace, control
+    and format character at either end and lowercased, in NFC before and
+    after (a capital with no composed form, such as J̌, lowercases to one
+    that has one, ǰ), so ``Ana@Example.org`` and ``ana@example.org`` name
+    one account. Compare a typed address with an id through this. The rule
+    is core's (``plaid.sql.user/normalize-id``), checked against its case
+    table.
     Anything but a string comes back unchanged.
     """
     if not isinstance(user_id, str):
@@ -91,4 +93,4 @@ def normalize_user_id(user_id):
         i += 1
     while j > i and unicodedata.category(s[j - 1]) in _ID_EDGES:
         j -= 1
-    return s[i:j].lower()
+    return unicodedata.normalize('NFC', s[i:j].lower())

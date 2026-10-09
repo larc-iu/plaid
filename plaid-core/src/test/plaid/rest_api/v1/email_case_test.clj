@@ -57,6 +57,22 @@
                                                      :password "long-enough-1" :is-admin false}}))
   (is (= 200 (:status (login "\u2068BOM@x.com" "long-enough-1")))))
 
+(deftest an-invisible-character-inside-an-address-is-refused
+  ;; REV-FX11: trimming only the ends left `a\u200bb@x.com` and `ab@x.com`,
+  ;; two accounts that read the same. Such an address is refused.
+  (doseq [email ["a\u200bb@x.com" "a\u00a0b@x.com" "ab@x\u2068.com" "ab@x.c\u00adom"]]
+    (assert-status 400 (api-call admin-request {:method :post :path "/api/v1/users"
+                                                :body {:email email :password "long-enough-1" :is-admin false}}))))
+
+(deftest a-letter-that-composes-only-in-lowercase-names-one-account
+  ;; REV-FX11: J and a caron has no composed capital, and lowercased it
+  ;; composes, so the id is in NFC after lowercasing too.
+  (assert-created (api-call admin-request {:method :post :path "/api/v1/users"
+                                           :body {:email "J\u030c@X.com" :password "long-enough-1" :is-admin false}}))
+  (assert-status 409 (api-call admin-request {:method :post :path "/api/v1/users"
+                                              :body {:email "\u01f0@x.com" :password "long-enough-1" :is-admin false}}))
+  (is (= 200 (:status (login "\u01f0@x.com" "long-enough-1")))))
+
 (deftest account-creation-stores-one-spelling
   (testing "POST /users stores the lowercased, trimmed email"
     (let [resp (api-call admin-request {:method :post :path "/api/v1/users"

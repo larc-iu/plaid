@@ -79,14 +79,18 @@ const ID_EDGES = /^[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+$/gu;
 
 /**
  * A user id as the server stores it. A user's id is their email address,
- * kept in NFC, trimmed of every whitespace, control and format character at
- * either end and lowercased, so `Ana@Example.org` and `ana@example.org` name
- * one account. Compare a typed address with an id through this. The rule is
- * core's (`plaid.sql.user/normalize-id`), checked against its case table.
+ * trimmed of every whitespace, control and format character at either end
+ * and lowercased, in NFC before and after (a capital with no composed form,
+ * such as J̌, lowercases to one that has one, ǰ), so `Ana@Example.org` and
+ * `ana@example.org` name one account. Compare a typed address with an id
+ * through this. The rule is core's (`plaid.sql.user/normalize-id`), checked
+ * against its case table.
  * Anything but a string comes back unchanged.
  * @param {string} id
  * @returns {string}
  */
 export function normalizeUserId(id) {
-  return typeof id === "string" ? id.normalize("NFC").replace(ID_EDGES, "").toLowerCase() : id;
+  return typeof id === "string"
+    ? id.normalize("NFC").replace(ID_EDGES, "").toLowerCase().normalize("NFC")
+    : id;
 }

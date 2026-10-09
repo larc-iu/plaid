@@ -39,19 +39,20 @@
   #"\A[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+\z")
 
 (defn normalize-id
-  "The one spelling of a user id, which is an email address: NFC, trimmed of
-  every whitespace, control and format character at either end, and
-  lowercased in the root locale. An id is normalized everywhere it enters
-  core, the routes by `plaid.rest-api.v1.schema/user-id` and account creation
-  here, so two accounts never differ only in case, composition or an invisible
-  character at an end, and `B@X.COM` signs in, is granted and is found as
-  `b@x.com`. Both clients write the same rule (`normalizeUserId`,
+  "The one spelling of a user id, which is an email address: trimmed of every
+  whitespace, control and format character at either end and lowercased in the
+  root locale, in NFC before and after (a capital with no composed form, such
+  as J̌, lowercases to one that has one, ǰ). An id is normalized everywhere it
+  enters core, the routes by `plaid.rest-api.v1.schema/user-id` and account
+  creation here, so two accounts never differ only in case, composition or an
+  invisible character at an end, and `B@X.COM` signs in, is granted and is
+  found as `b@x.com`. Both clients write the same rule (`normalizeUserId`,
   `normalize_user_id`), held to it by `user_id_cases.json`. Anything but a
   string comes back unchanged."
   [id]
   (if (string? id)
-    (let [nfc (java.text.Normalizer/normalize ^String id java.text.Normalizer$Form/NFC)]
-      (.toLowerCase ^String (clojure.string/replace nfc id-edges "") java.util.Locale/ROOT))
+    (let [nfc #(java.text.Normalizer/normalize ^String % java.text.Normalizer$Form/NFC)]
+      (nfc (.toLowerCase ^String (clojure.string/replace (nfc id) id-edges "") java.util.Locale/ROOT)))
     id))
 
 (defn- row->user
@@ -185,8 +186,10 @@
   domain. Anything stricter starts turning away addresses that genuinely
   deliver (RFC 5322 allows quoted local parts, and new TLDs keep arriving),
   and the only thing this check is really here to catch is someone typing a
-  bare name into a field the whole instance treats as an email."
-  #"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+  bare name into a field the whole instance treats as an email. No space,
+  control or format character anywhere in it (a no-break space, a zero-width
+  space, a bidi mark), so no two accounts differ by one nobody can see."
+  #"^[^@\s\p{Z}\p{Cc}\p{Cf}]+@[^@\s\p{Z}\p{Cc}\p{Cf}]+\.[^@\s\p{Z}\p{Cc}\p{Cf}]+$")
 
 (defn assert-valid-email!
   "A user's ID IS their email address in Plaid: it is what `POST /login`

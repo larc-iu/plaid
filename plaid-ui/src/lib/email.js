@@ -6,9 +6,14 @@
 // something stricter. A client check that rejects an address the server would
 // accept is worse than no check at all: it locks someone out of their own
 // signup with no way to argue.
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// No space, control or format character anywhere (a no-break space, a
+// zero-width space, a bidi mark), once those at either end are trimmed as the
+// server trims them.
+const EMAIL_PATTERN =
+  /^[^@\s\p{Z}\p{Cc}\p{Cf}]+@[^@\s\p{Z}\p{Cc}\p{Cf}]+\.[^@\s\p{Z}\p{Cc}\p{Cf}]+$/u;
+const EDGES = /^[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+$/gu;
 
-export const isEmail = (value) => EMAIL_PATTERN.test((value ?? '').trim());
+export const isEmail = (value) => EMAIL_PATTERN.test((value ?? '').replace(EDGES, ''));
 
 // One wording everywhere, so the rule reads the same at whichever form you
 // happen to meet it.
