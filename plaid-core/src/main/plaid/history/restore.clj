@@ -113,15 +113,15 @@
 
 (defn compose-json-text
   "A JSON column's text (a span's or relation's value) with every string in
-  it composed, or `s` itself when nothing changes."
+  it composed, written as every write stores JSON (an earlier time's rows may
+  hold `\\u` escapes)."
   [s]
   (if-not (string? s)
     s
     (let [v (try (psc/read-json s) (catch Exception _ ::unreadable))]
       (if (= ::unreadable v)
         s
-        (let [v' (canonical/compose-data v (constantly false))]
-          (if (identical? v v') s (psc/write-json v')))))))
+        (psc/write-json (canonical/compose-data v (constantly false)))))))
 
 (defn- compose-meta [row]
   (cond-> row

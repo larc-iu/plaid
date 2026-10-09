@@ -1,7 +1,8 @@
 (ns plaid.tasks.compose-text-test
   "The one-off conversion to composed text, on a database seeded with
   decomposed text the way an older core stored it."
-  (:require [clojure.test :refer :all]
+  (:require [clojure.data.json :as json]
+            [clojure.test :refer :all]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler admin-request api-call
                                     with-admin with-clean-db]]
             [plaid.sql.common :as psc]
@@ -97,7 +98,7 @@
       (is (= [3 5] (extent w2)))
       (is (= [3 5] (extent m2))))
     (testing "every other column"
-      (is (= "\"gl\\u00f3ss\"" (:value (psc/fetch-by-id db :spans s1))))
+      (is (= "\"gl\u00f3ss\"" (:value (psc/fetch-by-id db :spans s1))) "written with no escape")
       (is (= {"kéy" "other"} (metadata/get-metadata db "span" s1)) "the composed key keeps one value")
       (is (= "Docú" (:name (psc/fetch-by-id db :documents doc))))
       (is (= {"igt" {"tágs" ["nég"]}} (psc/parse-config (:config (psc/fetch-by-id db :token_layers words)))))
@@ -121,3 +122,41 @@
         (is (empty? (:columns r2)))
         (is (nil? (:operation r2)))
         (is (= ops (count (psc/q db {:select [:id] :from [:operations]}))))))))
+
+(deftest json-written-with-escapes-is-written-again-without
+  (let [proj (create-test-project admin-request "P")
+        doc (create-test-document admin-request proj "D")
+        tl (id-of (create-text-layer admin-request proj "T"))
+        words (id-of (create-token-layer admin-request tl "Words"))
+        gloss (id-of (create-span-layer admin-request words "Gloss"))
+        text (id-of (create-text admin-request tl doc "x"))
+        t (id-of (create-token admin-request words text 0 1))
+        s (id-of (create-span admin-request gloss [t] "g" {"tags" ["caf\u00e9" "a/b"] "n" 1}))
+        ;; composed text, written by an older core's JSON writer
+        escaped-value (json/write-str "caf\u00e9")
+        escaped-tags (json/write-str ["caf\u00e9" "a/b"])
+        escaped-config (json/write-str {"igt" {"tags" ["n\u00e9g" "a/b"]}})]
+    (is (= "\"caf\\u00e9\"" escaped-value))
+    (psc/execute! db {:update :spans :set {:value escaped-value} :where [:= :id (str s)]})
+    (psc/execute! db {:update :entity_metadata :set {:value escaped-tags}
+                      :where [:and [:= :entity_id (str s)] [:= :key "tags"]]})
+    (psc/execute! db {:update :token_layers :set {:config escaped-config} :where [:= :id (str words)]})
+    (testing "a dry run counts them"
+      (let [r (task/run! db false)]
+        (is (= {"spans.value" 1 "token_layers.config" 1} (:columns r)))
+        (is (= 1 (:metadata-entities r)))
+        (is (= 0 (:texts r)))))
+    (testing "apply writes them as core writes JSON now, values unchanged"
+      (let [r (task/run! db true)]
+        (is (= 1 (:documents r))))
+      (is (= "\"caf\u00e9\"" (:value (psc/fetch-by-id db :spans s))))
+      (is (= "[\"caf\u00e9\",\"a/b\"]"
+             (:value (psc/q1 db {:select [:value] :from [:entity_metadata]
+                                 :where [:and [:= :entity_id (str s)] [:= :key "tags"]]}))))
+      (is (= {"tags" ["caf\u00e9" "a/b"] "n" 1} (metadata/get-metadata db "span" s)))
+      (is (= {"igt" {"tags" ["n\u00e9g" "a/b"]}}
+             (psc/parse-config (:config (psc/fetch-by-id db :token_layers words))))))
+    (testing "a second run finds nothing"
+      (let [r (task/run! db false)]
+        (is (empty? (:columns r)))
+        (is (= 0 (:metadata-entities r)))))))

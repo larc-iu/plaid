@@ -162,10 +162,42 @@
 ;; JSON helpers (config blobs, JSON-encoded scalar values, audit images)
 ;; ============================================================
 
-(defn write-json
-  "Serialize a Clojure value to a JSON string."
+(defn- escape-lone-surrogates
+  "`s` with every unpaired surrogate written as a `\\uXXXX` escape. A JSON
+  text holds one only inside a string, where the escape is the same
+  character, and the column would store the raw one as `?`."
+  ^String [^String s]
+  (if (nil? (storable/problem s))
+    s
+    (let [n (.length s)
+          sb (StringBuilder. (+ n 8))]
+      (loop [i 0]
+        (if (>= i n)
+          (.toString sb)
+          (let [c (.charAt s i)
+                paired? (and (Character/isHighSurrogate c) (< (inc i) n)
+                             (Character/isLowSurrogate (.charAt s (inc i))))]
+            (cond
+              paired? (do (.append sb c) (.append sb (.charAt s (inc i))) (recur (+ i 2)))
+              (Character/isSurrogate c) (do (.append sb (format "\\u%04x" (int c))) (recur (inc i)))
+              :else (do (.append sb c) (recur (inc i))))))))))
+
+(defn- json-text
+  "`v` as JSON text with every character written as itself: no `\\u` escape
+  for a letter outside ASCII and none for `/`, only the escapes JSON requires
+  (quote, backslash, control characters) and one for an unpaired surrogate.
+  A regex on a stored array or object then reads its letters (`[\"café\"]`,
+  not `[\"caf\\u00e9\"]`), and an equality literal encoded here is the same
+  text as the stored value."
   ^String [v]
-  (json/write-str v))
+  (escape-lone-surrogates
+   (json/write-str v :escape-unicode false :escape-slash false :escape-js-separators false)))
+
+(defn write-json
+  "Serialize a Clojure value to a JSON string, as every JSON column stores it
+  (see `json-text`)."
+  ^String [v]
+  (json-text v))
 
 (defn read-json
   "Parse a JSON string back into Clojure data. Returns nil on nil input."
@@ -214,7 +246,7 @@
   hash-map vs array-map ordering, or `assoc`-induced repr flips) would
   defeat the skip and emit spurious audit rows."
   ^String [v]
-  (json/write-str (sort-maps-deep v)))
+  (json-text (sort-maps-deep v)))
 
 (defn serialize-config
   "Render a config map as JSON for storage. Accepts nil as `{}`. Keys
