@@ -600,7 +600,8 @@
                               {:violations-before-remedies vs :only-model only-model :only-stored only-stored}))
 
                       :else :ok)))]
-            (when-not (= :failed result)
+            ;; `fail` answers (reduced :failed): a seed stops at its first failure.
+            (when-not (reduced? result)
               (recur (inc i)))))))
     @stats))
 
