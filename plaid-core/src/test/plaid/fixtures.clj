@@ -162,7 +162,11 @@
       (jdbc/execute! tx (into [sql] preserved-test-users)))
     ;; The standing users survive the wipe above, so their avatar_hash has to
     ;; be cleared by hand to match the now-empty user_avatars table.
-    (jdbc/execute! tx ["UPDATE users SET avatar_hash = NULL"])))
+    (jdbc/execute! tx ["UPDATE users SET avatar_hash = NULL"])
+    ;; And a display name one deftest gives a standing user must not reach
+    ;; the next namespace, which reads the name the account started with.
+    (doseq [u preserved-test-users]
+      (jdbc/execute! tx ["UPDATE users SET display_name = ? WHERE id = ?" (pxu/default-display-name u) u]))))
 
 (defn forget-planner-statistics!
   "Drop the planner statistics a test's ANALYZE left in `ds`, and close the
