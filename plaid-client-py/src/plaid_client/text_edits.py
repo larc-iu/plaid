@@ -180,6 +180,27 @@ def _nfc(s):
     return unicodedata.normalize('NFC', s)
 
 
+#: The longest piece whose inside positions are each placed where cutting
+#: there leaves the composed text as it is (core's ``refine-limit``).
+_REFINE_LIMIT = 32
+
+
+def _refine_inside(at, s, b, e, pos, c):
+    """The positions strictly inside the piece ``s[b:e]``, which composed to
+    ``c`` at ``pos``: a place where the piece's two halves compose apart to
+    ``c`` goes to the end of the first half (a tone mark that does not compose
+    with ẹ stays out of it), any other to the next such place, else to the
+    piece's end. Mirror of core's ``refine-inside!``."""
+    whole = e - b > _REFINE_LIMIT
+    nxt = pos + len(c)
+    for i in range(e - 1, b, -1):
+        if not whole:
+            pre = _nfc(s[b:i])
+            if pre + _nfc(s[i:e]) == c:
+                nxt = min(nxt, pos + len(pre))
+        at[i] = nxt
+
+
 def compose_text(s):
     """``s`` composed (Unicode NFC), as the server stores every text, and where
     each code-point position of ``s`` goes in it: ``(text, at)``, ``at(p)`` for
@@ -191,8 +212,10 @@ def compose_text(s):
     ``s`` is cut before each code point that is not a mark, a piece joined to
     the one before when the two compose together (Hangul jamo, a vowel sign),
     and each piece composes on its own. A position inside a piece composing
-    changed goes to that piece's composed end, so an edge between a letter and
-    the mark that composes with it moves to after the composed character.
+    changed goes to where cutting the piece there composes the same, else to
+    the next such place, at the latest the piece's composed end, so an edge
+    between a letter and the mark that composes with it moves to after the
+    composed character, and a mark that does not compose stays out of it.
     ``at`` never reverses two positions.
     """
     s = s or ''
@@ -225,8 +248,7 @@ def compose_text(s):
                 at[i] = pos + (i - b)
         else:
             at[b] = pos
-            for i in range(b + 1, e):
-                at[i] = pos + len(c)
+            _refine_inside(at, s, b, e, pos, c)
         pos += len(c)
     at[n] = pos
     text = ''.join(out)

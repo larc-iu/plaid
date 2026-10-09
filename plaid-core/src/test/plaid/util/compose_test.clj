@@ -46,9 +46,20 @@
     (is (= (nfc s) (:text (canonical/compose s))))
     (is (= [0 2 2 2 3 4] (positions s)))))
 
+(deftest a-mark-that-does-not-compose-stays-out-of-the-letter-before
+  ;; ẹ́ typed e, dot below, acute: e and the dot compose to ẹ, and the acute
+  ;; has no composed letter with it. A tone morpheme [2 3] keeps the acute,
+  ;; and the edge between e and its dot goes after ẹ.
+  (let [s "e\u0323\u0301"]
+    (is (= "\u1EB9\u0301" (:text (canonical/compose s))))
+    (is (= [0 1 1 2] (positions s))))
+  (let [s "a\u0301\u0331"]
+    (is (= "\u00E1\u0331" (:text (canonical/compose s))))
+    (is (= [0 1 1 2] (positions s)))))
+
 (def ^:private alphabet
   ["a" "e" "o" " " "\u0301" "\u0300" "\u0323" "\u0308" "\u1112" "\u1161" "\u11AB" "க" "\u0BCD"
-   "\u0BC6" "\u0BBE" "\u212B" "\uD801\uDC00" "\uD834\uDD5F" "क" "\u093C" "न" "\u3099" "か" "\n"])
+   "\u0BC6" "\u0BBE" "\u212B" "\u0331" "\u0344" "\u1EB9" "\uD801\uDC00" "\uD834\uDD5F" "क" "\u093C" "न" "\u3099" "か" "\n"])
 
 (deftest random-texts-compose-with-an-order-keeping-map
   (let [rnd (java.util.Random. 20261009)]
@@ -59,7 +70,15 @@
         (is (= (nfc s) text) (pr-str s))
         (is (= 0 (first ps)) (pr-str s))
         (is (= (cps text) (peek ps)) (pr-str s))
-        (is (apply <= ps) (pr-str s))))))
+        (is (apply <= ps) (pr-str s))
+        ;; a place where the text can be cut, its halves composing apart to
+        ;; the whole, goes to the end of its composed first half
+        (let [cs (.toArray (.codePoints ^String s))
+              sub (fn [a b] (String. cs (int a) (int (- b a))))]
+          (doseq [p (range 1 (alength cs))
+                  :let [pre (nfc (sub 0 p))]
+                  :when (= text (str pre (nfc (sub p (alength cs)))))]
+            (is (= (cps pre) (ps p)) (pr-str s p))))))))
 
 (deftest the-clients-compose-as-the-core-does
   ;; made by this function, read by both clients' tests

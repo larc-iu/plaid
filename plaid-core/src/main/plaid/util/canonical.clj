@@ -87,6 +87,32 @@
               (recur (inc i) i))
           (recur (inc i) start))))))
 
+(def ^:private refine-limit
+  "The longest piece whose inside positions are each placed where cutting
+  there leaves the composed text as it is. A longer one (a long run of marks)
+  sends them all to its end, so composing stays linear."
+  32)
+
+(defn- refine-inside!
+  "Fill `at` for the positions strictly inside the piece `[start, end)`,
+  which composed to `c` (`c-len` code points) at `out`. A position where the
+  piece can be cut, its two halves composing apart to `c` (between `ẹ` and a
+  tone mark that does not compose with it), goes to the end of its composed
+  first half, so the mark stays out of the token before it. Any other goes to
+  the next such cut, else to the piece's end."
+  [^ints at ^ints cps start end out ^String c c-len]
+  (let [whole? (> (- end start) refine-limit)]
+    (loop [i (dec end) nxt (+ out c-len)]
+      (when (> i start)
+        (let [nxt (if whole?
+                    nxt
+                    (let [pre (nfc (cps->str cps start i))]
+                      (if (= c (str pre (nfc (cps->str cps i end))))
+                        (min nxt (+ out (.codePointCount pre 0 (.length pre))))
+                        nxt)))]
+          (aset at (int i) (int nxt))
+          (recur (dec i) nxt))))))
+
 (defn compose
   "`s` composed (NFC), and where each code-point position of `s` goes in it.
 
@@ -95,9 +121,11 @@
   into pieces where composing changes nothing across the cut (see `pieces`),
   and each piece composes on its own. A position at a piece's start goes to
   its composed start. A position inside a piece composing changed goes to
-  that piece's composed END, so an edge between a letter and the mark that
-  composes with it moves to after the composed character, which stays with
-  the token that held its letter. Inside a piece composing left alone a
+  where cutting the piece there composes the same (see `refine-inside!`),
+  else to the next such place, at the latest the piece's composed END, so an
+  edge between a letter and the mark that composes with it moves to after
+  the composed character, which stays with the token that held its letter,
+  and a mark that does not compose stays out of it. Inside a piece composing left alone a
   position keeps its place. `f` never reverses two positions, so tokens that
   did not overlap still do not, a partition still tiles and a child stays
   inside its parent. A token that held only such a mark is left zero-width.
@@ -121,7 +149,7 @@
             (if (identical? c src)
               (doseq [i (range start end)] (aset at (int i) (int (+ out (- i start)))))
               (do (aset at (int start) (int out))
-                  (doseq [i (range (inc start) end)] (aset at (int i) (int (+ out c-len))))))
+                  (refine-inside! at cps start end out c c-len)))
             (recur (next ps) (+ out c-len)))
           (aset at n (int out))))
       (let [text (.toString sb)]
