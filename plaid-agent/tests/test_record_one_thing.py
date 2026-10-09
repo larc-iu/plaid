@@ -86,7 +86,7 @@ def test_a_run_marks_the_plan_writing_before_its_first_change_is_sent():
 
     svc.execute_plan = execute
     svc.process_request(_request(client, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
-    assert seen == ['r9'], 'marked, naming the run'
+    assert [m['run'] for m in seen] == ['r9'], 'marked, naming the run'
     conv, _ = store.load('c1')
     # Settled, so compacted: the mark goes with the rest of what approving needed.
     assert conv['display'][1]['status'] == 'applied'
@@ -118,9 +118,30 @@ def test_every_run_marks_the_plan_in_one_write_naming_the_run():
     calls = []
     client = FakeClient()
     writing(client, plan, [], lambda: calls.append(dict(plan)) or True, run='r1')
-    assert plan[WRITING] == 'r1' and len(calls) == 1
+    assert plan[WRITING]['run'] == 'r1' and len(calls) == 1
     writing(client, plan, [], lambda: calls.append(dict(plan)) or True, run='r2')
-    assert len(calls) == 2 and calls[-1][WRITING] == 'r2'
+    assert len(calls) == 2 and calls[-1][WRITING]['run'] == 'r2'
+
+
+def test_the_mark_says_whether_every_change_lands_in_a_held_document():
+    """Only then do the documents' versions tell whether anything was
+    written: an entry of the lexicon, or a document the plan creates, is
+    written nowhere a held version counts (REV-FX12)."""
+    client = FakeClient()
+    client.plan_held_documents = {'d1'}
+    client.document_versions = {'d1': 7}
+    docs = [{'id': 'd1', 'name': 'Text 1', 'version': 7}]
+    span = {'kind': 'set_span', 'document_id': 'd1', 'token_id': 'w', 'value': 'x'}
+    entry = {'kind': 'create_entry', 'vocab_id': 'v1', 'form': 'kai', 'key': 'k1'}
+    plan = {'id': PLAN1}
+    writing(client, plan, docs, lambda: True, run='r1', ops=[span])
+    assert plan[WRITING] == {'run': 'r1', 'inside': True}
+    assert docs[0][core_plan.HELD_FROM] == 7
+    writing(client, plan, docs, lambda: True, run='r2', ops=[span, entry])
+    assert plan[WRITING]['inside'] is False
+    other = {**span, 'document_id': 'd2'}
+    writing(client, plan, docs, lambda: True, run='r3', ops=[other])
+    assert plan[WRITING]['inside'] is False
 
 
 def _discard_before_the_first_send(client, svc):
@@ -163,7 +184,7 @@ def test_a_run_again_that_writes_nothing_keeps_the_mark_and_the_held_versions():
     store = _seed_plan(client)
     conv, meta = store.load('c1')
     conv['display'][1]['interrupted'] = True
-    conv['display'][1]['plan'][WRITING] = 'r-first'
+    conv['display'][1]['plan'][WRITING] = {'run': 'r-first', 'inside': True}
     conv['display'][1]['plan']['documents'][0][core_plan.HELD_FROM] = 7
     store.save('c1', conv, meta)
     svc = _service()
@@ -178,7 +199,7 @@ def test_a_run_again_that_writes_nothing_keeps_the_mark_and_the_held_versions():
     conv, meta = store.load('c1')
     plan = conv['display'][1]['plan']
     assert conv['display'][1]['status'] is None
-    assert plan.get(WRITING) == 'r-first'
+    assert plan.get(WRITING) == {'run': 'r-first', 'inside': True}
     assert plan['documents'][0].get(core_plan.HELD_FROM) == 7
 
 

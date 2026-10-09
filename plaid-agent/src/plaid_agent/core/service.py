@@ -947,7 +947,7 @@ class BaseAssistantService(BaseService):
                 expansion.forget()
             plan.pop(WRITING, None)
         try:
-            writing(client, plan, documents, lambda: remember(undecided=True), run=run)
+            writing(client, plan, documents, lambda: remember(undecided=True), run=run, ops=ops)
         except (RecordFull, PlanMovedOn) as e:
             def stopped(e=e):
                 nothing_written()

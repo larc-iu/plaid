@@ -1288,11 +1288,13 @@ export const mayHaveWritten = (item) =>
 
 // Whether the documents of such a plan show that its run wrote nothing after
 // all (it was cut off between marking the plan and sending its first change):
-// each document the run held is still at the version it held it at. Read from
-// the server, and false whenever that cannot be told (a document gone, one
-// another person changed since, a read refused).
+// each document the run held is still at the version it held it at. Only for
+// a plan whose every change lands in those documents, which the run says on
+// its mark (`inside`): a lexicon entry or a new document moves no version.
+// Read from the server, and false whenever that cannot be told (a document
+// gone, one another person changed since, a read refused).
 export const nothingLanded = async (store, item) => {
-  if (!mayHaveWritten(item)) return false;
+  if (!mayHaveWritten(item) || item.plan.writing?.inside !== true) return false;
   const held = (item.plan.documents || []).filter((d) => d?.id && d.heldFrom != null);
   if (!held.length) return false;
   try {

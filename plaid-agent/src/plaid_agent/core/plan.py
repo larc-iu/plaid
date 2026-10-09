@@ -181,10 +181,13 @@ def held_from(client, documents: List[Dict[str, Any]], remember) -> bool:
 
 #: Set on a plan while an approval of it may have written (:func:`writing`),
 #: and dropped again by a run that certainly wrote nothing. The page reads it
-#: on a plan whose approval was interrupted: such a plan cannot be discarded
-#: unless its documents show that nothing was written, since some of its
-#: changes may be in the project. Its value names the run that set it, so each
-#: run writes the record before it sends anything.
+#: on a plan whose approval was interrupted: such a plan cannot be discarded,
+#: since some of its changes may be in the project. ``{'run', 'inside'}``:
+#: ``run`` names the run that set it, so each run writes the record before it
+#: sends anything, and ``inside`` says that every change of the plan lands in a
+#: document the run held, at the version it recorded (:data:`HELD_FROM`), so a
+#: page that finds each of them still at that version knows nothing was
+#: written and may discard the plan after all.
 WRITING = 'writing'
 
 #: Said when the record has no room for what an approval keeps on the plan
@@ -208,9 +211,11 @@ class PlanMovedOn(ValueError):
     conversation was deleted. Nothing was sent."""
 
 
-def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], mark, run: Any = True) -> None:
+def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], mark, run: Any = True,
+            ops: Optional[List[Dict[str, Any]]] = None) -> None:
     """Before the first change of a run is sent: the plan says that it may
-    have written (:data:`WRITING`, naming the run ``run``) and which versions
+    have written (:data:`WRITING`, naming the run ``run``, and whether every
+    one of ``ops`` lands only in documents the run holds) and which versions
     the run holds its documents at (:func:`held_from`), in one write of the
     record, ``mark()``. Every run makes it, a run again too, and it is made
     only on a plan the record still has undecided (``mark`` answers False
@@ -219,8 +224,10 @@ def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], mark,
     decided. Raises :class:`PlanMovedOn` then, and :class:`RecordFull` when
     the record cannot take the write."""
     try:
-        plan[WRITING] = run
         held_from(client, documents, lambda: None)
+        held = {d.get('id') for d in documents or [] if isinstance(d, dict) and d.get(HELD_FROM) is not None}
+        reach = [docs_of_op(op) for op in expand_ops(ops or [])]
+        plan[WRITING] = {'run': run, 'inside': bool(reach) and all(r and r <= held for r in reach)}
         if not mark():
             raise PlanMovedOn('the plan was decided elsewhere')
     except PlaidAPIError as e:

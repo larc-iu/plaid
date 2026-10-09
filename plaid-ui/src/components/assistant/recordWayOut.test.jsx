@@ -44,7 +44,7 @@ const plan = { id: 'p1', summary: '11 field values', ops: [{ kind: 'x' }], docum
 const cut = {
   kind: 'assistant',
   text: 'A plan.',
-  plan: { ...plan, writing: 'r1' },
+  plan: { ...plan, writing: { run: 'r1', inside: true } },
   status: null,
   interrupted: true,
 };
@@ -97,6 +97,9 @@ describe('an approval cut off after marking its plan and before sending anything
     expect(await nothingLanded(setup({ d1: 40 }).store, cut)).toBe(false);
     const unheld = { ...cut, plan: { ...cut.plan, documents: [{ id: 'd1', version: 40 }] } };
     expect(await nothingLanded(setup().store, unheld)).toBe(false);
+    // A plan that also writes a lexicon entry, which moves no document's version.
+    const outside = { ...cut, plan: { ...cut.plan, writing: { run: 'r1', inside: false } } };
+    expect(await nothingLanded(setup().store, outside)).toBe(false);
   });
 
   it('is discarded as any plan, with the usual note, once found so', async () => {
