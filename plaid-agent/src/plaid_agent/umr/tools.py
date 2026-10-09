@@ -10,6 +10,7 @@ for what a UMR project is shaped like and why the model never handles an id.
 """
 
 import copy
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -17,13 +18,13 @@ from ..core import docload, fingerprint as fp, opkind
 from ..core.bidi import qv
 from ..core.args import sentence_number
 from plaid_client import uuid7
-from plaid_client.workflows.umr import (concept_problem,
+from plaid_client.workflows.umr import (concept_problem, is_variable,
                                         new_variable_problem, parse_attribute_line,
                                         relation_form_problem,
                                         unknown_doc_relation_problem,
                                         unknown_relation_problem, variable_form_problem,
                                         written_value_problem)
-from plaid_client.workflows.umr.inventory import node_under_attribute_problem
+from plaid_client.workflows.umr.inventory import edge_only, node_under_attribute_problem
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -500,6 +501,10 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     s = _sentence(ws, doc, sentence)
     _no_graph_planned(ws, doc, s)
     node = _node(doc, s, (var or '').strip())
+    role = _role_in_attribute_line(line or '', node.concept)
+    if role:
+        raise ToolError(role + ' Nothing was planned. A role goes through apply_penman: write the sentence\'s '
+                        'graph with the edge in it.')
     attrs, problems = parse_attribute_line(line or '')
     if problems:
         raise ToolError('The attribute line could not be read. ' + problems[0])
@@ -519,6 +524,21 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     # model did not write says so.
     return (f'Planned the attributes of {node.var} in s{s.number}: {shown} '
             f'({attrs_change(node.attrs, placed)}).')
+
+
+def _role_in_attribute_line(line: str, concept: Optional[str]) -> Optional[str]:
+    """Why a set_attributes line points at a node rather than giving values,
+    or None. The local model wrote ":actor s1a" there several times a run, and
+    was told only "Variable 's1a' is not defined"."""
+    bare = re.sub(r'"(?:\\.|[^"\\])*"', '""', line)
+    for rel, value in re.findall(r'(:[^\s()"]+)\s+([^\s()]+)', bare):
+        if not is_variable(value):
+            continue
+        if edge_only(rel, concept or ''):
+            return (f'{rel} {value} is a role, which joins two nodes, and set_attributes sets only a node\'s '
+                    'attributes (:aspect, :modal-strength, :polarity and the like).')
+        return f'{rel} {value} points at the node {value}, and an attribute takes a plain value.'
+    return None
 
 
 def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: str = None,
