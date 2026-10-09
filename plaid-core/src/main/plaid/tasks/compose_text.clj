@@ -270,7 +270,12 @@
         (println "Usage: clojure.main -m plaid.tasks.compose-text <database file> [--apply]"))
       (System/exit 2))
     (log/set-min-level! :error)
-    (let [held (when apply? (lock! db-path))
+    (let [held (when apply?
+                 (try (lock! db-path)
+                      (catch clojure.lang.ExceptionInfo e
+                        ;; a server is running on it: said plainly, nothing done
+                        (binding [*out* *err*] (println (ex-message e)))
+                        (System/exit 1))))
           ds (psd/build-datasource db-path {:max-pool-size 2})]
       (try
         ;; the schema this core writes, as its first start would leave it,

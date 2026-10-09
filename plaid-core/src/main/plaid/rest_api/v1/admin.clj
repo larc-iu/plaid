@@ -275,8 +275,11 @@
                          {:status 200
                           :body {:result "cleared"}})}}]
 
+   ;; Left as sent (`prm/compose-text`): private user data is stored as
+   ;; the app sent it, so its keys are matched as sent.
    ["/user-data"
-    {:get {:summary (str "Private user-data entries across every account, for an operator who "
+    {:plaid/raw-text true
+     :get {:summary (str "Private user-data entries across every account, for an operator who "
                          "has to see what an app has stored on people's behalf. Narrow with "
                          "<query>prefix</query> (the literal head of a key) and/or "
                          "<query>pattern</query>, a GLOB over the whole key where <code>*</code> "
