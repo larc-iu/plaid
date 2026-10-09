@@ -380,11 +380,6 @@ export default {
       how: 'The value goes out as it stands, and FLEx adds it to the list as a new item on import (a new category for pos), so in FLEx it is no longer outside the list.',
       ruling: TAGSET_RULING,
     },
-    'item.formNormalization': {
-      carried: true,
-      where:
-        'lift two <entry> elements whose <lexical-unit> text differs only in normalization, each written as stored',
-    },
     'item.containerHeadword': {
       carried: true,
       where:

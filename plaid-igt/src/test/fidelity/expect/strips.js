@@ -348,10 +348,6 @@ export const STRIPS = {
     'vocab.linked',
     'only a format that loses every vocabulary loses this',
   ),
-  'item.formNormalization': coveredBy(
-    'vocab.linked',
-    'only a format that loses every vocabulary loses this',
-  ),
   'item.containerHeadword': coveredBy(
     'vocab.linked',
     'only a format that loses every vocabulary loses this',

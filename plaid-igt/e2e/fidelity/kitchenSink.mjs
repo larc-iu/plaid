@@ -119,7 +119,9 @@ async function ensureContributor(admin) {
 
 const MAIN_BODY = [
   'El perro ladra, y los perros corren.',
-  'Dio la vuelta "ra\u0301pido" & <sin> parar∅ ʼya.',
+  // ā and an acute: a mark with no composed letter, so it is stored as a
+  // mark (the server stores text composed)
+  'Dio la vuelta "r\u0101\u0301pido" & <sin> parar∅ ʼya.',
   '',
   "El gato 𐌰 mira medio-día 'n.\tFin",
 ].join('\n');
@@ -366,9 +368,7 @@ async function makeEntries(client, lexiconId, affixId) {
     homograph: 2,
   });
   e.unused = await create(lexiconId, 'nunca', { gloss: 'never', pos: 'ADV', status: 'retired' });
-  // One spelling in two normalizations: precomposed, then a combining acute.
   e.rapidoNfc = await create(lexiconId, `r${String.fromCodePoint(0xe1)}pido`, { gloss: 'fast' });
-  e.rapidoNfd = await create(lexiconId, `ra${String.fromCodePoint(0x301)}pido`, { gloss: 'quick' });
   // A headword that only holds its senses.
   e.casa = await create(lexiconId, 'casa', { morphType: 'stem' });
   e.casaHouse = await create(lexiconId, 'casa', { parent: e.casa, gloss: 'house' });

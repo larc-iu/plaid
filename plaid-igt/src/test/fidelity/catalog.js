@@ -650,16 +650,6 @@ export const FEATURES = [
       }, 0),
   },
   {
-    key: 'item.formNormalization',
-    what: 'two entries whose forms differ only in Unicode normalization',
-    detect: (s) =>
-      vocabs(s).reduce((n, v) => {
-        const raw = new Set(v.items.map((it) => it.form));
-        const nfc = new Set([...raw].map((f) => f.normalize('NFC')));
-        return n + raw.size - nfc.size;
-      }, 0),
-  },
-  {
     key: 'item.containerHeadword',
     what: 'a headword over senses with no gloss, definition, part of speech or example of its own',
     detect: (s) => {

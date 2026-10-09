@@ -263,10 +263,6 @@ export default {
       carried: true,
       where: 'the vocabulary chapter, printed as is, like any other value',
     },
-    'item.formNormalization': {
-      carried: 'changed',
-      how: 'Both headwords are listed, each as stored, and they print alike. They get no homograph numbers, since the app numbers only forms with the same code points, so nothing on the page tells them apart.',
-    },
     'item.containerHeadword': {
       carried: true,
       where: 'the vocabulary chapter, the headword with no values of its own, then its senses',

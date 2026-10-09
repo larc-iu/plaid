@@ -148,7 +148,6 @@ export default {
     'item.markupChars': carried,
     'item.surroundingWhitespace': carried,
     'item.offTagset': carried,
-    'item.formNormalization': carried,
     'item.containerHeadword': carried,
     'item.exampleStale': {
       carried: false,

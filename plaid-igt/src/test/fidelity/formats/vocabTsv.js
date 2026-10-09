@@ -177,10 +177,6 @@ export default {
       'The export writes the value, and Bulk Add rejects a value the closed tagset governing its field refuses, counting the row instead of storing it.',
       'docs/igt-guide.adoc, Entry fields: "A closed tagset becomes a dropdown on the entry form and refuses a value outside the list in Bulk Add."',
     ),
-    'item.formNormalization': {
-      carried: 'changed',
-      how: 'Bulk Add compares forms after NFC normalization, so the second entry is matched to the first. It comes back with its own spelling, as typed, when some value differs and the row is answered Add, and not at all when every value is equal (plaid_igt_vocab_bulk_import.md: forms compare NFC-normalized and are stored as typed).',
-    },
     'item.containerHeadword': undecided(
       "The headword's row has no values, so the first sense's row agrees with it and fills its blanks, and Bulk Add offers no Add answer for a row that only fills blanks. The headword comes back holding that sense's values, and each later sense comes back as a headword of its own. The Number column that says the rows are a headword and its senses is ignored.",
     ),

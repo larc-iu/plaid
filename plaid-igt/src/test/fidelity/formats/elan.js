@@ -302,7 +302,6 @@ export default {
     'item.markupChars': NO_LEXICON,
     'item.surroundingWhitespace': NO_LEXICON,
     'item.offTagset': NO_LEXICON,
-    'item.formNormalization': NO_LEXICON,
     'item.containerHeadword': NO_LEXICON,
     'item.exampleStale': NO_LEXICON,
 

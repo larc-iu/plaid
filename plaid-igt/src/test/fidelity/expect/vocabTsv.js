@@ -135,7 +135,7 @@ export default {
   strips,
   steps: [
     {
-      keys: ['item.markupChars', 'item.surroundingWhitespace', 'item.formNormalization'],
+      keys: ['item.markupChars', 'item.surroundingWhitespace'],
       // A cell is text: a tab or a line break in a value becomes a space
       // (tsvCell in src/export/vocabTsv.js), and Bulk Add trims what it reads,
       // so a value padded with spaces comes back without them. Markup

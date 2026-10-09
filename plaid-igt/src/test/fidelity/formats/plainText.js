@@ -155,7 +155,6 @@ export default {
     'item.markupChars': VOCABULARY,
     'item.surroundingWhitespace': VOCABULARY,
     'item.offTagset': VOCABULARY,
-    'item.formNormalization': VOCABULARY,
     'item.containerHeadword': VOCABULARY,
     'item.exampleStale': VOCABULARY,
 

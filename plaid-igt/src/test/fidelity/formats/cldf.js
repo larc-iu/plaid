@@ -335,7 +335,6 @@ export default {
     'item.markupChars': carried,
     'item.surroundingWhitespace': carried,
     'item.offTagset': carried,
-    'item.formNormalization': carried,
     'item.containerHeadword': {
       carried: 'changed',
       how: 'Comes back as a headword with no gloss or definition of its own over one sense item per written sense row when two or more of its senses are written. When only one is, it comes back merged with that sense as a single item, as item.sense describes.',
