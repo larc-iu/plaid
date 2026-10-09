@@ -213,7 +213,7 @@ describe('alignSurfaces', () => {
 // composed with the words' edges: only that character stays decomposed, and
 // the text is created with those edges, as the server keeps it.
 describe('a word that begins inside a character', () => {
-  const body = 'ká ma café';
+  const body = 'ka\u0301 ma caf\u00e9';
   const word = (id, begin, content, gloss) => ({
     id,
     begin,
@@ -235,9 +235,9 @@ describe('a word that begins inside a character', () => {
   });
   const tokens = [
     word('w1', 0, 'ka', 'go'),
-    word('w2', 2, '́', 'H'),
+    word('w2', 2, '\u0301', 'H'),
     word('w3', 4, 'ma', 'there'),
-    word('w4', 7, 'café', 'coffee'),
+    word('w4', 7, 'caf\u00e9', 'coffee'),
   ];
   const doc = () => ({
     document: { id: 'd1', name: 'Tone', mediaUrl: null, metadata: {} },
@@ -267,9 +267,9 @@ describe('a word that begins inside a character', () => {
     const chars = [...d.body];
     expect(d.words.map((w) => chars.slice(w.begin, w.end).join(''))).toEqual([
       'ka',
-      '́',
+      '\u0301',
       'ma',
-      'café',
+      'caf\u00e9',
     ]);
     expect(d.words.every((w) => w.end > w.begin)).toBe(true);
     // an unsegmented word's gloss is the word's
@@ -280,13 +280,17 @@ describe('a word that begins inside a character', () => {
 
   it('reads a line with no such word composed, as before', () => {
     const plain = doc();
-    plain.body = 'ká ma café';
+    plain.body = 'k\u00e1 ma caf\u00e9';
     plain.sortedSentences[0].end = [...plain.body].length;
     const t = (id, begin, content, gloss) => ({
       type: 'token',
       ...word(id, begin, content, gloss),
     });
-    const words = [t('w1', 0, 'ká', 'go'), t('w3', 3, 'ma', 'there'), t('w4', 6, 'café', 'coffee')];
+    const words = [
+      t('w1', 0, 'k\u00e1', 'go'),
+      t('w3', 3, 'ma', 'there'),
+      t('w4', 6, 'caf\u00e9', 'coffee'),
+    ];
     plain.sortedSentences[0].tokens = words;
     plain.sortedSentences[0].pieces = [
       words[0],
@@ -296,7 +300,7 @@ describe('a word that begins inside a character', () => {
       words[2],
     ];
     const [d] = exportThenRead([plain]).build.documents;
-    expect(d.body).toBe('ká ma café');
+    expect(d.body).toBe('k\u00e1 ma caf\u00e9');
     expect(d.tokenEdges).toBeNull();
   });
 });

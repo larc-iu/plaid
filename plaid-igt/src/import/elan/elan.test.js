@@ -2089,23 +2089,23 @@ describe('a word that begins inside a character', () => {
   it('places the mark on its own letter, the rest composed', () => {
     const { build } = buildFrom([
       [
-        file('ká ma café', [
+        file('ka\u0301 ma cafe\u0301', [
           ['ka', 'go'],
-          ['́', 'H'],
+          ['\u0301', 'H'],
           ['ma', 'there'],
-          ['café', 'coffee'],
+          ['caf\u00e9', 'coffee'],
         ]),
         'tone.eaf',
       ],
     ]);
     const [doc] = build.documents;
-    expect(doc.body).toBe('ká ma café');
+    expect(doc.body).toBe('ka\u0301 ma caf\u00e9');
     const chars = [...doc.body];
     expect(doc.words.map((w) => chars.slice(w.begin, w.end).join(''))).toEqual([
       'ka',
-      '́',
+      '\u0301',
       'ma',
-      'café',
+      'caf\u00e9',
     ]);
     expect(doc.words.map((w) => w.morphemes.map((m) => m.fields))).toEqual([
       [{ ge: 'go' }],
@@ -2121,15 +2121,15 @@ describe('a word that begins inside a character', () => {
   it('reads an utterance whose words are all there composed, as before', () => {
     const { build } = buildFrom([
       [
-        file('ká ma', [
-          ['ká', 'go'],
+        file('k\u00e1 ma', [
+          ['k\u00e1', 'go'],
           ['ma', 'there'],
         ]),
         'plain.eaf',
       ],
     ]);
     const [doc] = build.documents;
-    expect(doc.body).toBe('ká ma');
+    expect(doc.body).toBe('k\u00e1 ma');
     expect(doc.tokenEdges).toBeNull();
   });
 });

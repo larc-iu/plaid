@@ -858,23 +858,23 @@ describe('rebaseEdits onto a text that keeps a character decomposed', () => {
   const G = (start, end, value) => ({ start, end, value });
   const onto = (stored, result) => applyTextOps(stored, gapsToOps(result.gaps));
   // sent: "me" and an acute typed after it, beside the kept "ka" + acute
-  const base = 'ká mé';
-  const stored = 'ká mé';
+  const base = 'ka\u0301 me\u0301';
+  const stored = 'ka\u0301 m\u00e9';
 
   it('moves what was typed since onto the text as stored', () => {
     const result = rebaseEdits(base, [G(7, 7, 'x')], stored);
     expect(result).toEqual({ gaps: [G(6, 6, 'x')] });
-    expect(onto(stored, result)).toBe('ká méx');
+    expect(onto(stored, result)).toBe('ka\u0301 m\u00e9x');
   });
 
   it('moves it beside someone else’s change too', () => {
-    const theirs = 'ká mé ko';
+    const theirs = 'ka\u0301 m\u00e9 ko';
     const result = rebaseEdits(base, [G(0, 0, 'x')], theirs);
-    expect(onto(theirs, result)).toBe('xká mé ko');
+    expect(onto(theirs, result)).toBe('xka\u0301 m\u00e9 ko');
   });
 
   it('places an edge between the kept letter and its mark', () => {
     const result = rebaseEdits(base, [G(2, 2, 'y')], stored);
-    expect(onto(stored, result)).toBe('kaý mé');
+    expect(onto(stored, result)).toBe('kay\u0301 m\u00e9');
   });
 });

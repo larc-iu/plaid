@@ -135,14 +135,14 @@ describe('Settings, tagsets, a name in another Unicode spelling', () => {
   it('is the tagset of that name', async () => {
     const { notifyError } = await import('@/utils/feedback');
     const { server, client } = makeServer();
-    server.config.igt.tagsets = { Tón: { ...tagset(), values: ['H', 'L'] } };
+    server.config.igt.tagsets = { 'T\u00f3n': { ...tagset(), values: ['H', 'L'] } };
     const a = await openPage(server, client);
-    await addTagset(a, 'Tón');
+    await addTagset(a, 'To\u0301n');
     expect(notifyError).toHaveBeenCalledWith(
       expect.stringContaining('already exists'),
       'Duplicate tagset',
     );
-    expect(server.config.igt.tagsets).toEqual({ Tón: { ...tagset(), values: ['H', 'L'] } });
+    expect(server.config.igt.tagsets).toEqual({ 'T\u00f3n': { ...tagset(), values: ['H', 'L'] } });
     await a.view.unmount();
   });
 });

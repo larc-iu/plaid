@@ -487,20 +487,20 @@ describe('a word that begins inside a character', () => {
       .documents[0];
 
   it('places the mark on its own letter, the rest composed', () => {
-    const doc = build('ká ma café', [
+    const doc = build('ka\u0301 ma cafe\u0301', [
       ['ka', 'go'],
-      ['́', 'H'],
+      ['\u0301', 'H'],
       ['ma', 'there'],
-      ['café', 'coffee'],
+      ['caf\u00e9', 'coffee'],
     ]);
     expect(doc.warnings).toEqual([]);
-    expect(doc.body).toBe('ká ma café');
+    expect(doc.body).toBe('ka\u0301 ma caf\u00e9');
     const chars = [...doc.body];
     expect(doc.words.map((w) => chars.slice(w.begin, w.end).join(''))).toEqual([
       'ka',
-      '́',
+      '\u0301',
       'ma',
-      'café',
+      'caf\u00e9',
     ]);
     expect(doc.words.map((w) => w.gloss.en)).toEqual(['go', 'H', 'there', 'coffee']);
     expect(doc.tokenEdges).toContain(2);
@@ -508,12 +508,12 @@ describe('a word that begins inside a character', () => {
   });
 
   it('reads a phrase whose words are all there composed, as before', () => {
-    const doc = build('ká ma', [
-      ['ká', 'go'],
+    const doc = build('k\u00e1 ma', [
+      ['k\u00e1', 'go'],
       ['ma', 'there'],
     ]);
-    expect(doc.body).toBe('ká ma');
-    expect(doc.words.map((w) => doc.body.slice(w.begin, w.end))).toEqual(['ká', 'ma']);
+    expect(doc.body).toBe('k\u00e1 ma');
+    expect(doc.words.map((w) => doc.body.slice(w.begin, w.end))).toEqual(['k\u00e1', 'ma']);
     expect(doc.tokenEdges).toBeNull();
   });
 });
