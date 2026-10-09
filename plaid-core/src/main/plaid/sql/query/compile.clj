@@ -140,11 +140,18 @@
   [v]
   (and (string? v) (not (canonical/only-spelling? v))))
 
+(defn- fn-arg
+  "`x` as the argument of a SQL function. A subquery (a metadata path's scalar
+  subquery) goes in its own parentheses: HoneySQL renders `f(<map>)` as
+  `F (SELECT ...)`, which SQLite reads as a call with a bare SELECT in it."
+  [x]
+  (if (map? x) [:nest x] x))
+
 (defn- canonical-text
   "`text` (the column's text, decoded) read in NFC, to compare with a literal
   in NFC. PLAID_NFC is a UDF registered with REGEXP (exec.clj)."
   [text]
-  [:plaid_nfc text])
+  [:plaid_nfc (fn-arg text)])
 
 (defn- atomic-pred
   "`= literal` for a scalar value, `IN (…)` for a vector (value alternation).
@@ -157,7 +164,7 @@
         ;; string, never an array whose JSON reads the same.
         canon-pred (fn [op lits]
                      (cond->> [op (canonical-text text) lits]
-                       (identical? enc psc/write-json) (conj [:and [:= [:json_type col] [:inline "text"]]])))]
+                       (identical? enc psc/write-json) (conj [:and [:= [:json_type (fn-arg col)] [:inline "text"]]])))]
     (if (vector? v)
       (let [{canon true plain false} (group-by canonical? v)
             canon (when (seq canon) (canon-pred :in (mapv canonical/nfc canon)))]
