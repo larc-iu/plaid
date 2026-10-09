@@ -6,9 +6,11 @@
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
+            [plaid.sql.common :as psc]
             [plaid.sql.user :as user]
             [ring.util.response :as response])
-  (:import [java.io ByteArrayInputStream]))
+  (:import [java.io ByteArrayInputStream]
+           [java.time Instant]))
 
 (defn- self-or-admin?
   "Profile pictures follow the same rule as PATCH /users/:id: you may change
@@ -29,6 +31,24 @@
   {"Cache-Control" (if versioned?
                      "private, max-age=31536000, immutable"
                      "private, max-age=60")})
+
+(def avatar-link-routes
+  ["/avatar-link"
+   {:openapi {:security [{:auth []}]}
+    :middleware [pra/wrap-login-required]
+    :post {:plaid/idempotency false
+           :summary (str "Get a token that shows profile pictures without an Authorization header, for "
+                         "an image element, which cannot send one. Add it to "
+                         "<body>GET /users/:id/avatar</body> as <body>avatar-token</body>. It opens any "
+                         "user's picture, for the caller, and is refused on every other route. It "
+                         "expires at <body>expires-at</body>, and sooner when the caller signs out or "
+                         "changes password. Refused to a token scoped to projects. Writes nothing.")
+           :handler (fn [{db :db user-id :user/id secret-key :secret-key jwt-data :jwt-data}]
+                      (if-let [{:keys [token exp]} (pra/issue-avatar-token! db secret-key user-id jwt-data)]
+                        {:status 200
+                         :body {:token token
+                                :expires-at (psc/instant->iso (Instant/ofEpochSecond exp))}}
+                        {:status 401 :body {:error "Token invalid because user does not exist."}}))}}])
 
 (def user-routes
   ["/users"
@@ -150,9 +170,12 @@
      {:get {:summary (str "Get a user's profile picture. Readable by any logged-in user, matching "
                           "<body>GET /users/:id</body>. Pass the user record's <body>avatar-hash</body> "
                           "as <body>?v=</body> to get an immutable, year-long cache entry that still "
-                          "updates the moment the picture changes. Also accepts the JWT as a "
-                          "<body>?token=</body> query parameter, since an HTML image element cannot "
-                          "send an Authorization header.")
+                          "updates the moment the picture changes. A request with no Authorization "
+                          "header may carry <body>avatar-token</body> from <body>POST /avatar-link</body> "
+                          "instead, since an HTML image element cannot send one.")
+            ;; `wrap-read-jwt` reads `?avatar-token=` here and on no other route.
+            :plaid/link-token pra/avatar-audience
+            :parameters {:query [:map [:avatar-token {:optional true} string?]]}
             :handler (fn [{{{:keys [id]} :path} :parameters db :db
                            headers :headers query-params :query-params}]
                        (if-let [{:keys [content-type bytes hash]} (user/get-avatar db id)]

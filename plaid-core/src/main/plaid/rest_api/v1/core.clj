@@ -14,7 +14,7 @@
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.layer-constraints :as layer-constraints]
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes logout-routes]]
-            [plaid.rest-api.v1.user :refer [user-routes]]
+            [plaid.rest-api.v1.user :refer [user-routes avatar-link-routes]]
             [plaid.rest-api.v1.api-token :refer [api-token-routes]]
             [plaid.rest-api.v1.user-data :refer [user-data-routes]]
             [plaid.rest-api.v1.invite :refer [invite-routes]]
@@ -131,6 +131,7 @@
              {:middleware [prm/wrap-reject-as-of]}
              logout-routes
              user-routes
+             avatar-link-routes
              api-token-routes
              ;; The routes a scoped token may use with no project gate in
              ;; front, each with its own check. See `pra/token-scope-gate`.

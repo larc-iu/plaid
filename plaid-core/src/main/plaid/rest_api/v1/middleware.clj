@@ -211,10 +211,11 @@
   password on one. The match is on the whole local name, so `status-code`
   is untouched.
 
-  `media-token` is the credential a media link carries in its URL (see
-  Media links in `plaid.rest-api.v1.auth`), so it is in the query string
-  of every request a playing recording makes."
-  #{"password" "token" "authorization" "secret-key" "code" "media-token"})
+  `media-token` and `avatar-token` are the link tokens a media link and a
+  profile picture's URL carry (see Link tokens in `plaid.rest-api.v1.auth`),
+  so one is in the query string of every request a playing recording or a
+  shown picture makes."
+  #{"password" "token" "authorization" "secret-key" "code" "media-token" "avatar-token"})
 
 (defn- redact-key?
   "True if key `k` should have its value replaced with <redacted>.
@@ -257,10 +258,11 @@
 
 (defn- redact-query-string
   "Percent-encoded query string with any sensitive parameter's value
-  replaced. The ones that matter are `token` and `media-token`:
-  EventSource and media elements cannot send an Authorization header, so
-  a stream request carries its JWT in the query and a media link its media
-  token, and the access line is read by everyone who can read the log."
+  replaced. The ones that matter are `token` and the link tokens:
+  EventSource, media and image elements cannot send an Authorization
+  header, so a stream request carries its JWT in the query and a media link
+  or a picture's URL its link token, and the access line is read by everyone
+  who can read the log."
   [qs]
   (when-not (str/blank? qs)
     (->> (str/split qs #"&")

@@ -107,6 +107,11 @@ avatar_max_upload_mb = 5
 # Default is six hours.
 # link_ttl_seconds = 21600
 
+# Lifetime, in seconds, of the token an app adds to a profile picture's URL so
+# an image element can show it without a login token in the URL. It also stops
+# working when its user signs out or changes password. Default is one day.
+# avatar_link_ttl_seconds = 86400
+
 # -----------------------------------------------------------------------------
 # Private user data
 # -----------------------------------------------------------------------------

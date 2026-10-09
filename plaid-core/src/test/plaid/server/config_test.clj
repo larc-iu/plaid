@@ -290,3 +290,30 @@
                               (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true}))
             toml)
         (finally (.delete f))))))
+
+(deftest a-token-lifetime-that-is-not-positive-whole-seconds-refuses-to-load
+  (doseq [[section k] [["auth" "jwt_ttl_seconds"]
+                       ["auth" "delegated_token_ttl_seconds"]
+                       ["media" "link_ttl_seconds"]
+                       ["media" "avatar_link_ttl_seconds"]]
+          v ["0" "-10" "\"3600\"" "1.5"]]
+    (let [toml (str "[" section "]\n" k " = " v "\n")
+          f (temp-toml toml)]
+      (try
+        (let [ex (try (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})
+                      nil
+                      (catch clojure.lang.ExceptionInfo e e))]
+          (is (some? ex) toml)
+          (is (= (str "[" section "] " k " must be a positive whole number of seconds, not "
+                      (if (= v "\"3600\"") "\"3600\"" v))
+                 (some-> ex ex-message))
+              toml))
+        (finally (.delete f))))))
+
+(deftest a-positive-token-lifetime-loads
+  (let [f (temp-toml "[media]\nlink_ttl_seconds = 60\navatar_link_ttl_seconds = 120\n")]
+    (try
+      (let [cfg (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})]
+        (is (= 60 (get-in cfg [:plaid.media/config :link-ttl-seconds])))
+        (is (= 120 (get-in cfg [:plaid.media/config :avatar-link-ttl-seconds]))))
+      (finally (.delete f)))))

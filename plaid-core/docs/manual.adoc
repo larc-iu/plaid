@@ -77,6 +77,17 @@ That last step also strips camera metadata, so GPS coordinates embedded in a pho
 You may set or remove your own picture, and an admin may set or remove anyone's.
 A user with no picture is shown their initials instead.
 
+An image, audio or video element cannot send an `Authorization` header, so a picture's or a recording's URL carries a **link token** in its query string, never a sign-in token.
+A link token opens one kind of resource and is refused everywhere else, as a bearer token and as `?token=` included.
+
+* `POST /api/v1/avatar-link` answers `{token, expires-at}`. The token opens any user's picture as `GET /api/v1/users/:id/avatar?avatar-token=...`. `users.avatarUrl(id, avatarHash)` in JavaScript (async) and `users.avatar_url(id, avatar_hash)` in Python mint one token per client, keep it until ten minutes of it are left, and build the URL with it. `users.avatarToken()` (`users.avatar_token()`) answers the token itself.
+* `POST /api/v1/documents/:id/media/link` answers `{url, expires-at}`: the document's `media-url` with a `media-token` that opens that one recording, for as long as its user can read the project.
+
+A link token lasts `[media] avatar_link_ttl_seconds` (a day) or `[media] link_ttl_seconds` (six hours), and never longer than the credential that made it.
+It stops working when its user signs out, changes password or is deactivated, and one made with a named API token stops when that token is revoked.
+A token scoped to projects may make a media link for a recording in those projects, but no avatar token.
+The access log shows both parameters as `<redacted>`.
+
 Signing out of an app forgets the sign-in in that browser tab only.
 To end every sign-in of your account on every device, for example on a laptop left signed in elsewhere, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript), which sends `POST /api/v1/logout`.
 Every sign-in token of yours stops working at once, the calling client's included.
@@ -1822,7 +1833,7 @@ Only a success is kept: a write refused for any reason (a version conflict, a lo
 `POST /query` writes nothing, so a key on it is accepted and changes nothing: the query runs again on every send and no answer is kept.
 
 A `/batch` takes one key for the whole batch.
-The key is refused with 400 on the routes a batch cannot carry, or whose answer is a secret: the lock routes, uploads (media and profile pictures), private user data, login and logout, minting an API token or an invite, redeeming or looking up an invite, `/admin`, and the service routes.
+The key is refused with 400 on the routes a batch cannot carry, or whose answer is a secret: the lock routes, uploads (media and profile pictures), private user data, login and logout, minting an API token, an invite, a media link or an avatar token, redeeming or looking up an invite, `/admin`, and the service routes.
 A write to one of them is refused inside a batch too, and inside a batch carried by a batch, so a batch's stored answer never holds a secret.
 A GET ignores it.
 
@@ -2505,7 +2516,7 @@ Where `[logging] file` is set, the tail of the file itself is on the same tab, a
 
 == Settings worth a look
 
-* `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days; a shared lab machine may want a day.
+* `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days; a shared lab machine may want a day. This and every other token lifetime (`[auth] delegated_token_ttl_seconds`, `[media] link_ttl_seconds`, `[media] avatar_link_ttl_seconds`) must be a positive whole number of seconds, or the server refuses to start.
 * `[media] max_file_size_mb`: the largest recording a document may carry. Raise the proxy's limit with it.
 * `[user_data] max_value_mb`: the largest private data value, which is how long an assistant conversation can grow before it is full. The default is 5 MB. `[server] max_json_body_mb` must be at least 1 more, or the server refuses to start, so raise the two together.
 * `[api] expose_openapi`: turn off if the API description should not be public.

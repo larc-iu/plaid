@@ -98,6 +98,7 @@
    [["media" "avatar_size_px"]            [:plaid.media/config :avatar-size-px]                              identity]
    [["media" "avatar_max_upload_mb"]      [:plaid.media/config :avatar-max-upload-mb]                        identity]
    [["media" "link_ttl_seconds"]          [:plaid.media/config :link-ttl-seconds]                            identity]
+   [["media" "avatar_link_ttl_seconds"]   [:plaid.media/config :avatar-link-ttl-seconds]                     identity]
 
    [["user_data" "max_value_mb"]          [:plaid.sql.user-data/config :max-value-mb]                        identity]
 
@@ -235,6 +236,26 @@
                         {:max-value-mb cap :max-json-body-mb body}))))
     cfg))
 
+(def ^:private lifetime-settings
+  "The settings that are a token's lifetime, as the operator names them and
+  where they land."
+  [["[auth] jwt_ttl_seconds"             [:plaid.auth :jwt-ttl-seconds]]
+   ["[auth] delegated_token_ttl_seconds" [:plaid.auth :delegated-token-ttl-seconds]]
+   ["[media] link_ttl_seconds"           [:plaid.media/config :link-ttl-seconds]]
+   ["[media] avatar_link_ttl_seconds"    [:plaid.media/config :avatar-link-ttl-seconds]]])
+
+(defn- check-lifetimes!
+  "Refuse a token lifetime that is not a positive whole number of seconds. A
+  string would fail every request that mints such a token, and zero or less
+  would mint tokens already expired."
+  [cfg]
+  (doseq [[label path] lifetime-settings]
+    (let [v (get-in cfg path ::absent)]
+      (when-not (or (= v ::absent) (and (integer? v) (pos? v)))
+        (throw (ex-info (str label " must be a positive whole number of seconds, not " (pr-str v))
+                        {:setting label :value v})))))
+  cfg)
+
 (defn load-config!
   "Build the internal config map: the bundled config.toml template supplies the
    default values, the file at `config-path` (filesystem first, then classpath)
@@ -263,7 +284,9 @@
                         (log/warn "Unrecognized config keys in" ov-src "(ignored):"
                                   (str/join ", " (map #(str/join "." %) uk))))
                       (translate toml)))]
-      (vary-meta (check-limits! (deep-merge (deep-merge internal-only-defaults defaults) overlay))
+      (vary-meta (-> (deep-merge (deep-merge internal-only-defaults defaults) overlay)
+                     check-limits!
+                     check-lifetimes!)
                  assoc ::source (or ov-src (str "the bundled defaults (" tpl-src ")"))))))
 
 (defn ensure-config-file!

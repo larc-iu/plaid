@@ -242,7 +242,7 @@
                          "A request with no Authorization header may carry <body>media-token</body> "
                          "from a media link (POST <body>/media/link</body>) instead.")
            ;; `wrap-read-jwt` reads `?media-token=` here and on no other route.
-           :plaid/media-token true
+           :plaid/link-token pra/media-audience
            :parameters {:query [:map [:media-token {:optional true} string?]]}
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
            :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers
