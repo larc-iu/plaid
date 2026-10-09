@@ -8,10 +8,7 @@
   Every other text column is composed too: names, vocabulary forms, span and
   relation values, metadata keys and values, layer and project configs and
   constraints, guidelines, comments, display names, API token and invite
-  labels. In the same pass every JSON value (span and relation values,
-  metadata values, configs, constraints) is written again as core writes
-  JSON now, with letters as themselves rather than `\\u` escapes, so a regex
-  on a stored array or object reads its letters. Left alone: private user data (the app's own state), passwords,
+  labels. Left alone: private user data (the app's own state), passwords,
   client events, service registrations and the audit history, which is never
   rewritten.
 
@@ -53,11 +50,11 @@
   "length(%s) <> length(CAST(%s AS BLOB))")
 
 (def ^:private escaped-or-non-ascii
-  "SQL for a JSON column holding a character outside ASCII, escaped (an
-  older JSON writer wrote `\\u00e1`) or not, or a slash written `\\/`."
-  "(instr(%s, '\\u') > 0 OR instr(%s, '\\/') > 0 OR length(%s) <> length(CAST(%s AS BLOB)))")
+  "SQL for a JSON column holding a character outside ASCII, escaped (the
+  JSON writer writes `\\u00e1`) or not."
+  "(instr(%s, '\\u') > 0 OR length(%s) <> length(CAST(%s AS BLOB)))")
 
-(defn- where [fmt col] (let [c (name col)] (apply format fmt (repeat 4 c))))
+(defn- where [fmt col] (let [c (name col)] (apply format fmt (repeat 3 c))))
 
 ;; ============================================================
 ;; What changes
@@ -81,12 +78,10 @@
    [:relation_layers :constraints psc/write-json]
    [:spans :value psc/write-json] [:relations :value psc/write-json]])
 
-(defn- compose-json
-  "The JSON text `s` composed and written as core writes JSON now (no `\\u`
-  escape for a letter, no `\\/`), or nil when that is `s` itself."
-  [s write]
-  (let [out (write (canonical/compose-data (json/read-str s) (constantly false)))]
-    (when (not= out s) out)))
+(defn- compose-json [s write]
+  (let [v (json/read-str s)
+        v' (canonical/compose-data v (constantly false))]
+    (when-not (identical? v v') (write v'))))
 
 (defn- rows [db table col fmt]
   ;; `users` has a text id: a map query keeps it a string
@@ -131,27 +126,17 @@
             :tokens (mapv pop moved)
             :zero-width (count (filter peek moved))}))))
 
-(defn- escaped-metadata?
-  "Whether a metadata value of the entity is stored in other JSON text than
-  core writes now (an older writer's `\\u00e9` or `\\/`)."
-  [db entity-type entity-id]
-  (some (fn [{:keys [value]}]
-          (and (string? value) (not= value (psc/write-json (json/read-str value)))))
-        (psc/q db {:select [:value] :from [:entity_metadata]
-                   :where [:and [:= :entity_type entity-type] [:= :entity_id entity-id]]})))
-
 (defn- metadata-changes
   "`[{:type :id :metadata composed :merged n}]` for every entity with a
-  metadata key or value that is not composed, or a value stored with JSON
-  escapes core no longer writes (rewritten as the same value). `:merged`
-  counts keys that compose to a key the entity already has, which become one."
+  metadata key or value that is not composed. `:merged` counts keys that
+  compose to a key the entity already has, which become one."
   [db]
   (let [hits (psc/q db {:select-distinct [:entity_type :entity_id] :from [:entity_metadata]
                         :where [:or [:raw (where non-ascii :key)] [:raw (where escaped-or-non-ascii :value)]]})]
     (vec (for [{:keys [entity_type entity_id]} hits
                :let [m (metadata/get-metadata db entity_type entity_id)
                      m' (canonical/compose-data m (constantly false))]
-               :when (or (not (identical? m m')) (escaped-metadata? db entity_type entity_id))]
+               :when (not (identical? m m'))]
            {:type entity_type :id entity_id :metadata m' :merged (- (count m) (count m'))}))))
 
 (defn plan
