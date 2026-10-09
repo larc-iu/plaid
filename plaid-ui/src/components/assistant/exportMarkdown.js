@@ -11,6 +11,8 @@ import {
   ruleCountLine,
   ruleDocuments,
   ruleMoreLine,
+  ruleTransitions,
+  transitionLine,
   staleLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
@@ -88,6 +90,10 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) =
     // card's cut, and its sample, as the card shows them unfolded.
     const { named, moreDocs, moreChanges } = ruleDocuments(r.rule);
     lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork)}`);
+    if (r.rule.mode) lines.push(`   - Matches ${r.rule.mode}`);
+    const changes = ruleTransitions(r.rule);
+    changes.rows.forEach((t) => lines.push(`   - ${markdownText(transitionLine(t))}`));
+    if (changes.more) lines.push(`   - ${changes.more}`);
     named.forEach((d) => lines.push(`   - ${markdownText(d.name || d.id)}: ${d.count}`));
     if (moreDocs) lines.push(`   - ${ruleMoreLine(moreDocs, moreChanges)}`);
     (r.rule.sample || []).forEach((c) => lines.push(`   - For example: ${c.label}`));

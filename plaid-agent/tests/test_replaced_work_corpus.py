@@ -68,9 +68,9 @@ def _igt_ws(monkeypatch, rows, raw=None, versions=None):
     return client, ws
 
 
-def _replace(ws):
+def _replace(ws, **kw):
     from plaid_agent.igt.toolkit import call_tool
-    return call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'Bob'})
+    return call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'Bob', **kw})
 
 
 @pytest.mark.parametrize('metadata, flagged', [(None, 1), ({}, 1), (VERIFIED, 1), (MACHINE, 0)])
@@ -141,7 +141,7 @@ def test_igt_a_corpus_wide_replace_counts_the_accepted_values_it_replaces(monkey
     rows = [_gloss_row('sp-g1', 'Ali', 'w-1'), _gloss_row('sp-x2', 'ali', 'w-2', MACHINE),
             _gloss_row('sp-x3', 'ALI', 'w-3', VERIFIED)]
     _client, ws = _igt_ws(monkeypatch, rows)
-    out = _replace(ws)
+    out = _replace(ws, case_sensitive=False)
     [op] = ws.ops
     assert op['kind'] == 'bulk_scope' and op['replaces_accepted'] == 2
     assert op['label'].endswith(', 2 of them replace accepted work')
@@ -156,7 +156,7 @@ def test_igt_a_corpus_wide_replace_counts_the_accepted_values_it_replaces(monkey
     # None of a machine's: no mark, no count.
     _client, ws = _igt_ws(monkeypatch, [_gloss_row('sp-x2', 'ali', 'w-2', MACHINE),
                                         _gloss_row('sp-x3', 'ALI', 'w-3', MACHINE)])
-    _replace(ws)
+    _replace(ws, case_sensitive=False)
     assert ws.ops[0]['replaces_accepted'] == 0 and 'accepted' not in ws.ops[0]['label']
     assert ws.plan_payload()['changes'][0]['replaces_work'] == 0
 
@@ -179,7 +179,8 @@ def test_ud_a_corpus_wide_replace_counts_the_accepted_values_it_replaces():
                  {'id': t, 'document': 'ud1', 'begin': 0, 'end': 1}] for i, v, m, t in spans]}
         return {'return': 'aggregate', 'results': []}
     client.query = engine
-    out = call_tool(ws, 'replace_in_field', {'field': 'lemma', 'pattern': 'mar', 'replacement': 'mare'})
+    out = call_tool(ws, 'replace_in_field', {'field': 'lemma', 'pattern': 'mar', 'replacement': 'mare',
+                                             'case_sensitive': False})
     [op] = ws.ops
     assert op['kind'] == 'replace_scope' and op['replaces_accepted'] == 2
     assert op['label'].endswith(', 2 of them replace accepted work')

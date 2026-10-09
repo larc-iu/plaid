@@ -372,7 +372,8 @@ def test_set_field_for_form_reads_the_planned_chain():
 def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_rewrites():
     w = scan_ws(FakeClient())
     _analyse_ali(w)
-    out = call_tool(w, 'replace_in_field', {'field': 'morpheme forms', 'pattern': 'a', 'replacement': 'o'})
+    out = call_tool(w, 'replace_in_field', {'field': 'morpheme forms', 'pattern': 'a', 'replacement': 'o',
+                                            'case_sensitive': False})
     # m-1a "Ali" is the analysis's now. m-4a "Gam" and m-4b "ar" are not.
     assert sorted(op['morpheme_id'] for op in planned_changes(w) if op['kind'] == 'set_morpheme_form') \
         == ['m-4a', 'm-4b'], out

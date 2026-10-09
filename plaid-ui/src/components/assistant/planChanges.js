@@ -74,6 +74,32 @@ export const ruleCountLine = (rule, replacesWork = 0) => {
     : line;
 };
 
+// Every distinct change a rule makes (`rule.transitions`, `{from, to, count,
+// notes}`, the surprising ones first, see core/rules.py in plaid-agent), and
+// the line counting the rest. Listed when there is more than one or one is
+// noted: a rule over one value says it in its own line.
+export const ruleTransitions = (rule) => {
+  const rows = (rule?.transitions || []).map((t) => ({
+    from: t.from ?? '',
+    to: t.to ?? '',
+    count: Number(t.count) || 0,
+    notes: Array.isArray(t.notes) ? t.notes : [],
+  }));
+  const [moreKinds, moreValues] = rule?.transitionsMore || [0, 0];
+  const shown = rows.length > 1 || rows.some((r) => r.notes.length) || Number(moreKinds) > 0;
+  return {
+    rows: shown ? rows : [],
+    more:
+      shown && Number(moreKinds) > 0
+        ? `and ${count(Number(moreKinds), 'more distinct change', 'more distinct changes')} (${count(Number(moreValues), 'value', 'values')})`
+        : null,
+  };
+};
+
+// One of them as text: "PROSP:EXP" → "PROSPP:EXP" 145 (inside a word).
+export const transitionLine = (t) =>
+  `"${t.from}" → "${t.to}" ${t.count.toLocaleString('en-US')}${t.notes.length ? ` (${t.notes.join(', ')})` : ''}`;
+
 // "and 3 more documents (31 changes)".
 export const ruleMoreLine = (docs, changes) =>
   `and ${count(docs, 'more document', 'more documents')} (${count(changes, 'change', 'changes')})`;

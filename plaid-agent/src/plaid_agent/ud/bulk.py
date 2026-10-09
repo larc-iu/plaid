@@ -142,9 +142,10 @@ def resolve_replace(client, project: UdProject, op: Dict[str, Any]) -> List[Dict
 
 def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, replacement: str = None,
                        regex: bool = False, whole: bool = False, document: str = None,
-                       case_sensitive: bool = False) -> str:
+                       case_sensitive: bool = True) -> str:
     """PLAN: substitute inside every value of a column that matches, across
-    the project or in one document."""
+    the project or in one document. Case counts unless the model asks
+    otherwise, as in igt (H12-RULES-1)."""
     if field not in REPLACE_FIELDS:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(REPLACE_FIELDS))
     if replacement is None:

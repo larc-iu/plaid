@@ -43,7 +43,7 @@ def test_a_rule_between_two_right_to_left_values_isolates_each():
     # every isolate.
     assert row['change'].endswith(PDI + '"')
     assert all(s['change'] == f'Gloss {iso("كتاب")} → {iso("كتب")}' for s in row['rule']['sample'])
-    assert row['label'].startswith(f'Gloss: replace {iso("كتاب")} with {iso("كتب")} (whole value)')
+    assert row['label'].startswith(f'Gloss: replace {iso("كتاب")} with {iso("كتب")} (the whole value, case-sensitive)')
 
 
 def test_a_regular_expression_is_isolated_left_to_right():

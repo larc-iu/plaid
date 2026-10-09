@@ -709,7 +709,8 @@ def test_a_replacement_is_one_rule_resolved_at_approval():
     w.prefer_scan = False
     spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
     _engine_for_replace(w, spans)
-    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
+    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob',
+                                            'case_sensitive': False})
     assert 'One change covering 3 values in 1 document.' in out
     assert 'Stored as one change, found again when the user approves.' in out
     assert '\nIn 1 document: "Text 1" 3.\n' in out

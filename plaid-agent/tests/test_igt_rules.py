@@ -69,7 +69,7 @@ def test_a_rule_is_one_change_whatever_it_counts_and_its_card_row_says_where():
     assert out.startswith('Planned 1 change') and 'One change covering 4 values in 2 documents.' in out
     assert 'Stored as one change, found again when the user approves.' in out
     [op] = w.ops
-    assert op['label'] == ('Gloss: replace "VASP" with "ASP" (part of a value), 4 values in 2 documents, '
+    assert op['label'] == ('Gloss: replace "VASP" with "ASP" (anywhere in the value, case-sensitive), 4 values in 2 documents, '
                            '4 of them replace accepted work')
     payload = w.plan_payload()
     [row] = payload['changes']
@@ -256,7 +256,7 @@ def test_a_regular_expression_is_said_as_a_person_reads_it():
     _replace(w, r'\bRL\b', 'REAL', regex=True)
     [row] = w.plan_payload()['changes']
     assert row['change'] == 'Gloss "RL" as a whole word → "REAL"'
-    assert row['label'].startswith('Gloss: replace "RL" as a whole word with "REAL", 2 values')
+    assert row['label'].startswith('Gloss: replace "RL" as a whole word with "REAL" (case-sensitive), 2 values')
     assert rules.pattern_words(r'^RL$', True) == ('"RL" as the whole value', False)
     assert rules.pattern_words(r'R(L|X)', True) == ('matching "R(L|X)"', True)
 
@@ -298,3 +298,60 @@ def test_a_rule_some_of_whose_values_a_later_rule_changes_again_counts_them_apar
     assert first['rule']['total'] == 2 and first['rule'][rules.CHANGED_AGAIN] == [['Gloss "ASP.3SG" → "ASP.SG"', 1]]
     assert ', and 1 value changed again by Gloss "ASP.3SG" → "ASP.SG"' in first['label'], first['label']
     assert second['rule']['sample'][0]['change'] == 'Gloss "VASP.3SG" → "ASP.SG"'
+
+
+# --- what a rule says it changes (H12-RULES-1) ------------------------------------
+
+def test_a_rule_lists_every_distinct_change_the_surprising_ones_first():
+    # PROS meant as a whole label, also found inside PROSP:EXP, and, with case
+    # ignored, inside an English gloss (the fixture's two documents share
+    # token ids, so a token holds one value in both)
+    store = {'sp-g1': 'PROSP:EXP', 'sp-x2': 'PROS', 'sp-x3': 'leprosy', 'sp-y1': 'PROS', 'sp-y2': 'leprosy'}
+    _client, w = _ws(store)
+    out = _replace(w, 'PROS', 'PROSP', case_sensitive=False)
+    assert 'Matches anywhere in the value, ignoring case.' in out
+    [row] = w.plan_payload()['changes']
+    rule = row['rule']
+    assert rule['mode'] == 'anywhere in the value, ignoring case'
+    assert [(t['from'], t['to'], t['count'], t['notes']) for t in rule[rules.TRANSITIONS]] == [
+        ('leprosy', 'lePROSPy', 2, ['inside a word', 'other case']),
+        ('PROSP:EXP', 'PROSPP:EXP', 1, ['inside a word']),
+        ('PROS', 'PROSP', 2, []),
+    ]
+    assert rule[rules.TRANSITIONS_MORE] == [0, 0]
+    # the model reads the same list, in the same order
+    lines = out.split('\n')
+    at = lines.index('Every distinct change it makes, the card lists the same:')
+    assert [x.strip() for x in lines[at + 1:at + 4]] == [
+        '"leprosy" → "lePROSPy" 2 values (inside a word, other case)',
+        '"PROSP:EXP" → "PROSPP:EXP" 1 value (inside a word)',
+        '"PROS" → "PROSP" 2 values',
+    ]
+
+
+def test_a_rule_keeps_case_unless_asked_not_to():
+    store = {'sp-g1': 'NSG', 'sp-x2': '3SG', 'sp-x3': 'see.3sg', 'sp-y1': '3SG', 'sp-y2': 'see.3sg'}
+    _client, w = _ws(store)
+    out = _replace(w, 'SG', 'S')
+    assert 'Matches anywhere in the value, case-sensitive.' in out
+    [row] = w.plan_payload()['changes']
+    got = [(t['from'], t['to'], t['notes']) for t in row['rule'][rules.TRANSITIONS]]
+    # "see.3sg" is left alone, and NSG, a label of its own, is said first
+    assert got == [('NSG', 'NS', ['inside a word']), ('3SG', '3S', [])]
+
+
+def test_past_the_cap_the_rest_are_counted():
+    found = [{'v': f'a{i}'} for i in range(rules.TRANSITIONS_MAX + 3)] + [{'v': 'a0'}]
+    rows, more = rules.transitions(found, lambda o: (o['v'], o['v'] + 'x'))
+    assert len(rows) == rules.TRANSITIONS_MAX and rows[0] == {'from': 'a0', 'to': 'a0x', 'count': 2, 'notes': []}
+    assert more == [3, 3]
+    assert rules.transition_lines(rows[:1], more, ('value', 'values')) == [
+        '"a0" → "a0x" 2 values', 'and 3 more distinct changes (3 values)']
+
+
+def test_how_a_rule_matches_in_words():
+    assert rules.match_mode('PROS', False, False, True) == 'anywhere in the value, case-sensitive'
+    assert rules.match_mode('OBJ', False, True, False) == 'the whole value, ignoring case'
+    assert rules.match_mode(r'\bRL\b', True, False, True) == 'as a whole word, case-sensitive'
+    assert rules.match_mode(r'^RL$', True, False, True) == 'the whole value, case-sensitive'
+    assert rules.match_mode(r'PROS(?!P)', True, False, True) == 'anywhere in the value, case-sensitive'

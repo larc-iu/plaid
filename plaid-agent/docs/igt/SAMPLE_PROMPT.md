@@ -488,13 +488,13 @@ Sentences containing a sequence of words, each described by conditions on its fo
 
 ### replace_in_field
 
-PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for patterns with backreferences (\1). field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the plan lists each.
+PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for patterns with backreferences (\1). Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the result lists every distinct change it makes (old value → new value), check them before you describe the plan.
 
 - `field` (string, required)
 - `pattern` (string, required)
 - `replacement` (string, required)
 - `regex` (boolean)
-- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
+- `case_sensitive` (boolean): On by default: "PROS" does not find "pros". false to ignore case.
 - `whole` (boolean): Match the whole value only.
 - `document` (string): Document id or exact name (see project_overview).
 

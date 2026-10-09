@@ -142,7 +142,8 @@ def test_bulk_plans():
     [only] = changes(w2)
     assert 'Planned 1 change' in out and only['kind'] == 'set_morpheme_form' and only['morpheme_id'] == 'm-4b'
     assert 'm2 (in "Gam-ar"): morpheme form "ar" → "är"' in only['label']
-    out = call_tool(w2, 'replace_in_field', {'field': 'form', 'pattern': 'gam', 'replacement': 'x'})
+    out = call_tool(w2, 'replace_in_field', {'field': 'form', 'pattern': 'gam', 'replacement': 'x',
+                                             'case_sensitive': False})
     assert 'Planned 1 change' in out and 'm1 (in "Gam-ar"): morpheme form "Gam" → "x"' in out  # m-2 has no stored form: skipped
     assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '.*', 'replacement': '', 'regex': True})
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})

@@ -23,6 +23,7 @@ import {
   ruleCountLine,
   ruleDocuments,
   ruleMoreLine,
+  ruleTransitions,
   staleLine,
   textRewrites,
   workReplaced,
@@ -380,8 +381,9 @@ export const PlanCard = ({
 };
 
 // One rule: a stored change standing for many (core/rules.py in plaid-agent).
-// The rule in its own words and its count, then, unfolded, each document it
-// reaches with its count, as a link into the editor, and a sample of its
+// The rule in its own words, its count and how it matches, every distinct
+// change it makes (the surprising ones first), then, unfolded, each document
+// it reaches with its count, as a link into the editor, and a sample of its
 // changes as ordinary rows. The web page export shows it unfolded.
 const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) => {
   const [open, setOpen] = useState(openFirst);
@@ -389,6 +391,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
   const shownDocs = openFirst ? named : named.slice(0, RULE_DOCUMENTS_SHOWN);
   const unnamed = named.length - shownDocs.length;
   const sample = row.rule.sample || [];
+  const changes = ruleTransitions(row.rule);
   return (
     <>
       <tr
@@ -420,6 +423,11 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
           <span className="ml-1.5 text-muted-foreground">
             {ruleCountLine(row.rule, row.replacesWork)}
           </span>
+          {row.rule.mode && (
+            <span className="ml-1.5 text-muted-foreground" data-rule-mode="true">
+              · {row.rule.mode}
+            </span>
+          )}
           {!openFirst && (
             <button
               type="button"
@@ -433,6 +441,28 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
           )}
         </td>
       </tr>
+      {changes.rows.map((t, i) => (
+        <tr key={`change:${i}`} className="align-top" data-rule-change={i}>
+          <td className="w-px whitespace-nowrap py-0.5 pl-3 pr-4">
+            <bdi>&quot;{t.from}&quot;</bdi> → <bdi>&quot;{t.to}&quot;</bdi>
+          </td>
+          <td className="py-0.5 text-muted-foreground">
+            {t.count.toLocaleString('en-US')}
+            {t.notes.length > 0 && (
+              <span className="ml-1.5 font-medium text-warning-foreground">
+                {t.notes.join(', ')}
+              </span>
+            )}
+          </td>
+        </tr>
+      ))}
+      {changes.more && (
+        <tr>
+          <td colSpan={2} className="py-0.5 pl-3 text-muted-foreground">
+            {changes.more}
+          </td>
+        </tr>
+      )}
       {open &&
         shownDocs.map((d) => {
           const { href, title } = adapter.groupOf(projectId, {

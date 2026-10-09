@@ -73,14 +73,18 @@ def _check_cap(n: int):
 
 def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str, regex: bool = False,
                        whole: bool = False, document: Optional[str] = None,
-                       case_sensitive: bool = False) -> str:
+                       case_sensitive: bool = True) -> str:
     """PLAN: substitute inside every EXISTING value of a field (substring,
     whole value, or regex with backreferences), project-wide or in one
     document. Empty cells are not filled: use set_field_for_form for that.
     ``field`` may also name the stored morpheme forms (Bulk Edit's morpheme
-    domain) when no field is so named.
+    domain) when no field is so named. Case counts unless the model asks
+    otherwise (``case_sensitive=false``): a label pattern in capitals never
+    meets an English gloss in lower case by accident (H12-RULES-1).
 
-    Staged as one rule (``core.rules``), found again when approved."""
+    Staged as one rule (``core.rules``), found again when approved. Its card
+    and its result list every distinct change it makes, the surprising ones
+    first (``rules.transitions``), and say how it matches."""
     forms = _names_morpheme_forms(ws, field)
     if not forms:
         replacement = unmark(replacement, 'replacement')
@@ -91,7 +95,11 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                            ('regex', 'whole', 'case_sensitive'))
     args['replacement'] = replacement or ''
     shown, still_regex = rules.pattern_words(pattern, bool(regex))
-    how = (' (regex)' if still_regex else '') if regex else ' (whole value)' if whole else ' (part of a value)'
+    mode = rules.match_mode(pattern, bool(regex), bool(whole), bool(case_sensitive))
+    case = 'case-sensitive' if case_sensitive else 'ignoring case'
+    # Said once: a pattern read as a whole word or value already says where.
+    how = (f' (regex, {case})' if still_regex else f' ({case})' if shown != qv(pattern) else f' ({mode})') \
+        if regex else f' ({mode})'
     if forms:
         name, unit = 'morpheme form', ('morpheme form', 'morpheme forms')
     else:
@@ -110,7 +118,7 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     return _stage_rule(ws, 'replace_in_field', args, unit,
                        change=f'{name} {shown} → {qv(replacement)}',
                        head=f'{name}: replace {shown} with {qv(replacement)}{how}',
-                       what='morpheme forms' if forms else f'{name} values', restate=restate)
+                       what='morpheme forms' if forms else f'{name} values', restate=restate, mode=mode)
 
 
 # --- corpus-wide changes as ONE op ----------------------------------------------
@@ -368,7 +376,7 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
 
 
 def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change: str, head: str, what: str,
-                restate=None, quiet_when_empty: bool = False) -> str:
+                restate=None, quiet_when_empty: bool = False, mode: Optional[str] = None) -> str:
     """Stage a corpus-wide change as one rule (``core.rules``): the tool and
     its arguments, what it found now, counted per document with a digest of
     each document's changes, and the card row with a sample. It is found again
@@ -382,7 +390,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     key = ('rule', tool, rules.fingerprint_args(args))
     where = f' in {ws.doc_label(args["document"], quote=True)}' if args.get('document') else ''
     op, found, kept, left = _build_rule(ws, tool, args, list(unit), change + where, head + where,
-                                        ws.rule_found_before(key))
+                                        ws.rule_found_before(key), mode)
     explicit = {op_target(o): i for i, o in enumerate(ws.ops) if not rules.is_rule(o)
                 and o.get('kind') not in SCOPES}
     explicit.pop(None, None)
@@ -421,11 +429,18 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             ws.rule_found[key] = before
         raise
     ws.note_versions(docs)
+    # as the plan holds it once every rule is counted
+    op = next((o for o in ws.ops if rules.is_rule(o) and rules.target(o) == key), op)
     n, accepted = len(kept), op[work.COUNTED]
     sample = [c['label'] for c in op[CARD]['sample']]
+    changes = rules.transition_lines(op[CARD].get(rules.TRANSITIONS) or [],
+                                     op[CARD].get(rules.TRANSITIONS_MORE) or [0, 0], unit)
     return (ws.planned_note(1) + f'\n  One change covering {rules.count_line(n, unit, len(docs))}.'
             + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
+            + (f'\nMatches {mode}.' if mode else '')
+            + (('\nEvery distinct change it makes, the card lists the same:\n  ' + '\n  '.join(changes))
+               if changes else '')
             + _by_document(ws, kept) + '\nFor example:\n  ' + '\n  '.join(sample)
             + (f'\n  … {n - len(sample)} more' if n > len(sample) else '')
             + '\nStored as one change, found again when the user approves.'
@@ -433,7 +448,8 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             + left_for_analysis(left))
 
 
-def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, change: str, head: str, earlier):
+def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, change: str, head: str, earlier,
+                mode: Optional[str] = None):
     """(rule op, what it found, what it writes, how many a planned analysis
     makes moot): the rule resolved now over the values the ``earlier`` rules
     leave, as approval will resolve it."""
@@ -450,6 +466,8 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
     op = {'kind': 'bulk_scope', 'tool': tool, 'args': args,
           'matched': rules.matched(KIND, found, lambda o: o.get('doc'), ws.replaces_work),
           'change': change, 'head': head, 'unit': unit}
+    if mode:
+        op['mode'] = mode
     if ws.prefer_scan:
         # A workspace that cannot query (the tests' fake) found it by reading
         # every document, and approval finds it the same way.
@@ -481,7 +499,35 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
                            ws.replaces_work)
     if again:
         out[CARD][rules.CHANGED_AGAIN] = again
+    if op.get('mode'):
+        out[CARD]['mode'] = op['mode']
+    if op.get('tool') in _TRANSITION_TOOLS:
+        a = op.get('args') or {}
+        notes = (rules.surprises(a.get('pattern') or '', bool(a.get('regex')), bool(a.get('whole')),
+                                 bool(a.get('case_sensitive')))
+                 if op.get('tool') == 'replace_in_field' else (lambda v: []))
+        rows, more = rules.transitions(kept, lambda o: (_was(ws, o), _becomes(o)), notes)
+        out[CARD][rules.TRANSITIONS] = rows
+        out[CARD][rules.TRANSITIONS_MORE] = more
     return out
+
+
+#: The rules whose card lists every distinct change they make: a value
+#: rewritten, or set over what was there. A copy into an orthography writes
+#: each word's own spelling, which its sample shows.
+_TRANSITION_TOOLS = ('replace_in_field', 'set_field_for_form')
+
+
+def _was(ws: Workspace, o: Dict[str, Any]) -> str:
+    """The value a change a rule found replaces, as stored."""
+    if o.get('kind') == 'set_morpheme_form':
+        _, md = ws.metadata_of(o.get('morpheme_id'))
+        return ((md or {}).get('form') or '') if isinstance(md, dict) else ''
+    return ws.stored_values.get((o.get('layer_id'), o.get('token_id')), '') or ''
+
+
+def _becomes(o: Dict[str, Any]) -> str:
+    return (o.get('form') if o.get('kind') == 'set_morpheme_form' else o.get('value')) or ''
 
 
 def rule_keep(ws: Workspace, ops: List[Dict[str, Any]]):

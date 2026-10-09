@@ -200,6 +200,58 @@ describe('a rule in the Markdown export', () => {
   });
 });
 
+describe('every distinct change a rule makes (H12-RULES-1)', () => {
+  const withChanges = () =>
+    ruleRow({
+      change: 'Gloss (Morpheme) "PROS" → "PROSP"',
+      rule: {
+        ...ruleRow().rule,
+        mode: 'anywhere in the value, ignoring case',
+        transitions: [
+          { from: 'leprosy', to: 'lePROSPy', count: 1, notes: ['inside a word', 'other case'] },
+          { from: 'PROSP:EXP', to: 'PROSPP:EXP', count: 145, notes: ['inside a word'] },
+          { from: 'PROS', to: 'PROSP', count: 727, notes: [] },
+        ],
+        transitionsMore: [2, 5],
+      },
+    });
+
+  it('lists them unfolded, the surprising first, with how the rule matches', async () => {
+    const view = await mount(plan([withChanges()]));
+    expect(view.container.querySelector('[data-rule-mode]').textContent).toBe(
+      '· anywhere in the value, ignoring case',
+    );
+    const rows = all(view.container, 'tr[data-rule-change]').map((r) => r.textContent);
+    expect(rows).toEqual([
+      '"leprosy" → "lePROSPy"1inside a word, other case',
+      '"PROSP:EXP" → "PROSPP:EXP"145inside a word',
+      '"PROS" → "PROSP"727',
+    ]);
+    expect(byText(view.container, 'td', 'and 2 more distinct changes (5 values)')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('says a rule of one change in its own line only', async () => {
+    const one = ruleRow({
+      rule: { ...ruleRow().rule, transitions: [{ from: 'VASP', to: 'ASP', count: 9, notes: [] }] },
+    });
+    const view = await mount(plan([one]));
+    expect(all(view.container, 'tr[data-rule-change]')).toHaveLength(0);
+    await view.unmount();
+  });
+
+  it('prints them in the Markdown export', () => {
+    const conv = {
+      display: [{ kind: 'assistant', text: 'Planned.', plan: plan([withChanges()]), status: null }],
+    };
+    const md = conversationToMarkdown(conv, { title: 'T' }, { adapter, projectId: 'pr1' });
+    expect(md).toContain('   - Matches anywhere in the value, ignoring case');
+    // a value is Markdown-escaped as every stored value is
+    expect(md).toContain('   - "PROSP:EXP" → "PROSPP:EXP" 145 \\(inside a word)');
+    expect(md).toContain('   - and 2 more distinct changes (5 values)');
+  });
+});
+
 describe('a settled plan cut to its first rows', () => {
   it('says how many rows each document shows, not that they are all it had', async () => {
     const rows = Array.from({ length: 200 }, (_, i) => ({

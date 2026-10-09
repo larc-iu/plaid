@@ -423,10 +423,12 @@ TOOLS += [
          'limit': {'type': 'integer'}}, ['sequence']),
     _fn('replace_in_field',
         'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
-        'whole=true for exact values, regex=true for patterns with backreferences (\\1). field="morpheme form" '
-        'rewrites stored morpheme forms instead of a field. One call plans every change; the plan lists each.',
+        'whole=true for exact values, regex=true for patterns with backreferences (\\1). Case counts unless '
+        'case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call '
+        'plans every change; the result lists every distinct change it makes (old value → new value), check them '
+        'before you describe the plan.',
         {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
-         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC},
+         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'On by default: "PROS" does not find "pros". false to ignore case.'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC},
         ['field', 'pattern', 'replacement']),
     _fn('respell_all',
         'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '

@@ -177,7 +177,7 @@ PLAN: throw away machine values nobody has confirmed, so the columns go back to 
 
 ### replace_in_field
 
-PLAN: substitute inside every value of one column that matches a pattern, across the whole project or in one document: rename a lemma everywhere, retag a deprel, fix a feature spelling. A literal substring unless regex is true; whole matches the whole value; case is ignored unless case_sensitive. Empty values are never filled. The plan holds it as ONE change with its count; search shows every match first.
+PLAN: substitute inside every value of one column that matches a pattern, across the whole project or in one document: rename a lemma everywhere, retag a deprel, fix a feature spelling. A literal substring unless regex is true; whole matches the whole value; case counts unless case_sensitive is false. Empty values are never filled. The plan holds it as ONE change with its count; search shows every match first.
 
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
 - `pattern` (string, required)

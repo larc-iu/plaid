@@ -280,6 +280,107 @@ def card(op: Dict[str, Any], found: List[Dict[str, Any]], doc_of: Callable[[Dict
             'sample': [describe(o) for o in sample(found, doc_of, replaces)]}
 
 
+# --- what a rule changes, value by value ------------------------------------------
+
+#: Distinct changes (a value as found and the value written) a rule's card and
+#: tool result list. The rest are counted.
+TRANSITIONS_MAX = 12
+
+#: The key on a rule's card listing them, and the one counting the rest
+#: (``[distinct changes, values]``).
+TRANSITIONS = 'transitions'
+TRANSITIONS_MORE = 'transitions_more'
+
+#: Why a change is listed first: the match is part of a longer word, or it
+#: matched only because case was ignored.
+INSIDE_WORD = 'inside a word'
+OTHER_CASE = 'other case'
+
+
+def match_mode(pattern: str, regex: bool, whole: bool, case_sensitive: bool) -> str:
+    """How a replacement matches, in the user's words: ``anywhere in the
+    value, case-sensitive``, ``as a whole word, ignoring case``, ``the whole
+    value, case-sensitive``."""
+    if whole or (regex and pattern.startswith('^') and pattern.endswith('$') and not pattern.endswith('\\$')):
+        where = 'the whole value'
+    elif regex and pattern.startswith('\\b') and pattern.endswith('\\b'):
+        where = 'as a whole word'
+    else:
+        where = 'anywhere in the value'
+    return f'{where}, {"case-sensitive" if case_sensitive else "ignoring case"}'
+
+
+def _letter(ch: str) -> bool:
+    import unicodedata
+    return unicodedata.category(ch)[0] in 'LM'
+
+
+def surprises(pattern: str, regex: bool, whole: bool, case_sensitive: bool) -> Callable[[str], List[str]]:
+    """What is unexpected about a value a replacement matches, as notes
+    (:data:`INSIDE_WORD`, :data:`OTHER_CASE`): a match with a letter on both
+    sides of one of its edges is part of a longer word (``PROS`` in
+    ``PROSP:EXP`` or ``leprosy``), and a match the same pattern does not find
+    with case kept is found only by ignoring case (``sg`` for ``SG``). The
+    pattern is read as the server reads it (:mod:`.java_regex`)."""
+    from .java_regex import PatternError, compile_pair, nfc
+    try:
+        _, found = compile_pair(pattern, literal=not regex, case_insensitive=not case_sensitive, whole=whole)
+        _, exact = compile_pair(pattern, literal=not regex, case_insensitive=False, whole=whole)
+    except PatternError:
+        return lambda value: []
+
+    def notes(value: str) -> List[str]:
+        n = nfc(value or '')
+        out: List[str] = []
+        for m in found.finditer(n):
+            a, b = m.span()
+            if (not whole and b > a and INSIDE_WORD not in out
+                    and ((0 < a < len(n) and _letter(n[a - 1]) and _letter(n[a]))
+                         or (0 < b < len(n) and _letter(n[b - 1]) and _letter(n[b])))):
+                out.append(INSIDE_WORD)
+            if not case_sensitive and OTHER_CASE not in out:
+                e = exact.match(n, a)
+                if e is None or e.end() != b:
+                    out.append(OTHER_CASE)
+        return out
+    return notes
+
+
+def transitions(found: List[Dict[str, Any]], pair_of: Callable[[Dict[str, Any]], Tuple[str, str]],
+                notes: Callable[[str], List[str]] = lambda v: [],
+                cap: int = TRANSITIONS_MAX) -> Tuple[List[Dict[str, Any]], List[int]]:
+    """(every distinct change a rule makes, ``[{from, to, count, notes}]``, up
+    to ``cap``, and ``[distinct changes left out, values they hold]``). A
+    change with notes (:func:`surprises`) comes first, then the rest, each
+    most frequent first, so a rewrite nobody meant is never hidden behind a
+    thousand that look alike. A match inside a word is noted only when the
+    rule's other changes are not all so."""
+    counts: Dict[Tuple[str, str], int] = {}
+    for o in found:
+        pair = pair_of(o)
+        counts[pair] = counts.get(pair, 0) + 1
+    rows = [{'from': a, 'to': b, 'count': n, 'notes': notes(a)} for (a, b), n in counts.items()]
+    # A rule that matches inside words everywhere (a letter respelled) is
+    # meant to: only the exceptions to how it mostly matches are noted.
+    if rows and all(INSIDE_WORD in r['notes'] for r in rows):
+        for r in rows:
+            r['notes'] = [x for x in r['notes'] if x != INSIDE_WORD]
+    rows.sort(key=lambda r: (not r['notes'], -r['count'], r['from'], r['to']))
+    rest = rows[cap:]
+    return rows[:cap], [len(rest), sum(r['count'] for r in rest)]
+
+
+def transition_lines(rows: List[Dict[str, Any]], more: List[int], unit: Tuple[str, str]) -> List[str]:
+    """The distinct changes as the tool result says them, one a line:
+    ``"PROSP:EXP" → "PROSPP:EXP" 145 values (inside a word)``."""
+    out = [f'{qv(r["from"])} → {qv(r["to"])} {_plural(r["count"], *unit)}'
+           + (f' ({", ".join(r["notes"])})' if r['notes'] else '') for r in rows]
+    if more and more[0]:
+        out.append(f'and {_plural(more[0], "more distinct change", "more distinct changes")} '
+                   f'({_plural(more[1], *unit)})')
+    return out
+
+
 # --- a pattern as a person reads it ----------------------------------------------
 
 _META = set('\\^$.|?*+()[]{}')
