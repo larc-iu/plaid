@@ -39,6 +39,14 @@ describe('applyToasts', () => {
     expect(notifyError.mock.calls[0][1]).toBe('Not applied');
   });
 
+  it('keeps a refusal on screen until it is closed', () => {
+    const said =
+      'Nothing was written. A previous run of this plan stopped and still holds "-et". Apply again in 41 seconds.';
+    applyToasts({ error: { status: 400, message: said } }, 'x');
+    expect(notifyError.mock.calls[0][1]).toBe('Not applied');
+    expect(notifyError.mock.calls[0][2]).toEqual({ duration: Infinity });
+  });
+
   it('still reports lost contact in the docked panel', () => {
     applyToasts({ error: { pending: true } }, 'x', { docked: true });
     expect(notifyWarning).toHaveBeenCalledTimes(1);

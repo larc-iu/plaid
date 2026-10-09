@@ -867,7 +867,7 @@ class BaseAssistantService(BaseService):
                          if isinstance(d, dict) and d.get('id') == e.document_id), None)
             which = f'"{name}"' if name else 'A document'
             if e.cause is None:
-                said = f'{which} is locked by another run on it. Approve again once it has finished.'
+                said = self._busy_sentence(client, e.document_id, which, plan, store.user_id, request_id)
             else:
                 said = (f'{which} could not be locked for the change '
                         f'({requester_message(e.cause, secrets=self.REQUEST_SECRETS)}). Approve again.')
@@ -901,6 +901,21 @@ class BaseAssistantService(BaseService):
             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
             'message': f'Applied {self.summarize(ops)}.' + ''.join(' ' + _sentence(n) for n in notes),
         })
+
+    def _busy_sentence(self, client, document_id: str, which: str, plan: Dict[str, Any], user_id: str,
+                       run: Any) -> str:
+        """Why a plan could not take a document it writes. A run of this plan
+        that stopped partway (the service killed) still holds the lock until
+        it lapses, a minute after its last renewal: the user is told so, and
+        when to apply again, rather than to wait for a run that will never
+        finish (H12-RULES-4)."""
+        earlier = plan.get(WRITING)
+        if isinstance(earlier, dict) and earlier.get('run') != run:
+            left = _lock_left(client, document_id, user_id)
+            if left is not None:
+                return (f'A previous run of this plan stopped and still holds {which}. Apply again in '
+                        f'{left} second{"" if left == 1 else "s"}.')
+        return f'{which} is locked by another run on it. Approve again once it has finished.'
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, remember, stamp_mode, contributor, store,
@@ -1178,6 +1193,24 @@ def proposed_by(item: Dict[str, Any]) -> Dict[str, Any]:
     version of the turn that proposed the plan, which may not be the ones
     running when it is approved."""
     return {k: item[k] for k in ('model', 'version') if item.get(k)}
+
+
+def _lock_left(client, document_id: str, user_id: str) -> Optional[int]:
+    """Seconds until the lock on a document lapses, when ``user_id`` holds it
+    (a run of theirs that stopped holds it until then), else None."""
+    import math
+    import time
+    try:
+        info = client.documents.check_lock(document_id)
+    except Exception:  # noqa: BLE001 - only a better sentence depends on it
+        return None
+    if not isinstance(info, dict) or info.get('user_id') != user_id:
+        return None
+    try:
+        left = (float(info.get('expires_at')) - time.time() * 1000) / 1000
+    except (TypeError, ValueError):
+        return None
+    return max(1, math.ceil(left))
 
 
 #: The longest audit label a plan's operation carries, in code points. It
