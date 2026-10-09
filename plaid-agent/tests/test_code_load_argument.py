@@ -33,6 +33,19 @@ def test_keyed_sends_attribute_reads_through_the_reader_and_leaves_the_rest():
     assert keyed('def f(:\n  pass') == 'def f(:\n  pass'
 
 
+def test_keyed_keeps_a_comment_after_the_dot_and_the_code_that_tests_for_attributes():
+    # A comment after the dot used to swallow the closing bracket.
+    assert keyed('x = (p.  # the value.\n  v)\n') == "x = (_plaid_attr_(p,   # the value.\n  'v'))\n"
+    # Inside a try that catches AttributeError the code may be testing for
+    # one on purpose: a dict there still raises it.
+    same = 'try:\n    x = o.form\nexcept (KeyError, AttributeError):\n    x = o["form"] + "!"\n'
+    assert keyed(same) == same
+    assert keyed('try:\n    x = o.form\nexcept KeyError:\n    pass\n').count('_plaid_attr_(o') == 1
+    # Code that binds the reader's own name runs as written.
+    same = 'def _plaid_attr_(a, b):\n    return 1\nprint(p.v)\n'
+    assert keyed(same) == same
+
+
 class TestInTheSandbox:
     pytestmark = require_sandbox()
 
@@ -76,6 +89,30 @@ except KeyError as e:
 print(math.pi > 3, c.most_common(1), a)
 '''
         assert call_tool(w, 'run_code', {'code': code}) == "True [('a', 2)] ('x',)"
+
+    def test_a_variable_named_type_or_getattr_leaves_attribute_reads_working(self):
+        w = scan_ws(FakeClient())
+        code = ('m = load(documents()[0]).sentences[0].words[0].morphemes[0]\n'
+                'type = m.type\ngetattr = 1\nprint(m.ref == m["ref"])')
+        assert call_tool(w, 'run_code', {'code': code}) == 'True'
+        # And in the next call of the turn, where the names persist.
+        assert call_tool(w, 'run_code', {'code': 'print(m.form == m["form"])'}) == 'True'
+
+    def test_a_missing_key_of_a_large_dict_names_a_few_keys(self):
+        w = scan_ws(FakeClient())
+        out = call_tool(w, 'run_code', {'code': 'd = {str(i): i for i in range(50000)}\nd.total'})
+        assert "Its keys: '0', '1'" in out and 'and 49980 more' in out and len(out) < 2000
+
+    def test_an_error_shows_the_code_as_written(self):
+        w = scan_ws(FakeClient())
+        out = call_tool(w, 'run_code', {'code': 'doc = load(documents()[0])\nx = doc.sentences[0].n'})
+        assert 'x = doc.sentences[0].n' in out and '_plaid_attr_' not in out and '~' not in out
+
+    def test_code_monty_cannot_read_once_rewritten_runs_as_written(self, monkeypatch):
+        from plaid_agent.core import sandbox
+        monkeypatch.setattr(sandbox, 'keyed', lambda code: code + '\n)')
+        w = scan_ws(FakeClient())
+        assert call_tool(w, 'run_code', {'code': 'print(1 + 1)'}) == '2'
 
     def test_a_typo_is_the_codes_fault_not_the_tools(self):
         w = scan_ws(FakeClient())

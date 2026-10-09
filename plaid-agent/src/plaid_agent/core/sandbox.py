@@ -49,14 +49,22 @@ NAMES = ('run_code', 'code_help')
 # doc.sentences cannot be built. The model writes both (a quarter of the
 # failed run_code calls of the 2026-10-08 benchmark were doc.sentences on
 # what load() returns), so the attribute form is turned into the key form
-# before the code runs. A key that is not there names the keys that are.
+# before the code runs. A key that is not there names the keys that are, a
+# few of them for a large dict. The builtins it uses are bound when it is
+# defined, so code that names a variable type or getattr (a morpheme's
+# "type" is one) does not break every attribute read after it.
+READER = '_plaid_attr_'
 PRELUDE = '''
-def _plaid_attr_(o, name):
-    if type(o) is dict:
+def _plaid_attr_(o, name, _type=type, _dict=dict, _getattr=getattr, _len=len, _repr=repr, _str=str,
+                 _AttributeError=AttributeError):
+    if _type(o) is _dict:
         if name in o:
             return o[name]
-        raise AttributeError('no "' + name + '" here. Its keys: ' + ', '.join([repr(k) for k in o]))
-    return getattr(o, name)
+        keys = [_repr(k) for k in list(o)[:20]]
+        more = _len(o) - _len(keys)
+        raise _AttributeError('no "' + name + '" here. Its keys: ' + ', '.join(keys)
+                              + (', and ' + _str(more) + ' more' if more > 0 else ''))
+    return _getattr(o, name)
 '''
 
 # Attribute names a dict could never mean as a key in a model's code (every
@@ -70,23 +78,46 @@ _MODULE_NAMES = frozenset(MODULES + ('str', 'bytes', 'list', 'tuple', 'dict', 's
                                      'complex', 'bool', 'object', 'type'))
 
 
+def _catches_attribute_error(node: ast.AST) -> bool:
+    """Whether a try statement has a handler for AttributeError (by name, in
+    a tuple, or a bare except): code inside it may be testing for an
+    attribute on purpose, and a dict there must keep raising."""
+    for h in getattr(node, 'handlers', ()):
+        kinds = h.type.elts if isinstance(h.type, ast.Tuple) else [h.type]
+        if h.type is None or any(isinstance(k, ast.Name) and k.id == 'AttributeError' for k in kinds):
+            return True
+    return False
+
+
 def keyed(code: str) -> str:
     """``code`` with every attribute read that may be a key of a loaded
     document sent through the prelude's reader: ``doc.sentences`` becomes
     ``_plaid_attr_(doc, 'sentences')``, which reads the key of a dict and the
     attribute of anything else. A method call (``w.get(...)``,
-    ``s.lower()``), an assignment, a builtin's own attribute and a module's
-    are left alone. The text around each read is untouched, so line numbers
-    in a traceback still match the code the model wrote. Code that does not
-    parse is returned as it is, for the sandbox to report."""
+    ``s.lower()``), an assignment, a builtin's own attribute, a module's, and
+    a read inside a ``try`` that catches AttributeError are left alone. Only
+    the dot and the name are replaced, so comments, line breaks and the line
+    numbers of a traceback stay those of the code the model wrote (and
+    :func:`_unkeyed` gives the traceback its own text back). Code that does
+    not parse, or that binds the reader's name itself, is returned as it is."""
     try:
         tree = ast.parse(code)
     except (SyntaxError, ValueError):
         return code
+    if any(isinstance(n, ast.Name) and n.id == READER and not isinstance(n.ctx, ast.Load)
+           or isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == READER
+           or isinstance(n, ast.alias) and (n.asname or n.name) == READER
+           or isinstance(n, ast.arg) and n.arg == READER
+           for n in ast.walk(tree)):
+        return code
+    kept = set()
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.Try, getattr(ast, 'TryStar', ast.Try))) and _catches_attribute_error(n):
+            kept.update(id(m) for b in n.body for m in ast.walk(b))
     called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     reads = [n for n in ast.walk(tree)
              if isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Load) and id(n) not in called
-             and n.attr not in _BUILTIN_ATTRS
+             and id(n) not in kept and n.attr not in _BUILTIN_ATTRS
              and not (isinstance(n.value, ast.Name) and n.value.id in _MODULE_NAMES)]
     if not reads:
         return code
@@ -104,14 +135,87 @@ def keyed(code: str) -> str:
     for n in reads:
         value_end = pos(n.value.end_lineno, n.value.end_col_offset)
         end = pos(n.end_lineno, n.end_col_offset)
-        # What lies between the value and the name: a closing bracket,
-        # space, a comment, then the dot. The last dot is the attribute's.
-        dot = value_end + src[value_end:end].rindex(b'.')
-        edits.append((dot, end, f', {n.attr!r})'.encode('utf-8')))
-        edits.append((pos(n.lineno, n.col_offset), None, b'_plaid_attr_('))
+        # Between the value and the name: closing brackets, space, a line
+        # continuation or a comment, then the dot, then the same again. The
+        # first dot outside a comment is the attribute's.
+        dot, i = None, value_end
+        while i < end:
+            c = src[i:i + 1]
+            if c == b'#':
+                i = src.index(b'\n', i) if b'\n' in src[i:end] else end
+            elif c == b'.':
+                dot = i
+                break
+            else:
+                i += 1
+        if dot is None:
+            return code
+        name_start = end
+        while name_start > dot + 1 and (src[name_start - 1:name_start].isalnum()
+                                        or src[name_start - 1] in b'_' or src[name_start - 1] >= 0x80):
+            name_start -= 1
+        edits.append((name_start, end, f'{n.attr!r})'.encode('utf-8')))
+        edits.append((dot, dot + 1, b', '))
+        edits.append((pos(n.lineno, n.col_offset), None, READER.encode() + b'('))
     for at, end, text in sorted(edits, key=lambda e: e[0], reverse=True):
         src = src[:at] + text + src[at if end is None else end:]
     return src.decode('utf-8')
+
+
+def _unread(line: str) -> str:
+    """One line of rewritten code with every ``_plaid_attr_(x, 'name')`` put
+    back as ``x.name``."""
+    head = READER + '('
+    while True:
+        at = line.rfind(head)
+        if at < 0:
+            return line
+        depth, quote, i, comma = 0, None, at + len(head), None
+        while i < len(line):
+            c = line[i]
+            if quote:
+                if c == '\\':
+                    i += 1
+                elif c == quote:
+                    quote = None
+            elif c in '\'"':
+                quote = c
+            elif c in '([{':
+                depth += 1
+            elif c in ')]}':
+                if depth == 0:
+                    break
+                depth -= 1
+            elif c == ',' and depth == 0:
+                comma = i
+            i += 1
+        if i >= len(line) or comma is None:
+            return line  # cut off mid-call: leave it
+        name = line[comma + 1:i].strip().strip('\'"')
+        line = line[:at] + line[at + len(head):comma].rstrip() + '.' + name + line[i + 1:]
+
+
+def _unkeyed(text: str) -> str:
+    """A traceback of rewritten code in the code's own terms: the reader's
+    own frame dropped, and each line that shows a read through it shown as
+    the attribute read the model wrote (without the markers under it, which
+    point at the rewritten text)."""
+    if READER not in text:
+        return text
+    out, in_reader, after_read = [], False, False
+    for line in text.split('\n'):
+        if line.startswith('  File ') and line.rstrip().endswith('in ' + READER):
+            in_reader = True
+            continue
+        if in_reader and line.startswith('    '):
+            continue
+        in_reader = False
+        if after_read and line.strip() and set(line.strip()) <= set('~^'):
+            after_read = False
+            continue
+        after_read = READER + '(' in line
+        out.append(_unread(line) if after_read else line)
+    return '\n'.join(out)
 
 
 class CodeError(Exception):
@@ -214,10 +318,19 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     from pydantic_monty import (CollectString, MontyCrashedError, MontyRuntimeError, MontySyntaxError,
                                 MontyTypingError)
     printed = CollectString(max_bytes=4 * 1024 * 1024)
+    worker, source = session.get(), keyed(code)
     try:
-        value = session.get().feed_run(keyed(code), external_lookup=dict(api), print_callback=printed)
+        try:
+            value = worker.feed_run(source, external_lookup=dict(api), print_callback=printed)
+        except MontySyntaxError:
+            if source == code:
+                raise
+            # The rewrite is never to cost a program that ran before it: code
+            # Monty cannot read once rewritten (nothing of it has run) runs as
+            # it was written.
+            value = worker.feed_run(code, external_lookup=dict(api), print_callback=printed)
     except MontyRuntimeError as e:
-        raise CodeError(_explain(e, shape) + _partial(printed))
+        raise CodeError(_unkeyed(_explain(e, shape)) + _partial(printed))
     except (MontySyntaxError, MontyTypingError) as e:
         # Code that does not parse is the code's fault, said in the parser's
         # words. It used to fall through to "a fault in the tool".
