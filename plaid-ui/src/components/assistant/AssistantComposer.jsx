@@ -32,7 +32,9 @@ export const AssistantComposer = ({
   // The textarea itself, so the chat can put the caret back when a turn lands.
   inputRef,
   canSend,
-  // A plan is waiting to be decided, which the placeholder says.
+  // A plan is waiting, which the placeholder says: 'decide' (approve or
+  // discard), 'again' (only plans to apply again, which offer no Discard), or
+  // false.
   pendingPlan = false,
   // Why the last message or decision was not taken (work under way in
   // another tab, the conversation deleted), said above the box. `offerNew`
@@ -253,11 +255,15 @@ export const AssistantComposer = ({
           placeholder={
             !service
               ? 'No assistant online'
-              : pendingPlan
+              : pendingPlan === 'again'
                 ? full
-                  ? 'Approve or discard the plan above'
-                  : 'Approve or discard the plan above, or keep talking'
-                : 'Message the assistant… (Shift+Enter for a new line)'
+                  ? 'Apply the plan above again'
+                  : 'Apply the plan above again, or keep talking'
+                : pendingPlan
+                  ? full
+                    ? 'Approve or discard the plan above'
+                    : 'Approve or discard the plan above, or keep talking'
+                  : 'Message the assistant… (Shift+Enter for a new line)'
           }
           aria-label="Message"
           disabled={!canSend}

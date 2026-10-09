@@ -184,6 +184,8 @@ export const Turn = ({
   contributor,
   busy,
   interrupted,
+  // An interrupted plan whose documents show nothing written (PlanCard).
+  nothingWritten = false,
   applying,
   onApprove,
   onDiscard,
@@ -387,6 +389,7 @@ export const Turn = ({
             recordedAsHuman={item.asHuman}
             dismissed={!!item.dismissed}
             interrupted={interrupted}
+            nothingWritten={nothingWritten}
             applying={applying}
             projectId={projectId}
             adapter={adapter}

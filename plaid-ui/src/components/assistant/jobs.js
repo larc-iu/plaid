@@ -200,8 +200,12 @@ const pendingOver = (stored, meta, settles) => {
 //
 // A discard marks the entry for the moment it takes to write the transcript,
 // and clears it after. A tab that closes in between leaves the mark, which is
-// taken as free once it is older than this.
-const DISCARD_HOLD_MS = 30 * 1000;
+// taken as free once it is older than this. Longer than a request may take
+// (the client's own timeout, 30 s), so a tab still there gives its mark back
+// itself first. Its time is the marking tab's clock, so a mark further from
+// this one's either way counts as free too: a clock set wrong never holds a
+// conversation for longer.
+const DISCARD_HOLD_MS = 45 * 1000;
 
 // The marker `p` as it stands: null when there is none, or when it is a
 // discard's mark left behind by a tab that went away.
@@ -209,7 +213,7 @@ export const liveMarker = (p) => {
   if (!p?.requestId) return null;
   if (p.kind === 'discard') {
     const at = Date.parse(p.startedAt);
-    if (!Number.isFinite(at) || Date.now() - at > DISCARD_HOLD_MS) return null;
+    if (!Number.isFinite(at) || Math.abs(Date.now() - at) > DISCARD_HOLD_MS) return null;
   }
   return p;
 };
@@ -834,6 +838,19 @@ const finishJob = async (j, store, service) => {
   try {
     ({ conv, meta } = await readConv(store, j.id));
   } catch (e) {
+    if (e?.status === 404 && (j.conv?.rev?.meta || 0) > 0) {
+      // Deleted while it ran (another tab, another device): nothing is
+      // written back, and the chat says so at once. (A new conversation
+      // whose first write failed was never there.)
+      j.gone = true;
+      j.why = DELETED;
+      j.done = true;
+      j.result = { conv: j.conv, meta: null };
+      notifyJob(j);
+      jobs.delete(j.id);
+      notifyJob(j);
+      return j.result;
+    }
     console.error('[Assistant] could not read the conversation back', e);
     conv = j.conv;
     meta = buildMeta(store, j.prevMeta, conv, service);
@@ -978,6 +995,8 @@ const askedAgain = (store, fresh, asked, said, service, meta, page, own) => {
 // when the conversation was deleted. `quiet`: a record that moved on with no
 // work under way there says enough by itself (the plan an approval was for
 // was decided, the answer a retry asks for landed), so no line is given.
+const DISCARD_EVERY_MS = 1500;
+
 const declineJob = (j, store, saved, tried, { quiet = false } = {}) => {
   j.declined = true;
   j.gone = !!saved.gone;
@@ -1004,16 +1023,27 @@ const declineJob = (j, store, saved, tried, { quiet = false } = {}) => {
     if (followable(nowMeta?.pending) && !jobFor(j.id)) {
       attachJob({ store, conv: now, meta: nowMeta, reread: true });
     } else if (liveMarker(nowMeta?.pending)) {
-      // A discard in another tab, done in a moment: shown once it is.
-      setTimeout(async () => {
-        if (jobFor(j.id)) return;
-        try {
-          const read = await readConv(store, j.id);
-          if (!jobFor(j.id)) notifyJob({ ...j, why: null, unsent: null, result: read });
-        } catch {
-          // Shown as it was read.
+      // A discard in another tab, done in a moment, or left by a tab that
+      // went away: shown once the mark is gone or free, and the line above
+      // the composer goes with it.
+      (async () => {
+        const end = Date.now() + DISCARD_HOLD_MS + DISCARD_EVERY_MS;
+        while (Date.now() < end) {
+          await new Promise((resolve) => setTimeout(resolve, DISCARD_EVERY_MS));
+          if (jobFor(j.id)) return;
+          let read;
+          try {
+            read = await readConv(store, j.id);
+          } catch {
+            return;
+          }
+          if (jobFor(j.id)) return;
+          if (!liveMarker(read.meta?.pending)) {
+            notifyJob({ ...j, why: null, unsent: null, cleared: true, result: read });
+            return;
+          }
         }
-      }, 1500);
+      })();
     }
   }
   return j.result;
@@ -1256,12 +1286,30 @@ const undecided = (conv, planId) =>
 export const mayHaveWritten = (item) =>
   !!item?.plan && item.status == null && !!item.interrupted && !!item.plan.writing;
 
+// Whether the documents of such a plan show that its run wrote nothing after
+// all (it was cut off between marking the plan and sending its first change):
+// each document the run held is still at the version it held it at. Read from
+// the server, and false whenever that cannot be told (a document gone, one
+// another person changed since, a read refused).
+export const nothingLanded = async (store, item) => {
+  if (!mayHaveWritten(item)) return false;
+  const held = (item.plan.documents || []).filter((d) => d?.id && d.heldFrom != null);
+  if (!held.length) return false;
+  try {
+    const now = await Promise.all(held.map((d) => store.client.documents.get(d.id)));
+    return now.every((doc, i) => doc?.version === held[i].heldFrom);
+  } catch {
+    return false;
+  }
+};
+
 // `conv` with the plan `planId` discarded: an undecided plan is settled as
 // discarded, an out-of-date one keeps that verdict (the record of an approval
 // that was refused) and is marked dismissed. Null when there is nothing to do
 // there (decided meanwhile), or when the plan's interrupted approval may have
-// written (`mayHaveWritten`).
-export const planDiscarded = (conv, planId) => {
+// written (`mayHaveWritten`), unless its documents showed it wrote nothing
+// (`unwritten`, see `nothingLanded`).
+export const planDiscarded = (conv, planId, { unwritten = false } = {}) => {
   const i = conv.display.findIndex((d) => d.plan?.id === planId);
   const d = conv.display[i];
   if (!d) return null;
@@ -1271,7 +1319,7 @@ export const planDiscarded = (conv, planId) => {
     display[i] = { ...d, dismissed: true, dismissedAt: itemTime() };
     return { ...conv, display };
   }
-  if (d.status != null || mayHaveWritten(d)) return null;
+  if (d.status != null || (mayHaveWritten(d) && !unwritten)) return null;
   return settle(conv, i, 'discarded', '(note) The user discarded the plan; nothing was changed.');
 };
 
@@ -1282,8 +1330,8 @@ export const planDiscarded = (conv, planId) => {
 // cleared after it. `shown` is the page's copy as discarded, when the page
 // already made it. Resolves as `claimConv` does, or null when there is
 // nothing to discard on the page's copy.
-export const discardPlan = ({ store, conv, prevMeta, planId, shown = null }) => {
-  const first = shown ?? planDiscarded(conv, planId);
+export const discardPlan = ({ store, conv, prevMeta, planId, shown = null, unwritten = false }) => {
+  const first = shown ?? planDiscarded(conv, planId, { unwritten });
   if (!first) return Promise.resolve(null);
   const marker = {
     kind: 'discard',
@@ -1296,7 +1344,7 @@ export const discardPlan = ({ store, conv, prevMeta, planId, shown = null }) => 
     make: (fresh, own) => {
       const other = liveMarker(fresh.meta?.pending);
       if (other && other.requestId !== own) return null;
-      const c = planDiscarded(fresh.conv, planId);
+      const c = planDiscarded(fresh.conv, planId, { unwritten });
       return c && { conv: c, meta: buildMeta(store, fresh.meta, c, null, marker) };
     },
     release: (c, m) => buildMeta(store, m, c, null, null),
@@ -1361,8 +1409,14 @@ export const attachJob = ({ store, conv, meta, docked = false, reread = false })
     startedAt: Date.parse(p.startedAt) || Date.now(),
   });
   jobs.set(conv.id, j);
+  // The marker's time is its tab's clock: one that reads as in the future
+  // is waited for no longer than the grace from now.
   const markedAt = Date.parse(p.startedAt);
-  const young = () => Number.isFinite(markedAt) && Date.now() - markedAt < SUBMIT_GRACE_MS;
+  const attachedAt = Date.now();
+  const young = () =>
+    Number.isFinite(markedAt) &&
+    Date.now() - markedAt < SUBMIT_GRACE_MS &&
+    Date.now() - attachedAt < SUBMIT_GRACE_MS;
   let found = false;
   const progress = progressOf(j);
   const onProgress = (e) => {

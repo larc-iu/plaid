@@ -55,6 +55,8 @@ export const PlanCard = ({
   // record of an approval that was refused) and offers nothing more.
   dismissed = false,
   interrupted,
+  // Its run was marked as writing, but its documents show nothing written.
+  nothingWritten = false,
   applying,
   canWrite,
   busy,
@@ -115,8 +117,9 @@ export const PlanCard = ({
   const lost = undecided && interrupted && !applying;
   // Its run marked it as writing before it was cut off, so some of its
   // changes may be in the project: applying again finishes them, History
-  // undoes them, and it is not discarded as if nothing had happened.
-  const maybeWritten = lost && !!plan.writing;
+  // undoes them, and it is not discarded as if nothing had happened. Unless
+  // its documents show that nothing was written after all.
+  const maybeWritten = lost && !!plan.writing && !nothingWritten;
   // Stopped partway, and settled so: finishing it is a new plan.
   const partial = status === 'partial';
   const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);

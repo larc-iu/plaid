@@ -49,7 +49,9 @@ import {
   discardPlan,
   followable,
   jobFor,
+  mayHaveWritten,
   newConversation,
+  nothingLanded,
   planDiscarded,
   readConv,
   recordAhead,
@@ -191,6 +193,10 @@ export const AssistantChat = ({
   // composer: work under way elsewhere, or the conversation deleted. Held with
   // its conversation, as {convId, text, gone}.
   const [notice, setNotice] = useState(null);
+  // The plans of the open conversation whose interrupted approval was marked
+  // as writing but whose documents show it wrote nothing (`nothingLanded`):
+  // they can be discarded like any other.
+  const [unwritten, setUnwritten] = useState(() => new Set());
 
   const list = useConversationList({
     client,
@@ -456,8 +462,9 @@ export const AssistantChat = ({
         clearJob();
         // Turned down: why, above the composer. Anything else that settles
         // here ends what the line was about.
-        if (j.declined && j.why) setNotice({ convId: j.id, text: j.why, gone: !!j.gone });
-        else if (!j.declined) setNotice((n) => (n?.gone ? n : null));
+        if ((j.declined || j.gone) && j.why)
+          setNotice({ convId: j.id, text: j.why, gone: !!j.gone });
+        else if (!j.declined || j.cleared) setNotice((n) => (n?.gone ? n : null));
         // A message that could not be saved was not sent. It comes back to
         // the composer, unless the record kept it after all (then the tab
         // offers to send it again) or something new has been typed since.
@@ -843,16 +850,40 @@ export const AssistantChat = ({
   // is.
   const discard = async (index) => {
     const conv = activeRef.current;
-    const planId = conv?.display[index]?.plan?.id;
+    const item = conv?.display[index];
+    const planId = item?.plan?.id;
     if (!conv || !planId) return;
-    const next = planDiscarded(conv, planId);
+    // A plan that may be partly written is discarded only while its documents
+    // still show that nothing was, asked again now.
+    const clear = mayHaveWritten(item) && (await nothingLanded(store, item));
+    if (activeRef.current !== conv) return;
+    if (mayHaveWritten(item) && !clear) {
+      setUnwritten((was) => {
+        const now = new Set(was);
+        now.delete(planId);
+        return now;
+      });
+      notifyWarning(
+        'Some of its changes may be written. Apply again to finish them.',
+        'Not discarded',
+      );
+      return;
+    }
+    const next = planDiscarded(conv, planId, { unwritten: clear });
     if (!next) return;
     setNotice(null);
     activeRef.current = next;
     setActive(next);
     const prevMeta = list.rows.find((m) => m.id === conv.id);
     if (prevMeta) applyMeta(buildMeta(store, prevMeta, next, null, prevMeta.pending ?? null));
-    const written = await discardPlan({ store, conv, prevMeta, planId, shown: next });
+    const written = await discardPlan({
+      store,
+      conv,
+      prevMeta,
+      planId,
+      shown: next,
+      unwritten: clear,
+    });
     if (!written || activeRef.current !== next) {
       // Not written (said so): the record as it was.
       if (written === false && activeRef.current === next) {
@@ -926,7 +957,37 @@ export const AssistantChat = ({
     hrefFor: (m) => adapter.convHref(m.projectId, m.id),
     onDelete: list.remove,
   };
-  const pendingPlan = display.some((d) => d.plan && d.status === null);
+  // Which plans of the conversation may be partly written yet show nothing
+  // written in their documents, read whenever that set may have changed.
+  const maybeWrittenIds = display
+    .filter(mayHaveWritten)
+    .map((d) => d.plan.id)
+    .join(' ');
+  useEffect(() => {
+    if (!maybeWrittenIds || busy) {
+      setUnwritten((was) => (was.size ? new Set() : was));
+      return undefined;
+    }
+    let live = true;
+    const items = (activeRef.current?.display || []).filter(mayHaveWritten);
+    Promise.all(items.map(async (d) => ((await nothingLanded(store, d)) ? d.plan.id : null))).then(
+      (ids) => {
+        if (live) setUnwritten(new Set(ids.filter(Boolean)));
+      },
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, maybeWrittenIds, busy]);
+  // What the composer invites while a plan waits: a decision, or, when every
+  // waiting plan may be partly written and offers no Discard, applying it again.
+  const waiting = display.filter((d) => d.plan && d.status === null);
+  const pendingPlan = !waiting.length
+    ? false
+    : waiting.every((d) => mayHaveWritten(d) && !unwritten.has(d.plan.id))
+      ? 'again'
+      : 'decide';
   // Nothing is running for this conversation, so anything left mid-flight in
   // it was lost rather than in progress.
   const idle = !busy && !jobFor(active?.id);
@@ -934,9 +995,11 @@ export const AssistantChat = ({
   // An answer that came back but could not be saved is no failed turn: the
   // line under it says so, and the turn is not offered again there.
   // Nor is a question with an answer after it.
+  // Nor is anything in a conversation deleted elsewhere.
   const canRetryTurn =
     idle &&
     !answeredLast(display) &&
+    !(notice?.gone && notice.convId === active?.id) &&
     (lastKind === 'user' || (lastKind === 'error' && !display.at(-1).unsaved));
   const noticeHere = notice && notice.convId === active?.id ? notice : null;
   const stoppedHere = stoppedIn(stopped, active?.id);
@@ -1043,6 +1106,7 @@ export const AssistantChat = ({
                   contributor={contributor}
                   busy={!!busy}
                   interrupted={!!d.interrupted}
+                  nothingWritten={!!d.plan && unwritten.has(d.plan.id)}
                   applying={!!d.plan && applyingPlanId === d.plan.id}
                   onDownloadFile={downloadFile}
                   onApprove={(opts) => approve(d.plan, opts)}
