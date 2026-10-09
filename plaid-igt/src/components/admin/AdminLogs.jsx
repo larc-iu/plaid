@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -14,6 +15,7 @@ import {
 } from '@ui/components/ui/select';
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError, humanizeError } from '@/utils/feedback';
+import { readFilters, withFilters, withoutMalformed } from './logFilters';
 
 // What the server is doing right now, and what went wrong. Requests and
 // events are buffered apart on the server, so a bulk import cannot push the
@@ -98,11 +100,23 @@ export const AdminLogs = ({ client }) => {
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState(false);
 
-  const [query, setQuery] = useState('');
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('all');
-  const [level, setLevel] = useState('all');
-  const [user, setUser] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { search, status, level, account: user } = readFilters(searchParams);
+  // What is being typed. The URL holds the search that was asked for.
+  const [query, setQuery] = useState(search);
+
+  const setFilters = useCallback(
+    (changes) => setSearchParams((prev) => withFilters(prev, changes), { replace: true }),
+    [setSearchParams],
+  );
+  const setStatus = (value) => setFilters({ status: value });
+  const setLevel = (value) => setFilters({ level: value });
+  const accountHref = (account) => ({ search: withFilters(searchParams, { account }).toString() });
+
+  useEffect(() => {
+    const next = withoutMalformed(searchParams);
+    if (next) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const [fileOpen, setFileOpen] = useState(false);
   const [file, setFile] = useState(null);
@@ -113,11 +127,27 @@ export const AdminLogs = ({ client }) => {
   const inFlight = useRef(0);
   const generation = useRef(0);
 
-  // The search box types faster than the server should be asked.
+  const written = useRef(search);
+
+  // The search box types faster than the server should be asked, and than
+  // the address should change.
   useEffect(() => {
-    const t = setTimeout(() => setSearch(query.trim()), 300);
+    if (query.trim() === search) return undefined;
+    const t = setTimeout(() => {
+      written.current = query.trim();
+      setFilters({ q: query.trim() });
+    }, 300);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, search, setFilters]);
+
+  // A search the address changed under the box (Back, a pasted link) is what
+  // the box shows. The box's own write is not: the reader may have typed on
+  // since, and that text would be taken back.
+  useEffect(() => {
+    if (search === written.current) return;
+    written.current = search;
+    setQuery(search);
+  }, [search]);
 
   const load = useCallback(
     async ({ quiet } = {}) => {
@@ -230,14 +260,13 @@ export const AdminLogs = ({ client }) => {
       className: 'max-w-[14rem] truncate',
       render: (r) =>
         r.user ? (
-          <button
-            type="button"
+          <Link
+            to={accountHref(r.user)}
             className="text-xs underline decoration-dotted underline-offset-2 hover:text-primary"
             title={`Show only ${r.user}`}
-            onClick={() => setUser(r.user)}
           >
             {r.user}
-          </button>
+          </Link>
         ) : (
           <span className="text-xs text-muted-foreground">anonymous</span>
         ),
@@ -296,7 +325,7 @@ export const AdminLogs = ({ client }) => {
           </SelectContent>
         </Select>
         <Select value={level} onValueChange={setLevel}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -308,7 +337,11 @@ export const AdminLogs = ({ client }) => {
         {user && (
           <Badge variant="secondary" className="gap-1">
             {user}
-            <button type="button" aria-label="Clear account filter" onClick={() => setUser('')}>
+            <button
+              type="button"
+              aria-label="Clear account filter"
+              onClick={() => setFilters({ account: null })}
+            >
               <X className="h-3 w-3" />
             </button>
           </Badge>

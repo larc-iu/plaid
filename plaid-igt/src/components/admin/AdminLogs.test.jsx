@@ -130,7 +130,7 @@ describe('AdminLogs', () => {
     expect(client.admin.logs).toHaveBeenCalledTimes(1);
     expect(client.admin.logs.mock.calls[0][0].user).toBeUndefined();
 
-    const account = all(table(container, 'Requests'), 'tbody button').find(
+    const account = all(table(container, 'Requests'), 'tbody a').find(
       (b) => b.textContent === 'ada@example.com',
     );
     await step(async () => account.click());
@@ -202,7 +202,7 @@ describe('AdminLogs', () => {
     await step(async () => pending[0].resolve(log()));
     expect(client.admin.logs).toHaveBeenCalledTimes(1);
 
-    const account = all(table(container, 'Requests'), 'tbody button').find(
+    const account = all(table(container, 'Requests'), 'tbody a').find(
       (b) => b.textContent === 'ada@example.com',
     );
     await step(async () => account.click());

@@ -1450,6 +1450,7 @@ Only one backup is written at a time. Starting one while another is being writte
 Requests are one table, with the account behind each one, and everything else is another, with warnings, errors and their stack traces.
 Search narrows both tables.
 A status class narrows the requests, a level narrows the events to that level and worse, and clicking an account narrows the requests to that person's work.
+The filters are part of the page's address, so a filtered view can be reloaded, opened in a new tab or sent to another administrator.
 Every column of the requests table sorts, so the slowest requests are one click away.
 **Live** keeps the page up to date while a problem is happening.
 Where the server writes to a log file, the tail of the file is at the bottom of the tab.

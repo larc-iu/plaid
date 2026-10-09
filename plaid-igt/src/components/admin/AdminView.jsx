@@ -12,6 +12,7 @@ import { AdminServices } from './AdminServices';
 import { AdminAssistant } from './AdminAssistant';
 import { AdminServer } from './AdminServer';
 import { AdminLogs } from './AdminLogs';
+import { LOG_PARAMS } from './logFilters';
 
 // The whole-server view, for whoever runs this instance. Everything a project
 // maintainer needs lives on the project; what is here is the part that spans
@@ -28,9 +29,10 @@ const TABS = [
   'logs',
 ];
 
-// What one tab has open: Users an account, Assistant a conversation. Moving
-// to another tab leaves it behind, so the tab comes back to its list.
-const DETAIL_PARAMS = ['user', 'conversation'];
+// What one tab has open: Users an account, Assistant a conversation, Logs its
+// filters and pages. Moving to another tab leaves it behind, so the tab comes
+// back to its list.
+const DETAIL_PARAMS = ['user', 'conversation', ...LOG_PARAMS];
 
 export const AdminView = () => {
   const { user, client } = useAuth();
