@@ -136,7 +136,80 @@ def parse_query(query: Any) -> Dict[str, Any]:
         raise QueryRefused('this query needs "find": the variables to return, e.g. "find": ["?w"]. '
                            'Only an aggregate return ({"group": [...], "aggregates": [...]}) may '
                            'leave it out, and "count" counts the distinct find tuples.')
-    return dict(query)
+    query = dict(query)
+    if query.get('find'):
+        query['find'] = _find(query['find'])
+    query['where'] = _where(query['where'])
+    return query
+
+
+# The entity clauses, whose second item is the variable they bind.
+ENTITY_KINDS = ('span', 'token', 'vocab', 'link', 'document', 'relation')
+
+CLAUSE_SHAPE = ('an entity as [kind, "?v", {constraints}], e.g. ["span", "?s", {"layer": "<layer name>", '
+                '"value": "x"}], or a relationship or predicate as [op, "?a", "?b"], e.g. ["covers", "?s", '
+                '"?t"] or ["=", "?s.value", "x"]')
+
+
+def _shown(value: Any) -> str:
+    text = json.dumps(value, ensure_ascii=False)
+    return text if len(text) <= 120 else text[:117] + '...'
+
+
+def _find(find: Any) -> List[Any]:
+    """``find`` as the engine takes it. One variable written as a string is
+    a list of one, which is all it can mean. Anything else that is not a
+    list of variables is refused by saying what find holds: the engine's own
+    ":find must be a list of vars" did not tell a model that wrote
+    a kind of thing or ["doc", "ref"] what a variable is."""
+    if isinstance(find, str) and find.startswith('?') and ' ' not in find.strip():
+        return [find.strip()]
+    if isinstance(find, list) and find and all(isinstance(v, str) and v.startswith('?') for v in find):
+        return find
+    raise QueryRefused('"find" lists the variables to return, each one starting with "?" and bound in "where": '
+                       '"find": ["?w"] with "where": [["token", "?w", {"layer": "Word"}]]. Got ' + _shown(find) + '.')
+
+
+def _where(where: Any) -> List[Any]:
+    """``where`` as a list of clauses. One clause written on its own is a
+    list of one. A clause written as an object is taken where it names one
+    entity kind with its variable ({"span": "?s", "layer": "A"}), the only
+    reading such an object has, and refused with the clause shape
+    otherwise: {"A": "x", "B": "y"} could be any of several joins, and
+    guessing which would answer another question."""
+    if isinstance(where, list) and where and isinstance(where[0], str):
+        where = [where]
+    if not isinstance(where, list):
+        where = [where]
+    return [_clause(c) for c in where]
+
+
+def _clause(clause: Any) -> Any:
+    if isinstance(clause, dict):
+        kinds = [k for k in clause if k in ENTITY_KINDS]
+        if len(kinds) == 1 and isinstance(clause[kinds[0]], str) and clause[kinds[0]].startswith('?'):
+            kind = kinds[0]
+            return [kind, clause[kind], {k: v for k, v in clause.items() if k != kind}]
+        raise QueryRefused('Each "where" clause is a list, not an object: ' + CLAUSE_SHAPE + '. Got '
+                           + _shown(clause) + '.')
+    if not isinstance(clause, list) or not clause or not isinstance(clause[0], str):
+        raise QueryRefused('Each "where" clause is a list that starts with its kind or operator: ' + CLAUSE_SHAPE
+                           + '. Got ' + _shown(clause) + '.')
+    op = clause[0]
+    if op.startswith('?'):
+        raise QueryRefused('A predicate puts its operator first: ["=", "?s.value", "x"], not ["?s.value", '
+                           '"=", "x"]. Got ' + _shown(clause) + '.')
+    if op == 'or':
+        groups = clause[1:]
+        if not groups or not all(isinstance(g, list) and g and all(isinstance(c, (list, dict)) for c in g)
+                                 for g in groups):
+            raise QueryRefused('"or" takes groups, each a list of clauses: ["or", [clause, ...], [clause, '
+                               '...]], e.g. ["or", [["=", "?g.value", "A"]], [["=", "?g.value", "B"]]]. Got '
+                               + _shown(clause) + '.')
+        return [op, *[[_clause(c) for c in g] for g in groups]]
+    if op == 'not':
+        return [op, *[_clause(c) for c in clause[1:]]]
+    return clause
 
 
 def run(client, q: Dict[str, Any], project_id: str) -> Dict[str, Any]:
