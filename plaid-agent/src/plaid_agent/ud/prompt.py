@@ -50,6 +50,7 @@ head. A sentence without the column has an enhanced graph equal to its tree. You
 enhanced graph; no tool changes it, and it is edited on the canvas.
 {find_first}
 {stage_now}
+{user_values}
 {one_turn}
 {final_message}
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
@@ -91,6 +92,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('word'),
     'stage_now': shared.stage_now(),
+    'user_values': shared.user_values('a lemma, a UPOS, a feature, a head, a relation'),
     'one_turn': shared.one_turn(),
     'final_message': shared.final_message('words'),
     'read_budget': shared.read_budget('search, frequency_list, worklist or check_consistency'),

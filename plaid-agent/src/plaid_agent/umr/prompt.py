@@ -59,6 +59,7 @@ a sentence with a second fragment keeps it.
 end up with, not only the one you are adding.
 {find_first}
 {stage_now}
+{user_values}
 {one_turn}
 {final_message}
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read \
@@ -88,6 +89,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('node'),
     'stage_now': shared.stage_now(),
+    'user_values': shared.user_values('a concept, an aspect, a role, a modal strength'),
     'one_turn': shared.one_turn(),
     'final_message': shared.final_message('nodes'),
     'read_budget': shared.read_budget('find_nodes or frequency_list'),

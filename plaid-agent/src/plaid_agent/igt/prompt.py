@@ -37,6 +37,7 @@ document. Numbers restart in every document and sentence.
 is meant: ask which sentence, and plan nothing, rather than picking one.
 {find_first}
 {stage_now}
+{user_values}
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone; \
 set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a \
 word, never to change a single gloss.
@@ -89,6 +90,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('item (worklist, search, frequency_list)'),
     'stage_now': shared.stage_now(),
+    'user_values': shared.user_values('a gloss, a form, a part of speech, a translation'),
     'one_turn': shared.one_turn(),
     'final_message': shared.final_message('items'),
     'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),

@@ -49,6 +49,13 @@ the plan card. A reply that lists intended changes without having staged them le
 approve. Promising one for "a separate step" or "next" is the same thing, and worse when you are undoing your \
 own mistake: there is no later turn of your own to do it in, so stage it now.'''
 
+# Three of the benchmark's model errors of 2026-10-08 followed the data over
+# the request: the aspect of a similar sentence for the one the user named,
+# a spelling from elsewhere in the corpus for the one the user gave.
+USER_VALUES = '''- WHAT THE USER STATES WINS. A value the user gives ({examples}) is the value to plan, even \
+where the corpus does it differently or a similar case suggests another: their statement is the decision, and \
+the data is what it changes. Where the data disagrees, plan what they said and mention the difference.'''
+
 READ_BUDGET = '''- Do NOT read a document to answer something {tools} can answer: those ask the whole project \
 at once, and reading documents one by one to count something will run out of tool calls long before it runs \
 out of corpus.'''
@@ -167,6 +174,13 @@ def stage_now() -> str:
     """Stage the changes in the turn that decided on them, rather than
     promising them for a later turn there will not be one of."""
     return STAGE_NOW
+
+
+def user_values(examples: str) -> str:
+    """A value the user states is the one planned, whatever the corpus
+    does. ``examples`` are the kinds of value the app's user states, in the
+    app's own words."""
+    return USER_VALUES.replace('{examples}', examples)
 
 
 def read_budget(tools: str) -> str:
