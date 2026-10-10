@@ -11,6 +11,7 @@ import {
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useTimelineOperations, clampZoom, MIN_ZOOM, MAX_ZOOM } from './useTimelineOperations.js';
 import { drawWaveform } from './useWaveform.js';
+import { TIMELINE_HEIGHT as TRACK_HEIGHT } from './waveform.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
@@ -91,15 +92,59 @@ const RING_OUTSET = 3;
 // The selection's times and its play button, in the strip above the track.
 // One small card centred over the selection, tied to it by a stem and a
 // bracket the selection's width, so it reads as the selection's at any width:
-// over a sliver the bracket closes to a single tick under the stem. The card
-// slides to stay inside the recording near either end, and the stem stays put.
-const SelectionReadout = ({ selection, pixelsPerSecond, trackWidth, playing, onPlay }) => {
+// over a sliver the bracket closes to a single tick under the stem.
+//
+// Zoomed in, the selection can be partly scrolled out of the box. The stem
+// then stands over the middle of the part in view and the card slides to
+// stay in view (and inside the recording), so the times are never scrolled
+// away while some of the selection is still on screen. Placed from the scroll
+// box on every scroll, by CSS variables and not by React, since a render per
+// scroll frame is what the timeline's perf work took out. A selection wholly
+// out of view takes its card with it.
+const SelectionReadout = ({
+  selection,
+  pixelsPerSecond,
+  trackWidth,
+  lane,
+  laneCount,
+  playing,
+  onPlay,
+}) => {
   const left = selection.start * pixelsPerSecond - RING_OUTSET;
   const width = (selection.end - selection.start) * pixelsPerSecond + 2 * RING_OUTSET;
   const mid = left + width / 2;
+  // A selected cross-talk segment's ring is round its own lane only, so the
+  // bracket's ticks run down to the top of that lane's ring.
+  const ringTop = lane > 0 ? (lane * TRACK_HEIGHT) / laneCount - RING_OUTSET : 0;
   const line = 'hsl(var(--ring))';
+  const rootRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const root = rootRef.current;
+    // The readout sits in the track, and the track in the scrolling box.
+    const box = root?.parentElement?.parentElement;
+    if (!root || !box) return undefined;
+    const place = () => {
+      const viewLeft = box.scrollLeft;
+      const viewRight = viewLeft + box.clientWidth;
+      const from = Math.max(left, viewLeft);
+      const to = Math.min(left + width, viewRight);
+      const inView = to > from;
+      root.style.setProperty('--stem', `${Math.round(inView ? (from + to) / 2 : mid)}px`);
+      root.style.setProperty('--lo', `${inView ? Math.max(0, viewLeft) : 0}px`);
+      root.style.setProperty('--hi', `${inView ? Math.min(trackWidth, viewRight) : trackWidth}px`);
+    };
+    place();
+    box.addEventListener('scroll', place, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    observer?.observe(box);
+    return () => {
+      box.removeEventListener('scroll', place);
+      observer?.disconnect();
+    };
+  }, [left, width, mid, trackWidth]);
   return (
     <div
+      ref={rootRef}
       data-selection-readout=""
       // Part of the track's box but not of its gestures: a press here is
       // never the start of a drag.
@@ -114,7 +159,7 @@ const SelectionReadout = ({ selection, pixelsPerSecond, trackWidth, playing, onP
           left: `${left}px`,
           width: `${width}px`,
           top: '-7px',
-          height: '7px',
+          height: `${7 + ringTop}px`,
           borderTop: `1px solid ${line}`,
           borderLeft: `1px solid ${line}`,
           borderRight: `1px solid ${line}`,
@@ -126,7 +171,7 @@ const SelectionReadout = ({ selection, pixelsPerSecond, trackWidth, playing, onP
         aria-hidden="true"
         style={{
           position: 'absolute',
-          left: `${Math.round(mid)}px`,
+          left: 'var(--stem)',
           width: '1px',
           top: '-14px',
           height: '7px',
@@ -140,8 +185,9 @@ const SelectionReadout = ({ selection, pixelsPerSecond, trackWidth, playing, onP
         style={{
           position: 'absolute',
           top: '-42px',
-          left: `${mid}px`,
-          transform: `translateX(clamp(${-mid}px, -50%, calc(${trackWidth - mid}px - 100%)))`,
+          left: 'var(--stem)',
+          transform:
+            'translateX(clamp(calc(var(--lo) - var(--stem)), -50%, calc(var(--hi) - var(--stem) - 100%)))',
           zIndex: 16,
         }}
       >
@@ -201,6 +247,16 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     () => assignLanes(doc.alignmentTokens || []),
     [doc.alignmentTokens],
   );
+  // The lane of the segment the selection is, when there are lanes and the
+  // selection is exactly one segment: its ring then goes round that lane
+  // only, not the other speaker's.
+  const selectionLane = React.useMemo(() => {
+    if (!selection || laneCount < 2) return null;
+    const hits = (doc.alignmentTokens || []).filter(
+      (t) => t.metadata?.timeBegin === selection.start && t.metadata?.timeEnd === selection.end,
+    );
+    return hits.length === 1 ? (lanes.get(hits[0].id) ?? null) : null;
+  }, [selection, doc.alignmentTokens, lanes, laneCount]);
 
   // Use timeline operations hook directly
   const timelineOps = useTimelineOperations(mediaOps);
@@ -420,8 +476,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                         position: 'absolute',
                         left: `${selection.start * pixelsPerSecond}px`,
                         width: `${Math.max(1, (selection.end - selection.start) * pixelsPerSecond)}px`,
-                        top: 0,
-                        bottom: 0,
+                        top: selectionLane === null ? 0 : `${(selectionLane * 100) / laneCount}%`,
+                        height: selectionLane === null ? '100%' : `${100 / laneCount}%`,
                         backgroundColor: 'hsl(var(--primary) / 0.08)',
                         // A ring outside the box, clear of the segment borders
                         // it sits on, as a focus ring stands clear of a field.
@@ -439,6 +495,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   selection={selection}
                   pixelsPerSecond={pixelsPerSecond}
                   trackWidth={timelineWidth}
+                  lane={selectionLane ?? 0}
+                  laneCount={laneCount}
                   playing={selectionPlaying}
                   onPlay={onPlaySelection}
                 />
