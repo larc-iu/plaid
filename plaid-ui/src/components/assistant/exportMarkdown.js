@@ -119,6 +119,27 @@ const filesLine = (label, files) =>
     })
     .join(', ')}*`;
 
+// What a turn did, as the panel lists it: the summary line, then each step's
+// label with the text the assistant wrote before it as a quote, and any text
+// written after the last step. Outputs stay out.
+const workToMarkdown = (out, d) => {
+  if (d.stepsSummary && d.steps?.length > 0) {
+    out.push(`*${d.stepsSummary}*`, '');
+    for (const s of d.steps) {
+      if (s.said) out.push(quoted(s.said), '');
+      out.push(`- ${markdownText(s.label || s.name || '')}`);
+    }
+    out.push('');
+  }
+  if (d.partial) out.push(quoted(d.partial), '');
+};
+
+const quoted = (text) =>
+  String(text)
+    .split('\n')
+    .map((l) => (l ? `> ${l}` : '>'))
+    .join('\n');
+
 export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName, adapter }) => {
   const ctx = { origin, projectId, adapter };
   const out = [`# ${markdownText(meta?.title || 'Conversation')}`, ''];
@@ -138,12 +159,13 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       out.push(d.text || '', '');
       if (d.files?.length) out.push(filesLine('Attached', d.files), '');
     } else if (d.kind === 'error') {
+      workToMarkdown(out, d);
       out.push(`> **Error:** ${d.text || ''}`, '');
     } else {
       out.push('## Assistant', '');
       // What it did before answering, in the service's own words.
       // As the panel shows it: never for a turn that called no tool.
-      if (d.stepsSummary && d.steps?.length > 0) out.push(`*${d.stepsSummary}*`, '');
+      workToMarkdown(out, d);
       if (typeof d.elapsedMs === 'number')
         out.push(`*Answered in ${formatElapsed(d.elapsedMs)}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');

@@ -48,7 +48,7 @@ const SERVICE = {
   serviceId: 'igt:assist:one',
   serviceName: 'Assistant one',
   online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet' },
+  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet' },
 };
 
 const META = {

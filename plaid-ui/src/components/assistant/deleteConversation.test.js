@@ -12,7 +12,7 @@ import { deleteConversation } from './jobs.js';
 const SERVICE = {
   serviceId: 'igt:assist:one',
   online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 2 },
+  extras: { tasks: ['assist'], app: 'igt', record: 3 },
 };
 
 const store = ({ online = true, files = [], refused = null } = {}) => {
@@ -89,7 +89,7 @@ describe('deleteConversation', () => {
   it('counts an assistant of another app, or one that writes no record, as none', async () => {
     const { del, requestService, discoverServices, store: s } = store();
     discoverServices.mockResolvedValue([
-      { ...SERVICE, extras: { tasks: ['assist'], app: 'ud', record: 2 } },
+      { ...SERVICE, extras: { tasks: ['assist'], app: 'ud', record: 3 } },
       { ...SERVICE, extras: { tasks: ['assist'], app: 'igt' } },
     ]);
     await deleteConversation(s, { id: 'c5', projectId: 'here' });

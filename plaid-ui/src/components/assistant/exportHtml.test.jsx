@@ -37,13 +37,43 @@ const adapter = {
 
 const ARABIC = 'ما معنى هذه الجملة؟';
 
+// The conversation's stored rounds (rounds.js), which the steps open to.
+const ROUNDS = [
+  {
+    id: 'r1',
+    n: 1,
+    asked: 'Gloss the verbs in Text 1.',
+    calls: [
+      {
+        id: 't1',
+        name: 'read_document',
+        arguments: '{"document": "Text 1"}',
+        result: 'Text 1: 12 sentences',
+      },
+      { id: 't2', name: 'search', arguments: '{"pattern": "x"}', result: 'x'.repeat(9000) },
+    ],
+  },
+  {
+    id: 'r2',
+    n: 1,
+    calls: [
+      {
+        id: 't3',
+        name: 'read_document',
+        arguments: '{"document": "B"}',
+        result: 'Read from the other project',
+      },
+    ],
+  },
+];
+const STORED = new Map(ROUNDS.map((r) => [r.id, r]));
+const listRounds = vi.fn(async (_user, { prefix }) =>
+  prefix.includes(':round:c1:') ? ROUNDS.map((r) => ({ key: `${prefix}${r.id}`, value: r })) : [],
+);
+
 const conv = {
   id: 'c1',
-  messages: [
-    { role: 'tool', toolCallId: 't1', content: 'Text 1: 12 sentences' },
-    { role: 'tool', toolCallId: 't2', content: 'x'.repeat(9000) },
-    { role: 'tool', toolCallId: 't3', content: 'Read from the other project' },
-  ],
+  messages: [],
   display: [
     {
       kind: 'user',
@@ -58,8 +88,14 @@ const conv = {
       createdAt: '2026-09-01T10:01:00.000Z',
       stepsSummary: 'Read 1 document',
       steps: [
-        { id: 't1', name: 'read_document', label: 'Read Text 1' },
-        { id: 't2', name: 'search', label: 'Searched' },
+        {
+          id: 't1',
+          name: 'read_document',
+          label: 'Read Text 1',
+          round: 'r1',
+          said: 'Reading first.',
+        },
+        { id: 't2', name: 'search', label: 'Searched', round: 'r1' },
       ],
       elapsedMs: 12000,
       contextNote: 'Guidelines: 2 pages',
@@ -97,7 +133,7 @@ const conv = {
       model: 'glm-5.2',
       createdAt: '2026-09-03T09:02:00.000Z',
       stepsSummary: 'Read 1 document',
-      steps: [{ id: 't3', name: 'read_document', label: 'Read a document' }],
+      steps: [{ id: 't3', name: 'read_document', label: 'Read a document', round: 'r2' }],
       text: 'As in {{closed}} and {{open}}.',
       citations: [
         { key: '{{closed}}', title: 'Hidden, sentence 1', text: 'hidden', projectId: CLOSED },
@@ -115,6 +151,7 @@ const store = {
   client: {
     userData: {
       get: vi.fn(async () => ({ value: 'verb,gloss\r\nakal,"eat, consume"\r\nshirib,drink\r\n' })),
+      list: listRounds,
     },
   },
   userId: 'ada@example.com',
@@ -292,7 +329,7 @@ describe('the web page export', () => {
         {
           projectId: HOME,
           adapter,
-          store: { ...store, client: { userData: { get: read } } },
+          store: { ...store, client: { userData: { get: read, list: listRounds } } },
           readable: new Set([HOME, OPEN]),
         },
       ),
@@ -311,22 +348,31 @@ describe('the web page export', () => {
   });
 
   it('counts a long tool output left out as left out, not as shortened', () => {
+    const stored = new Map([
+      [
+        'rm',
+        {
+          id: 'rm',
+          calls: Array.from({ length: 300 }, (_, i) => ({ id: `t${i}`, result: 'y'.repeat(9000) })),
+        },
+      ],
+    ]);
     const many = {
-      messages: Array.from({ length: 300 }, (_, i) => ({
-        role: 'tool',
-        toolCallId: `t${i}`,
-        content: 'y'.repeat(9000),
-      })),
+      messages: [],
       display: [
         { kind: 'user', text: 'Go.' },
         {
           kind: 'assistant',
           text: 'Done.',
-          steps: Array.from({ length: 300 }, (_, i) => ({ id: `t${i}`, label: `Step ${i}` })),
+          steps: Array.from({ length: 300 }, (_, i) => ({
+            id: `t${i}`,
+            label: `Step ${i}`,
+            round: 'rm',
+          })),
         },
       ],
     };
-    const { left } = prepareExport(many, { projectId: HOME, readable: null });
+    const { left } = prepareExport(many, { projectId: HOME, readable: null, stored });
     expect(left.shortened + left.results).toBe(300);
     expect(left.results).toBeGreaterThan(0);
   });
@@ -364,6 +410,7 @@ describe('its parts', () => {
     const { left, results } = prepareExport(conv, {
       projectId: HOME,
       readable: new Set([HOME, OPEN, CLOSED]),
+      stored: STORED,
     });
     expect(left).toEqual({ citations: 0, results: 0, shortened: 1 });
     expect(results.get('t3')).toBe('Read from the other project');

@@ -29,15 +29,6 @@ export const movedHere = (display, i) => {
   return true;
 };
 
-// A step's output, looked up by the tool call it belongs to. The transcript
-// is where it is stored, so the trace does not carry a second copy.
-export const toolResults = (messages) =>
-  new Map(
-    (messages || [])
-      .filter((m) => m.role === 'tool' && m.toolCallId)
-      .map((m) => [m.toolCallId, String(m.content ?? '')]),
-  );
-
 // The props of item `i` that depend on the items before it: the line naming
 // another model, the place and the projects where they changed, the other
 // projects' names for its citations, and the project its plan writes in.

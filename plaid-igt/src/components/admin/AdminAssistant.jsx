@@ -14,7 +14,8 @@ import { UsageMeter } from '@ui/components/assistant/UsageMeter.jsx';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { ExportMenu } from '@ui/components/assistant/ConversationList.jsx';
 import { hidesStopped, retryNote } from '@ui/components/assistant/resume.js';
-import { toolResults, turnContext } from '@ui/components/assistant/transcript.js';
+import { turnContext } from '@ui/components/assistant/transcript.js';
+import { useRounds } from '@ui/components/assistant/rounds.js';
 import { latestUsage, totalSpend } from '@ui/components/assistant/usage.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
@@ -124,7 +125,8 @@ const ConversationDetail = ({ client, row, backTo }) => {
   const record = size?.cap > 0 && size?.bytes > 0 ? { bytes: size.bytes, cap: size.cap } : null;
 
   const display = conv?.display || [];
-  const results = useMemo(() => toolResults(conv?.messages), [conv?.messages]);
+  // What a step opens to, read from the owner's store as the transcript is.
+  const rounds = useRounds(client, row.userId, row.app, row.projectId, row.convId);
   const usage = useMemo(() => latestUsage(conv?.display), [conv?.display]);
   const spend = useMemo(() => totalSpend(conv?.display), [conv?.display]);
   // The chat's own rule for the line under a turn with no answer, except that
@@ -188,13 +190,14 @@ const ConversationDetail = ({ client, row, backTo }) => {
                 <p className="text-sm text-muted-foreground">No messages.</p>
               )}
               {display.map((d, i) =>
-                unanswered && hidesStopped(display, i) ? null : (
+                unanswered && hidesStopped(display, i) && !d.steps?.length && !d.partial ? null : (
                   <Turn
                     key={i}
                     item={d}
                     projectId={row.projectId}
                     adapter={adapter}
-                    results={results}
+                    rounds={rounds}
+                    hideLine={unanswered && hidesStopped(display, i)}
                     {...turnContext(display, i)}
                     homeName={row.projectName}
                     canWrite={false}

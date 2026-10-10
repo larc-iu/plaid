@@ -12,7 +12,7 @@ const svc = (id, over = {}) => ({
   serviceName: `Assistant ${id}`,
   tasks: ['assist'],
   online: true,
-  extras: { model: `model/${id}`, app: 'igt', record: 2, tasks: ['assist'] },
+  extras: { model: `model/${id}`, app: 'igt', record: 3, tasks: ['assist'] },
   ...over,
 });
 
@@ -57,7 +57,7 @@ describe('useAssistantChoice', () => {
   it('keeps only this app’s online assistants', async () => {
     const client = fakeClient([
       svc('igt:one'),
-      svc('ud:one', { extras: { model: 'm', app: 'ud', record: 2, tasks: ['assist'] } }),
+      svc('ud:one', { extras: { model: 'm', app: 'ud', record: 3, tasks: ['assist'] } }),
       svc('igt:off', { online: false }),
     ]);
     const { box, read, unmount } = await mount(client);

@@ -33,7 +33,9 @@ import { DisclosureButton, DisclosureNotice } from './AssistantDisclosure.jsx';
 import { latestUsage, totalSpend } from './usage.js';
 import { UsageMeter } from './UsageMeter.jsx';
 import { RetryLine } from './RetryLine.jsx';
-import { toolResults, turnContext } from './transcript.js';
+import { turnContext } from './transcript.js';
+import { useRounds } from './rounds.js';
+import { TraceSteps } from './WorkTrace.jsx';
 import { Turn } from './Turn.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { useAssistantChoice } from './useAssistantChoice.js';
@@ -315,13 +317,14 @@ export const AssistantChat = ({
   }, [answeringId, active?.id, client]);
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
-  const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
+  const [liveSteps, setLiveSteps] = useState([]); // an approval's progress messages so far
+  const [liveTrace, setLiveTrace] = useState([]); // a turn's steps so far
   const [partial, setPartial] = useState(''); // the reply so far, while it is written
   const [stopping, setStopping] = useState(false);
-  // The turn the reader stopped by hand and what it had already got through,
-  // as {convId, steps}: the banner that follows says so rather than reporting a
-  // failure that did not happen, and the steps stay on screen. Held WITH its
-  // conversation, see `stoppedIn` in resume.js.
+  // The turn the reader stopped by hand, as {convId}: the banner that follows
+  // says so rather than reporting a failure that did not happen. What the
+  // turn got through is on its stored item. Held WITH its conversation, see
+  // `stoppedIn` in resume.js.
   const [stopped, setStopped] = useState(null);
   // How long the current turn has been going. A turn that sits on "Writing…"
   // for eleven minutes is indistinguishable from a dead one without this.
@@ -357,6 +360,7 @@ export const AssistantChat = ({
     setStartedAt(j.startedAt ?? null);
     setProgress(j.progress);
     setLiveSteps(j.steps);
+    setLiveTrace(j.trace || []);
     setPartial(j.partial || '');
     setStopping(!!j.stopping);
   };
@@ -365,6 +369,7 @@ export const AssistantChat = ({
     setStartedAt(null);
     setProgress('');
     setLiveSteps([]);
+    setLiveTrace([]);
     setPartial('');
     setStopping(false);
   };
@@ -812,7 +817,7 @@ export const AssistantChat = ({
     // Remember that the silence after this was asked for. Without it the retry
     // banner below tells the user "No answer came back for this message", which
     // blames the model for the user's own click.
-    setStopped({ convId: activeRef.current?.id ?? null, steps: liveSteps });
+    setStopped({ convId: activeRef.current?.id ?? null });
     return stopJob(client, projectId, jobFor(activeRef.current?.id));
   };
 
@@ -905,8 +910,31 @@ export const AssistantChat = ({
     else if (replyLanded(turnSeen.current, { busy, id, display: items })) setLanded('Reply ready');
     turnSeen.current = { busy, id, length: items.length };
   }, [busy, active?.id, active?.display]);
-  // A step's output, looked up by the tool call it belongs to.
-  const results = useMemo(() => toolResults(active?.messages), [active?.messages]);
+  // The turn that landed while this tab watched it keeps its work open here,
+  // by `${conversation}:${created_at}` of its item.
+  const [openTraces, setOpenTraces] = useState(() => new Set());
+  const watched = useRef(null);
+  useEffect(() => {
+    const id = active?.id ?? null;
+    const items = active?.display || [];
+    if (busy === 'turn') {
+      if (watched.current?.id !== id) watched.current = { id, length: items.length };
+      return;
+    }
+    const w = watched.current;
+    if (busy || !w) return;
+    if (w.id !== id) {
+      watched.current = null;
+      return;
+    }
+    if (items.length <= w.length) return;
+    watched.current = null;
+    const last = items.at(-1);
+    if (last && last.kind !== 'user')
+      setOpenTraces((was) => new Set(was).add(`${id}:${last.createdAt}`));
+  }, [busy, active?.id, active?.display]);
+  // What a step opens to: the conversation's stored rounds.
+  const rounds = useRounds(store?.client, store?.userId, store?.app, projectId, active?.id);
   // A list of conversations puts an unsent one at the top, so a new
   // conversation is a real place to be rather than a blank screen. It belongs
   // to the project on screen, like every other row: nothing in a list of
@@ -1064,14 +1092,17 @@ export const AssistantChat = ({
             {display.length === 0 && !busy && <DisclosureNotice text={disclosure} />}
             {display.length === 0 && !busy && renderEmpty?.(chrome)}
             {display.map((d, i) =>
-              canRetryTurn && hidesStopped(display, i) ? null : (
+              canRetryTurn && hidesStopped(display, i) && !d.steps?.length && !d.partial ? null : (
                 <Turn
                   key={i}
                   item={d}
                   projectId={projectId}
                   adapter={adapter}
                   onFocusHere={subject?.onFocusHere}
-                  results={results}
+                  rounds={rounds}
+                  roundsGone={!!(notice?.gone && notice.convId === active?.id)}
+                  traceOpen={openTraces.has(`${active?.id}:${d.createdAt}`)}
+                  hideLine={canRetryTurn && hidesStopped(display, i)}
                   {...turnContext(display, i)}
                   homeName={projectName}
                   canWrite={canWrite && !readOnly}
@@ -1094,15 +1125,6 @@ export const AssistantChat = ({
                 />
               ),
             )}
-            {canRetryTurn && stoppedHere && stoppedHere.steps.length > 0 && (
-              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                {stoppedHere.steps.map((m, i) => (
-                  <div key={i} className="flex items-center gap-2 pl-6 text-xs">
-                    <Check className="h-3 w-3" /> {m}
-                  </div>
-                ))}
-              </div>
-            )}
             {canRetryTurn && (
               <RetryLine
                 note={retryNote(display, stoppedHere)}
@@ -1115,7 +1137,20 @@ export const AssistantChat = ({
                 happened in, so the text lands under the steps it followed. */}
             {busy && (
               <div className="flex flex-col gap-3">
-                {liveSteps.length > 0 && (
+                {busy === 'turn' && liveTrace.length > 0 && (
+                  <div className="flex gap-3">
+                    <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
+                    <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+                      <TraceSteps
+                        steps={liveTrace}
+                        rounds={rounds}
+                        live
+                        firstRound={liveTrace[0]?.round}
+                      />
+                    </div>
+                  </div>
+                )}
+                {busy === 'apply' && liveSteps.length > 0 && (
                   <div className="flex flex-col gap-1 text-sm text-muted-foreground">
                     {liveSteps.map((m, i) => (
                       <div key={i} className="flex items-center gap-2 pl-6 text-xs">

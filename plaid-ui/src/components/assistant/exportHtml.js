@@ -4,8 +4,9 @@
 // app's CSS the page uses is carried inline (exportCss.js).
 //
 // What the page holds and what it leaves out:
-// - Every turn: the messages, the tool steps (folded, each step's output under
-//   it), the plans with the place each change targeted and how the plan
+// - Every turn: the messages, the text the assistant wrote between its tool
+//   calls, the tool steps (folded, each step's input and output under it, read
+//   from the conversation's stored rounds), the plans with the place each change targeted and how the plan
 //   ended, the cited examples, the file chips, and where a question was asked.
 // - A table the assistant made (.csv, .tsv) is shown in full when it is small
 //   enough. Every other file is named with its size.
@@ -21,7 +22,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ExportPage } from './ExportPage.jsx';
 import { readStoredFile } from './attachments.js';
-import { toolResults } from './transcript.js';
+import { roundPrefix, roundsInHand } from './rounds.js';
 import { usedCss } from './exportCss.js';
 
 const TOOL_OUTPUT_CHARS = 4000;
@@ -35,12 +36,22 @@ const NOT_INCLUDED = '(not included)';
 const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
 // The conversation as the page draws it, with what the exporter cannot open
-// taken out, and a count of what was.
-export const prepareExport = (conv, { projectId, readable }) => {
+// taken out, and a count of what was. `stored` is the conversation's rounds
+// by id, as read from the store. What the page draws of them is `rounds`
+// (a round reader), with each output cut to fit and a closed project's left
+// out, and `results`, the output each step shows, by step id.
+export const prepareExport = (conv, { projectId, readable, stored = new Map() }) => {
   const opens = (id) => !id || id === projectId || !readable || readable.has(id);
   const rename = (projects) => projects.map((p) => (opens(p.id) ? p : { ...p, name: OTHER }));
-  const outputs = toolResults(conv?.messages);
   const results = new Map();
+  const shown = new Map();
+  const callOut = (s, text) => {
+    const r = shown.get(s.round) ?? { ...stored.get(s.round), calls: [] };
+    const call = (stored.get(s.round)?.calls || []).find((c) => c.id === s.id);
+    r.calls = [...r.calls, { ...call, result: text, cut: text === call.result ? call.cut : false }];
+    shown.set(s.round, r);
+    results.set(s.id, text);
+  };
   // The files a turn that read a closed project made: what they hold may
   // come from it, so only their names are shown.
   const closedFiles = new Set();
@@ -52,7 +63,7 @@ export const prepareExport = (conv, { projectId, readable }) => {
       reach = d.projects || [];
       return d.projects ? { ...d, projects: rename(d.projects) } : d;
     }
-    if (d.kind !== 'assistant') return d;
+    if (d.kind !== 'assistant' && d.kind !== 'error') return d;
     const out = { ...d };
     if (d.unavailableProjects) out.unavailableProjects = rename(d.unavailableProjects);
     if (d.citations?.length) {
@@ -62,27 +73,28 @@ export const prepareExport = (conv, { projectId, readable }) => {
     const closed = reach.some((p) => !opens(p.id));
     if (closed) for (const f of d.files || []) if (f.made) closedFiles.add(f.id);
     for (const s of d.steps || []) {
-      if (!s.id || !outputs.has(s.id)) continue;
-      let text = outputs.get(s.id);
+      const call = (stored.get(s.round)?.calls || []).find((c) => c.id === s.id);
+      if (!s.id || !call) continue;
+      let text = String(call.result ?? '');
       if (closed) {
-        results.set(s.id, NOT_INCLUDED);
+        callOut(s, NOT_INCLUDED);
         left.results += 1;
         continue;
       }
       const long = text.length > TOOL_OUTPUT_CHARS;
       if (long) text = `${text.slice(0, TOOL_OUTPUT_CHARS)}\n…`;
       if (text.length > budget) {
-        results.set(s.id, NOT_INCLUDED);
+        callOut(s, NOT_INCLUDED);
         left.results += 1;
         continue;
       }
       if (long) left.shortened += 1;
       budget -= text.length;
-      results.set(s.id, text);
+      callOut(s, text);
     }
     return out;
   });
-  return { display, results, left, closedFiles };
+  return { display, results, rounds: roundsInHand(shown), left, closedFiles };
 };
 
 // A CSV or TSV as the host's csv module writes it: quoted fields may hold the
@@ -123,6 +135,20 @@ export const parseTable = (text, name) => {
 };
 
 const TABLE_FILE = /\.(csv|tsv)$/i;
+
+// Every round of the conversation, by id, in one paged listing.
+const readRounds = async (store, convId) => {
+  const out = new Map();
+  if (!store || !convId) return out;
+  const { client, userId, app, projectId } = store;
+  const entries = await client.userData.list(userId, {
+    prefix: roundPrefix(app, projectId, convId),
+    includeValues: true,
+    pageSize: 100,
+  });
+  for (const e of entries || []) if (e?.value?.id) out.set(e.value.id, e.value);
+  return out;
+};
 
 // The made tables small enough to show, by file id, and the names of those
 // that are not.
@@ -279,7 +305,12 @@ export const conversationToHtml = async (
     now = new Date(),
   },
 ) => {
-  const { display, results, left, closedFiles } = prepareExport(conv, { projectId, readable });
+  const stored = await readRounds(store, conv?.id);
+  const { display, rounds, left, closedFiles } = prepareExport(conv, {
+    projectId,
+    readable,
+    stored,
+  });
   const { tables, notShown } = await readTables(display, store, conv?.id, closedFiles);
   const title = meta?.title || 'Conversation';
   const ran = models(display, meta);
@@ -296,7 +327,7 @@ export const conversationToHtml = async (
       facts,
       left: leftOutLine(left, notShown),
       display,
-      results,
+      rounds,
       tables,
       projectId,
       projectName,

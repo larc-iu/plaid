@@ -179,6 +179,8 @@ export const fakeAssistantService = (
       records.set(k.meta, marked);
       onProgress?.({ percent: 2, message: 'Thinking…', recorded: true });
       if (fake.hang) return new Promise(() => {});
+      // A test's own progress events, as a turn sends them, before it answers.
+      if (fake.during) await fake.during((p) => onProgress?.({ percent: 50, ...p }));
       const said = fake.answer;
       records.set(
         k.conv,
@@ -186,7 +188,10 @@ export const fakeAssistantService = (
           ? asked
           : {
               messages: [...asked.messages, { role: 'assistant', content: said }],
-              display: [...asked.display, { kind: 'assistant', text: said, createdAt: now() }],
+              display: [
+                ...asked.display,
+                { kind: 'assistant', text: said, createdAt: now(), ...(fake.item || {}) },
+              ],
             },
       );
       records.set(k.meta, { ...records.get(k.meta), pending: null, updatedAt: now() });

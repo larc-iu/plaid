@@ -61,7 +61,7 @@ const IGT_CONV = {
       text: `It appears in ${CITE} as a noun.`,
       citations: [igtCitation],
       stepsSummary: 'Read 1 document',
-      steps: [{ id: 't1', name: 'read_document', label: 'Read Text 1' }],
+      steps: [{ id: 't1', name: 'read_document', label: 'Read Text 1', round: 'r1' }],
       elapsedMs: 12000,
       files: [
         {
@@ -161,11 +161,25 @@ const READS = {
   // The cap the meter measures the record against.
   'server.limits': async () => ({ userDataValueBytes: 5 * 1048576 }),
   'userData.get': async (_user, key) => ({
-    value: key.startsWith('ud:')
-      ? UD_CONV
-      : key.endsWith(':c3')
-        ? { messages: [], display: [{ kind: 'user', text: 'Count the verbs.' }] }
-        : IGT_CONV,
+    value: key.includes(':round:')
+      ? {
+          id: 'r1',
+          n: 1,
+          asked: 'Gloss gam.',
+          calls: [
+            {
+              id: 't1',
+              name: 'read_document',
+              arguments: '{"document": "Text 1"}',
+              result: 'Text 1: 12 sentences',
+            },
+          ],
+        }
+      : key.startsWith('ud:')
+        ? UD_CONV
+        : key.endsWith(':c3')
+          ? { messages: [], display: [{ kind: 'user', text: 'Count the verbs.' }] }
+          : IGT_CONV,
   }),
 };
 
@@ -230,7 +244,9 @@ describe('the admin transcript of an igt conversation', () => {
     expect(container.textContent).toContain('Ali-ERG');
     await step(async () => byText(container, 'button', 'Read 1 document').click());
     await step(async () => byText(container, 'button', 'Read Text 1').click());
-    expect(texts(container, 'pre')).toEqual(['Text 1: 12 sentences']);
+    // The step opens to its input and exactly what the tool returned, read
+    // from the owner's stored round.
+    expect(texts(container, 'pre')).toEqual(['document: Text 1', 'Text 1: 12 sentences']);
     expect(container.textContent).toContain('Answered in');
     await unmount();
   });

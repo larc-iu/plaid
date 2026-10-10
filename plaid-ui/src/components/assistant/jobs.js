@@ -39,7 +39,10 @@ const convKey = (app, projectId, id) => `${app}:assistant:${projectId}:conv:${id
 
 const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:meta:`;
 
-const filePrefix = (app, projectId, id) => `${app}:assistant:${projectId}:file:${id}:`;
+// What is stored beside a conversation: its files, its rounds and the
+// instructions its turns were given (plaid_agent/core/conversation.py BESIDE).
+const BESIDE = ['file', 'round', 'prompt'];
+const besidePrefix = (app, projectId, id, kind) => `${app}:assistant:${projectId}:${kind}:${id}:`;
 
 // Every conversation of this app's, across every project. The project sits in
 // the MIDDLE of the key, so no prefix can select the small sidebar entries
@@ -200,14 +203,16 @@ export const deleteConversation = async (store, meta, { tab = null } = {}) => {
 
 const deleteOffline = async (store, id) => {
   const { client, userId, app, projectId } = store;
-  const files = await client.userData.list(userId, {
-    prefix: filePrefix(app, projectId, id),
-    pageSize: 1000,
-  });
   const gone = (e) => {
     if (e?.status !== 404) throw e;
   };
-  for (const e of files || []) await client.userData.delete(userId, e.key).catch(gone);
+  for (const kind of BESIDE) {
+    const keys = await client.userData.list(userId, {
+      prefix: besidePrefix(app, projectId, id, kind),
+      pageSize: 1000,
+    });
+    for (const e of keys || []) await client.userData.delete(userId, e.key).catch(gone);
+  }
   await client.userData.delete(userId, convKey(app, projectId, id)).catch(gone);
   await client.userData.delete(userId, metaKey(app, projectId, id)).catch(gone);
 };
@@ -217,19 +222,23 @@ const deleteOffline = async (store, id) => {
 // A marker naming a request a page can rejoin (a turn or an approval).
 export const followable = (p) => (p?.requestId && p.kind !== 'discard' ? p : null);
 
-// A progress event carries the reply text written so far (`text`), whole
-// each time; the step list keeps only what the assistant did between them.
+// A turn's progress event carries the turn so far, whole each time: its steps
+// as they will be stored (`trace`, with `stored` on those whose round is
+// written) and the text of the model call under way (`text`). An approval's
+// carries only its message, which the step list keeps.
 // `recorded` says the service has the message in the record.
 const progressOf = (j) => (p) => {
   const msg = p?.message || '';
   j.progress = msg;
   if (typeof p?.text === 'string') j.partial = p.text;
+  if (Array.isArray(p?.trace)) j.trace = p.trace;
   if (p?.recorded) {
     j.recorded = true;
     j.unsent = null;
     if (j.onRecorded) j.onRecorded();
   }
   if (
+    j.kind === 'apply' &&
     msg &&
     !/^(Thinking|Done|Planning|Planned|Applying|Writing)/.test(msg) &&
     j.steps[j.steps.length - 1] !== msg
@@ -355,6 +364,7 @@ const newJob = (fields) => ({
   controller: new AbortController(),
   startedAt: Date.now(),
   steps: [],
+  trace: [],
   partial: '',
   stopping: false,
   stopped: false,

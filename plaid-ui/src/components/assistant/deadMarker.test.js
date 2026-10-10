@@ -92,7 +92,7 @@ describe('a rejoin of a request whose service went away', () => {
       serviceId,
       tasks: ['assist'],
       online: true,
-      extras: { app: 'igt', record: 2, tasks: ['assist'] },
+      extras: { app: 'igt', record: 3, tasks: ['assist'] },
     });
     serviceCache.set('p1', [assistant('igt:assist:two')]);
     const read = {

@@ -42,11 +42,11 @@ const SERVICE = {
   serviceId: 'igt:assist:one',
   serviceName: 'Assistant one',
   online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet', maxProjects: 5 },
+  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet', maxProjects: 5 },
 };
 const OLD_SERVICE = {
   ...SERVICE,
-  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet' },
+  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet' },
 };
 
 const B = { id: 'pB', name: 'Lamkang B' };

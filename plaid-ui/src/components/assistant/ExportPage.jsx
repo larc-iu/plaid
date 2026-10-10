@@ -55,7 +55,7 @@ export const ExportPage = ({
   facts,
   left,
   display,
-  results,
+  rounds,
   tables,
   projectId,
   projectName,
@@ -94,7 +94,7 @@ export const ExportPage = ({
                 item={d}
                 projectId={projectId}
                 adapter={adapter}
-                results={results}
+                rounds={rounds}
                 {...turnContext(display, i)}
                 homeName={projectName}
                 canWrite={false}

@@ -41,7 +41,7 @@ const SERVICE = {
   serviceId: 'igt:assist:one',
   serviceName: 'Assistant one',
   online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 2, model: 'sonnet' },
+  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet' },
 };
 
 const META = {
@@ -195,6 +195,51 @@ describe('a message sent while an approval runs (H10-RECORD-2)', () => {
     expect(m.container.querySelector('textarea').value).toBe('And then?');
     expect(client.records.get(KEYS.conv).display).toHaveLength(2);
     expect(client.userData.put).not.toHaveBeenCalled();
+    await m.unmount();
+  });
+});
+
+describe('a turn as it runs', () => {
+  // The text the model wrote before a tool call used to vanish when the next
+  // call began (TRANSPARENCY, item 1 of the request).
+  it('keeps the text of an earlier call on screen, and it stays after the answer lands', async () => {
+    const client = fakeClient();
+    let release;
+    const gate = new Promise((r) => {
+      release = r;
+    });
+    const step = {
+      id: 'c1',
+      name: 'search',
+      kind: 'read',
+      label: 'Searched for “kai”: 3 matches',
+      round: 'r1',
+      said: 'First I look for kai.',
+    };
+    client.assistant.during = async (emit) => {
+      emit({ message: 'Writing…', text: 'First I look for kai.', trace: [] });
+      emit({ message: 'Searching…', text: 'First I look for kai.', trace: [] });
+      emit({ message: 'Thinking more…', text: '', trace: [{ ...step, stored: true }] });
+      emit({ message: 'Writing…', text: 'Now the verbs.', trace: [{ ...step, stored: true }] });
+      await gate;
+    };
+    client.assistant.answer = 'Two verbs.';
+    client.assistant.item = { steps: [step], stepsSummary: '1 search · 1 step' };
+    const m = await mount(client);
+    await flush(m);
+    await typeAndSend(m, 'Find kai.');
+    await flush(m);
+    const seen = m.container.textContent;
+    expect(seen).toContain('First I look for kai.');
+    expect(seen).toContain('Now the verbs.');
+    expect(seen).toContain('Searched for “kai”: 3 matches');
+    expect(seen.split('First I look for kai.')).toHaveLength(2);
+    release();
+    await flush(m, 10);
+    const after = m.container.textContent;
+    expect(after).toContain('Two verbs.');
+    expect(after).toContain('First I look for kai.');
+    expect(after).toContain('Searched for “kai”: 3 matches');
     await m.unmount();
   });
 });

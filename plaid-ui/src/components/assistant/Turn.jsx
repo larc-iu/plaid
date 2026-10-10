@@ -8,9 +8,7 @@ import {
   FolderOpen,
   MapPin,
   Quote,
-  Wrench,
 } from 'lucide-react';
-import { cn } from '../../lib/utils.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { fencedLines, linkifyCitations } from './citations.js';
@@ -19,6 +17,7 @@ import { PlanCard } from './PlanCard.jsx';
 import { homeOnly, namedCitations } from './projectReach.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { useExport } from './exportContext.js';
+import { WorkTrace } from './WorkTrace.jsx';
 
 // One turn of a conversation as drawn: the reply with its citations, the
 // example cards a citation opens, the plan it proposed, and the tool trace
@@ -170,7 +169,15 @@ export const Turn = ({
   projectId,
   adapter,
   onFocusHere,
-  results,
+  // The conversation's stored rounds (rounds.js), which a step opens to.
+  rounds = null,
+  // The conversation was deleted, so its rounds went with it.
+  roundsGone = false,
+  // The turn landed in this tab while it was watched: its work stays open.
+  traceOpen = false,
+  // A stop the line under the conversation stands in for: its work is drawn,
+  // its own line is not.
+  hideLine = false,
   fromAnotherModel,
   movedHere,
   reachChanged = false,
@@ -269,7 +276,24 @@ export const Turn = ({
     );
   }
   if (item.kind === 'error') {
-    return item.stopped ? (
+    // What the turn did and wrote before it ended, above the line saying so.
+    const work =
+      item.steps?.length > 0 ? (
+        <WorkTrace
+          steps={item.steps}
+          summary={item.stepsSummary}
+          partial={item.partial}
+          rounds={rounds}
+          gone={roundsGone}
+          firstRound={item.steps[0]?.round}
+          open={traceOpen}
+        />
+      ) : item.partial ? (
+        <div dir="auto" className="text-muted-foreground [&_*]:text-muted-foreground">
+          <AssistantMarkdown>{item.partial}</AssistantMarkdown>
+        </div>
+      ) : null;
+    const line = hideLine ? null : item.stopped ? (
       <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
         {item.text}
       </div>
@@ -279,6 +303,16 @@ export const Turn = ({
         className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
       >
         {item.text}
+      </div>
+    );
+    if (!work) return line;
+    return (
+      <div className="flex gap-3">
+        <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {work}
+          {line}
+        </div>
       </div>
     );
   }
@@ -291,8 +325,15 @@ export const Turn = ({
             Answered by <span className="font-medium text-foreground">{item.model}</span>
           </div>
         )}
-        {item.stepsSummary && item.steps?.length > 0 && (
-          <ToolTrace steps={item.steps} summary={item.stepsSummary} results={results} />
+        {(item.steps?.length > 0 || item.replyRound) && (
+          <WorkTrace
+            steps={item.steps || []}
+            summary={item.steps?.length > 0 ? item.stepsSummary : 'No steps'}
+            rounds={rounds}
+            gone={roundsGone}
+            firstRound={item.steps?.[0]?.round ?? item.replyRound}
+            open={traceOpen}
+          />
         )}
         {/* What the turn was GIVEN, as against what it did: how much of the
             project's guidelines were in the prompt. Its own line and not part
@@ -404,95 +445,6 @@ export const Turn = ({
           />
         )}
       </div>
-    </div>
-  );
-};
-
-// What the assistant did before answering: the service's one-line summary,
-// expandable to its steps, each expandable to what that tool returned. A step
-// names the tool call it came from, and `results` maps that to the tool's
-// output in the transcript, so nothing is stored twice (and a result the size
-// cap dropped reads as dropped here too).
-const ToolTrace = ({ steps, summary, results }) => {
-  const [open, setOpen] = useState(false);
-  const [shown, setShown] = useState(null);
-  // The web page export: the same two folds, as markup, shut.
-  if (useExport())
-    return (
-      <details className="text-xs text-muted-foreground">
-        <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5">
-          <ChevronRight className="plaid-export-chevron h-3 w-3" />
-          <Wrench className="h-3 w-3" />
-          {summary}
-        </summary>
-        <ol className="mt-1 flex flex-col gap-0.5 border-l pl-3">
-          {steps.map((s, i) => {
-            const result = results.get(s.id) ?? '';
-            return (
-              <li key={s.id || i}>
-                <details>
-                  <summary
-                    className={cn(
-                      'flex cursor-pointer list-none items-start gap-1 rounded px-1 py-0.5',
-                      result.startsWith('Error') && 'text-destructive',
-                    )}
-                  >
-                    <ChevronRight className="plaid-export-chevron mt-0.5 h-3 w-3 shrink-0" />
-                    <span>{s.label}</span>
-                  </summary>
-                  <pre className="my-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground">
-                    {result || '(no output)'}
-                  </pre>
-                </details>
-              </li>
-            );
-          })}
-        </ol>
-      </details>
-    );
-  return (
-    <div className="text-xs text-muted-foreground">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
-      >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <Wrench className="h-3 w-3" />
-        {summary}
-      </button>
-      {open && (
-        <ol className="mt-1 flex flex-col gap-0.5 border-l pl-3">
-          {steps.map((s, i) => {
-            const result = results.get(s.id) ?? '';
-            return (
-              <li key={s.id || i}>
-                <button
-                  type="button"
-                  onClick={() => setShown(shown === i ? null : i)}
-                  className={cn(
-                    'flex w-full items-start gap-1 rounded px-1 py-0.5 text-left hover:bg-muted hover:text-foreground',
-                    result.startsWith('Error') && 'text-destructive',
-                  )}
-                  title={s.name}
-                >
-                  {shown === i ? (
-                    <ChevronDown className="mt-0.5 h-3 w-3 shrink-0" />
-                  ) : (
-                    <ChevronRight className="mt-0.5 h-3 w-3 shrink-0" />
-                  )}
-                  <span>{s.label}</span>
-                </button>
-                {shown === i && (
-                  <pre className="my-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground">
-                    {result || '(no output)'}
-                  </pre>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      )}
     </div>
   );
 };
