@@ -224,7 +224,8 @@ export const followable = (p) => (p?.requestId && p.kind !== 'discard' ? p : nul
 
 // A turn's progress event carries the turn so far, whole each time: its steps
 // as they will be stored (`trace`, with `stored` on those whose round is
-// written) and the text of the model call under way (`text`). An approval's
+// written), the text of the model call under way (`text`) and the end of its
+// reasoning (`thinking`). An approval's
 // carries only its message, which the step list keeps.
 // `recorded` says the service has the message in the record.
 const progressOf = (j) => (p) => {
@@ -232,6 +233,7 @@ const progressOf = (j) => (p) => {
   j.progress = msg;
   if (typeof p?.text === 'string') j.partial = p.text;
   if (Array.isArray(p?.trace)) j.trace = p.trace;
+  if (typeof p?.thinking === 'string') j.thinking = p.thinking;
   if (p?.recorded) {
     j.recorded = true;
     j.unsent = null;
@@ -366,6 +368,7 @@ const newJob = (fields) => ({
   steps: [],
   trace: [],
   partial: '',
+  thinking: '',
   stopping: false,
   stopped: false,
   error: null,

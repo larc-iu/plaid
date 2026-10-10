@@ -320,6 +320,7 @@ export const AssistantChat = ({
   const [liveSteps, setLiveSteps] = useState([]); // an approval's progress messages so far
   const [liveTrace, setLiveTrace] = useState([]); // a turn's steps so far
   const [partial, setPartial] = useState(''); // the reply so far, while it is written
+  const [liveThinking, setLiveThinking] = useState(''); // the end of the model's reasoning, as it streams
   const [stopping, setStopping] = useState(false);
   // The turn the reader stopped by hand, as {convId}: the banner that follows
   // says so rather than reporting a failure that did not happen. What the
@@ -362,6 +363,7 @@ export const AssistantChat = ({
     setLiveSteps(j.steps);
     setLiveTrace(j.trace || []);
     setPartial(j.partial || '');
+    setLiveThinking(j.thinking || '');
     setStopping(!!j.stopping);
   };
   const clearJob = () => {
@@ -371,6 +373,7 @@ export const AssistantChat = ({
     setLiveSteps([]);
     setLiveTrace([]);
     setPartial('');
+    setLiveThinking('');
     setStopping(false);
   };
 
@@ -517,7 +520,7 @@ export const AssistantChat = ({
   // --- turns -----------------------------------------------------------------
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [active?.display.length, busy, progress, partial]);
+  }, [active?.display.length, busy, progress, partial, liveThinking]);
 
   // Turns still running in another project. Navigating never stops one (the
   // record gets the outcome either way), and a reader who walked away from a
@@ -1137,12 +1140,13 @@ export const AssistantChat = ({
                 happened in, so the text lands under the steps it followed. */}
             {busy && (
               <div className="flex flex-col gap-3">
-                {busy === 'turn' && liveTrace.length > 0 && (
+                {busy === 'turn' && (liveTrace.length > 0 || liveThinking) && (
                   <div className="flex gap-3">
                     <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
                     <div className="min-w-0 flex-1 text-xs text-muted-foreground">
                       <TraceSteps
                         steps={liveTrace}
+                        thinking={liveThinking}
                         rounds={rounds}
                         live
                         firstRound={liveTrace[0]?.round}

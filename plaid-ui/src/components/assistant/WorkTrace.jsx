@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
@@ -16,6 +16,11 @@ import { callInput, callOf, foldReads, runLabel } from './rounds.js';
 // that stopped or failed mid-sentence), `rounds` the conversation's round
 // reader, `firstRound` the round holding the question as received. A step
 // opens only when its round is stored: `live` steps say so with `stored`.
+//
+// Where the model's provider returned its reasoning, a closed Thinking row
+// stands before the round's text: on the round's first step (`thought`),
+// and for the reply (`replyRound`). Live, the reasoning of the call under
+// way (`thinking`, its last 2,000 characters) shows open as it streams.
 
 const MUTED = 'text-xs text-muted-foreground';
 const PRE =
@@ -202,6 +207,57 @@ const StepRow = ({ step, rounds, live, gone, exported }) => {
   );
 };
 
+// The model's reasoning, as plain text. Live, it keeps its end in view as
+// it grows.
+const ThinkingText = ({ text, follow = false }) => {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    if (follow && ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [follow, text]);
+  return (
+    <div
+      ref={ref}
+      dir="auto"
+      className="mb-1 ml-4 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border-l-2 border-muted py-0.5 pl-2 italic"
+    >
+      {text}
+    </div>
+  );
+};
+
+const ThinkingOf = ({ rounds, id, gone }) => {
+  const state = useRound(rounds, id, gone);
+  if (!state.round) return <RoundStatus state={state} />;
+  return <ThinkingText text={state.round.thinking ?? ''} />;
+};
+
+// The reasoning of a stored round, read when it is opened. Live, a round not
+// stored yet shows the row without opening.
+const Thinking = ({ id, rounds, live, gone, exported, stored = true }) => {
+  if (exported) {
+    const text = rounds?.peek?.(id)?.thinking;
+    if (!text) return null;
+    return (
+      <Details label="Thinking">
+        <ThinkingText text={text} />
+      </Details>
+    );
+  }
+  if (!rounds || !id || (live && !stored)) return <div className="px-1 py-0.5 pl-5">Thinking</div>;
+  return (
+    <Disclosure label="Thinking">
+      <ThinkingOf rounds={rounds} id={id} gone={gone} />
+    </Disclosure>
+  );
+};
+
+// The reasoning of the model call under way, open while it streams.
+const LiveThinking = ({ text }) => (
+  <Disclosure label="Thinking" open>
+    <ThinkingText text={text} follow />
+  </Disclosure>
+);
+
 // The text the model wrote between calls, in muted type above the steps it
 // preceded.
 const Said = ({ text }) => (
@@ -267,11 +323,32 @@ const Instructions = ({ rounds, hash, gone }) => {
 };
 
 // The steps in order, with the text before each, runs of reads folded.
-export const TraceSteps = ({ steps, partial, rounds, live = false, gone = false, firstRound }) => {
+export const TraceSteps = ({
+  steps,
+  partial,
+  thinking,
+  rounds,
+  live = false,
+  gone = false,
+  firstRound,
+  replyRound,
+}) => {
   const exported = !!useExport();
   const rows = foldReads(steps);
+  const thought = (s) =>
+    s.thought && (
+      <Thinking
+        id={s.round}
+        rounds={rounds}
+        live={live}
+        gone={gone}
+        exported={exported}
+        stored={!!s.stored}
+      />
+    );
   const row = (s) => (
     <li key={s.id}>
+      {thought(s)}
       {s.said && <Said text={s.said} />}
       <StepRow step={s} rounds={rounds} live={live} gone={gone} exported={exported} />
     </li>
@@ -290,6 +367,7 @@ export const TraceSteps = ({ steps, partial, rounds, live = false, gone = false,
           row(r.step)
         ) : (
           <li key={`run-${i}`}>
+            {thought(r.run[0])}
             {r.run[0].said && <Said text={r.run[0].said} />}
             {exported ? (
               <Details label={runLabel(r.run)}>
@@ -315,6 +393,16 @@ export const TraceSteps = ({ steps, partial, rounds, live = false, gone = false,
           </li>
         ),
       )}
+      {replyRound && (
+        <li>
+          <Thinking id={replyRound} rounds={rounds} gone={gone} exported={exported} />
+        </li>
+      )}
+      {thinking && (
+        <li>
+          <LiveThinking text={thinking} />
+        </li>
+      )}
       {partial && (
         <li>
           <Said text={partial} />
@@ -325,7 +413,16 @@ export const TraceSteps = ({ steps, partial, rounds, live = false, gone = false,
 };
 
 // The summary line, opening to the turn's work.
-export const WorkTrace = ({ steps, summary, partial, rounds, gone, firstRound, open = false }) => {
+export const WorkTrace = ({
+  steps,
+  summary,
+  partial,
+  rounds,
+  gone,
+  firstRound,
+  replyRound,
+  open = false,
+}) => {
   const exported = !!useExport();
   const [shown, setShown] = useState(open);
   // A turn that landed in the tab that watched it stays open there.
@@ -346,6 +443,7 @@ export const WorkTrace = ({ steps, summary, partial, rounds, gone, firstRound, o
       rounds={rounds}
       gone={gone}
       firstRound={firstRound}
+      replyRound={replyRound}
     />
   );
   if (exported)

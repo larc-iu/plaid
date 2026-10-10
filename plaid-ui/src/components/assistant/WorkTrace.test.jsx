@@ -251,3 +251,93 @@ describe('a turn that did not finish', () => {
     expect(md).toContain('> Half');
   });
 });
+
+describe('the model reasoning', () => {
+  const THOUGHT = { ...ROUND, thinking: 'The user wants verbs. Read sentence 3 first.' };
+  const REPLY = { id: 'r9', n: 2, thinking: 'One verb found.', calls: [] };
+
+  it('is a closed Thinking row before the round text, read when opened', async () => {
+    const { read, rounds } = reader({ r1: THOUGHT, r9: REPLY });
+    const steps = [{ ...STEPS[0], thought: true }, STEPS[1]];
+    const view = await renderComponent(
+      <TraceSteps steps={steps} rounds={rounds} replyRound="r9" />,
+    );
+    const [first, reply] = all(view.container, 'button').filter(
+      (b) => b.textContent === 'Thinking',
+    );
+    expect(first.getAttribute('aria-expanded')).toBe('false');
+    const body = view.container.textContent;
+    expect(body.indexOf('Thinking')).toBeLessThan(body.indexOf('Let me read the sentence.'));
+    expect(body).not.toContain('The user wants verbs.');
+    expect(read).not.toHaveBeenCalled();
+    await view.step(() => first.click());
+    expect(view.container.textContent).toContain('The user wants verbs. Read sentence 3 first.');
+    await view.step(() => reply.click());
+    expect(view.container.textContent).toContain('One verb found.');
+    // The reply's row comes after the steps.
+    const after = view.container.textContent;
+    expect(after.indexOf('Read across the corpus')).toBeLessThan(after.indexOf('One verb found.'));
+    await view.unmount();
+  });
+
+  it('draws no Thinking row for a round without reasoning', async () => {
+    const { rounds } = reader({ r1: ROUND });
+    const view = await renderComponent(<TraceSteps steps={STEPS} rounds={rounds} />);
+    expect(view.container.textContent).not.toContain('Thinking');
+    await view.unmount();
+  });
+
+  it('shows the reasoning open while it streams, and a round not stored yet unopenable', async () => {
+    const { read, rounds } = reader({ r1: THOUGHT });
+    const view = await renderComponent(
+      <TraceSteps steps={[]} thinking="Looking at the verbs" rounds={rounds} live />,
+    );
+    const [open] = all(view.container, 'button');
+    expect(open.textContent).toBe('Thinking');
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    expect(view.container.textContent).toContain('Looking at the verbs');
+    await view.rerender(
+      <TraceSteps steps={[{ ...STEPS[0], thought: true }]} rounds={rounds} live />,
+    );
+    expect(view.container.textContent).toContain('Thinking');
+    expect(all(view.container, 'button')).toHaveLength(0);
+    expect(read).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('opens a turn with no steps to the reasoning of its reply', async () => {
+    const { rounds } = reader({ r9: { ...REPLY, asked: 'hi' } });
+    const item = {
+      kind: 'assistant',
+      text: 'Hello.',
+      steps: [],
+      replyRound: 'r9',
+      replyThought: true,
+    };
+    const view = await renderComponent(
+      <Turn item={item} projectId="p1" adapter={{}} rounds={rounds} traceOpen />,
+    );
+    const thinking = byText(view.container, 'button', 'Thinking');
+    await view.step(() => thinking.click());
+    expect(view.container.textContent).toContain('One verb found.');
+    await view.unmount();
+  });
+
+  it('starts a new run of reads at a step with reasoning', () => {
+    const read = (id, extra = {}) => ({ id, kind: 'document', label: id, ...extra });
+    const rows = foldReads([
+      read('a'),
+      read('b'),
+      read('c'),
+      read('d'),
+      read('e', { thought: true }),
+      read('f'),
+      read('g'),
+      read('h'),
+    ]);
+    expect(rows.map((r) => (r.run ? r.run.map((s) => s.id).join('') : r.step.id))).toEqual([
+      'abcd',
+      'efgh',
+    ]);
+  });
+});

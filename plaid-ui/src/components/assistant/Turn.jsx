@@ -332,6 +332,7 @@ export const Turn = ({
             rounds={rounds}
             gone={roundsGone}
             firstRound={item.steps?.[0]?.round ?? item.replyRound}
+            replyRound={item.replyThought ? item.replyRound : null}
             open={traceOpen}
           />
         )}

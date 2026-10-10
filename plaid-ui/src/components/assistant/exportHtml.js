@@ -5,15 +5,17 @@
 //
 // What the page holds and what it leaves out:
 // - Every turn: the messages, the text the assistant wrote between its tool
-//   calls, the tool steps (folded, each step's input and output under it, read
+//   calls, the model's reasoning where its provider returned it, the tool steps (folded, each step's input and output under it, read
 //   from the conversation's stored rounds), the plans with the place each change targeted and how the plan
 //   ended, the cited examples, the file chips, and where a question was asked.
 // - A table the assistant made (.csv, .tsv) is shown in full when it is small
 //   enough. Every other file is named with its size.
 // - Nothing from a project the exporter cannot open today: a citation into one
 //   is left out, its name is written "Another project", and the tool outputs
-//   of a turn that read one and the content of a table it made are left out.
-// - A long tool output is cut short, and past a total the rest are left out,
+//   of a turn that read one, its reasoning and the content of a table it made
+//   are left out.
+// - A long tool output or reasoning is cut short, and past a total the rest
+//   are left out,
 //   so a long conversation stays a file of a few MB at most.
 // The header says what was left out.
 
@@ -45,8 +47,14 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
   const rename = (projects) => projects.map((p) => (opens(p.id) ? p : { ...p, name: OTHER }));
   const results = new Map();
   const shown = new Map();
+  // A round as the page holds it: its reasoning only where it was let in.
+  const shownRound = (id) => {
+    if (shown.has(id)) return shown.get(id);
+    const { thinking: _left, ...rest } = stored.get(id) ?? {};
+    return { ...rest, calls: [] };
+  };
   const callOut = (s, text) => {
-    const r = shown.get(s.round) ?? { ...stored.get(s.round), calls: [] };
+    const r = shownRound(s.round);
     const call = (stored.get(s.round)?.calls || []).find((c) => c.id === s.id);
     r.calls = [...r.calls, { ...call, result: text, cut: text === call.result ? call.cut : false }];
     shown.set(s.round, r);
@@ -55,7 +63,7 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
   // The files a turn that read a closed project made: what they hold may
   // come from it, so only their names are shown.
   const closedFiles = new Set();
-  const left = { citations: 0, results: 0, shortened: 0 };
+  const left = { citations: 0, results: 0, shortened: 0, thinking: 0, thinkingShortened: 0 };
   let budget = TOOL_OUTPUT_TOTAL;
   let reach = [];
   const display = (conv?.display || []).map((d) => {
@@ -91,6 +99,30 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
       if (long) left.shortened += 1;
       budget -= text.length;
       callOut(s, text);
+    }
+    // The model's reasoning, by round: on a round's first step, and the
+    // reply's.
+    const thought = new Set(
+      (d.steps || []).filter((s) => s.thought && s.round).map((s) => s.round),
+    );
+    if (d.replyThought && d.replyRound) thought.add(d.replyRound);
+    for (const id of thought) {
+      const whole = stored.get(id)?.thinking;
+      if (!whole) continue;
+      if (closed) {
+        left.thinking += 1;
+        continue;
+      }
+      let text = String(whole);
+      const long = text.length > TOOL_OUTPUT_CHARS;
+      if (long) text = `${text.slice(0, TOOL_OUTPUT_CHARS)}\n…`;
+      if (text.length > budget) {
+        left.thinking += 1;
+        continue;
+      }
+      if (long) left.thinkingShortened += 1;
+      budget -= text.length;
+      shown.set(id, { ...shownRound(id), thinking: text });
     }
     return out;
   });
@@ -202,6 +234,7 @@ export const leftOutLine = (left, notShown) => {
   if (left.citations)
     parts.push(`${plural(left.citations, 'cited example', 'cited examples')} from other projects`);
   if (left.results) parts.push(plural(left.results, 'tool output', 'tool outputs'));
+  if (left.thinking) parts.push(plural(left.thinking, 'Thinking section', 'Thinking sections'));
   if (notShown.length) parts.push(`the content of ${notShown.join(', ')}`);
   const out = parts.length ? [`Not included: ${parts.join(', ')}.`] : [];
   if (left.shortened)
@@ -209,6 +242,12 @@ export const leftOutLine = (left, notShown) => {
       left.shortened === 1
         ? '1 long tool output is shortened.'
         : `${left.shortened} long tool outputs are shortened.`,
+    );
+  if (left.thinkingShortened)
+    out.push(
+      left.thinkingShortened === 1
+        ? '1 long Thinking section is shortened.'
+        : `${left.thinkingShortened} long Thinking sections are shortened.`,
     );
   return out.join(' ') || null;
 };

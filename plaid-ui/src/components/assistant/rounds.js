@@ -97,7 +97,8 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // The steps, with every run of FOLD_AT or more document reads in a row drawn
 // as one row: `{steps}` for a step on its own, `{run: [steps]}` for a run. A
-// read with text before it starts a new run, so no text is folded away.
+// read with text or reasoning before it starts a new run, so neither is
+// folded away.
 export const foldReads = (steps) => {
   const out = [];
   let run = [];
@@ -108,7 +109,7 @@ export const foldReads = (steps) => {
   };
   for (const s of steps || []) {
     const read = s.kind === 'document' && !s.failed;
-    if (read && !(run.length && s.said)) run.push(s);
+    if (read && !(run.length && (s.said || s.thought))) run.push(s);
     else {
       flush();
       if (read) run.push(s);

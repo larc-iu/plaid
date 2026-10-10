@@ -412,9 +412,52 @@ describe('its parts', () => {
       readable: new Set([HOME, OPEN, CLOSED]),
       stored: STORED,
     });
-    expect(left).toEqual({ citations: 0, results: 0, shortened: 1 });
+    expect(left).toEqual({
+      citations: 0,
+      results: 0,
+      shortened: 1,
+      thinking: 0,
+      thinkingShortened: 0,
+    });
     expect(results.get('t3')).toBe('Read from the other project');
     expect(leftOutLine({ citations: 0, results: 0, shortened: 0 }, [])).toBeNull();
+  });
+
+  it("carries the model's reasoning under the budget, never a closed project's", () => {
+    const stored = new Map([
+      ['a1', { id: 'a1', thinking: 'Ponder home.', calls: [{ id: 's1', result: 'r' }] }],
+      ['a2', { id: 'a2', thinking: 'Ponder reply.', calls: [] }],
+      ['a3', { id: 'a3', thinking: 'Ponder secret.', calls: [{ id: 's3', result: 'r' }] }],
+      ['a4', { id: 'a4', thinking: 'y'.repeat(5000), calls: [{ id: 's4', result: 'r' }] }],
+    ]);
+    const step = (id, round) => ({ id, name: 'search', label: 'Searched', round, thought: true });
+    const many = {
+      display: [
+        { kind: 'user', text: 'q' },
+        {
+          kind: 'assistant',
+          text: 'a',
+          steps: [step('s1', 'a1'), step('s4', 'a4')],
+          replyRound: 'a2',
+          replyThought: true,
+        },
+        { kind: 'user', text: 'q', projects: [{ id: CLOSED, name: 'Secret corpus' }] },
+        { kind: 'assistant', text: 'b', steps: [step('s3', 'a3')] },
+      ],
+    };
+    const { rounds, left } = prepareExport(many, {
+      projectId: HOME,
+      readable: new Set([HOME]),
+      stored,
+    });
+    expect(rounds.peek('a1').thinking).toBe('Ponder home.');
+    expect(rounds.peek('a2').thinking).toBe('Ponder reply.');
+    expect(rounds.peek('a4').thinking).toHaveLength(4002);
+    expect(rounds.peek('a3').thinking).toBeUndefined();
+    expect(left.thinking).toBe(1);
+    expect(leftOutLine(left, [])).toBe(
+      'Not included: 1 tool output, 1 Thinking section. 1 long Thinking section is shortened.',
+    );
   });
 
   it('keeps a rule for the page root and drops one for nothing on it', () => {
