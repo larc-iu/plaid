@@ -407,7 +407,7 @@
   either directly (`operations.document_id`) or via an `audit_writes` row that
   touched the documents row — e.g. a doc-version bump fired by
   `bump-document-versions!` under a parent vocab/delete op whose own
-  `document_id` is nil (task #91).
+  `document_id` is nil.
 
   UNION of two index-friendly branches rather than `OR`/correlated-EXISTS on
   the operations table: branch 1 hits `idx_operations_document_ts`, branch 2's
@@ -438,7 +438,7 @@
   See `document-ops-source` for why the second branch is a UNION rather than
   an `OR`/correlated-EXISTS. Without that branch, doc-version bumps fired by
   `bump-document-versions!` from vocab/delete or project/remove-vocab
-  silently disappear from the per-doc endpoint (task #91).
+  silently disappear from the per-doc endpoint.
 
   A unit (group/batch) that spans documents shows here with only the
   members that affect THIS document — the fold is within scope."

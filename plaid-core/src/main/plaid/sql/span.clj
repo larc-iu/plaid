@@ -164,7 +164,7 @@
   AND (when `metadata` is non-empty) a `:metadata` key carrying the
   inserted metadata map. Folding both into the same :insert row avoids
   the noisy :insert + :update pair we'd otherwise emit when metadata is
-  present (task #59).
+  present.
 
   `:span/id` names the new span's id (a client's UUIDv7), else the server
   mints one.
@@ -183,7 +183,7 @@
               :description (str "Create span " new-id " with " (count tokens)
                                 " tokens in layer " layer)
               :user user-id}]
-      ;; Validation inside the body (task #47).
+      ;; Validation inside the body.
       (validate-atomic-value! value)
       (psc/claim-ids! tx :spans "span" [(:span/id attrs)])
       (let [token-rows (fetch-tokens-by-ids tx tokens)
@@ -202,7 +202,7 @@
         ;; Insert metadata BEFORE the audit emission, with the
         ;; skip-parent-audit? flag so no separate :update row fires;
         ;; we then fold :metadata into our manual :insert audit's
-        ;; post_image (task #59).
+        ;; post_image.
         (when (seq metadata)
           (metadata/insert-metadata! tx "span" new-id metadata
                                      {:skip-parent-audit? true}))
@@ -329,7 +329,7 @@
 ;; ============================================================
 
 (defn- check-spans-consistency!
-  "All spans in a bulk-create must target the same span layer (v2 contract)."
+  "All spans in a bulk-create must target the same span layer."
   [spans-attrs]
   (when (empty? spans-attrs)
     (throw (ex-info "Span list is empty" {:code 400})))
@@ -381,7 +381,7 @@
                          :value (:span/value a)
                          :metadata (:metadata a)}))
                     attrs-vec)
-           ;; All spans in the batch must belong to a single document (v2 contract).
+           ;; All spans in the batch must belong to a single document.
            doc-ids (->> records (map :doc-id) distinct)]
        (when-not (= 1 (count doc-ids))
          (throw (ex-info "Not all spans belong to the same document"
@@ -394,7 +394,7 @@
        ;; tokens even though `span_tokens` has them. Instead we insert the
        ;; rows + join rows + metadata silently and then emit ONE synthetic
        ;; :insert per span whose post_image folds :tokens (and :metadata
-       ;; when present) — matching single-row `create` (task #4/#59).
+       ;; when present) — matching single-row `create`.
        (psc/execute! tx {:insert-into :spans
                          :values (mapv (fn [r]
                                          {:id (:id r)
@@ -430,9 +430,8 @@
   entity_metadata. Mirrors the cascade ordering in
   plaid.sql.token/multi-delete!.
 
-  Ids that don't resolve to an existing span row are silently dropped
-  (mirrors v2's `(filter :span/id (vals span-map))` filter in
-  `bulk-delete*`). Returns the vector of ids actually deleted, which
+  Ids that don't resolve to an existing span row are silently dropped.
+  Returns the vector of ids actually deleted, which
   excludes any unknown ids the caller passed in. Without this filter,
   unknown ids would flow through `crud/delete-by-id!` and produce phantom
   audit rows with `pre = nil`."
@@ -458,7 +457,7 @@
      (let [span-rows-tx (psc/fetch-ids tx :spans eids)
            existing-ids (->> span-rows-tx (keep :id) vec)]
        (when (seq existing-ids)
-         (let [;; Pre-flight document consistency (v2 contract).
+         (let [;; Pre-flight document consistency.
                doc-ids (->> span-rows-tx (map :document_id) distinct)]
            (when (> (count doc-ids) 1)
              (throw (ex-info "Not all spans belong to the same document"

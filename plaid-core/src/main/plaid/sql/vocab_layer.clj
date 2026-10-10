@@ -170,7 +170,7 @@
   the per-id `get` shape exposed by `get-accessible` did NOT include
   items, so neither does this helper.)
 
-  Mirrors `plaid.sql.project/batch-hydrate-projects` (#67)."
+  Mirrors `plaid.sql.project/batch-hydrate-projects`."
   [db vocab-ids]
   (if (empty? vocab-ids)
     []
@@ -201,7 +201,7 @@
      ;; Was `(mapv #(get db %) ids)` — N+1 over `ids` with each `get`
      ;; firing fetch-by-id + attach-maintainers (~2 queries per vocab).
      ;; Now a constant number of bulk SELECTs regardless of vocab count
-     ;; (#67, mirrors project/batch-hydrate-projects).
+     ;; (mirrors project/batch-hydrate-projects).
      (batch-hydrate-vocab-layers db ids)))
   ([db user-id {:keys [limit cursor-vals]}]
    ;; Paginated arity: shape the (bounded, per-user) accessible set into the
@@ -296,7 +296,7 @@
   which audits user → vocab_maintainers FK cascade losses) can reuse it."
   [tx vocab-id]
   ;; ORDER BY user_id so the folded :maintainers audit image is
-  ;; deterministically ordered (task #13).
+  ;; deterministically ordered.
   (->> (psc/q tx {:select [:user_id]
                   :from [:vocab_maintainers]
                   :where [:= :vocab_layer_id vocab-id]
@@ -310,7 +310,7 @@
   [tx vocab-id]
   ;; ORDER BY project_id so the per-project audit rows in `delete` are
   ;; emitted in a deterministic order — (op_id, seq) assignment depends
-  ;; on it (task #13).
+  ;; on it.
   (->> (psc/q tx {:select [:project_id]
                   :from [:project_vocabs]
                   :where [:= :vocab_layer_id vocab-id]
@@ -320,8 +320,8 @@
 (defn audit-vocab-maintainers-change!
   "Emit a synthetic :vocab_layers audit row for a vocab_maintainers
   mutation. Pre/post images = the vocab_layer row + the maintainer-id
-  vector under :maintainers (UNNAMESPACED — matches the project-side
-  fix in #65; the audit-row \"extras\" shape is intentionally distinct
+  vector under :maintainers (UNNAMESPACED, as on the project side: the
+  audit-row \"extras\" shape is intentionally distinct
   from the REST-API shape that uses `:vocab/maintainers`). Skips audit
   when pre == post (no-op add/remove, mirroring update-by-id!'s noise
   rule).
@@ -350,11 +350,11 @@
   deletion through the audited helpers so audit_writes captures every
   change — FK ON DELETE CASCADE would otherwise silently sweep them.
 
-  Junction-table cascades (Task #34): `vocab_maintainers` and
+  Junction-table cascades: `vocab_maintainers` and
   `project_vocabs` would also FK-CASCADE silently. Two synthetic
   audits address that:
     - The vocab_layer's own :delete audit carries `:maintainers`
-      (unnamespaced; see #65) in the pre-image (post = nil); the
+      (unnamespaced) in the pre-image (post = nil); the
       maintainer list going from [...] to nil is implicit in the layer
       disappearing.
     - For each project that loses a vocab grant via project_vocabs FK
@@ -376,8 +376,8 @@
                                                     :where [:= :vocab_layer_id eid]})
                                          (mapv :id))
                              ;; Track which documents lose vocab_links so we
-                             ;; can bump their versions for OCC clients
-                             ;; (task #72). The op-attrs carry :document nil,
+                             ;; can bump their versions for OCC clients.
+                             ;; The op-attrs carry :document nil,
                              ;; so the post-body bump-document-version! hook
                              ;; doesn't fire — we have to walk the affected
                              ;; docs explicitly.
@@ -420,7 +420,7 @@
                              ;; and ordered the SAME way as project.clj's
                              ;; fetch-project-vocab-grants — or scan-order
                              ;; variance registers as spurious history
-                             ;; "changes" (task #13).
+                             ;; "changes".
                              pre-grants-by-proj
                              (into {}
                                    (map (fn [pid] [pid (->> (psc/q tx {:select [:vocab_layer_id]
@@ -435,7 +435,7 @@
                              ;; pattern that ETL relies on. We do this
                              ;; manually (vs. crud/delete-by-id!) so the
                              ;; pre-image carries :maintainers
-                             ;; (unnamespaced; see #65) rather than just
+                             ;; (unnamespaced) rather than just
                              ;; the raw row.
                              vl-row (psc/fetch-by-id tx :vocab_layers eid)
                              vl-pre-image (assoc vl-row :maintainers pre-maintainers)]
@@ -446,7 +446,7 @@
                          ;; FK-cascade losses. Each project sees one
                          ;; :update row showing its vocab-grant list
                          ;; shrink by `eid` under the unnamespaced
-                         ;; `:vocabs` key (see #65).
+                         ;; `:vocabs` key.
                          (doseq [pid grant-project-ids]
                            (let [proj-row (psc/fetch-by-id tx :projects pid)
                                  pre-grants (clojure.core/get pre-grants-by-proj pid [])

@@ -49,7 +49,7 @@
   inside `plaid.sql.operation/submit-operation*` runs atomically with
   the write — closing the TOCTOU window that existed when the
   middleware did the version comparison before the handler opened
-  its write tx (task #108).
+  its write tx.
 
   nil when no expected version was supplied (or when running outside
   the REST middleware stack, e.g. from tests calling SQL helpers
@@ -265,7 +265,6 @@
 
 ;; ----------------------------------------------------------------
 ;; Post-image-only audit log + the synthetic-parent-row pattern
-;; (tasks #28 / #34 / #58)
 ;;
 ;; POST-IMAGE ONLY: an audit row stores the full post-image of the
 ;; touched row and NOT a pre-image. The prior post-image of the same

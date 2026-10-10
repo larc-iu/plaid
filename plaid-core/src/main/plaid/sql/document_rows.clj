@@ -179,8 +179,7 @@
         token-layer-of (into {} (map (juxt :id :token_layer_id)) tokens)
         item-by-id (into {} (map (juxt :id identity)) vocab-items)
         vocab-layer-by-id (into {} (map (juxt :id identity)) vocab-layers)
-        ;; A link hangs off every token layer its tokens live in (the v2
-        ;; contract), so a link over two layers appears under each. Built by
+        ;; A link hangs off every token layer its tokens live in, so a link over two layers appears under each. Built by
         ;; walking `links`, which is in id order: reducing over a uuid-keyed
         ;; hash map instead leaves each layer's list in the hash's order, which
         ;; shuffles run to run.

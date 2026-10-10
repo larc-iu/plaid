@@ -94,7 +94,7 @@
                  :wrap pra/wrap-login-required}))})
 
 (defn routes []
-  ;; #119 — OpenAPI / Swagger UI exposure is gated by config. Default is
+  ;; OpenAPI / Swagger UI exposure is gated by config. Default is
   ;; true (preserves current behavior). Operators running a hardened
   ;; production deployment can flip `:plaid.api :expose-openapi?` to
   ;; false to omit the spec and the docs UI entirely, both of which

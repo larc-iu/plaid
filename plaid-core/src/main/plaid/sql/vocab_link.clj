@@ -12,10 +12,10 @@
             [plaid.sql.metadata :as metadata])
   (:refer-clojure :exclude [get merge format]))
 
-;; NOTE (#70): `:vocab-link/document` is kept in attr-keys (and thus in
+;; NOTE: `:vocab-link/document` is kept in attr-keys (and thus in
 ;; the REST GET response shape, since `format`/`select-keys` uses
-;; attr-keys) even though no existing test asserts on it. Keeping it
-;; matches the v2 attr-key set and gives REST consumers a stable
+;; attr-keys) even though no existing test asserts on it. It gives REST
+;; consumers a stable
 ;; back-pointer to the owning document without an extra query.
 (def attr-keys [:vocab-link/id
                 :vocab-link/vocab-item
@@ -194,7 +194,7 @@
   synthetic-audit pattern as `span/create` — folds junction state +
   metadata into the parent row's image so ETL replay reconstructs the
   link with its tokens (and metadata) from one record, avoiding the
-  noisy :insert + :update pair (task #59).
+  noisy :insert + :update pair.
 
   `:vocab-link/id` names the new link's id (a client's UUIDv7), else the
   server mints one.
@@ -227,7 +227,7 @@
         ;; Insert metadata BEFORE the audit emission, with the
         ;; skip-parent-audit? flag so no separate :update row fires;
         ;; we then fold :metadata into our manual :insert audit's
-        ;; post_image (task #59).
+        ;; post_image.
         (when (seq metadata)
           (metadata/insert-metadata! tx "vocab-link" new-id metadata
                                      {:skip-parent-audit? true}))
@@ -291,7 +291,7 @@
          (throw (ex-info "Tokens in a bulk vocab-link create must all belong to the same document"
                          {:document-ids doc-ids :code 400})))
        ;; Manual insert (not crud/insert-many!) so the post-image folds the
-       ;; junction tokens — see single-`create` docstring (task #59).
+       ;; junction tokens — see single-`create` docstring.
        (psc/execute! tx {:insert-into :vocab_links
                          :values (mapv (fn [r]
                                          {:id (:id r)

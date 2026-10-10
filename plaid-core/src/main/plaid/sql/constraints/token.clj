@@ -28,9 +28,9 @@
 
 (defn- token-row->light
   "Lightweight token shape for in-memory use by the constraint code.
-  Keeps the same keys the v2 enforcement code reads (:token/id,
+  Keeps the keys the enforcement code reads (:token/id,
   :token/layer, :token/begin, :token/end, :token/document), plus
-  `:token/precedence` (task #115) so the in-memory containment matcher
+  `:token/precedence` so the in-memory containment matcher
   can apply the same load-bearing precedence tiebreaker the SQL ORDER
   BY uses."
   [row]
@@ -49,7 +49,7 @@
 (defn layer-overlap-mode
   "Return the overlap-mode keyword (:any / :non-overlapping /
   :partitioning) for `layer-id`. Defaults to :any if the layer or
-  column is missing (matches v2 behavior)."
+  column is missing."
   [db layer-id]
   (or (some-> (psc/q1 db {:select [:overlap_mode]
                           :from [:token_layers]
@@ -77,9 +77,7 @@
   forever. `UNION` deduplicates the running set and so terminates
   naturally on any reachable cycle. The schema today makes
   parent_token_layer_id immutable + create-time-validated, but this
-  defends against drift.
-
-  This mirrors the v2 implementation's seen-set guard."
+  defends against drift."
   [db layer-id]
   (->> (psc/q db ["WITH RECURSIVE descendants(id) AS (
                      SELECT id FROM token_layers WHERE parent_token_layer_id = ?
@@ -181,9 +179,8 @@
   counts as contained. ORDER BY: tightest extent first (largest begin,
   then smallest end), then precedence (ASC, NULLS LAST), then id —
   deterministic insurance if the parent layer presents overlapping
-  candidates. Task #115: with #101's overlap-mode constraints landed,
-  same-extent parents on `:any` layers are common, and `:token/precedence`
-  is now the load-bearing tiebreaker between them — id-only ordering
+  candidates. Same-extent parents on `:any` layers are common, and
+  `:token/precedence` is the load-bearing tiebreaker between them — id-only ordering
   picked a parent that was a function of UUID bytes, not the
   user-controlled precedence the constraint spec promises."
   [db parent-layer-id doc-id begin end]
@@ -217,7 +214,7 @@
   "In-memory equivalent of containing-parent over a pre-fetched parent
   token seq. Same deterministic preference as the SQL ORDER BY:
   tightest extent (largest begin, then smallest end), then precedence
-  (ASC, NULLS LAST — task #115), then id.
+  (ASC, NULLS LAST), then id.
 
   NULLS LAST is encoded by mapping nil precedence to Long/MAX_VALUE so
   it sorts after every real precedence value under Clojure's < ordering."
@@ -241,7 +238,7 @@
   zero-width-free partition of [lo, hi). Empty + (= lo hi) is OK; empty
   + a non-empty extent throws.
 
-  Task #104 defensive note: zero-width tokens are forbidden here, BUT
+  Defensive note: zero-width tokens are forbidden here, BUT
   `plaid.sql.token/compensate-partition-layers!` (the text-edit gap-fill
   compensator) re-runs this validation against the post-edit token set.
   Today the asymmetry is unreachable — zero-widths can't be created on
@@ -249,7 +246,7 @@
   `check-bulk-create-overlap!` reject them) — but a future migration
   that introduced zero-width survivors on a partitioning layer would
   trip the `Zero-width tokens are not allowed` branch below during the
-  next text edit, even though #71's zero-width-preservation rule
+  next text edit, even though the zero-width-preservation rule
   promises that those tokens survive structural compensation. Worth
   flagging because the two rules are designed independently and the
   conflict only surfaces under that hypothetical schema drift."
@@ -283,7 +280,7 @@
 (defn validate-partition!
   "Validate that tokens partition [0, text-length).
 
-  Task #100 V3: an EMPTY partitioning layer (0 tokens) over a non-empty
+  An EMPTY partitioning layer (0 tokens) over a non-empty
   text is permitted as a transient state — the layer simply hasn't been
   populated yet. `validate-partition!` is fired ONLY from
   `check-bulk-create-overlap!` (where the caller is supplying the
@@ -482,11 +479,11 @@
   "Return the (light-shape) token in (layer, doc) whose end_ == `b` and
   whose id is not `exclude-id`, or nil.
 
-  Task #115: when more than one neighbor candidate is possible
+  When more than one neighbor candidate is possible
   (same-boundary overlaps on an `:any` layer), pick deterministically
   using the same ordering containing-parent uses — tightest extent first
   (begin DESC, end_ ASC), then `precedence` (ASC NULLS LAST) as the
-  load-bearing tiebreaker promised by #101, then id."
+  load-bearing tiebreaker, then id."
   [db layer doc-id b exclude-id]
   (-> (psc/q1 db {:select [:id :token_layer_id :document_id :begin :end_ :precedence]
                   :from :tokens
@@ -507,7 +504,7 @@
   whose id is not `exclude-id`, or nil.
 
   Same deterministic ordering as `neighbor-left` — see its docstring for
-  the rationale (task #115)."
+  the rationale."
   [db layer doc-id e exclude-id]
   (-> (psc/q1 db {:select [:id :token_layer_id :document_id :begin :end_ :precedence]
                   :from :tokens
@@ -636,8 +633,7 @@
 ;;
 ;; The token.clj cascades make the affected descendants conform BEFORE
 ;; calling enforce!, so by the time we run, the post-cascade state in
-;; the tx is what we evaluate. We check the actual tx state — that's
-;; the SQL equivalent of v2's "ASSERT NOT EXISTS after the cascade".
+;; the tx is what we evaluate: the actual tx state after the cascade.
 ;; ---------------------------------------------------------------------------
 
 (defn- assert-no-descendants-in-extent!

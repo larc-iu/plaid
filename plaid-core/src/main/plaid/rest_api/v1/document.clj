@@ -60,7 +60,7 @@
   (-> params :path :document-id))
 
 ;; ---------------------------------------------------------------------------
-;; ?layers= (issue #57)
+;; ?layers=
 ;;
 ;; A deep read otherwise returns every layer in the document's project. An app
 ;; that touches only a couple of them pays for and parses all of it. `?layers=`

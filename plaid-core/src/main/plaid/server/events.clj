@@ -635,7 +635,7 @@
   (let [accepted? (async/offer! event-bus event)]
     (when-not accepted?
       (let [total-drops (swap! event-bus-drop-count inc)
-            ;; Task #119: capture the drop time NOW, before dispatching
+            ;; Capture the drop time NOW, before dispatching
             ;; the warn into a future. Under sustained overflow the
             ;; futures may queue + emit minutes later, at which point a
             ;; `(java.util.Date.)` inside the log/warn body would
@@ -754,7 +754,7 @@
 
 (defn reset-state!
   "Test-helper: wipe the in-memory subscriber + heartbeat + drop-counter
-  state. Task #113.
+  state.
 
   Does NOT touch the `event-bus` core.async channel itself — that's
   started/stopped by mount, and a fresh channel between every deftest

@@ -211,8 +211,8 @@
             :busy)
         (throw e)))))
 
-(defn- ->v2-shape
-  "Project the SQL op-record into the v2 audit/op key shape that
+(defn- ->audit-event-shape
+  "Project the SQL op-record into the audit/op key shape that
   plaid.server.events/publish-audit-event! expects.
 
   `:audit/documents` is the union of the op-attrs' single `:document`
@@ -251,9 +251,9 @@
 
 (defn- publish-op-event!
   [op-record user-id]
-  (let [v2-op (->v2-shape op-record)]
+  (let [event-op (->audit-event-shape op-record)]
     (try
-      (events/publish-audit-event! v2-op [v2-op] user-id)
+      (events/publish-audit-event! event-op [event-op] user-id)
       (catch Exception e
         (log/warn "Failed to publish audit event:" (ex-message e))))))
 
@@ -352,7 +352,7 @@
       (psaw/record-audit-write! tx :documents doc-id
                                 psaw/doc-version-bump-change-type
                                 pre post)
-      ;; Record the bump for the op's audit event (see ->v2-shape).
+      ;; Record the bump for the op's audit event (see ->audit-event-shape).
       (when-let [a (:affected-documents psaw/*op*)]
         (swap! a conj doc-id)))))
 
@@ -393,7 +393,7 @@
         (psaw/record-audit-write! tx :documents doc-id
                                   psaw/doc-version-bump-change-type
                                   pre post)
-        ;; Record the bump for the op's audit event (see ->v2-shape) —
+        ;; Record the bump for the op's audit event (see ->audit-event-shape) —
         ;; this is exactly the multi-document signal: ops like
         ;; vocab/delete carry :document nil but bump N docs here.
         (when-let [a (:affected-documents psaw/*op*)]
@@ -473,7 +473,7 @@
   `:skip-doc-version-bump? true` to avoid a double-increment or a
   duplicate audit row (see `bump-document-version!`).
 
-  Outer try/catch shape (task #47): a single try wraps the entire
+  Outer try/catch shape: a single try wraps the entire
   function body: the `with-tx` (whose first step is `check-locks!`), the
   body invocation and post-body bookkeeping. Any
   `ExceptionInfo` thrown WITHIN those bounds — by `check-locks!`, by
@@ -517,7 +517,7 @@
           ;; Documents whose version the body bumps (via
           ;; bump-document-version!/bump-document-versions!, which read
           ;; this atom off psaw/*op*). Unioned into the audit event's
-          ;; :audit/documents post-commit — see ->v2-shape.
+          ;; :audit/documents post-commit — see ->audit-event-shape.
           affected-docs (atom #{})
           ;; Set when an op that asked for it (`:unrecorded-if-empty?`)
           ;; wrote nothing and its row was taken back out.
@@ -562,7 +562,7 @@
                         (throw (ex-info (psc/err-msg-not-found "Project" pid) {:code 404 :id pid}))))
                     (ensure-group-row! tx op-record)
                     (insert-operation-row! tx op-record)
-                    ;; In-tx OCC check (task #108). Before the body runs,
+                    ;; In-tx OCC check. Before the body runs,
                     ;; verify the client's expected `?document-version=`
                     ;; (carried via psaw/*expected-document-version*) still
                     ;; matches the row inside our write tx. SQLite serializes
@@ -655,7 +655,7 @@
         (if (>= code 500)
           (log/error e "submit-operation* failed:" (ex-message e))
           (log/debug e "submit-operation* rejected:" (ex-message e)))
-        ;; Task #114: 5xx ExceptionInfo paths cover both intentional
+        ;; 5xx ExceptionInfo paths cover both intentional
         ;; server-error throws (e.g. validators with `:code 500`) and
         ;; "I forgot to set :code" leaks (the fallback `or … 500`). In
         ;; both cases the message often carries developer-facing detail
@@ -691,7 +691,7 @@
           {:success false :error "Database busy, please retry" :code 503})
         (do
           (log/error e "Operation failed (SQL):" (ex-message e))
-          ;; Task #95: do NOT leak raw SQLException text to the
+          ;; Do NOT leak raw SQLException text to the
           ;; response. The driver message often carries column
           ;; names, generated SQL fragments, and constraint
           ;; identifiers — useful for the operator (logged above)

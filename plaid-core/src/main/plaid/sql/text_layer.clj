@@ -68,7 +68,7 @@
                                :document nil
                                :description (str "Create text layer \"" name "\" in project " project-id)
                                :user user-id}]
-                       ;; Validation inside the body (task #47).
+                       ;; Validation inside the body.
                        (psc/assert-valid-name! name)
                        (psc/claim-ids! tx :text_layers "text layer" [(:text-layer/id attrs)])
                        (when (nil? (psc/fetch-by-id tx :projects project-id))

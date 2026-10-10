@@ -68,7 +68,7 @@
   [value]
   (psc/validate-atomic-value! "Relation" value))
 
-;; Task #100 V1: self-loops (source == target) are intentionally allowed.
+;; Self-loops (source == target) are intentionally allowed.
 ;; Annotation projects routinely encode "this span refers back to itself"
 ;; (reflexives, dependency self-arcs, coreference singletons) and the
 ;; downstream consumers all handle the case. The invariant check below
@@ -122,7 +122,7 @@
   change_type :insert. pre = nil; post = the inserted relation row,
   augmented with a `:metadata` key when `metadata` is non-empty.
   Folding metadata in avoids the noisy :insert + :update pair we'd
-  otherwise emit (task #59). Relations have no junction-table
+  otherwise emit. Relations have no junction-table
   tokens, so only `:metadata` is folded.
 
   `:relation/id` names the new relation's id (a client's UUIDv7), else
@@ -142,7 +142,7 @@
               :description (str "Create relation " new-id " from span " source
                                 " to span " target " in layer " layer)
               :user user-id}]
-      ;; Validation inside the body (task #47).
+      ;; Validation inside the body.
       (validate-atomic-value! value)
       (psc/claim-ids! tx :relations "relation" [(:relation/id attrs)])
       (let [source-row (psc/fetch-by-id tx :spans source)
@@ -156,8 +156,7 @@
         (check-relation-invariants! tx layer source target source-row target-row)
         (if (seq metadata)
           ;; Manual insert + audit so the post_image folds in
-          ;; :metadata, avoiding a separate :update audit row
-          ;; (task #59).
+          ;; :metadata, avoiding a separate :update audit row.
           (do
             (psc/execute! tx {:insert-into :relations :values [row]})
             (metadata/insert-metadata! tx "relation" new-id metadata
@@ -275,7 +274,7 @@
 ;; ============================================================
 
 (defn- check-relations-consistency!
-  "All relations in a bulk-create must target the same relation layer (v2 contract)."
+  "All relations in a bulk-create must target the same relation layer."
   [relations-attrs]
   (when (empty? relations-attrs)
     (throw (ex-info "Relation list is empty" {:code 400})))
@@ -331,7 +330,7 @@
                          :value (psc/write-json value)
                          ::metadata (:metadata a)}))
                     attrs-vec)
-           ;; v2 contract: all relations in the batch must share a document.
+           ;; All relations in the batch must share a document.
            doc-ids (->> records (map :document_id) distinct)]
        (when (> (count doc-ids) 1)
          (throw (ex-info "Not all relations belong to the same document"
@@ -393,7 +392,7 @@
              :description (str "Update " end-type " of relation " eid
                                " to span " new-span-id)
              :user user-id}]
-     ;; Validation inside the body (task #47): bad end-key and missing
+     ;; Validation inside the body: bad end-key and missing
      ;; relation both surface as structured 4xx via the outer catch.
      (when-not (#{:relation/source :relation/target} end-key)
        (throw (ex-info "Key must be either :relation/source or :relation/target"

@@ -342,7 +342,7 @@
                      (let [intern (get-internal tx eid)]
                        (when (nil? intern)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
-                       ;; Task #100 V4: refuse to demote the LAST global
+                       ;; Refuse to demote the LAST global
                        ;; admin. We only block the (admin -> non-admin)
                        ;; transition when no other admin exists; promoting
                        ;; or no-op demotion is fine. Sits inside the body
@@ -548,7 +548,7 @@
                        (when (some? (:deactivated_at existing))
                          (throw (ex-info (str "User " eid " is already deactivated")
                                          {:code 400 :id eid})))
-                       ;; Task #100 V4: refuse deactivation if it would leave
+                       ;; Refuse deactivation if it would leave
                        ;; the system or any project without a required
                        ;; principal. Two distinct invariants, both
                        ;; reported as 400:

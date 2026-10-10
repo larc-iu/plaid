@@ -4,7 +4,7 @@
   1. Per-(IP, username): 10 failures / 15 min — catches password-guessing
      against a single account from a given client.
 
-  2. Per-IP (task #111): 100 failures / 15 min — catches credential
+  2. Per-IP: 100 failures / 15 min — catches credential
      spray, where an attacker rotates the username on every attempt so
      no single per-(IP, username) bucket ever fills. Without this
      bucket, a single hostile IP can keep hammering /login indefinitely
@@ -29,7 +29,7 @@
 (def ^:private window-ms (* 15 60 1000))
 (def ^:private max-failures 10)
 (def ^:private max-ip-failures
-  "Per-IP failure cap (#111). Set deliberately well above the per-(IP,
+  "Per-IP failure cap. Set deliberately well above the per-(IP,
   username) limit so a single legitimate user mistyping their password
   on a shared corporate NAT can't lock out their whole office."
   100)
@@ -54,7 +54,7 @@
   :start (atom {})
   :stop (reset! attempt-buckets {}))
 
-(defstate ^{:doc "Map of ip -> vector of failure timestamps (ms). #111."}
+(defstate ^{:doc "Map of ip -> vector of failure timestamps (ms)."}
   ip-buckets
   :start (atom {})
   :stop (reset! ip-buckets {}))
@@ -62,13 +62,13 @@
 (defonce ^{:private true
            :doc "Fallback atom used when mount hasn't started the defstate
                  yet — keeps tests that don't run (mount/start) (current
-                 plaid.fixtures behavior, pending #98) from blowing up
+                 plaid.fixtures behavior) from blowing up
                  inside the limiter. Production paths go through
                  `attempt-buckets` directly."}
   fallback-atom (atom {}))
 
 (defonce ^{:private true
-           :doc "Fallback atom for `ip-buckets` (#111)."}
+           :doc "Fallback atom for `ip-buckets`."}
   fallback-ip-atom (atom {}))
 
 (defstate ^{:doc "Map of ip -> vector of failed invite-attempt timestamps (ms)."}
@@ -180,7 +180,7 @@
   already exceeds its threshold inside the rolling window.
 
   Per-(ip, username) catches focused password-guessing; per-ip catches
-  credential spray (rotating usernames) — see #111. We use OR rather
+  credential spray (rotating usernames). We use OR rather
   than AND because either signal is enough to be suspicious."
   ([request username]
    (over-limit? request username (System/currentTimeMillis)))
@@ -298,7 +298,7 @@
 
 (defn wrap-login-rate-limit
   "Reitit middleware: short-circuit with 429 once EITHER the per-(IP,
-  username) bucket OR the per-IP bucket (#111) is full. Body parsing
+  username) bucket OR the per-IP bucket is full. Body parsing
   has already happened by the time this runs (it sits inside the route
   stack), so we can read the username off `:parameters`. The handler is
   still responsible for calling `record-failure!` on a 4xx auth failure

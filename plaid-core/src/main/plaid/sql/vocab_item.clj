@@ -88,7 +88,7 @@
 ;; Writes: create / merge
 ;;
 ;; No `delete` — items are removed transitively via the cascade from
-;; vocab_layers (matches v2 behavior).
+;; vocab_layers.
 ;; ============================================================
 
 (defn- assert-document-version!
@@ -134,8 +134,7 @@
                         (if (seq metadata-map)
                           ;; Manual insert + audit so the post_image folds
                           ;; in :metadata, avoiding a separate :update
-                          ;; audit row from the metadata helper (task #59,
-                          ;; missed for vocab-item in Wave 5 — task #74).
+                          ;; audit row from the metadata helper.
                           (do
                             (psc/execute! tx {:insert-into :vocab_items
                                               :values [row]})
@@ -279,7 +278,7 @@
 
   The audit shape mirrors single `create`: ONE synthetic :insert per item
   whose post_image folds :metadata when present, so history replay
-  reconstructs each item from one record (task #59). Returns
+  reconstructs each item from one record. Returns
   {:success true :extra [ids]} with ids in input order."
   ([db attrs-vec user-id]
    (bulk-create db attrs-vec user-id nil))

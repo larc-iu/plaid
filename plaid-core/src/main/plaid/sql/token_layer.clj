@@ -70,8 +70,7 @@
       :any))
 
 (defn sort-token-records
-  "Pure helper: deterministically sort token records (task #101, revised
-  2026-06-02). Ordering matches the SQL ORDER BY in get-with-layer-data, the
+  "Pure helper: deterministically sort token records. Ordering matches the SQL ORDER BY in get-with-layer-data, the
   canonical token order, in which precedence OUTRANKS
   extent (see plaid.sql.query.compile):
     1. :token/begin ASC
@@ -106,7 +105,7 @@
   [tx parent-tl-id text-layer-id overlap-mode-kw]
   (when parent-tl-id
     (cond
-      ;; Partitioning is only meaningful on root layers — see v2 rationale.
+      ;; Partitioning is only meaningful on root layers.
       (= :partitioning overlap-mode-kw)
       (throw (ex-info (str "A nested token layer may not use overlap-mode :partitioning"
                            " (partitioning is only allowed on root token layers).")
@@ -154,7 +153,7 @@
                                :description (str "Create token layer \"" name "\" in text layer "
                                                  text-layer-id)
                                :user user-id}]
-                       ;; Validation inside the body (task #47) so name + overlap-mode
+                       ;; Validation inside the body so name + overlap-mode
                        ;; rejections produce {:success false :code 400}.
                        (psc/assert-valid-name! name)
                        (psc/claim-ids! tx :token_layers "token layer" [(:token-layer/id attrs)])

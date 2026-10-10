@@ -66,7 +66,7 @@
 ;; project, with the document-scoped rows (texts, tokens, spans,
 ;; relations, vocab-links) attached under each layer.
 ;;
-;; PERF (Task #52, 2026-05-27): rewrites the previous recursive
+;; PERF (2026-05-27): rewrites the previous recursive
 ;; per-layer / per-row walker to a small fixed set of batched queries
 ;; (~11 round trips regardless of layer count / row count), with one
 ;; entity_metadata fetch per kind. The previous shape ran
@@ -274,7 +274,7 @@
                             vlayer-rows)}))))
 
 ;; ============================================================
-;; Layer subsetting (issue #57)
+;; Layer subsetting
 ;;
 ;; A deep read normally returns EVERY layer in the document's project.
 ;; An app that only touches, say, one token layer and one span layer
@@ -389,7 +389,7 @@
                                 ;; first audit row would be the version-update, not the
                                 ;; INSERT).
                                 :skip-doc-version-bump? true}]
-                        ;; Validation inside the body (task #47) so a bad
+                        ;; Validation inside the body so a bad
                         ;; name produces {:success false :code 400} via the
                         ;; outer catch in submit-operation*.
                         (psc/assert-valid-name! name)

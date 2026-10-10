@@ -66,7 +66,7 @@
                                :description (str "Create relation layer \"" name "\" in span layer "
                                                  span-layer-id)
                                :user user-id}]
-                       ;; Validation inside the body (task #47).
+                       ;; Validation inside the body.
                        (psc/assert-valid-name! name)
                        (psc/claim-ids! tx :relation_layers "relation layer" [(:relation-layer/id attrs)])
                        (let [sl (psc/fetch-by-id tx :span_layers span-layer-id)]

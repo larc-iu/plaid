@@ -117,10 +117,8 @@
 
 (defn assoc-document-versions-in-header
   "Set X-Document-Versions on the response to the current version of every
-  document in `doc-ids`. Matches the v2 header name + shape (JSON map of
-  doc-id → version), but version is now the integer `documents.version`
-  column instead of the v2 audit-id UUID. Same code path on the client;
-  only the value type changes.
+  document in `doc-ids`: a JSON map of doc-id to its integer
+  `documents.version`.
 
   A bulk write reaches the documents of one project, and a client that
   learned only one of their versions goes on to write the rest with a
@@ -202,8 +200,8 @@
   match by `(name k)` (case-folded) rather than literal key identity
   so namespaced variants like `:user/password`, `:plaid.auth/token`
   and `:secret-key` (injected onto every request by
-  `wrap-request-extras`) all hit. Prior to #116 the matcher used a
-  literal set, so namespaced keys leaked through.
+  `wrap-request-extras`) all hit. A literal set would let namespaced
+  keys leak through.
 
   `code` is here for the invite and password-reset codes: one appears in
   the body of `POST /invites/{lookup,redeem}` and one in the 201 body that
@@ -569,7 +567,7 @@
   `plaid.sql.audit-write/*expected-document-version*` so the authoritative
   check fires inside the write tx in `submit-operation*` — closing the
   TOCTOU window that existed when the middleware did the comparison
-  before the handler opened its tx (task #108).
+  before the handler opened its tx.
 
   The version is the integer `documents.version` column that every write
   to the document bumps. A value that is not an integer is refused with a

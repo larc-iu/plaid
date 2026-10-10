@@ -7,7 +7,7 @@
     events had an EMPTY :audit/documents — document-scoped listeners
     were never notified that their view went stale. The version-bump
     helpers now record every bumped doc into psaw/*op*'s
-    :affected-documents, which ->v2-shape unions into the event.
+    :affected-documents, which ->audit-event-shape unions into the event.
 
   - Editor-config ops carried `:project nil` and `:user nil`, so the
     audit log couldn't answer 'who changed this layer's config' and the

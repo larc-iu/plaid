@@ -57,7 +57,7 @@
 
    [""
     {:get {:summary "List/search users, keyset-paginated by display name"
-           ;; Task #95 locked the roster down to admins (it was an account-
+           ;; The roster is locked down to admins (it was an account-
            ;; enumeration surface for any authenticated caller). It's now also
            ;; open to project AND vocab MAINTAINERS, who need to find users to
            ;; grant project/vocab access — see `wrap-user-directory-access`. Ordinary

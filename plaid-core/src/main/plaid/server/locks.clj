@@ -5,7 +5,7 @@
             [taoensso.timbre :as log])
   (:import [java.time Instant]))
 
-;; Task #119: read at call time, not load time. The previous
+;; Read at call time, not load time. The previous
 ;; `def ^:private lock-expiration-ms` was captured at namespace load,
 ;; which meant operators who tuned `:plaid.server.locks/config
 ;; :expiration-ms` AFTER namespace load (e.g. test fixtures binding
@@ -298,7 +298,7 @@
       :not-held)))
 
 (defn reset-state!
-  "Test-helper: wipe the entire in-memory lock table. Task #113.
+  "Test-helper: wipe the entire in-memory lock table.
 
   The locks atom is `defonce`-d so a deftest that acquired a lock
   earlier in the run (typical for batch / OCC integration tests) would

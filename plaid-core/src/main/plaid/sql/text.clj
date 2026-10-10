@@ -103,7 +103,7 @@
               :description (str "Create text in layer " layer " for document " document
                                 (when (seq metadata-map) (str " with " (count metadata-map) " metadata keys")))
               :user user-id}]
-      ;; Body-shape validation inside the body (task #47) so a non-string
+      ;; Body-shape validation inside the body so a non-string
       ;; body surfaces as {:success false :code 400}. `body` is the raw
       ;; caller input; `body-str` is the validated string used for INSERT.
       (when-not (or (nil? body) (string? body))
@@ -346,7 +346,7 @@
                  :document (:document_id pre)
                  :description (str description eid)
                  :user user-id}]
-         ;; Validation inside the body (task #47).
+         ;; Validation inside the body.
          (when-not valid?
            (throw (ex-info (if (map? change)
                              "Text edits must be a list of edit operations."

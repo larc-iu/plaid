@@ -3,7 +3,7 @@
 
   Metadata is a wide-narrow table keyed on (entity_type, entity_id, key).
 
-  ## Parent-owned :delete contract (task #58)
+  ## Parent-owned :delete contract
 
   Metadata is PARENT-OWNED with respect to the audit log. On
   `:insert` and `:update` of a parent entity, metadata IS folded into
@@ -43,8 +43,7 @@
       DELETE all rows for (entity_type, entity_id).
 
     (add-metadata-to-response db core-attrs entity-type entity-id)
-      Reader-side helper that mirrors the v2
-      `metadata/add-metadata-to-response` contract: looks up metadata
+      Reader-side helper: looks up metadata
       and, if non-empty, assoc's it under :metadata on the response map.
 
     (metadata-fns spec)
@@ -105,8 +104,7 @@
   any string containing an ASCII control character, and one holding an
   unpaired surrogate, which the column would store as `?`. Keywords are
   coerced to their name before validation so callers can pass either
-  shape (matches `raw-insert-metadata!`'s tolerant input handling).
-  Task #100 V5."
+  shape (matches `raw-insert-metadata!`'s tolerant input handling)."
   [k]
   (let [s (cond
             (keyword? k) (name k)
@@ -206,7 +204,7 @@
   already emitted ONE synthetic :insert audit row that folds metadata
   into the parent's post_image directly — without the skip flag those
   creates produce a noisy :insert + :update pair against the same
-  parent row in the same op (task #59)."
+  parent row in the same op."
   ([tx entity-type entity-id m]
    (insert-metadata! tx entity-type entity-id m nil))
   ([tx entity-type entity-id m {:keys [skip-parent-audit?]}]
@@ -277,7 +275,7 @@
   (* 10 1024))
 
 (def max-metadata-total-bytes
-  "Cumulative cap on the JSON-serialized size of one metadata map (#118).
+  "Cumulative cap on the JSON-serialized size of one metadata map.
   1 MB is generous for any realistic structured metadata blob."
   (* 1024 1024))
 

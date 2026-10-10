@@ -25,7 +25,7 @@
         ;; for every inbound request), so we sit it at the LARGER of
         ;; the two limits (multipart uploads) and rely on the
         ;; `wrap-json-body-cap` middleware in plaid.server.middleware
-        ;; to enforce the smaller JSON-only cap. See task #118.
+        ;; to enforce the smaller JSON-only cap.
         max-body-bytes (* max-file-size-mb 1024 1024)
         http-kit-config-with-max-body (assoc http-kit-config :max-body max-body-bytes)
         port (:port http-kit-config-with-max-body)]

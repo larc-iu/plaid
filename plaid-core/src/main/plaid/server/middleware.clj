@@ -383,7 +383,7 @@
   (re-pattern (str "^" (java.util.regex.Pattern/quote origin) "$")))
 
 ;; ---------------------------------------------------------------------------
-;; Task #118: per-content-type body cap
+;; Per-content-type body cap
 ;;
 ;; http-kit's `:max-body` is a single per-connection number — every
 ;; inbound request is held to the same ceiling. We size that ceiling for
@@ -419,7 +419,7 @@
 (defn wrap-json-body-cap
   "Reject non-multipart requests whose declared body size exceeds the
   configured JSON cap with a 413. The cap is the SMALLER of the two
-  limits — see the task #118 note in http-server.clj for why http-kit's
+  limits. See the note in http_server.clj for why http-kit's
   connection-level cap is sized for multipart instead.
 
   Chunked non-multipart bodies are rejected with 411 because their size cannot
@@ -503,7 +503,7 @@
   "True when an operator-supplied CORS origin string contains characters
   that ring-cors's `Pattern/quote` will treat literally — typically a
   sign the operator meant to write a regex (e.g. `https://.*\\.example\\.com`)
-  but the pre-`#101` quoting now treats those bytes as themselves. Used
+  but the quoting treats those bytes as themselves. Used
   by the boot-time warn so misconfigured origins surface in logs instead
   of silently never matching anything."
   [^String origin]
@@ -525,7 +525,7 @@
                                 headers
                                 (conj (vec headers) "Idempotency-Key"))))
         allow-origins (vec (:access-control-allow-origin cors-config))
-        ;; Task #118: pull the JSON-body cap from config; default 10MB.
+        ;; Pull the JSON-body cap from config; default 10MB.
         ;; Multiplied to bytes once at boot so the per-request middleware
         ;; just does an integer compare. The outer http-kit per-connection
         ;; cap stays sized for multipart media uploads.
@@ -536,7 +536,7 @@
                 "This allows cross-origin requests from ANY origin and is unsafe with "
                 "credentialed endpoints. Replace with the exact origin string(s) of your "
                 "frontend deployments."))
-    ;; Task #119 (CORS regex-meta warn): origin strings are
+    ;; Origin strings are
     ;; `Pattern/quote`-d by `origin-string->exact-pattern`, so any
     ;; regex metacharacter in an operator-supplied origin will be
     ;; matched LITERALLY — typically a typo'd "I meant a regex"

@@ -177,8 +177,7 @@
   vocab_link), pre-image carrying the old `:tokens` vector (with
   dying-id present) and post-image carrying the new vector (with
   dying-id removed; surviving-id is either appended in its slot or
-  already present, depending on dedup). This mirrors v2's put-docs
-  audit for the same change.
+  already present, depending on dedup).
 
   `parent-table` is the parent entity table (`:spans` /
   `:vocab_links`) — needed so the audit row can target the right
@@ -203,7 +202,7 @@
         ;; ORDER BY <parent-id-col> for deterministic per-op audit
         ;; sequence: without it the audit_writes :seq ordinals are
         ;; ordered by whatever the engine returns, which can differ
-        ;; across replays (task #70). Stable order means the same
+        ;; across replays. Stable order means the same
         ;; (op_id, seq) tuples reproduce on every replay.
         affected-parent-ids
         (->> (psc/q tx {:select-distinct [parent-id-col]
@@ -421,7 +420,7 @@
   a deleted token are each split the same way: fully orphaned (no
   tokens left — audited DELETE) vs partially trimmed (some tokens
   remain — synthetic :update audit row carrying the trimmed `:tokens`
-  vector; see v2's `multi-delete*` for the original semantics).
+  vector).
   Relations whose source/target span is about to disappear are deleted
   too. Each visible-entity delete uses crud/delete-by-id! so
   audit_writes captures it.
@@ -508,7 +507,7 @@
   :insert. pre = nil; post = the inserted token row, augmented with a
   `:metadata` key when `metadata` is non-empty. Folding metadata into
   the :insert post_image avoids the noisy :insert + :update pair we'd
-  otherwise emit (task #59). Tokens have no junction-table tokens
+  otherwise emit. Tokens have no junction-table tokens
   themselves, so only `:metadata` is folded.
 
   `:token/id` names the new token's id (a client's UUIDv7), else the
@@ -544,8 +543,7 @@
                         :records [token-with-doc]})
           (if (seq metadata)
             ;; Manual insert + audit so the post_image folds in
-            ;; :metadata, avoiding a separate :update audit row
-            ;; (task #59).
+            ;; :metadata, avoiding a separate :update audit row.
             (do
               (psc/execute! tx {:insert-into :tokens :values [row]})
               (metadata/insert-metadata! tx "token" new-id metadata
@@ -586,7 +584,7 @@
   include :token/begin, :token/end, and :token/precedence.
 
   If the extent changes on a layer with descendants, this cascades
-  to nested tokens via resize-child-cascade! (mirrors v2's behavior).
+  to nested tokens via resize-child-cascade!.
 
   Returns {:success true :extra <token-id>}."
   [db eid m user-id]
@@ -615,9 +613,7 @@
                         {})
            dlids (when extents-changing? (tc/descendant-layer-ids tx layer))]
        ;; Step 1: cascade resize down through descendants BEFORE the
-       ;; parent's own update — same order as v2 (cascade tx-ops were
-       ;; appended in front of the parent put, but here we just do it
-       ;; in transaction order). The parent's new extent is what we
+       ;; parent's own update. The parent's new extent is what we
        ;; cascade with.
        (when extents-changing?
          (resize-child-cascade! tx dlids layer doc-id
@@ -1099,7 +1095,7 @@
 
 (defn- resize-child-cascade!
   "Cascade a parent token resize ([begin,end) → [nb,ne)) to descendant
-  tokens. Mirrors v2's resize-child-cascade*:
+  tokens:
 
    - :partitioning parent — its neighbor grows to cover the freed
      region; for each moved boundary, split each straddling
@@ -1188,9 +1184,7 @@
 (defn compensate-partition-layers!
   "After a text-body edit reindexes/deletes tokens, extend remaining
   tokens in every :partitioning layer to close any gap left by the
-  edit and validate the result. Mirrors v2's
-  compensate-after-cascade: the pure gap-fill algorithm is identical
-  — only the persistence path changes.
+  edit and validate the result.
 
   `tokens` is the surviving (post-reindex) token set in the form
   {:token/id ... :token/layer ... :token/begin ... :token/end ...};
@@ -1201,9 +1195,8 @@
   contract an EMPTY layer is a valid state (\"always empty or a
   complete cover\"). The pure deletion case (all tokens consumed by
   the deleted range) lands in that valid empty state and needs no
-  compensation. v2 had a TOCTOU assert (`text-edit-partition-asserts`)
-  to fence a concurrent establishment against the old text length,
-  but under the SQL port's serializable tx that race is impossible.
+  compensation. A concurrent establishment against the old text length
+  cannot race it under the serializable tx.
 
   Partial-cover invariant: given that `apply-text-edits` preserves
   positional ordering (tokens stay sorted by begin, never crossing
@@ -1223,8 +1216,8 @@
   [tx tokens new-text-length]
   (let [by-layer (group-by :token/layer tokens)
         layer-ids (vec (keys by-layer))
-        ;; One IN-read for the affected layers' modes (matches v2's
-        ;; perf shape: per-query cost dominates, batch ≈ point).
+        ;; One IN-read for the affected layers' modes (per-query cost
+        ;; dominates, batch ≈ point).
         modes (if (empty? layer-ids)
                 {}
                 (->> (psc/q tx {:select [:id :overlap_mode]

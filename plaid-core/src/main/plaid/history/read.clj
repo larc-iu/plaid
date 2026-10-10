@@ -268,7 +268,7 @@
   "Media files are not versioned (one file on disk per doc-id), so this
   is a current-filesystem probe — same as the OLTP read. For a doc
   deleted from OLTP the URL is omitted: the media route's auth resolves
-  the project from OLTP and would 403/404 (option B, task #138)."
+  the project from OLTP and would 403/404."
   [m db doc-id]
   (let [doc-deleted? (nil? (psc/fetch-by-id db :documents doc-id))
         url (when-not doc-deleted? (media/media-url doc-id))]

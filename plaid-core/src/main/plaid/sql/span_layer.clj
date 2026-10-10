@@ -67,7 +67,7 @@
                                :description (str "Create span layer \"" name "\" in token layer "
                                                  token-layer-id)
                                :user user-id}]
-                       ;; Validation inside the body (task #47).
+                       ;; Validation inside the body.
                        (psc/assert-valid-name! name)
                        (psc/claim-ids! tx :span_layers "span layer" [(:span-layer/id attrs)])
                        (let [tokl (psc/fetch-by-id tx :token_layers token-layer-id)]

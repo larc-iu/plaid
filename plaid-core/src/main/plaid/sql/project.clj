@@ -89,7 +89,7 @@
 
 (defn- enrich-layers
   "Build the nested layer hierarchy for `project-bare`. Adds
-  :project/text-layers and :project/vocabs in the same shape as v2."
+  :project/text-layers and :project/vocabs."
   [db project-bare]
   (let [project-id (:project/id project-bare)
         ;; text layers
@@ -449,7 +449,7 @@
                                :description (str "Create project \"" name "\"")
                                :user user-id}]
                        ;; Validation inside the body so submit-operation*'s
-                       ;; outer catch surfaces a structured 4xx (task #47).
+                       ;; outer catch surfaces a structured 4xx.
                        (psc/assert-valid-name! name)
                        (psc/claim-ids! tx :projects "project" [(:project/id attrs)])
                        (psc/execute! tx {:insert-into :projects
@@ -760,7 +760,7 @@
   Keys are UNNAMESPACED on purpose: this is the audit-row \"extras\"
   shape, not the REST-API shape. Folding namespaced keys (:project/...)
   into the `projects` row pre/post image produced mixed-shape audit
-  records (see #65). Precedent: `span.clj/set-tokens` uses `:tokens`
+  records. Precedent: `span.clj/set-tokens` uses `:tokens`
   unnamespaced for the same reason. The namespaced REST shape lives in
   `attach-acl` / `batch-hydrate-projects` and is unaffected.
 
@@ -772,8 +772,7 @@
   (let [;; ORDER BY user_id so each role list is deterministically ordered
         ;; (the `by-role` reduce appends in row order). Without it, the
         ;; folded audit image order can vary run-to-run after DELETE+INSERT
-        ;; churn, producing spurious history "changes" / OLTP↔history divergence
-        ;; (task #13).
+        ;; churn, producing spurious history "changes" / OLTP↔history divergence.
         rows (psc/q tx {:select [:user_id :role]
                         :from [:project_users]
                         :where [:= :project_id project-id]
@@ -789,7 +788,7 @@
   "Return `[vocab-layer-id ...]` granted to `project-id` via project_vocabs."
   [tx project-id]
   ;; ORDER BY vocab_layer_id so the folded :vocabs audit image is
-  ;; deterministically ordered (task #13).
+  ;; deterministically ordered.
   (->> (psc/q tx {:select [:vocab_layer_id]
                   :from [:project_vocabs]
                   :where [:= :project_id project-id]
@@ -800,7 +799,7 @@
   "Emit a synthetic :projects audit row for a project_users mutation.
   Pre/post images = the projects row + the three role-id vectors. Skips
   the audit when pre == post (no-op write, e.g. add-role for a role the
-  user already had — see #28 docs / common.clj/update-by-id! noise rule).
+  user already had, as common.clj/update-by-id! skips a no-op).
 
   Public so cross-namespace callers (e.g. `plaid.sql.user/delete`)
   can emit the same synthetic audit shape on FK cascade losses."
@@ -891,8 +890,8 @@
   ;; a writer — both states are visible).
   (let [pre-acl (fetch-project-acl-snapshot tx project-id)]
     ;; Roles are mutually exclusive: clear any existing role this user holds
-    ;; on this project, then grant the new one. Matches v2 semantics.
-    ;; NOTE (#70): DELETE-then-INSERT exposes a momentary empty-role state
+    ;; on this project, then grant the new one.
+    ;; NOTE: DELETE-then-INSERT exposes a momentary empty-role state
     ;; on the same Connection. This is fine under our BEGIN IMMEDIATE
     ;; writer-serialization model (no concurrent reader on the same tx
     ;; can observe the gap), but it would become fragile if a future
@@ -1126,7 +1125,7 @@
                      ;; whose vocab_item belongs to this vocab AND whose
                      ;; document belongs to this project. Capture the
                      ;; affected document_ids so we can bump their
-                     ;; versions for OCC clients (task #72) — op-attrs
+                     ;; versions for OCC clients — op-attrs
                      ;; carry :document nil, so the post-body
                      ;; bump-document-version! hook doesn't fire on
                      ;; those docs.
@@ -1146,12 +1145,12 @@
                            affected-doc-ids (mapv :document_id vl-rows)]
                        (crud/delete-ids! tx :vocab_links vl-ids)
                        ;; Sweep orphan entity_metadata rows for those
-                       ;; vocab_links — matches `vocab_layer.clj/delete`
-                       ;; (#66). Intentionally NOT audited:
+                       ;; vocab_links — matches `vocab_layer.clj/delete`.
+                       ;; Intentionally NOT audited:
                        ;; parent-owned metadata is part of the parent's
                        ;; audit row.
                        (crud/delete-entity-metadata! tx "vocab-link" vl-ids)
-                       ;; Bump per-doc versions for OCC parity (task #72).
+                       ;; Bump per-doc versions for OCC parity.
                        (op/bump-document-versions! tx affected-doc-ids))
                      ;; Snapshot AFTER vocab_links cleanup but BEFORE the
                      ;; junction-row removal so the synthetic audit

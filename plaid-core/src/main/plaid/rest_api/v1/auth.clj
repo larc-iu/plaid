@@ -22,7 +22,7 @@
   30 days matches the prior implicit horizon (the old
   `password_changes` check could keep any token valid forever until
   the user changed their password). Operators can override via
-  `:plaid.auth :jwt-ttl-seconds` in config (#117)."
+  `:plaid.auth :jwt-ttl-seconds` in config."
   (* 60 60 24 30))
 
 (def ^:private dummy-password-hash
@@ -32,7 +32,7 @@
   "bcrypt+sha512$9c3cd2a5ac65c3f01d2b83d66efdd574$12$8908f8fa4e503e77625eb8101a2d2b9d95b2fe7f9124eb37")
 
 (defn jwt-ttl-seconds
-  "Lookup the configured JWT TTL (#117). Read at call time rather than
+  "Lookup the configured JWT TTL. Read at call time rather than
   captured at load so tests/operators can swap config without a
   restart. Falls back to `default-jwt-ttl-seconds` (30 days) if the
   key is absent — preserves prior behavior on an un-tuned config."
@@ -359,7 +359,7 @@
                          "bumping the per-user password_changes counter (the same "
                          "mechanism a password change uses). Subsequent requests with "
                          "the old token will be rejected with 401.")
-           ;; #120 — important behavioral note for API clients:
+           ;; Important behavioral note for API clients:
            ;;
            ;; Logout invalidates ALL of the user's live tokens across EVERY
            ;; device they're currently signed in on, not just the device that
