@@ -140,7 +140,7 @@ const conv = {
         { key: '{{open}}', title: 'Lamkang B text, sentence 2', text: 'open', projectId: OPEN },
       ],
       unavailableProjects: [{ id: CLOSED, name: 'Secret corpus' }],
-      plan: { id: 'pl2', summary: '1 gloss', opCount: 1, labels: ['s5 Gloss = go'] },
+      plan: { id: 'pl2', summary: '1 gloss', opCount: 1, changes: [{ label: 's5 Gloss = go' }] },
       status: null,
     },
     { kind: 'error', text: 'The assistant stopped answering.', createdAt: '2026-09-03T09:03:00Z' },

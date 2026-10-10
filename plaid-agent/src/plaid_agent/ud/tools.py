@@ -273,7 +273,7 @@ class Workspace(BaseWorkspace):
         for op in ops:
             op.pop('card', None)
         return {'id': uuid7(), 'summary': summarize(self.ops),
-                'labels': [op['label'] for op in ops], 'ops': ops,
+                'ops': ops,
                 'changes': changes,
                 'documents': self.touched_documents()}
 

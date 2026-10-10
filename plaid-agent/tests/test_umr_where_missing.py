@@ -52,7 +52,7 @@ def test_an_overwrite_says_what_it_replaces_on_the_card_and_to_the_model():
     op = ws.ops[0]
     assert op['overwrite'] is True and op['count'] == 4
     assert op['label'].endswith(', replacing performance on 1'), op['label']
-    assert ws.plan_payload()['labels'] == [op['label']]
+    assert [c['label'] for c in ws.plan_payload()['changes']] == [op['label']]
     assert 'replacing performance on 1' in out and 's1.s1b  (bark-01, was performance)' in out
     resolved = _resolved(client, ws)
     assert sorted(resolved) == ['s1b', 's1d', 's2r', 's2t']

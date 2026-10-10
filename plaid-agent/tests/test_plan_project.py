@@ -23,7 +23,7 @@ def _turn(app, monkeypatch, projects, delegated):
 
     def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
         ws.plan_payload = lambda: {'id': '01a10f7d-f747-7000-850f-a5c879af1a98', 'summary': '1 change',
-                                   'labels': ['x'], 'ops': [], 'changes': [], 'documents': []}
+                                   'ops': [], 'changes': [{'label': 'x'}], 'documents': []}
         return TurnResult('Planned.', [{'role': 'assistant', 'content': 'Planned.'}], [])
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)

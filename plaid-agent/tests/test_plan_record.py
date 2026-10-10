@@ -31,7 +31,7 @@ IGT = IgtService.proposed_keys
 
 
 def _item(ops, status='discarded'):
-    plan = {'id': 'p1', 'summary': 's', 'labels': ['l'] * len(ops), 'changes': [{'label': 'l'}] * len(ops),
+    plan = {'id': 'p1', 'summary': 's', 'changes': [{'label': 'l'}] * len(ops),
             'ops': ops, 'documents': [{'id': 'd1', 'name': 'Text', 'version': 3}]}
     plan['proposed'], plan['proposed_count'] = proposed_changes(ops, *IGT)
     return {**assistant_item('a', plan, [], [], '', 'm'), 'status': status}
@@ -172,7 +172,7 @@ def _long(n, status, settled_before=False):
     changes = [{'label': f'r{i}', 'change': 'x', 'where': {'kind': 'token', 'document_id': 'd1', 'sentence': i},
                 'writes_text': i % 40 == 0, 'replaces_work': 2 if i % 25 == 0 else 0} for i in range(n)]
     item = _item([{'kind': 'set_span', 'token_id': f't{i}', 'value': 'v'} for i in range(n)], status)
-    item['plan'] = {**item['plan'], 'changes': changes, 'labels': [c['label'] for c in changes]}
+    item['plan'] = {**item['plan'], 'changes': changes}
     if settled_before:
         kept = {k: v for k, v in item['plan'].items() if k not in ('ops', 'documents')}
         item['plan'] = {**kept, 'op_count': n}
@@ -184,7 +184,6 @@ def test_a_long_settled_plan_keeps_its_first_rows_and_counts_the_rest():
     full = _long(n, 'applied')
     plan = compact_plan(full)['plan']
     assert plan['changes'] == full['plan']['changes'][:SETTLED_ROWS_MAX]
-    assert plan['labels'] == full['plan']['labels'][:SETTLED_ROWS_MAX]
     rest = full['plan']['changes'][SETTLED_ROWS_MAX:]
     assert plan['omitted'] == {'count': n - SETTLED_ROWS_MAX,
                                'writes_text': sum(1 for c in rest if c['writes_text']),
@@ -199,7 +198,7 @@ def test_a_long_settled_plan_keeps_its_first_rows_and_counts_the_rest():
 def test_a_plan_settled_before_the_cap_is_cut_and_one_at_it_or_undecided_is_not():
     old = _long(900, 'replaced', settled_before=True)
     plan = compact_plan(old)['plan']
-    assert len(plan['changes']) == len(plan['labels']) == SETTLED_ROWS_MAX
+    assert len(plan['changes']) == SETTLED_ROWS_MAX
     assert plan['omitted']['count'] == 900 - SETTLED_ROWS_MAX and plan['op_count'] == 900
     at = _long(SETTLED_ROWS_MAX, 'stale', settled_before=True)
     assert compact_plan(at) is at

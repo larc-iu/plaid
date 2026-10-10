@@ -667,7 +667,7 @@ def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str], valu
     return out, total
 
 
-#: How many of a settled plan's rows (``changes`` and ``labels``) the record
+#: How many of a settled plan's rows (``changes``) the record
 #: keeps. A plan of thousands of changes kept its whole card once settled,
 #: about half a kilobyte a row, and a conversation of a few such plans filled
 #: the record (5MB) with cards nobody could approve any more (2026-10-08).
@@ -680,13 +680,13 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     ``ops`` and ``documents`` are what approval executes and checks, and they
     were most of a long conversation's weight (Eline's 1MB thread was 618KB of
     plans). Once the plan is applied, discarded, out of date or replaced,
-    nothing reads them again: the card is drawn from ``changes`` and
-    ``labels``, and the audit log is the record of what was written.
+    nothing reads them again: the card is drawn from ``changes``, and the
+    audit log is the record of what was written.
     ``op_count`` keeps the card's rows lined up with the ops they stood for
     (`planRows` in plaid-ui). ``expansion``, what its corpus-wide changes
     found while an approval ran (`plan.Expansion`), goes with them, and so
     does ``writing``, which says an approval under way may have written.
-    Of ``changes`` and ``labels`` the first :data:`SETTLED_ROWS_MAX` stay, and
+    Of ``changes`` the first :data:`SETTLED_ROWS_MAX` stay, and
     ``omitted`` says what the rest held: how many rows, how many of them
     rewrote the text and how many of a person's values they replaced, the
     totals the card states. A rule's row (``rule``, see core/rules.py) is never
@@ -703,10 +703,9 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     if not plan or item.get('status') is None:
         return item
     changes = plan.get('changes') if isinstance(plan.get('changes'), list) else []
-    labels = plan.get('labels') if isinstance(plan.get('labels'), list) else []
     rest = [(i, c) for i, c in enumerate(changes) if i >= SETTLED_ROWS_MAX]
     ruled = [{'row': i, **c} for i, c in rest if isinstance(c, dict) and c.get('rule') is not None]
-    rows = max(len(changes) - len(ruled), len(labels))
+    rows = len(changes) - len(ruled)
     if 'ops' not in plan and 'expansion' not in plan and 'writing' not in plan and rows <= SETTLED_ROWS_MAX:
         return item
     kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents', 'expansion', 'writing')}
@@ -714,10 +713,7 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
         kept['op_count'] = len(plan.get('ops') or [])
     if rows > SETTLED_ROWS_MAX:
         dropped = [c for _, c in rest if isinstance(c, dict) and c.get('rule') is None]
-        if 'changes' in plan:
-            kept['changes'] = changes[:SETTLED_ROWS_MAX] + ruled
-        if 'labels' in plan:
-            kept['labels'] = labels[:SETTLED_ROWS_MAX]
+        kept['changes'] = changes[:SETTLED_ROWS_MAX] + ruled
         kept['omitted'] = {
             'count': rows - SETTLED_ROWS_MAX,
             'writes_text': sum(1 for c in dropped if c.get('writes_text')),

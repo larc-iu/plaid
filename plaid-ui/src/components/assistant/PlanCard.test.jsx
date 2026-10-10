@@ -14,7 +14,6 @@ const adapter = {
 const plan = (changes) => ({
   id: 'p1',
   summary: `${changes.length} changes`,
-  labels: changes.map((c) => c.label),
   ops: changes.map(() => ({ kind: 'x' })),
   changes,
 });
@@ -236,7 +235,7 @@ describe('changes that replace accepted work', () => {
       plan([{ label: 'a', replacesWork: 1 }, { label: 'b' }, { label: 'c', replacesWork: 38 }]),
     );
     expect(rows.map((r) => r.replacesWork)).toEqual([1, 0, 38]);
-    expect(planRows({ labels: ['x'] })[0].replacesWork).toBe(0);
+    expect(planRows({ changes: [{ label: 'x' }] })[0].replacesWork).toBe(0);
   });
 
   it('counts a corpus-wide replace by the accepted values it replaces', async () => {

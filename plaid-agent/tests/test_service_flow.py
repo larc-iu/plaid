@@ -279,7 +279,7 @@ PLAN1 = '01920000-0000-7000-8000-000000000001'
 
 def _seed_plan(client, status=None, request_id='r9'):
     store = ConversationStore(client, 'u@x', 'p1', 'igt')
-    plan = {'id': PLAN1, 'summary': '1 field value', 'labels': ['Text 1 s1.w2 "gam": Gloss = "fish"'],
+    plan = {'id': PLAN1, 'summary': '1 field value', 'changes': [{'label': 'Text 1 s1.w2 "gam": Gloss = "fish"'}],
             'ops': [{'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-2', 'span_id': None, 'value': 'fish',
                      'label': 'Text 1 s1.w2 "gam": Gloss = "fish"'}],
             'documents': [{'id': 'd1', 'name': 'Text 1', 'version': 7}]}
@@ -449,7 +449,7 @@ def _turn_after_plan(monkeypatch, stages):
     def make_workspace(self, c, project, on_progress):
         ws = real(self, c, project, on_progress)
         if stages:
-            ws.plan_payload = lambda: {'id': 'p2', 'summary': '2 field values', 'labels': ['a', 'b'],
+            ws.plan_payload = lambda: {'id': 'p2', 'summary': '2 field values',
                                        'ops': [{'kind': 'x'}, {'kind': 'y'}], 'changes': [], 'documents': []}
         return ws
 

@@ -116,7 +116,7 @@ def test_the_document_a_docked_conversation_is_about_survives_a_write():
 
 
 def test_items_and_plan_settlement():
-    plan = {'id': 'p1', 'summary': '1 field value', 'ops': [], 'labels': [], 'documents': [], 'proposed': []}
+    plan = {'id': 'p1', 'summary': '1 field value', 'ops': [], 'changes': [], 'documents': [], 'proposed': []}
     conv = _conv(user_item('fix it'), assistant_item('Here is a plan.', plan, [], [], '', 'm'),
                  messages=[{'role': 'user', 'content': 'fix it'}, {'role': 'assistant', 'content': 'Here is a plan.'}])
     assert find_plan(conv, 'p1')[0] == 1
@@ -126,7 +126,7 @@ def test_items_and_plan_settlement():
     assert out['display'][0] == conv['display'][0]
     assert out['messages'][-1] == {'role': 'user', 'content': '(note) applied'}
     assert conv['display'][1]['status'] is None, 'the input is not mutated'
-    assert out['display'][1]['plan'] == {'id': 'p1', 'summary': '1 field value', 'labels': [], 'op_count': 0,
+    assert out['display'][1]['plan'] == {'id': 'p1', 'summary': '1 field value', 'changes': [], 'op_count': 0,
                                          'proposed': []}, \
         'a settled plan keeps its card and drops what only approving it needed'
     undated = lambda item: {k: v for k, v in item.items() if k != 'created_at'}  # noqa: E731
@@ -208,7 +208,7 @@ def test_every_settled_plan_is_compacted_and_an_undecided_one_never_is():
 
     def item(status, pid):
         return {**assistant_item('a', {'id': pid, 'summary': '50 field values', 'ops': ops,
-                                       'labels': ['l'] * 50, 'changes': [{'label': 'l'}] * 50,
+                                       'changes': [{'label': 'l'}] * 50,
                                        'documents': docs, 'proposed': [['set_span', 't', 'x']] * 50},
                                  [], [], '', 'm'), 'status': status}
 
@@ -262,7 +262,7 @@ def test_a_new_plan_replaces_every_plan_still_waiting_and_no_other():
 
     def item(pid, status=None, **extra):
         return {**assistant_item('a', {'id': pid, 'summary': '1 field value', 'ops': [{'kind': 'x'}],
-                                       'labels': ['l'], 'changes': [{'label': 'l'}], 'documents': [],
+                                       'changes': [{'label': 'l'}], 'documents': [],
                                        'proposed': [['x', 't', None]]},
                                  [], [], '', 'm'), 'status': status, **extra}
 

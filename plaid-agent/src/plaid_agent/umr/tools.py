@@ -357,7 +357,7 @@ class Workspace(BaseWorkspace):
         ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)),
                           opkind.compact_spec(KIND))
         return {'id': uuid7(), 'summary': summarize(self.ops),
-                'labels': [op['label'] for op in ops], 'ops': ops,
+                'ops': ops,
                 'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}
 

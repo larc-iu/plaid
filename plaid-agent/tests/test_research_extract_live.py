@@ -142,7 +142,7 @@ def world(tmp_path_factory):
     keys = proposed_keys('igt')
 
     def plan_payload(pid_, ops_, summary='gloss'):
-        return {'id': pid_, 'summary': summary, 'labels': [o['label'] for o in ops_], 'ops': ops_,
+        return {'id': pid_, 'summary': summary, 'ops': ops_,
                 'changes': [], 'documents': [{'id': doc, 'name': 'Doc', 'version': 1}]}
 
     def with_proposed(p):
