@@ -4169,57 +4169,36 @@ class PlaidClient:
         client instance: for a launcher or status page checking whether a
         server is up before anyone logs in. ``client.server.health()`` is the
         same read from a client."""
-        return cls._anonymous_get(base_url, '/health', timeout=timeout)
+        return cls._anonymous('GET', base_url, '/health', timeout=timeout)
 
     @classmethod
     def info(cls, base_url: str, timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
         """The version and the limits this server enforces, with NO
         authentication and no client instance. ``client.server.info()`` is the
         same read from a client, cached."""
-        return cls._anonymous_get(base_url, '/api/v1/info', timeout=timeout)
+        return cls._anonymous('GET', base_url, '/api/v1/info', timeout=timeout)
 
     @classmethod
-    def _anonymous_get(cls, base_url: str, path: str,
-                       timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
-        """GET a path that takes no Authorization header."""
+    def _anonymous(cls, method: str, base_url: str, path: str, body: Any = None,
+                   timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
+        """A request with no Authorization header: login, invite lookup and
+        redemption (POST, with a body), /health and /api/v1/info (GET). They
+        are called before any client exists, which is why they cannot go
+        through the instance request path."""
         url = f'{base_url.rstrip("/")}{path}'
+        kwargs = {'timeout': wire_timeout(timeout)}
+        if method == 'POST':
+            kwargs.update(headers={'Content-Type': 'application/json'}, data=json.dumps(body))
         try:
-            response = req_lib.get(url, timeout=wire_timeout(timeout))
+            response = getattr(req_lib, method.lower())(url, **kwargs)
         except Exception as e:
             if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-                raise PlaidAPIError(f'Request timed out at {url}', url=url, method='GET',
+                raise PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
                                     original_error=e)
-            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method='GET',
+            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
                                 original_error=e)
         if not response.ok:
-            raise build_api_error(response, url, 'GET')
-        return transform_response(response.json())
-
-    @classmethod
-    def _anonymous_post(cls, base_url: str, path: str, body: dict,
-                        timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
-        """POST to an endpoint that takes no Authorization header.
-
-        Used by login, invite lookup and invite redemption — all of which are
-        called before any client exists, which is why they cannot go through
-        the instance request path.
-        """
-        base_url = base_url.rstrip('/')
-        url = f'{base_url}{path}'
-        try:
-            response = req_lib.post(url,
-                                    headers={'Content-Type': 'application/json'},
-                                    data=json.dumps(body),
-                                    timeout=wire_timeout(timeout))
-        except Exception as e:
-            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-                raise PlaidAPIError(f'Request timed out at {url}', url=url, method='POST',
-                                    original_error=e)
-            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method='POST',
-                                original_error=e)
-
-        if not response.ok:
-            raise build_api_error(response, url, 'POST')
+            raise build_api_error(response, url, method)
         return transform_response(response.json())
 
     @classmethod
@@ -4242,8 +4221,8 @@ class PlaidClient:
             code: The invite code
             timeout: Per-request timeout in seconds
         """
-        return cls._anonymous_post(base_url, '/api/v1/invites/lookup',
-                                   {'code': code}, timeout=timeout)
+        return cls._anonymous('POST', base_url, '/api/v1/invites/lookup', {'code': code},
+                              timeout=timeout)
 
     @classmethod
     def redeem_invite(cls, base_url: str, code: str, password: str,
@@ -4282,8 +4261,7 @@ class PlaidClient:
             body['email'] = normalize_user_id(email)
         if display_name is not None:
             body['display-name'] = display_name
-        data = cls._anonymous_post(base_url, '/api/v1/invites/redeem', body,
-                                   timeout=timeout)
+        data = cls._anonymous('POST', base_url, '/api/v1/invites/redeem', body, timeout=timeout)
         client = cls(base_url.rstrip('/'), data.get('token', ''), timeout=timeout,
                      batch_timeout=batch_timeout, retry_delays=retry_delays)
         return client, data
@@ -4309,24 +4287,9 @@ class PlaidClient:
             Authenticated client instance
         """
         base_url = base_url.rstrip('/')
-        url = f'{base_url}/api/v1/login'
-        try:
-            response = req_lib.post(url,
-                                    headers={'Content-Type': 'application/json'},
-                                    data=json.dumps({'user-id': normalize_user_id(user_id),
-                                                     'password': password}),
-                                    timeout=wire_timeout(timeout))
-        except Exception as e:
-            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-                raise PlaidAPIError(f'Request timed out at {url}', url=url, method='POST',
-                                    original_error=e)
-            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method='POST',
-                                original_error=e)
-
-        if not response.ok:
-            raise build_api_error(response, url, 'POST')
-
-        data = response.json()
+        data = cls._anonymous('POST', base_url, '/api/v1/login',
+                              {'user-id': normalize_user_id(user_id), 'password': password},
+                              timeout=timeout)
         token = data.get('token', '')
         return cls(base_url, token, timeout=timeout, batch_timeout=batch_timeout,
                    retry_delays=retry_delays)

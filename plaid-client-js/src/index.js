@@ -70,18 +70,22 @@ function bodyOf(obj) {
   return result;
 }
 
-// POST to an endpoint that takes no Authorization header (login, invite lookup
-// and redemption). Deliberately does not go through PlaidClient._request: these
-// are called before any client exists, which is the whole point.
-async function anonymousPost(baseUrl, path, body, options = {}) {
+// A request with no Authorization header: login, invite lookup and redemption
+// (POST, with a body), /health and /api/v1/info (GET). Deliberately does not
+// go through PlaidClient._request: these are called before any client exists,
+// which is the whole point.
+async function anonymousRequest(method, baseUrl, path, body, options = {}) {
   const base = baseUrl.replace(/\/$/, "");
   const url = `${base}${path}`;
   try {
-    const fetchOptions = {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    };
+    const fetchOptions =
+      method === "GET"
+        ? { method }
+        : {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          };
     const signal = timeoutSignal(
       options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS,
     );
@@ -89,42 +93,12 @@ async function anonymousPost(baseUrl, path, body, options = {}) {
 
     const response = await fetch(url, fetchOptions);
     if (!response.ok) {
-      throw makeHttpError(
-        response,
-        await parseErrorBody(response),
-        url,
-        "POST",
-      );
+      throw makeHttpError(response, await parseErrorBody(response), url, method);
     }
     return transformResponse(await response.json());
   } catch (error) {
     if (error.status) throw error;
-    throw makeNetworkError(error, url, "POST");
-  }
-}
-
-/**
- * GET a path with no authentication, for the two endpoints a client may need
- * before it has a session: /health and /api/v1/info.
- */
-async function anonymousGet(baseUrl, path, options = {}) {
-  const base = baseUrl.replace(/\/$/, "");
-  const url = `${base}${path}`;
-  try {
-    const fetchOptions = { method: "GET" };
-    const signal = timeoutSignal(
-      options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS,
-    );
-    if (signal) fetchOptions.signal = signal;
-
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      throw makeHttpError(response, await parseErrorBody(response), url, "GET");
-    }
-    return transformResponse(await response.json());
-  } catch (error) {
-    if (error.status) throw error;
-    throw makeNetworkError(error, url, "GET");
+    throw makeNetworkError(error, url, method);
   }
 }
 
@@ -3787,7 +3761,7 @@ class PlaidClient {
    * @param {object} [options]
    */
   static async health(baseUrl, options = {}) {
-    return anonymousGet(baseUrl, "/health", options);
+    return anonymousRequest("GET", baseUrl, "/health", undefined, options);
   }
 
   /**
@@ -3797,7 +3771,7 @@ class PlaidClient {
    * @param {object} [options]
    */
   static async info(baseUrl, options = {}) {
-    return anonymousGet(baseUrl, "/api/v1/info", options);
+    return anonymousRequest("GET", baseUrl, "/api/v1/info", undefined, options);
   }
 
   /**
@@ -3828,7 +3802,7 @@ class PlaidClient {
    * @returns {Promise<{kind: string, status: string, expiresAt: string, projectName?: string, projectRole?: string, email?: string, grantAdmin: boolean}>}
    */
   static async lookupInvite(baseUrl, code, options = {}) {
-    return anonymousPost(baseUrl, "/api/v1/invites/lookup", { code }, options);
+    return anonymousRequest("POST", baseUrl, "/api/v1/invites/lookup", { code }, options);
   }
 
   /**
@@ -3857,7 +3831,8 @@ class PlaidClient {
     { email, password, displayName } = {},
     options = {},
   ) {
-    const data = await anonymousPost(
+    const data = await anonymousRequest(
+      "POST",
       baseUrl,
       "/api/v1/invites/redeem",
       bodyOf({
@@ -3890,35 +3865,14 @@ class PlaidClient {
    */
   static async login(baseUrl, userId, password, options = {}) {
     baseUrl = baseUrl.replace(/\/$/, "");
-    const url = `${baseUrl}/api/v1/login`;
-    try {
-      const fetchOptions = {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ "user-id": normalizeUserId(userId), password }),
-      };
-      const signal = timeoutSignal(
-        options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS,
-      );
-      if (signal) fetchOptions.signal = signal;
-
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        throw makeHttpError(
-          response,
-          await parseErrorBody(response),
-          url,
-          "POST",
-        );
-      }
-
-      const data = await response.json();
-      const token = data.token || "";
-      return new PlaidClient(baseUrl, token, options);
-    } catch (error) {
-      if (error.status) throw error;
-      throw makeNetworkError(error, url, "POST");
-    }
+    const data = await anonymousRequest(
+      "POST",
+      baseUrl,
+      "/api/v1/login",
+      { "user-id": normalizeUserId(userId), password },
+      options,
+    );
+    return new PlaidClient(baseUrl, data.token || "", options);
   }
 }
 
