@@ -124,7 +124,10 @@ def agent_sources(cls) -> List[List[str]]:
     dirs = ['core']
     # Through the class's own functions, as plaid_client's BaseService finds
     # a service's file: the module a script runs as may not be in sys.modules.
-    code = next((v.__code__ for v in vars(cls).values() if hasattr(v, '__code__')), None)
+    # A static method is read through to its function, which an app's own
+    # module wrote.
+    funcs = (getattr(v, '__func__', v) for v in vars(cls).values())
+    code = next((f.__code__ for f in funcs if hasattr(f, '__code__')), None)
     own = Path(code.co_filename).resolve() if code is not None else None
     if own is not None and own.parent.parent == root and own.parent.name != 'core':
         dirs.append(own.parent.name)
@@ -203,9 +206,17 @@ class BaseAssistantService(BaseService):
 
     # --- what the app knows ------------------------------------------------------
 
+    #: The app's own modules, which the hooks below are answered from: its
+    #: tool table (``TOOLS``, ``tools_for``, ``call_tool``), its prompt
+    #: (``SYSTEM``, ``WEB``, ``CODE``, ``build_system_prompt``,
+    #: ``project_brief``) and its plan (``execute_plan``, ``summarize``), with
+    #: its tracer and its workspace class. An app names them here rather than
+    #: forwarding each one by hand.
+    TOOLKIT = PROMPT = PLAN = TRACER = WORKSPACE = None
+
     def toolkit(self) -> Toolkit:
         """The app's tools and its words for them. Built once, at setup."""
-        raise NotImplementedError
+        return Toolkit(tools_for=self.TOOLKIT.tools_for, call_tool=self.TOOLKIT.call_tool, tracer=self.TRACER)
 
     def load_project(self, client, project_id):
         """The app's model of the project. Raises ValueError with a message
@@ -216,23 +227,23 @@ class BaseAssistantService(BaseService):
         """What a turn runs against: the app's own workspace, which holds the
         plan as the model builds it (``ops``, ``plan_payload()``) and takes a
         web session on ``web`` when the operator configured one."""
-        raise NotImplementedError
+        return self.WORKSPACE(client, project, on_progress=on_progress)
 
     def system_prompt(self, project, web: bool) -> str:
         """What the model is told before the conversation."""
-        raise NotImplementedError
+        return self.PROMPT.build_system_prompt(project, web=web)
 
     def prompt_template(self) -> Tuple[List[str], List[Dict[str, Any]]]:
         """The system prompt's texts before a project fills them in (every
         section, whether or not a turn includes it), and every tool schema the
         model can be offered. The assistant's version is a hash of them."""
-        raise NotImplementedError
+        return [self.PROMPT.SYSTEM, self.PROMPT.WEB, self.PROMPT.CODE], self.TOOLKIT.TOOLS
 
     def project_brief(self, project) -> str:
         """Another project's shape, in the lines the app's own prompt states
         its project's shape in, for a turn that may read it. The harness adds
         its name and its guideline titles, and cuts it to a budget."""
-        raise NotImplementedError
+        return self.PROMPT.project_brief(project)
 
     #: How this app writes a reference to a place in a document, for the focus
     #: note. The app's own grammar, so the app states it.
@@ -302,11 +313,13 @@ class BaseAssistantService(BaseService):
         ``seed`` is the plan's id, which the ids of the rows it creates are
         drawn from (``core.plan.Minter``). Raises
         :class:`plaid_agent.core.plan.PlanError` if a batch fails part-way."""
-        raise NotImplementedError
+        return self.PLAN.execute_plan(client, ops, source=source, label=label, project=project,
+                                      stamp_mode=stamp_mode, contributor=contributor, requester=requester,
+                                      detail=detail, seed=seed)
 
     def summarize(self, ops: List[Dict[str, Any]]) -> str:
         """A plan in one phrase, for the audit label and the applied message."""
-        raise NotImplementedError
+        return self.PLAN.summarize(ops)
 
     def partial_label(self, ops: List[Dict[str, Any]], written: List[int], summary: str) -> str:
         """The History label of a plan that stopped partway: the changes

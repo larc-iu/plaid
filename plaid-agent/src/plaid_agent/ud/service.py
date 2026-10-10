@@ -4,16 +4,14 @@ The request lifecycle, the conversation record, the model loop and the plan
 mechanics are all in :mod:`plaid_agent.core`. What is here is UD's half.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from ..core.agent import Toolkit
 from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
-from .citations import resolve_citations
 from ..core.plan import documents_to_lock
-from .plan import REWRITES_DOCUMENT, execute_plan, summarize
+from . import plan, prompt, toolkit
+from .citations import resolve_citations
+from .plan import REWRITES_DOCUMENT
 from .project import load_project
-from .prompt import CODE, SYSTEM, WEB, build_system_prompt, project_brief
-from .toolkit import TOOLS, call_tool, tools_for
 from .tools import Workspace
 from .trace import TRACER
 
@@ -41,6 +39,9 @@ class AssistantService(BaseAssistantService):
     DESCRIPTION = 'Chat about the treebank and plan edits, with the operator\'s model'
     SUMMARY = SUMMARY
     PING_QUERY = 'universal dependencies treebank'
+    TOOLKIT, PROMPT, PLAN, TRACER, WORKSPACE = toolkit, prompt, plan, TRACER, Workspace
+    load_project = staticmethod(load_project)
+    citations = staticmethod(resolve_citations)
     reference_shape = 'a bare reference like s3 or s3.w2'
     # What a proposed change is kept as once its plan is settled: the word,
     # relation or sentence it lands on, and its new value (a head's is its
@@ -51,39 +52,6 @@ class AssistantService(BaseAssistantService):
                      # The second thing a change joins: a dependent's head (the
                      # word itself for the root), and the sentence a merge takes in.
                      {'set_head': 'head_id', 'merge_sentences': 'previous_id'})
-
-    def toolkit(self) -> Toolkit:
-        return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)
-
-    def load_project(self, client, project_id):
-        return load_project(client, project_id)
-
-    def make_workspace(self, client, project, on_progress):
-        return Workspace(client, project, on_progress=on_progress)
-
-    def system_prompt(self, project, web: bool) -> str:
-        return build_system_prompt(project, web=web)
-
-    def prompt_template(self):
-        return [SYSTEM, WEB, CODE], TOOLS
-
-    def project_brief(self, project) -> str:
-        return project_brief(project)
-
-    def citations(self, ws, text: str) -> List[Dict[str, Any]]:
-        return resolve_citations(ws, text)
-
-    def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
-                     stamp_mode: str, contributor: Optional[str],
-                     requester: Optional[str] = None,
-                     detail: Optional[Dict[str, Any]] = None,
-                     seed: Optional[str] = None) -> Dict[str, int]:
-        return execute_plan(client, ops, source=source, label=label, project=project,
-                            stamp_mode=stamp_mode, contributor=contributor, detail=detail,
-                            seed=seed)
-
-    def summarize(self, ops: List[Dict[str, Any]]) -> str:
-        return summarize(ops)
 
     def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
         # The parser locks the document it rewrites itself, as another

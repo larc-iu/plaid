@@ -10,18 +10,11 @@ so nothing here may be imported back by one of them.
 """
 
 import inspect
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-from ..core import sandbox as _sandbox
-from ..core import guidelines as _guidelines
-from ..core import filetools, webtools
-from ..core.filetools import t_read_file
-from ..core.webtools import t_read_url, t_web_search
-from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
-                               t_rewrite_guideline)
+from ..core import toolkit, webtools
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
-from ..core.tools import ToolError, fn, limit_arg, read_document as t_read_document, run_tool, tools_for as core_tools_for
-from ..core.reach import route
+from ..core.tools import fn, limit_arg, read_document as t_read_document
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -42,19 +35,16 @@ from .tools import (t_add_comment, t_confirm, t_create_document, t_discard_analy
                     t_discard_plan, t_drop_planned, t_link_entry, t_link_phrase, t_respell,
                     t_restore_document, t_set_analysis, t_set_document_metadata, t_set_field,
                     t_set_morpheme, t_set_orthography, t_unlink_entry, t_unlink_phrase)
-from .workspace import Workspace
 
-# Offered only where the monty worker binary is present, and only where the
-# operator configured a search backend (see tools_for): a model that cannot
-# run code or look something up is never told that it can.
-CODE_TOOLS = _sandbox.NAMES
-WEB_TOOLS = ('web_search', 'read_url')
-FILE_TOOLS = filetools.NAMES
+# Web tools are offered only where the operator configured a search backend
+# (see core.tools.tools_for).
+WEB_TOOLS = webtools.NAMES
 
 
 # --- schema + dispatch ----------------------------------------------------------
 
 _fn = fn
+_SHARED = toolkit.shared_schemas(ref='sN, sN.wN, or sN.wN.mN.', comment_field=True, restore=True)
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
@@ -227,20 +217,8 @@ TOOLS = [
         'A consistency report for a field: values that are case/spelling variants of one another, forms that carry '
         'several different values, and items annotated but not linked to the lexicon (or linked but empty).',
         {'field': {'type': 'string'}, 'document': _DOC}, ['field']),
-    _fn('recent_changes',
-        'The newest entries of the change history: who changed what and when, including plans this assistant applied. '
-        'Each line ends with as_of=<instant>, the moment right after that change, which restore_document takes.',
-        {'document': _DOC, 'limit': limit_arg('recent_changes', 'Entries to show'),
-         'since': {'type': 'string', 'description': 'Only changes at or after this date (YYYY-MM-DD) or timestamp.'},
-         'user': {'type': 'string', 'description': 'Only changes by this person (name or email substring).'}}, []),
-    _fn('comments',
-        'The comments people have left (not annotation data: notes to each other). Whole project (no document), '
-        'one document, or one thing in it (document + ref, plus field for a comment on one of its values). '
-        'Oldest first.',
-        {'document': _DOC, 'ref': {'type': 'string', 'description': 'sN, sN.wN, or sN.wN.mN.'},
-         'field': {'type': 'string', 'description': 'A field of the thing ref names, for the comments on its value.'},
-         'limit': limit_arg('comments', 'Newest entries to show')},
-        []),
+    _SHARED['recent_changes'],
+    _SHARED['comments'],
     _fn('add_comment',
         'PLAN: post a comment under the user\'s name on a document (no ref), a sentence, a word, a morpheme, or, '
         'with field, on one of their values. Comments are notes to people; they change no annotation.',
@@ -252,7 +230,7 @@ TOOLS = [
         'Maintainers only, and a plan of its own.',
         {'document': _DOC, 'as_of': {'type': 'string', 'description': 'ISO-8601 instant, e.g. 2026-09-05T18:45:49Z.'}},
         ['document', 'as_of']),
-    _fn('plan_status', 'List the changes planned so far in this turn.', {}, []),
+    _SHARED['plan_status'],
     _fn('set_document_metadata',
         'PLAN: set one of the project\'s document metadata fields (see project_overview) on a document.',
         {'document': _DOC, 'field': {'type': 'string'}, 'value': {'type': 'string'}}, ['document', 'field', 'value']),
@@ -262,9 +240,8 @@ TOOLS = [
         {'name': {'type': 'string'}, 'text': {'type': 'string'},
          'metadata': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
         ['name', 'text']),
-    _fn('discard_plan', 'Drop every change planned so far in this turn.', {}, []),
-    _fn('drop_planned', 'Drop some of the planned changes by their plan_status numbers; the rest stay.',
-        {'indexes': {'type': 'array', 'items': {'type': 'integer'}}}, ['indexes']),
+    _SHARED['discard_plan'],
+    _SHARED['drop_planned'],
     _fn('confirm',
         'PLAN: mark annotations awaiting review as verified, after checking them: machine-made ones (other services, '
         'earlier assistant plans; ~ in reads) and contributors\' work (^ in reads); see worklist kind="unverified" / '
@@ -343,20 +320,6 @@ _IMPL = {
     'order_homographs': t_order_homographs,
 }
 
-
-
-def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
-    """Run one tool. Every failure comes back as text for the model."""
-    fn = _IMPL.get(name)
-    if not fn:
-        return f'Error: there is no tool named {name}.'
-    # The project the call names, in a turn that may read several: its own
-    # workspace, and the arguments without the name (see core/reach.py).
-    try:
-        ws, args = route(ws, name, args)
-    except ToolError as e:
-        return f'Error: {e}'
-    return run_tool(ws, name, fn, entry_form_named_form(fn, args))
 
 
 def entry_form_named_form(fn, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -515,54 +478,13 @@ TOOLS += [
 _IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_word': t_delete_word,
               'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences,
               'append_text': t_append_text, 'retype_sentence': t_retype_sentence})
-WEB_FENCE_TOP, WEB_FENCE_END, WEB_WARNING = webtools.FENCE_TOP, webtools.FENCE_END, webtools.WARNING
 
 
 
-TOOLS += [
-    _fn('query_help',
-        'The reference for the query language used by `query`, plus the layer names of this project. Call it once '
-        'before writing a query; it is long, so only when the other tools cannot express the question.',
-        {}, []),
-    _fn('query',
-        'Run a read-only query in Plaid\'s query language over this project (structure across layers, joins, '
-        'negation, aggregates). Name layers by their names from query_help. Prefer the specialised tools when they '
-        'fit; this is the escape hatch for questions they cannot express.',
-        {'query': {'type': 'object', 'description': 'The query object: find, where, return, limit, order_by.'},
-         'limit': limit_arg('query', 'Rows to show')},
-        ['query']),
-]
+TOOLS += [_SHARED['query_help'], _SHARED['query']]
 _IMPL.update({'query_help': t_query_help, 'query': t_query})
 
-# The project's own annotation manual. Always offered: the titles and
-# summaries are in the prompt, and this reads one in full.
-TOOLS += _guidelines.schemas('interlinear text: how this project glosses, segments and translates')
-_IMPL.update({'read_guideline': t_read_guideline})
-
-# Drafting one is a PLAN, like every other change: the user approves it on the
-# card before anything is written.
-TOOLS += _guidelines.write_schemas()
-_IMPL.update({'add_guideline': t_add_guideline, 'revise_guideline': t_revise_guideline,
-              'rewrite_guideline': t_rewrite_guideline})
-
-# Offered only when the operator configured a search backend (see tools_for).
-TOOLS += webtools.schemas('this corpus and its lexicons')
-_IMPL.update({'web_search': t_web_search, 'read_url': t_read_url})
-
-# Offered only where the user has actually attached a file to the conversation
-# (see tools_for). What the code does with one is in core/filetools.py's api().
-TOOLS += filetools.schemas()
-_IMPL.update({'read_file': t_read_file})
-
-# A tool that plans a change says so in the first word of its description, and
-# that is what makes it one: no second list to keep in step with the first.
-WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['description'].startswith('PLAN:')}
-
-
-def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
-    """The tools a turn on this workspace may call."""
-    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS, FILE_TOOLS)
-
-
-TOOLS += _sandbox.schemas('the texts and lexicons')
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
+TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
+    TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
+    web='this corpus and its lexicons', code='the texts and lexicons', rewrite=entry_form_named_form)

@@ -548,7 +548,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
-                 stamp_mode: str = 'verified', contributor: str = None,
+                 stamp_mode: str = 'verified', contributor: str = None, requester: Optional[str] = None,
                  detail: Optional[Dict[str, Any]] = None, seed: Optional[str] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Per-kind counts of what was applied, plus ``notes``. ``detail`` is what

@@ -222,13 +222,13 @@ PLAN: join this sentence onto the one before it, so the two become one. Name the
 
 ### query_help
 
-The Plaid query language, and this project's layer names. Call it before writing a query; it costs nothing until you need it.
+The Plaid query language that `query` takes, and this project's layer names. Call it once before writing a query.
 
 No parameters.
 
 ### query
 
-Run one read-only Plaid query over this project. The escape hatch for a question the other reads cannot express: two columns at once, adjacency, a join. Layers are named by name. Call query_help first.
+Run one read-only Plaid query over this project: structure across layers, joins, negation, aggregates. The escape hatch for a question the other tools cannot express, so prefer them when they fit. Layers are named by their names from query_help.
 
 - `query` (object, required): The query object: find, where, return, limit, order_by. See query_help.
 - `limit` (integer): Rows to show (default 50, max 500).
@@ -254,7 +254,7 @@ No parameters.
 
 ### drop_planned
 
-Drop some of the planned changes by their numbers from plan_status.
+Drop some of the planned changes by their numbers from plan_status. The rest stay.
 
 - `indexes` (array of integer, required)
 
@@ -296,16 +296,16 @@ What is unfinished. kind "unverified" is machine output nobody has confirmed, "c
 
 ### recent_changes
 
-Who changed what, when, and under which operation label. Each entry prints the as_of instant a restore would use.
+Who changed what, when, and under which operation label, the plans this assistant applied among them.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `limit` (integer): Entries to show (default 20, max 100).
-- `since` (string): A date (YYYY-MM-DD) or timestamp.
-- `user` (string): Match the actor's name or email.
+- `since` (string): Only changes at or after this date (YYYY-MM-DD) or timestamp.
+- `user` (string): Only changes by this person (name or email substring).
 
 ### comments
 
-What people have written to each other: in the whole project (no document), in one document, or on one of its sentences (document + ref). These are notes between annotators, never annotation. Oldest first.
+What people have written to each other: in the whole project (no document), in one document, or on one thing in it (document + ref). These are notes between annotators, never annotation. Oldest first.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `ref` (string): One sentence, e.g. "s3".

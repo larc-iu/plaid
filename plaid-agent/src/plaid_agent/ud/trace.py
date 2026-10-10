@@ -8,9 +8,9 @@ if any declared tool reaches that fallback.
 """
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from ..core.trace import count, in_doc, plural, q, read_document_label, reading_line, tracer_for
+from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -42,29 +42,10 @@ def _respells(a: Dict[str, Any]) -> bool:
     return last >= first and len(_forms(a)) == last - first + 1
 
 
-def describe_step(name: str, a: Dict[str, Any]) -> str:
-    """One past-tense line for a finished tool call."""
+def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
+    """One past-tense line for a finished call of a tool of this app's own, or
+    None for a shared one (:data:`core.trace.SHARED_DESCRIBE`)."""
     # --- reads ---------------------------------------------------------------
-    if name == 'project_overview':
-        return 'Looked at the project overview'
-    if name == 'read_guideline':
-        return f'Read the guideline {q(a.get("title"))}'
-    if name == 'add_guideline':
-        return f'Drafted a guideline, {q(a.get("title"))}'
-    if name == 'revise_guideline':
-        return f'Edited the guideline {q(a.get("title"))}'
-    if name == 'rewrite_guideline':
-        return f'Rewrote the guideline {q(a.get("title"))}'
-    if name == 'list_documents':
-        return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
-    if name == 'read_document':
-        return read_document_label(a)
-    if name == 'query_help':
-        return 'Looked up the query language'
-    if name == 'query':
-        return 'Ran a query'
-    if name == 'restore_document':
-        return f'Planned restoring {q(a.get("document"))} to {a.get("as_of", "")}'
     if name == 'split_sentence':
         return f'Planned a sentence split at {q(a.get("ref"))}{in_doc(a)}'
     if name == 'merge_sentences':
@@ -80,23 +61,6 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'worklist':
         field = f'{a["field"]} ' if a.get('field') else ''
         return f'Listed {a.get("kind") or "unverified"} {field}work{in_doc(a)}'
-    if name == 'recent_changes':
-        return f'Read the change history{in_doc(a)}'
-    if name == 'comments':
-        where = f' on {a["ref"]}' if a.get('ref') else ''
-        return f'Read the comments{where}{in_doc(a)}'
-    if name == 'plan_status':
-        return 'Reviewed the plan so far'
-
-    if name == 'read_file':
-        at = f' from line {a["start_line"]}' if a.get('start_line') else ''
-        return f'Read the attached file {q(a.get("name"))}{at}'
-
-    # --- outside the project ---------------------------------------------------
-    if name == 'web_search':
-        return f'Searched the web for {q(a.get("query"))}'
-    if name == 'read_url':
-        return f'Read the web page {a.get("url")}'
 
     # --- plans ---------------------------------------------------------------
     if name == 'set_field':
@@ -134,19 +98,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         scope = plural(count(a), 'word') if a.get('refs') else 'every unconfirmed machine value'
         return f'Planned discarding {scope}{in_doc(a)}{across(a)}'
 
-    if name == 'add_comment':
-        return f'Planned a comment on {a.get("ref") or "the document"}{in_doc(a)}'
-    if name == 'run_code':
-        return 'Read across the project'
-    if name == 'code_help':
-        return 'Looked up how to read across the project'
-
-    # --- bookkeeping ----------------------------------------------------------
-    if name == 'discard_plan':
-        return 'Discarded the plan so far'
-    if name == 'drop_planned':
-        return f'Dropped {plural(count(a, "indexes"), "planned change")}'
-    return name.replace('_', ' ')
+    return None
 
 
 # --- while it is happening ------------------------------------------------------
@@ -154,36 +106,17 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
 # while the turn runs. Only the calls worth naming get a line of their own.
 
 _PROGRESS = {
-    'project_overview': lambda a: 'Looking at the project…',
-    'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
-    'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
-    'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
-    'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
-    'list_documents': lambda a: 'Listing the documents…',
-    'read_document': reading_line,
     'split_sentence': lambda a: 'Splitting a sentence…',
-    'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
-    'query': lambda a: 'Running a query…',
-    'query_help': lambda a: 'Reading the query language…',
-    'run_code': lambda a: 'Reading across the project…',
-    'code_help': lambda a: 'Looking up how to read across the project…',
     'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'replace_in_field': lambda a: f'Finding every {a.get("field", "value")} matching "{a.get("pattern", "")}"…',
     'frequency_list': lambda a: 'Counting frequencies…',
     'check_consistency': lambda a: 'Checking the corpus for disagreements…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
-    'recent_changes': lambda a: 'Reading the change history…',
-    'comments': lambda a: 'Reading the comments…',
     'run_parse': lambda a: 'Checking the parser…',
     'set_words': lambda a: 'Respelling a token…' if _respells(a) else 'Reshaping a token…',
-    'plan_status': lambda a: 'Reviewing the plan…',
-    'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
-    'read_url': lambda a: f'Reading {a.get("url", "")}…',
-    'read_file': lambda a: f'Reading "{a.get("name", "")}"…',
-    'discard_plan': lambda a: 'Discarding the plan so far…',
-    'drop_planned': lambda a: 'Dropping planned changes…',
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, describe_step, _PROGRESS)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS)
+describe_step = TRACER.describe

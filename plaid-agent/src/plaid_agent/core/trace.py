@@ -53,12 +53,14 @@ META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'qu
 SEARCH_TOOLS = frozenset({'search', 'sequence_search', 'concordance', 'find_nodes', 'query'})
 
 
-def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], str],
+def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], Optional[str]],
                progress: Dict[str, Callable[[Dict[str, Any]], str]]) -> Tracer:
     """One app's tracer. What KIND a call was is read off the app's own tool
-    tables, and the line shown while it runs off the app's ``progress`` map,
-    with the same two fallbacks in every app: a plan tool says it is planning,
-    and anything else says its own name.
+    tables. The lines are the app's for its own tools (``describe`` answers
+    None for a tool it has no line for) and :data:`SHARED_DESCRIBE` and
+    :data:`SHARED_PROGRESS` for the tools every app offers, so the same tool
+    reads the same under a reply in every app. A plan tool with no progress
+    line says it is planning, and anything else says its own name.
     """
     def kind(name: str) -> str:
         if name == 'read_document':
@@ -71,15 +73,22 @@ def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]],
             return META
         return READ
 
+    def line(name: str, args: Dict[str, Any]) -> str:
+        own = describe(name, args)
+        if own is not None:
+            return own
+        shared = SHARED_DESCRIBE.get(name)
+        return shared(args) if shared else name.replace('_', ' ')
+
     def label(name: str, args: Dict[str, Any]) -> str:
-        fn = progress.get(name)
+        fn = progress.get(name) or SHARED_PROGRESS.get(name)
         if fn:
             return fn(args)
         if name in write_tools:
             return 'Planning changes…'
         return f'{name}…'
 
-    return Tracer(kind=kind, describe=describe, progress=label)
+    return Tracer(kind=kind, describe=line, progress=label)
 
 
 # --- the words an app's descriptions are built from -----------------------------
@@ -399,3 +408,65 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     if planned > 0:
         parts.append(plural(planned, 'planned change'))
     return ' · '.join(parts + [total]) if parts else total
+
+
+# --- the tools every app offers ---------------------------------------------------
+# One line each, so a shared tool reads the same under a reply in every app. An
+# app's own describer answers first, for the tools it declares itself.
+
+def _attached(a: Dict[str, Any]) -> str:
+    at = f' from line {a["start_line"]}' if a.get('start_line') else ''
+    return f'Read the attached file {q(a.get("name"))}{at}'
+
+
+def _on_ref(a: Dict[str, Any]) -> str:
+    return f' on {a["ref"]}' if a.get('ref') else ''
+
+
+SHARED_DESCRIBE: Dict[str, Callable[[Dict[str, Any]], str]] = {
+    'project_overview': lambda a: 'Looked at the project overview',
+    'list_documents': lambda a: 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else ''),
+    'read_document': read_document_label,
+    'read_guideline': lambda a: f'Read the guideline {q(a.get("title"))}',
+    'add_guideline': lambda a: f'Drafted a guideline, {q(a.get("title"))}',
+    'revise_guideline': lambda a: f'Edited the guideline {q(a.get("title"))}',
+    'rewrite_guideline': lambda a: f'Rewrote the guideline {q(a.get("title"))}',
+    'query_help': lambda a: 'Looked up the query language',
+    'query': lambda a: 'Ran a query',
+    'recent_changes': lambda a: f'Read the change history{in_doc(a)}',
+    'comments': lambda a: f'Read the comments{_on_ref(a)}{in_doc(a)}',
+    'add_comment': lambda a: f'Planned a comment{_on_ref(a)}{in_doc(a)}',
+    'restore_document': lambda a: f'Planned restoring {q(a.get("document"))} to {a.get("as_of", "")}',
+    'run_code': lambda a: 'Read across the project',
+    'code_help': lambda a: 'Looked up how to read across the project',
+    'read_file': _attached,
+    'web_search': lambda a: f'Searched the web for {q(a.get("query"))}',
+    'read_url': lambda a: f'Read the web page {a.get("url")}',
+    'plan_status': lambda a: 'Reviewed the plan so far',
+    'discard_plan': lambda a: 'Discarded the plan so far',
+    'drop_planned': lambda a: f'Dropped {plural(count(a, "indexes"), "planned change")}',
+}
+
+SHARED_PROGRESS: Dict[str, Callable[[Dict[str, Any]], str]] = {
+    'project_overview': lambda a: 'Looking at the project…',
+    'list_documents': lambda a: 'Listing the documents…',
+    'read_document': reading_line,
+    'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
+    'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
+    'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
+    'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
+    'query_help': lambda a: 'Reading the query language…',
+    'query': lambda a: 'Running a query…',
+    'recent_changes': lambda a: 'Reading the change history…',
+    'comments': lambda a: 'Reading the comments…',
+    'add_comment': lambda a: 'Planning a comment…',
+    'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
+    'run_code': lambda a: 'Reading across the project…',
+    'code_help': lambda a: 'Looking up how to read across the project…',
+    'read_file': lambda a: f'Reading "{a.get("name", "")}"…',
+    'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
+    'read_url': lambda a: f'Reading {a.get("url", "")}…',
+    'plan_status': lambda a: 'Reviewing the plan so far…',
+    'discard_plan': lambda a: 'Discarding the plan so far…',
+    'drop_planned': lambda a: 'Dropping planned changes…',
+}

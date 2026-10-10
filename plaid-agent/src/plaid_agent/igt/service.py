@@ -6,17 +6,15 @@ project it loads, the workspace its tools run against, its prompt, how a
 citation resolves to an example card, and how an approved plan is applied.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from ..core.agent import Toolkit
 from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
+from . import plan, prompt, toolkit
 from .citations import resolve_citations
-from .plan import execute_plan, summarize
 from .project import load_project
-from .prompt import CODE, SYSTEM, WEB, build_system_prompt, lexicon_focus_note, project_brief
-from .toolkit import TOOLS, call_tool, tools_for
-from .workspace import Workspace
+from .prompt import lexicon_focus_note
 from .trace import TRACER
+from .workspace import Workspace
 
 SUMMARY = """\
 **IGT Assistant** is a chat assistant over this project, powered by whatever
@@ -47,6 +45,9 @@ class AssistantService(BaseAssistantService):
     DESCRIPTION = 'Chat about the project and plan edits, with the operator\'s model'
     SUMMARY = SUMMARY
     PING_QUERY = 'interlinear glossed text'
+    TOOLKIT, PROMPT, PLAN, TRACER, WORKSPACE = toolkit, prompt, plan, TRACER, Workspace
+    load_project = staticmethod(load_project)
+    citations = staticmethod(resolve_citations)
     reference_shape = 'a bare reference like s3, s3.w2 or s3.w2.m1'
     # What a proposed change is kept as once its plan is settled: the word,
     # morpheme, entry or text it lands on, and its new value (a link's is the
@@ -61,24 +62,6 @@ class AssistantService(BaseAssistantService):
                      # merge takes in.
                      {'link': 'item_id', 'link_phrase': 'item_id', 'merge_entries': 'remove_id',
                       'merge_words': 'other_ids', 'merge_sentences': 'other_id'})
-
-    def toolkit(self) -> Toolkit:
-        return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)
-
-    def load_project(self, client, project_id):
-        return load_project(client, project_id)
-
-    def make_workspace(self, client, project, on_progress):
-        return Workspace(client, project, on_progress=on_progress)
-
-    def system_prompt(self, project, web: bool) -> str:
-        return build_system_prompt(project, web=web)
-
-    def prompt_template(self):
-        return [SYSTEM, WEB, CODE], TOOLS
-
-    def project_brief(self, project) -> str:
-        return project_brief(project)
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
         where = where or {}
@@ -104,21 +87,6 @@ class AssistantService(BaseAssistantService):
         # as the third word of sentence 1 and planned it.
         place = super().document_place(name)
         return (*place[:2], place[2] + ' ' + NO_SENTENCE_NOTE) if place else None
-
-    def citations(self, ws, text: str) -> List[Dict[str, Any]]:
-        return resolve_citations(ws, text)
-
-    def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
-                     stamp_mode: str, contributor: Optional[str],
-                     requester: Optional[str] = None,
-                     detail: Optional[Dict[str, Any]] = None,
-                     seed: Optional[str] = None) -> Dict[str, int]:
-        return execute_plan(client, ops, source=source, label=label, project=project,
-                            stamp_mode=stamp_mode, contributor=contributor, requester=requester, detail=detail,
-                            seed=seed)
-
-    def summarize(self, ops: List[Dict[str, Any]]) -> str:
-        return summarize(ops)
 
 
 def main():

@@ -9,18 +9,9 @@ This is the last module in the app to be imported: it reads every tool module,
 so nothing here may be imported back by one of them.
 """
 
-from typing import Any, Dict, List
-
-from ..core import sandbox as _sandbox
-from ..core import guidelines as _guidelines
-from ..core import filetools, webtools
-from ..core.filetools import t_read_file
-from ..core.webtools import t_read_url, t_web_search
-from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
-                               t_rewrite_guideline)
+from ..core import toolkit, webtools
 from ..core.limits import MAX_SENTENCES_PER_READ
-from ..core.tools import ToolError, fn, limit_arg, run_tool, tools_for as core_tools_for
-from ..core.reach import route
+from ..core.tools import fn, limit_arg
 
 from .bulk import t_replace_in_field
 from ..core.history import recent_changes as t_recent_changes
@@ -35,18 +26,16 @@ from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_
 from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
     plan_status as t_plan_status
 from ..core.tools import list_documents as t_list_documents, read_document as t_read_document
-from .tools import (FIELDS, Workspace, t_add_comment, t_confirm, t_del_relation,
+from .tools import (FIELDS, t_add_comment, t_confirm, t_del_relation,
                     t_discard_predictions, t_project_overview, t_run_parse,
                     t_set_feature, t_set_field, t_set_head)
 
-# Offered only where the monty worker binary is present, and only where the
-# operator configured a search backend (see tools_for): a model that cannot
-# run code or look something up is never told that it can.
-CODE_TOOLS = _sandbox.NAMES
+# Web tools are offered only where the operator configured a search backend
+# (see core.tools.tools_for).
 WEB_TOOLS = webtools.NAMES
-FILE_TOOLS = filetools.NAMES
 
 _fn = fn
+_SHARED = toolkit.shared_schemas(ref='One sentence, e.g. "s3".')
 
 
 # --- the tool table -------------------------------------------------------------
@@ -61,11 +50,7 @@ TOOLS = [
     _fn('project_overview',
         'The project: its language, its controlled vocabularies and whether each one is a rule or a '
         'suggestion, and its documents. Call this first.', {}, []),
-    _fn('list_documents',
-        'The documents by name, a page at a time, optionally filtered by a name substring.',
-        {'pattern': {'type': 'string'}, 'limit': limit_arg('list_documents', 'Documents to show'),
-         'offset': {'type': 'integer'}},
-        []),
+    _SHARED['list_documents'],
     _fn('read_document',
         'Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, '
         'XPOS, features, head and deprel, and a range line for each multi-word token. A sentence whose '
@@ -199,17 +184,8 @@ TOOLS = [
          'root_deprel': {'type': 'string', 'description': 'The relation the demoted root takes to '
                                                           'root_head.'}},
         ['document', 'ref']),
-    _fn('query_help',
-        'The Plaid query language, and this project\'s layer names. Call it before writing a '
-        'query; it costs nothing until you need it.', {}, []),
-    _fn('query',
-        'Run one read-only Plaid query over this project. The escape hatch for a question the '
-        'other reads cannot express: two columns at once, adjacency, a join. Layers are named by '
-        'name. Call query_help first.',
-        {'query': {'type': 'object', 'description': 'The query object: find, where, return, limit, '
-                                                    'order_by. See query_help.'},
-         'limit': limit_arg('query', 'Rows to show')},
-        ['query']),
+    _SHARED['query_help'],
+    _SHARED['query'],
     _fn('restore_document',
         'PLAN: put a document back as it was at a moment in its history, every layer of it. The '
         'plan shows what would change, from the server\'s own dry run, so it is not a guess. '
@@ -219,10 +195,9 @@ TOOLS = [
          'as_of': {'type': 'string', 'description': 'An ISO-8601 instant, e.g. '
                                                     '2026-09-05T18:45:49Z.'}},
         ['document', 'as_of']),
-    _fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
-    _fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
-    _fn('drop_planned', 'Drop some of the planned changes by their numbers from plan_status.',
-        {'indexes': {'type': 'array', 'items': {'type': 'integer'}}}, ['indexes']),
+    _SHARED['plan_status'],
+    _SHARED['discard_plan'],
+    _SHARED['drop_planned'],
 ]
 
 TOOLS += [
@@ -261,18 +236,8 @@ TOOLS += [
                    'description': 'One column; without it, all five including the tree (deprel).'},
          'document': _DOC,
          'limit': limit_arg('worklist', 'How many rows per column')}, []),
-    _fn('recent_changes',
-        'Who changed what, when, and under which operation label. Each entry prints the as_of '
-        'instant a restore would use.',
-        {'document': _DOC, 'limit': limit_arg('recent_changes', 'Entries to show'),
-         'since': {'type': 'string', 'description': 'A date (YYYY-MM-DD) or timestamp.'},
-         'user': {'type': 'string', 'description': 'Match the actor\'s name or email.'}}, []),
-    _fn('comments',
-        'What people have written to each other: in the whole project (no document), in one document, '
-        'or on one of its sentences (document + ref). These are notes between annotators, never '
-        'annotation. Oldest first.',
-        {'document': _DOC, 'ref': {'type': 'string', 'description': 'One sentence, e.g. "s3".'},
-         'limit': limit_arg('comments', 'Newest entries to show')}, []),
+    _SHARED['recent_changes'],
+    _SHARED['comments'],
     _fn('add_comment',
         'PLAN: leave a note for the annotators on a sentence or on the document, under the user\'s '
         'name. A note, never annotation: use it for a question or an observation the data cannot '
@@ -304,56 +269,6 @@ _IMPL = {
     'drop_planned': t_drop_planned,
 }
 
-# The project's own annotation manual. Always offered: the titles and
-# summaries are in the prompt, and this reads one in full.
-TOOLS += _guidelines.schemas('this treebank: how this project annotates, and what it has decided about hard cases')
-_IMPL.update({'read_guideline': t_read_guideline})
-
-# Drafting one is a PLAN, like every other change: the user approves it on the
-# card before anything is written.
-TOOLS += _guidelines.write_schemas()
-_IMPL.update({'add_guideline': t_add_guideline, 'revise_guideline': t_revise_guideline,
-              'rewrite_guideline': t_rewrite_guideline})
-
-# Offered only when the operator configured a search backend (see tools_for).
-TOOLS += webtools.schemas('this corpus')
-
-
-_IMPL.update({'web_search': t_web_search, 'read_url': t_read_url})
-
-# Offered only where the user has actually attached a file to the conversation
-# (see tools_for). What the code does with one is in core/filetools.py's api().
-TOOLS += filetools.schemas()
-_IMPL.update({'read_file': t_read_file})
-
-# A tool that plans a change says so in the first word of its description, and
-# that is what makes it one: no second list to keep in step with the first.
-WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['description'].startswith('PLAN:')}
-
-
-def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
-    """The tools a turn on this workspace may call."""
-    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS, FILE_TOOLS)
-
-
-def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
-    """Run one tool. Every failure comes back as text for the model."""
-    fn = _IMPL.get(name)
-    if not fn:
-        return f'Error: there is no tool named {name}.'
-    # The project the call names, in a turn that may read several: its own
-    # workspace, and the arguments without the name (see core/reach.py).
-    try:
-        ws, args = route(ws, name, args)
-    except ToolError as e:
-        return f'Error: {e}'
-    # A change this turn planned over one an earlier call planned is worth a
-    # sentence: the model asked for two and is getting one. Said here rather
-    # than in each tool, so a tool cannot be written without it.
-    after = (lambda out: out + ws.superseded_note()) if name in WRITE_TOOLS else None
-    return run_tool(ws, name, fn, args, after=after)
-
-
 _IMPL['run_parse'] = t_run_parse
 
 _IMPL['set_words'] = t_set_words
@@ -364,6 +279,7 @@ _IMPL['query'] = t_query
 _IMPL['query_help'] = t_query_help
 _IMPL['merge_sentences'] = t_merge_sentences
 
-
-TOOLS += _sandbox.schemas('the treebank')
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
+TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
+    TOOLS, _IMPL, manual='this treebank: how this project annotates, and what it has decided about hard cases',
+    web='this corpus', code='the treebank')

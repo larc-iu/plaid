@@ -4,15 +4,11 @@ The request lifecycle, the conversation record, the model loop and the plan
 mechanics are all in :mod:`plaid_agent.core`. What is here is UMR's half.
 """
 
-from typing import Any, Dict, List, Optional
 
-from ..core.agent import Toolkit
 from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
+from . import plan, prompt, toolkit
 from .citations import resolve_citations
-from .plan import execute_plan, summarize
 from .project import load_project
-from .prompt import CODE, SYSTEM, WEB, build_system_prompt, project_brief
-from .toolkit import TOOLS, call_tool, tools_for
 from .tools import Workspace
 from .trace import TRACER
 
@@ -40,6 +36,9 @@ class AssistantService(BaseAssistantService):
     DESCRIPTION = 'Chat about the meaning graphs and plan edits, with the operator\'s model'
     SUMMARY = SUMMARY
     PING_QUERY = 'uniform meaning representation'
+    TOOLKIT, PROMPT, PLAN, TRACER, WORKSPACE = toolkit, prompt, plan, TRACER, Workspace
+    load_project = staticmethod(load_project)
+    citations = staticmethod(resolve_citations)
     reference_shape = 'a bare reference like s3 or s3.s3e'
     # What a proposed change is kept as once its plan is settled: the node or
     # relation it lands on (an edge at its source, a new node at its sentence),
@@ -51,39 +50,6 @@ class AssistantService(BaseAssistantService):
                      # The second thing a relation joins: its target node
                      # (None for a node the plan makes).
                      {'create_edge': 'target_span_id', 'create_triple': 'target_span_id'})
-
-    def toolkit(self) -> Toolkit:
-        return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)
-
-    def load_project(self, client, project_id):
-        return load_project(client, project_id)
-
-    def make_workspace(self, client, project, on_progress):
-        return Workspace(client, project, on_progress=on_progress)
-
-    def system_prompt(self, project, web: bool) -> str:
-        return build_system_prompt(project, web=web)
-
-    def prompt_template(self):
-        return [SYSTEM, WEB, CODE], TOOLS
-
-    def project_brief(self, project) -> str:
-        return project_brief(project)
-
-    def citations(self, ws, text: str) -> List[Dict[str, Any]]:
-        return resolve_citations(ws, text)
-
-    def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
-                     stamp_mode: str, contributor: Optional[str],
-                     requester: Optional[str] = None,
-                     detail: Optional[Dict[str, Any]] = None,
-                     seed: Optional[str] = None) -> Dict[str, int]:
-        return execute_plan(client, ops, source=source, label=label, project=project,
-                            stamp_mode=stamp_mode, contributor=contributor, detail=detail,
-                            seed=seed)
-
-    def summarize(self, ops: List[Dict[str, Any]]) -> str:
-        return summarize(ops)
 
 
 def main():

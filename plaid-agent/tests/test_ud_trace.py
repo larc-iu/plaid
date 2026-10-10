@@ -11,17 +11,6 @@ from plaid_agent.ud.toolkit import TOOLS
 from plaid_agent.ud.trace import TRACER, describe_step
 
 
-def test_every_declared_tool_has_a_line_of_its_own():
-    """A tool described only by its own name has been added without a word for
-    it, which the user then reads in the trace."""
-    nameless = []
-    for t in TOOLS:
-        name = t['function']['name']
-        if describe_step(name, {}) == name.replace('_', ' '):
-            nameless.append(name)
-    assert not nameless, 'no trace line for: ' + ', '.join(nameless)
-
-
 def test_a_step_is_classified_by_what_it_was_for():
     assert TRACER.kind('read_document') == DOCUMENT
     assert TRACER.kind('set_head') == PLAN
@@ -62,15 +51,6 @@ def test_the_summary_counts_documents_and_plans_apart():
     steps = [trace_step(TRACER, 'a', 'read_document', {'document': 'Viaje'}),
              trace_step(TRACER, 'b', 'set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'det'}, planned=1)]
     assert summarize_steps(steps) == 'read 1 document · 1 planned change · 2 steps'
-
-
-def test_every_declared_tool_has_a_progress_line_of_its_own():
-    """The same guarantee for the PRESENT tense: the list the panel ticks
-    through while a turn runs comes from progress_label, which has a fallback
-    to a bare function name of its own."""
-    missing = [t['function']['name'] for t in TOOLS
-               if TRACER.progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
-    assert missing == [], f'no progress line for: {missing}'
 
 
 def test_a_respell_reads_as_one_and_a_reshape_as_a_reshape():

@@ -7,10 +7,10 @@ with no line of its own falls back to its name, and
 ``tests/test_umr_trace.py`` fails if any declared tool reaches that fallback.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..core.args import sentence_number
-from ..core.trace import count, in_doc, plural, q, read_document_label, reading_line, tracer_for
+from ..core.trace import in_doc, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -24,15 +24,10 @@ def _sentence(raw: Any) -> str:
     return f's{n}' if n is not None else 'a sentence'
 
 
-def describe_step(name: str, a: Dict[str, Any]) -> str:
-    """One past-tense line for a finished tool call."""
+def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
+    """One past-tense line for a finished call of a tool of this app's own, or
+    None for a shared one (:data:`core.trace.SHARED_DESCRIBE`)."""
     # --- reads ---------------------------------------------------------------
-    if name == 'project_overview':
-        return 'Looked at the project overview'
-    if name == 'list_documents':
-        return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
-    if name == 'read_document':
-        return read_document_label(a)
     if name == 'document_graph':
         return f'Read the document graph of {q(a.get("document"))}'
     if name == 'find_nodes':
@@ -45,28 +40,6 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Looked at what is unfinished{in_doc(a)}'
     if name == 'frequency_list':
         return f'Ranked {a.get("what") or "concept"}s by frequency{in_doc(a)}'
-    if name == 'recent_changes':
-        return f'Read the change history{in_doc(a)}'
-    if name == 'comments':
-        return f'Read the comments{in_doc(a)}'
-    if name == 'read_guideline':
-        return f'Read the guideline {q(a.get("title"))}'
-    if name == 'query_help':
-        return 'Looked up the query language'
-    if name == 'query':
-        return 'Ran a query'
-    if name == 'plan_status':
-        return 'Reviewed the plan so far'
-
-    if name == 'read_file':
-        at = f' from line {a["start_line"]}' if a.get('start_line') else ''
-        return f'Read the attached file {q(a.get("name"))}{at}'
-
-    # --- outside the project ---------------------------------------------------
-    if name == 'web_search':
-        return f'Searched the web for {q(a.get("query"))}'
-    if name == 'read_url':
-        return f'Read the web page {a.get("url")}'
 
     # --- plans ------------------------------------------------------------------
     if name == 'apply_penman':
@@ -86,23 +59,8 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Planned ({a.get("a")} {a.get("rel")} {a.get("b")}){in_doc(a)}'
     if name == 'delete_triple':
         return f'Planned removing ({a.get("a")} {a.get("rel") or "…"} {a.get("b")}){in_doc(a)}'
-    if name == 'add_guideline':
-        return f'Drafted a guideline, {q(a.get("title"))}'
-    if name == 'revise_guideline':
-        return f'Edited the guideline {q(a.get("title"))}'
-    if name == 'rewrite_guideline':
-        return f'Rewrote the guideline {q(a.get("title"))}'
-    if name == 'run_code':
-        return 'Read across the corpus'
-    if name == 'code_help':
-        return 'Looked up how to read across the corpus'
 
-    # --- bookkeeping --------------------------------------------------------------
-    if name == 'discard_plan':
-        return 'Discarded the plan so far'
-    if name == 'drop_planned':
-        return f'Dropped {plural(count(a, "indexes"), "planned change")}'
-    return name.replace('_', ' ')
+    return None
 
 
 # --- while it is happening --------------------------------------------------------
@@ -110,36 +68,18 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
 # while the turn runs. Only the calls worth naming get a line of their own.
 
 _PROGRESS = {
-    'project_overview': lambda a: 'Looking at the project…',
-    'list_documents': lambda a: 'Listing the documents…',
-    'read_document': reading_line,
     'document_graph': lambda a: 'Reading the document graph…',
     'find_nodes': lambda a: 'Looking for nodes…',
     'search': lambda a: 'Searching the corpus…',
     'worklist': lambda a: 'Looking for what is unfinished…',
     'frequency_list': lambda a: 'Counting frequencies…',
-    'recent_changes': lambda a: 'Reading the change history…',
-    'comments': lambda a: 'Reading the comments…',
-    'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
-    'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
-    'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
-    'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
     'apply_penman': lambda a: 'Working out what the graph would change…',
     'set_attributes': lambda a: 'Setting attributes…',
     'set_attribute_for_concept': lambda a: 'Working out which nodes that attribute reaches…',
     'add_triple': lambda a: 'Adding a document-level relation…',
     'delete_triple': lambda a: 'Removing a document-level relation…',
-    'query': lambda a: 'Running a query…',
-    'query_help': lambda a: 'Reading the query language…',
-    'run_code': lambda a: 'Reading across the corpus…',
-    'code_help': lambda a: 'Looking up how to read across the corpus…',
-    'plan_status': lambda a: 'Reviewing the plan…',
-    'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
-    'read_url': lambda a: f'Reading {a.get("url", "")}…',
-    'read_file': lambda a: f'Reading "{a.get("name", "")}"…',
-    'discard_plan': lambda a: 'Discarding the plan so far…',
-    'drop_planned': lambda a: 'Dropping planned changes…',
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, describe_step, _PROGRESS)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS)
+describe_step = TRACER.describe

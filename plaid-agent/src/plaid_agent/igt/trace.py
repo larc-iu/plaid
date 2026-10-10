@@ -7,9 +7,9 @@ no line of its own falls back to its name, and ``test_trace.py`` fails if any
 declared tool reaches that fallback.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from ..core.trace import count, in_doc, plural, q, read_document_label, reading_line, tracer_for
+from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -17,23 +17,10 @@ def _entry(a: Dict[str, Any]) -> str:
     return q(a.get('entry_form') or a.get('entry_id'))
 
 
-def describe_step(name: str, a: Dict[str, Any]) -> str:
-    """One past-tense line for a finished tool call."""
+def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
+    """One past-tense line for a finished call of a tool of this app's own, or
+    None for a shared one (:data:`core.trace.SHARED_DESCRIBE`)."""
     # --- reads ---------------------------------------------------------------
-    if name == 'project_overview':
-        return 'Looked at the project overview'
-    if name == 'read_guideline':
-        return f'Read the guideline {q(a.get("title"))}'
-    if name == 'add_guideline':
-        return f'Drafted a guideline, {q(a.get("title"))}'
-    if name == 'revise_guideline':
-        return f'Edited the guideline {q(a.get("title"))}'
-    if name == 'rewrite_guideline':
-        return f'Rewrote the guideline {q(a.get("title"))}'
-    if name == 'list_documents':
-        return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
-    if name == 'read_document':
-        return read_document_label(a)
     if name == 'search':
         where = a.get('where') if a.get('where') and a['where'] != 'baseline' else 'the baseline'
         return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
@@ -46,15 +33,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         forms = [f for f in ([a.get('form')] if a.get('form') else []) + list(a.get('forms') or []) if f]
         what = q(forms[0]) if len(forms) == 1 else plural(len(forms), 'form') if forms else q(None)
         return f'Tallied the analyses of {what}{in_doc(a)}'
-    if name == 'comments':
-        where = f' on {a["ref"]}' if a.get('ref') else ''
-        return f'Read the comments{where}{in_doc(a)}'
     if name == 'lexicon_entry':
         return f'Looked up the entry {_entry(a)}'
     if name == 'check_consistency':
         return f'Checked {a.get("field")} for consistency{in_doc(a)}'
-    if name == 'recent_changes':
-        return f'Read the change history{in_doc(a)}'
     if name == 'corpus_stats':
         return 'Counted the corpus' + (f' by {a["by"]}' if a.get('by') else '') + in_doc(a)
     if name == 'frequency_list':
@@ -68,26 +50,6 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Checked data integrity{in_doc(a)}'
     if name == 'sequence_search':
         return f'Searched for a word sequence{in_doc(a)}'
-    if name == 'run_code':
-        return 'Read across the corpus'
-    if name == 'code_help':
-        return 'Looked up how to read across the corpus'
-    if name == 'query_help':
-        return 'Read the query language reference'
-    if name == 'query':
-        return 'Ran a query'
-    if name == 'plan_status':
-        return 'Reviewed the plan so far'
-
-    if name == 'read_file':
-        at = f' from line {a["start_line"]}' if a.get('start_line') else ''
-        return f'Read the attached file {q(a.get("name"))}{at}'
-
-    # --- outside the project ---------------------------------------------------
-    if name == 'web_search':
-        return f'Searched the web for {q(a.get("query"))}'
-    if name == 'read_url':
-        return f'Read the web page {a.get("url")}'
 
     # --- plans: one item at a time -------------------------------------------
     if name == 'set_field':
@@ -105,11 +67,6 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Planned a multi-word expression over {plural(count(a), "word")} for {_entry(a)}{in_doc(a)}'
     if name == 'unlink_phrase':
         return f'Planned removing a multi-word expression{in_doc(a)}'
-    if name == 'add_comment':
-        where = f' on {a["ref"]}' if a.get('ref') else ''
-        return f'Planned a comment{where}{in_doc(a)}'
-    if name == 'restore_document':
-        return f'Planned restoring {q(a.get("document"))} to {a.get("as_of")}'
     if name == 'set_orthography':
         return f'Planned {a.get("orthography")} = {q(a.get("value"))} on {plural(count(a), "word")}{in_doc(a)}'
     if name == 'respell':
@@ -193,12 +150,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'retype_sentence':
         return f'Planned retyping {a.get("ref")}{in_doc(a)}'
 
-    # --- bookkeeping ----------------------------------------------------------
-    if name == 'discard_plan':
-        return 'Discarded the plan so far'
-    if name == 'drop_planned':
-        return f'Dropped {plural(count(a, "indexes"), "planned change")}'
-    return name.replace('_', ' ')
+    return None
 
 
 # --- while it is happening ------------------------------------------------------
@@ -206,22 +158,12 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
 # while the turn runs. Only the calls worth naming get a line of their own.
 
 _PROGRESS = {
-    'project_overview': lambda a: 'Looking at the project…',
-    'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
-    'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
-    'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
-    'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
-    'list_documents': lambda a: 'Listing the documents…',
-    'read_document': reading_line,
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'read_lexicon': lambda a: 'Reading the lexicon…',
     'concordance': lambda a: f'Concordancing "{a.get("pattern", "")}"…',
     'analyses_of': lambda a: f'Tallying analyses of "{a.get("form", "")}"…',
     'lexicon_entry': lambda a: f'Looking up "{a.get("entry_form") or a.get("form") or a.get("entry_id") or ""}"…',
     'check_consistency': lambda a: f'Checking {a.get("field", "")} consistency…',
-    'recent_changes': lambda a: 'Reading the change history…',
-    'comments': lambda a: 'Reading the comments…',
-    'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
     'corpus_stats': lambda a: 'Counting the corpus…',
     'frequency_list': lambda a: 'Counting frequencies…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
@@ -235,17 +177,8 @@ _PROGRESS = {
     'remove_example': lambda a: 'Dropping a usage example…',
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
-    'query_help': lambda a: 'Reading the query reference…',
-    'run_code': lambda a: 'Reading across the corpus…',
-    'code_help': lambda a: 'Looking up how to read across the corpus…',
-    'query': lambda a: 'Running a query…',
-    'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
-    'read_url': lambda a: f'Reading {a.get("url", "")}…',
-    'read_file': lambda a: f'Reading "{a.get("name", "")}"…',
-    'plan_status': lambda a: 'Reviewing the plan so far…',
-    'discard_plan': lambda a: 'Discarding the plan so far…',
-    'drop_planned': lambda a: 'Dropping planned changes…',
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, describe_step, _PROGRESS)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS)
+describe_step = TRACER.describe

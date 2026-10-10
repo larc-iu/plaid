@@ -5,30 +5,58 @@ sends, so a tool added without a line in :mod:`plaid_agent.igt.trace` would
 show up in the tab as a bare function name.
 """
 
+import pytest
+
 from plaid_agent.igt.toolkit import TOOLS, WRITE_TOOLS
 from plaid_agent.core.trace import DOCUMENT, PLAN, READ, summarize_steps, trace_step
 from plaid_agent.igt.trace import TRACER, describe_step
 
 
-def test_every_tool_has_a_line_of_its_own():
-    missing = [t['function']['name'] for t in TOOLS
-               if describe_step(t['function']['name'], {}) == t['function']['name'].replace('_', ' ')]
+APPS = ('igt', 'ud', 'umr')
+
+
+def _kit(app):
+    import importlib
+    return (importlib.import_module(f'plaid_agent.{app}.toolkit').TOOLS,
+            importlib.import_module(f'plaid_agent.{app}.trace').TRACER)
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_every_tool_has_a_line_of_its_own(app):
+    """A tool with no line falls back to its own name, which reaches the reader
+    as `set_attributes` in a list of sentences."""
+    tools, tracer = _kit(app)
+    missing = [t['function']['name'] for t in tools
+               if tracer.describe(t['function']['name'], {}) == t['function']['name'].replace('_', ' ')]
     assert missing == [], f'no trace description for: {missing}'
 
 
-def test_every_tool_has_a_progress_line_of_its_own():
+@pytest.mark.parametrize('app', APPS)
+def test_every_tool_has_a_progress_line_of_its_own(app):
     """The same guarantee as above, for the PRESENT tense.
 
     The list the panel ticks through while a turn runs comes from
-    ``progress_label``, not ``describe_step``, and it had its own fallback to a
-    bare function name. Three meta tools reached it, so a linguist watching a
-    turn saw ``discard_plan…`` and ``plan_status…`` in among "Looking at the
-    project…" and "Reading across the corpus…". The past-tense test above could not catch
-    it, because those tools do have past-tense lines.
+    ``progress``, not ``describe``, and it had its own fallback to a bare
+    function name. Three meta tools reached it, so a linguist watching a turn
+    saw ``discard_plan…`` and ``plan_status…`` in among "Looking at the
+    project…". The past-tense test above could not catch it, because those
+    tools do have past-tense lines.
     """
-    missing = [t['function']['name'] for t in TOOLS
-               if TRACER.progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
+    tools, tracer = _kit(app)
+    missing = [t['function']['name'] for t in tools
+               if tracer.progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
     assert missing == [], f'no progress line for: {missing}'
+
+
+def test_a_shared_tool_reads_the_same_in_every_app():
+    """The tools every app offers have one line, in core, so the trace under a
+    reply does not say the same thing three ways."""
+    from plaid_agent.core.trace import SHARED_DESCRIBE, SHARED_PROGRESS
+    a = {'document': 'Text 1', 'ref': 's3', 'title': 'Glosses', 'indexes': [1, 2]}
+    for name in SHARED_DESCRIBE:
+        lines = {app: (_kit(app)[1].describe(name, a), _kit(app)[1].progress(name, a)) for app in APPS}
+        assert len(set(lines.values())) == 1, (name, lines)
+        assert lines['igt'] == (SHARED_DESCRIBE[name](a), SHARED_PROGRESS[name](a))
 
 
 def test_write_tools_are_the_ones_that_say_plan():

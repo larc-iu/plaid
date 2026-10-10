@@ -22,9 +22,8 @@ lifecycle is subtle enough to want one copy of it rather than a version skew
 between separate installs.
 
 An app's assistant is a subclass of `core.service.BaseAssistantService` that
-answers seven questions: the project it loads, the workspace its tools run
-against, its toolkit, its prompt, how a citation resolves, how a plan is
-applied, and how a plan is summarized. Everything else is the harness.
+names its own modules (toolkit, prompt, plan, tracer, workspace), how it loads
+a project and how a citation resolves. Everything else is the harness.
 
 ## The UD assistant
 
@@ -375,6 +374,11 @@ The modules below are `igt/` unless they say otherwise.
   is the only one a second tool in the same turn reads a planned value out of),
   its query helper, the refusals only it owes, and its own words for a change
   the plan deletes out from under.
+- `core/toolkit.py`: the schemas of the tools every app offers (the history,
+  the comments, the plan so far, the query language) and the tail of every
+  tool table: the guideline, web, file and sandbox tools, which tools plan,
+  which a turn is offered, and the dispatch. `core/trace.py` holds the trace
+  lines of the same shared tools, so each reads the same in every app.
 - `core/corpus.py`: the query engine bound to one workspace, and whether a read
   was cut short. Each app adds the clauses that name what it annotates.
 - `core/citations.py`: the citation syntax, the order citations are read in,

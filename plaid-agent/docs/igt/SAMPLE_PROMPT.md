@@ -281,7 +281,7 @@ A consistency report for a field: values that are case/spelling variants of one 
 
 ### recent_changes
 
-The newest entries of the change history: who changed what and when, including plans this assistant applied. Each line ends with as_of=<instant>, the moment right after that change, which restore_document takes.
+Who changed what, when, and under which operation label, the plans this assistant applied among them. Each entry ends with as_of=<instant>, the moment right after that change, which restore_document takes.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `limit` (integer): Entries to show (default 20, max 100).
@@ -290,7 +290,7 @@ The newest entries of the change history: who changed what and when, including p
 
 ### comments
 
-The comments people have left (not annotation data: notes to each other). Whole project (no document), one document, or one thing in it (document + ref, plus field for a comment on one of its values). Oldest first.
+What people have written to each other: in the whole project (no document), in one document, or on one thing in it (document + ref, plus field for a comment on one of its values). These are notes between annotators, never annotation. Oldest first.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `ref` (string): sN, sN.wN, or sN.wN.mN.
@@ -315,7 +315,7 @@ PLAN: put a document back as it was at a moment in its history (as_of, an instan
 
 ### plan_status
 
-List the changes planned so far in this turn.
+Every change planned so far in this turn, numbered.
 
 No parameters.
 
@@ -337,13 +337,13 @@ PLAN: create a new document from raw text, one sentence per line; words are toke
 
 ### discard_plan
 
-Drop every change planned so far in this turn.
+Throw away everything planned so far and start the plan over.
 
 No parameters.
 
 ### drop_planned
 
-Drop some of the planned changes by their plan_status numbers; the rest stay.
+Drop some of the planned changes by their numbers from plan_status. The rest stay.
 
 - `indexes` (array of integer, required)
 
@@ -631,15 +631,15 @@ PLAN: replace the baseline text of one sentence (fix a transcript: insert, remov
 
 ### query_help
 
-The reference for the query language used by `query`, plus the layer names of this project. Call it once before writing a query; it is long, so only when the other tools cannot express the question.
+The Plaid query language that `query` takes, and this project's layer names. Call it once before writing a query.
 
 No parameters.
 
 ### query
 
-Run a read-only query in Plaid's query language over this project (structure across layers, joins, negation, aggregates). Name layers by their names from query_help. Prefer the specialised tools when they fit; this is the escape hatch for questions they cannot express.
+Run one read-only Plaid query over this project: structure across layers, joins, negation, aggregates. The escape hatch for a question the other tools cannot express, so prefer them when they fit. Layers are named by their names from query_help.
 
-- `query` (object, required): The query object: find, where, return, limit, order_by.
+- `query` (object, required): The query object: find, where, return, limit, order_by. See query_help.
 - `limit` (integer): Rows to show (default 50, max 500).
 
 ### read_guideline

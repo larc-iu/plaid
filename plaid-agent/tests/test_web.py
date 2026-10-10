@@ -163,7 +163,8 @@ def ws_with_web(monkeypatch, handler):
 
 
 def test_the_web_tools_exist_only_where_the_operator_configured_them():
-    from plaid_agent.igt.toolkit import FILE_TOOLS, TOOLS, WEB_TOOLS, call_tool, tools_for
+    from plaid_agent.core.filetools import NAMES as FILE_TOOLS
+    from plaid_agent.igt.toolkit import TOOLS, WEB_TOOLS, call_tool, tools_for
     from test_tools import ws as tools_ws
     w = tools_ws()
     assert {t['function']['name'] for t in tools_for(w)}.isdisjoint(WEB_TOOLS)
