@@ -24,11 +24,10 @@ import { scopeBadgeClass } from '@/domain/scopeColors';
 
 // Values in the project that its own tagsets say are wrong.
 //
-// This view exists because "closed" is enforced in plaid-igt and nowhere else:
-// typing is refused and a bulk replace is refused, but an import, a service,
-// the assistant and a direct API call all reach the same span layer without
-// passing either check. Rather than pretend the constraint is a database
-// invariant, this is where you find out what got in.
+// A closed list is a rule core holds (a value set on each field it governs,
+// tagsets.js), so every writer is refused an off-list value. Core lets through
+// an unverified machine value and an import's, and an open list holds anything:
+// this is where you find out what got in.
 //
 // Finding them costs one aggregate query per governed field. The server returns
 // the field's whole value inventory ([value, count]) and the diff against the
