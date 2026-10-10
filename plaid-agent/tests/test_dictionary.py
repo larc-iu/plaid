@@ -852,3 +852,23 @@ def test_a_rollback_puts_back_an_entry_a_tool_had_edited():
             call_tool(w, 'set_entry_field', {'entry_form': 'ndiwo', 'field': 'gloss', 'value': 'sauce'})
             raise RuntimeError('the tool gave up')
     assert w.new_entries[key]['metadata']['gloss'] == 'relish'
+
+
+def test_a_headword_counts_the_links_on_its_senses():
+    """The links usually sit on the senses, so a headword that counted only its
+    own said "Linked from 0 words and 0 morphemes" for an entry in wide use,
+    and a model took that as the answer."""
+    items = [{'id': 'd-di', 'form': '-di', 'metadata': {'gloss': 'case'}},
+             {'id': 'vi-erg', 'form': '-di', 'metadata': {'gloss': 'ERG', 'parent': 'd-di', 'senseOrder': 1}},
+             {'id': 'd-obl', 'form': '-di', 'metadata': {'gloss': 'OBL', 'parent': 'd-di', 'senseOrder': 2}},
+             {'id': 'vi-ali', 'form': 'Ali', 'metadata': {'gloss': 'Ali'}}]
+    w = dict_ws(items=items)
+    out = call_tool(w, 'lexicon_entry', {'entry_form': '-di'})
+    assert ('Linked from 0 words and 1 morpheme, counting its senses. '
+            'The headword itself: 0 words and 0 morphemes.') in out, out
+    assert '1.1 -di | sense 1.1 of "-di" | gloss=ERG (linked from 0 words and 1 morpheme)' in out, out
+    assert 'gloss=OBL (linked from 0 words and 0 morphemes)' in out, out
+    assert 'Examples:' in out
+    # A sense and an entry with no senses read as before.
+    assert 'Linked from 0 words and 1 morpheme.' in call_tool(w, 'lexicon_entry', {'entry_form': '-di#1.1'})
+    assert 'Linked from 1 word and 0 morphemes.' in call_tool(w, 'lexicon_entry', {'entry_form': 'Ali'})

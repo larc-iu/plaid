@@ -264,7 +264,7 @@ How a form has been analyzed so far, as a word (segmentation, glosses, links) an
 
 ### lexicon_entry
 
-One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences. It also says where the entry sits, the senses under it, what refers to it, and its promoted usage examples with their numbers.
+One lexicon entry in full: all its fields, how many words and morphemes link to it (an entry with senses counts their links too, and each sense's own), and example occurrences. It also says where the entry sits, the senses under it, what refers to it, and its promoted usage examples with their numbers.
 
 - `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
 - `lexicon` (string)

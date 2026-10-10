@@ -20,7 +20,7 @@ from ..core.tools import ToolError, truncate
 from .project import (Word, Morpheme, analyzed, document_lines, joiner_between, render_overview, stored_morphemes,
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
-from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
+from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, descendants_of, homograph_group, references_to
 from .workspace import Workspace, _hits_in, _matcher, _meta_of
 
 
@@ -506,53 +506,87 @@ def _entry_in_full(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
                 or v in (None, '', [], {})):
             continue
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
+    examples = read_int(examples, 'examples', 3, minimum=0, maximum=20)
+    word_links, morph_links, mwes, exs = _entry_usage(ws, target['id'], examples)
+    # A headword's links usually sit on its senses, so its own count alone is
+    # often 0 while the entry is in wide use. The summary adds up the senses
+    # (each with the senses under it) and the Senses list says each one's.
+    by_sense: Dict[str, tuple] = {}
+    if view is not None:
+        for c in view.tree.senses_of(target['id']):
+            w = m = x = 0
+            for it in [c] + descendants_of(view.tree, c['id']):
+                sw, sm, sx, sexs = _entry_usage(ws, it['id'], max(0, examples - len(exs)))
+                w, m, x = w + sw, m + sm, x + sx
+                exs.extend(sexs)
+            by_sense[c['id']] = (w, m, x)
     if view is not None:
         lines.extend(f'  {r}' for r in view.ref_summary(target))
-        lines.extend(_dictionary_lines(ws, view, target))
-    word_links, morph_links, mwes, exs = 0, 0, 0, []
-    examples = read_int(examples, 'examples', 3, minimum=0, maximum=20)
+        lines.extend(_dictionary_lines(ws, view, target, by_sense))
+    if by_sense:
+        own_w, own_m = word_links, morph_links
+        word_links += sum(t[0] for t in by_sense.values())
+        morph_links += sum(t[1] for t in by_sense.values())
+        mwes += sum(t[2] for t in by_sense.values())
+    lines.append(f'Linked from {_links(word_links, morph_links)}'
+                 + (f' ({mwes} multi-word expression{"s" if mwes != 1 else ""})' if mwes else '')
+                 + (f', counting its senses. The {"sense" if view.is_sense(target["id"]) else "headword"} '
+                    f'itself: {_links(own_w, own_m)}' if by_sense else '')
+                 + '.')
+    if exs:
+        lines.append('Examples:')
+        lines.extend(exs[:examples])
+    return truncate('\n'.join(lines))
+
+
+def _links(words: int, morphs: int) -> str:
+    return f'{words} word{"s" if words != 1 else ""} and {morphs} morpheme{"s" if morphs != 1 else ""}'
+
+
+def _entry_usage(ws: Workspace, item_id: str, examples: int):
+    """(word links, morpheme links, multi-word expressions, example lines) for
+    one item's OWN links, not its senses'."""
     if not ws.prefer_scan:
         from .queries import q_entry_usage
-        word_links, morph_links, mwes, exs = q_entry_usage(ws, target['id'], examples)
+        return q_entry_usage(ws, item_id, examples)
+    word_links, morph_links, exs = 0, 0, []
     seen_mwes = set()
-    for doc in (ws.all_docs() if ws.prefer_scan else []):
+    for doc in ws.all_docs():
         tag = ws.doc_tag(doc)
         for s in doc.sentences:
             for w in s.words:
                 hit = False
-                if w.link and w.link.item_id == target['id']:
+                if w.link and w.link.item_id == item_id:
                     word_links += 1
                     hit = True
                 for l in w.mwes:
-                    if l.item_id == target['id']:
+                    if l.item_id == item_id:
                         word_links += 1  # one per member word, as the query path counts tokens
                         seen_mwes.add(l.id)
                         hit = True
                 for m in w.morphemes:
-                    if m.link and m.link.item_id == target['id']:
+                    if m.link and m.link.item_id == item_id:
                         morph_links += 1
                         hit = True
                 if hit and len(exs) < examples:
                     exs.append(f'  {tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
-    if ws.prefer_scan:
-        mwes = len(seen_mwes)
-    lines.append(f'Linked from {word_links} word{"s" if word_links != 1 else ""} and {morph_links} morpheme{"s" if morph_links != 1 else ""}'
-                 + (f' ({mwes} multi-word expression{"s" if mwes != 1 else ""})' if mwes else '') + '.')
-    if exs:
-        lines.append('Examples:')
-        lines.extend(exs)
-    return truncate('\n'.join(lines))
+    return word_links, morph_links, len(seen_mwes), exs
 
 
-def _dictionary_lines(ws: Workspace, view: LexView, target: dict) -> List[str]:
-    """An entry's place in its lexicon: the senses under it, what refers to it,
-    and its promoted examples."""
+def _dictionary_lines(ws: Workspace, view: LexView, target: dict,
+                      by_sense: Optional[Dict[str, tuple]] = None) -> List[str]:
+    """An entry's place in its lexicon: the senses under it (with each one's
+    links when ``by_sense`` has them), what refers to it, and its promoted
+    examples."""
     out: List[str] = []
     senses = view.tree.senses_of(target['id'])
     if senses:
         out.append(f'Senses ({len(senses)}):')
         for c in senses:
-            out.append(f'  {view.number(c["id"])} {entry_line(c, view)}')
+            n = (by_sense or {}).get(c['id'])
+            sub = ' with the senses under it' if n is not None and view.tree.senses_of(c['id']) else ''
+            tail = f' (linked from {_links(n[0], n[1])}{sub})' if n is not None else ''
+            out.append(f'  {view.number(c["id"])} {entry_line(c, view)}{tail}')
     back = [r for r in references_to(view.items, view.fields, target['id'])]
     if back:
         out.append('Referred to by:')

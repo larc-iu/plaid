@@ -216,8 +216,9 @@ TOOLS = [
         'forms (a list, up to 40) to check every word of a sentence in one call.',
         {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC}, []),
     _fn('lexicon_entry',
-        'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example '
-        'occurrences. It also says where the entry sits, the senses under it, what refers to it, and its '
+        'One lexicon entry in full: all its fields, how many words and morphemes link to it (an entry with senses '
+        'counts their links too, and each sense\'s own), and example occurrences. It also says where the entry '
+        'sits, the senses under it, what refers to it, and its '
         'promoted usage examples with their numbers.',
         {'entry_form': _ENTRY_FORM, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
          'entry_gloss': _GLOSS, 'examples': {'type': 'integer', 'description': 'Example occurrences to show (default 3).'}},
