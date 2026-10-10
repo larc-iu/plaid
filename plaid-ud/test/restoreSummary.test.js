@@ -50,7 +50,7 @@ const layers = indexLayers(raw);
 
 test('indexLayers names every layer and keeps token-layer roles', () => {
   assert.deepEqual(layers.tok, { name: 'Tokens', role: 'word' });
-  assert.deepEqual(layers.upos, { name: 'UPOS', scope: 'syntactic-word' });
+  assert.deepEqual(layers.upos, { name: 'UPOS' });
   assert.deepEqual(layers.deprel, { name: 'Dependency Relations' });
 });
 
@@ -88,7 +88,7 @@ test('spans are named by their scope and layer, relations by their layer', () =>
     },
     layers,
   );
-  assert.deepEqual(lines, ['1 annotation in word UPOS', '5 relations in Dependency Relations']);
+  assert.deepEqual(lines, ['1 annotation in UPOS', '5 relations in Dependency Relations']);
 });
 
 test('layers absent from the document still produce a line', () => {

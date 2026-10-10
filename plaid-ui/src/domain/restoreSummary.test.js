@@ -37,7 +37,7 @@ describe('indexLayers', () => {
     const layers = indexLayers(raw, readRole);
     expect(layers.sent).toEqual({ name: 'Sentences', role: 'sentence' });
     expect(layers.other).toEqual({ name: 'Timeline', role: null });
-    expect(layers.gloss).toEqual({ name: 'Gloss', scope: 'word' });
+    expect(layers.gloss).toEqual({ name: 'Gloss' });
     expect(layers.dep).toEqual({ name: 'Dependencies' });
   });
 
@@ -153,7 +153,7 @@ describe('changeGroups', () => {
     expect(changeGroups(summary, layers, { word: ['word', 'words'] })).toEqual([
       {
         heading: 'Removed',
-        lines: ['24 words', '3 annotations in word Gloss', '18 relations in Dependencies'],
+        lines: ['24 words', '3 annotations in Gloss', '18 relations in Dependencies'],
       },
       { heading: 'Brought back', lines: ['2 words', '1 vocabulary link'] },
       {
@@ -161,7 +161,7 @@ describe('changeGroups', () => {
         lines: [
           'The document name',
           'The text, and the words read from it',
-          '1 annotation in word Gloss',
+          '1 annotation in Gloss',
           'Metadata',
         ],
       },
