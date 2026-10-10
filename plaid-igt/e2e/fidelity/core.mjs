@@ -100,7 +100,6 @@ async function startCore({ timeoutMs = 300_000, keep = false, log = false } = {}
       cwd: CORE_DIR,
       env: {
         ...process.env,
-        PLAID_NO_REEXEC: '1',
         PLAID_ADMIN_EMAIL: ADMIN.email,
         PLAID_ADMIN_PASSWORD: ADMIN.password,
       },
