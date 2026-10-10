@@ -17,19 +17,16 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, MACHINE
 
 from ..core import history, opkind
 from ..core.bidi import qv
-from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, confirm_preview, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
-from ..core import rules
 from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref, REVIEWABLE,
                       join_morphemes, project_new_words, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
-from .reads import t_plan_status
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 
 
@@ -1096,48 +1093,4 @@ def t_restore_document(ws: Workspace, document: str, as_of: str) -> str:
     return history.restore_document(ws, document, as_of, lines=lambda s: _restore_lines(ws, s),
                                     extra=lambda doc: {'doc': doc.id})
 
-
-def t_discard_plan(ws: Workspace) -> str:
-    n = len(ws.ops)
-    ws.ops.clear()
-    ws.new_entries.clear()
-    return f'Discarded {n} planned change{"s" if n != 1 else ""}.'
-
-
-def t_drop_planned(ws: Workspace, indexes) -> str:
-    """Drop some planned changes by their plan_status numbers, keeping the rest."""
-    if isinstance(indexes, (int, str)):
-        indexes = [indexes]
-    try:
-        wanted = {whole(i, 'indexes') for i in (indexes or [])}
-    except (TypeError, ValueError):
-        raise ToolError('indexes must be the whole numbers shown by plan_status, e.g. [2, 5]')
-    bad = sorted(i for i in wanted if not 1 <= i <= len(ws.ops))
-    if bad:
-        raise ToolError(f'No planned change number {", ".join(map(str, bad))}; the plan holds {len(ws.ops)} (see plan_status)')
-    if not wanted:
-        raise ToolError('Give at least one number.')
-    dropped = [ws.ops[i - 1] for i in sorted(wanted)]
-    # A dropped new entry takes the links to it along: they could not be written.
-    keys = {op['key'] for op in dropped if op.get('kind') == 'create_entry'}
-    for k in keys:
-        ws.new_entries.pop(k, None)
-    # Whatever links to one, a word's own link or a multi-word expression's:
-    # the phrase link was left behind, and approval then failed after the
-    # first batch had landed.
-    ws.ops = [op for i, op in enumerate(ws.ops, start=1)
-              if i not in wanted and not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
-    # A dropped analysis takes the links to its morphemes along: they have
-    # nothing to be written on.
-    before = ws.unlinked
-    orphans = ws.unlink_orphans()
-    ws.reported_unlinked += ws.unlinked - before
-    # A later rule was found over the values a dropped one leaves.
-    if any(rules.is_rule(op) for op in dropped):
-        from .bulk import refresh_rules
-        refresh_rules(ws)
-    return f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + \
-        (' Links to the dropped new entries were dropped with them.' if keys else '') + \
-        (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '') + \
-        '\n' + t_plan_status(ws)
 

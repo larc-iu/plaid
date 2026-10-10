@@ -330,7 +330,7 @@ def test_a_graph_is_refused_on_a_sentence_the_plan_already_changes(ws):
 def test_the_plan_can_be_read_back_and_trimmed(ws):
     run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='s2r')
     run(ws, 'set_attributes', document='Story', sentence=1, var='s1b', line=':aspect state')
-    assert '2 change(s) planned' in run(ws, 'plan_status')
+    assert run(ws, 'plan_status').startswith('2 planned changes')
     assert 'Dropped 1' in run(ws, 'drop_planned', indexes=[1])
     assert len(ws.ops) == 1
     assert 'Discarded 1' in run(ws, 'discard_plan')

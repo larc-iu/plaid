@@ -177,21 +177,31 @@ def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) 
     """The project's documents by name, a page at a time, narrowed by a
     substring. Every app lists them the same way, because a document is a
     document whatever an app puts in one."""
-    docs = ws.documents()
+    return documents_page(ws, pattern, limit, offset)
+
+
+def documents_page(ws, pattern: str = None, limit: int = None, offset: int = 0, *,
+                   docs: Optional[List[Dict[str, Any]]] = None,
+                   lines: Optional[Callable[[List[Dict[str, Any]]], List[str]]] = None) -> str:
+    """:func:`list_documents` for an app that narrows the list further
+    (``docs``) or prints a document its own way (``lines``)."""
+    narrowed = docs is not None
+    docs = sorted(ws.documents() if docs is None else docs, key=lambda d: (d.get('name') or '').casefold())
     if pattern:
-        docs = [d for d in docs if pattern.lower() in (d.get('name') or '').lower()]
+        want = pattern.casefold()
+        docs = [d for d in docs if want in (d.get('name') or '').casefold()]
     if not docs:
-        return 'No documents matched.' if pattern else 'The project has no documents.'
+        return 'No documents matched.' if pattern or narrowed else 'The project has no documents.'
     limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
     offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
     ws.note_read(len(page), 'document', of=len(docs))
-    out = [f'{len(docs)} document(s)' + (f' matching "{pattern}"' if pattern else '')
-           + (f', showing {offset + 1} to {offset + len(page)}' if len(docs) > len(page) else '')
-           + ':']
-    for d in page:
-        out.append(f'  "{d.get("name")}"')
-    return '\n'.join(out)
+    out = [f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or narrowed else '')
+           + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':']
+    out += lines(page) if lines else [f'  "{d.get("name")}"' for d in page]
+    if offset + len(page) < len(docs):
+        out.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
+    return truncate('\n'.join(out))
 
 
 def read_document(ws, document: str = None, from_sentence=None, to_sentence=None,

@@ -521,7 +521,7 @@ def test_plan_status_numbers_the_changes_and_drop_removes_one(ws):
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='VERB')
     assert '1. lemma = "correr" (s2.w1)' in run(ws, 'plan_status')
-    assert run(ws, 'drop_planned', indexes=[1]) == 'Dropped 1 planned change(s). 1 remain.'
+    assert run(ws, 'drop_planned', indexes=[1]).startswith('Dropped 1 planned change.\n1 planned change ')
     assert 'No planned change numbered 5' in run(ws, 'drop_planned', indexes=[5])
 
 

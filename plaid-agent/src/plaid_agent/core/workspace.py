@@ -811,6 +811,22 @@ class BaseWorkspace:
                 return op.get('value') or ''
         return current
 
+    # --- what the plan tools ask (core.plan.plan_status, discard_plan,
+    # drop_planned) of an app whose plan holds more than its ops ------------------
+
+    def plan_view(self) -> List[Dict[str, Any]]:
+        """The plan's entries as plan_status lists them: as the card will show
+        them."""
+        return self.ops
+
+    def after_discard(self) -> None:
+        """What the app clears with the plan's ops."""
+
+    def after_drop(self, dropped: List[Dict[str, Any]]) -> str:
+        """What the app drops along with ``dropped``, said in a sentence
+        (each starting with a space), or ''."""
+        return ''
+
     def superseded_note(self) -> str:
         """The earlier changes this turn superseded that nothing has reported
         yet, and '' when there are none.

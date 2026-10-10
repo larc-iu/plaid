@@ -1386,35 +1386,54 @@ def holding(client, document_ids: Iterable[str]):
 # plan carries more than `ops` (entries created alongside it, say) overrides
 # what it has to and calls back here.
 
+#: How many of the plan's entries plan_status lists.
+PLAN_STATUS_LINES = 200
+
+
 def plan_status(ws) -> str:
+    """The plan's entries, numbered as drop_planned takes them, each as the
+    card will show it (``ws.plan_view()``)."""
     if not ws.ops:
         return 'Nothing is planned yet.'
-    out = [f'{len(ws.ops)} change(s) planned. The user approves or discards them as one plan.']
-    for i, op in enumerate(ws.ops, start=1):
+    ops = ws.plan_view()
+    n = len(ops)
+    out = [f'{n} planned change{"s" if n != 1 else ""} (nothing is written until the user approves them as one '
+           'plan):']
+    for i, op in enumerate(ops[:PLAN_STATUS_LINES], start=1):
         where = f' ({op["ref"]})' if op.get('ref') else ''
         out.append(f'  {i}. {op.get("label")}{where}')
+    if n > PLAN_STATUS_LINES:
+        out.append(f'  ... {n - PLAN_STATUS_LINES} more')
     return '\n'.join(out)
 
 
 def discard_plan(ws) -> str:
     n = len(ws.ops)
     ws.ops.clear()
-    return f'Discarded {n} planned change(s).' if n else 'Nothing was planned.'
+    ws.after_discard()
+    return f'Discarded {n} planned change{"s" if n != 1 else ""}.' if n else 'Nothing was planned.'
 
 
 def drop_planned(ws, indexes=None) -> str:
+    """Drop some planned changes by their plan_status numbers, keeping the
+    rest. What a dropped change took with it (``ws.after_drop``) is said, and
+    the plan is listed again so its new numbers are in front of the model."""
     from .args import whole
     from .tools import ToolError
-    if not indexes:
-        raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
+    if isinstance(indexes, (int, str)):
+        indexes = [indexes]
     try:
-        drop = {whole(i, 'indexes') for i in indexes}
+        drop = {whole(i, 'indexes') for i in (indexes or [])}
     except (TypeError, ValueError):
-        raise ToolError('indexes must be the whole numbers plan_status shows, as a list, '
-                        'e.g. [2, 5].')
-    bad = [i for i in drop if not 1 <= i <= len(ws.ops)]
+        raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
+    if not drop:
+        raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
+    bad = sorted(i for i in drop if not 1 <= i <= len(ws.ops))
     if bad:
         raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
-                        f'{len(ws.ops)} are planned.')
+                        f'{len(ws.ops)} are planned (see plan_status).')
+    dropped = [ws.ops[i - 1] for i in sorted(drop)]
     ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
-    return f'Dropped {len(drop)} planned change(s). {len(ws.ops)} remain.'
+    note = ws.after_drop(dropped)
+    return (f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + note + '\n'
+            + plan_status(ws))

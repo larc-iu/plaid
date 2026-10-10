@@ -829,6 +829,39 @@ class Workspace(BaseWorkspace):
             self.unlinked += gone
         return gone
 
+    def plan_view(self) -> List[Dict[str, Any]]:
+        # Each rule found over what the plan leaves, and each merge as the
+        # card shows it: less the links another change takes.
+        from .bulk import settle_rules
+        from .plan import settle_merges
+        settle_rules(self)
+        return settle_merges(self.ops)[0]
+
+    def after_discard(self) -> None:
+        self.new_entries.clear()
+
+    def after_drop(self, dropped: List[Dict[str, Any]]) -> str:
+        # A dropped new entry takes the links to it along: they could not be
+        # written. Whatever links to one, a word's own link or a multi-word
+        # expression's: the phrase link was left behind, and approval then
+        # failed after the first batch had landed.
+        keys = {op['key'] for op in dropped if op.get('kind') == 'create_entry'}
+        for k in keys:
+            self.new_entries.pop(k, None)
+        self.ops[:] = [op for op in self.ops if not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
+        # A dropped analysis takes the links to its morphemes along: they have
+        # nothing to be written on.
+        before = self.unlinked
+        orphans = self.unlink_orphans()
+        self.reported_unlinked += self.unlinked - before
+        # A later rule was found over the values a dropped one leaves.
+        from ..core import rules
+        if any(rules.is_rule(op) for op in dropped):
+            from .bulk import refresh_rules
+            refresh_rules(self)
+        return ((' Links to the dropped new entries were dropped with them.' if keys else '')
+                + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else ''))
+
     def superseded_note(self) -> str:
         out = super().superseded_note()
         took = self.analysis_took - self.reported_took

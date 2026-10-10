@@ -14,6 +14,8 @@ from typing import Any, Dict
 
 from ..core import toolkit, webtools
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
+from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
+    plan_status as t_plan_status
 from ..core.tools import fn, limit_arg, read_document as t_read_document
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
@@ -24,7 +26,7 @@ from .lexicon import (t_add_sense, t_create_entry, t_free_sense, t_make_sense_of
 from .query import t_query, t_query_help
 from ..core.history import comments_on_values as t_comments, recent_changes as t_recent_changes
 from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
-                    t_list_documents, t_plan_status, t_project_overview,
+                    t_list_documents, t_project_overview,
                     t_read_lexicon, t_search)
 from .sandbox import t_code_help, t_run_code
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
@@ -32,7 +34,7 @@ from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_wor
 from .stats import (t_check_integrity, t_check_lexicon, t_corpus_stats, t_frequency_list,
                     t_sequence_search, t_worklist)
 from .tools import (t_add_comment, t_confirm, t_create_document, t_discard_analysis,
-                    t_discard_plan, t_drop_planned, t_link_entry, t_link_phrase, t_respell,
+                    t_link_entry, t_link_phrase, t_respell,
                     t_restore_document, t_set_analysis, t_set_document_metadata, t_set_field,
                     t_set_morpheme, t_set_orthography, t_unlink_entry, t_unlink_phrase)
 

@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, documents_page, truncate
 
 from .project import (Word, Morpheme, analyzed, document_lines, joiner_between, render_overview, stored_morphemes,
                       render_word, segmentation, word_ref)
@@ -32,12 +32,9 @@ def t_project_overview(ws: Workspace) -> str:
 
 def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_field: Optional[str] = None,
                      value: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> str:
-    """The documents, filtered by a name pattern and/or a metadata value, a
-    page at a time (the overview shows only the first ``OVERVIEW_DOCS``)."""
-    docs = sorted(ws.documents(), key=lambda d: (d.get('name') or '').lower())
-    if pattern:
-        m = _matcher(pattern, False)
-        docs = [d for d in docs if m(d.get('name') or '')]
+    """:func:`core.tools.list_documents`, also filtered by a document
+    metadata value (an empty value lists the documents lacking it)."""
+    docs = None
     if metadata_field:
         name = next((n for n in ws.project.document_metadata if n.lower() == metadata_field.lower()), None)
         if not name:
@@ -45,17 +42,10 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
                             + (', '.join(ws.project.document_metadata) or '(none configured)'))
         metas = ws.corpus.document_metadata() if not ws.prefer_scan else {d.id: d.metadata for d in ws.all_docs()}
         want = (value or '').casefold()
-        docs = [d for d in docs if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
+        docs = [d for d in ws.documents() if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
                 or (not want and not (metas.get(d['id']) or {}).get(name))]
     limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
-    offset = read_int(offset, 'offset', 0, minimum=0)
-    page = docs[offset:offset + limit]
-    head = f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or metadata_field else '') \
-        + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':'
-    lines = [head] + document_lines(page)
-    if offset + len(page) < len(docs):
-        lines.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
-    return truncate('\n'.join(lines))
+    return documents_page(ws, pattern, limit, offset, docs=docs, lines=document_lines)
 
 
 #: What a model writes for each kind of ``where`` a read takes besides a
@@ -742,17 +732,4 @@ def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empt
                          + (': ' + '; '.join(linked_empty) + (' …' if linked_empty_n > len(linked_empty) else '') if linked_empty else '.'))
     return truncate('\n'.join(lines))
 
-
-def t_plan_status(ws: Workspace) -> str:
-    if not ws.ops:
-        return 'The plan is empty.'
-    from .plan import settle_merges
-    from .bulk import settle_rules
-    settle_rules(ws)
-    lines = [f'{len(ws.ops)} planned change{"s" if len(ws.ops) != 1 else ""} (nothing written yet):']
-    # Each merge as the card shows it: less the links another change takes.
-    lines.extend(f'  {i + 1}. {op["label"]}' for i, op in enumerate(settle_merges(ws.ops)[0][:200]))
-    if len(ws.ops) > 200:
-        lines.append(f'  ... {len(ws.ops) - 200} more')
-    return '\n'.join(lines)
 

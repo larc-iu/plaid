@@ -436,7 +436,7 @@ def test_drop_planned_keeps_the_rest_and_takes_links_to_dropped_entries_along():
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3'], 'entry_id': key})
     call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w3'], 'orthography': 'IPA', 'value': 'akuna'})
     assert [o['kind'] for o in w.ops] == ['set_span', 'set_span', 'create_entry', 'link', 'set_orthography']
-    assert 'No planned change number 9' in call_tool(w, 'drop_planned', {'indexes': [9]})
+    assert 'No planned change numbered 9' in call_tool(w, 'drop_planned', {'indexes': [9]})
     out = call_tool(w, 'drop_planned', {'indexes': [1, 3]})
     assert out.startswith('Dropped 2 planned changes. Links to the dropped new entries were dropped with them.')
     assert [o['kind'] for o in w.ops] == ['set_span', 'set_orthography'] and w.ops[0]['token_id'] == 'w-3'
