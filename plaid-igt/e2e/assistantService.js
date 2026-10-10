@@ -43,8 +43,13 @@ export function agentUnavailable() {
   return null;
 }
 
-// An OpenAI-compatible endpoint that answers "OK." to anything, streamed or not.
-function startFakeModel() {
+// An OpenAI-compatible endpoint that answers "OK." to anything, streamed or
+// not. With a `script`, each turn's model call (not the startup ping) takes
+// the next of its replies, `{content, calls: [{name, arguments}]}`, and "OK."
+// once it runs out.
+function startFakeModel(script = []) {
+  const left = [...script];
+  let n = 0;
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (chunk) => (raw += chunk));
@@ -60,6 +65,13 @@ function startFakeModel() {
         created: Math.floor(Date.now() / 1000),
         model: 'e2e-fake',
       };
+      const ping = (body.messages || []).some((m) => m.content === 'ping');
+      const reply = (!ping && left.shift()) || { content: 'OK.' };
+      const calls = (reply.calls || []).map((c) => ({
+        id: `call_${(n += 1)}`,
+        type: 'function',
+        function: { name: c.name, arguments: JSON.stringify(c.arguments) },
+      }));
       if (body.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         const chunk = (delta, finish = null) =>
@@ -70,8 +82,9 @@ function startFakeModel() {
               choices: [{ index: 0, delta, finish_reason: finish }],
             })}\n\n`,
           );
-        chunk({ role: 'assistant', content: 'OK.' });
-        chunk({}, 'stop');
+        chunk({ role: 'assistant', content: reply.content || '' });
+        calls.forEach((c, index) => chunk({ tool_calls: [{ index, ...c }] }));
+        chunk({}, calls.length ? 'tool_calls' : 'stop');
         res.end('data: [DONE]\n\n');
         return;
       }
@@ -81,7 +94,15 @@ function startFakeModel() {
           ...base,
           object: 'chat.completion',
           choices: [
-            { index: 0, message: { role: 'assistant', content: 'OK.' }, finish_reason: 'stop' },
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: reply.content || '',
+                ...(calls.length ? { tool_calls: calls } : {}),
+              },
+              finish_reason: calls.length ? 'tool_calls' : 'stop',
+            },
           ],
           usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         }),
@@ -97,8 +118,8 @@ function startFakeModel() {
 // (the service reads it from a `.token` in its working directory). Returns
 // `stop()`, which ends the process and the model, and `log()`, the service's
 // output so far, for a failure message.
-export async function startIgtAssistant({ token, projectId, serviceId }) {
-  const { server, port } = await startFakeModel();
+export async function startIgtAssistant({ token, projectId, serviceId, script = [] }) {
+  const { server, port } = await startFakeModel(script);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plaid-e2e-agent-'));
   fs.writeFileSync(path.join(dir, '.token'), token);
   let output = '';
