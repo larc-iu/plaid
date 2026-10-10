@@ -93,6 +93,12 @@ describe('AssistantComposer', () => {
     await m.unmount();
   });
 
+  it('shows no plan prompt in a tab that holds no conversation', async () => {
+    const m = await mount({ held: true, pendingPlan: true, canSend: false });
+    expect(m.box.getAttribute('placeholder')).toBe('');
+    await m.unmount();
+  });
+
   it('sends on Enter', async () => {
     const m = await mount();
     await m.type('gloss it');

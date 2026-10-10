@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Copy, Wrench } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, CircleX, Copy, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { useExport } from './exportContext.js';
@@ -220,13 +220,30 @@ const StepDetail = ({ step, rounds, gone }) => {
 // and, while the turn runs, it is stored already.
 const openable = (step, live) => !!step.round && !step.unstored && (!live || !!step.stored);
 
+// A failed step is red, and marked so for a reader who cannot tell red.
+const stepLabel = (step) =>
+  step.failed ? (
+    <>
+      <CircleX
+        className="mr-1 inline h-3 w-3 align-[-2px]"
+        aria-label="Failed"
+        role="img"
+        data-step-failed
+      />
+      {step.label}
+    </>
+  ) : (
+    step.label
+  );
+
 const StepRow = ({ step, rounds, live, gone, exported }) => {
   const className = cn(step.failed && 'text-destructive');
+  const label = stepLabel(step);
   if (exported) {
     const call = openable(step, false) ? callOf(rounds?.peek?.(step.round), step) : null;
-    if (!call) return <div className={cn('px-1 py-0.5 pl-5', className)}>{step.label}</div>;
+    if (!call) return <div className={cn('px-1 py-0.5 pl-5', className)}>{label}</div>;
     return (
-      <Details label={step.label} className={className}>
+      <Details label={label} className={className}>
         <CallDetail call={call} exported />
       </Details>
     );
@@ -237,11 +254,11 @@ const StepRow = ({ step, rounds, live, gone, exported }) => {
         className={cn('px-1 py-0.5 pl-5 [overflow-wrap:anywhere]', className)}
         title={step.unstored ? NOT_STORED : undefined}
       >
-        {step.label}
+        {label}
       </div>
     );
   return (
-    <Disclosure label={step.label} className={className} title={step.name}>
+    <Disclosure label={label} className={className} title={step.name}>
       <StepDetail step={step} rounds={rounds} gone={gone} />
     </Disclosure>
   );

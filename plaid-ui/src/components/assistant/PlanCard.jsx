@@ -129,6 +129,8 @@ export const PlanCard = ({
   const partial = status === 'partial';
   const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);
   const applied = status === 'applied';
+  // A plan that will not be written warns of nothing.
+  const unwritable = status === 'discarded' || stale || superseded;
   const unwrittenRows = useMemo(
     () => new Set(applied ? unwritten || [] : []),
     [applied, unwritten],
@@ -225,7 +227,7 @@ export const PlanCard = ({
           ))}
         </div>
       )}
-      {rewrites > 0 && (
+      {rewrites > 0 && !unwritable && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <PenLine className="h-3.5 w-3.5 shrink-0" />
           {rewrites === 1
@@ -233,7 +235,7 @@ export const PlanCard = ({
             : `${rewrites.toLocaleString('en-US')} changes rewrite ${adapter.textName}.`}
         </p>
       )}
-      {replaced > 0 && (
+      {replaced > 0 && !unwritable && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <UserCheck className="h-3.5 w-3.5 shrink-0" />
           {replaced === 1

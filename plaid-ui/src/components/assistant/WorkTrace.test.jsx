@@ -258,6 +258,33 @@ describe('a turn that did not finish', () => {
   });
 });
 
+describe('a failed step', () => {
+  const FAILED = [
+    { id: 'f1', name: 'search', kind: 'read', label: 'Searched “xyz”', failed: true },
+    { id: 'f2', name: 'set_gloss', kind: 'plan', label: 'Could not plan a gloss', failed: true },
+    { id: 'f3', name: 'search', kind: 'read', label: 'Searched “abc”' },
+  ];
+
+  it('is marked failed beside its red label, not by color alone', async () => {
+    const view = await renderComponent(<TraceSteps steps={FAILED} rounds={null} />);
+    const marks = all(view.container, '[data-step-failed]');
+    expect(marks).toHaveLength(2);
+    expect(marks[0].getAttribute('aria-label')).toBe('Failed');
+    await view.unmount();
+  });
+
+  it('says so in the Markdown export when its label does not', () => {
+    const md = conversationToMarkdown(
+      { display: [{ kind: 'assistant', text: 'Done.', steps: FAILED, stepsSummary: '3 steps' }] },
+      {},
+      { origin: 'http://x', projectId: 'p1', adapter: { CITE_RE: /\{\{[^}]+\}\}/g } },
+    );
+    expect(md).toContain('- Searched “xyz” (failed)');
+    expect(md).toContain('- Could not plan a gloss\n');
+    expect(md).toContain('- Searched “abc”\n');
+  });
+});
+
 describe('the model reasoning', () => {
   const THOUGHT = { ...ROUND, thinking: 'The user wants verbs. Read sentence 3 first.' };
   const REPLY = { id: 'r9', n: 2, thinking: 'One verb found.', calls: [] };

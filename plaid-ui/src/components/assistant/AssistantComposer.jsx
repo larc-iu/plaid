@@ -271,15 +271,17 @@ export const AssistantComposer = ({
           placeholder={
             !service
               ? 'No assistant online'
-              : pendingPlan === 'again'
-                ? full
-                  ? 'Apply the plan above again'
-                  : 'Apply the plan above again, or keep talking'
-                : pendingPlan
+              : held
+                ? ''
+                : pendingPlan === 'again'
                   ? full
-                    ? 'Approve or discard the plan above'
-                    : 'Approve or discard the plan above, or keep talking'
-                  : 'Message the assistant… (Shift+Enter for a new line)'
+                    ? 'Apply the plan above again'
+                    : 'Apply the plan above again, or keep talking'
+                  : pendingPlan
+                    ? full
+                      ? 'Approve or discard the plan above'
+                      : 'Approve or discard the plan above, or keep talking'
+                    : 'Message the assistant… (Shift+Enter for a new line)'
           }
           aria-label="Message"
           // Read-only rather than disabled while a turn runs: a disabled box

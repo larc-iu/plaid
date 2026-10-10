@@ -127,7 +127,10 @@ const workToMarkdown = (out, d) => {
     out.push(`*${d.stepsSummary}*`, '');
     for (const s of d.steps) {
       if (s.said) out.push(quoted(s.said), '');
-      out.push(`- ${markdownText(s.label || s.name || '')}`);
+      const label = markdownText(s.label || s.name || '');
+      // A failed step is red in the panel. A change says so in its own words
+      // ("Could not plan …"), a read does not.
+      out.push(`- ${label}${s.failed && !/^Could not /.test(label) ? ' (failed)' : ''}`);
     }
     out.push('');
   }

@@ -194,6 +194,17 @@ describe('changes that replace accepted work', () => {
     await view.unmount();
   });
 
+  it('are not warned of on a plan that will not be written', async () => {
+    for (const status of ['discarded', 'stale', 'replaced']) {
+      const view = await mount(plan([{ label: 'a', replacesWork: true, writesText: true }]), {
+        status,
+      });
+      expect(byText(view.container, 'p', 'accepted work')).toBeNull();
+      expect(byText(view.container, 'p', 'rewrites the text')).toBeNull();
+      await view.unmount();
+    }
+  });
+
   it('says one change in the singular, and nothing when there is none', async () => {
     let view = await mount(plan([{ label: 'a', replacesWork: true }, { label: 'b' }]));
     expect(byText(view.container, 'p', 'accepted work').textContent).toBe(
