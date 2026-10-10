@@ -465,7 +465,22 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
     return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.number} in "{doc.name}" '
-            f'({what}).' + _removals(diff.ops) + kept)
+            f'({what}).' + _additions(diff.ops) + _removals(diff.ops) + kept)
+
+
+def _additions(ops: List[Dict[str, Any]]) -> str:
+    """The nodes and relations the staged changes make, so the roles and
+    concepts the plan writes are in front of the model when it reports. A
+    count alone let a draft with :ARG0 pass for the :experiencer the user
+    asked for."""
+    made = [str(op.get('label')) for op in ops
+            if op.get('label') and op.get('kind') in ('create_node', 'create_edge')]
+    if not made:
+        return ''
+    shown = made[:REMOVALS_SHOWN]
+    more = len(made) - len(shown)
+    return (' It adds: ' + '; '.join(shown) + (f'; and {more} more' if more else '')
+            + '. Check these roles and concepts against any the user named.')
 
 
 def _removes(op: Dict[str, Any]) -> bool:
