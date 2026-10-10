@@ -909,8 +909,8 @@ export const AssistantChat = ({
   // A plan's card that now says how its approval ended closes the error
   // toast that approval raised.
   useEffect(() => {
-    settleApplyToasts(display);
-  }, [display]);
+    settleApplyToasts(active?.display);
+  }, [active?.display]);
   // A reply that lands is said once to a screen reader, from a region that is
   // always there. Opening a conversation says nothing: only a turn this panel
   // was waiting on.
