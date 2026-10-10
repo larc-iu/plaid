@@ -9,9 +9,9 @@ lexicon is a vocab layer. A model that does not know that writes queries that
 return nothing, so the help says it in as many words.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from ..core.query import HELP, query_tool
+from ..core.query import HELP, display, layer_index, query_tool
 from .project import word_ref
 from .workspace import Workspace
 
@@ -45,51 +45,21 @@ Examples for this project:
 
 
 def _layer_index(ws: Workspace) -> Dict[str, List[tuple]]:
-    """name (casefolded) -> [(kind, id, display)] over every layer the model may name."""
+    """Every layer the model may name (:func:`core.query.layer_index`), the
+    three token layers also as "words", "morphemes" and "sentences", and a
+    field by its IGT display name ("Gloss (Word)") as well as its bare layer
+    name, which is ambiguous when scopes collide."""
     p = ws.project
-    raw = ws.client.projects.get(p.id)
-    idx: Dict[str, List[tuple]] = {}
+    tokens = {p.word_layer_id: 'words', p.morpheme_layer_id: 'morphemes', p.sentence_layer_id: 'sentences'}
 
-    def add(name, kind, lid):
-        idx.setdefault((name or '').casefold(), []).append((kind, lid, name))
-
-    for tl in raw.get('text_layers') or []:
-        add(tl.get('name'), 'text-layer', tl['id'])
-        if tl['id'] == p.text_layer_id:
-            add('baseline', 'text-layer', tl['id'])
-        for tk in tl.get('token_layers') or []:
-            add(tk.get('name'), 'token-layer', tk['id'])
-            for alias, lid in (('words', p.word_layer_id), ('morphemes', p.morpheme_layer_id), ('sentences', p.sentence_layer_id)):
-                if lid and tk['id'] == lid:
-                    add(alias, 'token-layer', tk['id'])
-            for sl in tk.get('span_layers') or []:
-                f = p.field_by_layer(sl['id'])
-                # The IGT display name ("Gloss (Word)") first. The bare layer
-                # name too, which is ambiguous when scopes collide.
-                if f and f.name != sl.get('name'):
-                    add(f.name, 'span-layer', sl['id'])
-                add(sl.get('name'), 'span-layer', sl['id'])
-            for rl in tk.get('relation_layers') or []:
-                add(rl.get('name'), 'relation-layer', rl['id'])
-    for v in raw.get('vocabs') or []:
-        add(v.get('name'), 'vocab-layer', v['id'])
-    return idx
-
-
-def ws_field_name(idx: Dict[str, List[tuple]], layer_id: str) -> Optional[str]:
-    """The most specific display name registered for a layer id."""
-    best = None
-    for hs in idx.values():
-        for kind, lid, name in hs:
-            if lid == layer_id and name and (best is None or len(name) > len(best)):
-                best = name
-    return best
-
-
-def _display(idx: Dict[str, List[tuple]]):
-    """How a refusal names a layer: the most specific name it answers to, so
-    two layers sharing a bare name are told apart by their scopes."""
-    return lambda lid: ws_field_name(idx, lid) or lid
+    def aliases(kind, layer):
+        if kind == 'token-layer' and layer['id'] in tokens:
+            return [tokens[layer['id']]]
+        if kind == 'span-layer':
+            f = p.field_by_layer(layer['id'])
+            return [f.name] if f else []
+        return []
+    return layer_index(ws, aliases)
 
 
 def t_query_help(ws: Workspace) -> str:
@@ -111,6 +81,8 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
     """entity id -> positional reference, for the named documents. What makes a
     row readable: "Text 1" s3.w2 rather than a UUID."""
     refs: Dict[str, str] = {}
+    # Every one of them is read below, so there is nothing to guess at.
+    ws.read_ahead(doc_ids)
     for did in doc_ids:
         try:
             doc = ws.doc(did)
@@ -137,4 +109,4 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
 
 def t_query(ws: Workspace, query: Any = None, limit: Any = None) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
-    return query_tool(ws, query, limit, _layer_index, _display, _ref_index)
+    return query_tool(ws, query, limit, _layer_index, display, _ref_index)

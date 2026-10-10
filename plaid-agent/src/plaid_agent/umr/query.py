@@ -11,7 +11,7 @@ help says it in as many words.
 
 from typing import Any, Dict, List
 
-from ..core.query import HELP, query_tool
+from ..core.query import HELP, display, layer_index, query_tool
 from .project import node_ref
 from .tools import Workspace
 
@@ -49,44 +49,15 @@ Examples for this project:
 
 
 def _layer_index(ws: Workspace) -> Dict[str, List[tuple]]:
-    """name (casefolded) -> [(kind, id, display)] over every layer the model
-    may name. UMR's own names for its four layers are the aliases that matter,
-    since a project's raw layer names are whatever its setup used."""
+    """Every layer the model may name (:func:`core.query.layer_index`), with
+    UMR's own names for its layers."""
     p = ws.project
-    raw = ws.client.projects.get(p.id)
-    idx: Dict[str, List[tuple]] = {}
-
-    def add(name, kind, lid):
-        if name and lid:
-            idx.setdefault(name.casefold(), []).append((kind, lid, name))
-
-    aliases = {p.sentence_layer_id: 'sentences', p.word_layer_id: 'words',
-               p.morpheme_layer_id: 'morphemes', p.node_layer_id: 'nodes'}
-    for tl in raw.get('text_layers') or []:
-        add(tl.get('name'), 'text-layer', tl['id'])
-        if tl['id'] == p.text_layer_id:
-            add('baseline', 'text-layer', tl['id'])
-        for tk in tl.get('token_layers') or []:
-            add(tk.get('name'), 'token-layer', tk['id'])
-            alias = aliases.get(tk['id'])
-            if alias:
-                add(alias, 'token-layer', tk['id'])
-            for sl in tk.get('span_layers') or []:
-                add(sl.get('name'), 'span-layer', sl['id'])
-                if sl['id'] == p.concept_layer_id:
-                    add('concepts', 'span-layer', sl['id'])
-                for rl in sl.get('relation_layers') or []:
-                    add(rl.get('name'), 'relation-layer', rl['id'])
-                    if rl['id'] == p.relation_layer_id:
-                        add('relations', 'relation-layer', rl['id'])
-                    if rl['id'] == p.document_graph_layer_id:
-                        add('documentGraph', 'relation-layer', rl['id'])
-    return idx
-
-
-def _display(idx: Dict[str, List[tuple]]):
-    names = {h[1]: h[2] for hs in idx.values() for h in hs}
-    return lambda lid: names.get(lid, lid)
+    names = {('token-layer', p.sentence_layer_id): 'sentences', ('token-layer', p.word_layer_id): 'words',
+             ('token-layer', p.morpheme_layer_id): 'morphemes', ('token-layer', p.node_layer_id): 'nodes',
+             ('span-layer', p.concept_layer_id): 'concepts',
+             ('relation-layer', p.relation_layer_id): 'relations',
+             ('relation-layer', p.document_graph_layer_id): 'documentGraph'}
+    return layer_index(ws, lambda kind, layer: [names[kind, layer['id']]] if (kind, layer['id']) in names else [])
 
 
 def t_query_help(ws: Workspace) -> str:
@@ -126,4 +97,4 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
 
 def t_query(ws: Workspace, query: Any = None, limit: Any = None) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
-    return query_tool(ws, query, limit, _layer_index, _display, _ref_index)
+    return query_tool(ws, query, limit, _layer_index, display, _ref_index)

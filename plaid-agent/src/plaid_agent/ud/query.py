@@ -11,7 +11,7 @@ nothing, so the help says it in as many words.
 
 from typing import Any, Dict, List
 
-from ..core.query import HELP, query_tool
+from ..core.query import HELP, display, layer_index, query_tool
 from .project import word_ref
 from .tools import Workspace
 
@@ -51,44 +51,18 @@ Examples for this project:
 
 
 def _layer_index(ws: Workspace) -> Dict[str, List[tuple]]:
-    """name (casefolded) -> [(kind, id, display)] over every layer the model may
-    name. UD's own names for the three token layers are the aliases that
-    matter, since the project's raw layer names are whatever its setup used."""
+    """Every layer the model may name (:func:`core.query.layer_index`), with
+    UD's own names for its token layers, its columns ("upos") and its
+    dependency layer."""
     p = ws.project
-    raw = ws.client.projects.get(p.id)
-    idx: Dict[str, List[tuple]] = {}
+    names = {p.sentence_layer_id: 'sentences', p.token_layer_id: 'tokens', p.word_layer_id: 'words',
+             p.relation_layer_id: 'dependency'}
 
-    def add(name, kind, lid):
-        if name and lid:
-            idx.setdefault(name.casefold(), []).append((kind, lid, name))
-
-    for tl in raw.get('text_layers') or []:
-        add(tl.get('name'), 'text-layer', tl['id'])
-        if tl['id'] == p.text_layer_id:
-            add('baseline', 'text-layer', tl['id'])
-        for tk in tl.get('token_layers') or []:
-            add(tk.get('name'), 'token-layer', tk['id'])
-            for alias, lid in (('sentences', p.sentence_layer_id),
-                               ('tokens', p.token_layer_id),
-                               ('words', p.word_layer_id)):
-                if lid and tk['id'] == lid:
-                    add(alias, 'token-layer', tk['id'])
-            for sl in tk.get('span_layers') or []:
-                add(sl.get('name'), 'span-layer', sl['id'])
-                # The UD name ("upos") as well as whatever the layer is called.
-                for field, lid in p.span_layers.items():
-                    if lid == sl['id']:
-                        add(field, 'span-layer', sl['id'])
-                for rl in sl.get('relation_layers') or []:
-                    add(rl.get('name'), 'relation-layer', rl['id'])
-                    if p.relation_layer_id and rl['id'] == p.relation_layer_id:
-                        add('dependency', 'relation-layer', rl['id'])
-    return idx
-
-
-def _display(idx: Dict[str, List[tuple]]):
-    names = {h[1]: h[2] for hs in idx.values() for h in hs}
-    return lambda lid: names.get(lid, lid)
+    def aliases(kind, layer):
+        if kind == 'span-layer':
+            return [field for field, lid in p.span_layers.items() if lid == layer['id']]
+        return [names[layer['id']]] if kind in ('token-layer', 'relation-layer') and layer['id'] in names else []
+    return layer_index(ws, aliases)
 
 
 def t_query_help(ws: Workspace) -> str:
@@ -126,4 +100,4 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
 
 def t_query(ws: Workspace, query: Any = None, limit: Any = None) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
-    return query_tool(ws, query, limit, _layer_index, _display, _ref_index)
+    return query_tool(ws, query, limit, _layer_index, display, _ref_index)

@@ -108,7 +108,8 @@ def view(doc: UmrDoc, project=None) -> Dict[str, Any]:
 def api(ws: Workspace) -> Dict[str, Callable]:
     # The toolkit is the last module imported (it reads every tool module, this
     # one included), so it is asked for here rather than at the top.
-    from .query import _display, _layer_index
+    from ..core.query import display as _display
+    from .query import _layer_index
     from .toolkit import WRITE_TOOLS, call_tool
     return sandbox.api(ws, lambda doc: view(doc, ws.project), call_tool, WRITE_TOOLS, _layer_index, _display,
                        view_of=lambda w: (lambda doc: view(doc, w.project)))

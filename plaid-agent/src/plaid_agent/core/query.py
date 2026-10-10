@@ -14,7 +14,7 @@ examples.
 
 import json
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .args import clamp_limit
 from .limits import READ_LIMITS
@@ -296,6 +296,43 @@ def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
         return '\n'.join([header] + ['  ' + '\t'.join(str(c) for c in r) for r in rows[:limit]])
     return '\n'.join([header] + ['  ' + '\t'.join(cell(c, refs, layer_names) for c in r)
                                for r in rows[:limit]])
+
+
+def layer_index(ws, aliases: Callable[[str, Dict[str, Any]], Iterable[str]]) -> Dict[str, List[tuple]]:
+    """name (casefolded) -> [(kind, id, display)] over every layer the model
+    may name: the project's text, token, span and relation layers and its
+    lexicons by their own names, the project's text layer as "baseline", and
+    whatever ``aliases(kind, layer)`` adds, which is an app's own names for its
+    layers. Those are the names that matter, since a project's raw layer names
+    are whatever its setup used. Relation layers sit under span layers."""
+    raw = ws.client.projects.get(ws.project.id)
+    idx: Dict[str, List[tuple]] = {}
+
+    def add(kind: str, layer: Dict[str, Any], *extra: str) -> None:
+        lid = layer.get('id')
+        for name in (layer.get('name'), *extra, *aliases(kind, layer)):
+            if name and lid and all(h[1] != lid for h in idx.get(name.casefold(), ())):
+                idx.setdefault(name.casefold(), []).append((kind, lid, name))
+
+    for tl in raw.get('text_layers') or []:
+        add('text-layer', tl, *(('baseline',) if tl.get('id') == ws.project.text_layer_id else ()))
+        for tk in tl.get('token_layers') or []:
+            add('token-layer', tk)
+            for sl in tk.get('span_layers') or []:
+                add('span-layer', sl)
+                for rl in sl.get('relation_layers') or []:
+                    add('relation-layer', rl)
+    for v in raw.get('vocabs') or []:
+        add('vocab-layer', v)
+    return idx
+
+
+def display(idx: Dict[str, List[tuple]]) -> Callable[[str], str]:
+    """How a refusal names a layer: the last name it was given, which is the
+    app's own where it has one, so two layers sharing a raw name are told
+    apart."""
+    names = {h[1]: h[2] for hs in idx.values() for h in hs}
+    return lambda lid: names.get(lid, lid)
 
 
 def documents_in(rows: List[Any], limit: int, cap: int = 25) -> List[str]:
