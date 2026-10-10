@@ -117,3 +117,34 @@ describe('a rejoin of a request whose service went away', () => {
     expect(t.client.messages.requestService).not.toHaveBeenCalled();
   });
 });
+
+// FX20-APPROVE: a reload rejoins the request the record still names. When the
+// record already says how the plan ended, its card says so and no "Not
+// applied" toast comes back.
+describe('a rejoin that fails on a plan the record has settled', () => {
+  const fails = { status: 503, message: 'Service disconnected' };
+  const rejoin = async (item) => {
+    const t = setup({ fails });
+    const conv = {
+      id: 'c1',
+      messages: [],
+      display: [{ kind: 'assistant', text: 'P', plan, ...item }],
+    };
+    const j = attachJob({ store: t.store, conv, meta: t.records.get(KEYS.meta), tab: 'tab-1' });
+    await j.promise;
+  };
+
+  it('raises no error toast for a plan already Not finished', async () => {
+    const { notifyError } = await import('../../lib/notify.js');
+    notifyError.mockClear();
+    await rejoin({ status: null, interrupted: true });
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+
+  it('still says it for a plan the record leaves undecided', async () => {
+    const { notifyError } = await import('../../lib/notify.js');
+    notifyError.mockClear();
+    await rejoin({ status: null });
+    expect(notifyError).toHaveBeenCalledWith(expect.anything(), 'Not applied', expect.anything());
+  });
+});

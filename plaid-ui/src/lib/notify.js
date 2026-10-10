@@ -58,3 +58,6 @@ export const notifyWithAction = (
     action: { label, onClick },
   });
 };
+
+// Close a toast shown with an `id` option.
+export const dismissToast = (id) => toast.dismiss(id);

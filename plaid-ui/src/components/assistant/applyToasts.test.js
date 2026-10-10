@@ -11,10 +11,13 @@ vi.mock('../../lib/notify.js', () => ({
   notifySuccess: vi.fn(),
   notifyError: vi.fn(),
   notifyWarning: vi.fn(),
+  dismissToast: vi.fn(),
 }));
 
-const { notifySuccess, notifyError, notifyWarning } = await import('../../lib/notify.js');
-const { applyToasts } = await import('./jobs.js');
+const { notifySuccess, notifyError, notifyWarning, dismissToast } = await import(
+  '../../lib/notify.js'
+);
+const { applyToasts, settleApplyToasts } = await import('./jobs.js');
 
 const applied = { outcome: { message: 'Applied 2 changes.' } };
 
@@ -86,5 +89,41 @@ describe('a plan that stopped partway', () => {
       'Partly applied',
     );
     expect(notifySuccess).not.toHaveBeenCalled();
+  });
+});
+
+// FX20-APPROVE: an approval whose assistant died left "Not applied / Service
+// disconnected" on screen after the card had settled Not finished, and after
+// Apply again had settled it Applied.
+describe('the Not applied toast once the card settles', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const plan = { id: 'p1', summary: 'x' };
+  const dead = { status: 503, message: 'Service disconnected' };
+  const job = (item) => ({ planId: 'p1', error: dead, conv: { display: [item] } });
+
+  it('is dismissed when the record settles the plan Not finished, then not again', () => {
+    applyToasts(job({ plan, status: null }), 'x', { docked: true });
+    const id = notifyError.mock.calls[0][2].id;
+    expect(id).toBeTruthy();
+    settleApplyToasts([{ plan, status: null }]);
+    expect(dismissToast).not.toHaveBeenCalled();
+    settleApplyToasts([{ plan, status: null, interrupted: true }]);
+    expect(dismissToast).toHaveBeenCalledWith(id);
+    settleApplyToasts([{ plan, status: 'applied' }]);
+    expect(dismissToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('is dismissed when the plan settles Applied', () => {
+    applyToasts(job({ plan, status: null }), 'x');
+    settleApplyToasts([{ plan, status: 'applied' }]);
+    expect(dismissToast).toHaveBeenCalledWith(notifyError.mock.calls[0][2].id);
+  });
+
+  it('stays for Apply again on a Not finished plan while the plan stays Not finished', () => {
+    applyToasts(job({ plan, status: null, interrupted: true }), 'x');
+    settleApplyToasts([{ plan, status: null, interrupted: true }]);
+    expect(dismissToast).not.toHaveBeenCalled();
+    settleApplyToasts([{ plan, status: 'applied' }]);
+    expect(dismissToast).toHaveBeenCalledTimes(1);
   });
 });

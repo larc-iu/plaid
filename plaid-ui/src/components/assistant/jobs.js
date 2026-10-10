@@ -1,4 +1,4 @@
-import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
+import { notifySuccess, notifyError, notifyWarning, dismissToast } from '../../lib/notify.js';
 import { humanizeError, refusalSaid } from '../../lib/errors.js';
 import { lastProjects } from './projectReach.js';
 import { itemTime } from './itemTime.js';
@@ -531,6 +531,31 @@ export const startTurn = ({
 // the same thing again is noise, so the success one is left out.
 // Only the success one goes: a hard failure leaves the card undecided with no
 // inline explanation, so that toast is the only place the reason appears.
+// Where the record leaves a plan: its status, "unfinished" for an approval
+// that was interrupted, or null while it is undecided.
+const verdictOf = (item) => item?.status ?? (item?.interrupted ? 'unfinished' : null);
+
+// The "Not applied" error toast of each plan, by plan id, with the verdict
+// the record gave the plan when its approval began. It is dismissed once the
+// record gives the plan another verdict (`settleApplyToasts`): the card then
+// says how the approval ended, so a "Service disconnected" from an assistant
+// that died meanwhile is no longer news. A refusal of Apply again leaves the
+// verdict as it was, so its reason stays.
+const applyErrorToasts = new Map();
+const applyToastId = (planId) => `assistant-apply-error:${planId}`;
+
+export const settleApplyToasts = (display) => {
+  for (const d of display || []) {
+    const id = d?.plan?.id;
+    if (!id || !applyErrorToasts.has(id)) continue;
+    const now = verdictOf(d);
+    if (now != null && now !== applyErrorToasts.get(id)) {
+      applyErrorToasts.delete(id);
+      dismissToast(applyToastId(id));
+    }
+  }
+};
+
 export const applyToasts = (j, summary, { docked = false } = {}) => {
   // We stopped waiting, the service did not stop working. Nothing has failed
   // and nothing needs approving again, so say what actually happened.
@@ -543,8 +568,14 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
   } else if (j.error && j.error.status !== 404) {
     // The reason says what to do next (apply again in a minute, ask for a new
     // plan), so it stays until the reader closes it.
+    const planId = j.planId || null;
+    if (planId) {
+      const item = j.conv?.display?.find((d) => d.plan?.id === planId);
+      applyErrorToasts.set(planId, verdictOf(item));
+    }
     notifyError(humanizeError(j.error, 'Failed to apply the changes.'), 'Not applied', {
       duration: Infinity,
+      ...(planId ? { id: applyToastId(planId) } : {}),
     });
   } else if (j.outcome?.partial) {
     // The card says it too, but a plan that stopped partway is not something
@@ -671,9 +702,11 @@ export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => 
         j.controller.signal,
       ),
     );
-    if (j.kind === 'apply' && j.error?.status !== 404) {
-      const plan = conv.display.find((d) => d.plan?.id === j.planId)?.plan;
-      applyToasts(j, plan?.summary || 'the changes', { docked });
+    // A plan the record has already settled is said on its card. Rejoining
+    // its stale request after a reload raises nothing.
+    const item = conv.display.find((d) => d.plan?.id === j.planId);
+    if (j.kind === 'apply' && j.error?.status !== 404 && verdictOf(item) == null) {
+      applyToasts(j, item?.plan?.summary || 'the changes', { docked });
     }
     return finishJob(j, store);
   })();
