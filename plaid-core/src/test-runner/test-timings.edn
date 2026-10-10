@@ -94,7 +94,6 @@
  plaid.server.middleware-security-test 12,
  plaid.server.migration-wal-test 65,
  plaid.server.planner-stats-test 5371,
- plaid.server.reexec-test 5,
  plaid.server.service-requests-test 9,
  plaid.server.services-extract-test 2,
  plaid.server.slow-query-threshold-restore-test 216,

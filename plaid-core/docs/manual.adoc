@@ -1822,9 +1822,7 @@ After=network.target
 [Service]
 User=plaid
 WorkingDirectory=/srv/plaid
-ExecStart=/usr/bin/java --add-opens=java.base/java.nio=ALL-UNNAMED \
-    --enable-native-access=ALL-UNNAMED \
-    -jar /srv/plaid/plaid.jar
+ExecStart=/usr/bin/java -jar /srv/plaid/plaid.jar
 Restart=on-failure
 
 [Install]

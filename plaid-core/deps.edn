@@ -68,7 +68,13 @@
                      :exec-args {:aot true
                                  :main-class "plaid.server.main"
                                  :jar "target/plaid.jar"
-                                 :verbose true}
+                                 :verbose true
+                                 ;; The JDK flags the aliases pass, for a bare `java -jar`:
+                                 ;; the java.nio opening, and native access for
+                                 ;; sqlite-jdbc's JNI, which JDK 24+ warns about without
+                                 ;; it (JEP 472). JDK 21 has no such gate.
+                                 :manifest {:add-opens "java.base/java.nio"
+                                            :enable-native-access "ALL-UNNAMED"}}
                      :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"
                                 "--enable-native-access=ALL-UNNAMED"]
                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}

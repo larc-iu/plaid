@@ -195,11 +195,11 @@
 ;; Boot the jar unattended and assert /health reports the release version
 ;; (proves version.edn + the SPAs/services were bundled). Runs in a throwaway
 ;; temp dir so the auto-generated data/, services/, config.toml don't dirty the
-;; repo. The jar self-heals JVM flags by re-execing, so a bare `java -jar` boots.
+;; repo. The jar's manifest carries the JDK flags, so a bare `java -jar` boots.
 ;; PLAID_SMOKE_PORT boots it on another port (a data/config.toml naming that
 ;; port is written first), for a machine where something else holds 8080.
 (defn smoke-test! [version]
-  (step "Smoke-test the jar (boots via re-exec + reports release version)")
+  (step "Smoke-test the jar (boots with a bare java -jar + reports release version)")
   (let [jar    (str (fs/absolutize (str "plaid-core/target/plaid-" version ".jar")))
         port   (or (not-empty (System/getenv "PLAID_SMOKE_PORT")) "8080")
         base   (str "http://localhost:" port)
@@ -265,9 +265,7 @@
               (throw (ex-info (str "services/" f " was not extracted on first run") {}))))
           (println "  bundled services extracted on first run"))
         (finally
-          ;; Kill the parent AND the re-exec'd child.
           (p/destroy-tree proc)
-          (try (p/sh "pkill" "-f" (str "plaid-" version ".jar")) (catch Exception _ nil))
           (rm-rf tmp))))))
 
 (def python-packages

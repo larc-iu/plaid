@@ -12,8 +12,7 @@
             ;; First-run extraction of the bundled Python services. Required
             ;; ONLY here (never from http-server or tests) so test JVMs don't
             ;; register the defstate.
-            [plaid.server.services-extract]
-            [plaid.server.reexec :as reexec])
+            [plaid.server.services-extract])
   (:gen-class))
 
 (defn- parse-args
@@ -29,9 +28,6 @@
       :else (recur (next a) m))))
 
 (defn -main [& args]
-  (when (and (or (reexec/needs-add-opens?) (reexec/needs-native-access?))
-             (not (System/getenv "PLAID_NO_REEXEC")))
-    (reexec/re-exec-with-jdk-flags! args))
   ;; Run mount :stop fns on SIGTERM / Ctrl-C so the datasource gets a
   ;; chance to checkpoint the WAL and close cleanly before the JVM exits.
   ;; Bounded: systemd's default TimeoutStopSec and k8s'

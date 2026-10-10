@@ -2,11 +2,10 @@
   "Bringing the mount states up, and taking them back down when one of them
   does not come up.
 
-  Split out of plaid.server.main for the same reason as
-  plaid.server.reexec: requiring main registers every mount defstate
-  (http-server included) in the JVM-wide registry and changes what a bare
-  (mount/start) in any other test brings up. This ns requires nothing
-  stateful."
+  Split out of plaid.server.main because requiring main registers every
+  mount defstate (http-server included) in the JVM-wide registry and
+  changes what a bare (mount/start) in any other test brings up. This ns
+  requires nothing stateful."
   (:require [mount.core :as mount]
             [taoensso.timbre :as log]))
 
