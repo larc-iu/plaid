@@ -122,6 +122,7 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
         picks = list(spread(rows, limit, RENDER_DOC_BUDGET))
     doc_ids = [did for did, _quota in picks]
     if not doc_ids:
+        ws.note_read(0, 'node')
         return 'No node matched.'
 
     def matches(node) -> bool:
@@ -157,9 +158,10 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
                     elif attribute and node.attrs:
                         extra = ' ' + node.attr_line()
                     shown.append(f'"{doc.name}" s{s.number}.{node.var}  ({node.concept}){extra}')
+    total = sum(totals.values()) if totals else found
+    ws.note_read(len(shown), 'node', of=max(total, found))
     if not shown:
         return 'No node matched.'
-    total = sum(totals.values()) if totals else found
     head = f'{found} node(s) shown from {len(doc_ids)} document(s)'
     if totals and len(totals) > len(doc_ids):
         head += f'; the corpus has {total} hit(s) in {len(totals)} documents'
@@ -205,6 +207,7 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
         picks = list(spread(rows, limit, RENDER_DOC_BUDGET))
     doc_ids = [did for did, _quota in picks]
     if not doc_ids:
+        ws.note_read(0, 'sentence')
         return f'No sentence matches "{pattern}".'
 
     ws.read_ahead(doc_ids)
@@ -226,6 +229,9 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
             if len(shown) < limit and here < quota:
                 here += 1
                 shown.append(f'"{doc.name}" s{s.number}  {s.text}\n      {", ".join(hit)}')
+    # Sentences, which is what it shows: the corpus-wide total counts words
+    # or concepts, so it is said in the text and not here.
+    ws.note_read(len(shown), 'sentence', of=found)
     if not shown:
         return f'No sentence matches "{pattern}".'
     total = sum(totals.values()) if totals else found
@@ -282,12 +288,15 @@ def t_worklist(ws: Workspace, kind: str = None, document: str = None, limit: int
         ids = [d['id'] for d in ws.documents()]
         doc_ids, capped = ids[:RENDER_DOC_BUDGET], max(0, len(ids) - RENDER_DOC_BUDGET)
     if not doc_ids:
+        ws.note_read(0, 'sentence')
         return 'The project has no documents.'
     ws.read_ahead(doc_ids)
     rows: List[tuple] = []
     for did in doc_ids:
         doc = ws.doc(did)
         rows += [(doc, s, k, what) for s, k, what in _unfinished(doc, kinds)]
+    ws.note_read(sum(min(sum(1 for r in rows if r[2] == k), limit) for k in kinds), 'sentence',
+                 of=len(rows))
     if not rows:
         where = f' in "{ws.doc(doc_ids[0]).name}"' if document else f' in {len(doc_ids)} document(s)'
         return f'Nothing is unfinished{where} ({", ".join(kinds)}).'
@@ -324,6 +333,7 @@ def t_frequency_list(ws: Workspace, what: str = 'concept', document: str = None,
         where = [clause('?x', doc=did)]
     rows = corpus.group(where, ['?x.value'])
     rows = [r for r in rows if r[0]]
+    ws.note_read(min(len(rows), limit), 'row', of=len(rows))
     if not rows:
         return f'No {what} values found.'
     total = sum(r[-1] for r in rows)
@@ -350,6 +360,7 @@ def _attribute_counts(ws: Workspace, document: str, limit: int) -> str:
         doc_ids = spread(corpus.documents_with([corpus.node('?n')], '?n'),
                          limit, RENDER_DOC_BUDGET).ids
     if not doc_ids:
+        ws.note_read(0, 'row')
         return 'No attributes found.'
     ws.read_ahead(doc_ids)
     counts: Dict[str, int] = {}
@@ -360,9 +371,10 @@ def _attribute_counts(ws: Workspace, document: str, limit: int) -> str:
                 for a in node.attrs:
                     key = f'{a.get("rel")} {a.get("value")}'
                     counts[key] = counts.get(key, 0) + 1
+    rows = sorted(counts.items(), key=lambda kv: -kv[1])
+    ws.note_read(min(len(rows), limit), 'row', of=len(rows))
     if not counts:
         return 'No attributes found.'
-    rows = sorted(counts.items(), key=lambda kv: -kv[1])
     out = [f'{len(rows)} distinct attribute(s) over {len(doc_ids)} document(s):']
     for value, count in rows[:limit]:
         out.append(f'  {count:>6}  {value}')

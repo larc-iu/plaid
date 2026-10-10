@@ -173,6 +173,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
             lines.append('  Longest words: ' + ', '.join(f'{w.surface} ({len(w.morphemes)}: {segmentation(w)})'
                                                         for w in longest if len(w.morphemes) > 1))
 
+    ws.note_read(n_docs, 'document')
     if by is None:
         describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document "{names[next(iter(names))]}"')
         return truncate(_with_note(lines, clipped))
@@ -224,7 +225,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     if not ws.use_scan(document):
         from .queries import q_frequency_list
         items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count)
-        return _frequency_lines(items, spread, empty, field, what_l, limit,
+        return _frequency_lines(ws, items, spread, empty, field, what_l, limit,
                                 ws.corpus.clipped_note(_freq_noun(field, what_l)))
     docs = _docs(ws, document)
     for d in docs:
@@ -265,7 +266,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                         else:
                             empty += 1
     items = [(k, n) for k, n in counts.most_common() if n >= min_count]
-    return _frequency_lines(items, spread, empty, field, what_l, limit)
+    return _frequency_lines(ws, items, spread, empty, field, what_l, limit)
 
 
 def _with_note(lines, clipped: str) -> str:
@@ -282,8 +283,9 @@ def _freq_noun(field, what_l: str) -> str:
     return field.name + ' values' if field else ('wordforms' if what_l != 'morpheme' else 'morpheme forms')
 
 
-def _frequency_lines(items, spread, empty, field, what_l, limit, clipped: str = '') -> str:
+def _frequency_lines(ws, items, spread, empty, field, what_l, limit, clipped: str = '') -> str:
     noun = _freq_noun(field, what_l)
+    ws.note_read(min(len(items), limit), 'row', of=len(items))
     lines = [f'{len(items)} {noun}, {sum(n for _, n in items)} tokens' + (f', {empty} empty' if field else '')
              + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform' + clipped]
     for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:
@@ -358,7 +360,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     if not ws.use_scan(document):
         from .queries import q_worklist
         counts, examples = q_worklist(ws, kind, f, lvl, user)
-        return _worklist_lines(kind, f, lvl, limit, counts, examples, user,
+        return _worklist_lines(ws, kind, f, lvl, limit, counts, examples, user,
                                ws.corpus.clipped_note(f'{lvl}s'))
     groups: Dict[str, List[str]] = defaultdict(list)
     for d in docs:
@@ -394,14 +396,15 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     # times gives three references and no way to the other seven but reading.
     # So naming a document lists them all, which is the list to plan from.
     per_form = limit if document else 3
-    return _worklist_lines(kind, f, lvl, limit, {k: len(v) for k, v in groups.items()},
+    return _worklist_lines(ws, kind, f, lvl, limit, {k: len(v) for k, v in groups.items()},
                            {k: v[:per_form] for k, v in groups.items()}, user)
 
 
-def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]],
+def _worklist_lines(ws, kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]],
                     user: Optional[str] = None, clipped: str = '') -> str:
     total = sum(counts.values())
     groups = counts
+    ws.note_read(min(len(groups), limit), 'row', of=len(groups))
     what = {'unlinked': f'{lvl}s not linked to the lexicon',
             'unglossed': f'{lvl}s without a {f.name if f else ""} value' + (' (grouped by document)' if lvl == 'sentence' else ''),
             'unanalyzed': 'words with no analysis at all',
@@ -445,6 +448,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     project = ws.project
     vocabs = [project.vocab(lexicon)] if lexicon else project.vocabs
     if not vocabs:
+        ws.note_read(0, 'entry')
         return 'This project has no lexicon.'
     section = (section or 'all').lower()
     if section != 'all' and section not in LEXICON_SECTIONS:
@@ -475,6 +479,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
             return uses[iid]
         return uses[iid] + sum(uses[d['id']] for d in descendants_of(vw.tree, iid))
 
+    ws.note_read(len(items), 'entry')
     docs = ws.all_docs() if ws.prefer_scan else []
     n_docs = len(docs) if ws.prefer_scan else len(ws.documents())
     gm, gw = project.gloss_field('Morpheme'), project.gloss_field('Word')
@@ -658,6 +663,7 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
     duplicate sentences, empty sentences, non-NFC text, mixed apostrophe
     characters, and the inventory of unusual characters in the baseline."""
     docs = _docs(ws, document)
+    ws.note_read(len(docs), 'document')
     mismatch: List[str] = []
     mismatch_n = 0
     formless: List[str] = []
@@ -780,6 +786,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
                 total += 1
                 if len(out) < limit:
                     show(tag, s, matches)
+    ws.note_read(len(out), 'match', of=total)
     if not total:
         return 'No sentence matches that sequence.' + clipped
     return truncate('\n'.join([f'{total} sentence{"s" if total != 1 else ""} match'

@@ -464,9 +464,10 @@ def _tally_line(label: str, pairs, fmt=lambda k: k) -> Optional[str]:
     return f'  {label}: ' + ', '.join(f'{fmt(k)} ({n})' for k, n in sorted(pairs, key=lambda kv: (-kv[1], str(kv[0]))))
 
 
-def q_analyses_of(ws: Workspace, form: str) -> str:
+def q_analyses_of(ws: Workspace, form: str, found: List[int]) -> str:
     """Precedent tallies for a form, from grouped queries: per field, per
-    morpheme slot, links, and a few rendered examples."""
+    morpheme slot, links, and a few rendered examples. The occurrences
+    tallied are added to ``found``."""
     from .project import render_word, word_ref
     c = ws.corpus
     p = c.p
@@ -491,6 +492,7 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
     # the word
     word = [c.word('?w', value=spec)]
     n = c.word_count(word, '?w')
+    found.append(n)
     if not n:
         lines.append(f'Word "{form}": no occurrences.')
     else:
@@ -543,6 +545,7 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
     if c.M:
         morph = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         n = c.count(morph, ['?m'])
+        found.append(n)
         if not n:
             lines.append(f'Morpheme "{form}": no occurrences.')
         else:

@@ -112,7 +112,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
                     total += 1
                     if len(out) < limit:
                         out.append(f'{line} ({v["name"]})')
-        return _finish(out, total, limit, 'lexicon entries')
+        return _finish(ws, out, total, limit, 'lexicon entries', 'entry')
 
     field = None
     if where_l not in ('baseline', 'morpheme'):
@@ -126,7 +126,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     if not ws.use_scan(document):
         from .queries import q_search
         out, total = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
-        return _finish(out, total, limit, 'hits')
+        return _finish(ws, out, total, limit, 'hits', 'match')
     docs = [ws.doc(document)] if document else ws.all_docs()
     for doc in docs:
         tag = ws.doc_tag(doc, len(docs) > 1)
@@ -153,10 +153,13 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
                     total += 1
                     if len(out) < limit:
                         out.append(f'{tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
-    return _finish(out, total, limit, 'hits')
+    return _finish(ws, out, total, limit, 'hits', 'match')
 
 
-def _finish(out, total, limit, noun):
+def _finish(ws, out, total, limit, noun, unit):
+    """The hits found, with the count of those shown out of all found noted
+    for the step's label (`BaseWorkspace.note_read`)."""
+    ws.note_read(len(out), unit, of=total)
     if not out:
         return f'No {noun}.'
     head = f'{total} {noun}' + (f' (showing {limit})' if total > limit else '') + ':'
@@ -167,10 +170,12 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
                    limit: int = 80) -> str:
     vocabs = [ws.project.vocab(lexicon)] if lexicon else ws.project.vocabs
     if not vocabs:
+        ws.note_read(0, 'entry')
         return 'This project has no lexicon.'
     match = _matcher(pattern, False) if pattern else (lambda s: True)
     limit = clamp_limit(limit, 80, 500)
     lines = []
+    shown_all = matched = 0
     for v in vocabs:
         view = ws.view(v)
         # Senses under their entry, each with the number it is shown with,
@@ -199,6 +204,9 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
                          + entry_line(it, view) + (' | (context)' if context else ''))
         if len(hits) > shown:
             lines.append(f'  ... {len(hits) - shown} more (narrow with pattern)')
+        shown_all += shown
+        matched += len(hits)
+    ws.note_read(shown_all, 'entry', of=matched)
     return truncate('\n'.join(lines))
 
 
@@ -271,6 +279,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
                         total += 1
                         if len(hits) < limit:
                             hits.append((doc, s, w, hit))
+    ws.note_read(len(hits), 'match', of=total)
     if not total:
         return f'No occurrences of "{pattern}".'
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
@@ -319,15 +328,18 @@ def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[
         raise ToolError('Give a form, or forms (a list).')
     if len(wanted) > MAX_FORMS_PER_CALL:
         raise ToolError(f'At most {MAX_FORMS_PER_CALL} forms per call; split the list.')
-    if len(wanted) > 1:
-        return truncate('\n\n'.join(_analyses_of_one(ws, f, document) for f in wanted))
-    return truncate(_analyses_of_one(ws, wanted[0], document))
+    # The occurrences tallied, every form's together, for the step's label.
+    found: List[int] = []
+    out = '\n\n'.join(_analyses_of_one(ws, f, document, found) for f in wanted)
+    ws.note_read(sum(found), 'match')
+    return truncate(out)
 
 
-def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
+def _analyses_of_one(ws: Workspace, form: str, document: Optional[str], found: List[int]) -> str:
+    """One form's tallies, with the occurrences tallied added to ``found``."""
     if not ws.use_scan(document):
         from .queries import q_analyses_of
-        return q_analyses_of(ws, form)
+        return q_analyses_of(ws, form, found)
     same = _matcher(form, False, whole=True)
     docs = [ws.doc(document)] if document else ws.all_docs()
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
@@ -379,6 +391,7 @@ def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
                         morph_tally.setdefault((' | '.join(parts) or '(unglossed)') + f'  [{pos} in word]', []
                                                ).append(f'{ref}.m{m.index} ({segmentation(w)})')
     lines = []
+    found.append(sum(len(v) for v in word_tally.values()) + sum(len(v) for v in morph_tally.values()))
     for title, tally in ((f'Word "{form}"', word_tally), (f'Morpheme "{form}"', morph_tally)):
         if not tally:
             lines.append(f'{title}: no occurrences.')
@@ -405,10 +418,11 @@ def _spelled_alike(ws: Workspace, form: str, lexicon: Optional[str]):
         return None
 
     def write(examples):
+        ws.note_read(len(hits), 'entry')
         head = (f'{len(hits)} entries are spelled "{form}". Pass the entry_form shown with one to name it '
                 f'in a change.')
         if len(hits) <= ALIKE_IN_FULL:
-            return '\n\n'.join([head] + [t_lexicon_entry(ws, entry_id=it['id'], examples=examples)
+            return '\n\n'.join([head] + [_entry_in_full(ws, entry_id=it['id'], examples=examples)
                                          for _v, it in hits])
         lines = [head]
         for v, it in hits:
@@ -433,6 +447,14 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         several = _spelled_alike(ws, entry_form.strip(), lexicon)
         if several:
             return several(examples)
+    out = _entry_in_full(ws, entry_form, lexicon, entry_id, examples, entry_gloss)
+    ws.note_read(1, 'entry')
+    return out
+
+
+def _entry_in_full(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+                   entry_id: Optional[str] = None, examples: int = 3, entry_gloss: Optional[str] = None) -> str:
+    """One entry, named exactly, in full (:func:`t_lexicon_entry`)."""
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'new':
         e = ws.new_entries[target]
@@ -573,10 +595,12 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     f = ws.project.field(field)
     if not ws.use_scan(document):
         from .queries import q_consistency
+        ws.note_read(len(ws.documents()), 'document')
         values, by_form, (unlinked_n, unlinked), (linked_empty_n, linked_empty) = q_consistency(ws, f)
         return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
                                   ws.corpus.clipped_note(f'{f.name} values'))
     docs = [ws.doc(document)] if document else ws.all_docs()
+    ws.note_read(len(docs), 'document')
     values: Counter = Counter()
     by_form: Dict[str, Counter] = {}
     unlinked: List[str] = []

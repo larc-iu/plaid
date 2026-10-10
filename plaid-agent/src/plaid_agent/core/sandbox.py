@@ -303,13 +303,15 @@ def _explain(e, shape: str = '') -> str:
     return text
 
 
-def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '') -> str:
+def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '',
+        tally: Optional['Tally'] = None) -> str:
     """Run ``code`` with ``api`` as its host functions, in ``session``: the
     turn's own worker, so names persist from one call to the next. Returns
     what it printed and the value of its last expression, capped. Raises
     :class:`CodeError` with the reason when it did not finish. ``shape`` is
     the app's short example of a loaded document, added to an error about a
-    key the code guessed."""
+    key the code guessed. ``tally``, when given, is told how many lines the
+    code printed."""
     reason = available()
     if reason:
         raise CodeError(f'Code cannot run on this assistant: {reason}.')
@@ -348,6 +350,8 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
         raise CodeError('The sandbox stopped while running this code. Try again with less at once.'
                         + _partial(printed))
     out = (printed.output or '').rstrip('\n')
+    if tally is not None:
+        tally.printed = len(out.splitlines())
     if value is not None:
         out = (out + '\n' if out and not out.endswith('\n') else out) + f'=> {value!r}'
     if not out.strip():
@@ -571,14 +575,60 @@ def noted(ws, api: Dict[str, Callable]) -> Dict[str, Callable]:
     return {name: (f if name in _WRITERS else wrap(name, f)) for name, f in api.items()}
 
 
+class Tally:
+    """What one run of code read and printed, for its step's label: the
+    documents it loaded (each once, however often), the queries it ran, the
+    rows of attached tables it read, and the lines it printed. Counted here,
+    in the process the workspace lives in: the worker calls back into it for
+    every read."""
+
+    def __init__(self):
+        self.documents: set = set()
+        self.queries = 0
+        self.rows = 0
+        self.printed = 0
+
+    def wrap(self, api: Dict[str, Callable]) -> Dict[str, Callable]:
+        def counted(name, f):
+            def call(*args, **kwargs):
+                answer = f(*args, **kwargs)
+                if name == 'load':
+                    key = answer.get('id') if isinstance(answer, dict) and answer.get('id') else repr(args)
+                    self.documents.add((kwargs.get('project'), key))
+                elif name == 'query':
+                    self.queries += 1
+                elif name == 'file_rows':
+                    self.rows += len(answer or ())
+                return answer
+            return call
+        return {name: counted(name, f) if name in ('load', 'query', 'file_rows') else f
+                for name, f in api.items()}
+
+    def note(self, ws) -> None:
+        """The run's notes, in place of whatever the reads it made noted on
+        their own: a tool the code called through plan() is part of the run,
+        and counting what it read again would say the run read more than it
+        did."""
+        if getattr(ws, 'reads', None) is None:
+            return
+        del ws.reads[:]
+        for n, unit in ((len(self.documents), 'document'), (self.queries, 'query'), (self.rows, 'row')):
+            if n:
+                ws.note_read(n, unit)
+        ws.note_read(self.printed, 'printed')
+
+
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]], shape: str = '') -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what
     the app lets the code see, and ``shape`` its short example of a loaded
-    document."""
+    document. What the run read and printed is noted (:class:`Tally`)."""
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
+    tally = Tally()
     try:
-        return run(code, noted(ws, api(ws)), session=ws.code, shape=shape)
+        out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally)
     except CodeError as e:
         raise ToolError(str(e))
+    tally.note(ws)
+    return out

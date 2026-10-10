@@ -254,6 +254,7 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
         default = cap
     count = clamp_limit(limit, default, cap)
     if start > total:
+        ws.note_read(0, 'line', of=total)
         return f'"{a.name}" has {total:,} lines, so there is nothing at line {start}.'
     end = min(total, span_end, start + count - 1)
     # What was asked for names the PDF's own titles and page numbers, which
@@ -277,6 +278,7 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
             end = i - 1
             break
         shown.append(row)
+    ws.note_read(len(shown), 'line', of=total)
     more = ''
     if end < span_end:
         more = f'\n\nContinue with start_line={end + 1}' + (

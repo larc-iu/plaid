@@ -332,4 +332,17 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
     rows = res.get('results') or [] if isinstance(res, dict) else []
     refs = ref_index(ws, documents_in(rows, limit))
     layer_names = {h[1]: h[2] for hs in idx.values() for h in hs}
+    note_rows(ws, res, limit)
     return truncate(render(res, q, limit, refs, layer_names, doc_names))
+
+
+def note_rows(ws, res: Any, limit: int) -> None:
+    """The rows :func:`render` shows of the engine's answer, out of all it
+    returned, noted for the step's label (`BaseWorkspace.note_read`). A count
+    is one row, and so is an answer that is not rows at all."""
+    if not isinstance(res, dict) or res.get('return') == 'count':
+        ws.note_read(1, 'row')
+        return
+    rows = res.get('results') or []
+    total = len(rows) if res.get('return') == 'aggregate' else res.get('count', len(rows))
+    ws.note_read(min(len(rows), limit), 'row', of=total)

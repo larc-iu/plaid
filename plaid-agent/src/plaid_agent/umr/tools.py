@@ -381,7 +381,9 @@ def t_project_overview(ws: Workspace) -> str:
 
 
 def t_document_graph(ws: Workspace, document: str = None) -> str:
-    return truncate(render_document_graph(ws.doc(document)))
+    out = truncate(render_document_graph(ws.doc(document)))
+    ws.note_read(1, 'document')
+    return out
 
 
 # --- addressing helpers ---------------------------------------------------------

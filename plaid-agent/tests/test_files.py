@@ -47,6 +47,9 @@ class Ws:
     def on_progress(self, msg):
         self.said.append(msg)
 
+    def note_read(self, n, unit, of=None, which=None):
+        pass
+
     def forget_clipping(self):
         pass
 

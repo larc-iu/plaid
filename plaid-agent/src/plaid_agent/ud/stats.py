@@ -5,7 +5,7 @@ only to print the hits it actually has.
 """
 
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, feats_order, kwic, word_ref
@@ -81,6 +81,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
     if document:
         doc = ws.doc(document)
         hits = _hits_in(doc, field, matches)
+        ws.note_read(min(len(hits), limit), 'match', of=len(hits))
         if not hits:
             return f'No {field} matches "{pattern}" in "{doc.name}".'
         out = [f'{len(hits)} match(es) for {field} "{pattern}" in "{doc.name}"'
@@ -96,6 +97,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
     else:
         docs = c.documents_with([c.field(field, '?s', value=spec)], '?s')
     if not docs:
+        ws.note_read(0, 'match')
         return f'No {field} matches "{pattern}".'
     total = sum(int(n or 0) for _, n in docs)
     out: List[str] = []
@@ -119,6 +121,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
             out.append(f'  … {len(hits) - quota} more in this document (name it to see them all)')
     head = (f'{total} match(es) for {field} "{pattern}" in {len(docs)} document(s), showing '
             f'{shown} from {read - len(empty)}' + (' of them' if len(docs) > read else '') + ':')
+    ws.note_read(shown, 'match', of=total)
     if not shown:
         return f'No {field} matches "{pattern}".\n' + REGEX_NOTE.format(docs=', '.join(empty))
     if empty:
@@ -185,6 +188,7 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
         where = ' across the project'
     if what == 'features':
         rows = _split_features(rows)
+    ws.note_read(min(len(rows), limit), 'row', of=len(rows))
     if not rows:
         # With the note: a clipped read that came back empty is the most
         # misleading of all, and this one says the column is unused.
@@ -211,6 +215,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
             raise ToolError(f'Unknown check "{k}". One of: ' + ', '.join(CONSISTENCY))
     limit = clamp_limit(limit, 25, 100)
     c = ws.corpus
+    ws.note_read(len(ws.documents()), 'document')
     out: List[str] = []
     # Every check here states a count as a fact, so a clipped read has to be
     # said out loud: the engine's row limit makes "the commonest" the top of an
@@ -280,7 +285,18 @@ WORKLIST_KINDS = ('unverified', 'contributed', 'missing')
 
 def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                document: str = None, limit: int = None) -> str:
-    """What is unfinished, by document, so a session has somewhere to start."""
+    """What is unfinished, by document, so a session has somewhere to start.
+    The words it lists (in one document) or the rows (one per document and
+    column, project-wide) are noted, of all there were."""
+    listed = [0, 0]
+    out = _worklist(ws, kind, field, document, limit, listed)
+    ws.note_read(listed[0], 'word' if document else 'row', of=listed[1])
+    return out
+
+
+def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional[str],
+              limit: Optional[int], listed: List[int]) -> str:
+    """:func:`t_worklist`, adding what it shows and what there was to ``listed``."""
     if kind not in WORKLIST_KINDS:
         raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
     limit = clamp_limit(limit, *READ_LIMITS['worklist'])
@@ -310,6 +326,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                     out.append(f'{f}: none missing in "{doc.name}".')
                     continue
                 out.append(f'{f}: {len(hits)} word(s) with none in "{doc.name}"')
+                listed[0] += min(len(hits), limit)
+                listed[1] += len(hits)
                 for sent, w in hits[:limit]:
                     out.append(_hit_line(doc, sent, w, w.form))
                 if len(hits) > limit:
@@ -327,6 +345,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
             docs = c.documents_with(where, '?t')
             total = sum(n for _, n in docs)
             out.append(f'{f}: {total} word(s) with none, in {len(docs)} document(s)')
+            listed[0] += min(len(docs), limit)
+            listed[1] += len(docs)
             for did, n in docs[:limit]:
                 out.append(f'    {n:>6}  "{c.doc_name(did)}"')
             if len(docs) > limit:
@@ -348,6 +368,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                 # and a clean document was told to go and confirm things.
                 continue
             out.append(f'{f}: {len(hits)} {word} value(s) in "{doc.name}"')
+            listed[0] += min(len(hits), limit)
+            listed[1] += len(hits)
             for sent, w in hits[:limit]:
                 out.append(_hit_line(doc, sent, w, _value(w, f)))
             if len(hits) > limit:
@@ -371,6 +393,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         if not total:
             continue
         out.append(f'{f}: {total} {word} value(s), in {len(docs)} document(s)')
+        listed[0] += min(len(docs), limit)
+        listed[1] += len(docs)
         for did, n in docs[:limit]:
             out.append(f'    {n:>6}  "{c.doc_name(did)}"')
         if len(docs) > limit:

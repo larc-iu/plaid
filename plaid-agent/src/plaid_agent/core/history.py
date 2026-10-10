@@ -67,6 +67,7 @@ def recent_changes(ws, document: Optional[str] = None, limit: Optional[int] = No
         if not cursor or not got:
             break
     entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=True)[:limit]
+    ws.note_read(len(entries), 'change')
     if not entries:
         if u and walked:
             return (f'Nothing by "{user}" among the {walked} most recent change(s)'
@@ -143,6 +144,7 @@ def read_comments(ws, document: Optional[str], ref: Optional[str], field: Option
     rows = sorted(rows, key=lambda c: c.get('created_at') or '')
     total = len(rows)
     rows = rows[-limit:]
+    ws.note_read(len(rows), 'comment', of=total)
     if not rows:
         return f'No comments {scope}.'
     lines = [f'{total} comment{"s" if total != 1 else ""} {scope}'
