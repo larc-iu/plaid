@@ -4,8 +4,9 @@
 //
 // The summary counts changes per table, broken down by layer. Naming a layer is
 // what makes the list readable: a token layer is named by its shared ROLE, in
-// the words the app that shows it uses for that role, and a span or relation
-// layer by the name the project gave it.
+// the words the app that shows it uses for that role, a span layer by the name
+// the project gave it after the role of the token layer it sits on ("word
+// Gloss"), and a relation layer by its name.
 //
 // Dependency-free on purpose. plaid-ud's `node --test` suite loads this by real
 // relative path, and neither the `@ui` alias nor the package's own dependencies
@@ -46,9 +47,12 @@ export const indexLayers = (raw, readRole, layerWords) => {
   };
   for (const tl of raw?.textLayers || []) {
     for (const tkl of tl.tokenLayers || []) {
-      out[tkl.id] = entry(tkl, { role: readRole(tkl.config) });
+      const role = readRole(tkl.config);
+      out[tkl.id] = entry(tkl, { role });
+      // A field's scope is the role of the token layer it sits on, so a word
+      // Gloss and a morpheme Gloss read apart.
       for (const sl of tkl.spanLayers || []) {
-        out[sl.id] = entry(sl);
+        out[sl.id] = entry(sl, { scope: role });
         for (const rl of sl.relationLayers || []) out[rl.id] = entry(rl);
       }
     }
@@ -82,10 +86,11 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     const n = changed(e);
     const layer = layers[e.layerId];
     if (!n || layer?.words === null) continue;
+    const scope = roleWords[layer?.scope]?.[0];
     lines.push(
       layer?.words
         ? countOf(n, ...layer.words)
-        : `${countOf(n, 'annotation')} in ${layer?.name ?? 'a field'}`,
+        : `${countOf(n, 'annotation')} in ${layer?.name ? `${scope ? `${scope} ` : ''}${layer.name}` : 'a field'}`,
     );
   }
   for (const e of summary.relations?.byLayer || []) {

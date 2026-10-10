@@ -162,4 +162,39 @@ describe('RestoreDialog', () => {
     expect(byText(document.body, 'li', 'The deleted recording cannot come back.')).not.toBeNull();
     expect(byText(document.body, 'p', 'The recording is not changed.')).toBeNull();
   });
+
+  it('lists two equal lines as two, with no repeated key', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const restore = vi.fn().mockResolvedValue({
+      spans: {
+        byLayer: [
+          { layerId: 'a', updated: 1 },
+          { layerId: 'b', updated: 1 },
+        ],
+      },
+    });
+    const raw = {
+      textLayers: [
+        {
+          tokenLayers: [
+            {
+              id: 't',
+              name: 'Words',
+              config: {},
+              spanLayers: [
+                { id: 'a', name: 'Gloss' },
+                { id: 'b', name: 'Gloss' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    view = await mount({ documents: { restore, audit: async () => [] } }, vi.fn(), raw);
+    await settle(view);
+    const lines = [...document.body.querySelectorAll('li')].map((l) => l.textContent);
+    expect(lines).toEqual(['1 annotation in Gloss', '1 annotation in Gloss']);
+    expect(error.mock.calls.flat().join(' ')).not.toMatch(/same key/);
+    error.mockRestore();
+  });
 });

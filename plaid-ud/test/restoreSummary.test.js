@@ -50,7 +50,7 @@ const layers = indexLayers(raw);
 
 test('indexLayers names every layer and keeps token-layer roles', () => {
   assert.deepEqual(layers.tok, { name: 'Tokens', role: 'word' });
-  assert.deepEqual(layers.upos, { name: 'UPOS' });
+  assert.deepEqual(layers.upos, { name: 'UPOS', scope: 'syntactic-word' });
   assert.deepEqual(layers.deprel, { name: 'Dependency Relations' });
 });
 
@@ -80,7 +80,7 @@ test('a token layer from another app falls back to its own name', () => {
   assert.deepEqual(lines, ['7 tokens in Morphemes']);
 });
 
-test('spans and relations are named by their layer', () => {
+test('spans are named by their scope and layer, relations by their layer', () => {
   const lines = changeLines(
     {
       spans: { byLayer: [{ layerId: 'upos', inserted: 0, updated: 1, deleted: 0 }] },
@@ -88,7 +88,7 @@ test('spans and relations are named by their layer', () => {
     },
     layers,
   );
-  assert.deepEqual(lines, ['1 annotation in UPOS', '5 relations in Dependency Relations']);
+  assert.deepEqual(lines, ['1 annotation in word UPOS', '5 relations in Dependency Relations']);
 });
 
 test('layers absent from the document still produce a line', () => {

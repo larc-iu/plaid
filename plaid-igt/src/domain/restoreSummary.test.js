@@ -25,7 +25,12 @@ const raw = {
           config: { plaid: { role: 'word' } },
           spanLayers: [{ id: 'gloss', name: 'Gloss' }],
         },
-        { id: 'morph', name: 'Morphemes', config: { plaid: { role: 'morpheme' } } },
+        {
+          id: 'morph',
+          name: 'Morphemes',
+          config: { plaid: { role: 'morpheme' } },
+          spanLayers: [{ id: 'mgloss', name: 'Gloss' }],
+        },
         { id: 'align', name: 'Alignment', config: { plaid: { role: 'time-alignment' } } },
         { id: 'sw', name: 'Syntactic words', config: { plaid: { role: 'syntactic-word' } } },
       ],
@@ -65,9 +70,19 @@ describe('changeLines in this app words', () => {
     ]);
   });
 
-  it('names a span layer by the name the project gave it', () => {
+  it('names a field by its scope and the name the project gave it', () => {
     expect(
-      changeLines({ spans: { byLayer: [{ layerId: 'gloss', inserted: 3 }] } }, layers),
-    ).toEqual(['3 annotations in Gloss']);
+      changeLines(
+        {
+          spans: {
+            byLayer: [
+              { layerId: 'gloss', inserted: 3 },
+              { layerId: 'mgloss', updated: 1 },
+            ],
+          },
+        },
+        layers,
+      ),
+    ).toEqual(['3 annotations in word Gloss', '1 annotation in morpheme Gloss']);
   });
 });

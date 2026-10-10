@@ -226,8 +226,8 @@ export const RestoreDialog = ({
             <div key={g.heading}>
               <p className="mb-1 text-sm font-medium">{g.heading}</p>
               <ul className="ml-5 list-disc space-y-0.5 text-sm">
-                {g.lines.map((l) => (
-                  <li key={l}>{l}</li>
+                {g.lines.map((l, i) => (
+                  <li key={i}>{l}</li>
                 ))}
               </ul>
             </div>
@@ -237,8 +237,8 @@ export const RestoreDialog = ({
 
           {gaps.length > 0 && (
             <ul className="ml-5 list-disc space-y-0.5 text-sm text-destructive">
-              {gaps.map((g) => (
-                <li key={g}>{g}</li>
+              {gaps.map((g, i) => (
+                <li key={i}>{g}</li>
               ))}
             </ul>
           )}

@@ -131,7 +131,7 @@ test('a snapshot can be viewed, left, and restored to', async ({ page }) => {
 
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Changed back')).toBeVisible({ timeout: 15_000 });
-  await expect(dialog.getByText('1 annotation in Gloss')).toBeVisible();
+  await expect(dialog.getByText('1 annotation in morpheme Gloss')).toBeVisible();
 
   await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(dialog).toHaveCount(0, { timeout: 20_000 });
