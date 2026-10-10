@@ -299,9 +299,17 @@ def test_a_turns_calls_are_read_off_its_rounds_with_what_they_read():
     plain.add(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)
     [call] = plain.tool_calls
     assert call['result_kept'] and call['round_stored'] and call['cut'] and call['result_chars'] == 14
-    assert call['said'] == 'Looking.' and call['saw'] == [{'n': 5, 'unit': 'sentence', 'of': 9, 'which': '1–5'}]
+    assert call['said_chars'] == 8 and call['saw'] == [{'n': 5, 'unit': 'sentence', 'of': 9, 'which': '1–5'}]
+    # The text before a call can quote the project: it goes with the replies
+    # to the private file, never the default dataset.
+    assert 'said' not in call and 'Looking.' not in repr([plain.conversations, plain.turns, plain.tool_calls])
+    assert not plain.private
     assert call['arg_names'] == ['document'] and 'arguments' not in call and 'result' not in call
     assert plain.conversations[0]['rounds'] == 1 and not plain.round_calls
     full = Conversations(Pseudonyms(b'k' * 32), include_rounds=True)
     full.add(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)
     assert full.round_calls[0]['result'] == 'five sentences'
+    texts = Conversations(Pseudonyms(b'k' * 32), include_text=True)
+    texts.add(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)
+    [said] = [r for r in texts.private if r['kind'] == 'said']
+    assert said['text'] == 'Looking.' and said['step'] == 0 and said['tool'] == 'read_document'

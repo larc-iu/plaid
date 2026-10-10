@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '5'
+EXTRACTOR_VERSION = '6'
 HERE = Path(__file__).parent
 
 
@@ -490,8 +490,9 @@ def main(argv=None) -> None:
                                                          'default: every project with assistant use')
     ap.add_argument('--keep-project-names', action='store_true', help='write project names into projects.jsonl')
     ap.add_argument('--include-text', action='store_true',
-                    help="ALSO write PRIVATE_text.jsonl: user messages, model replies, tool errors and operation "
-                         "labels, for the researcher's own review. Never share it with the dataset.")
+                    help="ALSO write PRIVATE_text.jsonl: user messages, model replies, the text the model wrote "
+                         "between tool calls, tool errors and operation labels, for the researcher's own review. "
+                         "Never share it with the dataset.")
     ap.add_argument('--include-rounds', action='store_true',
                     help="ALSO write PRIVATE_rounds.jsonl: every tool call's whole arguments and the output the model "
                          "was sent. Project text, several times the dataset's size. Never share it with the dataset.")

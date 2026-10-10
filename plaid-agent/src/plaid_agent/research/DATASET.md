@@ -6,7 +6,7 @@ This dataset was extracted from one Plaid database by `plaid_agent.research.extr
 
 - People are pseudonyms (`u-` and ten hex digits), a keyed hash of the user id. The key (the salt file) is kept outside the dataset. The same salt gives the same pseudonyms in a later extraction.
 - Projects are their id (a random UUID) and a pseudonym (`p-...`). Names are written only with `--keep-project-names`, into `projects.jsonl`.
-- No text of a user's message, a model's reply, a tool's answer or an operation's label is written. With `--include-text` they go to `PRIVATE_text.jsonl` only, for the researcher's own review. That file must never travel with the dataset.
+- No text of a user's message, a model's reply, the text a model wrote between tool calls, a tool's answer or an operation's label is written. With `--include-text` they go to `PRIVATE_text.jsonl` only, for the researcher's own review. That file must never travel with the dataset.
 - Values (a gloss, a form, a dependency label) are clipped to 24 code points with an ellipsis, as the assistant's plan record clips them.
 - Entity ids (documents, tokens, spans, relations, vocabulary entries) are kept. They are random UUIDs and name nobody, and they are what joins the files.
 - A `provSource` that names a person (`user:<id>`) is pseudonymized. A service or rule name is kept.
@@ -125,7 +125,7 @@ One row per tool call.
 | saw | what the call showed the model, as the step says it: a list of `{n, unit, of, which}`, for example 5 of 120 sentences, `which` the sentence numbers (from 2026-10-09) |
 | result_chars, arguments_chars | the length of the output the model was sent and of the arguments it wrote, null when neither the round nor the record holds them |
 | cut | the output was cut at the tool limit, and the model read it cut |
-| said | the text the model wrote in the same model call, before this call (on the first call of that model call only). Model text, which may quote the project |
+| said_chars | the length of the text the model wrote in the same model call, before this call (on the first call of that model call only), null when it wrote none. The text itself is model text that may quote the project, so it goes to `PRIVATE_text.jsonl` with `--include-text` (`kind: said`) |
 
 ### tool_inventory.json
 
@@ -292,7 +292,7 @@ Every tool call's whole arguments and the output exactly as the model was sent i
 
 ### PRIVATE_text.jsonl (only with `--include-text`)
 
-User messages, replies, error lines, tool refusals (first 500 characters) and operation labels, keyed like the rows above. For the researcher's own review. Never share it.
+User messages, replies, the text the model wrote before a tool call (`kind: said`, keyed like tool_calls.jsonl), error lines, tool refusals (first 500 characters) and operation labels, keyed like the rows above. For the researcher's own review. Never share it.
 
 ## Records written by the assistant alone (from 2026-10-09)
 

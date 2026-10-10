@@ -355,8 +355,11 @@ class Conversations:
                    'document_read': bool(s.get('document')), 'arg_names': arg_names(args),
                    'legacy_shape': legacy}
             # What the call read and how much it answered, from the step and
-            # its round, and the text the model wrote before it.
+            # its round. The text the model wrote before it can quote the
+            # project, so only its length is here and the text goes with the
+            # replies to the private file.
             call = (calls_of or {}).get((s.get('round'), s.get('id')))
+            said = s.get('said') if isinstance(s.get('said'), str) else None
             row.update({
                 'round_stored': call is not None,
                 'saw': [{k: n.get(k) for k in ('n', 'unit', 'of', 'which') if n.get(k) is not None}
@@ -364,8 +367,11 @@ class Conversations:
                 'result_chars': len(text) if isinstance(text, str) and text != DROPPED else None,
                 'arguments_chars': len(args) if isinstance(args, str) else None,
                 'cut': bool((call or {}).get('cut')),
-                'said': s.get('said') if isinstance(s.get('said'), str) else None,
+                'said_chars': len(said) if said is not None else None,
             })
+            if self.include_text and said is not None:
+                self.private.append({**base, 'item_index': index, 'kind': 'said', 'step': i,
+                                     'tool': s.get('name'), 'text': said})
             if self.include_rounds and call is not None:
                 self.round_calls.append({**base, 'item_index': index, 'turn': turn, 'step': i,
                                          'tool': s.get('name'), 'arguments': call.get('arguments'),
