@@ -141,7 +141,7 @@ The **kind** says what sort of entity it is, and the **constraint map** filters 
 
 | `span`     | `layer`, `value`, `doc`, `metadata`                   | `value` matches the stored annotation value.
 | `token`    | `layer`, `value`, `doc`, `begin`, `end`, `metadata`   | `value` is the token's surface text. `begin` and `end` are code-point offsets.
-| `relation` | `layer`, `value`, `doc`, `source`, `target`, `metadata` | `source` and `target` may be variables (see <<Relationship clauses>>).
+| `relation` | `layer`, `value`, `doc`, `source`, `target`, `metadata` | `source` and `target` are span variables (see <<Relationship clauses>>).
 | `vocab`    | `layer`, `form`, `metadata`                           | A vocabulary entry.
 | `document` | `name`, `id`, `metadata`                              | A document.
 | `text`     | `body`, `doc`, `metadata`                             | A document's text. `body` is the text itself.
@@ -184,13 +184,14 @@ Each kind has these fields:
 | `vocab`         | `form`, `id`, `layer`, `metadata.KEY…`
 | `document`      | `name`, `id`, `metadata.KEY…`
 | `text`          | `body`, `doc`, `id`, `metadata.KEY…`
+| `link`          | `item`, `doc`, `id`, `metadata.KEY…`
 | layer variable  | `name`, `id`, `config.KEY…`
 |===
 
 `doc` is the document's id and `id` is the entity's own.
 After `metadata` or `config` comes a key, and you can keep descending into nested objects (`?s.metadata.author.name`).
 
-`layer`, `source` and `target` hold ids, so they compare only with `=`, `!=` and `in`, and only to a variable or an id.
+`layer`, `source`, `target` and `item` hold ids, so they compare only with `=`, `!=` and `in`, and only to a variable or an id.
 `["=", "?s.layer", "?sl"]` joins a span to a layer variable, while a layer name in that position is an error.
 
 Field names such as `begin` are matched loosely, ignoring case and `-` or `_`, so you can spell them in your client's style.
@@ -208,7 +209,7 @@ A constraint can be written in several ways, which work the same in entity claus
 | Form | Meaning | Allowed on
 
 | Literal `"NOUN"`              | exact equality                  | any key
-| List `["NOUN", "PROPN"]`      | any of these                    | `value`, `form`, `doc`, `begin`, `end`, `name`, `body`, `id`
+| List `["NOUN", "PROPN"]`      | any of these                    | `value`, `form`, `doc`, `begin`, `end`, `name`, `body`, `id`, `item`
 | Regex `{"regex": "^w"}`       | pattern match (see <<Regular expressions>>) | `value`, `form`, `name`, `body`
 | Variable `{"var": "?v"}`      | bind the value instead of filtering it (see <<Value variables>>) | `value`, `form`, `begin`, `end`, `doc`
 |===
@@ -787,7 +788,7 @@ client.query({
 #     "count": 12, "truncated": false}   # count = number of group rows
 ----
 
-The aggregates are `count`, and `sum`, `avg`, `min` and `max` over a value variable.
+The aggregates are `count`, and `sum`, `avg`, `min` and `max` over a value variable or field path.
 `"group": []` gives one row for everything.
 `find` and `order-by` are not used with an aggregate.
 
@@ -811,7 +812,7 @@ A mistake in a query is answered with HTTP 400 and a message:
 
 [,json]
 ----
-{"error": "No span layer matching \"poss\" is visible in the queried project scope"}
+{"error": "No span layer with id \"0194e8a1-…\" is visible in the queried project scope"}
 ----
 
 The clients raise it as an exception (`PlaidAPIError` in Python).
@@ -820,7 +821,7 @@ Queries always read current data, so a time-travel parameter is an error too.
 
 == Clients and casing
 
-The clients convert the query's top-level keys to and from your language's casing, so Python's `order_by` and JavaScript's `orderBy` both work.
+The clients convert the query's keys to and from your language's casing, so Python's `order_by` and JavaScript's `orderBy` both work.
 Clause names, variables and values are passed through as written, so `"span"`, `"?s1"` and `"NOUN"` are the same in every language.
 Entities in the result come back in your language's casing, like any other read.
 
