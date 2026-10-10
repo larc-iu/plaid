@@ -70,8 +70,8 @@ export function MediaHelp() {
         the row above or below, from the start or end of the text · <Chord id="media.prevRow" />{' '}
         <Chord id="media.nextRow" /> the same from anywhere in the row · <Kbd>Esc</Kbd> to put the
         row back · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the
-        previous one to playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text
-        in the baseline unless you tick the box
+        previous one to playback at <Kbd>Enter</Kbd> · the bin removes a segment and asks whether to
+        keep its text in the baseline
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
