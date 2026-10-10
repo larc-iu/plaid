@@ -125,3 +125,12 @@ def test_a_label_never_draws_a_value_reordered_by_its_own_formatting_characters(
     assert q('‮evil') == '“evil”'
     assert q('a‪b‬c⁦d⁩') == '“abcd”'
     assert q(None) == '“”'
+
+
+def test_a_read_whose_arguments_did_not_parse_names_no_empty_document():
+    """H13-TRACE polish: arguments that did not parse labelled the read `Read “”`."""
+    from plaid_agent.core.trace import read_document_label, reading_line
+    assert describe_step('read_document', {}) == 'Read a document'
+    assert read_document_label({}) == 'Read a document'
+    assert reading_line({}) == 'Reading a document…'
+    assert TRACER.progress('read_document', {}) == 'Reading a document…'

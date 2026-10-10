@@ -195,6 +195,12 @@ def say_saw(saw: Optional[List[Dict[str, Any]]]) -> str:
     return ', '.join(say_note(s) for s in saw or ())
 
 
+def _document(a: Dict[str, Any]) -> str:
+    """The document a read names, or "a document" when its arguments name
+    none (they did not parse)."""
+    return q(a['document']) if a.get('document') else 'a document'
+
+
 def read_document_label(a: Dict[str, Any]) -> str:
     """The line for a read of a document, with the span it asked for. Used
     only where the read noted nothing it showed (it failed): otherwise the
@@ -206,7 +212,7 @@ def read_document_label(a: Dict[str, Any]) -> str:
     elif a.get('from_sentence') or a.get('to_sentence'):
         span = f' (sentences {a.get("from_sentence") or 1}'
         span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
-    return f'Read {q(a.get("document"))}{span}'
+    return f'Read {_document(a)}{span}'
 
 
 def reading_line(a: Dict[str, Any]) -> str:
@@ -220,7 +226,7 @@ def reading_line(a: Dict[str, Any]) -> str:
     elif a.get('from_sentence') or a.get('to_sentence'):
         span = f', sentences {a.get("from_sentence") or 1}'
         span += f'–{a["to_sentence"]}' if a.get('to_sentence') else ' on'
-    return f'Reading {q(a.get("document", ""))}{span}…'
+    return f'Reading {_document(a)}{span}…'
 
 
 def _int(v: Any) -> Any:
@@ -291,7 +297,7 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     ``nothing`` marks a plan call that left the plan as it was."""
     kind = tracer.kind(name)
     if kind == DOCUMENT and saw and not failed:
-        label = f'Read {q(args.get("document"))}'
+        label = f'Read {_document(args)}'
     else:
         label = tracer.describe(name, args)
     shown = [s for s in saw or () if not _the_named_document(s, args)]
