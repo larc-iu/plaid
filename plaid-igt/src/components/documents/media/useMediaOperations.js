@@ -1025,24 +1025,27 @@ export const useMediaOperations = () => {
   // playback, so it takes the segment playback is in, and of two (cross-talk)
   // the selected one. A merge takes the selected segment, else the one
   // playback is in. Null when there is none to take.
+  const underPlayback = useCallback(() => {
+    const at = getCurrentTime() ?? currentTime;
+    return (doc.alignmentTokens || []).filter((t) => {
+      const b = t.metadata?.timeBegin ?? 0;
+      const e = t.metadata?.timeEnd ?? 0;
+      return b <= at && at < e;
+    });
+  }, [doc, getCurrentTime, currentTime]);
   const segmentAtHand = useCallback(
     (which) => {
       const tokens = doc.alignmentTokens || [];
-      const timeOf = (t) => [t.metadata?.timeBegin ?? 0, t.metadata?.timeEnd ?? 0];
-      const isSelected = (t) => {
-        const [b, e] = timeOf(t);
-        return !!selection && b === selection.start && e === selection.end;
-      };
-      const at = getCurrentTime() ?? currentTime;
-      const under = tokens.filter((t) => {
-        const [b, e] = timeOf(t);
-        return b <= at && at < e;
-      });
+      const isSelected = (t) =>
+        !!selection &&
+        (t.metadata?.timeBegin ?? 0) === selection.start &&
+        (t.metadata?.timeEnd ?? 0) === selection.end;
+      const under = underPlayback();
       const selected = (which === 'split' ? under : tokens).find(isSelected);
       if (selected) return selected.id;
       return under.length === 1 ? under[0].id : null;
     },
-    [doc, selection, getCurrentTime, currentTime],
+    [doc, selection, underPlayback],
   );
 
   // Split a segment at playback, from the timeline's card, the keyboard or a
@@ -1054,7 +1057,12 @@ export const useMediaOperations = () => {
     async (id = null, { offset = null } = {}) => {
       const target = id ?? segmentAtHand('split');
       if (!target) {
-        notifyError('Playback must be inside a segment.', 'Not split');
+        notifyError(
+          underPlayback().length > 1
+            ? 'Playback is in two segments. Select one.'
+            : 'Playback must be inside a segment.',
+          'Not split',
+        );
         return false;
       }
       const time = getCurrentTime() ?? currentTime;
@@ -1082,7 +1090,7 @@ export const useMediaOperations = () => {
       if (ok) setSelection({ start: begin, end: time });
       return ok;
     },
-    [doc, confirm, segmentAtHand, getCurrentTime, currentTime],
+    [doc, confirm, segmentAtHand, underPlayback, getCurrentTime, currentTime],
   );
 
   // Merge a segment with the next one. Asks first only when the next one's
@@ -1171,16 +1179,19 @@ export const useMediaOperations = () => {
         else el.play().catch(() => {});
         return;
       }
-      if (isTextTarget(e.target) || isActivatable(e.target)) return;
+      if (isTextTarget(e.target)) return;
       // Split and merge, of the selected segment or the one playback is in.
-      // A transcript row takes them itself, with its caret.
+      // A transcript row takes them itself, with its caret. A focused button
+      // (Play, Skip) does not stop them, as they activate nothing, but one in
+      // a dialog does.
       const reshape = keys.which(['media.split', 'media.merge'], e);
-      if (reshape && !readOnly) {
+      if (reshape && !readOnly && !e.target?.closest?.('[role="dialog"], [role="alertdialog"]')) {
         e.preventDefault();
         if (reshape === 'media.split') handleSplitSegment();
         else handleMergeSegment();
         return;
       }
+      if (isActivatable(e.target)) return;
       // Chords match their modifiers exactly, so one carrying a modifier that
       // is somebody else's (Ctrl+Space is input-source switching on a Mac,
       // Alt+Space a window menu) never toggles playback on the way through.

@@ -6,12 +6,13 @@ import {
   fakeWriteLock,
 } from '@/test/mountDocumentHook.jsx';
 import { fakeRaf } from '@/test/fakeRaf.js';
-import { notifyInfo, notifyWarning } from '@/utils/feedback';
+import { notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useMediaOperations } from './useMediaOperations.js';
 import { settle } from '@/domain/test-helpers.js';
 
 vi.mock('@/utils/feedback', async (importOriginal) => ({
   ...(await importOriginal()),
+  notifyError: vi.fn(),
   notifyInfo: vi.fn(),
   notifyWarning: vi.fn(),
 }));
@@ -997,6 +998,59 @@ describe('useMediaOperations: split and merge', () => {
     await answer(h, 'Merge');
     expect(h.doc.mergeSegment).toHaveBeenCalledWith('s1');
     expect(h.api.selection).toEqual({ start: 0, end: 6 });
+    await h.unmount();
+  });
+
+  it('Alt+Enter and Alt+M work while a transport button has focus, and not in a dialog', async () => {
+    const h = await mountWith();
+    const button = document.createElement('button');
+    button.textContent = 'Skip forward 5 seconds';
+    document.body.appendChild(button);
+    const pressOn = (target, init) =>
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
+      );
+    await h.step(async () => {
+      pressOn(button, { key: 'Enter', code: 'Enter', altKey: true });
+      await settle();
+    });
+    expect(h.doc.splitSegment).toHaveBeenCalledWith('s1', { time: 2.5, at: 5 });
+    await h.step(async () => {
+      pressOn(button, { key: 'm', code: 'KeyM', altKey: true });
+      await settle();
+    });
+    expect(h.doc.mergeSegment).toHaveBeenCalledTimes(1);
+    const box = document.createElement('div');
+    box.setAttribute('role', 'dialog');
+    const inDialog = document.createElement('button');
+    box.appendChild(inDialog);
+    document.body.appendChild(box);
+    await h.step(async () => {
+      pressOn(inDialog, { key: 'Enter', code: 'Enter', altKey: true });
+      await settle();
+    });
+    expect(h.doc.splitSegment).toHaveBeenCalledTimes(1);
+    button.remove();
+    box.remove();
+    await h.unmount();
+  });
+
+  it('says playback is in two segments when it is in cross-talk and none is selected', async () => {
+    notifyError.mockClear();
+    const crossTalk = [
+      SEGMENTS[0],
+      { id: 's3', begin: 10, end: 14, metadata: { timeBegin: 2, timeEnd: 6, speaker: 'Ana' } },
+    ];
+    const h = await mountWith({ alignmentTokens: crossTalk });
+    await h.step(async () => {
+      press({ key: 'Enter', code: 'Enter', altKey: true });
+      await settle();
+    });
+    expect(h.doc.splitSegment).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith(
+      'Playback is in two segments. Select one.',
+      'Not split',
+    );
     await h.unmount();
   });
 

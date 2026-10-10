@@ -130,12 +130,15 @@ describe('splitting a segment', () => {
     expect(segmentCuts(body, { begin: 0, end: 4 }, words)).toEqual([{ at: 2, leftEnd: 2 }]);
   });
 
-  it('refuses a split with playback outside the segment, or a segment of one word', async () => {
+  it('refuses a split with playback outside the segment or at its edge, or a segment of one word', async () => {
     const doc = makeIgtDoc({ raw: annotated() });
     expect(doc.segmentSplitPlan('seg-1', { time: 7 })).toEqual({
       error: 'Playback must be inside the segment.',
     });
     expect(await doc.splitSegment('seg-1', { time: 3 })).toBe(false);
+    expect(doc.segmentSplitPlan('seg-1', { time: 5.995 })).toEqual({
+      error: 'Playback is too close to the edge of the segment.',
+    });
     const one = makeIgtDoc({
       raw: annotated({
         alignmentTokens: [

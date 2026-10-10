@@ -990,8 +990,11 @@ export const alignmentMutations = {
     if (!segment) return { error: 'Segment not found' };
     const timeBegin = segment.metadata?.timeBegin ?? 0;
     const timeEnd = segment.metadata?.timeEnd ?? timeBegin;
-    if (!Number.isFinite(time) || time < timeBegin + MIN_SEGMENT || time > timeEnd - MIN_SEGMENT) {
+    if (!Number.isFinite(time) || time < timeBegin || time > timeEnd) {
       return { error: 'Playback must be inside the segment.' };
+    }
+    if (time < timeBegin + MIN_SEGMENT || time > timeEnd - MIN_SEGMENT) {
+      return { error: 'Playback is too close to the edge of the segment.' };
     }
     const words = (info.primaryTokenLayer?.tokens || []).filter(
       (w) => w.end > segment.begin && w.begin < segment.end,
