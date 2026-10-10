@@ -8,13 +8,17 @@
 // same project; the engine skips documents already marked done, redoes
 // half-imported ones, and dedupes vocab items by their stamped archive id.
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
-import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
-import { Loading } from '@ui/components/shared/Loading.jsx';
+import {
+  FileDropZone,
+  ImportHeader,
+  ImportRunPanel,
+  ProjectNameField,
+  ReadingPanel,
+} from './ImportPanels';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
@@ -31,7 +35,6 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 export const ImportNativeProject = () => {
   useDocumentTitle('Import archive');
   const { client } = useAuth();
-  const fileInputRef = useRef(null);
   const [archive, setArchive] = useState(null);
   const [projectName, setProjectName] = useState('');
 
@@ -107,58 +110,30 @@ export const ImportNativeProject = () => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <Breadcrumb
-          items={[
-            { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New project', to: '/projects/new', fixed: true },
-          ]}
-        />
-
-        <div>
-          <h1 className="text-2xl font-bold">Import a Plaid IGT archive</h1>
-          <p className="text-sm text-muted-foreground">
-            Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time
-            alignment, media, and provenance.
-          </p>
-          {resumeId && (
-            <ResumeBanner
-              name={resumeName}
-              again="Choose the same file: what is already there is unchanged."
-              onFinishAsIs={finishAsIs}
-            />
-          )}
-        </div>
+        <ImportHeader
+          title="Import a Plaid IGT archive"
+          resume={
+            resumeId && {
+              name: resumeName,
+              again: 'Choose the same file: what is already there is unchanged.',
+              onFinishAsIs: finishAsIs,
+            }
+          }
+        >
+          Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time
+          alignment, media, and provenance.
+        </ImportHeader>
 
         {stage === 'pick' && (
-          <div
-            className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleFile(e.dataTransfer.files?.[0]);
-            }}
-          >
-            <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">Drop an exported .zip archive here, or click to choose</p>
-            <p className="text-sm text-muted-foreground">
-              Produced by Export → “Plaid IGT JSON (lossless .zip archive)”
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip,application/zip"
-              className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
-          </div>
+          <FileDropZone
+            onFiles={(files) => handleFile(files?.[0])}
+            title="Drop an exported .zip archive here, or click to choose"
+            hint="Produced by Export → “Plaid IGT JSON (lossless .zip archive)”"
+            accept=".zip,application/zip"
+          />
         )}
 
-        {stage === 'parsing' && (
-          <div className="rounded-lg border bg-card p-12 text-center">
-            <Loading label="Reading archive…" className="p-0" />
-          </div>
-        )}
+        {stage === 'parsing' && <ReadingPanel label="Reading archive…" />}
 
         {(stage === 'review' || stage === 'running' || stage === 'done') && archive && (
           <div className="flex flex-col gap-4">

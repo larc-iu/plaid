@@ -1,5 +1,6 @@
 // Shared chrome for the four project-import wizards (FLEx, CLDF, ELAN, the
-// archive): the boxed notice every step uses, the grouped copyable warning list
+// archive): the page's header, the place a file is dropped, the boxed notice
+// every step uses, the grouped copyable warning list
 // a long run produces, the banner that says a run is being continued, the
 // project-name box, and what a run shows while it goes and when it stops.
 //
@@ -8,12 +9,99 @@
 // progress bar and three did not, and the same failure was reported in four
 // wordings.
 
-import { Square } from 'lucide-react';
+import { useRef } from 'react';
+import { Square, Upload } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { notifySuccess } from '@/utils/feedback';
+
+const NEW_PROJECT_CRUMBS = [
+  { label: 'Projects', to: '/projects', fixed: true },
+  { label: 'New project', to: '/projects/new', fixed: true },
+];
+
+/**
+ * The top of an import page: where it sits (`crumbs`, by default under New
+ * project), its title, what it does (`children`, one paragraph), and the
+ * ResumeBanner when `resume` holds its props.
+ */
+export const ImportHeader = ({ crumbs = NEW_PROJECT_CRUMBS, title, resume = null, children }) => (
+  <>
+    <Breadcrumb items={crumbs} />
+    <div>
+      <h1 className="text-2xl font-bold">{title}</h1>
+      <p className="text-sm text-muted-foreground">{children}</p>
+      {resume && <ResumeBanner {...resume} />}
+    </div>
+  </>
+);
+
+/**
+ * The dashed box a file is dropped on. `onFiles` is given the FileList. With
+ * `onChoose` the box holds a button that opens the page's own file input
+ * (which the page keeps, to add files later), otherwise the whole box is
+ * clickable and holds its own input (`accept`, `multiple`).
+ */
+export const FileDropZone = ({
+  onFiles,
+  title,
+  hint,
+  accept,
+  multiple = false,
+  onChoose = null,
+  chooseLabel,
+}) => {
+  const inputRef = useRef(null);
+  const drop = {
+    onDragOver: (e) => e.preventDefault(),
+    onDrop: (e) => {
+      e.preventDefault();
+      onFiles(e.dataTransfer.files);
+    },
+  };
+  if (onChoose) {
+    return (
+      <div
+        className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed p-10 text-center"
+        {...drop}
+      >
+        <Upload className="h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">{hint}</p>
+        <Button onClick={onChoose}>{chooseLabel}</Button>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
+      onClick={() => inputRef.current?.click()}
+      {...drop}
+    >
+      <Upload className="h-8 w-8 text-muted-foreground" />
+      <p className="font-medium">{title}</p>
+      <p className="text-sm text-muted-foreground">{hint}</p>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        className="hidden"
+        onChange={(e) => onFiles(e.target.files)}
+      />
+    </div>
+  );
+};
+
+/** What a page shows while it reads the file it was given. */
+export const ReadingPanel = ({ label }) => (
+  <div className="rounded-lg border bg-card p-12 text-center">
+    <Loading label={label} className="p-0" />
+  </div>
+);
 
 /**
  * The boxed notice every wizard step uses: a title line and what goes under

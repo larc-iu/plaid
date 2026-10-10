@@ -21,13 +21,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, RefreshCw } from 'lucide-react';
-import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { RefreshCw } from 'lucide-react';
 import {
   ImportRunPanel,
   Panel,
   ProjectNameField,
-  ResumeBanner,
+  FileDropZone,
+  ImportHeader,
   WarningLog,
 } from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
@@ -154,54 +154,37 @@ export const ImportElanProject = () => {
         }}
       />
       <div className="flex flex-col gap-6">
-        <Breadcrumb
-          items={[
-            { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New project', to: '/projects/new', fixed: true },
-          ]}
-        />
-
-        <div>
-          <h1 className="text-2xl font-bold">Import an ELAN corpus</h1>
-          <p className="text-sm text-muted-foreground">
-            Create a project from a set of{' '}
-            <a
-              href="https://archive.mpi.nl/tla/elan"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2"
-            >
-              ELAN
-            </a>{' '}
-            annotation files. Every file becomes one document. A tier must mean the same thing in
-            every file.
-          </p>
-          {resumeId && (
-            <ResumeBanner
-              name={resumeName}
-              again="Choose the same files: what is already there is unchanged, and the first run’s answers are used again."
-              onFinishAsIs={finishAsIs}
-            />
-          )}
-        </div>
+        <ImportHeader
+          title="Import an ELAN corpus"
+          resume={
+            resumeId && {
+              name: resumeName,
+              again:
+                'Choose the same files: what is already there is unchanged, and the first run’s answers are used again.',
+              onFinishAsIs: finishAsIs,
+            }
+          }
+        >
+          Create a project from a set of{' '}
+          <a
+            href="https://archive.mpi.nl/tla/elan"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2"
+          >
+            ELAN
+          </a>{' '}
+          annotation files. Every file becomes one document. A tier must mean the same thing in
+          every file.
+        </ImportHeader>
 
         {stage === 'pick' && (
-          <div
-            className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed p-10 text-center"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleFiles(e.dataTransfer.files);
-            }}
-          >
-            <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Drop your .eaf files and their recordings here, or choose them below.
-            </p>
-            <Button onClick={() => fileInputRef.current?.click()}>
-              Choose .eaf files and recordings
-            </Button>
-          </div>
+          <FileDropZone
+            onFiles={handleFiles}
+            hint="Drop your .eaf files and their recordings here, or choose them below."
+            onChoose={() => fileInputRef.current?.click()}
+            chooseLabel="Choose .eaf files and recordings"
+          />
         )}
 
         {stage === 'parsing' && <p className="text-sm text-muted-foreground">Reading files…</p>}

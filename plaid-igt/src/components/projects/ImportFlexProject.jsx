@@ -15,13 +15,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, FileUp, RefreshCw } from 'lucide-react';
+import { FileUp, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
-import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
-import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
-import { Loading } from '@ui/components/shared/Loading.jsx';
+import {
+  FileDropZone,
+  ImportHeader,
+  ImportRunPanel,
+  ProjectNameField,
+  ReadingPanel,
+} from './ImportPanels';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
@@ -82,7 +86,6 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const flextext = format === 'flextext';
   useDocumentTitle(fmt.pageTitle);
   const { client, user } = useAuth();
-  const fileInputRef = useRef(null);
   // {sourceName, fileCount, ir, build, analysisWssAvailable}
   const [parsed, setParsed] = useState(null);
   const [projectName, setProjectName] = useState('');
@@ -428,63 +431,37 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <Breadcrumb
-          items={[
-            { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New project', to: '/projects/new', fixed: true },
-          ]}
-        />
-
-        <div>
-          <h1 className="text-2xl font-bold">{fmt.title}</h1>
+        <ImportHeader
+          title={fmt.title}
+          resume={resumeId && { name: resumeName, again: fmt.again, onFinishAsIs: finishAsIs }}
+        >
           {flextext ? (
-            <p className="text-sm text-muted-foreground">
+            <>
               Create a project from FLEx interlinear texts (<code>.flextext</code>). Texts, glosses,
               morpheme analyses, and translations are imported. The lexicon, media, and time
               alignment are not.
-            </p>
+            </>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <>
               Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
               morpheme analyses, translations, and the full lexicon are imported. Choose a text's
               recording along with the backup and it is imported too, with the text's sentence
               times. Pictures are not imported.
-            </p>
+            </>
           )}
-          {resumeId && (
-            <ResumeBanner name={resumeName} again={fmt.again} onFinishAsIs={finishAsIs} />
-          )}
-        </div>
+        </ImportHeader>
 
         {stage === 'pick' && (
-          <div
-            className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleFiles(e.dataTransfer.files);
-            }}
-          >
-            <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">{fmt.drop}</p>
-            <p className="text-sm text-muted-foreground">{fmt.where}</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={fmt.accept}
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-          </div>
+          <FileDropZone
+            onFiles={handleFiles}
+            title={fmt.drop}
+            hint={fmt.where}
+            accept={fmt.accept}
+            multiple
+          />
         )}
 
-        {stage === 'parsing' && (
-          <div className="rounded-lg border bg-card p-12 text-center">
-            <Loading label={fmt.reading} className="p-0" />
-          </div>
-        )}
+        {stage === 'parsing' && <ReadingPanel label={fmt.reading} />}
 
         {(stage === 'review' || stage === 'running' || stage === 'done') && parsed && (
           <div className="flex flex-col gap-4">

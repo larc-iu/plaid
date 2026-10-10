@@ -10,13 +10,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
-import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
-import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
+import {
+  FileDropZone,
+  ImportHeader,
+  ImportRunPanel,
+  ProjectNameField,
+  ReadingPanel,
+} from './ImportPanels';
 import {
   Select,
   SelectTrigger,
@@ -51,7 +55,6 @@ const OFF = '__off__';
 export const ImportCldfProject = () => {
   useDocumentTitle('Import CLDF');
   const { client } = useAuth();
-  const fileInputRef = useRef(null);
   const [dataset, setDataset] = useState(null);
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');
@@ -157,67 +160,40 @@ export const ImportCldfProject = () => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <Breadcrumb
-          items={[
-            { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New project', to: '/projects/new', fixed: true },
-          ]}
-        />
-
-        <div>
-          <h1 className="text-2xl font-bold">Import a CLDF dataset</h1>
-          <p className="text-sm text-muted-foreground">
-            Create a project from a{' '}
-            <a
-              href="https://cldf.clld.org"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2"
-            >
-              Cross-Linguistic Data Formats
-            </a>{' '}
-            dataset: its examples become interlinear texts, its lexicon becomes a vocabulary, and
-            its language becomes the project’s identity.
-          </p>
-          {resumeId && (
-            <ResumeBanner
-              name={resumeName}
-              again="Choose the same file: what is already there is unchanged, and the first run’s answers are used again."
-              onFinishAsIs={finishAsIs}
-            />
-          )}
-        </div>
+        <ImportHeader
+          title="Import a CLDF dataset"
+          resume={
+            resumeId && {
+              name: resumeName,
+              again:
+                'Choose the same file: what is already there is unchanged, and the first run’s answers are used again.',
+              onFinishAsIs: finishAsIs,
+            }
+          }
+        >
+          Create a project from a{' '}
+          <a
+            href="https://cldf.clld.org"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2"
+          >
+            Cross-Linguistic Data Formats
+          </a>{' '}
+          dataset: its examples become interlinear texts, its lexicon becomes a vocabulary, and its
+          language becomes the project’s identity.
+        </ImportHeader>
 
         {stage === 'pick' && (
-          <div
-            className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleFile(e.dataTransfer.files?.[0]);
-            }}
-          >
-            <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">Drop a CLDF .zip here, or click to choose</p>
-            <p className="text-sm text-muted-foreground">
-              Any dataset with an ExampleTable: a TextCorpus, or a Dictionary with examples
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip,application/zip"
-              className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
-          </div>
+          <FileDropZone
+            onFiles={(files) => handleFile(files?.[0])}
+            title="Drop a CLDF .zip here, or click to choose"
+            hint="Any dataset with an ExampleTable: a TextCorpus, or a Dictionary with examples"
+            accept=".zip,application/zip"
+          />
         )}
 
-        {stage === 'parsing' && (
-          <div className="rounded-lg border bg-card p-12 text-center">
-            <Loading label="Reading dataset…" className="p-0" />
-          </div>
-        )}
+        {stage === 'parsing' && <ReadingPanel label="Reading dataset…" />}
 
         {stage !== 'pick' && stage !== 'parsing' && build && (
           <div className="flex flex-col gap-4">
