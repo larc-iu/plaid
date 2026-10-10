@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { lazyNamed } from '@ui/lib/lazyNamed.js';
 import { Suspended } from '@ui/components/shared/Suspended.jsx';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -70,7 +70,16 @@ const CompareEditor = lazyNamed(
 // state above it to read.
 const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
 
+// The Settings tab's sections (ProjectSettings.jsx's SECTIONS, with their
+// aliases). Every path renders the same view, and the active section follows
+// the path.
 const settingsPaths = ['management', 'customization', 'services', 'tokens', 'general'];
+
+// A typed or shared `/settings` link opens the Settings tab's first section.
+const SettingsLink = () => {
+  const { projectId } = useParams();
+  return <Navigate to={`/projects/${projectId}/general`} replace />;
+};
 
 function App() {
   return (
@@ -155,8 +164,6 @@ function App() {
                 </Suspended>
               }
             />
-            {/* Project settings, tabbed. Every path renders the same view and
-                the active tab follows the path. */}
             {settingsPaths.map((p) => (
               <Route
                 key={p}
@@ -168,8 +175,8 @@ function App() {
                 }
               />
             ))}
-            {/* Layer setup for a project another app made, and the destination
-                of the document list's missing-layers redirect. */}
+            <Route path="projects/:projectId/settings" element={<SettingsLink />} />
+            {/* UMR's layer setup, where every "Set it up" link points. */}
             <Route
               path="projects/:projectId/configuration"
               element={

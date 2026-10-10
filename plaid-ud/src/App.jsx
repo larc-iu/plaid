@@ -64,6 +64,11 @@ const ExportEditor = lazyNamed(
 // is no auth state above it to read.
 const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
 
+// The Settings tab's sections (ProjectSettings.jsx's SECTIONS, with their
+// aliases). Every path renders the same view, and the active section follows
+// the path.
+const settingsPaths = ['management', 'customization', 'services', 'tokens', 'general'];
+
 // A typed or shared `/settings` link opens the Settings tab's first section.
 const SettingsLink = () => {
   const { projectId } = useParams();
@@ -75,7 +80,6 @@ function App() {
     <HashRouter>
       <AuthProvider>
         <Routes>
-          {/* Public routes */}
           <Route
             path="/login"
             element={
@@ -91,7 +95,6 @@ function App() {
             element={<RedeemInvite loginPath="/login" homePath="/projects" />}
           />
 
-          {/* Protected routes */}
           <Route
             path="/"
             element={
@@ -100,16 +103,12 @@ function App() {
               </ProtectedRoute>
             }
           >
-            {/* Default redirect to projects */}
             <Route index element={<Navigate to="/projects" replace />} />
 
-            {/* User profile page */}
             <Route path="profile" element={<UserProfile />} />
 
-            {/* Projects page */}
             <Route path="projects" element={<ProjectList />} />
 
-            {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
 
             {/* Grew-match search over the project's sentences */}
@@ -175,53 +174,20 @@ function App() {
               }
             />
 
-            {/* Project settings (tabbed: users & permissions, UD customization,
-                services, access tokens, general). All paths render the same
-                view; the active tab follows the path. */}
-            <Route
-              path="projects/:projectId/management"
-              element={
-                <Suspended>
-                  <ProjectSettings />
-                </Suspended>
-              }
-            />
-            <Route
-              path="projects/:projectId/customization"
-              element={
-                <Suspended>
-                  <ProjectSettings />
-                </Suspended>
-              }
-            />
-            <Route
-              path="projects/:projectId/services"
-              element={
-                <Suspended>
-                  <ProjectSettings />
-                </Suspended>
-              }
-            />
-            <Route
-              path="projects/:projectId/tokens"
-              element={
-                <Suspended>
-                  <ProjectSettings />
-                </Suspended>
-              }
-            />
+            {settingsPaths.map((p) => (
+              <Route
+                key={p}
+                path={`projects/:projectId/${p}`}
+                element={
+                  <Suspended>
+                    <ProjectSettings />
+                  </Suspended>
+                }
+              />
+            ))}
             <Route path="projects/:projectId/settings" element={<SettingsLink />} />
-            <Route
-              path="projects/:projectId/general"
-              element={
-                <Suspended>
-                  <ProjectSettings />
-                </Suspended>
-              }
-            />
 
-            {/* Standalone UD layer setup/repair page — the destination of the
-                annotation editor's "missing layers" auto-redirect. */}
+            {/* UD's layer setup, where every "Set it up" link points. */}
             <Route
               path="projects/:projectId/configuration"
               element={
