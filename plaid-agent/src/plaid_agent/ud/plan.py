@@ -21,17 +21,16 @@ and the relations go in the next.
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
-from ..core import fingerprint as fp
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from plaid_client import metadata_ops, uuid7
+from plaid_client import metadata_ops
 
 from .project import LEMMA_FROM_FORM
 
-from ..core.plan import (Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
-                         apply_add_comment, apply_restore_document, applying, confirm_note, ConfirmRows,
-                         docs_of_op, expand_ops)
+from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
+                         apply_add_comment, apply_restore_document, confirm_note, ConfirmRows,
+                         docs_of_op)
 from .project import feature_key, load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 
@@ -681,18 +680,12 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     (:class:`Minter`), so applying the same plan again names the same rows.
     Without one they are drawn from a fresh id. Raises :class:`PlanError`
     with the applied count if a later batch fails."""
-    stamps = Stamps(stamp_mode, source, contributor, detail)
-    ids = Minter(seed or uuid7())
-    ops = expand_ops(ops)
-    validate_ops(ops)
-    ops = fp.rebase_offsets(client, KIND, ops)
-    ops, notes = resolve_scopes(client, project, ops)
-    ops, superseded = normalize_ops(ops)
-    notes += superseded
-    counts: Counter = Counter()
-    return applying(ops, lambda tracker: _execute(client, ops, label=label, counts=counts,
-                                                  notes=notes, stamps=stamps, tracker=tracker,
-                                                  ids=ids, project=project))
+    return run_plan(
+        KIND, client, ops, source=source, stamp_mode=stamp_mode, contributor=contributor, detail=detail, seed=seed,
+        validate=validate_ops, resolve=lambda o: resolve_scopes(client, project, o), normalize=normalize_ops,
+        execute=lambda o, notes, stamps, ids, tracker: _execute(
+            client, o, label=label, counts=Counter(), notes=notes, stamps=stamps, tracker=tracker, ids=ids,
+            project=project))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]):

@@ -85,17 +85,16 @@ Each also carries a human ``label`` for the approval UI.
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
-from ..core import fingerprint as fp
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core import rules
 from ..core.opkind import OpKind
-from plaid_client import PlaidAPIError, metadata_ops, uuid7
+from plaid_client import PlaidAPIError, metadata_ops
 
 from plaid_client.service import requester_message
 from plaid_client.workflows.igt.new_words import words_refused
 
-from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
+from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, confirm_note, ConfirmRows, expand_ops)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
@@ -1330,18 +1329,13 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     ``seed`` is the plan's id: every row the plan creates is named by an id
     drawn from it (:class:`Minter`), so applying the same plan again names
     the same rows. Without one they are drawn from a fresh id."""
-    stamps = Stamps(stamp_mode, source, contributor, detail)
-    ids = Minter(seed or uuid7())
-    ops = expand_ops(ops)
-    validate_ops(ops)
-    ops = fp.rebase_offsets(client, KIND, ops)
-    ops = resolve_scopes(client, project, ops, requester)
-    ops, notes = normalize_ops(ops)
-    check_entries(client, ops, project)
-    counts: Counter = Counter()
-    return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
-                                                  counts=counts, notes=notes, stamps=stamps,
-                                                  tracker=tracker, ids=ids, requester=requester))
+    return run_plan(
+        KIND, client, ops, source=source, stamp_mode=stamp_mode, contributor=contributor, detail=detail, seed=seed,
+        validate=validate_ops, resolve=lambda o: (resolve_scopes(client, project, o, requester), []),
+        normalize=normalize_ops, check=lambda o: check_entries(client, o, project),
+        execute=lambda o, notes, stamps, ids, tracker: _execute(
+            client, o, label=label, project=project, counts=Counter(), notes=notes, stamps=stamps, tracker=tracker,
+            ids=ids, requester=requester))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]],

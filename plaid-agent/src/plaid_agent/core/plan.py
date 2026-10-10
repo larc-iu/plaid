@@ -857,6 +857,31 @@ class PlanError(Exception):
         return bool(self.applied or self.unknown or self.partly)
 
 
+def run_plan(kind, client, ops: List[Dict[str, Any]], *, source: str, stamp_mode: str, contributor: Optional[str],
+             detail: Optional[Dict[str, Any]], seed: Optional[str], validate, resolve, normalize, execute,
+             check=None) -> Dict[str, int]:
+    """Apply an approved plan, in the one order every app applies one in, so
+    a step added here lands in every app: the stamps and the ids
+    (:class:`Stamps`, :class:`Minter`), the ops expanded and checked
+    (``validate``), their offsets rebased onto the document as it is now, the
+    corpus-wide changes found again (``resolve(ops) -> (ops, notes)``), the
+    plan normalized (``normalize(ops) -> (ops, notes)``), the app's last
+    ``check(ops)``, and then ``execute(ops, notes, stamps, ids, tracker)``
+    under :func:`applying`. ``kind`` is the app's op-kind registry."""
+    from . import fingerprint as fp
+    stamps = Stamps(stamp_mode, source, contributor, detail)
+    ids = Minter(seed or uuid7())
+    ops = expand_ops(ops)
+    validate(ops)
+    ops = fp.rebase_offsets(client, kind, ops)
+    ops, notes = resolve(ops)
+    ops, more = normalize(ops)
+    notes = list(notes) + list(more)
+    if check is not None:
+        check(ops)
+    return applying(ops, lambda tracker: execute(ops, notes, stamps, ids, tracker))
+
+
 def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
     """Run an app's executor and let nothing out of it but :class:`PlanError`,
     carrying how much of the plan really landed.
