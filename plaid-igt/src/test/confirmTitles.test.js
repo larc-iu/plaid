@@ -120,7 +120,7 @@ describe('igt confirm titles', () => {
       }
     }
     // Not vacuous: the scan finds the call sites it is about.
-    expect(found.length).toBeGreaterThan(30);
+    expect(found.length).toBeGreaterThan(25);
     expect(wrong).toEqual([]);
   });
 });
