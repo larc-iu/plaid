@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { countOf } from '../../lib/plural.js';
 
 // What the assistant was sent back and wrote, one model call (a "round") at a
 // time, stored by the service beside the conversation
@@ -125,8 +126,6 @@ export const useReadable = (client, display) => {
 // How many reads in a row fold into one row.
 const FOLD_AT = 4;
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
 // The steps, with every run of FOLD_AT or more document reads in a row drawn
 // as one row: `{steps}` for a step on its own, `{run: [steps]}` for a run. A
 // read with text or reasoning before it starts a new run, so neither is
@@ -181,8 +180,8 @@ export const runLabel = (run) => {
     }
   const sentences = seen.size + loose;
   return sentences
-    ? `Read ${plural(sentences, 'sentence', 'sentences')} in ${plural(docs, 'document', 'documents')}`
-    : `Read ${plural(docs, 'document', 'documents')}`;
+    ? `Read ${countOf(sentences, 'sentence', 'sentences')} in ${countOf(docs, 'document', 'documents')}`
+    : `Read ${countOf(docs, 'document', 'documents')}`;
 };
 
 // A tool call's arguments as the reader is shown them: `{code}` for code the

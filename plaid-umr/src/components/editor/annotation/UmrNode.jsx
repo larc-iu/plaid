@@ -1,6 +1,7 @@
 import React from 'react';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { provMark, worstMark } from './provMarks.js';
+import { countOf } from '@ui/lib/plural.js';
 
 // A node a machine drafted or a contributor made wears a dashed border
 // until somebody settles it (provMarks.js).
@@ -10,11 +11,11 @@ const PROV_CLASS = {
 };
 
 // "2 errors, 1 warning", for a node's accessible name.
-const countOf = (n, one) => (n ? `${n} ${one}${n === 1 ? '' : 's'}` : null);
+const someOf = (n, one) => (n ? countOf(n, one) : null);
 const problemWords = (problems) => {
   if (!problems?.length) return null;
   const errors = problems.filter((p) => p.level === 'error').length;
-  return [countOf(errors, 'error'), countOf(problems.length - errors, 'warning')]
+  return [someOf(errors, 'error'), someOf(problems.length - errors, 'warning')]
     .filter(Boolean)
     .join(', ');
 };

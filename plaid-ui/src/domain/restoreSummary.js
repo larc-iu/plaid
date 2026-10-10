@@ -15,8 +15,7 @@
 
 import { humanizeError } from '../lib/errors.js';
 import { fullTimestamp } from '../lib/formatTime.js';
-
-const plural = (n, word, words = `${word}s`) => `${n.toLocaleString()} ${n === 1 ? word : words}`;
+import { countOf } from '../lib/plural.js';
 
 const changed = (c) => (c?.inserted ?? 0) + (c?.updated ?? 0) + (c?.deleted ?? 0);
 
@@ -75,8 +74,8 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     const words = layer?.words || roleWords[layer?.role];
     lines.push(
       words
-        ? plural(n, ...words)
-        : `${plural(n, 'token')}${layer?.name ? ` in ${layer.name}` : ''}`,
+        ? countOf(n, ...words)
+        : `${countOf(n, 'token')}${layer?.name ? ` in ${layer.name}` : ''}`,
     );
   }
   for (const e of summary.spans?.byLayer || []) {
@@ -85,8 +84,8 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     if (!n || layer?.words === null) continue;
     lines.push(
       layer?.words
-        ? plural(n, ...layer.words)
-        : `${plural(n, 'annotation')} in ${layer?.name ?? 'a field'}`,
+        ? countOf(n, ...layer.words)
+        : `${countOf(n, 'annotation')} in ${layer?.name ?? 'a field'}`,
     );
   }
   for (const e of summary.relations?.byLayer || []) {
@@ -95,12 +94,12 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     if (!n || layer?.words === null) continue;
     lines.push(
       layer?.words
-        ? plural(n, ...layer.words)
-        : `${plural(n, 'relation')}${layer?.name ? ` in ${layer.name}` : ''}`,
+        ? countOf(n, ...layer.words)
+        : `${countOf(n, 'relation')}${layer?.name ? ` in ${layer.name}` : ''}`,
     );
   }
   if (changed(summary.vocabLinks)) {
-    lines.push(plural(changed(summary.vocabLinks), 'vocabulary link'));
+    lines.push(countOf(changed(summary.vocabLinks), 'vocabulary link'));
   }
   if (summary.documentMetadata) lines.push('Metadata');
   return lines;
@@ -165,7 +164,7 @@ export const recordingNote = (entries, asOf, hasRecording) => {
 // it pointed at no longer exists.
 export const skippedLines = (skipped) =>
   (skipped || []).map(
-    (k) => `${plural(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
+    (k) => `${countOf(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
   );
 
 // The audit message a restore is written under.

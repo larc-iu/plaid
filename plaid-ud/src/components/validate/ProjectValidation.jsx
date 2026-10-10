@@ -25,6 +25,7 @@ import {
   seedCandidates,
   featureSeedCandidates,
 } from '../../domain/validationQueries.js';
+import { countOf } from '@ui/lib/plural.js';
 
 // What the project has stored that its own vocabularies do not list.
 //
@@ -43,8 +44,6 @@ const FIELDS = [
   { key: 'deprel', label: 'Dependency relations', layer: 'relationLayer', kind: 'relation' },
   { key: 'feats', label: 'Features', layer: 'featuresLayer', kind: 'feats' },
 ];
-
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // Where an off-list value is, once someone has opened it: the documents it is
 // in, and a link into each sentence. The links are numbered by the order the
@@ -307,7 +306,7 @@ export const ProjectValidation = () => {
                       onClick={() => adopt(field)}
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      Add {plural(count, 'value', 'values')}
+                      Add {countOf(count, 'value', 'values')}
                     </Button>
                   )}
                 </div>
@@ -350,7 +349,7 @@ export const ProjectValidation = () => {
                                   )}
                                   <code>{v.value}</code>
                                   <span className="text-xs">
-                                    {plural(v.count, 'time', 'times')}
+                                    {countOf(v.count, 'time', 'times')}
                                   </span>
                                 </button>
                                 {open && <Occurrences found={where[key]} projectId={projectId} />}
@@ -382,7 +381,7 @@ export const ProjectValidation = () => {
                             <AlertTriangle className="h-3.5 w-3.5 text-warning" />
                             <code>{v.value}</code>
                             <span className="text-xs text-muted-foreground">
-                              {plural(v.count, 'time', 'times')}
+                              {countOf(v.count, 'time', 'times')}
                             </span>
                           </button>
                           {open && <Occurrences found={found} projectId={projectId} />}

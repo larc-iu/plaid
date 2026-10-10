@@ -6,8 +6,7 @@ import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { detectDirection } from '@ui/domain/textDirection.js';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
-
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+import { countOf } from '@ui/lib/plural.js';
 
 // A native checkbox rather than a Radix one: the document header needs the
 // indeterminate state, which lives only on the DOM node and cannot be set from
@@ -80,7 +79,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
     const ok = await confirm({
       title: 'Apply changes?',
       description:
-        `${plural(chosen.length, 'sentence')} in ${plural(chosenDocs.size, 'document')}.` +
+        `${countOf(chosen.length, 'sentence')} in ${countOf(chosenDocs.size, 'document')}.` +
         (lost ? ` Deletes ${lost} with the deleted words.` : '') +
         (cut ? ` Shortens ${cut}.` : ''),
       confirmLabel: 'Apply',
@@ -95,8 +94,8 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
         <p className="text-sm text-muted-foreground">
           {rows.length === 0
             ? 'No sentences to change.'
-            : `${plural(rows.length, 'sentence')} in ${plural(new Set(rows.map((r) => r.docId)).size, 'document')}, ${chosen.length} selected` +
-              (errors ? `, ${plural(errors, 'error')}` : '')}
+            : `${countOf(rows.length, 'sentence')} in ${countOf(new Set(rows.map((r) => r.docId)).size, 'document')}, ${chosen.length} selected` +
+              (errors ? `, ${countOf(errors, 'error')}` : '')}
         </p>
         {rows.length > 0 && (
           <div className="flex items-center gap-2">
@@ -114,7 +113,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
             </Button>
             {canApply ? (
               <Button onClick={confirmApply} disabled={!chosen.length || busy}>
-                {busy ? 'Applying…' : `Apply ${plural(chosen.length, 'change')}`}
+                {busy ? 'Applying…' : `Apply ${countOf(chosen.length, 'change')}`}
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">Maintainers only.</p>

@@ -27,6 +27,7 @@ import { readStoredFile } from './attachments.js';
 import { closedTurns } from './projectReach.js';
 import { roundPrefix, roundsInHand } from './rounds.js';
 import { usedCss } from './exportCss.js';
+import { countOf } from '../../lib/plural.js';
 
 const TOOL_OUTPUT_CHARS = 4000;
 const TOOL_OUTPUT_TOTAL = 1_000_000;
@@ -35,8 +36,6 @@ const TABLE_ROWS = 500;
 
 const OTHER = 'Another project';
 const NOT_INCLUDED = '(not included)';
-
-const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
 // The conversation as the page draws it, with what the exporter cannot open
 // taken out, and a count of what was. `stored` is the conversation's rounds
@@ -253,11 +252,11 @@ const models = (display, meta) => {
 export const leftOutLine = (left, notShown) => {
   const parts = [];
   if (left.citations)
-    parts.push(`${plural(left.citations, 'cited example', 'cited examples')} from other projects`);
+    parts.push(`${countOf(left.citations, 'cited example', 'cited examples')} from other projects`);
   if (left.inputs)
-    parts.push(plural(left.inputs, 'tool input and output', 'tool inputs and outputs'));
-  if (left.results) parts.push(plural(left.results, 'tool output', 'tool outputs'));
-  if (left.thinking) parts.push(plural(left.thinking, 'Thinking section', 'Thinking sections'));
+    parts.push(countOf(left.inputs, 'tool input and output', 'tool inputs and outputs'));
+  if (left.results) parts.push(countOf(left.results, 'tool output', 'tool outputs'));
+  if (left.thinking) parts.push(countOf(left.thinking, 'Thinking section', 'Thinking sections'));
   if (notShown.length) parts.push(`the content of ${notShown.join(', ')}`);
   const out = parts.length ? [`Not included: ${parts.join(', ')}.`] : [];
   if (left.shortened)
