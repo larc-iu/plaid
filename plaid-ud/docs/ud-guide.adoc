@@ -100,7 +100,7 @@ A new document starts empty. You give it a name, then add text in the Text Edito
 == Importing CoNLL-U
 
 If you already have annotated data, you can import it instead of typing it in.
-Open the project's **Import and export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
+Open the project's **Import and export** tab and drop `.conllu` files on it, one or many.
 Each `# newdoc` boundary inside a file becomes its own document.
 A file too large for the server is not imported, and its row says so.
 
@@ -159,7 +159,7 @@ You can also select a span of text to make a new token from it.
 = Annotation
 
 The **Annotate** tab is where the real work happens.
-It shows each sentence as a row of editable cells above an interactive dependency tree.
+It shows each sentence as an interactive dependency tree above a grid of editable cells.
 
 Sentences come 25 to a page, with a pager above and below them.
 A document reopens on the page you left it on, and a link to a particular sentence, such as a search result, turns to its page first.
@@ -173,9 +173,9 @@ Each word has cells for:
 |===
 | Column | Meaning
 
-| **UPOS** | Universal part-of-speech tag.
-| **XPOS** | Language-specific part-of-speech tag.
 | **Lemma** | The word's dictionary form.
+| **XPOS** | Language-specific part-of-speech tag.
+| **UPOS** | Universal part-of-speech tag.
 | **Features** | Morphological features, as `Key=Value` pairs (e.g. `Case=Nom`, `Number=Sing`).
 |===
 
@@ -189,7 +189,7 @@ The full list is in <<_keyboard_shortcuts>>.
 
 == Tree Editing
 
-Below the grid, each sentence's dependency tree is drawn as arcs between words.
+Above the grid, each sentence's dependency tree is drawn as arcs between words.
 
 * **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
 * **Mark the root**: drag from the **ROOT** bar to a word.
@@ -224,7 +224,7 @@ Notes **about a sentence** are behind **Edit metadata**, in the row of actions b
 Every sentence carries `sent_id`, CoNLL-U's own identifier for it.
 Other fields are a maintainer's choice, under **Settings → UD settings**. A free translation is conventionally `text_en`, naming its language.
 Fields save as you leave them, and clearing one removes it.
-On export they are written as `# source = ...` above a document and `# sent_id = ...` or `# text_en = ...` above a sentence.
+On export, sentence fields are written above their sentence, as `# sent_id = ...` or `# text_en = ...`.
 
 == Text Direction
 
@@ -237,8 +237,8 @@ Arrow keys follow the words: in a right-to-left sentence the left arrow moves fo
 
 == Earlier Values in This Project
 
-In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
-The lemma cell looks up the word's form. The XPOS and Features cells look up its lemma.
+In a **Lemma** or **XPOS** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
+The lemma cell looks up the word's form. The XPOS cell looks up its lemma.
 Pick a value with the arrows and **Enter**, or click it. **Escape** goes back to the cell.
 
 == Moving Between the Text and the Annotations
@@ -311,7 +311,7 @@ A line above each answer sums up the work behind it, such as "read 87 sentences 
 Opened, it lists each step the assistant took, and a step opens to what the assistant was given and what it got back.
 
 When you ask the assistant to change something, it does not touch the data.
-It proposes a **plan**, which you **Approve** or **Discard**.
+It proposes a **plan**, which you **Approve and apply** or **Discard**.
 Every change is listed under its document and links to that sentence in the annotation editor, so a plan can be checked before it is approved.
 A change to something a person made or accepted is marked **Accepted** and counted separately.
 
@@ -345,8 +345,8 @@ The assistant only reads other projects, and plans changes in the conversation's
 
 == Examples in a Reply
 
-When a reply rests on a particular sentence, that sentence is shown, drawn one of three ways.
-**Tree** gives the dependency arcs over the words, **Grid** only the columns the point is about, and **Table** every column the sentence fills.
+When a reply rests on a particular sentence, that sentence is shown, drawn one of two ways.
+**Tree** gives the dependency arcs over the words, and **CoNLL-U** the sentence's rows as a table.
 The assistant picks whichever fits, and you can switch. The heading of each example opens that sentence in the annotation editor.
 
 == Files and PDFs
@@ -410,7 +410,7 @@ It looks in one field (form, lemma, UPOS, XPOS, dependency relation or features)
 It writes the Grew pattern for you and runs it, so you can then edit the pattern.
 
 In features, each `Key=Value` pair is matched on its own: **contains** `Number` finds every word with a Number feature.
-A value finds text however its accents are typed.
+An accent matches whether typed as one character or two.
 In a regular expression, `\w`, `\d` and `\s` cover every script, and `\p{IsArabic}` matches any character of the Arabic script, and likewise for other scripts.
 
 === Searching the Enhanced Graph
@@ -428,7 +428,7 @@ A relation that the enhanced graph adds to the tree carries Grew's `E:` prefix: 
 
 After a search, **Count by** turns the results into a tally.
 Pick a pattern node and a field (`V.upos`, `S.lemma`, `V.FEATS`, or a named edge's `e.label`) to get a sortable table of values with how many matches each accounts for.
-Clicking a value adds it to the pattern and runs the search again.
+Clicking a node's value adds it to the pattern and runs the search again.
 
 === Changing Many Sentences at Once
 
@@ -513,7 +513,7 @@ Tick it and everything that person enters is marked as needing review until some
 A project's maintainers tailor the annotation scheme from the project's **Settings** tab.
 
 **UD settings** holds the controlled vocabularies (UPOS, XPOS and dependency relations), their **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** for <<_metadata>>.
-Every vocabulary starts from the standard universal set and can be extended or replaced.
+XPOS starts empty and the others from the universal sets. Each can be changed.
 **Save** writes only what you changed. If another maintainer changed the same setting since you opened the tab, nothing is saved and the message names the setting.
 
 **General** holds the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion.
@@ -617,7 +617,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **Enter** | Commit the cell, taking the highlighted suggestion if the list is open.
 | **Esc** | Cancel the edit, or close an open list or panel.
 | **Backspace** (Features) | On the empty input, select the last feature, so a second press removes it.
-| **Alt+↓** | In a lemma, XPOS or Features cell, list what the project has given words like this one, with counts, and pick one. See <<_earlier_values_in_this_project>>.
+| **Alt+↓** | In a lemma or XPOS cell, list what the project has given words like this one, with counts, and pick one. See <<_earlier_values_in_this_project>>.
 | **Ctrl/Cmd+Enter** | Accept everything proposed on the current word, then move to the next word.
 | **Ctrl/Cmd+Backspace** | Discard the machine's unconfirmed work on the current word, then move to the next word. Anything a person entered or confirmed stays.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word that still needs a look.
