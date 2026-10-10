@@ -607,22 +607,29 @@ A client can ask a service to stop with `cancelServiceRequest` / `cancel_service
 Nothing is interrupted, though: the service stops at the next point where it checks.
 Every call to `progress()` is such a point, so a service that reports its progress can be stopped with no further work, and the request ends with `stopped: true` rather than as a failure.
 
-Writes should not be cut off halfway, so wrap them in `helper.critical()`, inside which a stop waits.
+Writes should not be cut off halfway, so wrap them in the helper's `critical()`, inside which a stop waits.
 Report the result inside the same block, or a stop that arrives after the writes would throw away a finished result.
-`helper.raise_if_cancelled()` adds a checkpoint to a long loop that reports no progress.
+The helper's `raise_if_cancelled()` adds a checkpoint to a long loop that reports no progress.
+In this `BaseService`, `load_sentences`, `gloss` and `write` stand for the service's own work.
 
 [,python]
 ----
-def handle(self, data, helper):
-    for i, sentence in enumerate(sentences):
-        # Already a checkpoint: a stop here ends the request cleanly.
-        helper.progress(10 + int(70 * i / len(sentences)), f'Glossing {i + 1}/{len(sentences)}...')
-        results.append(self.model.gloss(sentence))
+from plaid_client.service import BaseService
 
-    with helper.critical():           # too late to stop: finish, and say so
-        with self.client.operation('Glossing'):
-            self.write(results)
-        helper.complete({'glossed': len(results)})
+class Glosser(BaseService):
+    def process_request(self, request_data, response_helper):
+        sentences = self.load_sentences(request_data["document_id"])
+        results = []
+        for i, sentence in enumerate(sentences):
+            # Already a checkpoint: a stop here ends the request cleanly.
+            response_helper.progress(10 + int(70 * i / len(sentences)),
+                                     f"Glossing {i + 1}/{len(sentences)}")
+            results.append(self.gloss(sentence))
+
+        with response_helper.critical():    # too late to stop: finish, and say so
+            with self.client.operation("Glossing"):
+                self.write(results)
+            response_helper.complete({"glossed": len(results)})
 ----
 
 In Python the stop is a `ServiceCancelled` exception derived from `BaseException`, so `except Exception` does not swallow it.
