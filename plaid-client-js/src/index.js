@@ -3698,8 +3698,8 @@ class PlaidClient {
 
     this.events = {
       /**
-       * Record one research-telemetry event (core manual, "Research
-       * telemetry"). Fire and forget: the event is buffered and sent with
+       * Record one research-telemetry event (plaid-core sql/client_event.clj).
+       * Fire and forget: the event is buffered and sent with
        * others every ten seconds, at fifty events, and when the page is
        * hidden. A batch that fails is dropped, nothing is retried, and
        * nothing is ever thrown. Sends nothing for a project whose switch

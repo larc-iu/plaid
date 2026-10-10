@@ -4,7 +4,7 @@ import { IgtEditor } from './IgtEditor.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 
-// Research telemetry on the guesses (core manual, "Research telemetry"): a
+// Research telemetry on the guesses (plaid-core sql/client_event.clj): a
 // guess drawn in a cell is `suggestion.shown` once per page session however
 // often the grid re-renders, Enter or Ctrl+Enter taking it is
 // `suggestion.adopted`, and a different value typed over it is

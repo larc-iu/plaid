@@ -564,7 +564,7 @@ interface Comment {
   edited: boolean;
 }
 
-/** A research-telemetry event type (core manual, "Research telemetry"). */
+/** A research-telemetry event type (plaid-core sql/client_event.clj). */
 type ClientEventType =
   | "suggestion.shown"
   | "suggestion.adopted"

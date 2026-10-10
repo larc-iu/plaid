@@ -1,4 +1,4 @@
-// Research telemetry (core manual, "Research telemetry"): what a person does
+// Research telemetry (plaid-core sql/client_event.clj): what a person does
 // with a guess. A guess drawn in a cell is `suggestion.shown`, one taken as it
 // is (Enter on the cell, Ctrl+Enter on its word) is `suggestion.adopted`, and a
 // different value written where it showed is `suggestion.dismissed`.
