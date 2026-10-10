@@ -20,7 +20,7 @@ const partsOf = (step) => {
 // pixel ("1:23.45") is about 40px of 10px mono, and the rest is air.
 export const LABEL_GAP_PX = 72;
 // Small ticks closer than this are left out.
-export const MINOR_GAP_PX = 6;
+const MINOR_GAP_PX = 6;
 
 /**
  * The ruler's steps at `pixelsPerSecond`: `major`, the seconds between
