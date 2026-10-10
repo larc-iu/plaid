@@ -1,7 +1,7 @@
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
-import { Toggle } from './PlainTextOptions.jsx';
+import { Toggle } from './optionControls.jsx';
 import {
   latexLayout,
   latexVocabulary,
