@@ -486,6 +486,14 @@ describe('formatChapter', () => {
     expect(tex).toContain('\\chaptermark{A very long name for a text that would never…}');
   });
 
+  it('sets a name as typed, so an apostrophe in it is the same letter as in the examples', () => {
+    const doc = makeFixtureDoc();
+    doc.document.name = 'M\'munda -- "the garden"';
+    const tex = formatChapter(doc, SEL);
+    expect(tex).toContain(`\\chapter{M'munda -- "the garden"}`);
+    expect(tex).not.toMatch(/[’‘“”–]/);
+  });
+
   it('leaves the metadata out when asked', () => {
     expect(formatChapter(makeFixtureDoc(), { ...SEL, includeHeader: false })).not.toContain(
       'PlaidMetadata',

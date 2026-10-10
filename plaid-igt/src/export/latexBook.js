@@ -248,17 +248,19 @@ const inScript = (rendered, text, docDir, macro = null) => {
 /**
  * A heading (a chapter, the title): set in its script like any value, and
  * plain for the PDF's bookmarks, which cannot hold a font or a direction.
+ * A name is data, so it prints as typed: an apostrophe in M'munda is the same
+ * character in the heading as in the examples below it.
  */
 const heading = (value) => {
-  const set = runText(value, 'ltr');
-  const plain = texEscape(asProse(texLine(value)));
+  const set = runText(value, 'ltr', null, { prose: false });
+  const plain = texEscape(texLine(value));
   return set === plain ? plain : `\\texorpdfstring{${set}}{${plain}}`;
 };
 
 // The book's fonts make no TeX ligatures, so every character of the data
 // prints as itself: -- under a morpheme is two hyphens, not an en dash, and a
 // straight quotation mark in a word stays straight. Running text (a
-// translation, a name, a note) is set as a book sets prose instead: -- is an
+// translation, a note) is set as a book sets prose instead: -- is an
 // en dash and --- an em dash, as TeX would make them, and each straight
 // quotation mark is turned the way it faces, “ and ‘ at the start of a word,
 // ” and ’ after one, so it's has an apostrophe. Text read right to left is
@@ -274,10 +276,10 @@ const asProse = (text) => {
 };
 
 /** A value that is not a cell (a translation, a name, a heading), escaped and set in its script. */
-const runText = (value, docDir, macro = null) => {
+const runText = (value, docDir, macro = null, { prose: asRunning = true } = {}) => {
   const text = texLine(value);
   if (text === '') return '';
-  const prose = valueDir(text, docDir) === RTL ? text : asProse(text);
+  const prose = !asRunning || valueDir(text, docDir) === RTL ? text : asProse(text);
   return inScript(texEscape(prose), text, docDir, macro);
 };
 
