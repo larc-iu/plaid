@@ -21,7 +21,7 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 import { isTextChanged, statusOf } from '@ui/lib/errors.js';
 import { sendTextPlan } from '@ui/lib/textSave.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
-import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
+import { rebaseEdits } from '@ui/lib/textMerge.js';
 import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
@@ -91,41 +91,48 @@ export function reshapeVocabLinks(vocabs, reshape) {
   }
 }
 
+// The one edit that turns `base` into `body`, as gaps of `base` in code
+// points: the start and end the two share are kept. None when they are equal.
+function wholeEdit(base, body) {
+  const a = [...base];
+  const b = [...body];
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  let back = 0;
+  while (
+    back < a.length - start &&
+    back < b.length - start &&
+    a[a.length - 1 - back] === b[b.length - 1 - back]
+  ) {
+    back += 1;
+  }
+  const value = b.slice(start, b.length - back).join('');
+  return start === a.length - back && value === '' ? [] : [{ start, end: a.length - back, value }];
+}
+
 export const documentMutations = {
-  // Baseline-text edit. The server's text update does all the heavy lifting
-  // in one transaction: it diffs old vs new body, shifts every token on the
-  // text (sentences/words/morphemes/alignment alike), deletes tokens fully
-  // inside removed ranges, and gap-fills partitioning layers (Sentences) so
-  // the partition stays valid. Interior edits therefore preserve existing
-  // tokenization and annotations. The only client-side concern is seeding a
-  // sentence partition when the save leaves none (brand-new text, a full
-  // replacement that deleted every old sentence, or a previously emptied
-  // layer) so the Analyze tab has something to show.
+  // A whole body saved as the document's text, for scripts and for the
+  // Baseline tab's first save. `base` is the body it was typed over.
   //
-  // `base` is the body the draft was typed over (the Baseline tab's Edit).
-  // The draft is sent whole, so a draft typed on a copy someone else has
-  // since saved over would put their passages back as they were. When the
-  // stored body is no longer `base`, the draft's changes are merged onto it
-  // (`mergeText`) and the merged text is sent, and a save refused as
-  // out of date (409) is merged again onto what the refetch read. Changes to
-  // the same passage are refused, with the draft left in the tab.
-  //
-  // The one write here that reloads instead of patching: what a whole-body
-  // update does to the tokens is the server's diff (plaid.algos.text), which
-  // this does not replay. The Baseline tab's textarea already shows the text.
-  //
-  // `tokenize`: a text made here gets the words of the project's "Tokenize new
-  // text" (`_newWords`) in the batch that makes it. The Baseline tab asks for
+  // A text not made yet is made with its sentences, one per line, in one
+  // batch, the text under an id minted here, so the sentences can name it. A
+  // lost answer is sent again under the same keys by the queue and answered
+  // from what the first one stored. `tokenize`: it also gets the words of the
+  // project's "Tokenize new text" (`_newWords`). The Baseline tab asks for
   // it, scripts do not.
+  //
+  // A text that exists takes the body as the one edit that turns `base` into
+  // it (the start and end they share kept), sent as the Baseline tab sends
+  // its edits (`editBaselineText`).
   async saveBaselineText(typedBody, base = this.body, { tokenize = false } = {}) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
+    if (primaryTextLayer?.text?.id) {
+      return this.editBaselineText({ base, digest: null, gaps: wholeEdit(base, typedBody) });
+    }
     // A new text as the server stores it, composed, so the sentences and
-    // words made with it are measured on the text that is stored. A body
-    // saved over a text goes as typed: the server composes it beside the
-    // stored one, which may keep a character decomposed where a token edge
-    // falls inside it.
-    const newBody = primaryTextLayer?.text?.id ? typedBody : composeText(typedBody).text;
+    // words made with it are measured on the text that is stored.
+    const newBody = composeText(typedBody).text;
     const sentenceTokenLayer = info.sentenceTokenLayer;
 
     if (!primaryTextLayer) {
@@ -138,49 +145,21 @@ export const documentMutations = {
     }
 
     // Minted outside the send, so a resend of it names the same text.
-    const newTextId = primaryTextLayer.text?.id ? null : pendingId();
-    const words =
-      newTextId && tokenize ? this._newWords('', [{ start: 0, end: 0, value: newBody }]) : [];
+    const newTextId = pendingId();
+    const words = tokenize ? this._newWords('', [{ start: 0, end: 0, value: newBody }]) : [];
     return this._queueWrite('Failed to save baseline text', async () => {
-      const textId = primaryTextLayer.text?.id;
-
-      let sent = newBody;
-      if (textId) {
-        sent = await this._sendBaselineUpdate(textId, newBody, base);
-      } else {
-        // No existing text: the text and its sentences, one per line, in one
-        // batch, the text under an id minted here, so the sentences can name
-        // it. A lost answer is sent again under the same keys by the queue
-        // and answered from what the first one stored.
-        await this._client.batched(async (b) => {
-          b.texts.create(primaryTextLayer.id, this.id, newBody, undefined, undefined, {
-            id: newTextId,
-          });
-          if (cpLength(newBody) > 0) {
-            b.tokens.bulkCreate(sentenceSeed(sentenceTokenLayer.id, newTextId, newBody));
-          }
-          if (words.length) {
-            b.tokens.bulkCreate(wordCreates(info.primaryTokenLayer.id, newTextId, words));
-          }
+      await this._client.batched(async (b) => {
+        b.texts.create(primaryTextLayer.id, this.id, newBody, undefined, undefined, {
+          id: newTextId,
         });
-      }
-      await this._reloadInSend();
-
-      // A replacement that shares nothing with the old body deletes the old
-      // sentence tokens outright (an empty partition is server-valid), which
-      // would leave the Analyze tab blank. Seed the partition again, one
-      // sentence per line, whenever the edit leaves a non-empty body with none.
-      if (cpLength(sent) > 0) {
-        const freshInfo = this.layerInfo;
-        const freshTextId = freshInfo.primaryTextLayer?.text?.id;
-        const sentencesAfter = freshInfo.sentenceTokenLayer?.tokens || [];
-        if (freshTextId && sentencesAfter.length === 0) {
-          await this._client.tokens.bulkCreate(
-            sentenceSeed(sentenceTokenLayer.id, freshTextId, this.body),
-          );
-          await this._reloadInSend();
+        if (cpLength(newBody) > 0) {
+          b.tokens.bulkCreate(sentenceSeed(sentenceTokenLayer.id, newTextId, newBody));
         }
-      }
+        if (words.length) {
+          b.tokens.bulkCreate(wordCreates(info.primaryTokenLayer.id, newTextId, words));
+        }
+      });
+      await this._reloadInSend();
     });
   },
 
@@ -404,39 +383,6 @@ export const documentMutations = {
   // when the project has it off.
   _newWords(base, gaps) {
     return newWordsOf(this.layerInfo, base, gaps);
-  },
-
-  // The update half of `saveBaselineText`, from inside its send. Answers the
-  // body it stored.
-  //
-  // A text with no sentences gets its partition in the same batch as the
-  // update, so a lost answer cannot leave the text saved and unsegmented. A
-  // lost answer is sent again by the queue under the same keys.
-  async _sendBaselineUpdate(textId, newBody, base) {
-    for (let attempt = 0; ; attempt += 1) {
-      const merged = this.body === base ? { text: newBody } : mergeText(base, newBody, this.body);
-      if (merged.conflict) throw new Error(BASELINE_CONFLICT);
-      const body = merged.text;
-      const sentenceLayer = this.layerInfo.sentenceTokenLayer;
-      const seed = cpLength(body) > 0 && (sentenceLayer?.tokens || []).length === 0;
-      try {
-        if (seed) {
-          await this._client.batched(async (b) => {
-            b.texts.update(textId, body);
-            b.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body));
-          });
-        } else {
-          await this._client.texts.update(textId, body);
-        }
-        return body;
-      } catch (err) {
-        if (isTextChanged(err) && attempt < 2) {
-          await this._reloadInSend();
-          continue;
-        }
-        throw err;
-      }
-    }
   },
 
   // Edit the document's metadata with path ops that name only the keys being

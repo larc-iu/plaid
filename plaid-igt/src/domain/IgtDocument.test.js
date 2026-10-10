@@ -1537,36 +1537,6 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(doc._raw.metadata).toEqual({ keep: 1, seen: true });
   });
 
-  it('saveBaselineText with surviving sentences is a plain texts.update (no lock, no wipe)', async () => {
-    const doc = makeDoc();
-    const ok = await doc.saveBaselineText('a whole new body');
-    expect(ok).toBe(true);
-    const k = kinds(doc.client);
-    // The server shifts/compensates tokens itself — nothing else goes over the wire.
-    expect(k).toContain('texts.update');
-    expect(k).not.toContain('documents.acquireLock');
-    expect(k).not.toContain('tokens.bulkDelete');
-    expect(k).not.toContain('tokens.bulkCreate');
-    expect(k).not.toContain('batch.submit');
-  });
-
-  it('saveBaselineText re-seeds one sentence per line when the save leaves no partition', async () => {
-    const raw = buildRawDoc({ sentences: [], words: [], morphemes: [] });
-    const client = makeFakeClient({ reloadDoc: raw }); // reload also shows an empty partition
-    const doc = makeDoc({ raw, client });
-    const ok = await doc.saveBaselineText('a whole new body\n\nand a second line\n');
-    expect(ok).toBe(true);
-    const k = kinds(doc.client);
-    expect(k).toContain('texts.update');
-    expect(k).toContain('tokens.bulkCreate');
-    expect(k).not.toContain('tokens.bulkDelete');
-    const seed = doc.client.calls.find((c) => c.kind === 'tokens.bulkCreate');
-    expect(seed.args[0]).toEqual([
-      { tokenLayerId: 'sentL', text: 'text-1', begin: 0, end: 18 }, // line, blank line
-      { tokenLayerId: 'sentL', text: 'text-1', begin: 18, end: 36 }, // line, final newline
-    ]);
-  });
-
   it('clearSentences merges sentences into the first and deletes sentence spans (never bulk-deletes)', async () => {
     // The word layer nests in the sentence layer (and morphemes in words), so a
     // bulkDelete of sentence tokens would cascade-delete every word/morpheme.

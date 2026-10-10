@@ -1,15 +1,15 @@
-// Three-way merge of a whole text, for the editors that save a document's
-// body whole (igt's Baseline tab, ud's Text Editor). A draft typed on a copy
-// that someone else has since saved over is put onto the stored text: the
+// Edits typed on a copy of a text that someone else has since saved over,
+// moved onto the stored text (`rebaseEdits`), for the editors that save a
+// document's text as edits (igt's Baseline tab, ud's Text Editor). The
 // passages the draft changed are changed there, and the rest keeps what the
 // other save made. Two changes to the same passage, or to passages that touch,
-// are a conflict, and nothing is merged. So is a change whose place is not
+// are a conflict, and nothing is moved. So is a change whose place is not
 // known, as when one of two lines that read the same is deleted and the other
 // side edited one of them.
 //
 // The unit is a word, a run of whitespace, or one other character, so two
 // edits to different words of one line merge, and two edits to one word do
-// not. Offsets never matter here: the result is a whole string.
+// not.
 
 // Letters with their combining marks, and digits, make a word.
 const UNIT = /\s+|[\p{L}\p{M}\p{N}]+|[^\s\p{L}\p{M}\p{N}]/gu;
@@ -208,8 +208,6 @@ const touch = (p, q) =>
 
 const isBlank = (u) => /^\s+$/u.test(u);
 const breaks = (us) => us.reduce((n, u) => n + (u.match(/\n/g)?.length ?? 0), 0);
-const pureDelete = (h) => h.insert.length === 0 && h.start < h.end;
-const touchesAny = (h, list, skip) => list.some((q, i) => i !== skip && touch(h, q));
 
 // The line each unit is on (a line ends with the whitespace that breaks it),
 // with one more entry for the end of the text.
@@ -235,104 +233,6 @@ function lineReach(units, lineOf, h) {
   let lineEnd = h.end;
   while (lineEnd < units.length && lineOf[lineEnd] === last) lineEnd += 1;
   return { first, last, lineStart, lineEnd };
-}
-
-// Whether a change of one side makes one line of two, each keeping words of
-// its own or getting words typed by the same side: `L2 b\nL3 c` to `L2 b W`.
-function joinsLines(units, lineOf, h, own) {
-  if (breaks(units.slice(h.start, h.end)) <= breaks(h.insert)) return false;
-  const { lineStart, lineEnd } = lineReach(units, lineOf, h);
-  const words = (from, to) => {
-    for (let i = from; i < to; i += 1) {
-      if (!isBlank(units[i]) && !own.some((x) => x.start <= i && i < x.end)) return true;
-    }
-    return own.some(
-      (x) => x !== h && x.start >= from && x.start <= to && x.insert.some((u) => !isBlank(u)),
-    );
-  };
-  return words(lineStart, h.start) && words(h.end, lineEnd);
-}
-
-// A deletion that takes out a line break and lines' worth of text, moved to
-// where it takes whole lines when the text it takes stays the same:
-// `cat sat\nthe ` out of `the cat sat\nthe dog` is the line `the cat sat`.
-function onWholeLines(units, lineOf, h, own) {
-  if (!pureDelete(h) || breaks(units.slice(h.start, h.end)) === 0) return h;
-  // The last line has no break of its own, and goes with the one before it.
-  const whole = (s, e) =>
-    ((s === 0 || breaks([units[s - 1]]) > 0) &&
-      (e === units.length || breaks([units[e - 1]]) > 0)) ||
-    (e === units.length && breaks([units[s]]) > 0 && breaks([units[e - 1]]) === 0);
-  for (let k = 0; k <= 64; k += 1) {
-    for (const by of k === 0 ? [0] : [-k, k]) {
-      const s = h.start + by;
-      const e = h.end + by;
-      if (s < 0 || e > units.length || !whole(s, e)) continue;
-      const moved = { start: s, end: e, insert: h.insert };
-      if (own.some((x) => x !== h && touch(moved, x))) continue;
-      let ok = true;
-      for (let i = Math.min(s, h.start); ok && i < Math.max(s, h.start); i += 1) {
-        ok = units[i] === units[i + (h.end - h.start)];
-      }
-      if (ok) return moved;
-    }
-  }
-  return h;
-}
-
-// A deletion moved `by` units (1 or -1) over a separator: `the dog ran`
-// less `dog ` is also less ` dog`. Null when the text it takes would differ.
-function slideDelete(units, h, by) {
-  const [from, to] = by > 0 ? [h.start, h.end] : [h.start - 1, h.end - 1];
-  if (from < 0 || to >= units.length || units[from] !== units[to] || !isBlank(units[from]))
-    return null;
-  return { start: h.start + by, end: h.end + by, insert: h.insert };
-}
-
-// Where a deletion of one side touches a change of the other only on a
-// separator the two can both do without, the deletion takes the other
-// separator beside it: two users each deleting one of two lines, or one
-// deleting a line and the other editing the line before. Each deletion moves
-// one unit at most, only to where it touches nothing, and not in a line a
-// change of either side joins to another, which may be the end of the line
-// it deletes edited.
-function spaceApart(units, lineOf, ours, other) {
-  const sides = [[...ours], [...other]];
-  // the lines a change of the side joins to another
-  const joined = (side) => {
-    const lines = new Set();
-    for (const x of side) {
-      if (!joinsLines(units, lineOf, x, side)) continue;
-      for (let l = lineOf[x.start]; l <= lineOf[x.end]; l += 1) lines.add(l);
-    }
-    return lines;
-  };
-  for (let pass = 0; pass < 2; pass += 1) {
-    for (const [mine, theirs] of [
-      [sides[0], sides[1]],
-      [sides[1], sides[0]],
-    ]) {
-      mine.forEach((h, i) => {
-        if (!pureDelete(h)) return;
-        const touched = theirs.filter((q) => touch(h, q));
-        if (touched.length === 0) return;
-        if (
-          joined(mine).has(lineOf[h.start]) ||
-          touched.some((q) => joined(theirs).has(lineOf[q.start]))
-        ) {
-          return;
-        }
-        for (const by of [1, -1]) {
-          const moved = slideDelete(units, h, by);
-          if (moved && !touchesAny(moved, theirs) && !touchesAny(moved, mine, i)) {
-            mine[i] = moved;
-            return;
-          }
-        }
-      });
-    }
-  }
-  return sides;
 }
 
 // Whether a change of one side makes one line of the parts of two, both of
@@ -424,52 +324,9 @@ function applyBoth(units, ours, other) {
   return out + units.slice(pos).join('');
 }
 
+// Each side's changes read three ways: as early as they can stand, as late,
+// and line by line.
 const READINGS = [unitHunks, unitHunksFromEnd, lineHunks];
-
-/**
- * Put the changes that turn `base` into `mine` onto `theirs`, which is `base`
- * as someone else changed it. Returns `{ text }`, or `{ conflict: true }` when
- * both changed the same passage (or two passages that touch) differently.
- *
- * Each side's changes are read three ways: as early as they can stand, as
- * late, and line by line. The merge takes both sides read the same way, for
- * each way. When one of these touches, or two give different texts, where a
- * change stands is not known, and that is a conflict too.
- *
- * In each reading, a deletion of lines' worth of text stands on whole lines
- * where it can, and a deletion touching the other side's change only on a
- * separator takes the separator beside it, so two users deleting adjacent
- * lines or words merge. A change joining the parts of two lines that start
- * or end alike, beside a change of the other side there, is a conflict: it
- * may be one of the lines taken out whole and the other edited.
- */
-export function mergeText(base, mine, theirs) {
-  if (mine === theirs || theirs === base) return { text: mine };
-  if (mine === base) return { text: theirs };
-  const units = textUnits(base);
-  const mineUnits = textUnits(mine);
-  const theirUnits = textUnits(theirs);
-  const lineOf = lineOfUnits(units);
-  let text = null;
-  for (const read of READINGS) {
-    const [ours, other] = spaceApart(
-      units,
-      lineOf,
-      read(units, mineUnits).map((h, _, own) => onWholeLines(units, lineOf, h, own)),
-      read(units, theirUnits).map((h, _, own) => onWholeLines(units, lineOf, h, own)),
-    );
-    if (
-      mixesEditedLines(units, lineOf, ours, other) ||
-      mixesEditedLines(units, lineOf, other, ours)
-    ) {
-      return { conflict: true };
-    }
-    const merged = applyBoth(units, ours, other);
-    if (merged === null || (text !== null && merged !== text)) return { conflict: true };
-    text = merged;
-  }
-  return { text };
-}
 
 // How many code points `s` holds.
 const cpCount = (s) => {
@@ -789,8 +646,8 @@ const near = (p, q) => p[0] <= q[1] && q[0] <= p[1];
  *
  * Only a move that cannot be read two ways is made, and a conflict leaves the
  * draft to the app. Each side's changes are taken at every place they could
- * stand: each shortest way to make its text (`changeZone`), the three ways
- * `mergeText` reads them, and ours also as typed, since a change typed beside
+ * stand: each shortest way to make its text (`changeZone`), the three readings
+ * (`READINGS`), and ours also as typed, since a change typed beside
  * an identical word could as well have been typed at the other. A change of
  * ours at a place that overlaps or meets a place of the other side's is a
  * conflict. The one exception is the same change made on both sides where

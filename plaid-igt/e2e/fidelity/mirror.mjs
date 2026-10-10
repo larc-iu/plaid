@@ -284,6 +284,18 @@ const morphemesOf = (doc, w) =>
     .filter((m) => m.begin === w.begin && m.end === w.end)
     .sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
 
+// A Baseline save as the tab sends it: code points [start, end) of the first
+// `passage` of the body replaced by `value`, one gap, with the digest of the
+// body on screen.
+const typeInBaseline = (d, passage, start, end, value) => {
+  const at = [...d.body.slice(0, d.body.indexOf(passage))].length;
+  return d.editBaselineText({
+    base: d.body,
+    digest: d.layerInfo.primaryTextLayer.text.digest ?? null,
+    gaps: [{ start: at + start, end: at + end, value }],
+  });
+};
+
 // Each: what the editor asks first (or null), the mutation, and what of the
 // deleted entities the question leaves out by design (a merge's joined field
 // values are combined, not lost).
@@ -319,16 +331,16 @@ const SCENARIOS = {
     run: (d) => d.mergeMorphemes(morphemesOf(d, word(d, 'fish'))[1].id),
   },
   'delete a word from the baseline': {
-    run: (d) => d.saveBaselineText(d.body.replace('away ', '')),
+    run: (d) => typeInBaseline(d, 'away ', 0, 5, ''),
   },
   'respell a word in the baseline': {
-    run: (d) => d.saveBaselineText(d.body.replace('fish today', 'fesh today')),
+    run: (d) => typeInBaseline(d, 'fish today', 1, 2, 'e'),
   },
   'type a space in a word in the baseline': {
-    run: (d) => d.saveBaselineText(d.body.replace('quickly', 'quick ly')),
+    run: (d) => typeInBaseline(d, 'quickly', 5, 5, ' '),
   },
   'delete a line from the baseline': {
-    run: (d) => d.saveBaselineText(d.body.replace('The fish swam away quickly\n', '')),
+    run: (d) => typeInBaseline(d, 'The fish swam away quickly\n', 0, 27, ''),
   },
 };
 

@@ -236,6 +236,14 @@ try {
       .sort((a, b) => a.begin - b.begin);
   };
   const bodyOf = (doc) => doc.layerInfo.primaryTextLayer.text.body;
+  // A Baseline save as the tab sends it: `gaps` of the body on screen, with
+  // its digest.
+  const typeInBaseline = (doc, gaps) =>
+    doc.editBaselineText({
+      base: bodyOf(doc),
+      digest: doc.layerInfo.primaryTextLayer.text.digest ?? null,
+      gaps,
+    });
   const said = (ok, what) => {
     if (!ok) throw new Error(`IGT refused: ${what} (${igt.error || 'no message'})`);
   };
@@ -243,9 +251,8 @@ try {
   // Sentence 7: its text deleted.
   {
     const s = tokenOf(igt, 'sentenceTokenLayer', sentenceIds[6]);
-    const body = bodyOf(igt);
     said(
-      await igt.saveBaselineText(cpSlice(body, 0, s.begin) + cpSlice(body, s.end, cpLength(body))),
+      await typeInBaseline(igt, [{ start: s.begin, end: s.end, value: '' }]),
       'delete sentence 7',
     );
     igt = await loadIgt();
@@ -277,7 +284,7 @@ try {
     igt = await loadIgt();
   }
   // Sentence 1: its second lettered word respelled, one character changed,
-  // through the text editor's path (the whole body saved).
+  // through the Baseline tab's path.
   let respelled = null;
   {
     const body = bodyOf(igt);
@@ -287,9 +294,7 @@ try {
     const old = cpSlice(body, w.begin, w.end);
     respelled = `${cpSlice(old, 0, cpLength(old) - 1)}ь`;
     said(
-      await igt.saveBaselineText(
-        cpSlice(body, 0, w.begin) + respelled + cpSlice(body, w.end, cpLength(body)),
-      ),
+      await typeInBaseline(igt, [{ start: w.end - 1, end: w.end, value: 'ь' }]),
       'respell a word of sentence 1',
     );
     console.log(`respelled "${old}" as "${respelled}"`);
