@@ -50,6 +50,17 @@ describe('DocumentTabStrip', () => {
     expect(view.container.querySelector('h1').textContent).toBe('Loading…');
   });
 
+  it('says nothing is loading for a document that failed to load', async () => {
+    await mount({ document: null, failed: true });
+    const crumbs = view.container.querySelector('nav[aria-label="Breadcrumb"]');
+    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', 'Ay']);
+    expect(view.container.querySelector('h1')).toBeNull();
+    expect(view.container.textContent).not.toContain('Loading…');
+    await view.unmount();
+    await mount({ project: null, document: null, failed: true });
+    expect(view.container.textContent).not.toContain('Loading…');
+  });
+
   it('draws the status at the end of the breadcrumb row', async () => {
     await mount({ document: { name: 'One' }, status: <span data-testid="status">Saved</span> });
     const status = view.container.querySelector('[data-testid="status"]');

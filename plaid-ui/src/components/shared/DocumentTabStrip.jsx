@@ -29,6 +29,10 @@ import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
  * repair writing under a screen that has moved on. Dropping `to` gives a real
  * disabled trigger, so click, cmd-click and keyboard activation are all inert.
  *
+ * `failed` says the document could not be read: nothing is loading, the
+ * breadcrumb names the project as far as it is known, and there is no
+ * heading, since the document's name is not known.
+ *
  * `status` is drawn at the end of the breadcrumb row: the document's save
  * status (SaveStatus). `actions` is drawn at the end of the tab row: History,
  * which is about the document on every tab rather than about one of them.
@@ -55,6 +59,7 @@ export const DocumentTabStrip = ({
   projectId,
   project,
   document,
+  failed = false,
   tabs,
   active: activeProp = null,
   disabled = false,
@@ -130,7 +135,7 @@ export const DocumentTabStrip = ({
           items={[
             { label: 'Projects', to: routes.projects, fixed: true },
             {
-              label: project?.name || 'Loading…',
+              label: project?.name || (failed ? 'Project' : 'Loading…'),
               to: routes.documents(projectId),
               icon: <ProjectTartan project={project} size={14} />,
             },
@@ -142,16 +147,18 @@ export const DocumentTabStrip = ({
       {/* The name takes its own direction inside a heading that stays with the
           chrome, so an Arabic name reads right to left and still starts at the
           left edge under the breadcrumb. */}
-      <h1
-        ref={headingRef}
-        className={cn(
-          'mb-2 break-words font-text text-[1.75rem] font-bold leading-tight',
-          !name && 'text-muted-foreground',
-          inset,
-        )}
-      >
-        <span dir="auto">{name || 'Loading…'}</span>
-      </h1>
+      {!(failed && !name) && (
+        <h1
+          ref={headingRef}
+          className={cn(
+            'mb-2 break-words font-text text-[1.75rem] font-bold leading-tight',
+            !name && 'text-muted-foreground',
+            inset,
+          )}
+        >
+          <span dir="auto">{name || 'Loading…'}</span>
+        </h1>
+      )}
 
       <div
         ref={rowRef}

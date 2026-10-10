@@ -21,8 +21,14 @@ vi.mock('../../domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }
 // The strip as data: which tab it marks, whether it is inert, and each tab's
 // address.
 vi.mock('./DocumentTabStrip.jsx', () => ({
-  DocumentTabStrip: ({ tabs, active, disabled }) => (
-    <div data-testid="strip" data-active={active} data-disabled={String(disabled)}>
+  DocumentTabStrip: ({ tabs, active, disabled, project, failed }) => (
+    <div
+      data-testid="strip"
+      data-active={active}
+      data-disabled={String(disabled)}
+      data-project={project?.name ?? ''}
+      data-failed={String(!!failed)}
+    >
       {tabs.map((t) => (
         <a key={t.value} data-testid={`to-${t.value}`} href={t.to}>
           {t.label}
@@ -31,15 +37,20 @@ vi.mock('./DocumentTabStrip.jsx', () => ({
     </div>
   ),
 }));
+const stores = vi.hoisted(() => ({ made: 0 }));
 vi.mock('../../domain/CommentStore', () => ({
   CommentStore: class {
+    constructor() {
+      stores.made += 1;
+    }
     load() {
       return Promise.resolve();
     }
   },
 }));
 vi.mock('../../domain/useCommentStore', () => ({ useCommentStore: () => 0 }));
-vi.mock('../../lib/notify.js', () => ({ notifyError: vi.fn() }));
+const notify = vi.hoisted(() => ({ notifyError: vi.fn() }));
+vi.mock('../../lib/notify.js', () => notify);
 vi.mock('../../hooks/useWriteLock.js', () => ({
   useWriteLock: () => ({ held: null, acquire: () => null }),
 }));
@@ -275,6 +286,49 @@ describe('a document whose tab is in the path', () => {
     expect(body()).toBe('analyze');
     expect(seen.search).toBe('?tab=zzz');
     expect(href('details')).toBe('/p/p1/d/d1/details');
+    await view.unmount();
+  });
+});
+
+describe('a document that fails to load', () => {
+  const refused = (status) =>
+    app({
+      reconcileOnOpen: true,
+      loadDocument: async () => {
+        throw Object.assign(new Error(`HTTP ${status}`), { status });
+      },
+    });
+
+  it('shows the error alone, under its project, with nothing loading and no toast', async () => {
+    // The repair hook answers true until it has a document.
+    repair.running = true;
+    stores.made = 0;
+    notify.notifyError.mockClear();
+    await mount(['/p/p1/d/d1?tab=media'], { config: refused(403) });
+    await view.step(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(view.container.textContent).not.toContain('Checking this document');
+    expect(strip().dataset.disabled).toBe('false');
+    expect(strip().dataset.project).toBe('Project');
+    expect(strip().dataset.failed).toBe('true');
+    expect(view.container.querySelector('[role="alert"]').textContent).toBe(
+      'This document does not exist or you cannot open it.',
+    );
+    expect(body()).toBe(null);
+    expect(stores.made).toBe(0);
+    expect(notify.notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('says the same to an admin, whom core answers 404', async () => {
+    await mount(['/p/p1/d/d1'], { config: refused(404) });
+    await view.step(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(view.container.querySelector('[role="alert"]').textContent).toBe(
+      'This document does not exist or you cannot open it.',
+    );
     await view.unmount();
   });
 });

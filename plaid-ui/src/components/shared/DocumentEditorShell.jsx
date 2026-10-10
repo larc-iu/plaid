@@ -20,7 +20,7 @@ import { useReconcileOnOpen } from '../../hooks/useReconcileOnOpen.js';
 import { RunBanner } from '../services/RunBanner.jsx';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
-import { humanizeError, isGone } from '../../lib/errors.js';
+import { humanizeError, isGone, statusOf } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
 import { useHistoryView } from '../../hooks/useHistoryView.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
@@ -100,6 +100,16 @@ const noServices = () => null;
 const noFocus = () => null;
 const toast = () => (msg, err, label) => notifyError(err ?? msg, label);
 
+// Core answers an id it cannot place 403 to a member (so a non-member learns
+// nothing) and 404 to an admin, and a link to a deleted document meets either.
+const NOT_OPENABLE = 'This document does not exist or you cannot open it.';
+const loadErrorText = (err) => {
+  const status = statusOf(err);
+  return status === 403 || status === 404 || isGone(err)
+    ? NOT_OPENABLE
+    : humanizeError(err, 'This document could not be loaded.');
+};
+
 // Keyed by document, so opening another document starts from nothing: no
 // history rail, no past state and no busy flag carried over from the last one.
 export const DocumentEditorShell = ({ app, client }) => {
@@ -148,12 +158,15 @@ const DocumentEditor = ({ app, documentClient }) => {
   // Comments are SOCIAL data, not annotation data: the store is separate from
   // the document model on purpose, never bumps the document version, and is
   // deliberately absent from the document read.
+  // Made once the document has loaded: a document that cannot be read has
+  // no comments to read either, and saying so twice is one toast too many.
+  const loaded = !!doc;
   const comments = useMemo(
     () =>
-      client && documentId && user?.id
+      client && documentId && user?.id && loaded
         ? new CommentStore({ client, projectId, documentId, currentUserId: user.id })
         : null,
-    [client, projectId, documentId, user?.id],
+    [client, projectId, documentId, user?.id, loaded],
   );
   useCommentStore(comments);
   useEffect(() => {
@@ -209,12 +222,18 @@ const DocumentEditor = ({ app, documentClient }) => {
         logout();
         return;
       }
+      // The document is loaded with the project and the user in hand: it
+      // writes as this person against this project's layers (provenance
+      // convention).
+      const projectRead = client.projects.get(projectId);
+      // Read on its own as well, so a document that fails to load still
+      // stands under its project's name.
+      projectRead.then(
+        (p) => !cancelled && setProject(p),
+        () => {},
+      );
       try {
         setLoading(true);
-        // The document is loaded with the project and the user in hand: it
-        // writes as this person against this project's layers (provenance
-        // convention).
-        const projectRead = client.projects.get(projectId);
         const next = await app.loadDocument({
           client,
           projectId,
@@ -234,7 +253,7 @@ const DocumentEditor = ({ app, documentClient }) => {
           logout('expired');
           return;
         }
-        setLoadError(humanizeError(err, 'This document could not be loaded.'));
+        setLoadError(loadErrorText(err));
         console.error('Error fetching data:', err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -311,7 +330,11 @@ const DocumentEditor = ({ app, documentClient }) => {
       doc: app.reconcileOnOpen ? doc : null,
       asOf: history.asOf,
       canWrite: canEditProject(project, user),
-    }) && !!app.reconcileOnOpen;
+    }) &&
+    !!app.reconcileOnOpen &&
+    // Nothing to check without a document: one that failed to load shows its
+    // error alone.
+    !!doc;
   const showReconcileSpinner = useDelayedFlag(reconciling);
   const busy = chromeBusy || reconciling;
 
@@ -478,6 +501,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         projectId={projectId}
         project={project}
         document={shown?.raw}
+        failed={!loading && !doc}
         tabs={app.tabs.list.map((t) => ({
           ...t,
           to: tabHref(t.value),
