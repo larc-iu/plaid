@@ -11,7 +11,7 @@ vi.mock('@/export/runExport', () => ({
   },
 }));
 const downloads = [];
-vi.mock('@/export/files', () => ({ downloadBlob: (name) => downloads.push(name) }));
+vi.mock('@ui/lib/download.js', () => ({ saveBlob: (blob, name) => downloads.push(name) }));
 
 const { ExportRunner } = await import('./ExportRunner.jsx');
 

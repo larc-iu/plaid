@@ -30,6 +30,7 @@ import {
 import { cn } from '../../lib/utils.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { copyText, saveBlob } from '../../lib/download.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { followable, jobFor } from './jobs.js';
 import { runByLine } from './useAssistantAvailable.js';
@@ -294,17 +295,6 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled, compact
 // The conversation as Markdown, downloaded as a file or copied, or as a web
 // page (exportHtml.js).
 
-const save = (blob, name) => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
-
 // `client` reads which projects the exporter can open and, with `owner` (the
 // conversation's owner, whose store holds the files its replies made, under
 // `app`), those files. `appLabel` names the app on the page, the app's own
@@ -329,7 +319,7 @@ export const ExportMenu = ({
       adapter,
     });
   const download = () =>
-    save(new Blob([build()], { type: 'text/markdown;charset=utf-8' }), markdownFilename(meta));
+    saveBlob(new Blob([build()], { type: 'text/markdown;charset=utf-8' }), markdownFilename(meta));
   const downloadPage = async () => {
     try {
       const projects = await client.projects.list();
@@ -343,17 +333,17 @@ export const ExportMenu = ({
         appLabel: appLabel || appName(),
         sheets: document.styleSheets,
       });
-      save(new Blob([html], { type: 'text/html;charset=utf-8' }), markdownFilename(meta, 'html'));
+      saveBlob(
+        new Blob([html], { type: 'text/html;charset=utf-8' }),
+        markdownFilename(meta, 'html'),
+      );
     } catch (e) {
       notifyError(humanizeError(e, 'Failed to export the conversation.'), 'Not exported');
     }
   };
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(build());
+    if (await copyText(build(), 'Failed to copy to the clipboard.', 'Not copied')) {
       notifySuccess('The conversation was copied as Markdown.', 'Copied');
-    } catch (e) {
-      notifyError(humanizeError(e, 'Failed to copy to the clipboard.'), 'Not copied');
     }
   };
   return (

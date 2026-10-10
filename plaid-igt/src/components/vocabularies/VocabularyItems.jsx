@@ -66,7 +66,7 @@ import { fieldText, fieldEmpty } from '@/domain/vocabItemFilter';
 import { EntryComments } from './EntryComments';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { anchorCaption } from '@/domain/commentAnchors';
-import { downloadBlob, sanitizeFilename } from '@/export/files';
+import { saveBlob, sanitizeFilename } from '@ui/lib/download.js';
 import {
   NEW_ID,
   cleanMeta,
@@ -1258,9 +1258,9 @@ export const VocabularyItems = ({
       refFields: fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name),
       numbers,
     });
-    downloadBlob(
-      `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,
+    saveBlob(
       new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8' }),
+      `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,
     );
   };
 

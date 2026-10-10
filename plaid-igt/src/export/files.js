@@ -1,20 +1,8 @@
-// Filenames, browser downloads, and zip assembly for exports.
+// Filename dedupe and zip assembly for exports. A file name is made safe by
+// plaid-ui's sanitizeFilename, and saved by its saveBlob.
 
 import { zip } from 'fflate';
 import { readAll } from '../domain/documentReads.js';
-
-/** A safe cross-platform filename (without extension handling). */
-export function sanitizeFilename(name) {
-  const cleaned = String(name ?? '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[/\\:*?"<>|\x00-\x1f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\.+|\.+$/g, '');
-  // Cap by code points so the cut can't strand half a surrogate pair.
-  const capped = [...cleaned].slice(0, 120).join('').trim();
-  return capped === '' ? 'untitled' : capped;
-}
 
 /**
  * Dedupe by inserting " (2)", " (3)", … before the extension. Suffixed names
@@ -33,15 +21,6 @@ export function dedupeFilenames(names) {
     used.add(candidate);
     return candidate;
   });
-}
-
-export function downloadBlob(filename, blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 // Files compressed at once while a zip is assembled. fflate's `zip` deflates

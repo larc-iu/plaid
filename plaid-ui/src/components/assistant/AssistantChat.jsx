@@ -6,6 +6,7 @@ import { Button } from '../ui/button.jsx';
 import { cn } from '../../lib/utils.js';
 import { notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { saveBlob } from '../../lib/download.js';
 import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { answeredLast, hidesStopped, retryNote, stoppedIn } from './resume.js';
@@ -784,16 +785,7 @@ export const AssistantChat = ({
       const convId = active?.id;
       if (!convId) return;
       try {
-        const url = URL.createObjectURL(
-          blobOf(file.name, await readStoredFile(store, convId, file)),
-        );
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        saveBlob(blobOf(file.name, await readStoredFile(store, convId, file)), file.name);
       } catch (e) {
         notifyError(humanizeError(e, `Failed to download ${file.name}.`));
       }

@@ -7,7 +7,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { readExportPresets, EXPORT_FORMATS } from '@/export/presets';
 import { runExport, ExportCancelled } from '@/export/runExport';
-import { downloadBlob } from '@/export/files';
+import { saveBlob } from '@ui/lib/download.js';
 import { ScopeStep } from './ScopeStep.jsx';
 import { FlexImportSteps } from './FlexImportSteps.jsx';
 
@@ -120,7 +120,7 @@ export const ExportRunner = ({
         onProgress: setProgress,
         shouldStop: () => stopRef.current,
       });
-      downloadBlob(result.filename, result.blob);
+      saveBlob(result.blob, result.filename);
       if (result.warnings.length) {
         const n = result.warnings.length;
         setOutcome({

@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { notifyError } from '../../lib/notify.js';
+import { copyText } from '../../lib/download.js';
 import { inviteLinkFor } from '../../domain/invites.js';
 
 /**
@@ -23,13 +23,9 @@ export const MintedLinkDialog = ({ code, onClose, title = 'Invitation link creat
   const link = code ? inviteLinkFor(code) : '';
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      notifyError('Select the link and copy it manually.', 'Failed to copy');
-    }
+    if (!(await copyText(link, 'Select the link and copy it manually.'))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (

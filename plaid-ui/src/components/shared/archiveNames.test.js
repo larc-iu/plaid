@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseFileName, dedupeFileName, sanitizeFileName } from './archiveNames.js';
+import { baseFileName, dedupeFileName } from './archiveNames.js';
 
 describe('baseFileName', () => {
   it("drops the format's extension or .txt, in any case", () => {
@@ -20,23 +20,13 @@ describe('baseFileName', () => {
   });
 });
 
-describe('sanitizeFileName', () => {
-  it('replaces what a file name may not hold', () => {
-    expect(sanitizeFileName('a/b:c*?d')).toBe('a_b_c_d');
-    expect(sanitizeFileName('  ')).toBe('document');
-    expect(sanitizeFileName('')).toBe('document');
-    expect(sanitizeFileName(null)).toBe('document');
-    expect(sanitizeFileName('نص')).toBe('نص');
-  });
-});
-
 describe('dedupeFileName', () => {
   it('numbers a name already taken', () => {
     const used = new Set();
     expect(dedupeFileName('Story', '.umr', used)).toBe('Story.umr');
     expect(dedupeFileName('Story', '.umr', used)).toBe('Story (2).umr');
     expect(dedupeFileName('Story', '.umr', used)).toBe('Story (3).umr');
-    expect(dedupeFileName('Story/1', '.umr', used)).toBe('Story_1.umr');
-    expect([...used]).toEqual(['Story.umr', 'Story (2).umr', 'Story (3).umr', 'Story_1.umr']);
+    expect(dedupeFileName('Story/1', '.umr', used)).toBe('Story 1.umr');
+    expect([...used]).toEqual(['Story.umr', 'Story (2).umr', 'Story (3).umr', 'Story 1.umr']);
   });
 });

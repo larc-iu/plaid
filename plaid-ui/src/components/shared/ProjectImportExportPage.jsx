@@ -13,21 +13,11 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Progress } from '../ui/progress';
-import { baseFileName, dedupeFileName, sanitizeFileName } from './archiveNames.js';
+import { baseFileName, dedupeFileName } from './archiveNames.js';
+import { saveBlob, sanitizeFilename } from '../../lib/download.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { NotSetUpNotice } from './NotSetUpNotice.jsx';
-
-const downloadBlob = (blob, filename) => {
-  const url = URL.createObjectURL(blob);
-  const a = window.document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  window.document.body.appendChild(a);
-  a.click();
-  window.document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
 
 // A drop target with a hidden file input behind it. `dragging` is counted
 // rather than set, because dragging over a child element fires dragleave on the
@@ -293,7 +283,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           text: e.text,
         })),
       );
-      downloadBlob(blob, `${sanitizeFileName(project?.name)}.zip`);
+      saveBlob(blob, `${sanitizeFilename(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
         notifyWarning(`Exported ${used.size}. ${skippedAcc.length} skipped (empty).`);
       } else {

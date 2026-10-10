@@ -55,7 +55,8 @@ import {
   serializeVocabularyNative,
   serializeDocumentNative,
 } from './nativeJson.js';
-import { sanitizeFilename, dedupeFilenames, assembleZip } from './files.js';
+import { sanitizeFilename } from '@ui/lib/download.js';
+import { dedupeFilenames, assembleZip } from './files.js';
 import { formatExt } from './presets.js';
 import { countOf } from '@ui/lib/plural.js';
 import { humanizeError, isUnreachable } from '@ui/lib/errors.js';

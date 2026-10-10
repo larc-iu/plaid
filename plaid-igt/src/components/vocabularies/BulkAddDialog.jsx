@@ -42,7 +42,7 @@ import {
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
-import { downloadBlob, sanitizeFilename } from '@/export/files';
+import { saveBlob, sanitizeFilename } from '@ui/lib/download.js';
 import { NotUtf8FileError, readTextFile } from '@ui/lib/textFile.js';
 import {
   FORM,
@@ -570,11 +570,11 @@ export const BulkAddDialog = ({
     });
 
   const downloadReport = () => {
-    downloadBlob(
-      `${sanitizeFilename(vocabularyName || 'vocabulary')}-import-plan.tsv`,
+    saveBlob(
       new Blob([serializeImportReport(plan.decisions)], {
         type: 'text/tab-separated-values;charset=utf-8',
       }),
+      `${sanitizeFilename(vocabularyName || 'vocabulary')}-import-plan.tsv`,
     );
   };
 
