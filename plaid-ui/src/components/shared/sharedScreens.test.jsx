@@ -352,6 +352,21 @@ describe('the shared chrome', () => {
     expect(text()).toContain('New IGT project');
   });
 
+  it('ProjectListPage links to the app’s new-project page when it has one', async () => {
+    await mount(
+      <ProjectListPage
+        wordLayerId={() => null}
+        newProject="New project"
+        newProjectTo="/projects/new"
+      />,
+      '/projects',
+    );
+    const link = [...view.container.querySelectorAll('a')].find((a) =>
+      a.textContent.includes('New project'),
+    );
+    expect(link?.getAttribute('href')).toBe('/projects/new');
+  });
+
   it('NewProjectDialog names what it makes and what the app will build', async () => {
     await mount(
       <NewProjectDialog

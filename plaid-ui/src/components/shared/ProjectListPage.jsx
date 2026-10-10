@@ -6,7 +6,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { notifyWarning } from '../../lib/notify.js';
 import { Button } from '../ui/button';
-import { LinkedListPage, CountCell, TimeCell } from './LinkedListPage.jsx';
+import { LinkedListPage, CountCell, TimeCell, NewLinkButton } from './LinkedListPage.jsx';
 import { wordCountsByProject } from '../../domain/layerCounts.js';
 import { textIncludes } from '../../domain/collation.js';
 import { ProjectTartan } from './ProjectTartan.jsx';
@@ -18,10 +18,17 @@ import { ProjectTartan } from './ProjectTartan.jsx';
  * differs (plaid-ud counts its morpheme layer, where the CoNLL-U rows live).
  * `seedLayerId(project)` is plaid-ud's token layer, counted for a document
  * with no words yet, as its document list does (see wordCountsByProject).
- * `newProject` is the label on the button and in the empty state, and `form` is
- * the app's new-project dialog.
+ * `newProject` is the label on the button and in the empty state. The button
+ * opens `form`, the app's new-project dialog, or links to `newProjectTo`, the
+ * app's new-project page.
  */
-export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: NewProject }) => {
+export const ProjectListPage = ({
+  wordLayerId,
+  seedLayerId,
+  newProject,
+  form: NewProject,
+  newProjectTo,
+}) => {
   useDocumentTitle('Projects');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,18 +151,26 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
 
   return (
     <>
-      <NewProject
-        isOpen={showCreateForm}
-        onClose={() => setShowCreateForm(false)}
-        onSuccess={handleProjectCreated}
-      />
+      {NewProject && (
+        <NewProject
+          isOpen={showCreateForm}
+          onClose={() => setShowCreateForm(false)}
+          onSuccess={handleProjectCreated}
+        />
+      )}
 
       <LinkedListPage
         title="Projects"
         action={
-          <Button onClick={() => setShowCreateForm(true)}>
-            <Plus className="h-4 w-4" /> {newProject}
-          </Button>
+          newProjectTo ? (
+            <NewLinkButton to={newProjectTo}>
+              <Plus className="h-4 w-4" /> {newProject}
+            </NewLinkButton>
+          ) : (
+            <Button onClick={() => setShowCreateForm(true)}>
+              <Plus className="h-4 w-4" /> {newProject}
+            </Button>
+          )
         }
         href={(p) => routes.documents(p.id)}
         rows={projects}
