@@ -13,7 +13,9 @@ What the record does NOT keep, and so no row here can say:
   plan's proposal time is read off its id. A turn with no plan has only its
   duration (``elapsed_ms``, since 2026-10-05).
 * the tool calls of a failed or stopped turn, before such a turn kept them on
-  its error item (``steps`` and ``calls``, 2026-10-06).
+  its error item (``steps`` and ``calls``, 2026-10-06). From 2026-10-09 every
+  turn's calls are in its rounds (core/rounds.py), stored beside the record,
+  which hold what prune drops from it; a step that names no round is older.
 * a conversation the user deleted, and every value the record was pruned of:
   old tool results (``DROPPED``), old steps and citations, a settled plan's
   ``ops`` (compacted, only ``proposed`` stays, and only on plans staged since
@@ -32,6 +34,8 @@ from .pseudo import Pseudonyms, clip
 
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 KEY_RE = re.compile(r'^(?P<app>[^:]+):assistant:(?P<project>[^:]+):(?P<what>conv|meta):(?P<conv>[^:]+)$')
+# One model call of a turn, stored beside the conversation (core/rounds.py).
+ROUND_RE = re.compile(r'^(?P<app>[^:]+):assistant:(?P<project>[^:]+):round:(?P<conv>[^:]+):(?P<round>[^:]+)$')
 
 # What the loop appends to a reply that ended some other way than an answer
 # (plaid_agent.core.agent). Matched on the end of the text, which is never
@@ -197,9 +201,14 @@ def derive_proposed(app: str, ops: List[Dict[str, Any]]) -> Optional[Tuple[List[
 class Conversations:
     """Every row the conversation records give, built by :meth:`add`."""
 
-    def __init__(self, pseudo: Pseudonyms, include_text: bool = False):
+    def __init__(self, pseudo: Pseudonyms, include_text: bool = False, include_rounds: bool = False):
         self.p = pseudo
         self.include_text = include_text
+        # Every call's whole arguments and output, off by default (Luke's
+        # ruling D3 of 2026-10-09): several times the dataset's size, and
+        # project text.
+        self.include_rounds = include_rounds
+        self.round_calls: List[Dict[str, Any]] = []
         self.conversations: List[Dict[str, Any]] = []
         self.turns: List[Dict[str, Any]] = []
         self.tool_calls: List[Dict[str, Any]] = []
@@ -212,9 +221,13 @@ class Conversations:
 
     def add(self, user_id: str, app: str, project_id: str, conv_id: str,
             conv: Optional[Dict[str, Any]], meta: Optional[Dict[str, Any]],
-            record_bytes: int, updated_at: Optional[str]) -> None:
+            record_bytes: int, updated_at: Optional[str],
+            rounds: Optional[Dict[str, Dict[str, Any]]] = None, rounds_bytes: int = 0) -> None:
         conv = snake(conv or {})
         meta = snake(meta or {})
+        rounds = {k: snake(v) for k, v in (rounds or {}).items() if isinstance(v, dict)}
+        calls_of = {(rid, c.get('id')): c for rid, r in rounds.items()
+                    for c in r.get('calls') or [] if isinstance(c, dict)}
         user = self.p.user(user_id)
         messages = [m for m in conv.get('messages') or [] if isinstance(m, dict)]
         display = [d for d in conv.get('display') or [] if isinstance(d, dict)]
@@ -275,16 +288,20 @@ class Conversations:
             others = list(dict.fromkeys(others))
             turn['other_project_ids'] = others
             turn['other_projects'] = [self.p.project(pid) for pid in others]
-            if kind == 'error':
-                # A failed or stopped turn keeps what its calls were sent and
-                # answered on its own item, not in the transcript.
-                own = [c for c in item.get('calls') or [] if isinstance(c, dict)]
-                step_results = {**results, **{c.get('id'): c.get('result') for c in own}}
-                step_arguments = {**arguments, **{c.get('id'): c.get('arguments') for c in own}}
-            else:
-                step_results, step_arguments = results, arguments
+            # What each call was sent and answered: its round where the step
+            # names one (the round holds what prune dropped from the record),
+            # else the transcript, else a failed turn's item (2026-10-06 to
+            # 2026-10-09).
+            own = [c for c in item.get('calls') or [] if isinstance(c, dict)]
+            step_results = {**results, **{c.get('id'): c.get('result') for c in own}}
+            step_arguments = {**arguments, **{c.get('id'): c.get('arguments') for c in own}}
+            for st in steps:
+                c = calls_of.get((st.get('round'), st.get('id')))
+                if c is not None:
+                    step_results[st.get('id')] = c.get('result')
+                    step_arguments[st.get('id')] = c.get('arguments')
             failed_steps = self._steps(base, index, n_user, steps, step_results, step_arguments,
-                                       turn['end'])
+                                       turn['end'], calls_of)
             turn['n_failed_steps'] = failed_steps
             self.turns.append(turn)
             if self.include_text:
@@ -309,9 +326,11 @@ class Conversations:
             # record. The tab that holds the conversation (`holder`) is a
             # per-viewer fact with no research value and is not exported.
             'size_bytes': (meta.get('size') or {}).get('bytes') if isinstance(meta.get('size'), dict) else None,
+            # What is stored beside the record: one round per model call.
+            'rounds': len(rounds), 'rounds_bytes': rounds_bytes,
         })
 
-    def _steps(self, base, index, turn, steps, results, arguments, end) -> int:
+    def _steps(self, base, index, turn, steps, results, arguments, end, calls_of=None) -> int:
         failed_n = 0
         rows = []
         for i, s in enumerate(steps):
@@ -335,6 +354,22 @@ class Conversations:
                    'result_kept': kept, 'planned': s.get('planned') or 0,
                    'document_read': bool(s.get('document')), 'arg_names': arg_names(args),
                    'legacy_shape': legacy}
+            # What the call read and how much it answered, from the step and
+            # its round, and the text the model wrote before it.
+            call = (calls_of or {}).get((s.get('round'), s.get('id')))
+            row.update({
+                'round_stored': call is not None,
+                'saw': [{k: n.get(k) for k in ('n', 'unit', 'of', 'which') if n.get(k) is not None}
+                        for n in s.get('saw') or [] if isinstance(n, dict)],
+                'result_chars': len(text) if isinstance(text, str) and text != DROPPED else None,
+                'arguments_chars': len(args) if isinstance(args, str) else None,
+                'cut': bool((call or {}).get('cut')),
+                'said': s.get('said') if isinstance(s.get('said'), str) else None,
+            })
+            if self.include_rounds and call is not None:
+                self.round_calls.append({**base, 'item_index': index, 'turn': turn, 'step': i,
+                                         'tool': s.get('name'), 'arguments': call.get('arguments'),
+                                         'result': call.get('result')})
             if self.include_text and failed and kept:
                 self.private.append({**base, 'item_index': index, 'kind': 'tool_error', 'step': i,
                                      'tool': s.get('name'), 'text': text[:500]})
@@ -403,13 +438,25 @@ class Conversations:
 
 
 def iter_records(rows: Iterable[Tuple[str, str, str, str]]):
-    """``(user_id, app, project_id, conv_id, conv, meta, bytes, updated_at)``
-    for every conversation in the user-data rows ``(user_id, key, value,
-    updated_at)``, with the values parsed. A conversation with a record and
+    """``(user_id, app, project_id, conv_id, conv, meta, bytes, updated_at,
+    rounds, rounds_bytes)`` for every conversation in the user-data rows
+    ``(user_id, key, value, updated_at)``, with the values parsed, and its
+    rounds by id. A conversation with a record and
     no sidebar entry (a write cut off between the two) is still read."""
     import json
     found: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for user_id, key, value, updated_at in rows:
+        r = ROUND_RE.match(key)
+        if r:
+            slot = found.setdefault((user_id, f'{r["app"]}:assistant:{r["project"]}:{r["conv"]}'),
+                                    {'user_id': user_id, 'app': r['app'], 'project': r['project'],
+                                     'conv_id': r['conv']})
+            try:
+                slot.setdefault('rounds', {})[r['round']] = json.loads(value)
+            except ValueError:
+                pass
+            slot['rounds_bytes'] = slot.get('rounds_bytes', 0) + len(value.encode('utf-8'))
+            continue
         m = KEY_RE.match(key)
         if not m:
             continue
@@ -427,4 +474,4 @@ def iter_records(rows: Iterable[Tuple[str, str, str, str]]):
         if 'conv' not in slot:
             continue
         yield (slot['user_id'], slot['app'], slot['project'], slot['conv_id'], slot.get('conv'), slot.get('meta'),
-               slot.get('bytes') or 0, slot.get('updated_at'))
+               slot.get('bytes') or 0, slot.get('updated_at'), slot.get('rounds') or {}, slot.get('rounds_bytes', 0))

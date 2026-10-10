@@ -275,3 +275,33 @@ def test_a_conversation_row_has_the_size_the_service_wrote_and_no_holding_tab():
     assert row['size_bytes'] == 123 and row['about_document'] == 'd1'
     flat = repr([conv.conversations, conv.turns, conv.private])
     assert 'tab-uuid' not in flat and '0192-r1' not in flat
+
+
+def test_a_turns_calls_are_read_off_its_rounds_with_what_they_read():
+    # From 2026-10-09 a call's arguments and output are in the round its step
+    # names, which holds what prune dropped from the record (Luke's D3).
+    import json as _json
+    from plaid_agent.research.records import DROPPED, Conversations, iter_records
+    record = {'messages': [{'role': 'user', 'content': 'q'},
+                           {'role': 'tool', 'tool-call-id': 'c1', 'content': DROPPED}],
+              'display': [
+        {'kind': 'user', 'text': 'q'},
+        {'kind': 'assistant', 'text': 'a', 'steps': [
+            {'id': 'c1', 'name': 'read_document', 'kind': 'document', 'document': 'T', 'round': 'r1',
+             'said': 'Looking.', 'saw': [{'n': 5, 'unit': 'sentence', 'of': 9, 'which': '1–5'}]}]}]}
+    rnd = {'id': 'r1', 'n': 1, 'calls': [{'id': 'c1', 'name': 'read_document', 'arguments': '{"document": "T"}',
+                                         'result': 'five sentences', 'chars': 14, 'cut': True}]}
+    rows = [('u@x', 'igt:assistant:p1:conv:c1', _json.dumps(record), 't'),
+            ('u@x', 'igt:assistant:p1:round:c1:r1', _json.dumps(rnd), 't')]
+    [(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)] = list(iter_records(rows))
+    assert set(rounds) == {'r1'} and rbytes > 0
+    plain = Conversations(Pseudonyms(b'k' * 32))
+    plain.add(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)
+    [call] = plain.tool_calls
+    assert call['result_kept'] and call['round_stored'] and call['cut'] and call['result_chars'] == 14
+    assert call['said'] == 'Looking.' and call['saw'] == [{'n': 5, 'unit': 'sentence', 'of': 9, 'which': '1–5'}]
+    assert call['arg_names'] == ['document'] and 'arguments' not in call and 'result' not in call
+    assert plain.conversations[0]['rounds'] == 1 and not plain.round_calls
+    full = Conversations(Pseudonyms(b'k' * 32), include_rounds=True)
+    full.add(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)
+    assert full.round_calls[0]['result'] == 'five sentences'

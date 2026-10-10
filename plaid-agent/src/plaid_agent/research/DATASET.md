@@ -22,6 +22,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - A plan's proposal time is read off its id, a UUIDv7 minted when the turn staged it. Plans made before 2026-09-30, when the ids became UUIDv7, have no proposal time.
 - Every question, reply and error carries the time it was written since 2026-10-06 (`turns.created_at`, `turns.asked_at`). Before that a turn without a plan has only its duration (`elapsed_ms`, recorded since 2026-10-05).
 - A failed or stopped turn keeps the tool calls it made before it ended since 2026-10-06. Before that its tool use is lost.
+- From 2026-10-09 each model call's whole input and output is stored beside the record (a round), so a call's output survives the record's pruning. `conversations.jsonl` counts them (`rounds`, `rounds_bytes`).
 - Retry keeps the attempt that did not finish since 2026-10-06: the question and its error stay, and the question sent again is a new turn marked `retry`. Before that Retry took the failed attempt out of the record, so a failure the user retried left no trace.
 - The question of a failed or stopped turn stays in the model transcript since 2026-10-08, so `transcript_messages` counts it. Before that it was taken out. Turns are counted from the questions on screen either way.
 - `settled_at` is recorded since 2026-09-29. For an applied plan without it, the start of the plan's operation in the audit log stands in (`settled_at_source: audit_group_start`). A discarded, stale or replaced plan without it has no settle time.
@@ -70,6 +71,7 @@ One row per assistant conversation.
 | pending | a turn or approval was under way when the database was copied, or one that died was never settled (see below) |
 | record_bytes | the stored record's size |
 | size_bytes | the record's size as the assistant last wrote it on the sidebar entry, null for a record not written since 2026-10-09 |
+| rounds, rounds_bytes | how many rounds (one per model call) are stored beside the record, and their stored size |
 | transcript_messages | messages in the model transcript |
 | tool_results_kept, tool_results_dropped | tool results still in the transcript, and those pruned to fit the size cap |
 | about_document | the document a docked conversation is about |
@@ -119,6 +121,11 @@ One row per tool call.
 | document_read | the call read a document |
 | arg_names | the names of the arguments it was given, never their values (null when the record no longer holds them) |
 | legacy_shape | the step was recorded in the older shape (its arguments and result inline) |
+| round_stored | the call's round (its whole arguments and output) is stored beside the record (from 2026-10-09) |
+| saw | what the call showed the model, as the step says it: a list of `{n, unit, of, which}`, for example 5 of 120 sentences, `which` the sentence numbers (from 2026-10-09) |
+| result_chars, arguments_chars | the length of the output the model was sent and of the arguments it wrote, null when neither the round nor the record holds them |
+| cut | the output was cut at the tool limit, and the model read it cut |
+| said | the text the model wrote in the same model call, before this call (on the first call of that model call only). Model text, which may quote the project |
 
 ### tool_inventory.json
 
@@ -278,6 +285,10 @@ One row per client event (`client_events`), only in projects that switched telem
 ### manifest.json
 
 The extractor version, the database file name, the horizon, the options, how plans were linked to their operations (`linking`: by reference, by label, by their comments, applied plans with no operation found, those whose writes outside the log cannot be recovered, plan operations with no plan in any record and those whose conversation was deleted), and `summary`, the aggregate counts. In it `units_by_credential` counts the units that hold a write made with each kind of credential (a unit with two kinds counts under both), and `writes_by_credential` counts their audit rows.
+
+### PRIVATE_rounds.jsonl (only with `--include-rounds`)
+
+Every tool call's whole arguments and the output exactly as the model was sent it, from the rounds stored beside each conversation, keyed like tool_calls.jsonl. Project text, several times the size of the rest. Never share it.
 
 ### PRIVATE_text.jsonl (only with `--include-text`)
 

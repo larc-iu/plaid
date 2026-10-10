@@ -903,6 +903,14 @@ The **Assistant** tab is a chat with a language model that knows your project.
 Ask it what is still unglossed, whether a suffix is glossed consistently, or to summarize the morphology it can see.
 It reads the documents, the lexicon, the search results, the project's guidelines, and the history to answer, and it shows what it read.
 
+A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches · 52 steps".
+Opened, it lists the steps in the order they happened, with the text the assistant wrote between them, and each step says what it read, such as "sentences 3–7 of 120".
+Four or more document reads in a row are folded into one line that names the sentences and documents read.
+A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: interlinear text, one line per tier, after a legend naming the tiers.
+**Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
+A stopped or failed answer keeps its steps the same way.
+Steps of answers from before October 10, 2026 show their lines only.
+
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
 The plan lists every change under the document or lexicon it lands in. Each word is a link to its place in the editor, so a change can be checked before it is approved.

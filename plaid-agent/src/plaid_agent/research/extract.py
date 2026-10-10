@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '4'
+EXTRACTOR_VERSION = '5'
 HERE = Path(__file__).parent
 
 
@@ -388,7 +388,8 @@ def _default(v):
 
 def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[str]] = None,
             keep_project_names: bool = False, include_text: bool = False,
-            track: Optional[List[str]] = None, quiet: bool = False) -> Dict[str, Any]:
+            track: Optional[List[str]] = None, quiet: bool = False,
+            include_rounds: bool = False) -> Dict[str, Any]:
     out = Path(out)
     salt = load_salt(salt_file, out)
     pseudo = Pseudonyms(salt)
@@ -400,11 +401,11 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
     scope = list(projects) if projects else assistant_projects(db)
     log(f'{len(scope)} project(s) in scope, horizon {horizon}')
 
-    conv = Conversations(pseudo, include_text=include_text)
+    conv = Conversations(pseudo, include_text=include_text, include_rounds=include_rounds)
     rows = db.execute("SELECT user_id, key, value, updated_at FROM user_data WHERE key LIKE '%:assistant:%'")
-    for user_id, app, project_id, conv_id, c, meta, nbytes, updated in iter_records(rows):
+    for user_id, app, project_id, conv_id, c, meta, nbytes, updated, rounds, rbytes in iter_records(rows):
         if project_id in scope:
-            conv.add(user_id, app, project_id, conv_id, c, meta, nbytes, updated)
+            conv.add(user_id, app, project_id, conv_id, c, meta, nbytes, updated, rounds, rbytes)
     log(f'{len(conv.conversations)} conversation(s), {len(conv.plans)} plan(s)')
 
     fates = F.Fates(pseudo, horizon, track or F.DEFAULT_TRACK)
@@ -455,6 +456,11 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
         write_jsonl(private, private_rows)
     elif private.exists():
         private.unlink()
+    full = out / 'PRIVATE_rounds.jsonl'
+    if include_rounds:
+        write_jsonl(full, conv.round_calls)
+    elif full.exists():
+        full.unlink()
     summary = summarize(conv, fates, units, tools, events)
     manifest = {
         'extractor_version': EXTRACTOR_VERSION,
@@ -464,6 +470,8 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
         'projects': len(scope), 'tracked_kinds': sorted(fates.track),
         'keep_project_names': keep_project_names, 'include_text': include_text,
         'private_text_file': private.name if include_text else None,
+        'include_rounds': include_rounds,
+        'private_rounds_file': full.name if include_rounds else None,
         'linking': link, 'summary': summary,
     }
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=1, default=_default, sort_keys=True),
@@ -484,13 +492,16 @@ def main(argv=None) -> None:
     ap.add_argument('--include-text', action='store_true',
                     help="ALSO write PRIVATE_text.jsonl: user messages, model replies, tool errors and operation "
                          "labels, for the researcher's own review. Never share it with the dataset.")
+    ap.add_argument('--include-rounds', action='store_true',
+                    help="ALSO write PRIVATE_rounds.jsonl: every tool call's whole arguments and the output the model "
+                         "was sent. Project text, several times the dataset's size. Never share it with the dataset.")
     ap.add_argument('--track', action='append', choices=sorted(F.ACTOR),
                     help='a kind of unit whose writes are followed (repeatable), '
                          f'by default {", ".join(F.DEFAULT_TRACK)}')
     ap.add_argument('--quiet', action='store_true')
     a = ap.parse_args(argv)
     m = extract(a.db, Path(a.out), Path(a.salt_file), a.project, a.keep_project_names, a.include_text, a.track,
-                a.quiet)
+                a.quiet, a.include_rounds)
     print(json.dumps(m['summary'], indent=1, default=_default, sort_keys=True))
 
 

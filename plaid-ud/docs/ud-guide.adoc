@@ -405,6 +405,14 @@ The **Assistant** tab is a chat with a language model that knows your project.
 Ask it which words still have no lemma, whether any dependency relations look wrong, or to summarize the parts of speech across the corpus.
 It reads the documents, the search results, the project's guidelines and the history to answer, and it shows what it read.
 
+A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches · 52 steps".
+Opened, it lists the steps in the order they happened, with the text the assistant wrote between them, and each step says what it read, such as "sentences 3–7 of 120".
+Four or more document reads in a row are folded into one line that names the sentences and documents read.
+A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: CoNLL-U.
+**Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
+A stopped or failed answer keeps its steps the same way.
+Steps of answers from before October 10, 2026 show their lines only.
+
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
 Every change is listed under the document it lands in, naming the word and its reference, and each one links to that sentence in the annotation editor, so a plan can be checked before it is approved.
