@@ -89,7 +89,11 @@ test('a turn keeps its text between calls and each step opens to what the tool r
     await page.reload();
     await page.getByRole('button', { name: /3 steps/ }).click();
     await expect(page.getByText('First I read the sample.')).toBeVisible();
-    const first = page.getByRole('button', { name: /^Read “Sample IGT Document”: sentence 1 of/ });
+    // The name is isolated (FSI and PDI) so a right-to-left title cannot
+    // reorder the label. Both reads of the one-sentence fixture match.
+    const first = page
+      .getByRole('button', { name: /^Read “\u2068?Sample IGT Document\u2069?”: sentence 1 of/ })
+      .first();
     await expect(first).toHaveAttribute('aria-expanded', 'false');
     await first.click();
     await expect(first).toHaveAttribute('aria-expanded', 'true');
