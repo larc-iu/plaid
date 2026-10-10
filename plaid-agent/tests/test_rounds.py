@@ -8,6 +8,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from live import require_sandbox
 
 from fixtures import FakeClient
 from plaid_client import PlaidAPIError
@@ -617,4 +618,59 @@ def test_learn_window_reads_the_figure_each_provider_names(monkeypatch):
         monkeypatch.setattr(agent, '_learned', {})
         assert agent.learn_window('m', RuntimeError(text)) == n
     monkeypatch.setattr(agent, '_learned', {})
-    assert agent.learn_window('m', RuntimeError('too long'), sent=10_000) == 5_000
+    assert agent.learn_window('m', RuntimeError('too long'), sent=10_000) is None, 'no window known'
+    assert agent.learn_window('m', RuntimeError('too long'), sent=10_000, stated=65536) == 32768
+
+
+def test_unnamed_refusals_do_not_wear_the_window_down(monkeypatch):
+    """A refusal that names no window halves the known one once. Again and
+    again it never halves the learned one, which would leave every later
+    conversation of the process a window no system prompt fits in."""
+    monkeypatch.setattr(agent, '_learned', {})
+    for _ in range(5):
+        agent.learn_window('m', RuntimeError('too long'), stated=65536)
+    assert agent.context_window('m', 65536) == 32768
+    monkeypatch.setattr(agent, '_learned', {})
+    for _ in range(5):
+        agent.learn_window('openai/gpt-4o', RuntimeError('too long'))
+    assert agent.context_window('openai/gpt-4o') == agent._library_window('openai/gpt-4o') // 2
+
+
+def test_an_unnamed_refusal_of_more_than_the_known_window_teaches_nothing(monkeypatch):
+    """The turn's own reads grew past the known window: it is not smaller."""
+    monkeypatch.setattr(agent, '_learned', {})
+    assert agent.learn_window('m', RuntimeError('too long'), sent=70_000, stated=65536) is None
+    assert agent.context_window('m', 65536) == 65536
+    # The loop passes what it sent and the operator's window.
+    client = FakeClient()
+    refusal = lambda: agent.litellm.ContextWindowExceededError('too long', model='x', llm_provider='openai')  # noqa: E731
+    monkeypatch.setattr(agent.litellm, 'completion', _model([refusal(), refusal()]))
+    ws = _ws(client)
+    ws.shrink = lambda history, new: history[-1:]
+    with pytest.raises(Exception):
+        run_turn(ModelConfig(model='fake/m3', stream=False, context_window=65536), _kit({}), ws, 'system',
+                 [{'role': 'user', 'content': 'a'}, {'role': 'user', 'content': 'b'}])
+    assert agent.context_window('fake/m3', 65536) == 32768, 'a tiny request refused: halved once, by the known window'
+
+
+@require_sandbox()
+def test_what_the_codes_own_reads_cut_is_forgotten_on_every_way_out():
+    """H13-TRACE-4 review: a read inside run_code that was cut for the code
+    marked the step cut when the code then failed or printed nothing."""
+    from plaid_agent.core import limits, sandbox
+    from plaid_agent.core.tools import truncate
+    session = sandbox.Session()
+    api = {'big': lambda: truncate('x' * 20000)}
+    try:
+        for code in ("t = big()\nraise ValueError('boom')", 't = big()\nNone', 't = big()\nprint(len(t))'):
+            before = limits.cuts()
+            try:
+                sandbox.run(code, api, session=session)
+            except sandbox.CodeError:
+                pass
+            assert limits.cuts() == before, code
+        before = limits.cuts()
+        sandbox.run("print('y' * 20000)", api, session=session)
+        assert limits.cuts() == before + 1, 'the output the model is sent, cut, still counts'
+    finally:
+        session.close()

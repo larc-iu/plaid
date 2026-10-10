@@ -318,9 +318,19 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     cut_before = cuts()
     if not isinstance(code, str) or not code.strip():
         raise CodeError('Give code to run, as a string.')
-    from pydantic_monty import (CollectString, MontyCrashedError, MontyRuntimeError, MontySyntaxError,
-                                MontyTypingError)
+    from pydantic_monty import CollectString
     printed = CollectString(max_bytes=4 * 1024 * 1024)
+    try:
+        out = _run(code, api, session, shape, tally, printed)
+    finally:
+        # What the code's own reads cut was cut for the code, not for the
+        # model, on every way out: an error or an empty run too.
+        forget_cuts(cut_before)
+    return _truncate(out)
+
+
+def _run(code: str, api: Dict[str, Callable], session: Session, shape: str, tally, printed) -> str:
+    from pydantic_monty import MontyCrashedError, MontyRuntimeError, MontySyntaxError, MontyTypingError
     worker, source = session.get(), keyed(code)
     try:
         try:
@@ -357,8 +367,7 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
         out = (out + '\n' if out and not out.endswith('\n') else out) + f'=> {value!r}'
     if not out.strip():
         return 'The code ran and printed nothing, and its last line had no value. Print what you want to see.'
-    forget_cuts(cut_before)
-    return _truncate(out)
+    return out
 
 
 def _partial(printed) -> str:

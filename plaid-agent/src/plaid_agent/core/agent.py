@@ -550,22 +550,45 @@ def _named_window(text: str) -> Optional[int]:
     return None
 
 
-def learn_window(model: str, e: BaseException, sent: Optional[int] = None) -> Optional[int]:
-    """The window ``model`` takes, learned from a refusal as too long: the
-    figure the refusal names, or when it names none, a share of the window
-    known so far or of the ``sent`` tokens. Kept for this process, so the
-    gauge and every later turn hold the transcript to it (`context_window`).
-    None when there is nothing to go on."""
+def learn_window(model: str, e: BaseException, sent: Optional[int] = None,
+                 stated: Optional[int] = None) -> Optional[int]:
+    """The window ``model`` takes, learned from a refusal as too long, and
+    kept for this process, so the gauge and every later turn hold the
+    transcript to it (`context_window`). None when nothing was learned.
+
+    The figure the refusal names is the window. A refusal that names none
+    takes a share of the window known before any refusal (``stated``, the
+    operator's, or litellm's), and only when ``sent`` (what the refused
+    request asked for, its output allowance included, when it could be
+    counted) was under it: a refusal of more than the known window says
+    nothing new, since the turn's own reads grew past it. With no window
+    known nothing is learned. A share of a window learned before is never
+    taken, and nothing is learned from what was sent: each unnamed refusal
+    would cut the window again, for every conversation of the process, and
+    a request refused for another reason (its answer allowance, say) is
+    small enough to teach a window no system prompt fits in."""
     n = _named_window(str(e))
     if n is None:
-        known = [x for x in (context_window(model), sent) if x]
-        if not known:
+        known = stated or _library_window(model)
+        if not known or (sent and sent >= known):
             return None
-        n = int(min(known) * UNNAMED_WINDOW_SHARE)
+        n = int(known * UNNAMED_WINDOW_SHARE)
     with _learned_lock:
         was = _learned.get(model)
         _learned[model] = min(was, n) if was else n
         return _learned[model]
+
+
+def _sent_tokens(model: str, kwargs: Dict[str, Any], max_tokens: Optional[int] = None) -> Optional[int]:
+    """What a refused request asked the window for, by the model's
+    tokenizer: its messages, its tool schemas and the room it left for the
+    answer. None when it cannot be counted."""
+    try:
+        count = token_counter(model)
+        return (count(kwargs.get('messages') or []) + (count(kwargs['tools']) if kwargs.get('tools') else 0)
+                + (max_tokens or 0))
+    except Exception:  # noqa: BLE001 - a count is a fallback, never a reason to fail the turn
+        return None
 
 
 def usage_of(resp) -> Optional[Dict[str, int]]:
@@ -884,7 +907,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         except Exception as e:
             if not too_long(e) or shrink is None:
                 raise
-            learn_window(cfg.model, e)
+            learn_window(cfg.model, e, _sent_tokens(cfg.model, kwargs, cfg.max_tokens), cfg.context_window)
             smaller = shrink(history, new)
             if smaller is None:
                 raise
