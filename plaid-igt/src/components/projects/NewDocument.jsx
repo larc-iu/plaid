@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
-import { DocumentTable } from '@ui/components/shared/DocumentTable.jsx';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -14,20 +13,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@ui/components/ui/dialog';
-import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 
-export const DocumentList = ({
-  documents,
-  project,
-  projectId,
-  client,
-  canManage,
-  canWrite = true,
-  onDocumentCreated,
-}) => {
+// The Documents tab's way to a new document, beside its heading, for a writer.
+export const NewDocument = ({ projectId, client, canManage }) => {
   const [open, setOpen] = useState(false);
   // A maintainer picks how to add a document first, the way New Project does:
   // an import is a way of making one, not a separate button in the header. A
@@ -69,7 +60,6 @@ export const DocumentList = ({
       notifySuccess(`Document “${name}” created`);
       setDocumentName('');
       setOpen(false);
-      if (onDocumentCreated) onDocumentCreated({ ...newDocument, name });
       // A new document is empty, so the next thing to do is type its text.
       navigate(`/projects/${projectId}/documents/${newDocument.id}?tab=baseline`);
     } catch (error) {
@@ -81,29 +71,15 @@ export const DocumentList = ({
   };
 
   return (
-    <div className="mt-2">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Documents</h2>
-        {canWrite && (
-          <Button
-            onClick={() => {
-              setChoosing(canManage);
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> New document
-          </Button>
-        )}
-      </div>
-
-      <DocumentTable
-        documents={documents}
-        client={client}
-        projectId={projectId}
-        wordLayerId={getIgtLayerInfo(project).primaryTokenLayer?.id}
-        href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
-        defaultSort={{ key: 'updated', dir: 'desc' }}
-      />
+    <>
+      <Button
+        onClick={() => {
+          setChoosing(canManage);
+          setOpen(true);
+        }}
+      >
+        <Plus className="h-4 w-4" /> New document
+      </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
@@ -186,6 +162,6 @@ export const DocumentList = ({
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 };

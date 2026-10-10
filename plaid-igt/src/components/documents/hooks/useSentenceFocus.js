@@ -1,10 +1,11 @@
 import { useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 // Landing on a sentence, from a link or from a citation.
 //
 // `?focusSentence=<id>&focusWord=<offset>` is the link half. The Analyze
 // island reads a handoff key on mount and clears it, so the key is written
-// DURING RENDER: the island's shell is a child of this screen, and an effect
+// DURING RENDER: the island is a child of the screen that calls this, and an effect
 // runs after the child has already looked.
 //
 // An in-app click-through (a search hit) writes the same key a moment before it
@@ -20,7 +21,12 @@ import { useCallback, useRef } from 'react';
 // reads one and listens for the other, and both mean the same request.
 const FOCUS_SENTENCE = 'igt:focus-sentence';
 
-export function useSentenceFocus({ documentId, focusParam, focusWordParam, activeTab }) {
+export function useSentenceFocus({ documentId, onEditor }) {
+  const [searchParams] = useSearchParams();
+  const focusParam = searchParams.get('focusSentence');
+  // A character offset in the text: an assistant citation names the word it
+  // cites, so the link lands on the word and not just the sentence.
+  const focusWordParam = Number.parseInt(searchParams.get('focusWord') ?? '', 10);
   const seededRef = useRef(false);
   if (!seededRef.current && focusParam) {
     seededRef.current = true;
@@ -44,13 +50,13 @@ export function useSentenceFocus({ documentId, focusParam, focusWordParam, activ
     ({ documentId: cited, focus, begin }) => {
       // The panel is open on every tab and the grid only listens on one of
       // them.
-      if (cited !== documentId || !focus || activeTab !== 'analyze') return false;
+      if (cited !== documentId || !focus || !onEditor) return false;
       window.dispatchEvent(
         new CustomEvent(FOCUS_SENTENCE, { detail: { documentId, focus, begin } }),
       );
       return true;
     },
-    [documentId, activeTab],
+    [documentId, onEditor],
   );
 
   return focusHere;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/useAuth.js';
 import { statusOf } from '../lib/errors.js';
@@ -29,7 +29,12 @@ import { useLatestCall } from './useLatestCall.js';
  * neither been read nor failed (the render after the id changes, before its
  * read starts).
  * `reload({ quiet })` reads again and answers the project, or null; `quiet`
- * leaves `loading` alone, so the screen stays as it is meanwhile.
+ * leaves `loading` alone, so the screen stays as it is meanwhile. A screen that
+ * saves waits for the read after its save before it lets the next save go,
+ * since the next save expects what that read says. Two reads can be out at
+ * once (two saves, or two screens), and the first can answer last, so a read
+ * a newer one overtook answers once the newest has: whoever awaits it sees the
+ * project as it stands, never a value from before their own last save.
  */
 export const useProject = ({ withDocuments = false, logoutOnAuthError = false } = {}) => {
   const { projectId } = useParams();
@@ -39,12 +44,13 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(null);
   const begin = useLatestCall();
+  // The newest read, which an overtaken one waits for.
+  const newest = useRef(null);
 
   // Keyed on the project only: getClient's and logout's identities change on
   // every AuthProvider render but do the same.
-  const reload = useCallback(
-    async ({ quiet = false } = {}) => {
-      const isCurrent = begin();
+  const read = useCallback(
+    async (isCurrent, quiet) => {
       try {
         if (!quiet) setLoading(true);
         const client = getClient();
@@ -63,7 +69,7 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
       } catch (err) {
         if (!isCurrent()) return null;
         if (logoutOnAuthError && statusOf(err) === 401) {
-          logout();
+          logout('expired');
           return null;
         }
         console.error('Failed to load the project:', err);
@@ -74,7 +80,19 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, withDocuments, logoutOnAuthError, begin],
+    [projectId, withDocuments, logoutOnAuthError],
+  );
+  const reload = useCallback(
+    ({ quiet = false } = {}) => {
+      const isCurrent = begin();
+      const done = read(isCurrent, quiet).then((data) =>
+        // Unmounting also ends a read, with nothing newer to wait for.
+        isCurrent() || newest.current === done ? data : newest.current,
+      );
+      newest.current = done;
+      return done;
+    },
+    [read, begin],
   );
 
   useEffect(() => {

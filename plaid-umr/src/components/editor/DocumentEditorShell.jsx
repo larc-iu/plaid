@@ -1,7 +1,6 @@
 import { DocumentEditorShell as Shell } from '@ui/components/shared/DocumentEditorShell.jsx';
 import { UMR_ASSISTANT } from '../assistant/adapter.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
-import { DocumentTabs } from './DocumentTabs.jsx';
 import { useUmrServices } from './hooks/useUmrServices.js';
 import { TOKEN_ROLE_WORDS, UMR_LAYER_WORDS } from '../../domain/restoreSummary.js';
 
@@ -14,8 +13,21 @@ const UMR_SHELL = {
     UmrDocument.load({ client, documentId, projectId, project: await project, user }),
   useServices: useUmrServices,
   assistantApp: UMR_ASSISTANT.app,
-  DocumentTabs,
-  tabs: { editor: 'annotate', past: ['annotate', 'export', 'details'] },
+  documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
+  // The order is every app's: the work tabs, then Comments, Export, Details.
+  // There is no Text Editor tab: the text and the tokens under it are made in
+  // Plaid IGT or Plaid UD, and this app reads them.
+  tabs: {
+    list: [
+      { value: 'annotate', label: 'Annotate' },
+      { value: 'compare', label: 'Compare' },
+      { value: 'comments', label: 'Comments' },
+      { value: 'export', label: 'Export' },
+      { value: 'details', label: 'Details' },
+    ],
+    editor: 'annotate',
+    past: ['annotate', 'export', 'details'],
+  },
   roleWords: TOKEN_ROLE_WORDS,
   layerWords: UMR_LAYER_WORDS,
   // A citation names a sentence by its number and may name a node (`var`),

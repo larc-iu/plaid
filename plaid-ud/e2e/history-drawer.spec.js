@@ -39,7 +39,7 @@ const openAnnotate = async (page) => {
 
 test('the drawer lists what has happened to the document', async ({ page }) => {
   await openAnnotate(page);
-  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
 
   await expect(page.getByText(/\d+ entries/)).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('No entries')).toHaveCount(0);
@@ -47,7 +47,7 @@ test('the drawer lists what has happened to the document', async ({ page }) => {
 
 test('picking an entry offers to restore it, and Restore opens the dialog', async ({ page }) => {
   await openAnnotate(page);
-  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText(/\d+ entries/)).toBeVisible({ timeout: 15000 });
 
   // The newest entry, at the top of the list.
@@ -67,7 +67,7 @@ test('a history that cannot be read says so, rather than "No entries"', async ({
     route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
   );
 
-  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
 
   // The drawer's own error box: the heading it alone renders, and the reason.
   await expect(page.getByText('Failed to load the history', { exact: true })).toBeVisible({
@@ -90,7 +90,7 @@ test('History opens from every tab, and a past state holds across a tab switch',
   const name = page.getByLabel('Name', { exact: true });
   await expect(name).toBeEnabled({ timeout: 15000 });
 
-  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText(/\d+ entries/)).toBeVisible({ timeout: 15000 });
   await page.locator('.cursor-pointer.border-b').first().click();
   await expect(page.getByText(/This is the document as of/)).toBeVisible({ timeout: 15000 });

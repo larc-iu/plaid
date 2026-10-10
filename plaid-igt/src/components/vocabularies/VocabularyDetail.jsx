@@ -71,7 +71,7 @@ import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { queuesStatus, vocabWriteQueue } from './vocabWriteQueue.js';
 import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { createOnce } from '@ui/lib/createOnce.js';
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { RowControls } from '@/components/shared/RowControls';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';

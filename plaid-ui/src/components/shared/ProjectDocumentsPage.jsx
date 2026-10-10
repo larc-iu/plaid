@@ -7,7 +7,7 @@ import { useProject } from '../../hooks/useProject.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { Button } from '../ui/button';
-import { DocumentTable } from './DocumentTable.jsx';
+import { ProjectDocumentsList } from './ProjectDocumentsList.jsx';
 import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
@@ -133,28 +133,18 @@ export const ProjectDocumentsPage = ({
     <>
       <Tabs projectId={projectId} project={project} />
 
-      <div>
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold tracking-tight">Documents</h2>
-          {canEdit && NewDocument && <NewDocument projectId={projectId} documents={documents} />}
-        </div>
-
-        {error && (
-          <LoadError onRetry={reload} className="mb-4">
-            {error}
-          </LoadError>
-        )}
-
-        <DocumentTable
-          documents={documents}
-          client={getClient()}
-          projectId={projectId}
-          wordLayerId={wordLayerId}
-          seedLayerId={seedLayerId}
-          href={(documentId, counts) => rowHref(projectId, documentId, counts)}
-          defaultSort={{ key: 'updated', dir: 'desc' }}
-        />
-      </div>
+      <ProjectDocumentsList
+        projectId={projectId}
+        documents={documents}
+        client={getClient()}
+        canEdit={canEdit}
+        newDocument={NewDocument}
+        wordLayerId={wordLayerId}
+        seedLayerId={seedLayerId}
+        href={(documentId, counts) => rowHref(projectId, documentId, counts)}
+        error={error}
+        onRetry={reload}
+      />
     </>
   );
 };

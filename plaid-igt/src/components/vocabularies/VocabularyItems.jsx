@@ -15,7 +15,7 @@ import { AlertTriangle, History } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
 import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
 import {

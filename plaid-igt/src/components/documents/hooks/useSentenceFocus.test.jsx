@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useSentenceFocus } from './useSentenceFocus.js';
 
@@ -14,18 +15,29 @@ const KEY = 'igt:focus-sentence';
 const hook = {};
 const focusHere = (citation) => hook.focusHere(citation);
 
-const Probe = (props) => {
+const Hook = (props) => {
   hook.focusHere = useSentenceFocus(props);
   return null;
+};
+
+// The hook reads the link half off the URL: `focusParam` and `focusWordParam`
+// are what the probe puts there.
+const Probe = ({ focusParam = null, focusWordParam = NaN, ...props }) => {
+  const q = new URLSearchParams();
+  if (focusParam) q.set('focusSentence', focusParam);
+  if (Number.isInteger(focusWordParam)) q.set('focusWord', String(focusWordParam));
+  return (
+    <MemoryRouter initialEntries={[`/d?${q}`]}>
+      <Hook {...props} />
+    </MemoryRouter>
+  );
 };
 
 const seeded = () => JSON.parse(sessionStorage.getItem(KEY) || 'null');
 
 const base = {
   documentId: 'doc-1',
-  focusParam: null,
-  focusWordParam: NaN,
-  activeTab: 'analyze',
+  onEditor: true,
 };
 
 let events;
@@ -93,7 +105,7 @@ describe('the ?focusSentence= seed', () => {
     const view = await renderComponent(<Probe {...base} focusParam="s3" />);
     // The island consumes the key and clears it.
     sessionStorage.removeItem(KEY);
-    await view.rerender(<Probe {...base} focusParam="s3" activeTab="metadata" />);
+    await view.rerender(<Probe {...base} focusParam="s3" onEditor={false} />);
     expect(seeded()).toBe(null);
     await view.unmount();
   });
@@ -114,7 +126,7 @@ describe('a citation into this document', () => {
   });
 
   it('is declined on a tab with no grid on it', async () => {
-    const view = await renderComponent(<Probe {...base} activeTab="export" />);
+    const view = await renderComponent(<Probe {...base} onEditor={false} />);
     expect(focusHere({ documentId: 'doc-1', focus: 's2' })).toBe(false);
     expect(events).toEqual([]);
     await view.unmount();
@@ -135,9 +147,9 @@ describe('a citation into this document', () => {
   });
 
   it('follows the tab the reader moved to', async () => {
-    const view = await renderComponent(<Probe {...base} activeTab="export" />);
+    const view = await renderComponent(<Probe {...base} onEditor={false} />);
     expect(focusHere({ documentId: 'doc-1', focus: 's2' })).toBe(false);
-    await view.rerender(<Probe {...base} activeTab="analyze" />);
+    await view.rerender(<Probe {...base} onEditor />);
     expect(focusHere({ documentId: 'doc-1', focus: 's2' })).toBe(true);
     await view.unmount();
   });

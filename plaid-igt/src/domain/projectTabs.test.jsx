@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { contentTabsFor, TAB_ALIASES } from './projectTabs.js';
 
 // The project page used to hand `useTabParam` every tab and correct the answer

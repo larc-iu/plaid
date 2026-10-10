@@ -12,9 +12,14 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // carries the new id with the old rows is the one under test, and it is gone
 // again before any effect has run.
 const listed = vi.hoisted(() => []);
-vi.mock('./DocumentList', () => ({
-  DocumentList: ({ documents, project, projectId }) => {
-    listed.push({ projectId, of: project?.id, ids: documents.map((d) => d.id).join(',') });
+// The list counts words on the layer named after the project it was drawn
+// for, so the list says which project it was handed.
+vi.mock('@/domain/layerInfo', () => ({
+  getIgtLayerInfo: (project) => ({ primaryTokenLayer: { id: project?.id } }),
+}));
+vi.mock('@ui/components/shared/ProjectDocumentsList.jsx', () => ({
+  ProjectDocumentsList: ({ documents, projectId, wordLayerId }) => {
+    listed.push({ projectId, of: wordLayerId, ids: documents.map((d) => d.id).join(',') });
     return <div data-testid="docs">{documents.map((d) => d.id).join(',')}</div>;
   },
 }));
@@ -39,6 +44,7 @@ vi.mock('./assistant/adapter.js', () => ({ IGT_ASSISTANT: { app: 'plaid-igt-agen
 
 const auth = vi.hoisted(() => ({
   client: null,
+  getClient: () => auth.client,
   user: { id: 'u', isAdmin: true },
   logout: vi.fn(),
 }));

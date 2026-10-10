@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Replace, ReplaceAll, Wand2, Merge } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { OPERATIONS } from './bulkPlan.js';
 import { FieldPanel } from './FieldPanel.jsx';

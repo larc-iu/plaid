@@ -1,18 +1,26 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { DocumentList } from './DocumentList';
+import { NewDocument } from './NewDocument';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { Suspended } from '@ui/components/shared/Suspended';
+import { ProjectTabPage } from '@ui/components/shared/ProjectTabPage.jsx';
 import { ProjectTabStrip } from '@ui/components/shared/ProjectTabStrip.jsx';
-import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
-import { ProjectTartan } from '@ui/components/shared/ProjectTartan.jsx';
-import { Loading } from '@ui/components/shared/Loading.jsx';
+import { ProjectDocumentsList } from '@ui/components/shared/ProjectDocumentsList.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
+import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
+import { getIgtLayerInfo } from '@/domain/layerInfo';
+import { isReviewed } from '@larc-iu/plaid-client';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
+import { contentTabsFor, isMaintainerTab, TAB_ALIASES } from '@/domain/projectTabs';
+import { notifyNotAMaintainer } from '@ui/hooks/useManagedProject.js';
+import { useComposeProject } from '@/hooks/useCompose';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { IGT_ASSISTANT } from './assistant/adapter.js';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -32,29 +40,10 @@ const GuidelinesTab = lazyNamed(
   'GuidelinesTab',
 );
 const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExport');
-import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
-import { isReviewed } from '@larc-iu/plaid-client';
-import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { useLatestCall } from '@ui/hooks/useLatestCall.js';
-import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
-import { useTabParam } from '@/hooks/useTabParam';
-import { contentTabsFor, isMaintainerTab, TAB_ALIASES } from '@/domain/projectTabs';
-import { notifyNotAMaintainer } from '@ui/hooks/useManagedProject.js';
-import { useComposeProject } from '@/hooks/useCompose';
-import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import { IGT_ASSISTANT } from './assistant/adapter.js';
-import { statusOf } from '@ui/lib/errors.js';
-
-// What the server answers for a project id that names nothing: 400 for one
-// that is no id at all (a mistyped route), 404 for one that is not there.
-const NOT_FOUND = new Set([400, 404]);
-const NOT_FOUND_TEXT = 'Project not found.';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
-const SETTINGS_SECTIONS = ['general', 'text-and-vocab', 'annotation', 'access', 'services'];
-
-// Title-bar labels for the settings sections (match ProjectSettingsPanel).
+// Title-bar labels for them, as ProjectSettingsPanel names them.
 const SECTION_TITLES = {
   general: 'General',
   'text-and-vocab': 'Text and vocab',
@@ -63,140 +52,45 @@ const SECTION_TITLES = {
   services: 'Services',
 };
 
-// Default project view, under the shared project tab strip: the document list,
-// a query-engine-powered Search tab, and (for maintainers) a Bulk Edit
-// workbench and a Settings tab. The content tabs ride in `?tab=`, so the strip
-// is told which is active. Export and Settings are path-backed: Settings
-// renders project administration in the shared settings layout
-// (ProjectSettingsPanel), one section per path suffix.
-
+// The project screen: plaid-ui's project page (ProjectTabPage), which reads the
+// project and its documents once for every tab here, under the shared tab
+// strip. The content tabs (the document list, a Search tab, and for
+// maintainers Bulk Edit, Validation and Activity) ride in `?tab=`. Export and
+// Settings are path-backed: Settings renders project administration in the
+// shared settings layout (ProjectSettingsPanel), one section per path suffix,
+// and a preset's editor is a page of its own at /projects/:id/export/:presetId.
 export const ProjectDetail = () => {
-  const { projectId, presetId = null } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { user, client, logout } = useAuth();
-  const [loaded, setProject] = useState(null);
-  // Only the project the path names. The same frame that carries B's id still
-  // holds A until B's read lands, and every tab below takes ids off `project`
-  // (Settings takes layer ids), so until then there is none.
-  const project = loaded?.id === projectId ? loaded : null;
-  // The rows and the project they belong to, together: walking from A to B
-  // renders once with B's id and A's state before any effect runs, and a list
-  // of A's documents under B's name is a list the reader can click.
-  const [docs, setDocs] = useState({ projectId, rows: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  // Settings edits change the PROJECT (its config and layers) and never the
-  // document list, so they refresh only that. Reordering one annotation field
-  // used to re-list every document in the project.
-  // A code bound under Settings applies everywhere this project is open.
-  useComposeProject(project);
-
-  // Walking from project A to project B keeps this component mounted and
-  // starts a second load without ending the first. Nothing orders them, so A
-  // can answer last and every screen below would then be reading A under B's
-  // heading. Settings makes that worse than a wrong title: it takes LAYER IDS
-  // off the loaded project, so a stale one sends A's layers into a Save the
-  // reader makes on B. One token per project id, cancelled by the effect's
-  // cleanup, and both writers of `project` check it.
-  const live = useRef(null);
-
-  // A settings page reads the project again after each save, and waits for it
-  // before it lets the next save go, since the next save expects what that
-  // read says. Two reads can be out at once (two saves, or two pages), and a
-  // read that started first can answer last. Only the newest read is shown,
-  // or a page would expect a value from before its own last save and be
-  // refused as changed elsewhere. A superseded call waits for the newest one,
-  // so whoever awaits it sees the project as it stands.
-  const begin = useLatestCall();
-  const newestRefresh = useRef(null);
-  const refreshProject = () => {
-    if (!client) return Promise.resolve();
-    const token = live.current;
-    const isCurrent = begin();
-    const done = (async () => {
-      try {
-        const projectData = await client.projects.get(projectId);
-        if (token?.cancelled || !isCurrent()) return;
-        setProject(projectData);
-      } catch (err) {
-        if (isCurrent()) console.error('Could not refresh the project:', err);
-      }
-    })().then(() => {
-      // Unmounting also ends a call, with no newer one to wait for.
-      const newest = newestRefresh.current;
-      return isCurrent() || newest === done ? undefined : newest;
-    });
-    newestRefresh.current = done;
-    return done;
-  };
-
-  const fetchData = async (token) => {
-    try {
-      setLoading(true);
-      if (!client) throw new Error('Not authenticated');
-      const [projectData, docsList] = await Promise.all([
-        client.projects.get(projectId),
-        client.projects.listDocuments(projectId),
-      ]);
-      if (token.cancelled) return;
-      setProject(projectData);
-      setDocs({ projectId, rows: docsList || [] });
-      setError('');
-    } catch (err) {
-      if (token.cancelled) return;
-      if (err.message === 'Not authenticated' || err.status === 401) {
-        // Clear the rejected token before leaving, else /login bounces back.
-        logout('expired');
-        return;
-      }
-      // A path naming no project (a mistyped link) is not worth a Retry.
-      setError(NOT_FOUND.has(statusOf(err)) ? NOT_FOUND_TEXT : 'Failed to load the project');
-      console.error('Error fetching data:', err);
-    } finally {
-      if (!token.cancelled) setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const token = { cancelled: false };
-    live.current = token;
-    fetchData(token);
-    return () => {
-      token.cancelled = true;
-    };
-    // Runs once per id; the loader reads the client fresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
-
-  const canManage = canManageProject(project, user);
-  // Creating/editing documents needs WRITE, which writers have but managing
-  // (settings/access) does not. Gate document-create on this so a reader isn't
-  // shown a button that 403s on submit.
-  const canWrite = canEditProject(project, user);
-
-  // Which top-level tab is active. Documents/Search are local UI state; the
-  // Settings tab is reflected in the path so its sections are deep-linkable.
-  // The section is the path segment after the project id; a section may carry
-  // a sub-path (e.g. /export/:presetId opens one preset's editor in place).
-  const pathSection =
-    SETTINGS_SECTIONS.find((s) => location.pathname.startsWith(`/projects/${projectId}/${s}`)) ||
-    null;
-  const onSettings = pathSection !== null;
-  // Export is path-backed like Settings, because a preset's editor is a page of
-  // its own at /projects/:id/export/:presetId. Unlike Settings it is open to
-  // readers, who can run an export without being able to change the presets.
-  const onExport = location.pathname.startsWith(`/projects/${projectId}/export`);
-
-  // Tab title: "<Section> · <Project> · Plaid IGT" on a settings section, else
-  // "<Project> · Plaid IGT". Both segments are dropped while still loading.
-  useDocumentTitle(
-    onExport ? 'Export' : onSettings ? SECTION_TITLES[pathSection] : null,
-    project?.name,
+  const { projectId } = useParams();
+  const { section, onExport } = usePlace(projectId);
+  // "<Section> · <Project> · Plaid IGT" on a settings section, else
+  // "<Project> · Plaid IGT".
+  return (
+    <ProjectTabPage
+      title={onExport ? 'Export' : section ? SECTION_TITLES[section] : null}
+      tabs={ProjectTabs}
+      withDocuments
+    >
+      {(page) => <ProjectBody {...page} />}
+    </ProjectTabPage>
   );
-  // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
-  // tab the user was on.
+};
+
+// Where on the project screen the path is: a settings section, Export, or
+// neither (a content tab, in `?tab=`). A section may carry a sub-path, as
+// /export/:presetId opens one preset's editor in place.
+const usePlace = (projectId) => {
+  const { pathname } = useLocation();
+  const section =
+    Object.keys(SECTION_TITLES).find((s) => pathname.startsWith(`/projects/${projectId}/${s}`)) ??
+    null;
+  return { section, onExport: pathname.startsWith(`/projects/${projectId}/export`) };
+};
+
+// The open tab, for the strip and the body alike.
+const useProjectTab = (projectId, project) => {
+  const { user } = useAuth();
+  const { section, onExport } = usePlace(projectId);
+  const canManage = canManageProject(project, user);
   // `ready` while the project is still loading would correct a good link:
   // `canManage` answers false until it lands, so the list can still grow.
   const contentTabs = useMemo(() => contentTabsFor(canManage), [canManage]);
@@ -204,102 +98,15 @@ export const ProjectDetail = () => {
     aliases: TAB_ALIASES,
     ready: !!project,
   });
+  const active = onExport ? 'export' : section && canManage ? 'settings' : contentTab;
+  return { active, section, tabHref, canManage };
+};
+
+// This app's project tabs, as data for the shared strip.
+const ProjectTabs = ({ projectId, project }) => {
+  const { client } = useAuth();
+  const { active, tabHref, canManage } = useProjectTab(projectId, project);
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
-  const activeTab = onExport ? 'export' : onSettings && canManage ? 'settings' : contentTab;
-
-  // A non-maintainer who lands on a settings URL has nothing to manage; bounce
-  // them back to the document view rather than show an empty Settings panel.
-  // A maintainers-only `?tab=` falls back to Documents (useTabParam). Either
-  // way the reader is told why, as the shared guard (useManagedProject) does.
-  const tabParam = new URLSearchParams(location.search).get('tab');
-  useEffect(() => {
-    if (!project || canManage) return;
-    if (onSettings) {
-      notifyNotAMaintainer();
-      navigate(`/projects/${projectId}`, { replace: true });
-    } else if (isMaintainerTab(tabParam)) {
-      notifyNotAMaintainer();
-    }
-  }, [onSettings, tabParam, project, canManage, projectId, navigate]);
-
-  // A project not yet set up for IGT: maintainers go to the setup/adopt wizard;
-  // non-maintainers can't create layers, so they get an informational notice
-  // (rendered below) rather than a dead-end redirect into a wizard they can't
-  // complete.
-  useEffect(() => {
-    if (project && !readInitialized(project.config) && canManage) {
-      navigate(`/projects/${projectId}/setup`, { replace: true });
-    }
-  }, [project, projectId, navigate, canManage]);
-
-  const needsSetupNotice = !!project && !readInitialized(project.config) && !canManage;
-  // An import that never reported finishing: the project is half filled, and
-  // the resume DELETES the documents it did not complete, so there is nothing
-  // safe to do here until it is over. A maintainer is sent back to the wizard
-  // to finish it (or to declare it finished as it stands); anyone else gets
-  // the notice below, since they cannot run an import.
-  const unfinishedImport = project ? readImportState(project.config) : null;
-  const importResumeTo = unfinishedImport && importRouteFor(unfinishedImport.kind);
-  useEffect(() => {
-    if (importResumeTo && canManage) {
-      navigate(`${importResumeTo}?resume=${projectId}`, { replace: true });
-    }
-  }, [importResumeTo, canManage, projectId, navigate]);
-
-  const handleDocumentCreated = (newDocument) => {
-    setDocs((prev) => ({ ...prev, rows: [...prev.rows, newDocument] }));
-  };
-
-  // Nothing of another project's, ever: the rows are the route's or there are
-  // none yet.
-  const documents = docs.projectId === projectId ? docs.rows : [];
-
-  if (loading || (!project && !error)) return <Loading />;
-
-  if (error || !project) {
-    return (
-      <LoadError
-        className={FORM_PAGE_WIDTH}
-        onRetry={error === NOT_FOUND_TEXT ? undefined : () => fetchData(live.current)}
-      >
-        {error || 'The requested project could not be found.'}
-      </LoadError>
-    );
-  }
-
-  // A project with nothing to open yet: its name, and why, in place of the
-  // tabs, which would each lead somewhere empty.
-  const notice = (children) => (
-    <div className={FORM_PAGE_WIDTH}>
-      <Breadcrumb className="mb-2" items={[{ label: 'Projects', to: '/projects', fixed: true }]} />
-      {/* The name takes its own direction inside a heading that stays with
-          the chrome, as the tab strip's does. */}
-      <h1 className="flex items-center gap-3 font-text text-[1.75rem] font-bold leading-tight">
-        <ProjectTartan project={project} size={32} className="shrink-0" />
-        <span dir="auto" className="min-w-0 truncate">
-          {project.name}
-        </span>
-      </h1>
-      <Notice role="status" icon={null} className="mt-4">
-        {children}
-      </Notice>
-    </div>
-  );
-
-  if (unfinishedImport && !(canManage && importResumeTo)) {
-    return notice(
-      <>
-        The {unfinishedImport.kind} import
-        {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
-        {canManage ? ' Continuing it…' : ' A project maintainer can finish it.'}
-      </>,
-    );
-  }
-
-  if (needsSetupNotice) {
-    return notice(<>This project is not set up for IGT. A project maintainer can set it up.</>);
-  }
-
   const at = `/projects/${projectId}`;
   const tabs = [
     { value: 'documents', label: 'Documents', to: tabHref(at, 'documents') },
@@ -323,26 +130,113 @@ export const ProjectDetail = () => {
     // Entered at its first section. The path drives the panel.
     { value: 'settings', label: 'Settings', to: `${at}/general`, show: canManage },
   ];
+  return <ProjectTabStrip projectId={projectId} project={project} tabs={tabs} active={active} />;
+};
+
+const ProjectBody = ({ project, projectId, client, documents, reload }) => {
+  const { presetId = null } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { active, section, canManage } = useProjectTab(projectId, project);
+  // Creating/editing documents needs WRITE, which writers have but managing
+  // (settings/access) does not. Gate document-create on this so a reader isn't
+  // shown a button that 403s on submit.
+  const canWrite = canEditProject(project, user);
+  // A code bound under Settings applies everywhere this project is open.
+  useComposeProject(project);
+  // A settings page reads the project again after each save and waits for that
+  // read before it lets the next save go. Only the project, quietly: the
+  // screen stays as it is meanwhile.
+  const refreshProject = () => reload({ quiet: true });
+
+  // A non-maintainer who lands on a settings URL has nothing to manage; bounce
+  // them back to the document view rather than show an empty Settings panel.
+  // A maintainers-only `?tab=` falls back to Documents (useTabParam). Either
+  // way the reader is told why, as the shared guard (useManagedProject) does.
+  const tabParam = new URLSearchParams(location.search).get('tab');
+  useEffect(() => {
+    if (canManage) return;
+    if (section) {
+      notifyNotAMaintainer();
+      navigate(`/projects/${projectId}`, { replace: true });
+    } else if (isMaintainerTab(tabParam)) {
+      notifyNotAMaintainer();
+    }
+  }, [section, tabParam, canManage, projectId, navigate]);
+
+  // A project not yet set up for IGT: maintainers go to the setup/adopt wizard;
+  // non-maintainers can't create layers, so they get an informational notice
+  // (rendered below) rather than a dead-end redirect into a wizard they can't
+  // complete.
+  const initialized = readInitialized(project.config);
+  useEffect(() => {
+    if (!initialized && canManage) navigate(`/projects/${projectId}/setup`, { replace: true });
+  }, [initialized, projectId, navigate, canManage]);
+
+  // An import that never reported finishing: the project is half filled, and
+  // the resume DELETES the documents it did not complete, so there is nothing
+  // safe to do here until it is over. A maintainer is sent back to the wizard
+  // to finish it (or to declare it finished as it stands); anyone else gets
+  // the notice below, since they cannot run an import.
+  const unfinishedImport = readImportState(project.config);
+  const importResumeTo = unfinishedImport && importRouteFor(unfinishedImport.kind);
+  useEffect(() => {
+    if (importResumeTo && canManage) {
+      navigate(`${importResumeTo}?resume=${projectId}`, { replace: true });
+    }
+  }, [importResumeTo, canManage, projectId, navigate]);
+
+  // The New document control beside the list's heading. One component for as
+  // long as what it is given stays the same, so its dialog survives a render.
+  const NewDocumentHere = useMemo(
+    () =>
+      function NewDocumentHere(props) {
+        return <NewDocument {...props} client={client} canManage={canManage} />;
+      },
+    [client, canManage],
+  );
+
+  // A project with nothing to open yet says why, in place of every tab's body.
+  const notice = (children) => (
+    <Notice role="status" icon={null} className={FORM_PAGE_WIDTH}>
+      {children}
+    </Notice>
+  );
+
+  if (unfinishedImport && !(canManage && importResumeTo)) {
+    return notice(
+      <>
+        The {unfinishedImport.kind} import
+        {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
+        {canManage ? ' Continuing it…' : ' A project maintainer can finish it.'}
+      </>,
+    );
+  }
+
+  if (!initialized && !canManage) {
+    return notice(<>This project is not set up for IGT. A project maintainer can set it up.</>);
+  }
 
   // Only the active tab's body is mounted, as the tab widget's own panels did.
   let body = null;
-  if (activeTab === 'documents') {
+  if (active === 'documents') {
     body = (
-      <DocumentList
-        documents={documents}
-        project={project}
+      <ProjectDocumentsList
         projectId={projectId}
+        documents={documents}
         client={client}
-        canManage={canManage}
-        canWrite={canWrite}
-        onDocumentCreated={handleDocumentCreated}
+        canEdit={canWrite}
+        newDocument={NewDocumentHere}
+        wordLayerId={getIgtLayerInfo(project).primaryTokenLayer?.id}
+        href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
       />
     );
-  } else if (activeTab === 'search') {
+  } else if (active === 'search') {
     body = <ProjectSearch project={project} projectId={projectId} client={client} />;
-  } else if (activeTab === 'bulk' && canManage) {
+  } else if (active === 'bulk' && canManage) {
     body = <ProjectBulkEdit project={project} projectId={projectId} client={client} />;
-  } else if (activeTab === 'validate' && canManage) {
+  } else if (active === 'validate' && canManage) {
     // The same width as plaid-ud's and plaid-umr's Validation.
     body = (
       <div className={FORM_PAGE_WIDTH}>
@@ -354,24 +248,22 @@ export const ProjectDetail = () => {
         />
       </div>
     );
-  } else if (activeTab === 'activity' && canManage) {
+  } else if (active === 'activity' && canManage) {
     body = <ProjectActivity client={client} project={project} projectId={projectId} />;
-  } else if (activeTab === 'assistant') {
+  } else if (active === 'assistant') {
     body = (
       <ProjectAssistant
         projectId={projectId}
-        projectName={project?.name}
+        projectName={project.name}
         client={client}
         userId={user?.id}
         canWrite={canWrite}
-        contributor={
-          !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
-        }
+        contributor={!!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })}
       />
     );
-  } else if (activeTab === 'guidelines') {
+  } else if (active === 'guidelines') {
     body = <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />;
-  } else if (activeTab === 'export') {
+  } else if (active === 'export') {
     // A form, so the narrower width, from the page's left edge.
     body = (
       <div className={FORM_PAGE_WIDTH}>
@@ -386,22 +278,17 @@ export const ProjectDetail = () => {
         />
       </div>
     );
-  } else if (activeTab === 'settings' && canManage) {
+  } else if (active === 'settings' && canManage) {
     body = (
       <ProjectSettingsPanel
         project={project}
         projectId={projectId}
         client={client}
-        section={pathSection || 'general'}
+        section={section || 'general'}
         onProjectUpdate={refreshProject}
       />
     );
   }
 
-  return (
-    <>
-      <ProjectTabStrip projectId={projectId} project={project} tabs={tabs} active={activeTab} />
-      <Suspended>{body}</Suspended>
-    </>
-  );
+  return <Suspended>{body}</Suspended>;
 };

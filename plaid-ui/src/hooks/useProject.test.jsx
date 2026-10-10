@@ -87,7 +87,37 @@ describe('useProject when the reader walks to another project', () => {
     const view = await renderComponent(app({ logoutOnAuthError: true }));
     await view.step(async () => d.fail('A', Object.assign(new Error('no'), { status: 401 })));
     expect(auth.logout).toHaveBeenCalledTimes(1);
+    expect(auth.logout).toHaveBeenCalledWith('expired');
     expect(seen.error).toBe(null);
+    await view.unmount();
+  });
+});
+
+// A screen that saves waits for the read after its save before the next save,
+// which expects what that read says. Two reads out at once can answer in either
+// order, and the one overtaken must not hand its waiter the older project.
+describe('useProject read again', () => {
+  it('answers an overtaken read with the newest, once the newest has answered', async () => {
+    const reads = [];
+    auth.getClient.mockReturnValue({
+      projects: { get: () => new Promise((resolve) => reads.push(resolve)) },
+    });
+    const view = await renderComponent(app({}));
+    await view.step(async () => reads[0]({ id: 'A', v: 0 }));
+    const answers = [];
+    await view.step(async () => {
+      seen.reload({ quiet: true }).then((p) => answers.push(['first', p.v]));
+      seen.reload({ quiet: true }).then((p) => answers.push(['second', p.v]));
+    });
+    await view.step(async () => reads[1]({ id: 'A', v: 1 }));
+    expect(answers).toEqual([]);
+    expect(seen.project.v).toBe(0);
+    await view.step(async () => reads[2]({ id: 'A', v: 2 }));
+    expect(seen.project.v).toBe(2);
+    expect(answers.sort()).toEqual([
+      ['first', 2],
+      ['second', 2],
+    ]);
     await view.unmount();
   });
 });

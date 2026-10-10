@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { useTabParam } from '../../hooks/useTabParam';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { AdminUsers } from './AdminUsers';
 import { AdminInvites } from './AdminInvites';
 import { AdminActivity } from './AdminActivity';

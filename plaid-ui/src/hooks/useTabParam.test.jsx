@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../test/renderComponent.jsx';
 import { useTabParam } from './useTabParam.js';
 
 // Two things a URL has to do here: say what is on screen, and be reproducible.

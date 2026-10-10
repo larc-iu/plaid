@@ -13,6 +13,10 @@ import { useAssistantAvailable } from '../assistant/useAssistantAvailable.js';
 import { useAskAssistant, useAssistantSubject } from '../assistant/subject.js';
 import { useResumedRun } from '../../hooks/useResumedRun.js';
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
+import { useTabParam } from '../../hooks/useTabParam.js';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { useReconcileOnOpen } from '../../hooks/useReconcileOnOpen.js';
 import { RunBanner } from '../services/RunBanner.jsx';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
@@ -22,58 +26,92 @@ import { useHistoryView } from '../../hooks/useHistoryView.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { HISTORY_DRAWER_WIDTH } from './HistoryDrawer';
 import { DocumentHistoryPanel } from './DocumentHistoryPanel.jsx';
+import { DocumentTabStrip } from './DocumentTabStrip.jsx';
+import { EdgeRail } from './EdgeRail.jsx';
 import { HistoricalBanner } from './HistoricalBanner.jsx';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { LongDocumentNotice } from './LongDocumentNotice.jsx';
 import { isLongDocument } from '../../domain/longDocument.js';
 
-// Parent route of a document's tabs in plaid-ud and plaid-umr. It owns the
-// project and document load and renders the breadcrumbs and the tab strip, so a
-// tab switch swaps ONLY the body: the shell's route params don't change, so
-// React Router keeps it mounted.
+// The screen of an open document in every app. It owns the project and
+// document load and renders the breadcrumbs and the tab strip, so a tab switch
+// swaps ONLY the body.
 //
 // Keeping the chrome here, above the loading gate, is the whole point of the
 // shell: a tab that rendered its own copy of it behind its own gate would
 // unmount the chrome on every switch, flash a bare spinner where the whole page
 // had been, and re-download the document.
 //
+// A tab lives in one of two places, the app's choice:
+// - in the PATH (plaid-ud, plaid-umr): this is the parent route of one route
+//   per tab, the tab is the path's last segment, and the body is the
+//   `<Outlet>`, which reads what is below as `useDocumentEditor()`. The
+//   shell's route params don't change on a switch, so React Router keeps it
+//   mounted.
+// - in the QUERY (`?tab=`, plaid-igt): this is one route, the tab is
+//   `useTabParam`'s, and the body is `app.renderTab(tab, context)`.
+//
 // What differs by app comes in as props (`app`):
 // - `loadDocument({ client, projectId, documentId, project, user })`: the
 //   app's document model, loaded. `project` is the project's read, a promise,
 //   so the document can be read beside it.
-// - `useServices({ client, projectId, doc, project, acquireWriteLock })`: the
-//   app's service runs, a hook.
+// - `onDocumentError({ doc, documentId, user })`, optional: the handler for
+//   the document's refusals (`doc.onError`). By default each is a toast whose
+//   title is the label.
+// - `useServices({ client, projectId, doc, project, acquireWriteLock })`,
+//   optional: the app's service runs, a hook.
 // - `assistantApp`: the app tag of the app's assistant.
-// - `DocumentTabs`: the app's tab strip.
-// - `roleWords`, `layerWords`: History's words for the app's rows.
+// - `documentPath(projectId, documentId)`: the document's address, which a
+//   tab's address extends.
+// - `tabs`: `list`, the tabs in order as `{ value, label }`. `editor` is the
+//   annotation editor's, which is where a citation and Ask point. `wide`
+//   (`[editor]` when left out) are full-bleed and supply their own padding,
+//   the rest are held to a readable width. `past` are those that can show
+//   the document at a past state (the others edit it or hang live threads on
+//   it, so while a history entry is open they say they are not shown).
+//   `long` are those that slow down with the document's length. `query`,
+//   when set, keeps the tab in `?tab=`: `{ fallback, aliases, landing(doc) }`,
+//   where `landing` names the tab a document opens on when the address names
+//   none (or nothing, to stay on the fallback). Every tab writes itself there,
+//   the fallback included, since a bare address means "no tab chosen".
+// - `renderTab(tab, context)`: the body, where the tab is in the query.
+// - `reconcileOnOpen`: true to repair the document on open here, for every
+//   tab, holding the body behind a spinner and the tabs inert meanwhile. An
+//   app that repairs from one tab does it there (`setChromeBusy`).
+// - `saveStatus`: false for an app whose editor shows a save pill of its own.
+// - `roleWords`, `layerWords`, `afterRestore(doc)`: History's words for the
+//   app's rows, and what the app writes once a restore lands.
 // - `focusParams(focus)`: the URL params a citation's focus opens, or null
-//   when it names nothing on this page.
+//   when it names nothing on this page. Or `useFocusHere({ documentId,
+//   onEditor })`, a hook answering the citation itself (`onFocusHere`).
 // - `sentenceRef(sentence, i)`: the reference `@` and Ask write for a
-//   sentence.
-// - `tabs`: the app's tabs by the last segment of their path. `editor` is
-//   the annotation editor's, which is full-bleed and is where a citation and
-//   Ask point, `past` those that can show the document at a past state (the
-//   others edit it or hang live threads on it, so while a history entry is
-//   open they say they are not shown), and `long` those that slow down with
-//   the document's length.
+//   sentence, and `sentenceHint(sentence, doc)` what the sentence says, where
+//   it has no `text` of its own.
 // - `wordCount(doc)`, optional: the length the long-document notice weighs.
+//
+// `client`, optional, is the one the document is read and written through
+// where the app keeps one per document. The session's otherwise.
 
 // The tab open, by the last segment of its path.
 const tabOf = (pathname) => pathname.split('/').filter(Boolean).pop() ?? '';
 
+const noServices = () => null;
+const noFocus = () => null;
+const toast = () => (msg, err, label) => notifyError(err ?? msg, label);
+
 // Keyed by document, so opening another document starts from nothing: no
 // history rail, no past state and no busy flag carried over from the last one.
-export const DocumentEditorShell = ({ app }) => {
+export const DocumentEditorShell = ({ app, client }) => {
   const { documentId } = useParams();
-  return <DocumentEditor key={documentId} app={app} />;
+  return <DocumentEditor key={documentId} app={app} documentClient={client} />;
 };
 
-const DocumentEditor = ({ app }) => {
+const DocumentEditor = ({ app, documentClient }) => {
   const { projectId, documentId } = useParams();
   const { pathname } = useLocation();
   const { getClient, logout, user } = useAuth();
-  const [, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [doc, setDoc] = useState(null);
   // The document now, for the comment store's error channel, which is set once.
@@ -83,9 +121,25 @@ const DocumentEditor = ({ app }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   // The tab strip is chrome, so it survives a tab switch, but it must not be
-  // clickable while the body is repairing the document (see DocumentTabs). The
+  // clickable while the body is repairing the document (DocumentTabStrip). The
   // child raises this through the outlet context.
   const [chromeBusy, setChromeBusy] = useState(false);
+  // authService keeps one client, so this is the same object every render.
+  const client = documentClient ?? (user ? getClient() : null);
+
+  // Which tab is open. Both hooks run in both modes, and the query's is told
+  // it is not in charge (`ready`) where the tab is the path's, so it leaves a
+  // `?tab=` it does not know alone.
+  const query = app.tabs.query;
+  const tabValues = useMemo(() => app.tabs.list.map((t) => t.value), [app]);
+  const [queryTab, setQueryTab, queryHref] = useTabParam(
+    tabValues,
+    query?.fallback ?? tabValues[0],
+    { writeFallback: true, aliases: query?.aliases, ready: !!query },
+  );
+  const tab = query ? queryTab : tabOf(pathname);
+  const base = app.documentPath(projectId, documentId);
+  const tabHref = (value) => (query ? queryHref(base, value) : `${base}/${value}`);
 
   // One comment store per document, shared by every tab through the outlet, so
   // the Comments tab and the editor's badges read the same instance rather than
@@ -96,11 +150,10 @@ const DocumentEditor = ({ app }) => {
   // deliberately absent from the document read.
   const comments = useMemo(
     () =>
-      documentId && user?.id
-        ? new CommentStore({ client: getClient(), projectId, documentId, currentUserId: user.id })
+      client && documentId && user?.id
+        ? new CommentStore({ client, projectId, documentId, currentUserId: user.id })
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, documentId, user?.id],
+    [client, projectId, documentId, user?.id],
   );
   useCommentStore(comments);
   useEffect(() => {
@@ -112,7 +165,11 @@ const DocumentEditor = ({ app }) => {
     // document is read again, so the deletion shows.
     comments.onError = (msg, err, label) => {
       notifyError(err ?? msg, label);
-      if (isGone(err)) docRef.current?.reload();
+      if (isGone(err)) {
+        docRef.current
+          ?.reload()
+          .catch((e) => console.error('Reading the document again failed:', e));
+      }
     };
     comments.load();
   }, [comments]);
@@ -130,15 +187,14 @@ const DocumentEditor = ({ app }) => {
   // a tab, because it has to outlive a tab switch and because the banner is
   // the only surface once the dialog is shut.
   const writeLock = useWriteLock();
-  // authService keeps one client, so this is the same object every render.
-  const client = user ? getClient() : null;
   // A run this page did not finish, picked back up: the service kept working
   // while the tab was away, and the result is still waiting.
   useResumedRun(client, doc, writeLock.acquire);
 
   // The app's service runs. One instance for the whole shell, so a run started
   // on one tab keeps its lock, its banner and its progress on another.
-  const services = app.useServices({
+  const useServices = app.useServices ?? noServices;
+  const services = useServices({
     client,
     projectId,
     doc,
@@ -149,7 +205,6 @@ const DocumentEditor = ({ app }) => {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const client = getClient();
       if (!client) {
         logout();
         return;
@@ -169,19 +224,17 @@ const DocumentEditor = ({ app }) => {
         });
         const projectData = await projectRead;
         if (cancelled) return;
-        // The label is the title, since it is what a person scans, and the
-        // error is the description.
-        next.onError = (msg, err, label) => notifyError(err ?? msg, label);
+        next.onError = (app.onDocumentError ?? toast)({ doc: next, documentId, user });
         setProject(projectData);
         setDoc(next);
         setLoadError('');
       } catch (err) {
         if (cancelled) return;
-        if (err.status === 401) {
-          logout();
+        if (err.status === 401 || err.message === 'Not authenticated') {
+          logout('expired');
           return;
         }
-        setLoadError(humanizeError(err));
+        setLoadError(humanizeError(err, 'This document could not be loaded.'));
         console.error('Error fetching data:', err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -198,7 +251,6 @@ const DocumentEditor = ({ app }) => {
   // run, the assistant). The document is refreshed in place so the editor
   // isn't remounted.
   const reload = useCallback(async () => {
-    const client = getClient();
     if (!client) return;
     try {
       // The document keeps the project the page reads (see `project` above).
@@ -206,22 +258,27 @@ const DocumentEditor = ({ app }) => {
       else setProject(await client.projects.get(projectId));
     } catch (err) {
       if (err.status === 401) {
-        logout();
+        logout('expired');
         return;
       }
       console.error('Error refreshing document:', err);
     }
-  }, [projectId, doc, getClient, logout]);
+  }, [projectId, doc, client, logout]);
 
   // The history drawer, the entry being viewed, and the restore it can lead to.
   // The shell's, not a tab's: history is about the document, so History is in
   // the tab strip on every tab, and a past state stays open across a tab
   // switch. Every tab is handed what is on screen (`doc`, the snapshot while an
   // entry is open) and the live document beside it (`liveDoc`).
-  const history = useHistoryView({ documentId, client, doc, reload, onExpired: logout });
+  const history = useHistoryView({
+    documentId,
+    client,
+    doc,
+    reload,
+    onExpired: () => logout('expired'),
+  });
   const pastEntry = history.selectedEntry;
   const shown = history.snapshot ?? doc;
-  const tab = tabOf(pathname);
   const onPastTab = app.tabs.past.includes(tab);
   // Opening an entry puts the past on screen in place of what was typed here
   // and not saved (or takes a tab that cannot show the past off screen), so it
@@ -232,7 +289,33 @@ const DocumentEditor = ({ app }) => {
     await history.selectEntry(entry);
   };
 
-  // The integrity notice the Annotate tab raises never expires, because an
+  // A document opened with no tab named lands on the one the app says it
+  // should, once, on the first live load: not on a past state, and not after
+  // the reader has picked a tab. Replace, not push: the reader did not ask for
+  // this tab, so Back leaves the document instead of undoing the landing.
+  const landedRef = useRef(!query || searchParams.has('tab'));
+  useEffect(() => {
+    if (!doc || history.asOf || landedRef.current) return;
+    landedRef.current = true;
+    const to = query.landing?.(doc);
+    if (to && to !== queryTab) setQueryTab(to, { replace: true });
+  }, [doc, history.asOf, query, queryTab, setQueryTab]);
+
+  // The repair on open, where the app has the shell run it: the tabs are inert
+  // and the body waits, since the repair writes and no tab may be edited while
+  // it is still healing. A document with nothing to heal plans entirely
+  // locally and lowers the gate in a microtask, so the SPINNER waits on a
+  // delayed flag: a pass over before anyone could read it shows nothing.
+  const reconciling =
+    useReconcileOnOpen({
+      doc: app.reconcileOnOpen ? doc : null,
+      asOf: history.asOf,
+      canWrite: canEditProject(project, user),
+    }) && !!app.reconcileOnOpen;
+  const showReconcileSpinner = useDelayedFlag(reconciling);
+  const busy = chromeBusy || reconciling;
+
+  // The integrity notice the editor raises never expires, because an
   // unrepaired document is a standing fact. It is about one DOCUMENT, not about
   // one tab: it belongs to the shell, which survives a tab switch. Leaving the
   // document, or opening another one, takes it with us.
@@ -248,30 +331,35 @@ const DocumentEditor = ({ app }) => {
   // A comment post, edit or delete on its way asks the same way.
   useSavingGuard(comments);
 
+  // The tab first, as in every app, then the document and its project.
+  const tabLabel = app.tabs.list.find((t) => t.value === tab)?.label;
+  useDocumentTitle(tabLabel, shown?.raw?.name, project?.name);
+
   // Every document tab is full width in `Layout`, so the breadcrumb and the
-  // tab row stand in one place whichever tab is open. The annotation editor is
-  // full-bleed and supplies its own padding; the others are held to a readable
+  // tab row stand in one place whichever tab is open. The wide tabs are
+  // full-bleed and supply their own padding; the others are held to a readable
   // width under the tabs.
-  const wide = tab === app.tabs.editor;
+  const wide = (app.tabs.wide ?? [app.tabs.editor]).includes(tab);
   // The editors slow down with the document's length.
   const words = app.wordCount?.(doc);
   // "Ask" under a sentence is only worth drawing where there is an assistant to
   // ask, and only on the tab whose content it points into. The PANEL itself is
   // the shell's and is open on every tab.
-  const onAnnotate = tab === app.tabs.editor;
+  const onEditor = tab === app.tabs.editor;
   const assistantAvailable = useAssistantAvailable(client, projectId, app.assistantApp);
   // A citation into THIS document scrolls the editor instead of opening a
-  // second browser tab: ?sent= is the deep link the annotation editor already
-  // watches, so setting it reuses the scroll and the flash.
+  // second browser tab: the URL params the annotation editor already watches,
+  // so setting them reuses the scroll and the flash.
   // Bumped on every ask, so clicking the SAME citation twice scrolls again:
-  // the editor only reacts to ?sent= changing, and a repeat does not change it.
+  // the editor only reacts to its params changing, and a repeat does not
+  // change them.
   const [focusNonce, setFocusNonce] = useState(0);
-  const focusHere = useCallback(
+  const focusByParams = useCallback(
     ({ documentId: cited, focus }) => {
       // Only while the editor is actually on screen. Claiming a citation on
       // another tab would swallow the link and scroll nothing: the panel is
-      // open on every tab, and only one of them watches ?sent=.
-      const params = cited === documentId && onAnnotate ? app.focusParams(focus) : null;
+      // open on every tab, and only one of them watches the params.
+      const params = cited === documentId && onEditor ? app.focusParams?.(focus) : null;
       if (!params) return false;
       setFocusNonce((k) => k + 1);
       setSearchParams(
@@ -287,8 +375,10 @@ const DocumentEditor = ({ app }) => {
       );
       return true;
     },
-    [app, documentId, onAnnotate, setSearchParams],
+    [app, documentId, onEditor, setSearchParams],
   );
+  const useFocusHere = app.useFocusHere ?? noFocus;
+  const focusHere = useFocusHere({ documentId, onEditor }) ?? focusByParams;
   // What the shell's assistant panel is about while this screen is open. The
   // document is the subject on EVERY tab: it is what the reader is looking at
   // either way.
@@ -310,7 +400,8 @@ const DocumentEditor = ({ app }) => {
     mentions: () => {
       const items = (doc?.sentences || []).map((sentence, i) => {
         const ref = app.sentenceRef(sentence, i);
-        return { value: ref, label: ref, hint: sentence.text };
+        const hint = app.sentenceHint ? app.sentenceHint(sentence, doc) : sentence.text;
+        return { value: ref, label: ref, hint };
       });
       return items.length ? [{ group: 'Sentences', items }] : [];
     },
@@ -319,7 +410,30 @@ const DocumentEditor = ({ app }) => {
   // down the outlet to the editor; the panel picks it up in the shell.
   const askAssistant = useAskAssistant();
 
-  const { DocumentTabs } = app;
+  const context = {
+    projectId,
+    documentId,
+    client,
+    doc: shown,
+    liveDoc: doc,
+    pastEntry,
+    asOf: history.asOf,
+    project,
+    reload,
+    comments,
+    canComment: canEditProject(project, user),
+    canDeleteAnyComment: canManageProject(project, user),
+    services,
+    writeLockHeld: writeLock.held,
+    acquireWriteLock: writeLock.acquire,
+    setChromeBusy,
+    assistantAvailable,
+    askAssistant,
+    focusNonce,
+    // How a tab sends the reader to another tab.
+    goToTab: setQueryTab,
+  };
+
   return (
     // The drawer pushes the whole page right rather than overlaying it, the
     // chrome and the tab under it together.
@@ -337,28 +451,53 @@ const DocumentEditor = ({ app }) => {
         canRestore={canManageProject(project, user) && !writeLock.held}
         roleWords={app.roleWords}
         layerWords={app.layerWords}
+        afterRestore={app.afterRestore && (() => app.afterRestore(docRef.current))}
       />
+
+      {/* The way into History at the window's left edge, the twin of the
+          assistant's on the right (EdgeRail). The button in the tab row is
+          the named way in. */}
+      {!history.drawerOpen && doc && !busy && (
+        <EdgeRail
+          side="left"
+          label="Open history"
+          title="Open history"
+          onClick={history.openHistory}
+          className="z-30"
+        >
+          <History className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+        </EdgeRail>
+      )}
 
       {/* Chrome: rendered unconditionally, including while the document loads.
           That is what stops the tab switch from blanking the page. Straight
           in the page box, with no wrapper of its own: the pinned tab row stays
-          pinned only as far down as its parent box reaches. */}
-      <DocumentTabs
+          pinned only as far down as its parent box reaches. Each part takes
+          the page's inset itself, since the box runs to the window's edge. */}
+      <DocumentTabStrip
         projectId={projectId}
-        documentId={documentId}
         project={project}
         document={shown?.raw}
-        commentCount={comments?.count ?? 0}
-        disabled={chromeBusy}
-        status={doc ? <SaveStatus doc={doc} /> : null}
+        tabs={app.tabs.list.map((t) => ({
+          ...t,
+          to: tabHref(t.value),
+          count: t.value === 'comments' ? (comments?.count ?? 0) : 0,
+        }))}
+        active={tab}
+        disabled={busy}
+        status={doc && app.saveStatus !== false ? <SaveStatus doc={doc} /> : null}
+        sticky
+        inset="px-6"
         actions={
+          // Not a tab: history is a drawer, and it keeps whatever tab you are
+          // on.
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5"
             onClick={history.drawerOpen ? history.closeHistory : history.openHistory}
             aria-expanded={history.drawerOpen}
-            disabled={!doc || chromeBusy}
+            disabled={!doc || busy}
           >
             <History className="h-4 w-4" /> History
           </Button>
@@ -378,7 +517,9 @@ const DocumentEditor = ({ app }) => {
         </div>
       )}
 
-      {loading && <Loading />}
+      {(loading || showReconcileSpinner) && (
+        <Loading label={loading ? undefined : 'Checking this document…'} />
+      )}
 
       {!loading && (loadError || !doc || !project) && (
         <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
@@ -391,34 +532,16 @@ const DocumentEditor = ({ app }) => {
       {/* The PAGE scrolls, whether or not the assistant is open. The panel is
           fixed in the shell and takes a gutter on the right, so this layout
           does not change when it opens. */}
-      {!loading && !loadError && doc && project && (
+      {!loading && !reconciling && !loadError && doc && project && (
         // Always this div, its class alone changing with the tab: a
         // wrapper that came and went would remount the tab under it.
         <div className={wide ? undefined : 'max-w-[1320px] px-6 pb-8'}>
           {pastEntry && !onPastTab ? (
             <p className="pt-2 text-sm text-muted-foreground">Not shown at a past state.</p>
+          ) : query ? (
+            app.renderTab(tab, context)
           ) : (
-            <Outlet
-              context={{
-                projectId,
-                documentId,
-                doc: shown,
-                liveDoc: doc,
-                pastEntry,
-                asOf: history.asOf,
-                project,
-                reload,
-                comments,
-                canComment: canEditProject(project, user),
-                canDeleteAnyComment: canManageProject(project, user),
-                services,
-                writeLockHeld: writeLock.held,
-                setChromeBusy,
-                assistantAvailable,
-                askAssistant,
-                focusNonce,
-              }}
-            />
+            <Outlet context={context} />
           )}
         </div>
       )}

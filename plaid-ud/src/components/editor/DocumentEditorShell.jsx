@@ -1,14 +1,13 @@
 import { DocumentEditorShell as Shell } from '@ui/components/shared/DocumentEditorShell.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
-import { DocumentTabs } from './DocumentTabs.jsx';
 import { useEditorServices } from './hooks/useEditorServices.js';
 import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 
-// Parent route of the four document tabs (/edit, /annotate, /export, /details):
-// plaid-ui's shell, with what is UD's. The Text Editor's dialog and the
-// Annotate toolbar's button share the shell's one services instance, so they
-// are the same run rather than two.
+// Parent route of the document tabs (/edit, /annotate, /comments, /export,
+// /details): plaid-ui's shell, with what is UD's. The Text Editor's dialog and
+// the Annotate toolbar's button share the shell's one services instance, so
+// they are the same run rather than two.
 const UD_SHELL = {
   // The project and the user ride along so the document writes as this person
   // (provenance convention: see ConlluDocument.writer). The document is read
@@ -19,8 +18,20 @@ const UD_SHELL = {
   },
   useServices: useEditorServices,
   assistantApp: UD_ASSISTANT.app,
-  DocumentTabs,
-  tabs: { editor: 'annotate', past: ['annotate', 'export', 'details'], long: ['annotate', 'edit'] },
+  documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
+  // The order is every app's: the work tabs, then Comments, Export, Details.
+  tabs: {
+    list: [
+      { value: 'edit', label: 'Text Editor' },
+      { value: 'annotate', label: 'Annotate' },
+      { value: 'comments', label: 'Comments' },
+      { value: 'export', label: 'Export' },
+      { value: 'details', label: 'Details' },
+    ],
+    editor: 'annotate',
+    past: ['annotate', 'export', 'details'],
+    long: ['annotate', 'edit'],
+  },
   roleWords: TOKEN_ROLE_WORDS,
   // A citation names a sentence by the id the annotation editor's ?sent= takes.
   focusParams: (focus) => (focus ? { sent: focus } : null),

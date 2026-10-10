@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
-import { useDelayedFlag } from './useDelayedFlag';
+import { renderComponent } from '../test/renderComponent.jsx';
+import { useDelayedFlag } from './useDelayedFlag.js';
 
 // The spinner over reconcile-on-open. The pass plans locally and touches the
 // network only where something needs healing, so on a clean document it is
