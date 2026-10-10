@@ -103,6 +103,7 @@ A concept typed over by hand no longer follows its entry.
 
 **Import and export** takes `.umr` files in the UMR release format, one file per document.
 Drop the files or pick them, then click **Import**.
+A project's export zip can be dropped as it is, and each of its documents keeps its exact name.
 Each file becomes a document named after the file, with its sentences, words, graphs, alignments, gloss lines and document-level annotation.
 
 A file can also bring annotation to a document already in the project, such as one glossed in Plaid IGT.
@@ -118,6 +119,7 @@ A sentence whose graph cannot be read is kept as text, its header says so, and t
 
 A document's **Export** tab shows it as a `.umr` file, to copy or download.
 **Import and export** exports every document of the project as a zip.
+A file name in the zip may spell a document's name differently, and the zip records each exact name in `plaid-documents.json`.
 
 Each sentence is written with its words and gloss lines, its graph in PENMAN, an alignment line for every node, and its document-level block.
 Sentences are numbered 1, 2, 3, unless the document came from a file that numbered them otherwise, in which case they keep the file's numbers.

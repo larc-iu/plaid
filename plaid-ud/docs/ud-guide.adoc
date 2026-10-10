@@ -102,6 +102,7 @@ A new document starts empty. You give it a name, then add text in the Text Edito
 If you already have annotated data, you can import it instead of typing it in.
 Open the project's **Import and export** tab and drop `.conllu` files on it, one or many.
 Each `# newdoc` boundary inside a file becomes its own document.
+A project's export zip can be dropped as it is.
 A file too large for the server is not imported, and its row says so.
 
 [WARNING]
