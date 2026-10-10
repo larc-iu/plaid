@@ -153,26 +153,83 @@
 ;; Create
 ;; ============================================================
 
+(defn- check-spans-consistency!
+  "The spans of one create share their span layer."
+  [spans-attrs]
+  (when (empty? spans-attrs)
+    (throw (ex-info "Span list is empty" {:code 400})))
+  (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
+    (throw (ex-info "Spans must all belong to the same layer" {:code 400}))))
+
+(defn- create-spans!
+  "The one create path of spans, under `create` and `bulk-create`. Each
+  of `attrs-vec` requires :span/layer (one for all of them) and
+  :span/tokens (a non-empty vector), and takes :span/value, :metadata and
+  :span/id (a client's UUIDv7, claimed here) or ::new-id (one the server
+  minted for it), else the server mints one. Every span lies in one
+  document.
+
+  Audit shape: ONE audit_writes :insert row per span, its post image the
+  inserted row with a `:tokens` key holding the ordered token ids from
+  `span_tokens` and, when it has metadata, a `:metadata` key. The rows,
+  join rows and metadata go in unaudited first: `crud/insert-many!`
+  would audit a bare row with no tokens, and the history replayer takes
+  an :insert as the whole entity.
+
+  Returns the new ids in input order."
+  [tx attrs-vec]
+  (check-spans-consistency! attrs-vec)
+  (doseq [a attrs-vec]
+    (validate-atomic-value! (:span/value a)))
+  (psc/claim-ids! tx :spans "span" (map :span/id attrs-vec))
+  (let [layer-id (-> attrs-vec first :span/layer)
+        ;; One fetch of every referenced token.
+        token-rows (psc/fetch-ids tx :tokens (->> attrs-vec (mapcat :span/tokens) distinct vec))
+        token-by-id (into {} (map (juxt :id identity)) token-rows)
+        records (mapv
+                 (fn [a]
+                   (let [tokens (:span/tokens a)
+                         rows (mapv #(clojure.core/get token-by-id %) tokens)]
+                     (check-tokens! tx layer-id tokens rows)
+                     {:id (or (:span/id a) (::new-id a) (psc/new-uuid))
+                      :tokens tokens
+                      :doc-id (:document_id (first rows))
+                      :value (:span/value a)
+                      :metadata (:metadata a)}))
+                 attrs-vec)
+        doc-ids (->> records (map :doc-id) distinct)]
+    (when-not (= 1 (count doc-ids))
+      (throw (ex-info "Not all spans belong to the same document"
+                      {:document-ids doc-ids :code 400})))
+    (psc/execute! tx {:insert-into :spans
+                      :values (mapv (fn [r]
+                                      {:id (:id r)
+                                       :span_layer_id layer-id
+                                       :document_id (:doc-id r)
+                                       :value (psc/write-json (:value r))})
+                                    records)})
+    (doseq [r records]
+      (insert-span-tokens! tx (:id r) (:tokens r))
+      (metadata/insert-metadata! tx "span" (:id r) (:metadata r)
+                                 {:skip-parent-audit? true}))
+    (doseq [r records]
+      (let [post-row (psc/fetch-by-id tx :spans (:id r))
+            post-tokens (crud/junction-token-ids tx :spans (:id r))
+            post-image (cond-> (assoc post-row :tokens post-tokens)
+                         (seq (:metadata r)) (assoc :metadata (:metadata r)))]
+        (psaw/record-audit-write! tx :spans (:id r) :insert nil post-image)))
+    (mapv :id records)))
+
 (defn create
   "Create a span. `attrs` requires :span/layer and :span/tokens
-  (non-empty vector); `:span/value` is optional. `metadata` is a map of
-  key->value inserted into entity_metadata when provided.
-
-  Audit shape: ONE audit_writes row against `:spans` with change_type
-  :insert. pre = nil; post = the inserted span row augmented with a
-  `:tokens` key holding the ordered token-id vector from `span_tokens`,
-  AND (when `metadata` is non-empty) a `:metadata` key carrying the
-  inserted metadata map. Folding both into the same :insert row avoids
-  the noisy :insert + :update pair we'd otherwise emit when metadata is
-  present.
-
-  `:span/id` names the new span's id (a client's UUIDv7), else the server
-  mints one.
+  (non-empty vector); `:span/value` and `:span/id` (a client's UUIDv7)
+  are optional. `metadata` is a map of key->value. Audit shape as
+  `create-spans!`.
 
   Returns {:success true :extra <new-id>}."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
-   (let [{:span/keys [layer tokens value]} attrs
+   (let [{:span/keys [layer tokens]} attrs
          new-id (or (:span/id attrs) (psc/new-uuid))]
      (submit-operation!
       [tx db {:type :span/create
@@ -183,35 +240,7 @@
               :description (str "Create span " new-id " with " (count tokens)
                                 " tokens in layer " layer)
               :user user-id}]
-      ;; Validation inside the body.
-      (validate-atomic-value! value)
-      (psc/claim-ids! tx :spans "span" [(:span/id attrs)])
-      (let [token-rows (fetch-tokens-by-ids tx tokens)
-            _ (check-tokens! tx layer tokens token-rows)
-            doc-id (:document_id (first token-rows))]
-        ;; Manual insert + audit (vs. crud/insert!) so the post-image we
-        ;; emit carries the junction-table tokens. Otherwise the audit
-        ;; row would only show {id, span_layer_id, document_id, value}
-        ;; and ETL replay would produce a span with no tokens.
-        (psc/execute! tx {:insert-into :spans
-                          :values [{:id new-id
-                                    :span_layer_id layer
-                                    :document_id doc-id
-                                    :value (psc/write-json value)}]})
-        (insert-span-tokens! tx new-id tokens)
-        ;; Insert metadata BEFORE the audit emission, with the
-        ;; skip-parent-audit? flag so no separate :update row fires;
-        ;; we then fold :metadata into our manual :insert audit's
-        ;; post_image.
-        (when (seq metadata)
-          (metadata/insert-metadata! tx "span" new-id metadata
-                                     {:skip-parent-audit? true}))
-        (let [post-row (psc/fetch-by-id tx :spans new-id)
-              post-tokens (crud/junction-token-ids tx :spans new-id)
-              post-image (cond-> (assoc post-row :tokens post-tokens)
-                           (seq metadata) (assoc :metadata metadata))]
-          (psaw/record-audit-write! tx :spans new-id :insert nil post-image))
-        new-id)))))
+      (first (create-spans! tx [(assoc attrs ::new-id new-id :metadata metadata)]))))))
 
 ;; ============================================================
 ;; Merge (update mutable attrs)
@@ -242,12 +271,29 @@
 ;; Delete
 ;; ============================================================
 
+(defn- delete-spans!
+  "The one delete path of spans, under `delete` and `bulk-delete`, for
+  existing span `ids`. The relations on them go first, audited, since
+  the FK CASCADE on relations would sweep them unaudited, then the spans
+  (the FK CASCADE on span_tokens sweeps the join rows), then the
+  entity_metadata of both, which has no FK."
+  [tx ids]
+  (cascade-stats/prepare! tx)
+  (let [rel-ids (->> (concat
+                      (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" ids)
+                      (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" ids))
+                     (map :id)
+                     distinct
+                     vec)]
+    (doseq [rid rel-ids]
+      (crud/delete-by-id! tx :relations rid))
+    (crud/delete-entity-metadata! tx "relation" rel-ids))
+  (doseq [sid ids]
+    (crud/delete-by-id! tx :spans sid))
+  (crud/delete-entity-metadata! tx "span" ids))
+
 (defn delete
-  "Delete a span. Relations that reference this span (source or target)
-  are deleted FIRST (audited via crud/delete-by-id!) so the audit log
-  captures them — the FK ON DELETE CASCADE on relations would otherwise
-  silently sweep them. The span_tokens FK CASCADE cleans up the
-  junction rows."
+  "Delete a span and the relations on it (see `delete-spans!`)."
   [db eid user-id]
   (let [pre (psc/fetch-by-id db :spans eid)]
     (submit-operation!
@@ -260,19 +306,8 @@
              :user user-id}]
      (when (nil? (psc/fetch-by-id tx :spans eid))
        (throw (ex-info (psc/err-msg-not-found "Span" eid) {:code 404 :id eid})))
-     (cascade-stats/prepare! tx)
-     (let [rel-ids (get-relation-ids tx eid)]
-       (doseq [rid rel-ids]
-         (crud/delete-by-id! tx :relations rid))
-       (crud/delete-entity-metadata! tx "relation" rel-ids)
-       (crud/delete-by-id! tx :spans eid)
-       ;; Clean up entity_metadata rows (no FK; doesn't auto-cascade).
-       (psc/execute! tx
-                     {:delete-from :entity_metadata
-                      :where [:and
-                              [:= :entity_type "span"]
-                              [:= :entity_id eid]]})
-       eid))))
+     (delete-spans! tx [eid])
+     eid)))
 
 ;; ============================================================
 ;; Metadata
@@ -328,18 +363,9 @@
 ;; Bulk create
 ;; ============================================================
 
-(defn- check-spans-consistency!
-  "All spans in a bulk-create must target the same span layer."
-  [spans-attrs]
-  (when (empty? spans-attrs)
-    (throw (ex-info "Span list is empty" {:code 400})))
-  (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
-    (throw (ex-info "Spans must all belong to the same layer" {:code 400}))))
-
 (defn bulk-create
-  "Bulk-create spans. All entries in `attrs-vec` must share the same
-  :span/layer. Each entry requires :span/tokens (non-empty vector) and
-  optionally :span/value and :metadata. Returns {:success true :extra <ids>}."
+  "Bulk-create spans: `create-spans!` with every entry of `attrs-vec`.
+  Returns {:success true :extra <ids>}."
   [db attrs-vec user-id]
   (let [layer-id (-> attrs-vec first :span/layer)
         ;; Resolve doc-id outside the tx for the operation header.
@@ -353,72 +379,7 @@
              :document outer-doc-id
              :description (str "Bulk create " (count attrs-vec) " spans in layer " layer-id)
              :user user-id}]
-     ;; Validation runs inside the tx so submit-operation* can catch
-     ;; ExceptionInfo and surface a structured 4xx response.
-     (check-spans-consistency! attrs-vec)
-     (doseq [a attrs-vec]
-       (validate-atomic-value! (:span/value a)))
-     (psc/claim-ids! tx :spans "span" (map :span/id attrs-vec))
-     (let [layer-row (psc/fetch-by-id tx :span_layers layer-id)]
-       (when (nil? layer-row)
-         (throw (ex-info (psc/err-msg-not-found "Span layer" layer-id)
-                         {:id layer-id :code 400}))))
-     (let [;; One bulk fetch of every referenced token.
-           all-token-ids (->> attrs-vec (mapcat :span/tokens) distinct vec)
-           token-rows (psc/fetch-ids tx :tokens all-token-ids)
-           token-by-id (into {} (map (juxt :id identity)) token-rows)
-           ;; Per-span validation lifted from `check-tokens!` but using the
-           ;; shared cache. Builds the records to insert at the same time.
-           records (mapv
-                    (fn [a]
-                      (let [tokens (:span/tokens a)
-                            token-rows-for-span (mapv #(clojure.core/get token-by-id %) tokens)
-                            new-id (or (:span/id a) (psc/new-uuid))]
-                        (check-tokens! tx layer-id tokens token-rows-for-span)
-                        {:id new-id
-                         :tokens tokens
-                         :doc-id (:document_id (first token-rows-for-span))
-                         :value (:span/value a)
-                         :metadata (:metadata a)}))
-                    attrs-vec)
-           ;; All spans in the batch must belong to a single document.
-           doc-ids (->> records (map :doc-id) distinct)]
-       (when-not (= 1 (count doc-ids))
-         (throw (ex-info "Not all spans belong to the same document"
-                         {:document-ids doc-ids :code 400})))
-       ;; Insert all span rows. We deliberately do NOT use
-       ;; `crud/insert-many!` here: that helper emits a bare :insert audit
-       ;; row per span (no :tokens). Because the history replayer treats an
-       ;; :insert as a full put (replace), a bulk-created span that is
-       ;; never subsequently updated would land in the history with NO
-       ;; tokens even though `span_tokens` has them. Instead we insert the
-       ;; rows + join rows + metadata silently and then emit ONE synthetic
-       ;; :insert per span whose post_image folds :tokens (and :metadata
-       ;; when present) — matching single-row `create`.
-       (psc/execute! tx {:insert-into :spans
-                         :values (mapv (fn [r]
-                                         {:id (:id r)
-                                          :span_layer_id layer-id
-                                          :document_id (:doc-id r)
-                                          :value (psc/write-json (:value r))})
-                                       records)})
-       ;; Insert all span_tokens rows (unaudited join rows).
-       (doseq [r records]
-         (insert-span-tokens! tx (:id r) (:tokens r)))
-       ;; Metadata, with skip-parent-audit? so no separate :update row
-       ;; fires; we fold :metadata into the synthetic :insert below.
-       (doseq [r records]
-         (when (seq (:metadata r))
-           (metadata/insert-metadata! tx "span" (:id r) (:metadata r)
-                                      {:skip-parent-audit? true})))
-       ;; Emit one synthetic :insert per span with the full image.
-       (doseq [r records]
-         (let [post-row (psc/fetch-by-id tx :spans (:id r))
-               post-tokens (crud/junction-token-ids tx :spans (:id r))
-               post-image (cond-> (assoc post-row :tokens post-tokens)
-                            (seq (:metadata r)) (assoc :metadata (:metadata r)))]
-           (psaw/record-audit-write! tx :spans (:id r) :insert nil post-image)))
-       (mapv :id records)))))
+     (create-spans! tx attrs-vec))))
 
 ;; ============================================================
 ;; Bulk delete
@@ -462,22 +423,7 @@
            (when (> (count doc-ids) 1)
              (throw (ex-info "Not all spans belong to the same document"
                              {:document-ids doc-ids :code 400}))))
-         (cascade-stats/prepare! tx)
-         ;; Relations referencing any of these spans, audited individually.
-         (let [rel-ids (->> (concat
-                             (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" existing-ids)
-                             (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" existing-ids))
-                            (map :id)
-                            distinct
-                            vec)]
-           (doseq [rid rel-ids]
-             (crud/delete-by-id! tx :relations rid))
-           (crud/delete-entity-metadata! tx "relation" rel-ids))
-         ;; Spans themselves. FK CASCADE on span_tokens sweeps the join rows.
-         (doseq [sid existing-ids]
-           (crud/delete-by-id! tx :spans sid))
-         ;; entity_metadata (no FK, manual sweep).
-         (crud/delete-entity-metadata! tx "span" existing-ids))
+         (delete-spans! tx existing-ids))
        existing-ids))))
 
 ;; ============================================================

@@ -89,3 +89,51 @@
         (is (= [t2 t3] (:span/tokens (clojure.core/get by-id (second ids))))
             "reconstructed multi-token span carries the ordered :tokens vector")
         (is (= [t1] (:span/tokens (clojure.core/get by-id (first ids)))))))))
+
+(defn- audit-rows-of
+  "Every audit_writes row against `table` for `ids`, as [change_type
+  post-image] pairs."
+  [table ids]
+  (->> (psc/q db {:select [:change_type :post_image]
+                  :from [:audit_writes]
+                  :where [:and
+                          [:= :target_table (name table)]
+                          [:in :target_id (mapv str ids)]]})
+       (mapv (fn [r] [(:change_type r) (some-> (:post_image r) psc/read-json)]))))
+
+(deftest a-bulk-create-with-metadata-writes-one-row-per-entity
+  ;; One audit shape for a create, single or bulk: the metadata rides in
+  ;; the :insert, never in an :update of its own.
+  (let [proj (create-test-project admin-request "BulkMetaProj")
+        doc  (create-test-document admin-request proj "BulkMetaDoc")
+        tl   (-> (create-text-layer admin-request proj "MTL") :body :id)
+        tid  (-> (create-text admin-request tl doc "abcdefgh") :body :id)
+        tkl  (-> (create-token-layer admin-request tl "MTKL") :body :id)
+        toks (-> (bulk-create-tokens admin-request
+                                     [{:token-layer-id tkl :text tid :begin 0 :end 4 :metadata {"k" "t"}}
+                                      {:token-layer-id tkl :text tid :begin 4 :end 8}])
+                 :body :ids)
+        sl   (-> (create-span-layer admin-request tkl "MSL") :body :id)
+        spans (-> (bulk-create-spans admin-request [{:span-layer-id sl :tokens [(first toks)] :value "A"}
+                                                    {:span-layer-id sl :tokens [(second toks)] :value "B"}])
+                  :body :ids)
+        rl   (-> (create-relation-layer admin-request sl "MRL") :body :id)
+        rels (-> (bulk-create-relations admin-request
+                                        [{:relation-layer-id rl :source (first spans) :target (second spans)
+                                          :value "r" :metadata {"k" "r"}}])
+                 :body :ids)
+        vocab (-> (create-vocab-layer admin-request "MVocab") :body :id)
+        _    (link-vocab-to-project admin-request proj vocab)
+        item (-> (create-vocab-item admin-request vocab "abcd") :body :id)
+        links (-> (bulk-create-vocab-links admin-request
+                                           [{:vocab-item item :tokens [(first toks)] :metadata {"k" "l"}}])
+                  :body :ids)]
+    (doseq [[table ids k] [[:tokens [(first toks)] "t"] [:relations rels "r"] [:vocab_links links "l"]]]
+      (testing (name table)
+        (let [rows (audit-rows-of table ids)]
+          (is (= ["insert"] (mapv first rows)) "one :insert, no :update")
+          (is (= {:k k} (:metadata (second (first rows)))) "its metadata folded in"))))
+    (testing "an entity with no metadata has an :insert with no :metadata key"
+      (let [[[change image]] (audit-rows-of :tokens [(second toks)])]
+        (is (= "insert" change))
+        (is (not (contains? image :metadata)))))))

@@ -100,6 +100,19 @@ def world(tmp_path_factory):
     with admin.operation('Old run'):
         ids['untagged'] = admin.spans.create(gloss, [toks[12]], 'U', metadata=inferred('service:old-svc'))['id']
 
+    # A bulk run: morpheme tokens and a relation made in bulk, each create
+    # one audit row carrying its machine stamp.
+    morphs = admin.token_layers.create(tl, 'Morph')['id']
+    deps = admin.relation_layers.create(gloss, 'Dep')['id']
+    with admin.operation('Bulk run', kind='service-run', ref='service:bulk-svc'):
+        made = admin.tokens.bulk_create([
+            {'token_layer_id': morphs, 'text': text, 'begin': i * 3, 'end': i * 3 + 1,
+             'metadata': inferred('service:bulk-svc')} for i in range(2)])['ids']
+        ids['bulk_t0'], ids['bulk_t1'] = made
+        ids['bulk_rel'] = admin.relations.bulk_create([
+            {'relation_layer_id': deps, 'source': ids['m2'], 'target': ids['a10'], 'value': 'dep',
+             'metadata': inferred('service:bulk-svc')}])['ids'][0]
+
     # What happened afterwards.
     other.spans.update(ids['a5'], 'fixed')                       # edited by a person
     with admin.operation('Run again', kind='service-run', ref='service:stub-svc'):
@@ -284,6 +297,14 @@ def test_every_fate(world):
     for k in ('a5', 'a7'):
         ev = w[ids[k]]['first_event']
         assert ev['after_s'] >= 0 and ev['actor'].startswith('u-')
+
+
+def test_a_bulk_run_counts_one_write_per_entity(world):
+    unit = next(u for u in world['rows']('units.jsonl') if u['ref'] == 'service:bulk-svc')
+    assert unit['counts'] == {'tokens.insert': 2, 'relations.insert': 1}
+    for k in ('bulk_t0', 'bulk_t1', 'bulk_rel'):
+        w = world['writes'][world['ids'][k]]
+        assert (w['written_change'], w['prov_written'], w['fate']) == ('insert', 'machine', 'unchanged')
 
 
 def test_plan_changes_follow_their_writes(world):

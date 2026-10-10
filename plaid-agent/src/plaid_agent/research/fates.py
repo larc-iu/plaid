@@ -169,10 +169,11 @@ class Row:
         self._image = None
         self.unit = self.group_id or self.batch_id or self.op_id
         # The entity as it stands after this row: the key-merge of every
-        # post-image of it so far, as `plaid.history.read` folds them. An
-        # image holds only what its write set (a span's tokens and its
-        # metadata ride on their own rows), so one image alone is not the
-        # entity. None after a delete.
+        # post-image of it so far, as `plaid.history.read` folds them. A
+        # create's image is the whole entity (its tokens and metadata in
+        # it), but a later image holds only what its write set (a change
+        # of a span's tokens or of its metadata rides on its own row), so
+        # one image alone is not the entity. None after a delete.
         self.state = None
 
     @property

@@ -207,20 +207,25 @@
   call is the safe upper bound; we issue N batched INSERTs in the
   same tx and one audit_writes row per inserted entity regardless of
   chunking. Each chunked INSERT uses `RETURNING *` to capture the
-  post-images inline, eliminating the previous post-IN SELECT round-trip."
-  [tx table rows]
-  (psaw/ensure-op-bound!)
-  (if (empty? rows)
-    0
-    (let [rows (vec rows)
-          chunks (partition-all psc/bulk-chunk-size rows)]
-      (doseq [chunk chunks]
-        (let [posts (psc/execute-returning! tx {:insert-into table
-                                                :values (vec chunk)
-                                                :returning [:*]})]
-          (psaw/record-audit-writes! tx table :insert
-                                     (map (fn [post] [(:id post) nil post]) posts))))
-      (count rows))))
+  post-images inline, eliminating the previous post-IN SELECT round-trip.
+
+  `:image`, `(fn [post])`, makes a row's audit image from the inserted
+  row, for a caller that folds state kept elsewhere (its metadata) into
+  the one :insert row."
+  ([tx table rows] (insert-many! tx table rows {}))
+  ([tx table rows {:keys [image] :or {image identity}}]
+   (psaw/ensure-op-bound!)
+   (if (empty? rows)
+     0
+     (let [rows (vec rows)
+           chunks (partition-all psc/bulk-chunk-size rows)]
+       (doseq [chunk chunks]
+         (let [posts (psc/execute-returning! tx {:insert-into table
+                                                 :values (vec chunk)
+                                                 :returning [:*]})]
+           (psaw/record-audit-writes! tx table :insert
+                                      (map (fn [post] [(:id post) nil (image post)]) posts))))
+       (count rows)))))
 
 (defn bulk-update-by-id!
   "Apply per-id attribute updates, one UPDATE statement per chunk of ids.

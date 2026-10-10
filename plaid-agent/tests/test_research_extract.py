@@ -259,6 +259,27 @@ def test_a_repair_is_neither_a_persons_nor_a_machines_edit():
     assert {u['kind'] for u in fates.unit_rows()} == {'service-run'}
 
 
+def test_a_bulk_created_entity_is_one_insert_carrying_its_metadata():
+    """A create writes one audit row per entity, its metadata in it, for a
+    bulk create as for a single one: the run counts one write per token, and
+    each is read as machine-made from that row alone."""
+    import json as _json
+    from plaid_agent.research.fates import Fates
+
+    def row(target, begin):
+        image = {'id': target, 'begin': begin, 'end_': begin + 2, 'precedence': None,
+                 'metadata': {'prov': 'inferred', 'provSource': 'service:bulk'}}
+        return ('2026-10-10T00:00:01Z', begin, 'tokens', target, 'insert', _json.dumps(image), 'd1', None,
+                'o1', 'svc@x', None, None, 'g1', None, 'p1', 'service-run', 'service:bulk', None, 'svc@x',
+                '2026-10-10T00:00:00Z')
+    fates = Fates(Pseudonyms(b'k' * 32), '2026-10-11T00:00:00Z')
+    fates.stream([row('t1', 0), row('t2', 3)])
+    [unit] = fates.unit_rows()
+    assert unit['counts'] == {'tokens.insert': 2} and unit['writes'] == 2
+    assert {w['target_id']: (w['written_change'], w['prov_written'], w['fate']) for w in fates.writes} == {
+        't1': ('insert', 'machine', 'unchanged'), 't2': ('insert', 'machine', 'unchanged')}
+
+
 def test_a_conversation_row_has_the_size_the_service_wrote_and_no_holding_tab():
     """The service is the record's only writer (design/SINGLE-WRITER.md): it
     writes the record's size on the sidebar entry, and the tab that holds the

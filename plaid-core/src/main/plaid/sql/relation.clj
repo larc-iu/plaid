@@ -5,7 +5,6 @@
   module audits that cascade explicitly)."
   (:require [taoensso.timbre :as log]
             [plaid.sql.bulk :as bulk]
-            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
@@ -113,25 +112,74 @@
 ;; Create
 ;; ============================================================
 
+(defn- check-relations-consistency!
+  "The relations of one create share their relation layer."
+  [relations-attrs]
+  (when (empty? relations-attrs)
+    (throw (ex-info "Relation list is empty" {:code 400})))
+  (when-not (= 1 (->> relations-attrs (map :relation/layer) distinct count))
+    (throw (ex-info "Relations must all belong to the same layer" {:code 400}))))
+
+(defn- create-relations!
+  "The one create path of relations, under `create` and `bulk-create`.
+  Each of `attrs-vec` requires :relation/layer (one for all of them),
+  :relation/source and :relation/target, and takes :relation/value,
+  :metadata and :relation/id (a client's UUIDv7, claimed here) or ::new-id
+  (one the server minted for it), else the server mints one. Every
+  relation lies in one document.
+
+  Audit shape: ONE audit_writes :insert row per relation, its post image
+  the inserted row with a `:metadata` key folded in when it has metadata,
+  never a separate :update for the metadata.
+
+  Returns the new ids in input order."
+  [tx attrs-vec]
+  (check-relations-consistency! attrs-vec)
+  (doseq [a attrs-vec]
+    (validate-atomic-value! (:relation/value a)))
+  (psc/claim-ids! tx :relations "relation" (map :relation/id attrs-vec))
+  (let [layer-id (-> attrs-vec first :relation/layer)
+        span-rows (psc/fetch-ids tx :spans (->> attrs-vec
+                                                (mapcat (fn [a] [(:relation/source a) (:relation/target a)]))
+                                                distinct vec))
+        span-by-id (into {} (map (juxt :id identity)) span-rows)
+        records (mapv
+                 (fn [{:relation/keys [source target value] :as a}]
+                   (let [source-row (clojure.core/get span-by-id source)
+                         target-row (clojure.core/get span-by-id target)]
+                     (check-relation-invariants! tx layer-id source target source-row target-row)
+                     {:id (or (:relation/id a) (::new-id a) (psc/new-uuid))
+                      :relation_layer_id layer-id
+                      :document_id (:document_id source-row)
+                      :source_span_id source
+                      :target_span_id target
+                      :value (psc/write-json value)
+                      ::metadata (:metadata a)}))
+                 attrs-vec)
+        doc-ids (->> records (map :document_id) distinct)
+        metadata-of (into {} (map (juxt :id ::metadata)) records)]
+    (when (> (count doc-ids) 1)
+      (throw (ex-info "Not all relations belong to the same document"
+                      {:document-ids doc-ids :code 400})))
+    (crud/insert-many! tx :relations (mapv #(dissoc % ::metadata) records)
+                       {:image (fn [post]
+                                 (let [m (clojure.core/get metadata-of (:id post))]
+                                   (cond-> post (seq m) (assoc :metadata m))))})
+    (doseq [r records]
+      (metadata/insert-metadata! tx "relation" (:id r) (::metadata r)
+                                 {:skip-parent-audit? true}))
+    (mapv :id records)))
+
 (defn create
   "Create a relation. `attrs` requires :relation/layer, :relation/source,
-  :relation/target; optional :relation/value. `metadata` is a map of
-  key->value inserted into entity_metadata when provided.
-
-  Audit shape: ONE audit_writes row against `:relations` with
-  change_type :insert. pre = nil; post = the inserted relation row,
-  augmented with a `:metadata` key when `metadata` is non-empty.
-  Folding metadata in avoids the noisy :insert + :update pair we'd
-  otherwise emit. Relations have no junction-table
-  tokens, so only `:metadata` is folded.
-
-  `:relation/id` names the new relation's id (a client's UUIDv7), else
-  the server mints one.
+  :relation/target; optional :relation/value and :relation/id (a
+  client's UUIDv7). `metadata` is a map of key->value. Audit shape as
+  `create-relations!`.
 
   Returns {:success true :extra <new-id>}."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
-   (let [{:relation/keys [layer source target value]} attrs
+   (let [{:relation/keys [layer source target]} attrs
          new-id (or (:relation/id attrs) (psc/new-uuid))]
      (submit-operation!
       [tx db {:type :relation/create
@@ -142,31 +190,7 @@
               :description (str "Create relation " new-id " from span " source
                                 " to span " target " in layer " layer)
               :user user-id}]
-      ;; Validation inside the body.
-      (validate-atomic-value! value)
-      (psc/claim-ids! tx :relations "relation" [(:relation/id attrs)])
-      (let [source-row (psc/fetch-by-id tx :spans source)
-            target-row (psc/fetch-by-id tx :spans target)
-            row {:id new-id
-                 :relation_layer_id layer
-                 :document_id (:document_id source-row)
-                 :source_span_id source
-                 :target_span_id target
-                 :value (psc/write-json value)}]
-        (check-relation-invariants! tx layer source target source-row target-row)
-        (if (seq metadata)
-          ;; Manual insert + audit so the post_image folds in
-          ;; :metadata, avoiding a separate :update audit row.
-          (do
-            (psc/execute! tx {:insert-into :relations :values [row]})
-            (metadata/insert-metadata! tx "relation" new-id metadata
-                                       {:skip-parent-audit? true})
-            (let [post-row (psc/fetch-by-id tx :relations new-id)
-                  post-image (assoc post-row :metadata metadata)]
-              (psaw/record-audit-write! tx :relations new-id :insert nil post-image)))
-          ;; No metadata: use the audited insert! helper as before.
-          (crud/insert! tx :relations row))
-        new-id)))))
+      (first (create-relations! tx [(assoc attrs ::new-id new-id :metadata metadata)]))))))
 
 ;; ============================================================
 ;; Merge (update mutable attrs)
@@ -198,6 +222,16 @@
 ;; Delete
 ;; ============================================================
 
+(defn- delete-relations!
+  "The one delete path of relations, under `delete` and `bulk-delete`.
+  Relations are leaves in the entity graph (nothing references them), so
+  each row goes (audited, an id with no row writes nothing) and then
+  their entity_metadata."
+  [tx ids]
+  (doseq [rid ids]
+    (crud/delete-by-id! tx :relations rid))
+  (crud/delete-entity-metadata! tx "relation" ids))
+
 (defn delete
   "Delete a relation."
   [db eid user-id]
@@ -211,12 +245,7 @@
      (when (nil? (psc/fetch-by-id tx :relations eid))
        (throw (ex-info (psc/err-msg-not-found "Relation" eid)
                        {:code 404 :id eid})))
-     (crud/delete-by-id! tx :relations eid)
-     (psc/execute! tx
-                   {:delete-from :entity_metadata
-                    :where [:and
-                            [:= :entity_type "relation"]
-                            [:= :entity_id eid]]})
+     (delete-relations! tx [eid])
      eid)))
 
 ;; ============================================================
@@ -273,20 +302,9 @@
 ;; Bulk create
 ;; ============================================================
 
-(defn- check-relations-consistency!
-  "All relations in a bulk-create must target the same relation layer."
-  [relations-attrs]
-  (when (empty? relations-attrs)
-    (throw (ex-info "Relation list is empty" {:code 400})))
-  (when-not (= 1 (->> relations-attrs (map :relation/layer) distinct count))
-    (throw (ex-info "Relations must all belong to the same layer" {:code 400}))))
-
 (defn bulk-create
-  "Bulk-create relations. All entries in `attrs-vec` must share the same
-  :relation/layer. Each entry requires :relation/source and
-  :relation/target; :relation/value, :metadata and :relation/id (a
-  client's UUIDv7 for the new relation) are optional. Returns
-  {:success true :extra <ids>} on success."
+  "Bulk-create relations: `create-relations!` with every entry of
+  `attrs-vec`. Returns {:success true :extra <ids>} on success."
   [db attrs-vec user-id]
   (let [layer-id (-> attrs-vec first :relation/layer)
         ;; Resolve doc-id outside the tx for the operation header.
@@ -299,47 +317,7 @@
              :document outer-doc-id
              :description (str "Bulk create " (count attrs-vec) " relations in layer " layer-id)
              :user user-id}]
-     ;; Validation runs inside the tx so submit-operation* can catch
-     ;; ExceptionInfo and surface a structured 4xx response.
-     (check-relations-consistency! attrs-vec)
-     (doseq [a attrs-vec]
-       (validate-atomic-value! (:relation/value a)))
-     (psc/claim-ids! tx :relations "relation" (map :relation/id attrs-vec))
-     ;; Layer existence (relation-layer is reused by every record).
-     (when (nil? (psc/fetch-by-id tx :relation_layers layer-id))
-       (throw (ex-info (psc/err-msg-not-found "Relation layer" layer-id)
-                       {:id layer-id :code 400})))
-     (let [;; One bulk fetch of every referenced span.
-           all-span-ids (->> attrs-vec
-                             (mapcat (fn [a] [(:relation/source a) (:relation/target a)]))
-                             distinct vec)
-           span-rows (psc/fetch-ids tx :spans all-span-ids)
-           span-by-id (into {} (map (juxt :id identity)) span-rows)
-           ;; Per-relation validation + row build.
-           records (mapv
-                    (fn [a]
-                      (let [{:relation/keys [source target value]} a
-                            source-row (clojure.core/get span-by-id source)
-                            target-row (clojure.core/get span-by-id target)]
-                        (check-relation-invariants! tx layer-id source target source-row target-row)
-                        {:id (or (:relation/id a) (psc/new-uuid))
-                         :relation_layer_id layer-id
-                         :document_id (:document_id source-row)
-                         :source_span_id source
-                         :target_span_id target
-                         :value (psc/write-json value)
-                         ::metadata (:metadata a)}))
-                    attrs-vec)
-           ;; All relations in the batch must share a document.
-           doc-ids (->> records (map :document_id) distinct)]
-       (when (> (count doc-ids) 1)
-         (throw (ex-info "Not all relations belong to the same document"
-                         {:document-ids doc-ids :code 400})))
-       (crud/insert-many! tx :relations (mapv #(dissoc % ::metadata) records))
-       (doseq [r records]
-         (when (seq (::metadata r))
-           (metadata/insert-metadata! tx "relation" (:id r) (::metadata r))))
-       (mapv :id records)))))
+     (create-relations! tx attrs-vec))))
 
 ;; ============================================================
 ;; Bulk delete
@@ -368,9 +346,7 @@
          (when (> (count doc-ids) 1)
            (throw (ex-info "Not all relations belong to the same document"
                            {:document-ids doc-ids :code 400}))))
-       (doseq [rid eids]
-         (crud/delete-by-id! tx :relations rid))
-       (crud/delete-entity-metadata! tx "relation" eids))
+       (delete-relations! tx eids))
      eids)))
 
 ;; ============================================================

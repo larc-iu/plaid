@@ -477,83 +477,91 @@
       (sweep-entity-metadata! tx "token" eids))))
 
 ;; ============================================================
-;; Single create
+;; Create
 ;; ============================================================
 
-(defn- schema-check!
-  "Pre-flight validation for a single token create.
-  Throws ex-info (400/404/409) on violation."
-  [tx {:token/keys [id text layer begin end precedence]}]
-  (let [text-row (fetch-text tx text)
-        text-body (:body text-row)
-        text-layer-id (:text_layer_id text-row)
-        token-layers (when text-layer-id (token-layer-ids-of-text-layer tx text-layer-id))]
-    (when (nil? (psc/fetch-by-id tx :token_layers layer))
-      (throw (ex-info (psc/err-msg-not-found "Token layer" layer) {:id layer :code 400})))
+(defn- create-tokens!
+  "The one create path of tokens, under `create` and `bulk-create`. Each
+  of `attrs-vec` requires :token/text and :token/layer (one of each for
+  all of them), :token/begin and :token/end, and takes
+  :token/precedence, :metadata and :token/id (a client's UUIDv7, else the
+  server mints one). `op` is the constraint op the layer's rules are
+  enforced as: `:create` for one token, `:bulk-create` for a batch, which
+  differ on a partitioning layer (see `plaid.sql.constraints.token`).
+
+  Audit shape: ONE audit_writes :insert row per token, its post image the
+  inserted row with a `:metadata` key folded in when it has metadata,
+  never a separate :update for the metadata.
+
+  Returns the new ids in input order."
+  [tx attrs-vec doc-id op]
+  (check-tokens-consistency! attrs-vec)
+  (psc/claim-ids! tx :tokens "token" (map :token/id attrs-vec))
+  (let [layer-id (-> attrs-vec first :token/layer)
+        text-id (-> attrs-vec first :token/text)
+        text-row (fetch-text tx text-id)]
+    (when (nil? (psc/fetch-by-id tx :token_layers layer-id))
+      (throw (ex-info (psc/err-msg-not-found "Token layer" layer-id)
+                      {:id layer-id :code 400})))
     (when (nil? text-row)
-      (throw (ex-info (psc/err-msg-not-found "Text" text) {:id text :code 400})))
-    (when-not (contains? token-layers layer)
-      (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer ".")
-                      {:text-layer-id text-layer-id :token-layer-id layer :code 400})))
-    (check-token-bounds! begin end text-body)
-    (check-token-precedence! precedence)))
+      (throw (ex-info (psc/err-msg-not-found "Text" text-id) {:id text-id :code 400})))
+    (let [text-body (:body text-row)
+          text-length (cp/cp-count text-body)
+          text-layer-id (:text_layer_id text-row)]
+      (when-not (contains? (token-layer-ids-of-text-layer tx text-layer-id) layer-id)
+        (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer-id ".")
+                        {:text-layer-id text-layer-id :token-layer-id layer-id :code 400})))
+      (let [records (mapv (fn [a]
+                            {:token/id (or (:token/id a) (psc/new-uuid))
+                             :token/text text-id
+                             :token/layer layer-id
+                             :token/document doc-id
+                             :token/begin (:token/begin a)
+                             :token/end (:token/end a)
+                             :token/precedence (:token/precedence a)})
+                          attrs-vec)
+            metadata-of (into {} (map (fn [r a] [(:token/id r) (:metadata a)]) records attrs-vec))]
+        ;; Per-token bounds + precedence check. Pass the precomputed
+        ;; code-point length so the loop is O(K), not O(K * body-length).
+        (doseq [t records]
+          (check-token-bounds! (:token/begin t) (:token/end t) text-body text-length)
+          (check-token-precedence! (:token/precedence t)))
+        ;; Constraint enforcement (overlap, intra-batch, nesting).
+        (tc/enforce! tx op {:layer layer-id
+                            :doc-id doc-id
+                            :begin (:token/begin (first records))
+                            :end (:token/end (first records))
+                            :text-length text-length
+                            :records records})
+        (crud/insert-many! tx :tokens (mapv token->row records)
+                           {:image (fn [post]
+                                     (let [m (clojure.core/get metadata-of (:id post))]
+                                       (cond-> post (seq m) (assoc :metadata m))))})
+        (doseq [t records]
+          (metadata/insert-metadata! tx "token" (:token/id t) (clojure.core/get metadata-of (:token/id t))
+                                     {:skip-parent-audit? true}))
+        (mapv :token/id records)))))
 
 (defn create
   "Create a single token. `attrs` requires :token/text, :token/layer,
-  :token/begin, :token/end; optional :token/precedence. `metadata` (a
-  map of key→value) is inserted into entity_metadata when provided.
-
-  Audit shape: ONE audit_writes row against `:tokens` with change_type
-  :insert. pre = nil; post = the inserted token row, augmented with a
-  `:metadata` key when `metadata` is non-empty. Folding metadata into
-  the :insert post_image avoids the noisy :insert + :update pair we'd
-  otherwise emit. Tokens have no junction-table tokens
-  themselves, so only `:metadata` is folded.
-
-  `:token/id` names the new token's id (a client's UUIDv7), else the
-  server mints one.
+  :token/begin, :token/end; optional :token/precedence and :token/id (a
+  client's UUIDv7). `metadata` is a map of key->value. Audit shape as
+  `create-tokens!`.
 
   Returns {:success true :extra <new-id>} on success."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
-   (let [new-id (or (:token/id attrs) (psc/new-uuid))
-         {:token/keys [text layer begin end precedence]} attrs
-         token {:token/id new-id
-                :token/text text
-                :token/layer layer
-                :token/begin begin
-                :token/end end
-                :token/precedence precedence}]
-     ;; Resolve doc-id outside the tx for the operation header. Inside
-     ;; the tx we use the actual row.
-     (let [doc-id (get-doc-id-of-text db text)]
-       (submit-operation!
-        [tx db {:type :token/create
-                :project (when layer
-                           (:project_id (psc/fetch-by-id db :token_layers layer)))
-                :document doc-id
-                :description (str "Create token " begin "-" end " in layer " layer)
-                :user user-id}]
-        (let [token-with-doc (assoc token :token/document doc-id)
-              row (token->row token-with-doc)]
-          (psc/claim-ids! tx :tokens "token" [(:token/id attrs)])
-          (schema-check! tx token-with-doc)
-          (tc/enforce! tx :create
-                       {:layer layer :doc-id doc-id :begin begin :end end
-                        :records [token-with-doc]})
-          (if (seq metadata)
-            ;; Manual insert + audit so the post_image folds in
-            ;; :metadata, avoiding a separate :update audit row.
-            (do
-              (psc/execute! tx {:insert-into :tokens :values [row]})
-              (metadata/insert-metadata! tx "token" new-id metadata
-                                         {:skip-parent-audit? true})
-              (let [post-row (psc/fetch-by-id tx :tokens new-id)
-                    post-image (assoc post-row :metadata metadata)]
-                (psaw/record-audit-write! tx :tokens new-id :insert nil post-image)))
-            ;; No metadata: use the audited insert! helper as before.
-            (crud/insert! tx :tokens row))
-          new-id))))))
+   (let [{:token/keys [text layer begin end]} attrs
+         ;; Resolve doc-id outside the tx for the operation header.
+         doc-id (get-doc-id-of-text db text)]
+     (submit-operation!
+      [tx db {:type :token/create
+              :project (when layer
+                         (:project_id (psc/fetch-by-id db :token_layers layer)))
+              :document doc-id
+              :description (str "Create token " begin "-" end " in layer " layer)
+              :user user-id}]
+      (first (create-tokens! tx [(assoc attrs :metadata metadata)] doc-id :create))))))
 
 ;; ============================================================
 ;; Merge (update extent + precedence)
@@ -647,9 +655,43 @@
   [tx dlids doc-id lo hi]
   (mapv :token/id (tc/descendant-tokens-in-extent tx dlids doc-id lo hi)))
 
+(defn- delete-tokens!
+  "The one delete path of tokens, under `delete` and `bulk-delete`:
+  `tokens` ({:token/id :token/layer :token/document :token/begin
+  :token/end}) and every token of a descendant layer nested in one of
+  them, with what depends on them (`multi-delete!`). `check` is called
+  with `:pre` and an empty map before the cascade and with `:post` and
+  the descendant layer ids by layer after it, and enforces the op's
+  constraints: a single delete and a bulk delete differ on a
+  partitioning layer (see `plaid.sql.constraints.token`)."
+  [tx tokens check]
+  (let [;; dlids depend only on the layer, so key them by layer.
+        dlids-by-layer (into {}
+                             (map (fn [lid] [lid (tc/descendant-layer-ids tx lid)]))
+                             (distinct (map :token/layer tokens)))
+        descendant-ids (mapcat (fn [t]
+                                 (descendant-token-ids-in-extent
+                                  tx (clojure.core/get dlids-by-layer (:token/layer t))
+                                  (:token/document t)
+                                  (:token/begin t) (:token/end t)))
+                               tokens)]
+    (check :pre {})
+    (multi-delete! tx (distinct (concat (map :token/id tokens) descendant-ids)))
+    (check :post dlids-by-layer)))
+
+(defn- token-light
+  "The fields of a token row `delete-tokens!` reads."
+  [r]
+  {:token/id (:id r)
+   :token/layer (:token_layer_id r)
+   :token/document (:document_id r)
+   :token/begin (:begin r)
+   :token/end (:end_ r)})
+
 (defn delete
   "Delete one token. Cascades to nested descendant tokens (and their
-  dependents via multi-delete!)."
+  dependents via multi-delete!). Refused on a partitioning layer, where
+  merge-tokens removes a token."
   [db eid user-id]
   (let [pre (psc/fetch-by-id db :tokens eid)]
     (submit-operation!
@@ -661,19 +703,15 @@
      (let [pre-tx (psc/fetch-by-id tx :tokens eid)
            _ (when (nil? pre-tx)
                (throw (ex-info (psc/err-msg-not-found "Token" eid) {:id eid :code 404})))
-           {layer :token_layer_id doc-id :document_id begin :begin end :end_} pre-tx
-           dlids (tc/descendant-layer-ids tx layer)
-           descendant-ids (descendant-token-ids-in-extent tx dlids doc-id begin end)]
-       ;; Pre-flight overlap check (rejects :partitioning single delete).
-       ;; Pre-cascade for non-partitioning layers this is a no-op, so
-       ;; the only effect is failing fast on partitioning before we
-       ;; tear anything down.
-       (tc/enforce! tx :delete
-                    {:layer layer :doc-id doc-id :begin begin :end end :dlids []})
-       (multi-delete! tx (cons eid descendant-ids))
-       ;; Re-run with real dlids to fire the post-cascade orphan guard.
-       (tc/enforce! tx :delete
-                    {:layer layer :doc-id doc-id :begin begin :end end :dlids dlids})
+           {:token/keys [layer document begin end] :as t} (token-light pre-tx)]
+       ;; :pre runs with no dlids, so on a non-partitioning layer it does
+       ;; nothing and on a partitioning one it refuses before anything is
+       ;; torn down. :post fires the orphan guard.
+       (delete-tokens! tx [t]
+                       (fn [_ dlids-by-layer]
+                         (tc/enforce! tx :delete
+                                      {:layer layer :doc-id document :begin begin :end end
+                                       :dlids (clojure.core/get dlids-by-layer layer [])})))
        eid))))
 
 ;; ============================================================
@@ -681,9 +719,8 @@
 ;; ============================================================
 
 (defn bulk-create
-  "Bulk-create tokens. All entries in `attrs-vec` must share the same
-  :token/text and :token/layer. An entry's `:token/id` names its id (a
-  client's UUIDv7), else the server mints one. Returns
+  "Bulk-create tokens: `create-tokens!` with every entry of `attrs-vec`,
+  which share one :token/text and :token/layer. Returns
   {:success true :extra <ids>} on success."
   [db attrs-vec user-id]
   (let [layer-id (-> attrs-vec first :token/layer)
@@ -696,51 +733,7 @@
              :document doc-id
              :description (str "Bulk create " (count attrs-vec) " tokens in layer " layer-id)
              :user user-id}]
-     ;; Cross-row consistency check (throws 400 if attrs disagree on text/layer).
-     (check-tokens-consistency! attrs-vec)
-     (psc/claim-ids! tx :tokens "token" (map :token/id attrs-vec))
-     (let [text-row (fetch-text tx text-id)]
-       (when (nil? (psc/fetch-by-id tx :token_layers layer-id))
-         (throw (ex-info (psc/err-msg-not-found "Token layer" layer-id)
-                         {:id layer-id :code 400})))
-       (when (nil? text-row)
-         (throw (ex-info (psc/err-msg-not-found "Text" text-id) {:id text-id :code 400})))
-       (let [text-body (:body text-row)
-             text-length (cp/cp-count text-body)
-             text-layer-id (:text_layer_id text-row)
-             token-layer-set (token-layer-ids-of-text-layer tx text-layer-id)]
-         (when-not (contains? token-layer-set layer-id)
-           (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer-id ".")
-                           {:text-layer-id text-layer-id :token-layer-id layer-id :code 400})))
-         (let [records (mapv (fn [a]
-                               (let [tid (or (:token/id a) (psc/new-uuid))]
-                                 {:token/id tid
-                                  :token/text text-id
-                                  :token/layer layer-id
-                                  :token/document doc-id
-                                  :token/begin (:token/begin a)
-                                  :token/end (:token/end a)
-                                  :token/precedence (:token/precedence a)
-                                  ::metadata (:metadata a)}))
-                             attrs-vec)]
-           ;; Per-token bounds + precedence check. Pass the precomputed
-           ;; code-point length so the loop is O(K), not O(K * body-length).
-           (doseq [t records]
-             (check-token-bounds! (:token/begin t) (:token/end t) text-body text-length)
-             (check-token-precedence! (:token/precedence t)))
-           ;; Constraint enforcement (overlap + intra-batch + nesting).
-           (tc/enforce! tx :bulk-create
-                        {:layer layer-id
-                         :doc-id doc-id
-                         :text-length text-length
-                         :records (mapv #(dissoc % ::metadata) records)})
-           ;; Bulk INSERT.
-           (crud/insert-many! tx :tokens (mapv token->row records))
-           ;; Per-token metadata after the inserts.
-           (doseq [t records]
-             (when (seq (::metadata t))
-               (metadata/insert-metadata! tx "token" (:token/id t) (::metadata t))))
-           (mapv :token/id records)))))))
+     (create-tokens! tx attrs-vec doc-id :bulk-create))))
 
 ;; ============================================================
 ;; Bulk delete
@@ -750,70 +743,45 @@
   "Delete every token in `eids`. All tokens must belong to the same
   document (400 otherwise). Each token's descendant subtree is
   cascade-deleted alongside it, and the visible-entity cascade
-  (relations / spans / vocab_links) runs once over the full set."
+  (relations / spans / vocab_links) runs once over the full set. On a
+  partitioning layer it is all or nothing."
   [db eids user-id]
   (let [eids (vec (distinct eids))
-        token-rows (psc/fetch-ids db :tokens eids)
-        token-light (mapv (fn [r] {:token/id (:id r)
-                                   :token/layer (:token_layer_id r)
-                                   :token/document (:document_id r)
-                                   :token/begin (:begin r)
-                                   :token/end (:end_ r)})
-                          token-rows)
-        ;; Group by [layer, doc] tuple — the shape the partitioning
-        ;; all-or-nothing check + the orphan guard consume. The doc
-        ;; component is constant (single-document check below), but
-        ;; multiple layers per call are fine. See
-        ;; enforce-overlap-bulk-delete in plaid.sql.constraints.token.
-        tokens-by-layer-doc (group-by (juxt :token/layer :token/document) token-light)
-        first-t (first token-light)
-        doc-id (:token/document first-t)]
+        tokens (mapv token-light (psc/fetch-ids db :tokens eids))
+        ;; Grouped by [layer, doc], the shape the partitioning
+        ;; all-or-nothing check and the orphan guard consume. The doc is
+        ;; constant (single-document check below), but several layers per
+        ;; call are fine. See enforce-overlap-bulk-delete in
+        ;; plaid.sql.constraints.token.
+        tokens-by-layer-doc (group-by (juxt :token/layer :token/document) tokens)
+        first-t (first tokens)]
     (submit-operation!
      [tx db {:type :token/bulk-delete
              :project (when first-t
                         (:project_id (psc/fetch-by-id db :token_layers (:token/layer first-t))))
-             :document doc-id
+             :document (:token/document first-t)
              :description (str "Bulk delete " (count eids) " tokens")
              :user user-id}]
      ;; Document consistency (mirrors span/relation bulk-delete). One
      ;; document also means one project, which is what makes the
-     ;; route's authorize-by-first-id sound — without it a writer of
+     ;; route's authorize-by-first-id sound: without it a writer of
      ;; project A could smuggle project-B token ids into the list.
-     ;; Token→document is immutable, so the pre-tx fetch is safe here.
-     (let [doc-ids (distinct (map :token/document token-light))]
+     ;; Token->document is immutable, so the pre-tx fetch is safe here.
+     (let [doc-ids (distinct (map :token/document tokens))]
        (when (> (count doc-ids) 1)
          (throw (ex-info "Not all tokens belong to the same document"
                          {:document-ids doc-ids :code 400}))))
-     (let [;; dlids depend only on the layer, so key the cache by layer
-           ;; and dedupe over the (layer, doc) tuples.
-           dlids-by-layer (into {}
-                                (map (fn [lid] [lid (tc/descendant-layer-ids tx lid)]))
-                                (distinct (map first (keys tokens-by-layer-doc))))
-           descendant-ids (mapcat (fn [t]
-                                    (descendant-token-ids-in-extent
-                                     tx (clojure.core/get dlids-by-layer (:token/layer t))
-                                     (:token/document t)
-                                     (:token/begin t) (:token/end t)))
-                                  token-light)
-           all-ids (distinct (concat eids descendant-ids))]
-       ;; Pre-flight: partitioning all-or-nothing check. Phase :pre
-       ;; tells enforce! to skip the orphan guard (cascade hasn't run
-       ;; yet) but still run the overlap-mode partitioning check.
-       (tc/enforce! tx :bulk-delete
-                    {:tokens-by-layer-doc tokens-by-layer-doc
-                     :dlids-by-layer {}
-                     :phase :pre})
-       (multi-delete! tx all-ids)
-       ;; Post-cascade orphan guard. Phase :post skips the
-       ;; partitioning all-or-nothing check (the layer is now empty so
-       ;; the count comparison would misfire) but enforces the
-       ;; orphan-descendant guard against the original extents in
-       ;; tokens-by-layer-doc.
-       (tc/enforce! tx :bulk-delete
-                    {:tokens-by-layer-doc tokens-by-layer-doc
-                     :dlids-by-layer dlids-by-layer
-                     :phase :post})
-       eids))))
+     ;; :pre runs the partitioning all-or-nothing check (the cascade has
+     ;; not run, so the orphan guard is skipped), :post the orphan guard
+     ;; against the original extents (the layer is empty by then, so the
+     ;; count comparison is skipped).
+     (delete-tokens! tx tokens
+                     (fn [phase dlids-by-layer]
+                       (tc/enforce! tx :bulk-delete
+                                    {:tokens-by-layer-doc tokens-by-layer-doc
+                                     :dlids-by-layer dlids-by-layer
+                                     :phase phase})))
+     eids)))
 
 ;; ============================================================
 ;; Split

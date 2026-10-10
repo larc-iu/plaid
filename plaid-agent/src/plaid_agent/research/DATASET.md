@@ -34,6 +34,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - The parts of a record pruned to fit its size cap are gone: old tool results (`tool_results_dropped`), the steps and citations of old replies, the `ops` of settled plans. A failed tool call whose answer was pruned has `error_class: unknown`.
 - User data is not in the audit log. Only the latest version of each record exists.
 - Operation kinds and references are recorded since 2026-09-29. Older operations are classed by what they wrote (see `units.jsonl`).
+- A create writes one audit row per entity, its metadata in it, since 2026-10-10. Before that a bulk create of tokens, relations or vocab links wrote two rows for an entity with metadata, an insert and then an update carrying the metadata, so `counts` and `writes` of an older bulk create count such an entity twice. A single create and a bulk create of spans always wrote one.
 - Telemetry (`telemetry.jsonl`) is recorded only in projects that switched it on.
 
 ## Files
@@ -206,7 +207,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 | via_token | some of its writes were made with an API token |
 | credentials | its audit rows by the kind of credential that made them: `login` (a session from signing in with a password), `named-token` (a named API token, such as a script or a service run on its owner's token), `service` (only from 2026-10-06 to 2026-10-08: a named token holding a service connection), `delegated` (a token a service was handed to act for its requester). Empty before 2026-10-06 |
 | documents | documents it wrote |
-| counts | its audit rows by `table.change` |
+| counts | its audit rows by `table.change`. A created entity is one `insert` (see above for older bulk creates) |
 | sources | the provSource of its machine or verified writes, counted |
 | writes | its audit rows |
 
