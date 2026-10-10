@@ -86,7 +86,10 @@
                  "Activate a newer Node (e.g. `nvm use 24.1.0`), then re-run.")))))
 
 ;; Apps whose own `npm test` is part of the gate, in the order they fail fastest.
-(def ^:private js-suites ["plaid-ud" "plaid-igt" "plaid-dict" "plaid-umr"])
+;; The four SPAs, each with the path the jar serves it under.
+(def ^:private spa-apps [["plaid-ud" "ud"] ["plaid-igt" "igt"] ["plaid-dict" "dict"] ["plaid-umr" "umr"]])
+
+(def ^:private js-suites (mapv first spa-apps))
 
 ;; The shared UI package. Source-only: the apps compile it, so it has no build
 ;; and no test run of its own — its component tests run under plaid-igt's
@@ -225,7 +228,7 @@
           ;; Every bundled SPA must answer from the classpath. /health alone
           ;; passes with an app missing from resources/ or from
           ;; bundled-spa-roots, which is how an app ships invisibly broken.
-          (doseq [path ["/ud/" "/igt/" "/dict/" "/umr/"]]
+          (doseq [path (map (fn [[_ served]] (str "/" served "/")) spa-apps)]
             (let [r (p/sh ["curl" "-sf" (str base path)])]
               (when-not (and (zero? (:exit r)) (str/includes? (:out r) "<div id=\"root\""))
                 (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
@@ -323,28 +326,15 @@
       ;; installs exactly what the tag says, never what is newest that day.
       ;; plaid-ui needs no step of its own: it is source-only, and each app's
       ;; `file:../plaid-ui` dependency links it in and compiles it from source.
-      (step "Build plaid-ud SPA")
-      (p/shell {:dir "plaid-ud"} "npm" "ci")
-      (p/shell {:dir "plaid-ud"} "npm" "run" "build")
-      (step "Build plaid-igt SPA")
-      (p/shell {:dir "plaid-igt"} "npm" "ci")
-      (p/shell {:dir "plaid-igt"} "npm" "run" "build")
-      (step "Build plaid-dict SPA")
-      (p/shell {:dir "plaid-dict"} "npm" "ci")
-      (p/shell {:dir "plaid-dict"} "npm" "run" "build")
-      (step "Build plaid-umr SPA")
-      (p/shell {:dir "plaid-umr"} "npm" "ci")
-      (p/shell {:dir "plaid-umr"} "npm" "run" "build")
+      (doseq [[app _] spa-apps]
+        (step (str "Build " app " SPA"))
+        (p/shell {:dir app} "npm" "ci")
+        (p/shell {:dir app} "npm" "run" "build"))
 
       (step "Bundle SPAs + version.edn into plaid-core/resources")
-      (rm-rf "plaid-core/resources/ud")
-      (rm-rf "plaid-core/resources/igt")
-      (rm-rf "plaid-core/resources/dict")
-      (rm-rf "plaid-core/resources/umr")
-      (fs/copy-tree "plaid-ud/dist"   "plaid-core/resources/ud")
-      (fs/copy-tree "plaid-igt/dist"  "plaid-core/resources/igt")
-      (fs/copy-tree "plaid-dict/dist" "plaid-core/resources/dict")
-      (fs/copy-tree "plaid-umr/dist"  "plaid-core/resources/umr")
+      (doseq [[app served] spa-apps]
+        (rm-rf (str "plaid-core/resources/" served))
+        (fs/copy-tree (str app "/dist") (str "plaid-core/resources/" served)))
       ;; The mark, for the root landing page the jar serves at /. Same file the
       ;; three SPAs serve, copied rather than duplicated (see wrap-root-landing).
       (fs/copy "plaid-ui/public/plaid.svg" "plaid-core/resources/plaid.svg" {:replace-existing true})
@@ -417,8 +407,8 @@
      :smoke?   (not (contains? flags "--no-smoke"))
      :clients? (not (contains? flags "--skip-clients"))}))
 
-;; Hand-written doc pages and their Asciidoctor sources, kept in lock-step with
-;; .github/workflows/docs.yml. [output-file source-adoc].
+;; Hand-written doc pages and their Asciidoctor sources, which docs.yml builds
+;; through `bb docs`. [output-file source-adoc].
 (def doc-pages
   [["index.html"     "plaid-core/docs/index.adoc"]
    ["manual.html"    "plaid-core/docs/manual.adoc"]
@@ -428,8 +418,8 @@
    ["igt-guide.html" "plaid-igt/docs/igt-guide.adoc"]
    ["umr-guide.html" "plaid-umr/docs/umr-guide.adoc"]])
 
-;; Build the documentation site into _site/ exactly the way docs.yml does, for a
-;; local preview (no publishing — that's GitHub Pages' job). _site/ is gitignored.
+;; Build the documentation site into _site/, as docs.yml does before it
+;; publishes. _site/ is gitignored.
 ;; The API references are generated from the JS/Py client source by a node
 ;; script; it's best-effort here, since it isn't needed to preview the
 ;; hand-written pages and only needs node, not the SPA toolchain.
@@ -463,20 +453,14 @@
 
 (defn clean! []
   (ensure-repo-root!)
-  (doseq [pth ["dist-artifacts"
-               "_site"
-               "plaid-core/resources/ud"
-               "plaid-core/resources/igt"
-               "plaid-core/resources/dict"
-               "plaid-core/resources/umr"
-               "plaid-core/resources/services"
-               "plaid-core/resources/version.edn"
-               "plaid-core/resources/plaid.svg"
-               "plaid-core/resources/client"
-               "plaid-ud/dist"
-               "plaid-igt/dist"
-               "plaid-dict/dist"
-               "plaid-umr/dist"]]
+  (doseq [pth (concat ["dist-artifacts"
+                       "_site"
+                       "plaid-core/resources/services"
+                       "plaid-core/resources/version.edn"
+                       "plaid-core/resources/plaid.svg"
+                       "plaid-core/resources/client"]
+                      (mapcat (fn [[app served]] [(str "plaid-core/resources/" served) (str app "/dist")])
+                              spa-apps))]
     (rm-rf pth))
   (doseq [j (fs/glob "plaid-core/target" "plaid-*.jar")]
     (fs/delete j))
