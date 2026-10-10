@@ -13,7 +13,7 @@
             [plaid.rest-api.v1.auth :as auth]
             [plaid.rest-api.v1.core :as rest-core]
             [plaid.sql.common :as psc]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [reitit.core :as r]
             [ring.mock.request :as mock]))
 
@@ -22,8 +22,6 @@
 
 (def ^:private refusal
   "A delegated token cannot rename or delete a vocabulary, change its maintainers or settings, link or unlink it, or restore its entries.")
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- scoped [user-id & project-ids]
   (let [token (auth/issue-delegated-token! fix/db "fake-secret" user-id project-ids)]

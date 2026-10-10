@@ -7,12 +7,10 @@
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
                                             with-rest-handler with-admin with-test-users
                                             api-call admin-request user1-request user2-request]]
-            [plaid.test-helpers :as h]))
+            [plaid.test-helpers :as h :refer [id]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- build-corpus! [pname]
   (let [pid (h/create-test-project admin-request pname)

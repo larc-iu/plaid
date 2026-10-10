@@ -12,7 +12,7 @@
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request user1-request user2-request with-admin with-test-users
                                     api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-span create-relation add-project-writer add-project-reader
+            [plaid.test-helpers :refer [latest-op-ts create-span create-relation add-project-writer add-project-reader
                                         create-test-project create-test-document]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -34,9 +34,6 @@
   (psc/q db {:select [:s.id :s.value] :from [[:span_tokens :st]]
              :join [[:spans :s] [:= :s.id :st.span_id]]
              :where [:= :st.token_id token]}))
-
-(defn- latest-op-ts []
-  (:ts (psc/q1 db {:select [:ts] :from [:operations] :order-by [[:ts :desc]] :limit 1})))
 
 (defn- import-q []
   (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import"))

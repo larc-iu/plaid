@@ -12,7 +12,7 @@
                      with-clean-db api-call]]
             [plaid.rest-api.v1.auth :as auth]
             [plaid.server.config :as config]
-            [plaid.test-helpers :refer [create-test-project create-test-document
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document
                                         add-project-reader]]
             [ring.mock.request :as mock]
             [taoensso.timbre :as log])
@@ -25,12 +25,6 @@
 (use-fixtures :each with-clean-db)
 
 (def ^:private secret "fake-secret")
-
-(defn- delete-tree! [root]
-  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
-    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
-      (doseq [path (reverse (vec (.toList paths)))]
-        (Files/deleteIfExists path)))))
 
 (defn- with-media-dir*
   "Run `f` with a throwaway database and media directory, `media-cfg` merged

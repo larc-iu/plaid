@@ -11,12 +11,10 @@
                                     with-test-users with-clean-db admin-request user1-request
                                     api-call assert-created]]
             [plaid.sql.common :as psc]
-            [plaid.test-helpers :as h]))
+            [plaid.test-helpers :as h :refer [id]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- doc-row [doc]
   (:body (api-call admin-request {:method :get :path (str "/api/v1/documents/" doc)})))

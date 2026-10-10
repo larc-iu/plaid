@@ -7,14 +7,12 @@
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [plaid.rest-api.v1.query :as rq]
             [plaid.sql.query.exec :as qe]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- build! []
   (let [pid  (h/create-test-project admin-request "QueueProj")

@@ -10,7 +10,7 @@
                                     with-db with-mount-states with-rest-handler
                                     with-admin with-test-users with-clean-db]]
             [plaid.sql.common :as psc]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [ring.mock.request :as mock]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -30,8 +30,6 @@
      :body (when-let [b (:body resp)]
              (let [s (if (string? b) b (slurp b))]
                (when-not (= "" s) (json/read-str s :key-fn keyword))))}))
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- corpus! []
   (let [pid (h/create-test-project admin-request "Q")

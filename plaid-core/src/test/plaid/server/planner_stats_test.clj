@@ -19,6 +19,7 @@
   refresh's statements, which is exactly what the fix is for and what the
   shape it replaced cannot produce."
   (:require [clojure.string :as str]
+            [plaid.test-helpers :refer [temp-db-path]]
             [clojure.test :refer :all]
             [next.jdbc :as jdbc]
             [plaid.server.sql :as server-sql]
@@ -41,12 +42,6 @@
 ;; A backstop on every wait in this file: a refresh thread that dies
 ;; without running its `finally` must fail the test, not hang the suite.
 (def ^:private deadline-ms 60000)
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-analyze-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
 
 (defn- populate!
   "`table-count` tables, each with rows and two indexes, so ANALYZE has

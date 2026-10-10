@@ -8,14 +8,12 @@
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [plaid.sql.query.compile]
             [plaid.sql.query.exec :as qe]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- pick [^java.util.Random rnd xs] (nth xs (.nextInt rnd (count xs))))
 

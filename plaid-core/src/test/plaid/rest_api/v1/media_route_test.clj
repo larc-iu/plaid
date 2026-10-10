@@ -10,19 +10,13 @@
                                     admin-request with-clean-db parse-response-body]]
             [plaid.media.storage]
             [plaid.server.config :as config]
-            [plaid.test-helpers :refer [create-test-project create-test-document]])
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
   (:import [java.io File]
            [java.nio.file FileVisitOption Files]
            [java.nio.file.attribute FileAttribute]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- delete-tree! [root]
-  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
-    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
-      (doseq [path (reverse (vec (.toList paths)))]
-        (Files/deleteIfExists path)))))
 
 (defn- temp-clip!
   "A file that uploads as audio by its name (Tika sees text, the filename

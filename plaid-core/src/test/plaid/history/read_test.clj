@@ -24,10 +24,6 @@
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
-(defn- latest-op-ts []
-  (:ts (psc/q1 db {:select [:ts] :from [:operations]
-                   :order-by [[:ts :desc]] :limit 1})))
-
 (deftest reconstruction-matches-oltp-now-and-then
   (let [proj (create-test-project admin-request "HReadProj")
         doc-id (create-test-document admin-request proj "HReadDoc")

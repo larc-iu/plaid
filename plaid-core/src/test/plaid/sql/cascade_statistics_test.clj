@@ -4,24 +4,12 @@
   install or an earlier test leaves. SQLite then plans the cascade of every
   deleted parent as a scan of the whole child table."
   (:require [clojure.test :refer [deftest is testing]]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [next.jdbc :as jdbc]
             [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd])
   (:import (java.io File)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-cascadestats-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (def ^:private n-parents 4000)
 (def ^:private children 40000)

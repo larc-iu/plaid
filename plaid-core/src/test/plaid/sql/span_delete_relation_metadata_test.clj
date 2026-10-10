@@ -6,14 +6,12 @@
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project create-test-document create-text-layer
+            [plaid.test-helpers :refer [id create-test-project create-test-document create-text-layer
                                         create-token-layer-opts create-span-layer create-relation-layer
                                         create-text create-token create-span create-relation]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- setup!
   "Three spans on three words, and relations with metadata: a to b, b to c,

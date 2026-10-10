@@ -26,9 +26,6 @@
 
 (defn- enc [ts] (java.net.URLEncoder/encode (str ts) "UTF-8"))
 
-(defn- latest-op-ts []
-  (:ts (psc/q1 db {:select [:ts] :from [:operations] :order-by [[:ts :desc]] :limit 1})))
-
 (defn- live-vocab [vocab]
   (:body (get-vocab-layer admin-request vocab true)))
 

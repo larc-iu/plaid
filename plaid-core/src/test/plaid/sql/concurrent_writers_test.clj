@@ -4,6 +4,7 @@
   validates that the SQLite + Hikari + busy_timeout stack handles
   contended writers without surfacing SQLITE_BUSY to callers."
   (:require [clojure.test :refer :all]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
@@ -12,19 +13,6 @@
             [plaid.sql.user :as user])
   (:import (java.io File)
            (java.util.concurrent Executors TimeUnit)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-concur-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (deftest twenty-concurrent-project-creates
   (let [db-path (temp-db-path)

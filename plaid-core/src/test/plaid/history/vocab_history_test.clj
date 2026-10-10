@@ -19,9 +19,6 @@
 
 (defn- enc [ts] (java.net.URLEncoder/encode (str ts) "UTF-8"))
 
-(defn- latest-op-ts []
-  (:ts (psc/q1 db {:select [:ts] :from [:operations] :order-by [[:ts :desc]] :limit 1})))
-
 (defn- vocab-at [req vocab ts]
   (api-call req {:method :get
                  :path (str "/api/v1/vocab-layers/" vocab "?include-items=true&as-of=" (enc ts))}))

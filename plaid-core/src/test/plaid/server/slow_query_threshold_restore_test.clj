@@ -12,24 +12,12 @@
   a passing test wouldn't actually distinguish 'restore worked' from
   'install was a no-op'."
   (:require [clojure.test :refer :all]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [mount.core :as mount]
             [plaid.server.config :as scfg]
             [plaid.server.sql :as ssql]
             [plaid.sql.common :as psc])
   (:import (java.io File)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-slow-restore-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (deftest slow-query-threshold-restored-on-stop
   (let [db-path (temp-db-path)

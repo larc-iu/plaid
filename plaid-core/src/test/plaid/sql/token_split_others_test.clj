@@ -8,12 +8,10 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin
                                     with-clean-db admin-request assert-created]]
-            [plaid.test-helpers :as h]))
+            [plaid.test-helpers :as h :refer [id]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- extent [tok]
   (let [b (:body (h/get-token admin-request tok))]

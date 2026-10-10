@@ -17,7 +17,7 @@
             [taoensso.timbre :as log]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project create-test-document create-text-layer
+            [plaid.test-helpers :refer [evict-pool! id stale-statistics! create-test-project create-test-document create-text-layer
                                         create-token-layer-opts create-span-layer create-relation-layer
                                         create-text]]))
 
@@ -29,8 +29,6 @@
 (def ^:private limit-ms
   "What a route may spend. They take 3 to 15 s here, the unfixed ones minutes."
   60000)
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- build!
   "The document, put in with plain inserts: what is timed is the delete
@@ -90,32 +88,6 @@
                  :value (psc/write-json (if (= i root) "root" "dep"))})]
     (insert! :relations heads)
     {:doc doc :swl swl :spans spans}))
-
-(defn- evict-pool!
-  "Close the pool's idle connections, so every later one loads the
-  statistics as they are now, as after a restart."
-  []
-  (.softEvictConnections (.getHikariPoolMXBean db)))
-
-(defn- stale-statistics!
-  "Statistics gathered on a tiny document: one relation, three spans."
-  []
-  (let [p (create-test-project admin-request "Tiny")
-        d (create-test-document admin-request p "d")
-        tl (id (create-text-layer admin-request p "T"))
-        wl (id (create-token-layer-opts admin-request tl "W" {:overlap-mode "non-overlapping"}))
-        sl (id (create-span-layer admin-request wl "L"))
-        rl (id (create-relation-layer admin-request sl "R"))
-        tx (id (create-text admin-request tl d "a b c"))
-        toks (for [i [0 2 4]]
-               (id (api-call admin-request {:method :post :path "/api/v1/tokens"
-                                            :body {:token-layer-id wl :text tx :begin i :end (inc i)}})))
-        sps (vec (for [t toks]
-                   (id (api-call admin-request {:method :post :path "/api/v1/spans"
-                                                :body {:span-layer-id sl :tokens [t] :value "x"}}))))]
-    (assert-status 201 (api-call admin-request {:method :post :path "/api/v1/relations"
-                                                :body {:layer-id rl :source-id (sps 0) :target-id (sps 1) :value "x"}}))
-    (psc/execute! db ["ANALYZE"])))
 
 (defn- fresh-statistics!
   "Statistics of the data as it is, so the fixture's wipe of what is left

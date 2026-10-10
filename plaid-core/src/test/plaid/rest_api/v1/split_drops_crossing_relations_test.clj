@@ -10,7 +10,7 @@
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-test-users
                                     api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project create-test-document
+            [plaid.test-helpers :refer [id create-test-project create-test-document
                                         create-text-layer create-token-layer
                                         create-span-layer create-relation-layer
                                         create-text create-token create-span
@@ -23,8 +23,6 @@
 
 (def ^:private words
   {"The" [0 3] "cat" [4 7] "sat" [8 11] "Dogs" [13 17] "ran" [18 21]})
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- setup!
   "One document holding one sentence token over the whole text, words on a

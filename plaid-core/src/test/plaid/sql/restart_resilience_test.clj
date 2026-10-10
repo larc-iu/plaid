@@ -10,6 +10,7 @@
   available too; we boot both with a one-shot in-memory config map
   pointing at our test DB path."
   (:require [clojure.test :refer :all]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [migratus.core :as migratus]
             [mount.core :as mount]
             [next.jdbc :as jdbc]
@@ -21,23 +22,10 @@
             [plaid.sql.user :as user])
   (:import (java.io File)))
 
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-restart-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
 (defn- migrate! [ds]
   (migratus/migrate {:store :database
                      :migration-dir "migrations"
                      :db {:datasource ds}}))
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (defn- start-mount!
   "Start the config + datasource defstates with the supplied in-memory

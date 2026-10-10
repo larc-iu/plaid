@@ -13,14 +13,12 @@
             [plaid.rest-api.v1.auth :as auth]
             [plaid.rest-api.v1.core :as rest-core]
             [plaid.rest-api.v1.message :as msg]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [reitit.core :as r]
             [ring.mock.request :as mock]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- as [token]
   (fn [method path]

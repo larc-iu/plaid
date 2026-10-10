@@ -6,15 +6,10 @@
   stays that size for as long as the server runs. Startup truncates it once
   the migrations are done."
   (:require [clojure.test :refer [deftest is]]
+            [plaid.test-helpers :refer [temp-db-path]]
             [plaid.server.sql :as server-sql]
             [plaid.sql.datasource :as psd])
   (:import (java.io File)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-migration-wal-" (System/nanoTime)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
 
 (deftest the-wal-is-empty-after-the-migrations-while-the-pool-stays-open
   (let [path (temp-db-path)

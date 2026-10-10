@@ -5,12 +5,10 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin
                                     with-clean-db admin-request api-call]]
-            [plaid.test-helpers :as h]))
+            [plaid.test-helpers :as h :refer [id]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- descriptions [doc]
   (->> (api-call admin-request {:method :get :path (str "/api/v1/documents/" doc "/audit")})

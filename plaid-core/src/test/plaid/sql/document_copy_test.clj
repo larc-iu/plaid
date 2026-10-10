@@ -26,10 +26,6 @@
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
-(defn- latest-op-ts []
-  (:ts (psc/q1 db {:select [:ts] :from [:operations]
-                   :order-by [[:ts :desc]] :limit 1})))
-
 (defn- copy! [req doc-id body]
   (api-call req {:method :post :path (str "/api/v1/documents/" doc-id "/copy") :body body}))
 

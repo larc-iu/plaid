@@ -8,13 +8,11 @@
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [plaid.sql.query.exec :as qe]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- build-corpus!
   "As admin: project/words-token-layer/pos-span-layer/doc/text 'aa bb cc' with

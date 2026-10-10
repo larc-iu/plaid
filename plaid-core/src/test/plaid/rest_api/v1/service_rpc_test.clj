@@ -4,6 +4,7 @@
   request paths (no-service 503, unknown-request 404, writer auth). The
   streaming SSE happy-path is exercised by the live Python E2E."
   (:require [buddy.sign.jwt :as jwt]
+            [plaid.test-helpers :refer [with-rpc-state-started]]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [mount.core :as mount]
             [plaid.fixtures :as fix
@@ -13,14 +14,6 @@
             [plaid.rest-api.v1.auth :as auth]
             [plaid.server.events :as events]
             [ring.mock.request :as mock]))
-
-(defn with-rpc-state-started
-  "Start the ephemeral RPC defstates the test fixture chain otherwise leaves
-  unstarted (mount isn't run by the fixtures)."
-  [f]
-  (mount/start #'plaid.server.events/service-channels
-               #'plaid.server.events/inflight-requests)
-  (f))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin
   with-test-users with-rpc-state-started)

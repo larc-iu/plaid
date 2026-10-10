@@ -22,8 +22,6 @@
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
-(defn- id [r] (-> r :body :id))
-
 (defn- setup
   "A project user1 writes in, with `n` documents of one text, two tokens, a
   span on each token, a relation and a document metadata key."

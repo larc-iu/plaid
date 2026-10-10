@@ -61,13 +61,6 @@
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
-(defn- latest-op-ts []
-  (-> (jdbc/execute-one!
-       plaid.fixtures/db
-       ["SELECT ts FROM operations ORDER BY ts DESC, id DESC LIMIT 1"]
-       {:builder-fn rs/as-unqualified-maps})
-      :ts))
-
 (defn- distinct-op-types []
   (->> (jdbc/execute! plaid.fixtures/db ["SELECT DISTINCT op_type FROM operations"]
                       {:builder-fn rs/as-unqualified-maps})

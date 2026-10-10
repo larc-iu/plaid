@@ -5,17 +5,12 @@
   stays at its high-water mark and operators see surprising file sizes
   after a clean shutdown."
   (:require [clojure.test :refer :all]
+            [plaid.test-helpers :refer [temp-db-path]]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [plaid.server.sql :as server-sql]
             [plaid.sql.datasource :as psd])
   (:import (java.io File)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-shutdown-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
 
 (defn- without-checkpoint!
   "Mirror the mount :stop body but skip the checkpoint — to confirm the

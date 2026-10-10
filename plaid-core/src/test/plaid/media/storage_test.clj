@@ -1,5 +1,6 @@
 (ns plaid.media.storage-test
   (:require [clojure.string :as str]
+            [plaid.test-helpers :refer [delete-tree!]]
             [clojure.test :refer [deftest is use-fixtures]]
             [plaid.fixtures :refer [db with-clean-db with-db]]
             [plaid.media.storage :as media]
@@ -10,12 +11,6 @@
 
 (use-fixtures :once with-db)
 (use-fixtures :each with-clean-db)
-
-(defn- delete-tree! [root]
-  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
-    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
-      (doseq [path (reverse (vec (.toList paths)))]
-        (Files/deleteIfExists path)))))
 
 (deftest lifecycle-sweep-removes-only-orphaned-media
   (let [tmp (Files/createTempDirectory "plaid-media-sweep-" (make-array FileAttribute 0))

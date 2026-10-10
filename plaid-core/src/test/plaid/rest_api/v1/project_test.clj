@@ -26,7 +26,7 @@
                                     assert-not-found
                                     assert-forbidden
                                     assert-bad-request with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project delete-test-project
+            [plaid.test-helpers :refer [delete-tree! create-test-project delete-test-project
                                         create-test-document
                                         create-text-layer create-token-layer
                                         create-span-layer create-relation-layer]]
@@ -39,12 +39,6 @@
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- delete-tree! [root]
-  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
-    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
-      (doseq [path (reverse (vec (.toList paths)))]
-        (Files/deleteIfExists path)))))
 
 ;; Project API Endpoint Functions
 (defn create-project

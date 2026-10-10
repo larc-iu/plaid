@@ -11,7 +11,7 @@
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin
                                     db admin-request assert-created]]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [evict-pool! id]]
             [plaid.sql.common :as psc]
             [plaid.sql.query.exec :as qe]))
 
@@ -20,8 +20,6 @@
 
 (def ^:private n-sentences 400)
 (def ^:private per-sentence 10)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- ids-of [r]
   (assert-created r)
@@ -88,12 +86,6 @@
   (let [t (System/nanoTime)
         r (f)]
     [r (/ (- (System/nanoTime) t) 1e6)]))
-
-(defn- evict-pool!
-  "Close the pool's idle connections, so every later one loads the
-  statistics as they are now, as after a restart."
-  []
-  (.softEvictConnections (.getHikariPoolMXBean db)))
 
 (defn- tiny-statistics!
   "Statistics gathered while the database held three spans and one relation,

@@ -6,14 +6,13 @@
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [plaid.sql.project :as prj]
             [plaid.sql.query.exec :as qe]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
-(defn- id [r] (-> r :body :id))
 (defn- tuples [r] (mapv (fn [t] (mapv str t)) (:results r)))
 
 (defn- build!

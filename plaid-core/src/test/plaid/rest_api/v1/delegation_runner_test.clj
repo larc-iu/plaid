@@ -21,16 +21,8 @@
              :refer [with-db with-mount-states with-rest-handler with-admin
                      with-test-users with-clean-db api-call admin-request]]
             [plaid.server.events :as events]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [with-rpc-state-started]]
             [ring.mock.request :as mock]))
-
-(defn with-rpc-state-started [f]
-  (mount/start #'plaid.server.events/service-channels
-               #'plaid.server.events/inflight-requests
-               #'plaid.server.events/client-registry
-               #'plaid.server.events/channel-mappings
-               #'plaid.server.events/heartbeat-registry)
-  (f))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin
   with-test-users with-rpc-state-started)

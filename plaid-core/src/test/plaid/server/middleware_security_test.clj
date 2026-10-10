@@ -1,15 +1,10 @@
 (ns plaid.server.middleware-security-test
   (:require [clojure.test :refer [deftest is]]
+            [plaid.test-helpers :refer [delete-tree!]]
             [plaid.server.config :as config]
             [plaid.server.middleware :as middleware])
   (:import [java.nio.file FileVisitOption Files Path]
            [java.nio.file.attribute FileAttribute]))
-
-(defn- delete-tree! [^Path root]
-  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
-    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
-      (doseq [^Path path (reverse (vec (.toList paths)))]
-        (Files/deleteIfExists path)))))
 
 (deftest static-resources-rejects-canonical-sibling
   (let [tmp (Files/createTempDirectory "plaid-static-test-" (make-array FileAttribute 0))

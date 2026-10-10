@@ -9,6 +9,7 @@
   ring-mock cannot hold an SSE channel, so `http-kit/as-channel` is redefined
   to open the REAL handler onto a stub channel that records its close."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [plaid.test-helpers :refer [with-rpc-state-started]]
             [mount.core :as mount]
             [org.httpkit.server :as http-kit]
             [plaid.fixtures :as fix
@@ -16,11 +17,6 @@
                      with-test-users with-clean-db api-call admin-request]]
             [plaid.server.events :as events]
             [ring.mock.request :as mock]))
-
-(defn with-rpc-state-started [f]
-  (mount/start #'plaid.server.events/service-channels
-               #'plaid.server.events/inflight-requests)
-  (f))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin
   with-test-users with-rpc-state-started)

@@ -14,7 +14,7 @@
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project create-test-document create-text-layer
+            [plaid.test-helpers :refer [evict-pool! id create-test-project create-test-document create-text-layer
                                         create-token-layer-opts create-span-layer create-relation-layer
                                         create-text create-vocab-layer create-vocab-item
                                         link-vocab-to-project]])
@@ -30,13 +30,9 @@
   time). Without `prepare!` each took 8 to 32 s."
   4000)
 
-(defn- id [resp] (-> resp :body :id))
 (defn- ids [resp] (assert-status 201 resp) (-> resp :body :ids))
 (defn- call [method path & [body]]
   (api-call admin-request (cond-> {:method method :path path} body (assoc :body body))))
-
-(defn- evict-pool! []
-  (.softEvictConnections (.getHikariPoolMXBean db)))
 
 (defn- annotated-document
   "A document of `n` one-letter words with a token layer, a span layer

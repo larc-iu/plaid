@@ -8,6 +8,7 @@
   (409 / :conflict) unless the held channel is dead — then the newcomer takes
   over (reconnect-after-blip safety)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [plaid.test-helpers :refer [with-rpc-state-started]]
             [mount.core :as mount]
             [plaid.fixtures :as fix
              :refer [with-db with-mount-states with-rest-handler with-admin
@@ -16,14 +17,6 @@
             [plaid.server.events :as events]
             [plaid.sql.service-registry :as service-registry]
             [org.httpkit.server :as http-kit]))
-
-(defn with-rpc-state-started
-  "Start the ephemeral service-channels defstate (the fixture chain doesn't run
-  mount). list-live-services derefs it."
-  [f]
-  (mount/start #'plaid.server.events/service-channels
-               #'plaid.server.events/inflight-requests)
-  (f))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin
   with-test-users with-rpc-state-started)

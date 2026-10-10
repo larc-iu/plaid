@@ -14,6 +14,7 @@
   independent failure for writes that are already durable. `psd/heal-autocommit!`
   is what keeps that from happening; these tests pin both halves of it."
   (:require [clojure.string :as str]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [clojure.test :refer :all]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]
@@ -21,19 +22,6 @@
             [taoensso.timbre :as timbre])
   (:import (java.io File)
            (java.sql DriverManager)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-busyreuse-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (defn- write! [ds v]
   (psd/with-tx [tx ds] (jdbc/execute! tx ["insert into t (v) values (?)" v])))

@@ -12,15 +12,13 @@
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin
                                     db admin-request assert-created]]
-            [plaid.test-helpers :as h]
+            [plaid.test-helpers :as h :refer [id]]
             [plaid.sql.query.exec :as qe]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
 
 (def ^:private n-spans 24)
-
-(defn- id [r] (-> r :body :id))
 
 (defn- ids-of [r]
   (assert-created r)

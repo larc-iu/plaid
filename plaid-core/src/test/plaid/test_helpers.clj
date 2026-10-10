@@ -1,7 +1,12 @@
 (ns plaid.test-helpers
   (:require [clojure.string]
+            [mount.core :as mount]
             [ring.mock.request]
-            [plaid.fixtures :refer [api-call assert-created]]))
+            [plaid.fixtures :refer [admin-request api-call assert-created assert-status db]]
+            [plaid.server.events]
+            [plaid.sql.common :as psc])
+  (:import [java.io File]
+           [java.nio.file Files FileVisitOption LinkOption Path]))
 
 ;; Project/Document helpers
 (defn create-test-project [user-request-fn project-name]
@@ -616,3 +621,83 @@
 
 (defn get-openapi [user-request-fn]
   (api-call user-request-fn {:method :get :path "/api/v1/openapi.json"}))
+
+;; Response helpers
+(defn id
+  "The id a create answered with."
+  [resp]
+  (-> resp :body :id))
+
+;; Database helpers
+(defn latest-op-ts
+  "The timestamp of the latest operation, for an as-of read or restore."
+  []
+  (:ts (psc/q1 db {:select [:ts] :from [:operations] :order-by [[:ts :desc] [:id :desc]] :limit 1})))
+
+(defn evict-pool!
+  "Close the pool's idle connections, so every later one loads the
+  statistics as they are now, as after a restart."
+  []
+  (.softEvictConnections (.getHikariPoolMXBean db)))
+
+(defn stale-statistics!
+  "Statistics gathered on a tiny document (one relation, three spans), as an
+  earlier test in the same JVM leaves them: `with-clean-db` deletes rows, not
+  `sqlite_stat1`."
+  []
+  (let [p (create-test-project admin-request "Tiny")
+        d (create-test-document admin-request p "d")
+        tl (id (create-text-layer admin-request p "T"))
+        wl (id (create-token-layer-opts admin-request tl "W" {:overlap-mode "non-overlapping"}))
+        sl (id (create-span-layer admin-request wl "L"))
+        rl (id (create-relation-layer admin-request sl "R"))
+        tx (id (create-text admin-request tl d "a b c"))
+        toks (for [i [0 2 4]]
+               (id (api-call admin-request {:method :post :path "/api/v1/tokens"
+                                            :body {:token-layer-id wl :text tx :begin i :end (inc i)}})))
+        sps (vec (for [t toks]
+                   (id (api-call admin-request {:method :post :path "/api/v1/spans"
+                                                :body {:span-layer-id sl :tokens [t] :value "x"}}))))]
+    (assert-status 201 (api-call admin-request {:method :post :path "/api/v1/relations"
+                                                :body {:layer-id rl :source-id (sps 0) :target-id (sps 1) :value "x"}}))
+    (psc/execute! db ["ANALYZE"])))
+
+;; Temporary files
+(defn temp-db-path
+  "A database path in a new temporary directory, for a test that needs its
+  own database. `cleanup!` removes both."
+  []
+  (let [dir (File. (System/getProperty "java.io.tmpdir")
+                   (str "plaid-test-" (System/nanoTime) "-" (rand-int 1000000)))]
+    (.mkdirs dir)
+    (.getAbsolutePath (File. dir "plaid.db"))))
+
+(defn cleanup!
+  "Delete a `temp-db-path` database, its WAL files and its directory."
+  [db-path]
+  (doseq [suffix ["" "-wal" "-shm"]]
+    (let [f (File. (str db-path suffix))]
+      (when (.exists f) (.delete f))))
+  (let [parent (.getParentFile (File. ^String db-path))]
+    (when (.exists parent) (.delete parent))))
+
+(defn delete-tree!
+  "Delete a directory and everything under it."
+  [^Path root]
+  (when (Files/exists root (make-array LinkOption 0))
+    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
+      (doseq [^Path path (reverse (vec (.toList paths)))]
+        (Files/deleteIfExists path)))))
+
+;; Mount states
+(defn with-rpc-state-started
+  "A fixture starting the service RPC and client registries of
+  plaid.server.events, which the fixture chain leaves unstarted (it does not
+  run mount)."
+  [f]
+  (mount/start #'plaid.server.events/service-channels
+               #'plaid.server.events/inflight-requests
+               #'plaid.server.events/client-registry
+               #'plaid.server.events/channel-mappings
+               #'plaid.server.events/heartbeat-registry)
+  (f))

@@ -4,28 +4,16 @@
   migrations during boot without fear of partial failure when nothing
   has changed."
   (:require [clojure.test :refer :all]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [plaid.sql.datasource :as psd])
   (:import (java.io File)))
 
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-migr-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
 (defn- migr-cfg [ds]
   {:store :database
    :migration-dir "migrations"
    :db {:datasource ds}})
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (deftest migrate-twice-against-populated-db
   (let [db-path (temp-db-path)

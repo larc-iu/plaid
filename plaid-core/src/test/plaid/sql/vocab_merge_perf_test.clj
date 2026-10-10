@@ -10,7 +10,7 @@
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project create-test-document create-text-layer
+            [plaid.test-helpers :refer [id create-test-project create-test-document create-text-layer
                                         create-token-layer-opts create-text create-vocab-layer
                                         create-vocab-item link-vocab-to-project]]))
 
@@ -22,8 +22,6 @@
 (def ^:private limit-ms
   "It takes about 0.16 s here. Read from the metadata side it took 19 s."
   2000)
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- insert! [table rows]
   (doseq [chunk (partition-all 4000 rows)]

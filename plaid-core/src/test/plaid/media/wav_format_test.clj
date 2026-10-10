@@ -9,7 +9,7 @@
                                     admin-request with-clean-db parse-response-body]]
             [plaid.media.storage :as media]
             [plaid.server.config :as config]
-            [plaid.test-helpers :refer [create-test-project create-test-document]])
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
   (:import [java.io File]
            [java.nio ByteBuffer ByteOrder]
            [java.nio.file FileVisitOption Files]
@@ -106,12 +106,6 @@
   (is (str/includes? (media/unplayable-wav-error (wav 0x31)) "GSM 6.10"))
   (is (str/includes? (media/unplayable-wav-error (wav 0xFFFE :subformat 0x11)) "IMA ADPCM"))
   (is (str/includes? (media/unplayable-wav-error (wav 0x1234)) "format 4660")))
-
-(defn- delete-tree! [root]
-  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
-    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
-      (doseq [path (reverse (vec (.toList paths)))]
-        (Files/deleteIfExists path)))))
 
 (deftest upload-refuses-a-wav-browsers-cannot-play
   (let [tmp (Files/createTempDirectory "plaid-wav-route-" (make-array FileAttribute 0))

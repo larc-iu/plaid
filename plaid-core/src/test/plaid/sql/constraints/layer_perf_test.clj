@@ -16,7 +16,7 @@
             [taoensso.timbre :as log]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-test-project create-test-document create-text-layer
+            [plaid.test-helpers :refer [id stale-statistics! create-test-project create-test-document create-text-layer
                                         create-token-layer-opts create-span-layer create-relation-layer
                                         create-text]]))
 
@@ -26,8 +26,6 @@
 (def ^:private n-words 50000)
 (def ^:private per-sentence 15)
 (def ^:private user "admin@example.com")
-
-(defn- id [resp] (-> resp :body :id))
 
 (defn- ok-ids [result]
   (is (:success result) (pr-str (dissoc result :extra)))
@@ -117,30 +115,6 @@
   (assert-status 200 (api-call admin-request {:method :put
                                               :path (str "/api/v1/" kind "-layers/" layer "/constraints/" ns)
                                               :body {:constraints cs}})))
-
-(defn- stale-statistics!
-  "Statistics gathered on a tiny document, as an earlier test in the same
-  JVM leaves them (`with-clean-db` deletes rows, not `sqlite_stat1`). With
-  them SQLite judged the 50,000 spans small and planned same-ancestor's
-  whole-document query as a scan per relation: 100 s on the nightly
-  (37213142098), where a run of this namespace alone took 0.3 s."
-  []
-  (let [p (create-test-project admin-request "Tiny")
-        d (create-test-document admin-request p "d")
-        tl (id (create-text-layer admin-request p "T"))
-        wl (id (create-token-layer-opts admin-request tl "W" {:overlap-mode "non-overlapping"}))
-        sl (id (create-span-layer admin-request wl "L"))
-        rl (id (create-relation-layer admin-request sl "R"))
-        tx (id (create-text admin-request tl d "a b c"))
-        toks (for [i [0 2 4]]
-               (id (api-call admin-request {:method :post :path "/api/v1/tokens"
-                                            :body {:token-layer-id wl :text tx :begin i :end (inc i)}})))
-        sps (vec (for [t toks]
-                   (id (api-call admin-request {:method :post :path "/api/v1/spans"
-                                                :body {:span-layer-id sl :tokens [t] :value "x"}}))))]
-    (assert-status 201 (api-call admin-request {:method :post :path "/api/v1/relations"
-                                                :body {:layer-id rl :source-id (sps 0) :target-id (sps 1) :value "x"}}))
-    (psc/execute! db ["ANALYZE"])))
 
 (defn- fresh-statistics!
   "Statistics of the data as it is, so the fixture's wipe of 50,000 words,

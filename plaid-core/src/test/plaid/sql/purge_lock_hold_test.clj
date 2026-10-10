@@ -10,24 +10,12 @@
   The fixture below builds exactly that: statistics saying one row, a large
   `audit_writes` of a surviving project, and a deleted project's history."
   (:require [clojure.test :refer :all]
+            [plaid.test-helpers :refer [cleanup! temp-db-path]]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd]
             [plaid.sql.project :as prj])
   (:import (java.io File)))
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-purgelock-" (System/currentTimeMillis) "-" (rand-int 1000000)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
-
-(defn- cleanup! [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
-    (let [f (File. (str db-path suffix))]
-      (when (.exists f) (.delete f))))
-  (let [parent (.getParentFile (File. ^String db-path))]
-    (when (.exists parent) (.delete parent))))
 
 (defn- build-history!
   "The three tables the purge touches, cut down to the columns it reads,

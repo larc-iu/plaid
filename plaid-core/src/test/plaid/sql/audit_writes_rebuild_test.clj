@@ -13,7 +13,7 @@
                                     admin-request with-admin with-clean-db]]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd]
-            [plaid.test-helpers :refer [create-vocab-layer create-vocab-item
+            [plaid.test-helpers :refer [temp-db-path create-vocab-layer create-vocab-item
                                         update-vocab-item delete-vocab-item
                                         bulk-create-vocab-items bulk-delete-vocab-items
                                         update-vocab-item-metadata]])
@@ -21,12 +21,6 @@
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
-
-(defn- temp-db-path []
-  (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-rebuild-" (System/nanoTime)))]
-    (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
 
 (defn- cfg [ds] {:store :database :migration-dir "migrations" :db {:datasource ds}})
 
