@@ -4,7 +4,7 @@ import { itemLabel } from '../domain/vocabDictionary.js';
 // to a single space (no quoting layer — that's the point of TSV).
 //
 // The one exception is a cell that BEGINS with a double quote: every reader of
-// delimited text, ours (vocabBulk.js parseDelimited) and Excel alike, takes
+// delimited text, ours (import/delimited.js parseDelimited) and Excel alike, takes
 // that as RFC 4180 quoting and eats the quotes. Such a cell is written quoted,
 // with its own quotes doubled, so it comes back as it was.
 

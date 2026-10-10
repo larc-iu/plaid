@@ -15,6 +15,7 @@
 
 import { unzipSync } from 'fflate';
 import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
+import { parseDelimited } from '../delimited.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
 
@@ -32,56 +33,14 @@ const termOf = (url) =>
 // ---- CSV (RFC 4180, the CSVW default dialect) -------------------------------
 
 /**
- * Parse delimited text into rows of cells. Handles quoted fields, doubled
- * quotes, embedded newlines, CRLF or LF, and a leading BOM.
+ * Parse delimited text into rows of cells, each composed, as the server
+ * stores text, so a body built of cells and the tokens measured on it are the
+ * text that is stored. A blank line is a row here (`toObjects` decides).
  */
-export function parseCsv(text, delimiter = ',') {
-  const s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let quoted = false;
-  let seenCell = false;
-  const endCell = () => {
-    // composed, as the server stores text, so a body built of cells and the
-    // tokens measured on it are the text that is stored
-    row.push(cell.normalize('NFC'));
-    cell = '';
-    seenCell = false;
-  };
-  const endRow = () => {
-    endCell();
-    rows.push(row);
-    row = [];
-  };
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (quoted) {
-      if (c === '"') {
-        if (s[i + 1] === '"') {
-          cell += '"';
-          i++;
-        } else quoted = false;
-      } else cell += c;
-      continue;
-    }
-    if (c === '"' && !seenCell) {
-      quoted = true;
-      seenCell = true;
-    } else if (c === delimiter) endCell();
-    else if (c === '\r' && s[i + 1] === '\n') {
-      endRow();
-      i++;
-    } else if (c === '\n' || c === '\r') endRow();
-    else {
-      cell += c;
-      seenCell = true;
-    }
-  }
-  // A trailing newline ends the last row; anything else is a final partial row.
-  if (cell !== '' || row.length) endRow();
-  return rows;
-}
+export const parseCsv = (text, delimiter = ',') =>
+  parseDelimited(text, delimiter, { keepBlank: true }).map(({ cells }) =>
+    cells.map((c) => c.normalize('NFC')),
+  );
 
 /** Rows of cells → row objects keyed by the header, ragged rows tolerated. */
 function toObjects(rows) {

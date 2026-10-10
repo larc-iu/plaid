@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseDelimited } from './delimited.js';
 import {
   FORM,
   IGNORE,
@@ -7,7 +8,6 @@ import {
   CONFLICT_OVERWRITE,
   AMBIGUOUS_NEW,
   detectDelimiter,
-  parseDelimited,
   parseTable,
   rankHeader,
   columnsAt,
