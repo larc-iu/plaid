@@ -1,4 +1,6 @@
-import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { cn } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.jsx';
 import { Button } from '../ui/button.jsx';
 import { AssistantChat } from './AssistantChat.jsx';
@@ -14,7 +16,8 @@ import {
 
 // The Assistant tab: the whole screen, laid out like any chat app, with past
 // conversations on the left and the active one on the right. On a phone the
-// list sits above the conversation, in a short box of its own.
+// list sits above the conversation, folded to its heading while a
+// conversation is open, so the conversation has the height.
 //
 // What it adds to the chat: the rail of conversations, the export menu, and
 // the room to introduce itself. The conversation it is showing is in the URL
@@ -29,6 +32,11 @@ export const AssistantTab = ({
   adapter,
 }) => {
   const [convId, setConvId] = useConversationParam();
+  // Phone width only: whether the list is unfolded. Wider, it always shows.
+  const [listShown, setListShown] = useState(false);
+  const listOpen = listShown || !convId;
+  // Picking a conversation folds the list again.
+  useEffect(() => setListShown(false), [convId]);
   return (
     <div className="flex h-[calc(100vh-15rem)] min-h-[32rem] flex-col gap-4 sm:flex-row">
       <AssistantChat
@@ -44,7 +52,20 @@ export const AssistantTab = ({
         renderSidebar={({ listProps, allProjects, setAllProjects, startNew }) => (
           <aside className="flex max-h-48 w-full shrink-0 flex-col rounded-lg border bg-card sm:max-h-none sm:w-64">
             <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-sm font-medium">Conversations</span>
+              <span className="text-sm font-medium max-sm:hidden">Conversations</span>
+              <button
+                type="button"
+                aria-expanded={listOpen}
+                onClick={() => setListShown(!listOpen)}
+                className="flex items-center gap-1 text-sm font-medium sm:hidden"
+              >
+                {listOpen ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                Conversations
+              </button>
               <Button
                 type="button"
                 variant="ghost"
@@ -55,17 +76,19 @@ export const AssistantTab = ({
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
-            <AllProjectsSwitch
-              checked={allProjects}
-              onCheckedChange={setAllProjects}
-              className="border-b px-3 py-1.5"
-            />
-            <div className="flex-1 overflow-y-auto p-1.5">
-              <ConversationRows {...listProps} />
+            <div className={cn('min-h-0 flex-1 flex-col', listOpen ? 'flex' : 'hidden sm:flex')}>
+              <AllProjectsSwitch
+                checked={allProjects}
+                onCheckedChange={setAllProjects}
+                className="border-b px-3 py-1.5"
+              />
+              <div className="flex-1 overflow-y-auto p-1.5">
+                <ConversationRows {...listProps} />
+              </div>
+              <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+                Conversations are private to you and saved to your account.
+              </p>
             </div>
-            <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-              Conversations are private to you and saved to your account.
-            </p>
           </aside>
         )}
         renderIdentity={({ choice, service }) => (

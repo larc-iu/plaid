@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 // What the assistant was sent back and wrote, one model call (a "round") at a
 // time, stored by the service beside the conversation
@@ -88,6 +88,27 @@ export const useRounds = (client, userId, app, projectId, convId) =>
     [client, userId, app, projectId, convId],
   );
 
+// The ids of the projects the viewer can open now, read when the conversation
+// reads other projects (a message carries `projects`): a Set, or null while
+// it is read or when there is no need. With `closedTurns` (projectReach.js) it
+// says which turns show their step labels only.
+export const useReadable = (client, display) => {
+  const wanted = !!client && (display || []).some((d) => d?.kind === 'user' && d.projects?.length);
+  const [ids, setIds] = useState(null);
+  useEffect(() => {
+    if (!wanted) return undefined;
+    let alive = true;
+    client.projects.list().then(
+      (all) => alive && setIds(new Set((all || []).map((p) => p?.id).filter(Boolean))),
+      () => alive && setIds(new Set()),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [client, wanted]);
+  return wanted ? ids : null;
+};
+
 // --- what the steps of a turn show -------------------------------------------------
 
 // How many reads in a row fold into one row.
@@ -164,7 +185,11 @@ export const callInput = (name, raw) => {
     return { raw: String(raw ?? '') };
   }
   if (!args || typeof args !== 'object' || Array.isArray(args)) return { raw: String(raw ?? '') };
-  const shown = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
+  // A list of plain values on one line (`sentences: ["s1","s2"]`), anything
+  // nested indented.
+  const flat = (v) => Array.isArray(v) && v.every((x) => x === null || typeof x !== 'object');
+  const shown = (v) =>
+    typeof v === 'string' ? v : JSON.stringify(v, null, flat(v) ? undefined : 2);
   const rest = (skip) =>
     Object.entries(args)
       .filter(([k]) => k !== skip)

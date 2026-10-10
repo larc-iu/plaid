@@ -12,6 +12,7 @@ import { answeredLast, hidesStopped, retryNote, stoppedIn } from './resume.js';
 import { itemTime } from './itemTime.js';
 import {
   atProjectCap,
+  closedTurns,
   couldNotOpen,
   lastProjects,
   notServedThere,
@@ -34,7 +35,7 @@ import { latestUsage, totalSpend } from './usage.js';
 import { UsageMeter } from './UsageMeter.jsx';
 import { RetryLine } from './RetryLine.jsx';
 import { turnContext } from './transcript.js';
-import { useRounds } from './rounds.js';
+import { useReadable, useRounds } from './rounds.js';
 import { TraceSteps } from './WorkTrace.jsx';
 import { Turn } from './Turn.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
@@ -809,6 +810,9 @@ export const AssistantChat = ({
     setStopped(null);
     setNotice(null);
     showJob(startTurn({ store, service, conv, retry: true, tab: held.tab }));
+    // The Retry button goes with the line it stood on: the keyboard goes to
+    // the composer, not to the page.
+    inputRef.current?.focus();
   };
 
   // Stop a turn: the service is asked to stop, and does so between steps.
@@ -938,6 +942,13 @@ export const AssistantChat = ({
   }, [busy, active?.id, active?.display]);
   // What a step opens to: the conversation's stored rounds.
   const rounds = useRounds(store?.client, store?.userId, store?.app, projectId, active?.id);
+  // A turn that read a project the reader cannot open now shows its step
+  // labels only (`closedTurns`), as the web page export does.
+  const readable = useReadable(client, active?.display);
+  const closedAt = useMemo(
+    () => closedTurns(active?.display, (id) => !id || id === projectId || !!readable?.has(id)),
+    [active?.display, projectId, readable],
+  );
   // A list of conversations puts an unsent one at the top, so a new
   // conversation is a real place to be rather than a blank screen. It belongs
   // to the project on screen, like every other row: nothing in a list of
@@ -1095,14 +1106,18 @@ export const AssistantChat = ({
             {display.length === 0 && !busy && <DisclosureNotice text={disclosure} />}
             {display.length === 0 && !busy && renderEmpty?.(chrome)}
             {display.map((d, i) =>
-              canRetryTurn && hidesStopped(display, i) && !d.steps?.length && !d.partial ? null : (
+              canRetryTurn &&
+              hidesStopped(display, i) &&
+              !d.steps?.length &&
+              !d.partial &&
+              !d.replyRound ? null : (
                 <Turn
                   key={i}
                   item={d}
                   projectId={projectId}
                   adapter={adapter}
                   onFocusHere={subject?.onFocusHere}
-                  rounds={rounds}
+                  rounds={closedAt.has(i) ? null : rounds}
                   roundsGone={!!(notice?.gone && notice.convId === active?.id)}
                   traceOpen={openTraces.has(`${active?.id}:${d.createdAt}`)}
                   hideLine={canRetryTurn && hidesStopped(display, i)}

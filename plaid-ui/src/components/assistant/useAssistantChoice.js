@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { assistantsAmong } from './useAssistantAvailable.js';
-import { serviceCache } from './jobs.js';
+import { onAssistantGone, serviceCache } from './jobs.js';
 
 // Which assistant answers: discovery, the choice a reader may still make, and
 // the one a conversation is already bound to.
@@ -49,6 +49,16 @@ export const useAssistantChoice = ({ client, projectId, app, meta }) => {
     setDiscovering(!cached);
     discover();
   }, [discover, projectId]);
+
+  // An assistant a request found gone is looked for again at once, so the
+  // panel says none is online rather than offering one that is not there.
+  useEffect(
+    () =>
+      onAssistantGone((gone) => {
+        if (gone === projectId) refresh();
+      }),
+    [projectId, refresh],
+  );
 
   // Only ONLINE assist services OF THIS APP can take a turn: a conversation's
   // record is namespaced by the app, the same value the service advertises, so

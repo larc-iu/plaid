@@ -124,3 +124,30 @@ describe('useAssistantChoice', () => {
     await unmount();
   });
 });
+
+describe('an assistant a request found gone (H13-PANEL-2)', () => {
+  it('is looked for again at once, so the panel says none is online', async () => {
+    const { ask } = await import('./jobs.js');
+    const discover = vi
+      .fn()
+      .mockResolvedValueOnce([svc('igt:one')])
+      .mockResolvedValue([svc('igt:one', { online: false })]);
+    const gone = Object.assign(new Error("No live service 'igt:one' on this project"), {
+      notLive: true,
+    });
+    const client = {
+      messages: { discoverServices: discover, requestService: vi.fn().mockRejectedValue(gone) },
+    };
+    const { read, step, unmount } = await mount(client);
+    expect(read()).toBe('igt:one/fixed/online');
+    let said = null;
+    await step(() =>
+      ask({ client, projectId: 'p1' }, { serviceId: 'igt:one' }, 'c1', 'hold').catch((e) => {
+        said = e.message;
+      }),
+    );
+    expect(said).toBe('The assistant went offline.');
+    expect(read()).toBe('none/fixed/online');
+    await unmount();
+  });
+});

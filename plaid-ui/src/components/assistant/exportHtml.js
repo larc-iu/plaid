@@ -11,9 +11,9 @@
 // - A table the assistant made (.csv, .tsv) is shown in full when it is small
 //   enough. Every other file is named with its size.
 // - Nothing from a project the exporter cannot open today: a citation into one
-//   is left out, its name is written "Another project", and the tool outputs
-//   of a turn that read one, its reasoning and the content of a table it made
-//   are left out.
+//   is left out, its name is written "Another project", and the tool inputs
+//   and outputs of a turn that read one, its reasoning and the content of a
+//   table it made are left out (`closedTurns`, the panel's rule too).
 // - A long tool output or reasoning is cut short, and past a total the rest
 //   are left out,
 //   so a long conversation stays a file of a few MB at most.
@@ -24,6 +24,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ExportPage } from './ExportPage.jsx';
 import { readStoredFile } from './attachments.js';
+import { closedTurns } from './projectReach.js';
 import { roundPrefix, roundsInHand } from './rounds.js';
 import { usedCss } from './exportCss.js';
 
@@ -53,24 +54,34 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
     const { thinking: _left, ...rest } = stored.get(id) ?? {};
     return { ...rest, calls: [] };
   };
-  const callOut = (s, text) => {
+  // `closed`: the call's input is left out too, since it can name the
+  // project and what was looked for in it.
+  const callOut = (s, text, closed = false) => {
     const r = shownRound(s.round);
     const call = (stored.get(s.round)?.calls || []).find((c) => c.id === s.id);
-    r.calls = [...r.calls, { ...call, result: text, cut: text === call.result ? call.cut : false }];
+    const input = closed ? { arguments: '{}' } : {};
+    r.calls = [
+      ...r.calls,
+      { ...call, ...input, result: text, cut: text === call.result ? call.cut : false },
+    ];
     shown.set(s.round, r);
     results.set(s.id, text);
   };
   // The files a turn that read a closed project made: what they hold may
   // come from it, so only their names are shown.
   const closedFiles = new Set();
-  const left = { citations: 0, results: 0, shortened: 0, thinking: 0, thinkingShortened: 0 };
+  const left = {
+    citations: 0,
+    inputs: 0,
+    results: 0,
+    shortened: 0,
+    thinking: 0,
+    thinkingShortened: 0,
+  };
   let budget = TOOL_OUTPUT_TOTAL;
-  let reach = [];
-  const display = (conv?.display || []).map((d) => {
-    if (d.kind === 'user') {
-      reach = d.projects || [];
-      return d.projects ? { ...d, projects: rename(d.projects) } : d;
-    }
+  const closedAt = closedTurns(conv?.display, opens);
+  const display = (conv?.display || []).map((d, i) => {
+    if (d.kind === 'user') return d.projects ? { ...d, projects: rename(d.projects) } : d;
     if (d.kind !== 'assistant' && d.kind !== 'error') return d;
     const out = { ...d };
     if (d.unavailableProjects) out.unavailableProjects = rename(d.unavailableProjects);
@@ -78,15 +89,15 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
       out.citations = d.citations.filter((c) => opens(c.projectId));
       left.citations += d.citations.length - out.citations.length;
     }
-    const closed = reach.some((p) => !opens(p.id));
+    const closed = closedAt.has(i);
     if (closed) for (const f of d.files || []) if (f.made) closedFiles.add(f.id);
     for (const s of d.steps || []) {
       const call = (stored.get(s.round)?.calls || []).find((c) => c.id === s.id);
       if (!s.id || !call) continue;
       let text = String(call.result ?? '');
       if (closed) {
-        callOut(s, NOT_INCLUDED);
-        left.results += 1;
+        callOut(s, NOT_INCLUDED, true);
+        left.inputs += 1;
         continue;
       }
       const long = text.length > TOOL_OUTPUT_CHARS;
@@ -233,6 +244,8 @@ export const leftOutLine = (left, notShown) => {
   const parts = [];
   if (left.citations)
     parts.push(`${plural(left.citations, 'cited example', 'cited examples')} from other projects`);
+  if (left.inputs)
+    parts.push(plural(left.inputs, 'tool input and output', 'tool inputs and outputs'));
   if (left.results) parts.push(plural(left.results, 'tool output', 'tool outputs'));
   if (left.thinking) parts.push(plural(left.thinking, 'Thinking section', 'Thinking sections'));
   if (notShown.length) parts.push(`the content of ${notShown.join(', ')}`);

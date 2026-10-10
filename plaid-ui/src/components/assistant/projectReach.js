@@ -152,3 +152,19 @@ export const chipRemoveLabels = (projects) => {
 // conversation reads other projects: the plan record says so (`project`, set
 // by a turn that read others).
 export const planProjectAt = (display, i) => display?.[i]?.plan?.project?.name || null;
+
+// The turns that read a project the viewer cannot open now: each answer or
+// error after a message that carried one. `opens(id)` says whether the viewer
+// can open project `id`. Such a turn shows its step labels only, in the panel
+// as in the web page export: no inputs, outputs or reasoning. A deleted
+// project is one nobody can open.
+export const closedTurns = (display, opens) => {
+  const out = new Set();
+  let reach = [];
+  (display || []).forEach((d, i) => {
+    if (d?.kind === 'user') reach = d.projects || [];
+    else if ((d?.kind === 'assistant' || d?.kind === 'error') && reach.some((p) => !opens(p.id)))
+      out.add(i);
+  });
+  return out;
+};

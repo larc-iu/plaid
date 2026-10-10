@@ -282,9 +282,13 @@ export const AssistantComposer = ({
                   : 'Message the assistant… (Shift+Enter for a new line)'
           }
           aria-label="Message"
-          disabled={!canSend}
+          // Read-only rather than disabled while a turn runs: a disabled box
+          // loses the keyboard focus, and the reader would have to find it
+          // again after every answer.
+          readOnly={!canSend}
+          aria-disabled={!canSend || undefined}
           rows={2}
-          className="min-h-[2.5rem] flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0"
+          className="min-h-[2.5rem] flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
         />
         {onAttach && (
           <>

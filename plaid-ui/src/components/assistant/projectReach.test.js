@@ -343,3 +343,21 @@ describe('chipRemoveLabels', () => {
     expect(chipRemoveLabels([])).toEqual([]);
   });
 });
+
+describe('closedTurns', () => {
+  it('names the turns after a message that read a project the viewer cannot open', async () => {
+    const { closedTurns } = await import('./projectReach.js');
+    const display = [
+      { kind: 'user', projects: [{ id: 'p2' }] },
+      { kind: 'assistant' },
+      { kind: 'error' },
+      { kind: 'user' },
+      { kind: 'assistant' },
+      { kind: 'user', projects: [{ id: 'p3' }] },
+      { kind: 'assistant' },
+    ];
+    const opens = (id) => id === 'p3';
+    expect([...closedTurns(display, opens)]).toEqual([1, 2]);
+    expect([...closedTurns(display, () => false)]).toEqual([1, 2, 6]);
+  });
+});

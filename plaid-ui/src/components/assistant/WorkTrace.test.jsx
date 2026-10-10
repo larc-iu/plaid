@@ -95,7 +95,7 @@ describe('WorkTrace', () => {
     expect(one.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById(one.getAttribute('aria-controls'))).not.toBeNull();
     const pres = texts(view.container, 'pre');
-    expect(pres).toContain('document: Text 1\nsentences: [\n  3\n]');
+    expect(pres).toContain('document: Text 1\nsentences: [3]');
     expect(pres).toContain(CONLLU);
     // A CoNLL-U row is kept whole: the block scrolls sideways, never wraps.
     for (const pre of all(view.container, 'pre')) {
@@ -119,7 +119,7 @@ describe('WorkTrace', () => {
     ];
     const view = await renderComponent(<TraceSteps steps={steps} rounds={rounds} live />);
     expect(all(view.container, 'button')).toHaveLength(0);
-    expect(view.container.querySelector('[title="Output not stored."]')).not.toBeNull();
+    expect(view.container.querySelector('[title="Not stored."]')).not.toBeNull();
     await view.rerender(
       <TraceSteps steps={[{ ...STEPS[1], stored: true }]} rounds={rounds} live firstRound="r1" />,
     );
@@ -345,5 +345,61 @@ describe('the model reasoning', () => {
       'abcd',
       'efgh',
     ]);
+  });
+});
+
+// Hunt round 13.
+describe('what a step shows, round 13', () => {
+  it('draws the characters that reorder text as marks, and copies them as they are', async () => {
+    const round = {
+      id: 'r1',
+      n: 2,
+      calls: [
+        {
+          id: 'c1',
+          name: 'search',
+          arguments: '{"pattern": "‮evil"}',
+          result: 'w4 ‮ltr | Gloss',
+        },
+      ],
+    };
+    const { rounds } = reader({ r1: round });
+    const step = { id: 'c1', name: 'search', kind: 'read', label: 'Searched', round: 'r1' };
+    const view = await renderComponent(<TraceSteps steps={[step]} rounds={rounds} />);
+    await view.step(() => byText(view.container, 'button', 'Searched').click());
+    const pres = texts(view.container, 'pre');
+    expect(pres.join('\n')).toContain('‹RLO›evil');
+    expect(pres.join('\n')).toContain('w4 ‹RLO›ltr');
+    expect(view.container.textContent).not.toMatch(/‮/);
+    await view.unmount();
+  });
+
+  it('offers no Message as received or Thinking for a round the store refused', async () => {
+    const { read, rounds } = reader({});
+    const steps = [{ ...STEPS[0], unstored: true, thought: true }];
+    const view = await renderComponent(
+      <TraceSteps steps={steps} rounds={rounds} firstRound="r1" />,
+    );
+    expect(all(view.container, 'button')).toHaveLength(0);
+    expect(all(view.container, '[title="Not stored."]')).toHaveLength(2);
+    expect(read).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('shows the reasoning a stopped turn kept, above its line', async () => {
+    const { rounds } = reader({ r9: { id: 'r9', n: 1, asked: 'hi', thinking: 'Weighing it.' } });
+    const item = {
+      kind: 'error',
+      text: 'Stopped.',
+      stopped: true,
+      partial: 'Half',
+      replyRound: 'r9',
+      replyThought: true,
+    };
+    const view = await renderComponent(<Turn item={item} rounds={rounds} />);
+    await view.step(() => byText(view.container, 'button', 'No steps').click());
+    expect(texts(view.container, 'button')).toContain('Thinking');
+    expect(view.container.textContent).toContain('Half');
+    await view.unmount();
   });
 });

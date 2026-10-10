@@ -15,7 +15,8 @@ import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { ExportMenu } from '@ui/components/assistant/ConversationList.jsx';
 import { hidesStopped, retryNote } from '@ui/components/assistant/resume.js';
 import { turnContext } from '@ui/components/assistant/transcript.js';
-import { useRounds } from '@ui/components/assistant/rounds.js';
+import { useReadable, useRounds } from '@ui/components/assistant/rounds.js';
+import { closedTurns } from '@ui/components/assistant/projectReach.js';
 import { latestUsage, totalSpend } from '@ui/components/assistant/usage.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
@@ -124,9 +125,21 @@ const ConversationDetail = ({ client, row, backTo }) => {
   const size = row.meta?.size;
   const record = size?.cap > 0 && size?.bytes > 0 ? { bytes: size.bytes, cap: size.cap } : null;
 
-  const display = conv?.display || [];
+  const display = useMemo(() => conv?.display || [], [conv?.display]);
   // What a step opens to, read from the owner's store as the transcript is.
   const rounds = useRounds(client, row.userId, row.app, row.projectId, row.convId);
+  // A turn that read a project nobody can open now (deleted) shows its step
+  // labels only, the panel's rule, and so does every turn of a conversation
+  // whose own project is gone.
+  const readable = useReadable(client, display);
+  const closedAt = useMemo(
+    () =>
+      closedTurns(
+        display,
+        (id) => !id || (id === row.projectId ? row.projectExists : !!readable?.has(id)),
+      ),
+    [display, row.projectId, row.projectExists, readable],
+  );
   const usage = useMemo(() => latestUsage(conv?.display), [conv?.display]);
   const spend = useMemo(() => totalSpend(conv?.display), [conv?.display]);
   // The chat's own rule for the line under a turn with no answer, except that
@@ -190,13 +203,17 @@ const ConversationDetail = ({ client, row, backTo }) => {
                 <p className="text-sm text-muted-foreground">No messages.</p>
               )}
               {display.map((d, i) =>
-                unanswered && hidesStopped(display, i) && !d.steps?.length && !d.partial ? null : (
+                unanswered &&
+                hidesStopped(display, i) &&
+                !d.steps?.length &&
+                !d.partial &&
+                !d.replyRound ? null : (
                   <Turn
                     key={i}
                     item={d}
                     projectId={row.projectId}
                     adapter={adapter}
-                    rounds={rounds}
+                    rounds={!row.projectExists || closedAt.has(i) ? null : rounds}
                     hideLine={unanswered && hidesStopped(display, i)}
                     {...turnContext(display, i)}
                     homeName={row.projectName}

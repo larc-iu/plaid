@@ -308,8 +308,10 @@ describe('the web page export', () => {
     expect(text).toContain('Lamkang B');
     expect(doc.querySelector('[data-card="{{open}}"]')).not.toBeNull();
     expect(doc.querySelector('.plaid-export-header').textContent).toContain(
-      'Not included: 1 cited example from other projects, 1 tool output. 1 long tool output is shortened.',
+      'Not included: 1 cited example from other projects, 1 tool input and output. 1 long tool output is shortened.',
     );
+    // The call's input can name the project and what was looked for there.
+    expect(text).not.toContain('document: B');
   });
 
   it('shows no table made by a turn that read a closed project, only its name', async () => {
@@ -414,6 +416,7 @@ describe('its parts', () => {
     });
     expect(left).toEqual({
       citations: 0,
+      inputs: 0,
       results: 0,
       shortened: 1,
       thinking: 0,
@@ -456,7 +459,7 @@ describe('its parts', () => {
     expect(rounds.peek('a3').thinking).toBeUndefined();
     expect(left.thinking).toBe(1);
     expect(leftOutLine(left, [])).toBe(
-      'Not included: 1 tool output, 1 Thinking section. 1 long Thinking section is shortened.',
+      'Not included: 1 tool input and output, 1 Thinking section. 1 long Thinking section is shortened.',
     );
   });
 

@@ -166,15 +166,20 @@ export const readMeta = async (store, id) => {
 // an error. The request is its own action: it carries no open operation.
 export const ask = (store, service, convId, op, fields = {}, { tab = null } = {}) => {
   const { client, projectId } = store;
-  return client.messages.requestService(
-    projectId,
-    service.serviceId,
-    { projectId, conversationId: convId, tab, op, ...fields },
-    ASK_TIMEOUT_MS,
-    undefined,
-    undefined,
-    { requestId: newId(), noOperation: true },
-  );
+  return client.messages
+    .requestService(
+      projectId,
+      service.serviceId,
+      { projectId, conversationId: convId, tab, op, ...fields },
+      ASK_TIMEOUT_MS,
+      undefined,
+      undefined,
+      { requestId: newId(), noOperation: true },
+    )
+    .catch((e) => {
+      if (noteGone(projectId, e)) throw Object.assign(new Error(WENT_OFFLINE), { notLive: true });
+      throw e;
+    });
 };
 
 // The entry a request's result names, with its project, or null.
@@ -250,6 +255,21 @@ const progressOf = (j) => (p) => {
   notifyJob(j);
 };
 
+// An assistant that went away after the page found it: a request to it is
+// refused (503, `notLive`), and the panel asks discovery again at once
+// (`onAssistantGone`, useAssistantChoice.js) so it says no assistant is online.
+const goneListeners = new Set();
+export const onAssistantGone = (fn) => {
+  goneListeners.add(fn);
+  return () => goneListeners.delete(fn);
+};
+const noteGone = (projectId, e) => {
+  if (!e?.notLive) return false;
+  for (const fn of [...goneListeners]) fn(projectId);
+  return true;
+};
+const WENT_OFFLINE = 'The assistant went offline.';
+
 // Run a request stream to its end, recording how it ended on the job.
 const watch = async (j, run) => {
   try {
@@ -258,6 +278,7 @@ const watch = async (j, run) => {
     if (e?.name === 'AbortError') j.stopped = true;
     else {
       j.error = e;
+      noteGone(j.projectId, e);
       if (e?.status !== 404) console.error('[Assistant] request failed', e);
     }
   }
@@ -477,7 +498,8 @@ export const startTurn = ({
     );
     // An error the service wrote into the record is shown from there. One
     // that ended the request before the message was taken says why here.
-    if (j.error && !j.recorded && j.error.status !== 404 && !j.error.pending) {
+    if (j.error?.notLive) notifyError(`${WENT_OFFLINE} Nothing was sent.`);
+    else if (j.error && !j.recorded && j.error.status !== 404 && !j.error.pending) {
       notifyError(refusalSaid(j.error) || humanizeError(j.error, 'The message was not sent.'));
     }
     return finishJob(j, store);
@@ -497,6 +519,8 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
     notifyWarning(LOST_CONTACT, 'Assistant');
   } else if (j.outcome?.kind === 'refused') {
     notifyWarning(j.outcome.message, 'Not applied');
+  } else if (j.error?.notLive) {
+    notifyError(`${WENT_OFFLINE} Nothing was written.`, 'Not applied');
   } else if (j.error && j.error.status !== 404) {
     // The reason says what to do next (apply again in a minute, ask for a new
     // plan), so it stays until the reader closes it.

@@ -277,15 +277,18 @@ export const Turn = ({
   }
   if (item.kind === 'error') {
     // What the turn did and wrote before it ended, above the line saying so.
+    // The reasoning of the model call under way, kept in a round of its own
+    // (`replyRound`), shows as a Thinking row above the text it had written.
     const work =
-      item.steps?.length > 0 ? (
+      item.steps?.length > 0 || item.replyRound ? (
         <WorkTrace
-          steps={item.steps}
-          summary={item.stepsSummary}
+          steps={item.steps || []}
+          summary={item.steps?.length > 0 ? item.stepsSummary : 'No steps'}
           partial={item.partial}
           rounds={rounds}
           gone={roundsGone}
-          firstRound={item.steps[0]?.round}
+          firstRound={item.steps?.[0]?.round ?? item.replyRound}
+          replyRound={item.replyThought ? item.replyRound : null}
           open={traceOpen}
         />
       ) : item.partial ? (

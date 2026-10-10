@@ -26,10 +26,10 @@ const MUTED = 'text-xs text-muted-foreground';
 // Lines are kept whole, as the tool wrote them (CoNLL-U columns, word
 // lines): a long one scrolls sideways inside the block.
 const PRE =
-  'max-h-72 min-w-0 max-w-full overflow-auto whitespace-pre rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground';
+  'max-h-[min(18rem,40vh)] min-w-0 max-w-full overflow-auto whitespace-pre rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground';
 
 const CUT_LINE = 'Cut at 12,000 characters.';
-const NOT_STORED = 'Output not stored.';
+const NOT_STORED = 'Not stored.';
 const GONE = 'This conversation was deleted.';
 
 // A disclosure: a button that says whether it is open and which region it
@@ -104,6 +104,44 @@ const CopyButton = ({ text }) => {
   );
 };
 
+// The characters that reorder the text around them (embeddings, overrides,
+// isolates), each drawn as a visible mark: inside a block they would make it
+// read otherwise than the model was sent it. Copy keeps them.
+const FORMATTING = /[\u202A-\u202E\u2066-\u2069]/g;
+const FORMATTING_NAMES = {
+  '\u202A': 'LRE',
+  '\u202B': 'RLE',
+  '\u202C': 'PDF',
+  '\u202D': 'LRO',
+  '\u202E': 'RLO',
+  '\u2066': 'LRI',
+  '\u2067': 'RLI',
+  '\u2068': 'FSI',
+  '\u2069': 'PDI',
+};
+
+const markedFormatting = (text) => {
+  const out = [];
+  let at = 0;
+  for (const m of String(text).matchAll(FORMATTING)) {
+    if (m.index > at) out.push(text.slice(at, m.index));
+    const name = FORMATTING_NAMES[m[0]];
+    out.push(
+      <span
+        key={m.index}
+        title={`U+${m[0].codePointAt(0).toString(16).toUpperCase()}`}
+        className="rounded bg-background px-0.5 text-muted-foreground"
+      >
+        {`‹${name}›`}
+      </span>,
+    );
+    at = m.index + 1;
+  }
+  if (!out.length) return text;
+  if (at < text.length) out.push(text.slice(at));
+  return out;
+};
+
 // A block of text as it was: monospace, scrollable, with Copy. A block
 // that is the whole of its disclosure needs no heading of its own.
 const Block = ({ heading, text, after, exported }) => (
@@ -112,7 +150,7 @@ const Block = ({ heading, text, after, exported }) => (
       {heading && <span className="font-medium">{heading}</span>}
       {!exported && <CopyButton text={text} />}
     </div>
-    <pre className={PRE}>{text}</pre>
+    <pre className={PRE}>{markedFormatting(text)}</pre>
     {after && <span>{after}</span>}
   </div>
 );
@@ -127,7 +165,7 @@ const InputBlock = ({ call, exported }) => {
     return (
       <>
         <Block heading="Input" text={main} exported={exported} />
-        {lines && <pre className={PRE}>{lines}</pre>}
+        {lines && <pre className={PRE}>{markedFormatting(lines)}</pre>}
       </>
     );
   return lines ? <Block heading="Input" text={lines} exported={exported} /> : null;
@@ -235,7 +273,7 @@ const ThinkingOf = ({ rounds, id, gone }) => {
 
 // The reasoning of a stored round, read when it is opened. Live, a round not
 // stored yet shows the row without opening.
-const Thinking = ({ id, rounds, live, gone, exported, stored = true }) => {
+const Thinking = ({ id, rounds, live, gone, exported, stored = true, unstored = false }) => {
   if (exported) {
     const text = rounds?.peek?.(id)?.thinking;
     if (!text) return null;
@@ -245,7 +283,12 @@ const Thinking = ({ id, rounds, live, gone, exported, stored = true }) => {
       </Details>
     );
   }
-  if (!rounds || !id || (live && !stored)) return <div className="px-1 py-0.5 pl-5">Thinking</div>;
+  if (!rounds || !id || unstored || (live && !stored))
+    return (
+      <div className="px-1 py-0.5 pl-5" title={unstored ? NOT_STORED : undefined}>
+        Thinking
+      </div>
+    );
   return (
     <Disclosure label="Thinking">
       <ThinkingOf rounds={rounds} id={id} gone={gone} />
@@ -346,6 +389,7 @@ export const TraceSteps = ({
         gone={gone}
         exported={exported}
         stored={!!s.stored}
+        unstored={!!s.unstored}
       />
     );
   const row = (s) => (
@@ -355,8 +399,12 @@ export const TraceSteps = ({
       <StepRow step={s} rounds={rounds} live={live} gone={gone} exported={exported} />
     </li>
   );
+  // The round holding the question as received opens once it is stored, and
+  // never when the store refused it.
   const firstOpenable =
-    firstRound && (!live || (steps || []).some((s) => s.round === firstRound && s.stored));
+    firstRound &&
+    !(steps || []).some((s) => s.round === firstRound && s.unstored) &&
+    (!live || (steps || []).some((s) => s.round === firstRound && s.stored));
   return (
     <ol className="mt-1 flex flex-col gap-0.5 border-l pl-3">
       {rounds && firstOpenable && !exported && (
