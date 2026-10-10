@@ -851,6 +851,12 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
                 raise ToolError('Give old_root_deprel: the relation the old root takes to its new head.')
             if _head_id(old_root_head, doc, sentence, ws) == 0:
                 raise ToolError('old_root_head is the old root\'s new head word, not 0: a sentence has one root.')
+            if _head_id(old_root_head, doc, sentence, ws) == old.index:
+                # Said in the parameter's terms: "A word cannot be its own
+                # head" read as being about the new root, and a model gave up.
+                raise ToolError(f'old_root_head {old.index} is {word_ref(sentence, old)} ("{old.form}") itself. '
+                                f'old_root_head is the word {word_ref(sentence, old)} will hang from once '
+                                f'{word_ref(sentence, word)} is the root, often {word.index}. Nothing was planned.')
             with ws.staging():
                 note = _stage_head(ws, doc, word, sentence, head, deprel)
                 old_note = _stage_head(ws, doc, old, sentence, old_root_head, old_root_deprel)

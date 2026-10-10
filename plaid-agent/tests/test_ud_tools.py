@@ -221,6 +221,14 @@ def test_a_head_that_would_close_a_cycle_is_refused():
     # once w4 is the root, its old head can hang below it: one call, which
     # names where the old root goes, since a sentence has one root
     assert head.head == 0
+    # old_root_head naming the old root itself is refused in the parameter's
+    # terms: "A word cannot be its own head" read as being about the new root.
+    out = run(ws, 'set_head', document='Viaje', ref='s1.w4', head=0, old_root_head=head.index,
+              old_root_deprel='obl')
+    assert out.startswith(f'Error: old_root_head {head.index} is s1.w{head.index} ("{head.form}") itself. '
+                          f'old_root_head is the word s1.w{head.index} will hang from once s1.w4 is the root, '
+                          'often 4.'), out
+    assert not ws.ops
     out = run(ws, 'set_head', document='Viaje', ref='s1.w4', head=0, old_root_head=4, old_root_deprel='obl')
     assert out.startswith('Planned') and [op['kind'] for op in ws.ops] == ['set_head', 'set_head']
 
