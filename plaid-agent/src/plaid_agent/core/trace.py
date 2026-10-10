@@ -242,6 +242,14 @@ def failed_label(label: str) -> str:
     return label
 
 
+def _the_named_document(s: Dict[str, Any], args: Dict[str, Any]) -> bool:
+    """A note that the call read one document, on a call that named it: the
+    label already names it, so "1 document" after it says nothing. The step
+    keeps the note in ``saw``."""
+    return (bool(args.get('document')) and s.get('unit') == 'document' and s.get('n') == 1
+            and s.get('of') is None and not s.get('which'))
+
+
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
                failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
@@ -265,8 +273,9 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
         label = f'Read {q(args.get("document"))}'
     else:
         label = tracer.describe(name, args)
-    if saw and not failed:
-        label = f'{label}: {say_saw(saw)}'
+    shown = [s for s in saw or () if not _the_named_document(s, args)]
+    if shown and not failed:
+        label = f'{label}: {say_saw(shown)}'
     item = {'id': call_id, 'name': name, 'kind': kind,
             'label': failed_label(label) if failed else label}
     if failed:

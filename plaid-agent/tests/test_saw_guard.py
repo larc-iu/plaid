@@ -160,3 +160,18 @@ def test_a_sentence_read_again_counts_once():
     steps.append(trace_step(TRACER, 'f', 'read_document', {'document': 'F'},
                             saw=[{'n': 30, 'unit': 'sentence', 'of': 90, 'which': cut}]))
     assert summarize_steps(steps) == 'read 44 sentences in 3 documents · 9 steps'
+
+
+def test_one_document_read_of_the_named_document_says_no_count():
+    """"Read the document graph of “Story”: 1 document" said nothing the label
+    did not. The note stays on the step, and a project-wide call keeps its count."""
+    describe = lambda n, a: f'Read the document graph of {a.get("document")}'  # noqa: E731
+    tracer = Tracer(kind=lambda n: READ, describe=describe, progress=lambda n, a: '')
+    one = [{'n': 1, 'unit': 'document'}]
+    item = trace_step(tracer, 'c1', 'document_graph', {'document': 'Story'}, saw=one)
+    assert item['label'] == 'Read the document graph of Story' and item['saw'] == one
+    item = trace_step(tracer, 'c1', 'check', {}, saw=one)
+    assert item['label'].endswith(': 1 document')
+    item = trace_step(tracer, 'c1', 'check', {'document': 'Story'},
+                      saw=[{'n': 1, 'unit': 'document'}, {'n': 3, 'unit': 'match'}])
+    assert item['label'].endswith(': 3 matches')
