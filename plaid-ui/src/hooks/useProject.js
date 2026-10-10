@@ -35,6 +35,8 @@ import { useLatestCall } from './useLatestCall.js';
  * once (two saves, or two screens), and the first can answer last, so a read
  * a newer one overtook answers once the newest has: whoever awaits it sees the
  * project as it stands, never a value from before their own last save.
+ * A `reload` kept from an earlier project's render reads nothing and answers
+ * the route's project instead.
  */
 export const useProject = ({ withDocuments = false, logoutOnAuthError = false } = {}) => {
   const { projectId } = useParams();
@@ -46,6 +48,10 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
   const begin = useLatestCall();
   // The newest read, which an overtaken one waits for.
   const newest = useRef(null);
+  // The route's project now. A reload kept from an earlier project's render
+  // (a save there answering late) must not cancel this project's read.
+  const routeId = useRef(projectId);
+  routeId.current = projectId;
 
   // Keyed on the project only: getClient's and logout's identities change on
   // every AuthProvider render but do the same.
@@ -76,7 +82,9 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
         setFailed({ projectId, err });
         return null;
       } finally {
-        if (isCurrent() && !quiet) setLoading(false);
+        // The newest read owns the flag, quiet or not, so a quiet read that
+        // overtook a normal one still ends the wait.
+        if (isCurrent()) setLoading(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,6 +92,7 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
   );
   const reload = useCallback(
     ({ quiet = false } = {}) => {
+      if (routeId.current !== projectId) return newest.current ?? Promise.resolve(null);
       const isCurrent = begin();
       const done = read(isCurrent, quiet).then((data) =>
         // Unmounting also ends a read, with nothing newer to wait for.
@@ -92,7 +101,7 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
       newest.current = done;
       return done;
     },
-    [read, begin],
+    [read, begin, projectId],
   );
 
   useEffect(() => {

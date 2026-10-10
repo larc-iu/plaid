@@ -121,3 +121,51 @@ describe('useProject read again', () => {
     await view.unmount();
   });
 });
+
+describe('useProject read again quietly', () => {
+  // H15-REVIEW-1: a quiet read that overtook a normal one left `loading` on
+  // for good, and a save on A answering after the reader walked to B threw
+  // away B's read.
+  const queued = () => {
+    const reads = [];
+    return {
+      reads,
+      client: { projects: { get: (id) => new Promise((resolve) => reads.push({ id, resolve })) } },
+    };
+  };
+
+  it('ends loading when a quiet read overtakes the first', async () => {
+    const c = queued();
+    auth.getClient.mockReturnValue(c.client);
+    const view = await renderComponent(app({}));
+    await view.step(async () => {
+      seen.reload({ quiet: true });
+    });
+    await view.step(async () => c.reads[0].resolve({ id: 'A' }));
+    await view.step(async () => c.reads[1].resolve({ id: 'A' }));
+    expect(seen.project?.id).toBe('A');
+    expect(seen.loading).toBe(false);
+    await view.unmount();
+  });
+
+  it('shows B when a save on A reloads after the reader walked to B', async () => {
+    const c = queued();
+    auth.getClient.mockReturnValue(c.client);
+    const view = await renderComponent(app({}));
+    await view.step(async () => c.reads[0].resolve({ id: 'A' }));
+    const reloadOfA = seen.reload;
+    await view.step(() => go('/projects/B'));
+    let answer;
+    await view.step(async () => {
+      answer = reloadOfA({ quiet: true });
+    });
+    await view.step(async () => c.reads.find((r) => r.id === 'B').resolve({ id: 'B' }));
+    for (const r of c.reads.filter((r) => r.id === 'A').slice(1)) {
+      await view.step(async () => r.resolve({ id: 'A' }));
+    }
+    expect(seen.project?.id).toBe('B');
+    expect(seen.loading).toBe(false);
+    expect((await answer)?.id ?? null).not.toBe('A');
+    await view.unmount();
+  });
+});
