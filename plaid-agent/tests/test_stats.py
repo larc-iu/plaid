@@ -1,4 +1,4 @@
-from fixtures import scan_ws, FakeClient
+from fixtures import fake_ws, FakeClient
 
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.workspace import Workspace
@@ -8,7 +8,7 @@ from plaid_agent.igt.bulk import planned_changes as changes
 
 def ws(client=None):
     c = client or FakeClient()
-    return scan_ws(c)
+    return fake_ws(c)
 
 
 def test_all_tools_registered():
@@ -24,7 +24,9 @@ def test_corpus_stats_totals_and_tables():
     assert '1 document, 2 sentences, 4 words (4 distinct forms, 4 hapax, type/token 1.00), 5 morphemes (4 distinct, 3 hapax)' in out
     assert 'Words with any analysis: 50%; linked to the lexicon: 25%' in out
     assert 'Translation 50% (1/2 sentences)' in out and 'Gloss 25% (1/4 words)' in out and 'Morph Gloss 40% (2/5 morphemes)' in out
-    assert 'Longest words: Ali-di (2: Ali-di), Gam-ar (2: Gam=ar)' in out
+    # One document is read whole, so its longest words are named.
+    out = call_tool(ws(), 'corpus_stats', {'document': 'Text 1'})
+    assert out.startswith('Document "Text 1"') and 'Longest words: Ali-di (2: Ali-di), Gam-ar (2: Gam=ar)' in out
     table = call_tool(ws(), 'corpus_stats', {'by': 'document'})
     assert table.splitlines()[0] == 'document\tsentences\twords\tanalyzed\tlinked\tMorph Gloss\tTranslation\thapax\tTTR\tDate'
     assert table.splitlines()[1] == 'Text 1\t2\t4\t50%\t25%\t40%\t50%\t100%\t1.00\t2020'
@@ -48,11 +50,15 @@ def test_worklist_kinds():
     # An unsegmented word's derived morpheme (akuna) is unglossed work, as
     # its empty cell in the editor's grid is.
     assert out.startswith('4 morphemes without a Morph Gloss value across 3 distinct forms')
+    assert '  2\tgam\t"Text 1"' in out and '  1\takuna\t"Text 1"' in out
+    out = call_tool(w, 'worklist', {'kind': 'unglossed', 'document': 'Text 1'})
     assert '  2\tgam\ts1.w2.m1, s2.w1.m1' in out and '  1\takuna\ts1.w3.m1' in out
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Gloss'})
     assert '3 words without a Gloss value' in out and 'akuna' in out
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Translation'})
-    assert out.startswith('1 sentences without a Translation value (grouped by document)') and 's2 Gam-ar.' in out
+    assert out.startswith('1 sentences without a Translation value (grouped by document)') and '  1\tText 1' in out
+    out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Translation', 'document': 'Text 1'})
+    assert '  1\tText 1\ts2 Gam-ar.' in out
     out = call_tool(w, 'worklist', {'kind': 'unlinked', 'level': 'word'})
     assert '3 words not linked to the lexicon' in out
     out = call_tool(w, 'worklist', {'kind': 'unanalyzed'})
@@ -242,7 +248,6 @@ def test_a_clipped_read_is_never_reported_as_the_whole_corpus():
                             'truncated': True}
 
     def query_ws():
-        # Not scan_ws: these reports only run on the engine project-wide.
         return Workspace(c, load_project(c, 'p1'))
 
     for name, args in [('corpus_stats', {}),
@@ -252,9 +257,8 @@ def test_a_clipped_read_is_never_reported_as_the_whole_corpus():
                        ('sequence_search', {'sequence': [{'Gloss': 'x'}]})]:
         out = call_tool(query_ws(), name, args)
         assert 'come from part of the corpus and not all of it' in out, (name, out)
-    # Naming a document scans it whole, so there is nothing to warn about.
-    assert 'part of the corpus' not in call_tool(query_ws(), 'worklist', {'kind': 'unglossed',
-                                                                         'document': 'Text 1'})
+    # One document is read through the engine too, and warned about the same.
+    assert 'part of the corpus' in call_tool(query_ws(), 'worklist', {'kind': 'unglossed', 'document': 'Text 1'})
 
 
 def test_a_failing_tool_call_leaves_no_partial_plan():
@@ -371,16 +375,14 @@ def test_set_analysis_for_form_still_says_what_it_supersedes():
                                                           'field': 'Gloss', 'value': 'x'})
 
 
-def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
+def test_set_analysis_for_form_shows_the_guards_the_real_plan():
     """It used to stage into a scratch `ws.ops = []`, so every guard
     t_set_analysis makes looked at an empty plan: a word already being split,
-    a corpus-wide change reaching the document, a restore. Both paths now
-    refuse, and a refusal leaves the plan as it was."""
-    from plaid_agent.igt import queries as igt_queries
-
+    a corpus-wide change reaching the document, a restore. Now it refuses,
+    and a refusal leaves the plan as it was."""
     analysis = {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]}
 
-    # The scan path: w-2 is "gam", and the plan already splits it.
+    # w-2 is "gam", and the plan already splits it.
     w = ws()
     assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': 1}).startswith('Planned')
     before = list(w.ops)
@@ -388,7 +390,7 @@ def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
     assert 'its analysis cannot also change' in out
     assert w.ops == before, 'a refusal leaves the plan as it was'
 
-    # The scan path again: a corpus-wide change already reaches the document.
+    # A corpus-wide change already reaches the document.
     w = ws()
     w.doc('d1')
     w.ops.append({'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'counts': {},
@@ -396,26 +398,13 @@ def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
     assert 'corpus-wide change' in call_tool(w, 'set_analysis_for_form', analysis)
     assert len(w.ops) == 1
 
-    # The query path built its ops by hand and made neither refusal.
-    w = ws()
-    w.prefer_scan = False
-    w.doc('d1')
-    monkeypatch.setattr(igt_queries, 'q_analysis_targets', lambda ws_, form, skip, cap: (
-        [{'id': 'w-2', 'document': 'd1', 'text': 't1', 'begin': 7, 'end': 10, 'value': 'gam'}], {}, {}))
-    w.ops.append({'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'counts': {},
-                  'count': 1, 'documents': ['d1'], 'label': 'a corpus-wide change'})
-    assert 'corpus-wide change' in call_tool(w, 'set_analysis_for_form', analysis)
-    w.ops.clear()
-    assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': 1}).startswith('Planned')
-    assert 'its analysis cannot also change' in call_tool(w, 'set_analysis_for_form', analysis)
-
 
 def test_every_occurrence_of_a_form_folds_case_as_the_server_does():
-    """Naming a document scans it, and the scan used Python's full casefold,
-    under which "Straß" is "STRASS". The project-wide query reads the form
-    with the server's Java simple case folding, which does not make them
-    equal, so the same request reached different words with and without a
-    document named (H37 polish)."""
+    """Naming a document once read it in Python, with Python's full casefold,
+    under which "Straß" is "STRASS". The query reads the form with the
+    server's Java simple case folding, which does not make them equal, so the
+    same request reached different words with and without a document named
+    (H37 polish)."""
     c = FakeClient()
     c._documents['d1']['text_layers'][0]['text']['body'] = 'Ali-di gam Straß. Gam-ar.'
     w = ws(c)

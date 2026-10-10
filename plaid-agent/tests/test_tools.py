@@ -1,13 +1,13 @@
 import re
 import pytest
-from fixtures import scan_ws, FakeClient
+from fixtures import fake_ws, FakeClient
 
 from plaid_agent.igt.toolkit import call_tool, TOOLS, _IMPL
 
 
 def ws():
     c = FakeClient()
-    return scan_ws(c)
+    return fake_ws(c)
 
 
 def test_every_declared_tool_has_an_implementation():
@@ -198,7 +198,7 @@ def test_morph_types_and_lexicon_fields_are_validated():
     # a lexicon with a configured field schema rejects unknown entry fields
     c = FakeClient()
     c.project['vocabs'][0]['config'] = {'igt': {'fields': {'gloss': {'inline': True}, 'pos': {'inline': False}}}}
-    w2 = scan_ws(c)
+    w2 = fake_ws(c)
     assert 'has no entry field "definition"' in call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'definition': 'y'}})
     call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'Gloss': 'y'}})
     assert w2.ops[-1]['metadata'] == {'gloss': 'y'}
@@ -210,7 +210,7 @@ def test_homograph_numbers_pick_an_entry():
     c = FakeClient()
     c._lexicon['items'][2]['metadata']['homograph'] = 1
     c._lexicon['items'][3]['metadata']['homograph'] = 2
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam'})
     assert 'form=gam#1' in out and 'form=gam#2' in out
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam#2'})
@@ -237,7 +237,7 @@ def _machine_doc():
 
 def test_confirm_collects_unconfirmed_machine_pieces():
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     assert 'Planned 1 change' in out and '5 annotations will be marked verified' in out
     op = w.ops[0]
@@ -245,11 +245,11 @@ def test_confirm_collects_unconfirmed_machine_pieces():
     assert sorted(op['span_ids']) == ['sp-g1', 'sp-m1b'] and op['token_ids'] == ['m-1b'] and sorted(op['link_ids']) == ['l-1', 'l-2']
     assert op['label'] == 'Text 1 s1.w1 "Ali-di": confirm 2 values, 2 links, 1 segmentation'
     # Field-restricted: only that field's spans, no links or segmentations.
-    w2 = scan_ws(c)
+    w2 = fake_ws(c)
     call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1'], 'field': 'Morph Gloss'})
     assert w2.ops[0]['span_ids'] == ['sp-m1b'] and not w2.ops[0]['token_ids'] and not w2.ops[0]['link_ids']
     # Whole document: one op.
-    w3 = scan_ws(c)
+    w3 = fake_ws(c)
     out = call_tool(w3, 'confirm', {'document': 'd1'})
     assert len(w3.ops) == 1 and w3.ops[0]['label'].startswith('Text 1: confirm 2 values, 2 links, 2 segmentations')
     assert '6 annotations' in out
@@ -264,7 +264,7 @@ def test_confirm_leaves_a_machine_value_off_a_closed_tagset_and_names_it():
     and the rest is confirmed."""
     from fixtures import MGLOSS
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = scan_ws(c)
+    w = fake_ws(c)
     w.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'PST'],
                                                     'delimiters': '.'}]
     out = call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
@@ -272,13 +272,13 @@ def test_confirm_leaves_a_machine_value_off_a_closed_tagset_and_names_it():
     op = w.ops[0]
     assert op['span_ids'] == ['sp-g1'] and 'left' not in op
     assert op['label'].endswith(', 1 not in the tagset left unconfirmed')
-    w2 = scan_ws(c)
+    w2 = fake_ws(c)
     w2.project.field_by_layer(MGLOSS).value_sets = w.project.field_by_layer(MGLOSS).value_sets
     out = call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1'], 'field': 'Morph Gloss'})
     assert out == 'Not in the tagset, left unconfirmed: ERG (Morph Gloss, di). Nothing else awaits review there.'
     assert w2.ops == []
     # Listed, it is confirmed as before.
-    w3 = scan_ws(c)
+    w3 = fake_ws(c)
     w3.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'ERG']}]
     call_tool(w3, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     assert sorted(w3.ops[0]['span_ids']) == ['sp-g1', 'sp-m1b']
@@ -286,7 +286,7 @@ def test_confirm_leaves_a_machine_value_off_a_closed_tagset_and_names_it():
 
 def test_discard_analysis_mirrors_the_editor():
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s1.w1', 's1.w3', 's2']})
     assert 'Planned 2 changes' in out
     a, b = w.ops
@@ -307,7 +307,7 @@ def test_single_respell_carries_a_lone_matching_morpheme_form():
     raw = document_raw()
     raw['text_layers'][0]['token_layers'][2]['tokens'][2]['metadata'] = {'form': 'gam'}  # m-2 stores its form
     c = FakeClient(documents={'d1': raw})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
     assert 'Planned 2 changes' in out
     assert [o['kind'] for o in w.ops] == ['respell', 'set_morpheme_form'] and w.ops[1] == {
@@ -316,7 +316,7 @@ def test_single_respell_carries_a_lone_matching_morpheme_form():
     # A chain cannot be re-derived from a whole-word respelling: kept, and said so.
     out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w1', 'new_text': 'Alidi'})
     assert 'Planned 1 change' in out and 'Morpheme forms Ali, di are kept' in out
-    w2 = scan_ws(c)
+    w2 = fake_ws(c)
     call_tool(w2, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham', 'morpheme_forms': False})
     assert [o['kind'] for o in w2.ops] == ['respell']
 
@@ -360,7 +360,7 @@ def test_entry_gloss_singles_out_a_homograph():
 def test_reads_mark_unverified_machine_material():
     from plaid_agent.igt.project import render_document
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = render_document(w.doc('d1'), w.project)
     assert 'w1 Ali-di | seg=Ali-di~ types=?,suffix | Morph Gloss=Ali-ERG~ | Gloss=Ali~ | IPA=alidi | link=Ali~ | mlinks=m2:-di~' in out
     assert 'w1 Gam-ar | seg=Gam=ar~' in out  # m-4b is machine-made
@@ -521,12 +521,12 @@ def test_citations_do_not_fetch_more_documents_than_the_budget():
         raw = document_raw()
         raw['id'], raw['name'] = f'd{i}', f'Text {i}'
         docs[raw['id']] = raw
-    w = scan_ws(FakeClient(documents=docs))
+    w = fake_ws(FakeClient(documents=docs))
     text = ' '.join(f'<cite doc="Text {i}" ref="s1"/>' for i in range(CITE_DOC_BUDGET + 3))
     # The user is waiting on the reply: cite from what was read, plus a few
     # fetches; the rest stay plain text.
     assert len(resolve_citations(w, text)) == CITE_DOC_BUDGET
-    w2 = scan_ws(FakeClient(documents=docs))
+    w2 = fake_ws(FakeClient(documents=docs))
     call_tool(w2, 'read_document', {'document': 'd9'})  # already read: not counted against the budget
     assert len(resolve_citations(w2, text)) == CITE_DOC_BUDGET + 1
 
@@ -539,7 +539,7 @@ def test_documents_sharing_a_name_are_printed_and_cited_by_id():
         raw = document_raw()
         raw['id'], raw['name'] = f'd{i}', name
         docs[raw['id']] = raw
-    w = scan_ws(FakeClient(documents=docs))
+    w = fake_ws(FakeClient(documents=docs))
     # Nothing forbids two documents with one name, so a reference to either
     # names it by id; the unique name still prints as itself.
     assert (w.corpus.ref_name('d1'), w.corpus.ref_name('d2'), w.corpus.ref_name('d3')) == ('d1', 'd2', 'Text 2')
@@ -605,7 +605,7 @@ def test_list_documents_pages_and_filters_and_overview_caps():
         raw['metadata'] = {'Date': '2020' if i % 2 else '2021'}
         docs[raw['id']] = raw
     c = FakeClient(documents=docs)
-    w = scan_ws(c)
+    w = fake_ws(c)
     ov = call_tool(w, 'project_overview', {})
     assert f'Documents ({total}): first {OVERVIEW_DOCS} by name; list_documents' in ov
     assert f'Text {OVERVIEW_DOCS - 1:03d}' in ov and f'Text {OVERVIEW_DOCS:03d}' not in ov
@@ -624,15 +624,15 @@ def test_parsed_documents_are_cached_across_workspaces_by_version(fresh_document
     c = FakeClient()
     c.no_doc_cache = False
     c._documents['d1']['version'] = 3
-    a = scan_ws(c)
+    a = fake_ws(c)
     d = a.doc('d1')
-    b = scan_ws(c)
+    b = fake_ws(c)
     assert b.doc('d1') is d  # a second turn reuses the parsed document
     # A newer version is fetched afresh and replaces the cached one.
     raw = document_raw()
     raw['version'] = 4
     c._documents['d1'] = raw
-    w = scan_ws(c)
+    w = fake_ws(c)
     fresh = w.doc('d1')
     assert fresh is not d and fresh.version == 4 and T._DOC_CACHE.get(('d1', w._version_of(w.documents()[0]))) is fresh
 
@@ -644,7 +644,7 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
     from plaid_agent.core import plan as core_plan
     from plaid_agent.igt.plan import execute_plan, summarize
     monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3', 's2.w1'], 'field': 'Gloss', 'value': 'X'})
     payload = w.plan_payload()
     assert len(payload['ops']) == 1 and len(payload['changes']) == 1
@@ -662,7 +662,7 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
 def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
     """The header said s1-s40 while the text was cut off inside sentence nine."""
     from plaid_agent.core import tools as core_tools
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     whole = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert '\n[s2]' in whole, 'the fixture needs two sentences for this'
     monkeypatch.setattr(core_tools, 'RENDER_BUDGET', whole.index('\n[s2]') + 200)
@@ -678,7 +678,7 @@ def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
 
 def test_hits_from_one_document_are_capped_and_the_rest_counted():
     from plaid_agent.igt.queries import _hit_lines
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     c = w.corpus
     doc = w.doc('d1')
     words = [wd for s in doc.sentences for wd in s.words]
@@ -708,8 +708,7 @@ def test_a_replacement_is_one_rule_resolved_at_approval():
     engine applies the pattern, and the replacement is stored as one rule
     (core.rules), whatever its count, and found again at approval."""
     from plaid_agent.igt.plan import execute_plan, summarize
-    w = scan_ws(FakeClient())
-    w.prefer_scan = False
+    w = fake_ws(FakeClient())
     spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
     _engine_for_replace(w, spans)
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob',
@@ -729,11 +728,9 @@ def test_a_replacement_is_one_rule_resolved_at_approval():
     assert w.client.updates('spans') == [('s1', 'Bob'), ('s2', 'Bob-x'), ('s3', 'Bob')]
 
 
-
 def test_a_respelling_is_one_rule_that_a_reshape_cannot_join():
     from plaid_agent.igt.plan import execute_plan, summarize, validate_ops
-    w = scan_ws(FakeClient())
-    w.prefer_scan = False
+    w = fake_ws(FakeClient())
 
     def query(body):
         find = body.get('find') or []
@@ -757,7 +754,7 @@ def test_a_respelling_is_one_rule_that_a_reshape_cannot_join():
 
 
 def test_igt_search_and_concordance_match_case_only_when_asked():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     assert 's1.w1' in call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline'})
     assert 'No hits' in call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline', 'case_sensitive': True}) \
         or call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline', 'case_sensitive': True}).startswith('0 ')
@@ -806,7 +803,7 @@ def test_a_group_line_reads_each_change_where_its_label_says_and_counts_repeats(
     monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
     c = FakeClient()
     c._documents['d1']['name'] = 'Elicited: LLEC Wordlist'
-    w = scan_ws(c)
+    w = fake_ws(c)
     call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w1', 's1.w2', 's1.w3', 's2.w1'],
                                       'orthography': 'IPA', 'value': 'q'})
     # The group's line, over changes that differ and changes that repeat.
@@ -832,7 +829,7 @@ def test_every_member_change_is_read_off_its_label_not_split(monkeypatch):
     from plaid_agent.core.plan import change_of
     c = FakeClient()
     c._documents['d1']['name'] = 'A: B'
-    w = scan_ws(c)
+    w = fake_ws(c)
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'})
     call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w1'], 'orthography': 'IPA', 'value': 'q'})
     call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
@@ -854,8 +851,7 @@ def test_a_bulk_answer_counts_its_changes_by_document(monkeypatch):
     from plaid_agent.igt import bulk
     from plaid_agent.core import plan as core_plan
     monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
-    w = scan_ws(_two_documents())
-    w.prefer_scan = False
+    w = fake_ws(_two_documents())
     spans = [('s1', 'NOM.PAT', 'd1', 'w-1'), ('s2', 'NOM.PAT', 'd2', 'w-2'), ('s3', 'NOM.PAT', 'd2', 'w-3'),
              ('s4', 'NOM.PAT', 'd2', 'w-4')]
     # Machine output, so no change replaces a person's work and all four fold.
@@ -869,15 +865,6 @@ def test_a_bulk_answer_counts_its_changes_by_document(monkeypatch):
     # The card row counts each document, largest first.
     [row] = payload['changes']
     assert [(name, n) for _d, name, n in row['rule']['documents']] == [('Elicited: LLEC Wordlist', 3), ('Text 1', 1)]
-
-
-def test_a_scan_bulk_answer_counts_by_document_too():
-    """The scan path's ops name no document of their own; the count finds it."""
-    w = scan_ws(FakeClient())
-    out = call_tool(w, 'replace_in_field', {'document': 'd1', 'field': 'Gloss', 'pattern': '.*', 'regex': True,
-                                            'whole': True, 'replacement': 'Z'})
-    n = len(w.ops)
-    assert n and f'\nIn 1 document: "Text 1" {n}.\n' in out
 
 
 def test_dropping_a_new_entry_takes_a_multi_word_expression_on_it_along():
@@ -916,7 +903,7 @@ def test_a_form_that_carries_its_affix_marker_gets_no_second_one():
     raw = document_raw()
     morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
     morphs[1]['metadata'] = {'form': '-di', 'morphType': 'suffix'}
-    w = scan_ws(FakeClient(documents={'d1': raw}))
+    w = fake_ws(FakeClient(documents={'d1': raw}))
     word = w.doc('d1').sentences[0].words[0]
     assert segmentation(word) == 'Ali-di'
     assert _word_payload(word, w.project, pieces=True)['joiners'] == ['']
@@ -930,7 +917,7 @@ def test_a_value_copied_back_from_a_read_is_written_without_its_mark():
     """The ~ and ^ a read appends are display only (F7 ruling): a field value,
     a morpheme gloss, the last form of a segmentation and a link's entry
     copied back with their marks are written without them."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'say~'})
     assert w.ops[-1]['value'] == 'say'
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [
@@ -953,7 +940,7 @@ def test_a_value_off_a_layers_stored_list_is_refused_while_planning():
     analysis, and an edit of a planned morpheme."""
     from fixtures import MGLOSS
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = scan_ws(c)
+    w = fake_ws(c)
     w.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'PST', 'ERG'],
                                                     'delimiters': '.'}]
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
@@ -974,6 +961,6 @@ def test_concordance_tallies_the_hits_own_values():
     """Asked which glosses a morpheme carries, a model read the word patterns
     and missed the rare glosses among them. The hit's own values come
     tallied before the patterns, blanks included."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     out = call_tool(w, 'concordance', {'pattern': '.*', 'regex': True})
     assert out.split('\n')[1] == "The hit's own Morph Gloss: (blank) 3, Ali 1, ERG 1.", out

@@ -1,6 +1,7 @@
 """A small IGT project, document and lexicon in the live API's shape, and the
 fake client carrying them."""
 
+from plaid_client import PlaidAPIError
 from project_client import AgentFakeClient
 
 PID = 'p1'
@@ -124,6 +125,17 @@ class FakeClient(AgentFakeClient):
                          guidelines if guidelines is not None else guidelines_raw(), **kw)
         self._lexicon = lexicon or lexicon_raw()
 
+    def query(self, body):
+        """The two queries the client's fake runs itself, and any other asked
+        of the session's real core over a copy of this project (``live.answer``)."""
+        try:
+            return super().query(body)
+        except PlaidAPIError as e:
+            if 'runs no such query' not in str(e):
+                raise
+        import live
+        return live.answer(self, body)
+
     class _VocabLayers:
         def __init__(self, c):
             self.c = c
@@ -219,11 +231,9 @@ def odd_client():
     return c
 
 
-def scan_ws(client, project_id='p1'):
-    """A workspace over the fake client: it has no query engine, so every
-    corpus-wide tool takes the scan path (the query path is tested live)."""
+def fake_ws(client, project_id='p1'):
+    """A workspace over the fake client. Its corpus-wide tools ask the
+    session's core about a copy of the fake's project (``FakeClient.query``)."""
     from plaid_agent.igt.project import load_project
     from plaid_agent.igt.workspace import Workspace
-    w = Workspace(client, load_project(client, project_id))
-    w.prefer_scan = True
-    return w
+    return Workspace(client, load_project(client, project_id))

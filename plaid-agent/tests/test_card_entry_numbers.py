@@ -2,7 +2,7 @@
 form (A1-IGT-4), so a relink between homographs or senses says which entry
 the link leaves and which it moves to, on both sides."""
 
-from fixtures import FakeClient, document_raw, lexicon_raw, scan_ws
+from fixtures import FakeClient, document_raw, lexicon_raw, fake_ws
 
 from plaid_agent.igt.toolkit import call_tool
 
@@ -17,7 +17,7 @@ def _ws():
     words = doc['text_layers'][0]['token_layers'][1]
     words['vocabs'][0]['vocab_links'].append(
         {'id': 'l-3', 'vocab_item': {'id': 'vi-net1', 'form': 'gam'}, 'tokens': ['w-2']})
-    return scan_ws(FakeClient(documents={'d1': doc}, lexicon=lex))
+    return fake_ws(FakeClient(documents={'d1': doc}, lexicon=lex))
 
 
 def _labels(w):

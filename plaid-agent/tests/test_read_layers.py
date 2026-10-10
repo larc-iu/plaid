@@ -11,7 +11,7 @@ so a token layer has to be named for its tokens, a text layer for the text
 body, and a span layer for its spans.
 """
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from ud_fixtures import PID, ud_client
 
 from plaid_agent.igt.project import load_project as load_igt_project
@@ -72,7 +72,7 @@ def test_no_layer_is_named_twice():
 
 def test_an_igt_document_read_asks_for_those_layers_only():
     c = FakeClient()
-    w = scan_ws(c)
+    w = fake_ws(c)
     w.doc('d1')
     assert c.reads, 'the document was read'
     assert c.reads[-1]['id'] == 'd1'
@@ -108,7 +108,7 @@ def test_the_sandbox_reads_ahead_only_once_a_run_is_walking(fresh_document_cache
 
     c = FakeClient(documents={f'd{i}': _doc_at(i) for i in range(4)})
     c.no_doc_cache = False
-    w = scan_ws(c)
+    w = fake_ws(c)
     load = sandbox.load_proxy(w, lambda doc: doc)
     try:
         load('d0')

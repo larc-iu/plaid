@@ -1,21 +1,17 @@
 """Corpus-wide reads: numbers, worklists, lexicon and integrity reports, and
-sequence search. Project-wide they run on the query engine (see queries.py);
-with ``document=`` they scan that one document, which is also the reference
-implementation the query path is tested against. check_integrity always
-scans (it inspects raw text)."""
+sequence search. They run on the query engine (see queries.py), held to one
+document with ``document=``. check_integrity reads the documents themselves
+(it inspects raw text)."""
 
 import difflib
 import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional
 
-from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_KEY
-
-from .project import (IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, stored_morphemes,
-                      word_ref)
+from .project import (IgtDoc, Word, render_word, segmentation, word_ref)
 from ..core.tools import ToolError, truncate
 from .lexview import entry_line
-from .workspace import Workspace, _matcher
+from .workspace import Workspace
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
@@ -46,57 +42,7 @@ def _analyzed(w: Word) -> bool:
     return False
 
 
-def _linked(w: Word) -> bool:
-    return bool(w.link or w.mwes or any(m.link for m in w.morphemes))
-
-
 # --- corpus_stats -----------------------------------------------------------------
-
-def _doc_numbers(doc: IgtDoc, project) -> Dict[str, Any]:
-    words = [w for s in doc.sentences for w in s.words]
-    forms = Counter(w.surface.casefold() for w in words)
-    morphs = [m for w in words for m in stored_morphemes(w)]
-    mforms = Counter(m.form.casefold() for m in morphs)
-    out: Dict[str, Any] = {
-        'sentences': len(doc.sentences), 'words': len(words), 'forms': len(forms),
-        'hapax': sum(1 for c in forms.values() if c == 1),
-        'morphemes': len(morphs), 'morpheme_forms': len(mforms),
-        'analyzed': sum(1 for w in words if _analyzed(w)),
-        'linked': sum(1 for w in words if _linked(w)),
-        'ttr': (len(forms) / len(words)) if words else 0.0,
-        'longest': sorted(words, key=lambda w: -len(w.morphemes))[:3],
-    }
-    for f in project.fields.values():
-        if f.scope == 'Sentence':
-            out[f'field:{f.name}'] = (sum(1 for s in doc.sentences if s.fields.get(f.name) and s.fields[f.name].value != ''),
-                                      len(doc.sentences))
-        elif f.scope == 'Word':
-            out[f'field:{f.name}'] = (sum(1 for w in words if w.fields.get(f.name) and w.fields[f.name].value != ''),
-                                      len(words))
-        else:
-            out[f'field:{f.name}'] = (sum(1 for m in morphs if m.fields.get(f.name) and m.fields[f.name].value != ''),
-                                      len(morphs))
-    return out
-
-
-def _sum_numbers(rows: List[Dict[str, Any]], project, docs: List[IgtDoc]) -> Dict[str, Any]:
-    total: Dict[str, Any] = {}
-    for k in ('sentences', 'words', 'morphemes', 'analyzed', 'linked'):
-        total[k] = sum(r[k] for r in rows)
-    words = [w for d in docs for s in d.sentences for w in s.words]
-    forms = Counter(w.surface.casefold() for w in words)
-    mforms = Counter(m.form.casefold() for w in words for m in stored_morphemes(w))
-    total['forms'] = len(forms)
-    total['hapax'] = sum(1 for c in forms.values() if c == 1)
-    total['morpheme_forms'] = len(mforms)
-    total['morpheme_hapax'] = sum(1 for c in mforms.values() if c == 1)
-    total['ttr'] = (len(forms) / len(words)) if words else 0.0
-    total['longest'] = sorted(words, key=lambda w: -len(w.morphemes))[:5]
-    for f in project.fields.values():
-        k = f'field:{f.name}'
-        total[k] = (sum(r[k][0] for r in rows), sum(r[k][1] for r in rows))
-    return total
-
 
 def merge_numbers(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Sum per-document number dicts that carry their form tallies."""
@@ -126,33 +72,25 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
     metadata field (`by="Genre"`)."""
     project = ws.project
     lines: List[str] = []
-    clipped = ''
-    if ws.use_scan(document):
-        docs = _docs(ws, document)
-        rows = {d.id: _doc_numbers(d, project) for d in docs}
-        names = {d.id: d.name for d in docs}
-        metas = {d.id: d.metadata for d in docs}
-        n_docs = len(docs)
-        whole = _sum_numbers(list(rows.values()), project, docs)
-
-        def total(ids):
-            return _sum_numbers([rows[i] for i in ids], project, [d for d in docs if d.id in ids])
-    else:
-        from .queries import q_corpus_numbers
-        names = ws.corpus.doc_names()
+    from .queries import q_corpus_numbers
+    with ws.corpus.within(document) as held:
+        names = {held: ws.corpus.doc_name(held)} if held else ws.corpus.doc_names()
         n_docs = len(names)
         if by is None:
             whole = q_corpus_numbers(ws, per_doc=False)
-            clipped = ws.corpus.clipped_note('counts')
+            # One document is loaded whole, so its longest words can be named.
+            if held:
+                whole['longest'] = sorted((w for s in ws.doc(held).sentences for w in s.words),
+                                          key=lambda w: -len(w.morphemes))[:3]
         else:
             rows = q_corpus_numbers(ws, per_doc=True)
-            clipped = ws.corpus.clipped_note('counts')
             for did in names:
                 rows.setdefault(did, q_corpus_numbers.empty(project))
             metas = ws.corpus.document_metadata()
 
             def total(ids):
                 return merge_numbers([rows[i] for i in ids])
+        clipped = ws.corpus.clipped_note('counts')
 
     def describe(n: Dict[str, Any], docs_n: int, head: str):
         lines.append(head)
@@ -216,57 +154,14 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
     min_count = read_int(min_count, 'min_count', 1, minimum=1)
     what_l = (what or 'wordform').lower()
-    counts: Counter = Counter()
-    spread: Dict[str, set] = defaultdict(set)
-    empty = 0
     field = None
     if what_l not in ('wordform', 'word', 'morpheme'):
         field = ws.project.field(what)
-    if not ws.use_scan(document):
-        from .queries import q_frequency_list
+    from .queries import q_frequency_list
+    with ws.corpus.within(document):
         items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count)
-        return _frequency_lines(ws, items, spread, empty, field, what_l, limit,
-                                ws.corpus.clipped_note(_freq_noun(field, what_l)))
-    docs = _docs(ws, document)
-    for d in docs:
-        for s in d.sentences:
-            if field and field.scope == 'Sentence':
-                sp = s.fields.get(field.name)
-                if sp and sp.value != '':
-                    counts[sp.value] += 1
-                    spread[sp.value].add(d.id)
-                else:
-                    empty += 1
-                continue
-            for w in s.words:
-                if what_l in ('wordform', 'word'):
-                    k = w.surface.casefold()
-                    counts[k] += 1
-                    spread[k].add(d.id)
-                elif what_l == 'morpheme':
-                    for m in stored_morphemes(w):
-                        if not m.form:
-                            continue
-                        k = m.form.casefold()
-                        counts[k] += 1
-                        spread[k].add(d.id)
-                elif field.scope == 'Word':
-                    sp = w.fields.get(field.name)
-                    if sp and sp.value != '':
-                        counts[sp.value] += 1
-                        spread[sp.value].add(d.id)
-                    else:
-                        empty += 1
-                else:
-                    for m in stored_morphemes(w):
-                        sp = m.fields.get(field.name)
-                        if sp and sp.value != '':
-                            counts[sp.value] += 1
-                            spread[sp.value].add(d.id)
-                        else:
-                            empty += 1
-    items = [(k, n) for k, n in counts.most_common() if n >= min_count]
-    return _frequency_lines(ws, items, spread, empty, field, what_l, limit)
+    return _frequency_lines(ws, items, spread, empty, field, what_l, limit,
+                            ws.corpus.clipped_note(_freq_noun(field, what_l)))
 
 
 def _with_note(lines, clipped: str) -> str:
@@ -298,35 +193,6 @@ def _frequency_lines(ws, items, spread, empty, field, what_l, limit, clipped: st
 KINDS = ('unlinked', 'unglossed', 'unanalyzed', 'unverified', 'contributed')
 
 
-def _prov_votes(w: Word) -> List[tuple]:
-    """(state, source) for every annotated piece of a word."""
-    votes = []
-
-    def vote(meta):
-        votes.append((prov_state(meta), (meta or {}).get(PROV_SOURCE_KEY) or ''))
-    for sp in w.fields.values():
-        vote(sp.metadata)
-    if w.link:
-        vote(w.link.metadata)
-    for l in w.mwes:
-        vote(l.metadata)
-    for m in w.morphemes:
-        if len(w.morphemes) > 1 or m.morph_type or m.form != w.surface:
-            vote(m.metadata)
-        for sp in m.fields.values():
-            vote(sp.metadata)
-        if m.link:
-            vote(m.link.metadata)
-    return votes
-
-
-def _awaits_review(votes: List[tuple], kind: str, user: Optional[str]) -> bool:
-    if kind == 'unverified':
-        return any(state in REVIEWABLE for state, _ in votes)
-    want = f'user:{user}' if user else None
-    return any(state == CONTRIBUTED_STATE and (want is None or source == want) for state, source in votes)
-
-
 def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = None, level: Optional[str] = None,
                document: Optional[str] = None, limit: Optional[int] = None, user: Optional[str] = None) -> str:
     """The unfinished work grouped by form, most frequent first: forms that are
@@ -342,7 +208,6 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         raise ToolError('user= goes with kind="contributed"')
     project = ws.project
     limit = clamp_limit(limit, *READ_LIMITS['worklist'])
-    docs = _docs(ws, document) if ws.use_scan(document) else []
     f = None
     if kind == 'unglossed':
         if field:
@@ -357,47 +222,16 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         lvl = 'word'
     if f and f.scope == 'Sentence':
         lvl = 'sentence'
-    if not ws.use_scan(document):
-        from .queries import q_worklist
-        counts, examples = q_worklist(ws, kind, f, lvl, user)
-        return _worklist_lines(ws, kind, f, lvl, limit, counts, examples, user,
-                               ws.corpus.clipped_note(f'{lvl}s'))
-    groups: Dict[str, List[str]] = defaultdict(list)
-    for d in docs:
-        tag = _tag(ws, docs, d)
-        for s in d.sentences:
-            if lvl == 'sentence':
-                # Sentences have no form to group by: group by document.
-                sp = s.fields.get(f.name)
-                if not (sp and sp.value != ''):
-                    groups[d.name].append(f'{tag}s{s.index} {s.text[:50]}')
-                continue
-            for w in s.words:
-                ref = f'{tag}{word_ref(s, w)}'
-                if kind == 'unanalyzed':
-                    if not _analyzed(w):
-                        groups[w.surface.casefold()].append(ref)
-                elif kind in ('unverified', 'contributed'):
-                    if _awaits_review(_prov_votes(w), kind, user):
-                        groups[w.surface.casefold()].append(ref)
-                elif lvl == 'word':
-                    if kind == 'unlinked' and not _linked(w):
-                        groups[w.surface.casefold()].append(ref)
-                    elif kind == 'unglossed' and f and not (w.fields.get(f.name) and w.fields[f.name].value != ''):
-                        groups[w.surface.casefold()].append(ref)
-                else:
-                    for m in w.morphemes:
-                        if kind == 'unlinked' and not m.link and not w.link:
-                            groups[m.form.casefold()].append(f'{ref}.m{m.index}')
-                        elif kind == 'unglossed' and f and not (m.fields.get(f.name) and m.fields[f.name].value != ''):
-                            groups[m.form.casefold()].append(f'{ref}.m{m.index}')
-    # Three examples per form is enough to SEE what is unfinished across a
-    # corpus. It is not enough to ACT on one document: a form unglossed ten
-    # times gives three references and no way to the other seven but reading.
-    # So naming a document lists them all, which is the list to plan from.
-    per_form = limit if document else 3
-    return _worklist_lines(ws, kind, f, lvl, limit, {k: len(v) for k, v in groups.items()},
-                           {k: v[:per_form] for k, v in groups.items()}, user)
+    from .queries import q_worklist
+    with ws.corpus.within(document) as held:
+        # Three examples per form is enough to SEE what is unfinished across
+        # a corpus, and they name documents. It is not enough to ACT on one
+        # document: a form unglossed ten times gives three and no way to the
+        # other seven but reading. So naming a document lists every reference,
+        # which is the list to plan from.
+        counts, examples = q_worklist(ws, kind, f, lvl, user, refs=bool(held))
+    return _worklist_lines(ws, kind, f, lvl, limit, counts,
+                           {k: v[:limit] for k, v in examples.items()}, user, ws.corpus.clipped_note(f'{lvl}s'))
 
 
 def _worklist_lines(ws, kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]],
@@ -480,10 +314,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         return uses[iid] + sum(uses[d['id']] for d in descendants_of(vw.tree, iid))
 
     ws.note_read(len(items), 'entry')
-    docs = ws.all_docs() if ws.prefer_scan else []
-    n_docs = len(docs) if ws.prefer_scan else len(ws.documents())
-    gm, gw = project.gloss_field('Morpheme'), project.gloss_field('Word')
-    first_m, first_w = (gm.name if gm else None), (gw.name if gw else None)
+    n_docs = len(ws.documents())
     # The lexicon's own gloss and POS fields, by each lexicon's schema.
     lex_gloss = {v['id']: project.lexicon_field(v, 'gloss') for v in vocabs}
     lex_pos = {v['id']: project.lexicon_field(v, 'pos') for v in vocabs}
@@ -491,43 +322,8 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     def entry_gloss(it: dict) -> str:
         fld = lex_gloss.get(item_vocab.get(it['id']))
         return str((it.get('metadata') or {}).get(fld) or '').strip() if fld else ''
-    uses: Dict[str, int] = Counter()
-    use_docs: Dict[str, set] = defaultdict(set)
-    corpus_gloss: Dict[str, Counter] = defaultdict(Counter)   # item -> corpus gloss values
-    gloss_items: Dict[str, set] = defaultdict(set)            # corpus gloss -> items
-    stale: Counter = Counter()                                # (linked form, entry form) -> links
-    if not ws.prefer_scan:
-        from .queries import q_lexicon_usage
-        uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
-        docs = []
-    for d in docs:
-        seen_mwes = set()
-        for s in d.sentences:
-            for w in s.words:
-                # A multi-word expression counts once per member word, as the
-                # query path counts linked tokens. For the stale check it is
-                # one link whose form is its members' surfaces.
-                for l in w.mwes:
-                    if l.item_id not in items:
-                        continue
-                    uses[l.item_id] += 1
-                    use_docs[l.item_id].add(d.id)
-                    if l.id not in seen_mwes:
-                        seen_mwes.add(l.id)
-                        _note_stale(stale, items[l.item_id], mwe_form(d, l))
-                units = [(w, w.surface, first_w)] + [(m, m.form, first_m) for m in w.morphemes]
-                for u, form, fname in units:
-                    if not u.link or u.link.item_id not in items:
-                        continue
-                    iid = u.link.item_id
-                    uses[iid] += 1
-                    use_docs[iid].add(d.id)
-                    if fname:
-                        sp = u.fields.get(fname)
-                        if sp and sp.value != '':
-                            corpus_gloss[iid][sp.value] += 1
-                            gloss_items[sp.value].add(iid)
-                    _note_stale(stale, items[iid], form)
+    from .queries import q_lexicon_usage
+    uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
     lines = [f'Lexicon check: {len(items)} entries in {", ".join(v["name"] for v in vocabs)}, {sum(uses.values())} links'
              + (f'; section "{only}"' if only else '; each section capped, ask for one section for the full list') + '.']
 
@@ -650,7 +446,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     # The sixth report, and the one with the widest grouping: one row per
     # link-token. Past the group limit "entries never linked" lists entries
     # whose links fell off the end of the read.
-    return truncate(_with_note(lines, ws.corpus.clipped_note('links') if not ws.prefer_scan else ''))
+    return truncate(_with_note(lines, ws.corpus.clipped_note('links')))
 
 
 # --- check_integrity ----------------------------------------------------------------
@@ -719,37 +515,6 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
 
 # --- sequence_search ----------------------------------------------------------------
 
-def _word_matches(w: Word, cond: Dict[str, Any], project, regex: bool) -> bool:
-    for key, pat in cond.items():
-        if regex:
-            m = _matcher(str(pat), True)
-        else:
-            wanted = str(pat).casefold()
-            m = lambda s, wanted=wanted: (s or '').casefold() == wanted  # noqa: E731
-        k = (key or '').lower()
-        if k in ('form', 'word', 'baseline'):
-            if not m(w.surface):
-                return False
-        elif k == 'morpheme':
-            if not any(m(x.form) for x in w.morphemes):
-                return False
-        elif k == 'type':
-            if not any(m(x.morph_type or '') for x in w.morphemes):
-                return False
-        else:
-            f = project.field(key)
-            if f.scope == 'Word':
-                sp = w.fields.get(f.name)
-                if not (sp and m(sp.value)):
-                    return False
-            elif f.scope == 'Morpheme':
-                if not any(m(x.fields[f.name].value) for x in w.morphemes if f.name in x.fields):
-                    return False
-            else:
-                raise ToolError(f'"{f.name}" is a sentence field; sequence conditions are per word')
-    return True
-
-
 def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, document: Optional[str] = None,
                       regex: bool = False, limit: int = 40) -> str:
     """Sentences containing a sequence of words, each described by conditions
@@ -761,31 +526,18 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
         raise ToolError('sequence must be a non-empty list of condition objects, e.g. [{"POS":"v"},{"Gloss":"PL"}]')
     limit = clamp_limit(limit, 40, 200)
     out: List[str] = []
-    total = 0
-    clipped = ''
 
     def show(tag, s, matches):
         idx = set(matches)
         shown = ' '.join(f'[{w.surface}]' if w.index in idx else w.surface for w in s.words)
         out.append(f'{tag}s{s.index} {shown}' + ''.join(
             f'\n    w{i} ' + render_word(s.words[i - 1], ws.project)[len(s.words[i - 1].ref) + 1:] for i in matches))
-    if not ws.use_scan(document):
-        from .queries import q_sequence
+    from .queries import q_sequence
+    with ws.corpus.within(document):
         found, total = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)
-        clipped = ws.corpus.clipped_note('matches')
-        for d, s, word_ids in found:
-            show(ws.corpus.tag(d.id), s, [w.index for w in s.words if w.id in word_ids])
-    else:
-        docs = _docs(ws, document)
-        for d in docs:
-            tag = _tag(ws, docs, d)
-            for s in d.sentences:
-                matches = _find_sequence(s, sequence, adjacent, ws.project, regex)
-                if not matches:
-                    continue
-                total += 1
-                if len(out) < limit:
-                    show(tag, s, matches)
+    clipped = ws.corpus.clipped_note('matches')
+    for d, s, word_ids in found:
+        show(ws.corpus.tag(d.id), s, [w.index for w in s.words if w.id in word_ids])
     ws.note_read(len(out), 'match', of=total)
     if not total:
         return 'No sentence matches that sequence.' + clipped
@@ -793,31 +545,3 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
                                 + (f' (showing {limit})' if total > limit else '') + ':' + clipped] + out))
 
 
-def _find_sequence(s: Sentence, seq: List[Dict[str, Any]], adjacent: bool, project, regex: bool) -> List[int]:
-    """Word indexes (1-based) of the first match, or []."""
-    n = len(s.words)
-    for start in range(n):
-        if not _word_matches(s.words[start], seq[0], project, regex):
-            continue
-        picked = [start]
-        pos = start + 1
-        ok = True
-        for cond in seq[1:]:
-            if adjacent:
-                if pos < n and _word_matches(s.words[pos], cond, project, regex):
-                    picked.append(pos)
-                    pos += 1
-                else:
-                    ok = False
-                    break
-            else:
-                while pos < n and not _word_matches(s.words[pos], cond, project, regex):
-                    pos += 1
-                if pos >= n:
-                    ok = False
-                    break
-                picked.append(pos)
-                pos += 1
-        if ok:
-            return [i + 1 for i in picked]
-    return []

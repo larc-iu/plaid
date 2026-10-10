@@ -465,12 +465,8 @@ The modules below are `igt/` unless they say otherwise.
   reads and target finding run as server-side queries (counts, grouped
   tallies, entity ids); documents are fetched only to render the hits a tool
   shows, so cost follows what is displayed, not the size of the corpus. With
-  `document=` a tool scans that one document instead, and the scan
-  implementations double as the reference the query path is tested against
-  (`tests/test_live_corpus.py`, which seeds the fixture project into a running
-  core and compares both paths; it skips without a server at
-  `PLAID_TEST_URL`, default `http://localhost:8085`, dev account `a@b.com`).
-  Two conventions the engine does not know are applied in Python on grouped
+  `document=` the same queries are held to that one document
+  (`Corpus.within`). Two conventions the engine does not know are applied in Python on grouped
   results: ignored (punctuation) tokens are left out of word counts, and
   forms are compared case-insensitively. `check_integrity` still reads whole
   documents (it inspects raw text). Parsed documents are cached in the
@@ -537,6 +533,21 @@ records cannot say, and is copied into the dataset as its README.
 pytest
 ```
 
-`tests/test_research_extract_live.py` runs the extractor on a database a
-real core wrote, and needs `PLAID_TEST_URL` and `PLAID_TEST_DB` (the core's
-database file).
+igt's corpus tools ask a real core, so the suite boots a private plaid-core
+for the session (`tests/private_core.py`): its own free port and database in
+a temporary directory, from the jar in `plaid-core/target` when that is newer
+than the core's sources, else from source with the Clojure CLI. It needs Java,
+starts while the first tests run, and stops when the suite ends. The igt fake
+client sends every query it cannot answer itself to that core, over a copy of
+its fixture project seeded once per state (`tests/live.py`). Without Java, or
+without a fresh jar and the Clojure CLI, those tests skip and say why, and
+`PLAID_AGENT_REQUIRE_LIVE=1` (which `bb test` sets) makes that a failure.
+`PLAID_TEST_URL` (with `PLAID_TEST_USER` and `PLAID_TEST_PASSWORD`) points the
+suite at a core that is already up instead, and `python tests/private_core.py`
+starts one to point it at. `PLAID_CORE_JAR` names a jar to run.
+
+`tests/test_live_corpus.py` checks the corpus tools' answers on a project
+seeded through the real API against `tests/live_corpus_expected.json`, and
+`PLAID_AGENT_WRITE_EXPECTED=1` rewrites that file. `tests/test_research_extract_live.py`
+runs the extractor on the session core's own database file (`PLAID_TEST_DB`
+names it for a core `PLAID_TEST_URL` names).

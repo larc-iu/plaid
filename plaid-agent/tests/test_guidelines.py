@@ -24,7 +24,7 @@ from plaid_agent.core.guidelines import (  # noqa: E402
 from plaid_agent.core.limits import GUIDELINES_INLINE_CHARS  # noqa: E402
 from plaid_agent.core.tools import ToolError  # noqa: E402
 
-from fixtures import FakeClient, PID, scan_ws  # noqa: E402
+from fixtures import FakeClient, PID, fake_ws  # noqa: E402
 
 
 #: What the fixture's rows were last changed at. A revision is staged against
@@ -201,7 +201,7 @@ def test_a_guideline_cannot_close_the_fence_and_speak_as_the_harness():
 
 @pytest.fixture
 def ws():
-    return scan_ws(FakeClient())
+    return fake_ws(FakeClient())
 
 
 def test_read_guideline_returns_the_body(ws):

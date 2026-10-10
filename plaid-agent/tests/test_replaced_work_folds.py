@@ -11,7 +11,7 @@ from plaid_agent.core.plan import COMPACT_ABOVE, compact_ops
 from plaid_agent.igt.changes import describe_change
 
 import fixtures as igt_fx
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 
 
 def _spec():
@@ -34,7 +34,7 @@ def test_a_few_flagged_changes_stay_rows_of_their_own():
 
 
 def test_the_card_row_of_a_flagged_group_states_how_many_it_replaces():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     group = {'kind': 'set_span', 'layer_id': igt_fx.GLOSS, 'compact': True, 'count': 20, 'replaces_work': 20,
              'items': {'token_id': ['w-1'] * 20}, 'doc': 'd1', 'label': 'Text 1: 20 changes'}
     assert describe_change(w, group)['replaces_work'] == 20

@@ -11,9 +11,10 @@ to the model. Anything else is a fault in the tool, so the calls go through
 the implementations rather than ``call_tool``, which turns every exception
 into text and would hide exactly what this is looking for.
 
-Both paths, because they are two implementations of one contract: naming a
-document scans it, leaving it out asks the query engine. Arguments come from
-each tool's own schema, so a new enum value is covered the day it is added.
+In one document with an engine that answers from the fixture (igt's is the
+session's core, ``live.answer``), and project-wide with an engine that answers
+nothing, the state the tools handle worst. Arguments come from each tool's own
+schema, so a new enum value is covered the day it is added.
 """
 
 import sys
@@ -110,7 +111,7 @@ def _empty_engine(client):
     return client
 
 
-def _igt(scan: bool):
+def _igt(empty_engine: bool = False):
     # FakeClient, not FakeClient: it serves the comments table, the audit
     # windows and the restore dry run, so those tool bodies actually run.
     from fixtures import project_raw, document_raw, lexicon_raw
@@ -121,10 +122,9 @@ def _igt(scan: bool):
                   comments=[{'id': 'c1', 'document_id': 'd1', 'entity_type': 'document', 'entity_id': 'd1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
                              'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
-    if not scan:
+    if empty_engine:
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'p1'))
-    w.prefer_scan = scan
     # A file on the conversation, so read_file has something to read: its
     # refusal when nothing is attached would otherwise count as an answer and
     # leave the body unrun.
@@ -132,7 +132,7 @@ def _igt(scan: bool):
     return w
 
 
-def _ud(scan: bool):
+def _ud(empty_engine: bool = False):
     # This app's FakeClient, whose audit log names this project's document: the
     # other app's named a document the UD project does not have, so the history
     # tools answered "nothing has changed" and the sweep took it for an answer.
@@ -143,14 +143,14 @@ def _ud(scan: bool):
                   comments=[{'id': 'c1', 'document_id': 'ud1', 'entity_type': 'document', 'entity_id': 'ud1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
                              'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
-    if not scan:
+    if empty_engine:
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'p1'))
     w.files = attached(('wordlist.csv', WORDLIST))
     return w
 
 
-def _umr(scan: bool):
+def _umr(empty_engine: bool = False):
     from umr_fixtures import FakeClient, project_raw, document_raw
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.tools import Workspace
@@ -159,7 +159,7 @@ def _umr(scan: bool):
                              'entity_id': 'umr1', 'body': 'a note',
                              'created_at': '2026-09-01T10:00:00Z',
                              'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
-    if not scan:
+    if empty_engine:
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'mp1'))
     w.files = attached(('wordlist.csv', WORDLIST))
@@ -181,32 +181,32 @@ UMR_PROJECT = _cases(UMR_TOOLS, UMR_WRITES, UMR_ARGS, in_document=False, extra=E
 
 @pytest.mark.parametrize('name,args', IGT_IN_DOC, ids=_ids(IGT_IN_DOC))
 def test_igt_read_tools_in_one_document(name, args):
-    _run('igt', IGT_IMPL, _igt(scan=True), name, args)
+    _run('igt', IGT_IMPL, _igt(), name, args)
 
 
 @pytest.mark.parametrize('name,args', IGT_PROJECT, ids=_ids(IGT_PROJECT))
 def test_igt_read_tools_project_wide(name, args):
-    _run('igt', IGT_IMPL, _igt(scan=False), name, args)
+    _run('igt', IGT_IMPL, _igt(empty_engine=True), name, args)
 
 
 @pytest.mark.parametrize('name,args', UD_IN_DOC, ids=_ids(UD_IN_DOC))
 def test_ud_read_tools_in_one_document(name, args):
-    _run('ud', UD_IMPL, _ud(scan=True), name, args)
+    _run('ud', UD_IMPL, _ud(), name, args)
 
 
 @pytest.mark.parametrize('name,args', UD_PROJECT, ids=_ids(UD_PROJECT))
 def test_ud_read_tools_project_wide(name, args):
-    _run('ud', UD_IMPL, _ud(scan=False), name, args)
+    _run('ud', UD_IMPL, _ud(empty_engine=True), name, args)
 
 
 @pytest.mark.parametrize('name,args', UMR_IN_DOC, ids=_ids(UMR_IN_DOC))
 def test_umr_read_tools_in_one_document(name, args):
-    _run('umr', UMR_IMPL, _umr(scan=True), name, args)
+    _run('umr', UMR_IMPL, _umr(), name, args)
 
 
 @pytest.mark.parametrize('name,args', UMR_PROJECT, ids=_ids(UMR_PROJECT))
 def test_umr_read_tools_project_wide(name, args):
-    _run('umr', UMR_IMPL, _umr(scan=False), name, args)
+    _run('umr', UMR_IMPL, _umr(empty_engine=True), name, args)
 
 
 @pytest.mark.parametrize('app,name,message', [('igt', 'Text 1', 'Assistant: 2 field values'),
@@ -219,7 +219,7 @@ def test_the_history_a_sweep_case_reads_actually_holds_a_change(app, name, messa
     its empty branch in every one of those cases and nothing said so.
     """
     ws, impl = {'igt': (_igt, IGT_IMPL), 'ud': (_ud, UD_IMPL), 'umr': (_umr, UMR_IMPL)}[app]
-    out = impl['recent_changes'](ws(scan=True), document=name)
+    out = impl['recent_changes'](ws(), document=name)
     assert 'Luke G' in out and message in out and name in out
 
 

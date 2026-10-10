@@ -17,8 +17,7 @@ from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, documents_page, truncate
 
-from .project import (Word, Morpheme, analyzed, document_lines, joiner_between, render_overview, stored_morphemes,
-                      render_word, segmentation, word_ref)
+from .project import (Word, Morpheme, document_lines, joiner_between, render_overview, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, descendants_of, homograph_group, references_to
 from .workspace import Workspace, _hits_in, _matcher, _meta_of
@@ -40,7 +39,7 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         if not name:
             raise ToolError(f'No document metadata field "{metadata_field}". Fields: '
                             + (', '.join(ws.project.document_metadata) or '(none configured)'))
-        metas = ws.corpus.document_metadata() if not ws.prefer_scan else {d.id: d.metadata for d in ws.all_docs()}
+        metas = ws.corpus.document_metadata()
         want = (value or '').casefold()
         docs = [d for d in ws.documents() if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
                 or (not want and not (metas.get(d['id']) or {}).get(name))]
@@ -116,41 +115,9 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
             _merge_notes(ws, start)
             return text
         field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
-    if not ws.use_scan(document):
-        from .queries import q_search
+    from .queries import q_search
+    with ws.corpus.within(document):
         out, total, morphs = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
-        return _finish(ws, out, total, limit, 'hits', 'match', morphs)
-    docs = [ws.doc(document)] if document else ws.all_docs()
-    morphs = 0 if where_l == 'morpheme' or (field and field.scope == 'Morpheme') else None
-    for doc in docs:
-        tag = ws.doc_tag(doc, len(docs) > 1)
-        for s in doc.sentences:
-            if field and field.scope == 'Sentence':
-                sp = s.fields.get(field.name)
-                if sp and match(sp.value):
-                    total += 1
-                    if len(out) < limit:
-                        out.append(f'{tag}s{s.index} {field.name}={sp.value} | {s.text}')
-                continue
-            for w in s.words:
-                hit = False
-                if where_l == 'baseline':
-                    hit = match(w.surface)
-                elif where_l == 'morpheme':
-                    n = sum(1 for m in stored_morphemes(w) if match(m.form))
-                    morphs += n
-                    hit = n > 0
-                elif field.scope == 'Word':
-                    sp = w.fields.get(field.name)
-                    hit = bool(sp and match(sp.value))
-                else:
-                    n = sum(1 for m in w.morphemes if field.name in m.fields and match(m.fields[field.name].value))
-                    morphs += n
-                    hit = n > 0
-                if hit:
-                    total += 1
-                    if len(out) < limit:
-                        out.append(f'{tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
     return _finish(ws, out, total, limit, 'hits', 'match', morphs)
 
 
@@ -260,40 +227,9 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         field = _field_or_where(ws, where, ('baseline', 'morpheme'))
         if field.scope == 'Sentence':
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
-    if not ws.use_scan(document):
-        from .queries import q_concordance_hits
+    from .queries import q_concordance_hits
+    with ws.corpus.within(document):
         hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
-    else:
-        # Whole-form match by default (a concordance of "ar" must not include
-        # "para"). Regex for anything looser.
-        match = _matcher(pattern, bool(regex), bool(case_sensitive), whole=not regex)
-        docs = [ws.doc(document)] if document else ws.all_docs()
-        hits = []
-        total = 0
-        for doc in docs:
-            for s in doc.sentences:
-                for w in s.words:
-                    hit_morphs: List[Morpheme] = []
-                    if where_l == 'baseline':
-                        if not match(w.surface):
-                            continue
-                    elif where_l == 'morpheme':
-                        hit_morphs = [m for m in stored_morphemes(w) if match(m.form)]
-                        if not hit_morphs:
-                            continue
-                    elif field.scope == 'Word':
-                        sp = w.fields.get(field.name)
-                        if not (sp and match(sp.value)):
-                            continue
-                    else:
-                        hit_morphs = [m for m in w.morphemes
-                                      if field.name in m.fields and match(m.fields[field.name].value)]
-                        if not hit_morphs:
-                            continue
-                    for hit in (hit_morphs or [None]):
-                        total += 1
-                        if len(hits) < limit:
-                            hits.append((doc, s, w, hit))
     ws.note_read(len(hits), 'match', of=total)
     if not total:
         return f'No occurrences of "{pattern}".'
@@ -362,70 +298,9 @@ def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[
 
 def _analyses_of_one(ws: Workspace, form: str, document: Optional[str], found: List[int]) -> str:
     """One form's tallies, with the occurrences tallied added to ``found``."""
-    if not ws.use_scan(document):
-        from .queries import q_analyses_of
+    from .queries import q_analyses_of
+    with ws.corpus.within(document):
         return q_analyses_of(ws, form, found)
-    same = _matcher(form, False, whole=True)
-    docs = [ws.doc(document)] if document else ws.all_docs()
-    mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
-    wfields = [f.name for f in ws.project.fields_by_scope('Word')]
-    word_tally: Dict[str, List[str]] = {}
-    morph_tally: Dict[str, List[str]] = {}
-    for doc in docs:
-        tag = ws.doc_tag(doc, len(docs) > 1)
-        for s in doc.sentences:
-            for w in s.words:
-                ref = f'{tag}{word_ref(s, w)}'
-                if same(w.surface):
-                    parts = []
-                    seg = segmentation(w)
-                    if analyzed(w):
-                        parts.append('seg=' + seg)
-                        for f in mfields:
-                            line = _bracket_line(w, None, f)
-                            if line.replace('_', '').replace('-', '').replace('=', ''):
-                                parts.append(f'{f}={line}')
-                        types = [m.morph_type for m in w.morphemes if m.morph_type]
-                        if types:
-                            parts.append('types=' + ','.join(m.morph_type or '?' for m in w.morphemes))
-                    for f in wfields:
-                        sp = w.fields.get(f)
-                        if sp and sp.value != '':
-                            parts.append(f'{f}={sp.value}')
-                    if w.link:
-                        parts.append(f'link={w.link.form}')
-                    for l in w.mwes:
-                        parts.append(f'mwe={l.form}')
-                    mlinks = [f'm{m.index}:{m.link.form}' for m in w.morphemes if m.link]
-                    if mlinks:
-                        parts.append('mlinks=' + ' '.join(mlinks))
-                    word_tally.setdefault(' | '.join(parts) or '(unanalyzed)', []).append(ref)
-                for m in w.morphemes:
-                    if same(m.form):
-                        parts = []
-                        if m.morph_type:
-                            parts.append(f'type={m.morph_type}')
-                        for f in mfields:
-                            sp = m.fields.get(f)
-                            if sp and sp.value != '':
-                                parts.append(f'{f}={sp.value}')
-                        if m.link:
-                            parts.append(f'link={m.link.form}')
-                        pos = 'only' if len(w.morphemes) == 1 else ('first' if m.index == 1 else
-                                                                   'last' if m.index == len(w.morphemes) else 'middle')
-                        morph_tally.setdefault((' | '.join(parts) or '(unglossed)') + f'  [{pos} in word]', []
-                                               ).append(f'{ref}.m{m.index} ({segmentation(w)})')
-    lines = []
-    found.append(sum(len(v) for v in word_tally.values()) + sum(len(v) for v in morph_tally.values()))
-    for title, tally in ((f'Word "{form}"', word_tally), (f'Morpheme "{form}"', morph_tally)):
-        if not tally:
-            lines.append(f'{title}: no occurrences.')
-            continue
-        n = sum(len(v) for v in tally.values())
-        lines.append(f'{title}: {n} occurrence{"s" if n != 1 else ""}, {len(tally)} distinct analys{"es" if len(tally) != 1 else "is"}:')
-        for analysis, refs in sorted(tally.items(), key=lambda kv: -len(kv[1])):
-            lines.append(f'  {len(refs)}\t{analysis}  e.g. {", ".join(refs[:3])}')
-    return '\n'.join(lines)
 
 
 #: The most entries spelled alike that lexicon_entry shows in full at once.
@@ -556,31 +431,8 @@ def _links(words: int, morphs: int) -> str:
 def _entry_usage(ws: Workspace, item_id: str, examples: int):
     """(word links, morpheme links, multi-word expressions, example lines) for
     one item's OWN links, not its senses'."""
-    if not ws.prefer_scan:
-        from .queries import q_entry_usage
-        return q_entry_usage(ws, item_id, examples)
-    word_links, morph_links, exs = 0, 0, []
-    seen_mwes = set()
-    for doc in ws.all_docs():
-        tag = ws.doc_tag(doc)
-        for s in doc.sentences:
-            for w in s.words:
-                hit = False
-                if w.link and w.link.item_id == item_id:
-                    word_links += 1
-                    hit = True
-                for l in w.mwes:
-                    if l.item_id == item_id:
-                        word_links += 1  # one per member word, as the query path counts tokens
-                        seen_mwes.add(l.id)
-                        hit = True
-                for m in w.morphemes:
-                    if m.link and m.link.item_id == item_id:
-                        morph_links += 1
-                        hit = True
-                if hit and len(exs) < examples:
-                    exs.append(f'  {tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
-    return word_links, morph_links, len(seen_mwes), exs
+    from .queries import q_entry_usage
+    return q_entry_usage(ws, item_id, examples)
 
 
 def _dictionary_lines(ws: Workspace, view: LexView, target: dict,
@@ -652,46 +504,12 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     values, and items annotated in this field but not linked to the lexicon
     (or linked but empty)."""
     f = ws.project.field(field)
-    if not ws.use_scan(document):
-        from .queries import q_consistency
-        ws.note_read(len(ws.documents()), 'document')
+    from .queries import q_consistency
+    with ws.corpus.within(document) as held:
+        ws.note_read(1 if held else len(ws.documents()), 'document')
         values, by_form, (unlinked_n, unlinked), (linked_empty_n, linked_empty) = q_consistency(ws, f)
-        return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
-                                  ws.corpus.clipped_note(f'{f.name} values'))
-    docs = [ws.doc(document)] if document else ws.all_docs()
-    ws.note_read(len(docs), 'document')
-    values: Counter = Counter()
-    by_form: Dict[str, Counter] = {}
-    unlinked: List[str] = []
-    unlinked_n = 0
-    linked_empty: List[str] = []
-    linked_empty_n = 0
-    for doc in docs:
-        tag = ws.doc_tag(doc, len(docs) > 1)
-        for s in doc.sentences:
-            if f.scope == 'Sentence':
-                sp = s.fields.get(f.name)
-                if sp and sp.value != '':
-                    values[sp.value] += 1
-                continue
-            for w in s.words:
-                units = [(w, w.surface, f'{tag}{word_ref(s, w)}')] if f.scope == 'Word' else \
-                    [(m, m.form, f'{tag}{word_ref(s, w)}.m{m.index}') for m in w.morphemes]
-                for u, form, ref in units:
-                    sp = u.fields.get(f.name)
-                    val = sp.value if sp else ''
-                    if val != '':
-                        values[val] += 1
-                        by_form.setdefault(form.casefold(), Counter())[val] += 1
-                        if not u.link and not getattr(u, 'mwes', None):
-                            unlinked_n += 1
-                            if len(unlinked) < 15:
-                                unlinked.append(f'{ref} {form} ({val})')
-                    elif u.link or getattr(u, 'mwes', None):
-                        linked_empty_n += 1
-                        if len(linked_empty) < 15:
-                            linked_empty.append(f'{ref} {form} → {linked_form(u)}')
-    return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty)
+    return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
+                              ws.corpus.clipped_note(f'{f.name} values'))
 
 
 def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,

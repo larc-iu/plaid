@@ -8,7 +8,7 @@ has no morpheme token, as after Tokenize."""
 
 from plaid_client.testing import as_fragment
 
-from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, scan_ws
+from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, fake_ws
 
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.toolkit import call_tool
@@ -34,7 +34,7 @@ def _made_morpheme(c):
 
 
 def test_a_gloss_on_m1_of_an_unsegmented_word_makes_its_morpheme_in_the_same_batch():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m1'], 'field': 'Morph Gloss', 'value': 'go'})
     assert 'Planned 1 change' in out, out
     [op] = w.ops
@@ -52,7 +52,7 @@ def test_a_gloss_on_m1_of_an_unsegmented_word_makes_its_morpheme_in_the_same_bat
 
 
 def test_every_occurrence_of_a_form_reaches_unsegmented_words():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     out = call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go',
                                               'document': 'd1'})
     assert 'Nothing to change' not in out, out
@@ -63,7 +63,7 @@ def test_every_occurrence_of_a_form_reaches_unsegmented_words():
 
 
 def test_a_gloss_and_a_link_on_one_derived_morpheme_make_one_morpheme():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m1'], 'field': 'Morph Gloss', 'value': 'go'})
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-gam'})
     assert 'Planned 1 change' in out, out
@@ -74,7 +74,7 @@ def test_a_gloss_and_a_link_on_one_derived_morpheme_make_one_morpheme():
 
 
 def test_a_form_or_a_type_on_a_derived_morpheme_is_made_with_it():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w3.m1', 'form': 'akun', 'type': 'stem'})
     _counts, c = _applied(w)
     mid, meta = _made_morpheme(c)
@@ -85,7 +85,7 @@ def test_a_form_or_a_type_on_a_derived_morpheme_is_made_with_it():
 
 
 def test_an_analysis_planned_after_a_gloss_on_the_derived_morpheme_takes_its_place():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m1'], 'field': 'Morph Gloss', 'value': 'go'})
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3',
                                         'morphemes': [{'form': 'aku'}, {'form': 'na'}]})
@@ -98,7 +98,7 @@ def test_an_analysis_planned_after_a_gloss_on_the_derived_morpheme_takes_its_pla
 
 
 def test_a_reshape_of_an_unsegmented_word_deletes_no_derived_morpheme():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': 3})
     _counts, c = _applied(w)
     assert not c.payloads('tokens.bulk_delete')
@@ -108,14 +108,14 @@ def test_a_reshape_of_an_unsegmented_word_deletes_no_derived_morpheme():
 
 
 def test_a_comment_on_a_derived_morpheme_points_at_the_word():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     out = call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1.w3.m1', 'body': 'check this'})
     assert 'not segmented yet' in out and 's1.w3' in out
     assert w.ops == []
 
 
 def test_reads_and_counts_are_unchanged():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     out = call_tool(w, 'read_document', {'document': 'd1'})
     assert '  w3 akuna\n' in out  # nothing after the surface, as for a word with a stored default morpheme
 
@@ -126,7 +126,7 @@ def test_a_link_writes_the_entrys_morph_type_with_it_as_the_editor_does():
     """A morpheme linked to an entry goes by the entry's type, and its cached
     morphType is written in the same batch. Left stale, the next person who
     merely opened the document wrote it under their own name."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-erg'})  # derived
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m2'], 'entry_id': 'vi-erg'})  # stored, enclitic
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-erg'})     # a word: no type
@@ -137,7 +137,7 @@ def test_a_link_writes_the_entrys_morph_type_with_it_as_the_editor_does():
 
 
 def test_a_link_whose_entry_agrees_with_the_cache_or_has_no_type_writes_none():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-gam'})  # gam has no type
     assert 'morph_type' not in w.ops[0]
     _counts, c = _applied(w)
@@ -145,7 +145,7 @@ def test_a_link_whose_entry_agrees_with_the_cache_or_has_no_type_writes_none():
 
 
 def test_a_link_to_a_morpheme_of_a_planned_analysis_writes_its_type():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [{'form': 'aku'}, {'form': 'na'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m2'], 'entry_id': 'vi-erg'})
     _counts, c = _applied(w)
@@ -156,6 +156,6 @@ def test_a_link_to_a_morpheme_of_a_planned_analysis_writes_its_type():
 # --- the card's accepted-work flag (REV-FX3-AGENT-3) ------------------------------
 
 def test_a_change_on_a_derived_morpheme_replaces_no_accepted_work():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w3.m1', 'type': 'stem', 'form': 'akun'})
     assert not any(op.get('replaces_work') for op in w.plan_payload()['ops'])

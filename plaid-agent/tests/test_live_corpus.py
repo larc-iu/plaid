@@ -1,4 +1,15 @@
-"""The query path against a real server, with the scan path as the oracle."""
+"""The corpus tools against a real server, the project read through the real API.
+
+Each answer is checked against ``live_corpus_expected.json``: what the scan
+path gave for the same call while igt still had one, a second implementation
+that read the documents in Python and so made a reference the queries were
+held to. A change that means to alter an answer rewrites the file: run this
+module with ``PLAID_AGENT_WRITE_EXPECTED=1``, then read the diff.
+"""
+import json
+import os
+from pathlib import Path
+
 import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
 from live import live_client, seed  # noqa: F401 - fixture
@@ -8,20 +19,45 @@ from plaid_agent.igt.workspace import Workspace
 from plaid_agent.igt.toolkit import call_tool
 
 
+EXPECTED_FILE = Path(__file__).with_name('live_corpus_expected.json')
+EXPECTED = json.loads(EXPECTED_FILE.read_text())
+WRITE = bool(os.environ.get('PLAID_AGENT_WRITE_EXPECTED'))
+
+
+def teardown_module():
+    if WRITE:
+        EXPECTED_FILE.write_text(json.dumps(EXPECTED, indent=1, ensure_ascii=False, sort_keys=True) + '\n')
+
+
 @pytest.fixture(scope='module')
 def proj(live_client):
     s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()})
+    s.label = 'proj'
     yield s
     s.delete()
 
 
-def two(proj):
-    """A scanning workspace and a querying one over the same live project."""
+def workspace(proj):
     c = proj.client
-    p = load_project(c, proj.project_id)
-    a, b = Workspace(c, p), Workspace(c, p)
-    a.prefer_scan = True
-    return a, b
+    return Workspace(c, load_project(c, proj.project_id))
+
+
+def expected(proj, tool, args, got):
+    """What the call answered when the file was written (``got`` is stored
+    instead, under PLAID_AGENT_WRITE_EXPECTED)."""
+    key = f'{proj.label} {tool} {json.dumps(args, sort_keys=True, ensure_ascii=False)}'
+    if WRITE:
+        EXPECTED[key] = got
+    assert key in EXPECTED, f'no expected answer for {key}: run with PLAID_AGENT_WRITE_EXPECTED=1'
+    return EXPECTED[key]
+
+
+def fixture_ids(proj, value):
+    """``value`` with every id of the live project written as the fixture's."""
+    text = json.dumps(value)
+    for real, fixture in proj.ids.back.items():
+        text = text.replace(real, fixture)
+    return json.loads(text)
 
 
 def test_seeded_project_parses_like_the_fixture(proj):
@@ -41,23 +77,20 @@ def test_seeded_project_parses_like_the_fixture(proj):
 
 
 def same(proj, tool, args, normalize=lambda s: s):
-    """Both paths, compared; the scan path is the oracle. Returns the query output.
+    """The tool's answer, against the expected one, both in the fixture's
+    ids. Returns the answer.
 
-    Agreement alone is not enough. `call_tool` turns every failure into the
-    string "Error: ...", and both sides run the same project load and the same
-    tool body, so any shared breakage made both return the same error text and
-    every comparison here passed having verified nothing.
-    """
-    a, b = two(proj)
-    ra, rb = call_tool(a, tool, args), call_tool(b, tool, args)
-    for label, out in (('scan', ra), ('query', rb)):
-        assert not out.startswith('Error:'), f'{tool} {args}: the {label} path failed: {out}'
-        assert out.strip(), f'{tool} {args}: the {label} path answered nothing'
-    assert normalize(rb) == normalize(ra), f'{tool} {args}\n--- scan ---\n{ra}\n--- query ---\n{rb}'
-    return rb
+    Agreement alone is not enough: `call_tool` turns every failure into the
+    string "Error: ...", so an answer is first held to being one."""
+    out = fixture_ids(proj, call_tool(workspace(proj), tool, args))
+    assert not out.startswith('Error:'), f'{tool} {args} failed: {out}'
+    assert out.strip(), f'{tool} {args} answered nothing'
+    want = expected(proj, tool, args, out)
+    assert normalize(out) == normalize(want), f'{tool} {args}\n--- expected ---\n{want}\n--- answered ---\n{out}'
+    return out
 
 
-def test_search_matches_the_scan(proj):
+def test_search(proj):
     for args in ({'pattern': 'gam'}, {'pattern': 'a', 'where': 'morpheme'}, {'pattern': 'ERG', 'where': 'Morph Gloss'},
                  {'pattern': 'fish', 'where': 'Translation'}, {'pattern': 'nothing-here'},
                  {'pattern': '^gam-', 'regex': True}, {'pattern': 'ali', 'where': 'Gloss'},
@@ -74,7 +107,8 @@ def test_search_matches_the_scan(proj):
 
 
 def strip_examples(text):
-    """worklist lines: drop the examples column (refs on the scan path, document names on the query path)."""
+    """worklist lines without the examples column (references in the expected answers, which the
+    scan path gave, document names now)."""
     return '\n'.join(line.rsplit('\t', 1)[0] if line.startswith('  ') else line for line in text.splitlines())
 
 
@@ -82,7 +116,7 @@ def no_longest(text):
     return '\n'.join(l for l in text.splitlines() if not l.startswith('  Longest words'))
 
 
-def test_frequency_worklist_and_stats_match_the_scan(proj):
+def test_frequency_worklist_and_stats(proj):
     for args in ({}, {'what': 'morpheme'}, {'what': 'Morph Gloss'}, {'what': 'Gloss'}, {'what': 'Translation'},
                  {'limit': 2}, {'min_count': 2}):
         same(proj, 'frequency_list', args)
@@ -101,7 +135,7 @@ def test_concordance_analyses_and_consistency(proj):
         same(proj, 'concordance', args)
     for args in ({'field': 'Morph Gloss'}, {'field': 'Gloss'}, {'field': 'Translation'}):
         same(proj, 'check_consistency', args)
-    _, b = two(proj)
+    b = workspace(proj)
     out = call_tool(b, 'analyses_of', {'form': 'gam'})
     assert 'Word "gam": 1 occurrence.' in out and 'Segmentation by slot: m1: gam (1)' in out
     assert 'Morpheme "gam": 2 occurrences.' in out and 'In words: gam (1), gam-ar (1)' in out
@@ -122,19 +156,26 @@ def test_lexicon_sequence_and_entry(proj):
         same(proj, 'lexicon_entry', args)
 
 
+def comparable(ops):
+    """A rule's digest of what it matched hashes the live project's own ids,
+    so its count in each document is compared and the digest is not."""
+    return [{**op, 'matched': [m[:2] for m in op['matched']]} if 'matched' in op else op for op in ops]
+
+
 def same_ops(proj, tool, args):
-    """Both paths must plan the same operations (labels included); the query
-    path also stamps each op with its document."""
-    a, b = two(proj)
-    ra, rb = call_tool(a, tool, args), call_tool(b, tool, args)
-    # A rule staged by the scan path says so (`scan`), so approval finds it the same way.
-    strip = lambda ops: [{k: v for k, v in op.items() if k not in ('doc', 'scan')} for op in ops]  # noqa: E731
-    assert strip(b.ops) == strip(a.ops), f'{tool} {args}\n--- scan ---\n{ra}\n{a.ops}\n--- query ---\n{rb}\n{b.ops}'
-    assert rb == ra, f'{tool} {args}\n--- scan ---\n{ra}\n--- query ---\n{rb}'
+    """The expected operations (labels included) and the expected answer.
+    Returns the workspace."""
+    b = workspace(proj)
+    out = fixture_ids(proj, call_tool(b, tool, args))
+    planned = fixture_ids(proj, [{k: v for k, v in op.items() if k != 'doc'} for op in b.ops])
+    want = expected(proj, tool, args, {'answer': out, 'ops': comparable(planned)})
+    assert comparable(planned) == comparable(want['ops']), \
+        f'{tool} {args}\n--- expected ---\n{want["ops"]}\n--- planned ---\n{planned}'
+    assert out == want['answer'], f'{tool} {args}\n--- expected ---\n{want["answer"]}\n--- answered ---\n{out}'
     return b
 
 
-def test_bulk_tools_plan_the_same_ops(proj):
+def test_bulk_tools_plan(proj):
     same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
     same_ops(proj, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     same_ops(proj, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'})
@@ -145,7 +186,7 @@ def test_bulk_tools_plan_the_same_ops(proj):
     same_ops(proj, 'set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'fish'})
     same_ops(proj, 'set_field_for_form', {'form': 'ali', 'field': 'Gloss', 'value': 'Ali2', 'only_empty': False})
     same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
-    # akuna has no morpheme token: both paths reach its derived morpheme.
+    # akuna has no morpheme token: the rule reaches its derived morpheme.
     b = same_ops(proj, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
     from plaid_agent.igt.bulk import planned_changes
     assert [op['token_id'] for op in planned_changes(b)] == [f'virtual:{proj.ids["w-3"]}']
@@ -175,11 +216,12 @@ def review_proj(live_client):
     lex = mwe_lexicon_raw()
     lex['items'].append({'id': 'vi-stale', 'form': 'zzz yyy', 'metadata': {'morphType': 'phrase'}})
     s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: lex}, name='igt-agent review test')
+    s.label = 'review'
     yield s
     s.delete()
 
 
-def test_multi_word_expressions_and_review_match_the_scan(review_proj):
+def test_multi_word_expressions_and_review(review_proj):
     from fixtures_ext import ANN
     proj = review_proj
     c = proj.client
@@ -198,8 +240,8 @@ def test_multi_word_expressions_and_review_match_the_scan(review_proj):
     for args in ({'kind': 'unlinked', 'level': 'word'}, {'kind': 'unverified'}, {'kind': 'contributed'},
                  {'kind': 'contributed', 'user': ANN}, {'kind': 'contributed', 'user': 'nobody@x.com'}):
         same(proj, 'worklist', args, strip_examples)
-    # The machine-made expression's words await review on both paths (the
-    # query path reaches link provenance through the link entity).
+    # The machine-made expression's words await review (the query reaches
+    # link provenance through the link entity).
     out = same(proj, 'worklist', {'kind': 'unverified'}, strip_examples)
     assert '\tgam\t' in out and '\takuna\t' in out and '\tali-di\t' in out
     for args in ({'field': 'Gloss'}, {'field': 'Morph Gloss'}):

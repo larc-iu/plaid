@@ -19,7 +19,7 @@
 import pytest
 
 import test_stale_by_sentence as sbs
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from test_planned_morpheme_link import AKUNA, _link, _linked_kept_first, _links, _segment_and_link, _stage
 
 from plaid_client.http import PlaidAPIError
@@ -55,7 +55,7 @@ def test_approval_refuses_a_planned_link_to_an_entry_deleted_since_and_writes_no
 
 
 def test_an_ordinary_link_to_an_entry_gone_is_refused_before_anything_is_written():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
     call_tool(w, 'link_entry', _link('s1.w2', 'vi-gam'))
     c = FakeClient()
@@ -68,7 +68,7 @@ def test_an_ordinary_link_to_an_entry_gone_is_refused_before_anything_is_written
 
 
 def test_a_merge_into_an_entry_gone_is_refused_and_an_entry_present_is_not():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-erg'})
     ops = w.plan_payload()['ops']
     c = FakeClient()
@@ -82,7 +82,7 @@ def test_a_merge_into_an_entry_gone_is_refused_and_an_entry_present_is_not():
 def test_an_entry_the_server_will_not_show_the_user_counts_as_gone():
     """The server answers 403 to a user who is not an administrator for an id
     that no longer exists (the 403-versus-404 ruling)."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', _link('s1.w2', 'vi-gam'))
     c = FakeClient(fails={'vocab_items.get': PlaidAPIError('HTTP 403', status=403)})
     with pytest.raises(PlanOutOfDate, match='"gam" no longer exists'):
@@ -117,7 +117,7 @@ def test_a_plan_naming_many_entries_reads_each_lexicon_once_not_each_entry(monke
     each cost about 6 ms against a core on the same machine, 20 seconds for
     3000, with every document of the plan held locked."""
     lex, ops = _renames(300)
-    project = scan_ws(FakeClient(lexicon=lex)).project
+    project = fake_ws(FakeClient(lexicon=lex)).project
     c = FakeClient(lexicon=lex, fails={'vocab_items.get': AssertionError('asked one entry at a time')})
     reads = _counting_lexicon_reads(monkeypatch)
     execute_plan(c, ops, source='s', label='l', project=project)
@@ -134,7 +134,7 @@ def test_a_403_is_gone_only_when_the_lexicon_says_so():
     the project, say). The lexicons tell the two apart: an entry missing from
     every one the project can read is gone, and a lexicon that cannot be read
     is a failure to read, never "deleted"."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', _link('s1.w2', 'vi-gam'))
     ops, project = w.plan_payload()['ops'], w.project
     denied = PlaidAPIError('HTTP 403 lacks read access', status=403)
@@ -154,7 +154,7 @@ def test_a_403_is_gone_only_when_the_lexicon_says_so():
 
 
 def test_an_entry_the_plan_creates_is_not_asked_for():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', dict(AKUNA))
     call_tool(w, 'create_entry', {'form': 'akun', 'fields': {'gloss': 'see'}})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_form': 'akun'})
@@ -173,7 +173,7 @@ def _own_links_on(client, token):
 def test_a_merge_leaves_a_link_the_plan_replaces_and_the_morpheme_keeps_one_link(merge_first):
     """s1.w1.m2 is linked to -di (l-2). Relinking it to gam and merging -di
     into Ali wrote gam's link AND the merge's move of l-2 onto it."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     merge = {'keep_id': 'vi-ali', 'remove_id': 'vi-erg'}
     steps = [('link_entry', _link('s1.w1.m2', 'vi-gam')), ('merge_entries', merge)]
     outs = [call_tool(w, tool, args) for tool, args in (reversed(steps) if merge_first else steps)]
@@ -189,7 +189,7 @@ def test_a_merge_leaves_a_link_the_plan_replaces_and_the_morpheme_keeps_one_link
 
 
 def test_an_unlink_is_not_undone_by_a_merge_moving_the_same_link():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2']})
     call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-erg'})
     c = FakeClient()
@@ -198,7 +198,7 @@ def test_an_unlink_is_not_undone_by_a_merge_moving_the_same_link():
 
 
 def test_a_link_by_place_on_a_kept_first_morpheme_and_a_merge_of_its_entry():
-    w = scan_ws(_linked_kept_first())
+    w = fake_ws(_linked_kept_first())
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
     call_tool(w, 'merge_entries', {'keep_id': 'vi-gam', 'remove_id': 'vi-gam2'})
@@ -210,7 +210,7 @@ def test_a_link_by_place_on_a_kept_first_morpheme_and_a_merge_of_its_entry():
 def test_a_merge_does_not_move_a_link_onto_a_morpheme_an_analysis_deletes():
     """l-2 sits on m-1b, which a new analysis of s1.w1 deletes: moving it
     would create a link on a token the same batch deleted."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
     call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-erg'})
     c = FakeClient()
@@ -219,7 +219,7 @@ def test_a_merge_does_not_move_a_link_onto_a_morpheme_an_analysis_deletes():
 
 
 def test_dropping_the_link_gives_the_merge_its_move_back():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-gam'))
     call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-erg'})
     call_tool(w, 'drop_planned', {'indexes': [1]})
@@ -262,7 +262,7 @@ def _gloss_of(m):
 def test_set_field_on_a_morpheme_of_a_planned_analysis_changes_that_analysis():
     """It used to update the stored first morpheme's span, which the analysis
     deletes in the same batch: a request against something gone."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1', 's1.w1.m3'],
                                      'field': 'Morph Gloss', 'value': 'NEW'})
@@ -277,7 +277,7 @@ def test_set_field_on_a_morpheme_of_a_planned_analysis_changes_that_analysis():
 
 
 def test_set_field_on_a_word_nobody_analysed_reads_the_planned_chain():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', dict(AKUNA))
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m2'], 'field': 'Morph Gloss', 'value': 'ABS'})
     [analysis] = w.ops
@@ -287,7 +287,7 @@ def test_set_field_on_a_word_nobody_analysed_reads_the_planned_chain():
 
 
 def test_set_morpheme_type_on_the_kept_first_morpheme_is_written_not_dropped():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': 'root'})
     assert out.startswith('Planned 1 change'), out
@@ -301,7 +301,7 @@ def test_set_morpheme_type_on_the_kept_first_morpheme_is_written_not_dropped():
 
 
 def test_set_morpheme_form_on_a_planned_morpheme_carries_its_planned_link():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     _segment_and_link(w)
     out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w3.m2', 'form': 'aa'})
     assert out.startswith('Planned 1 change') and 'dropped' not in out, out
@@ -317,7 +317,7 @@ def test_set_morpheme_form_on_a_planned_morpheme_carries_its_planned_link():
 
 
 def test_set_morpheme_past_the_end_of_the_planned_analysis_is_refused():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', dict(AKUNA))
     out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w3.m3', 'type': 'suffix'})
     assert 'the analysis this plan gives "akuna" has 2 morphemes' in out
@@ -333,7 +333,7 @@ def test_a_change_to_a_stored_morpheme_is_superseded_by_a_later_analysis_of_its_
     """The analysis replaces the chain and every value on it, so the earlier
     change is moot. It used to stay on the card and be dropped at approval,
     or (a field value) fail the batch."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, tool, {'document': 'd1', **args})
     assert len(w.ops) == 1
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
@@ -347,7 +347,7 @@ def test_a_change_to_a_stored_morpheme_is_superseded_by_a_later_analysis_of_its_
 def test_a_morpheme_change_by_id_on_a_planned_analysis_is_refused_at_staging():
     """Every path that names a stored morpheme the planned analysis rewrites,
     not only the tools that read sN.wN.mN."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     _analyse_ali(w)
     with pytest.raises(Exception, match='analysis planned'):
         w.add_op({'kind': 'set_morph_type', 'morpheme_id': 'm-1a', 'morph_type': 'root', 'label': 'x'})
@@ -358,7 +358,7 @@ def test_a_morpheme_change_by_id_on_a_planned_analysis_is_refused_at_staging():
 
 
 def test_set_field_for_form_reads_the_planned_chain():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'set_field_for_form', {'form': 'd', 'field': 'Morph Gloss', 'value': 'DAT'})
     assert [op['kind'] for op in w.ops] == ['set_analysis'], out
@@ -370,7 +370,7 @@ def test_set_field_for_form_reads_the_planned_chain():
 
 
 def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_rewrites():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'replace_in_field', {'field': 'morpheme forms', 'pattern': 'a', 'replacement': 'o',
                                             'case_sensitive': False})
@@ -387,7 +387,7 @@ def test_a_deleted_entry_never_deletes_a_link_an_analysis_took_with_its_morpheme
     the morpheme, which the server refuses for a link it no longer has, and
     the atomic batch took the whole plan down on every approval. The entry's
     own delete takes its links with it."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     steps = [('set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Alidi'}]}),
              ('delete_entry', {'entry_id': 'vi-erg'})]
     for tool, args in (steps if analysis_first else reversed(steps)):
@@ -411,7 +411,7 @@ def test_an_unlink_on_a_morpheme_a_word_change_deletes_is_not_sent_again(reshape
     m-1b with them. Unlinking s1.w1.m2 in the same plan deleted l-2 by id
     after that, which the server refuses for a link it no longer has, and
     every approval failed. The link is gone either way."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     assert call_tool(w, *reshape).startswith('Planned')
     assert call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2']}).startswith('Planned')
     c = FakeClient()
@@ -425,7 +425,7 @@ def test_the_model_is_told_an_analysis_took_the_changes_planned_on_its_morphemes
     gloss planned on a morpheme and a new segmentation of its word are not:
     the model has to know the gloss is no longer planned, and how to plan it
     again."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'DAT'})
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': 'root'})
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
@@ -445,7 +445,7 @@ def test_a_sense_under_an_entry_gone_is_refused(tool, args):
     the plan writes, not by a key of the change. Deleted since, the sense
     was written hanging off nothing, which the lexicon then shows as an
     entry of its own."""
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     assert call_tool(w, tool, args).startswith('Planned'), w.ops
     ops = w.plan_payload()['ops']
     c = FakeClient()

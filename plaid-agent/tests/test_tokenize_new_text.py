@@ -3,7 +3,7 @@
 the text a plan adds gets the words ``new_words.py`` gives it, none when the
 project has it off, and none in a script written without spaces. The rule
 itself is checked against the app's in test_igt_tokens_mirror.py."""
-from fixtures import FakeClient, project_raw, scan_ws
+from fixtures import FakeClient, project_raw, fake_ws
 
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.project import load_project
@@ -105,10 +105,10 @@ def test_a_new_document_follows_the_setting():
 
 def test_the_cards_count_the_words_that_will_be_made():
     for tokenize, count in ((None, 3), (False, 0)):
-        w = scan_ws(_client(tokenize))
+        w = fake_ws(_client(tokenize))
         call_tool(w, 'append_text', {'document': 'd1', 'text': 'Gam akuna. 我今天去北京。 Ok.'})
         assert f'({count} words)' in w.ops[0]['label']
-        w2 = scan_ws(_client(tokenize))
+        w2 = fake_ws(_client(tokenize))
         out = call_tool(w2, 'create_document', {'name': 'Text 2', 'text': 'Gam akuna. 我今天去北京。 Ok.'})
         assert f'{count} words' in w2.ops[0]['label'] and f'{count} words' in out
 

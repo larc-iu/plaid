@@ -8,7 +8,7 @@ import copy
 
 from plaid_client.testing import as_fragment
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from fixtures_ext import contributed_document_raw
 
 from plaid_agent.igt.plan import execute_plan as igt_execute
@@ -24,7 +24,7 @@ CONTRIBUTED_BY_BOB = {'prov': 'contributed', 'provSource': f'user:{BOB}', 'provC
 
 
 def _igt_confirm_plan():
-    w = scan_ws(FakeClient(documents={'d1': contributed_document_raw()}))
+    w = fake_ws(FakeClient(documents={'d1': contributed_document_raw()}))
     igt_call(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     w.client.calls.clear()
     return w
@@ -100,20 +100,20 @@ def _reviewed_project(raw):
 
 def test_igt_a_reviewed_requester_is_told_their_confirm_is_a_contribution():
     from fixtures import project_raw
-    w = scan_ws(FakeClient(project=_reviewed_project(project_raw()), documents={'d1': contributed_document_raw()}))
+    w = fake_ws(FakeClient(project=_reviewed_project(project_raw()), documents={'d1': contributed_document_raw()}))
     w.requester_id = BOB
     out = igt_call(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     assert 'will be marked verified' not in out
     assert ("1 machine annotation will become your contribution, 2 contributor's annotations are left for a "
             'reviewer') in out
     # A verifier is told what it was before.
-    w2 = scan_ws(FakeClient(documents={'d1': contributed_document_raw()}))
+    w2 = fake_ws(FakeClient(documents={'d1': contributed_document_raw()}))
     w2.requester_id = 'a@b.com'
     assert '3 annotations will be marked verified' in igt_call(w2, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
 
 
 def test_igt_a_row_that_wrote_nothing_is_reported_by_its_card_row():
-    w = scan_ws(FakeClient(documents={'d1': contributed_document_raw()}))
+    w = fake_ws(FakeClient(documents={'d1': contributed_document_raw()}))
     igt_call(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     # Only the contributed gloss: nothing for a contributor to write.
     op = {**w.ops[0], 'span_ids': ['sp-g1'], 'token_ids': [], 'link_ids': [], '_row': 0}

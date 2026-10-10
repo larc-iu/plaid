@@ -7,7 +7,7 @@ an igt query could not name a relation layer at all."""
 
 import copy
 
-from fixtures import FakeClient, project_raw, scan_ws
+from fixtures import FakeClient, project_raw, fake_ws
 
 from plaid_agent.core.query import display
 from plaid_agent.igt.query import _layer_index
@@ -21,16 +21,16 @@ def _shared_project():
 
 
 def test_igt_names_a_relation_layer_under_a_span_layer():
-    idx = _layer_index(scan_ws(FakeClient(project=_shared_project())))
+    idx = _layer_index(fake_ws(FakeClient(project=_shared_project())))
     assert idx['dependencies'] == [('relation-layer', 'rl-dep', 'Dependencies')]
 
 
 def test_igt_names_its_layers_by_its_own_words_too():
-    idx = _layer_index(scan_ws(FakeClient()))
+    idx = _layer_index(fake_ws(FakeClient()))
     assert idx['words'] == [('token-layer', 'tk-word', 'Words')]
     assert idx['baseline'][0][1] == 'tl'
     assert idx['lexicon'] == [('vocab-layer', 'v1', 'Lexicon')]
     # A refusal names a field by its IGT name, which says its scope where two
     # scopes share a layer name.
-    ws = scan_ws(FakeClient())
+    ws = fake_ws(FakeClient())
     assert display(idx)('sl-gloss') == ws.project.field_by_layer('sl-gloss').name

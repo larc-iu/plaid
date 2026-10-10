@@ -7,7 +7,7 @@ of these is ever served another's document (bench note 6)."""
 
 import pytest
 
-from fixtures import FakeClient as IgtClient, document_raw as igt_document, scan_ws
+from fixtures import FakeClient as IgtClient, document_raw as igt_document, fake_ws
 from ud_fixtures import PID, document_raw, ud_client
 
 from plaid_agent.ud import tools as ud_tools
@@ -59,7 +59,7 @@ def test_a_version_a_query_answered_takes_the_listing_time_or_is_not_cached(fres
     raw = igt_document()
     raw['time_modified'] = '2026-10-01T10:00:00Z'
     c._documents['d1'] = raw
-    w = scan_ws(c)
+    w = fake_ws(c)
     listed = w._version_of(w.documents()[0])
     assert w._version_of({'id': 'd1', 'version': raw['version']}) == listed
     assert listed.server == c.base_url and listed.modified == '2026-10-01T10:00:00Z'

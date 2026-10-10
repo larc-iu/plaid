@@ -65,9 +65,7 @@ def _igt_ws():
     from plaid_agent.igt.workspace import Workspace
     c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw(),
                    restore_summary=None)
-    w = Workspace(c, load_project(c, 'p1'))
-    w.prefer_scan = True
-    return w
+    return Workspace(c, load_project(c, 'p1'))
 
 
 def _ud_ws():
@@ -141,8 +139,8 @@ def _restoring_ws(app):
     """A workspace whose server answers a restore dry run, so the tool really
     stages one (the fixtures above report nothing to restore)."""
     if app == 'igt':
-        from fixtures import FakeClient, scan_ws
-        return scan_ws(FakeClient()), igt_call, 'Text 1'
+        from fixtures import FakeClient, fake_ws
+        return fake_ws(FakeClient()), igt_call, 'Text 1'
     from ud_fixtures import PID, ud_client
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace

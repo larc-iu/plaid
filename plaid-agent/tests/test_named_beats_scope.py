@@ -2,13 +2,13 @@
 and the drop is noted for the applied message (core.opkind.named_beats_scope).
 igt used to drop it silently, and ud did for a change named twice."""
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 
 from plaid_agent.igt.plan import rule_keep
 
 
 def test_igt_notes_a_found_change_the_plan_already_makes_by_name():
-    ws = scan_ws(FakeClient())
+    ws = fake_ws(FakeClient())
     named = {'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-2', 'span_id': None, 'value': 'fish',
              'label': 'Text 1 s1.w2 "gam": Gloss = "fish"'}
     found = {**named, 'value': 'net', 'label': 'Text 1 s1.w2 "gam": Gloss = "net"'}

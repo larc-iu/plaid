@@ -2,7 +2,7 @@
 listed, and confirmable next to unconfirmed machine output, and never
 discarded as if they were a machine's."""
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from fixtures_ext import contributed_document_raw, ANN, BOB
 
 from plaid_agent.igt.project import render_document
@@ -10,7 +10,7 @@ from plaid_agent.igt.toolkit import call_tool
 
 
 def ws():
-    return scan_ws(FakeClient(documents={'d1': contributed_document_raw()}))
+    return fake_ws(FakeClient(documents={'d1': contributed_document_raw()}))
 
 
 def test_reads_mark_contributions_apart_from_machine_output():
@@ -50,14 +50,14 @@ def test_confirm_covers_contributions_and_discard_does_not():
 def test_confirm_without_a_document_covers_the_project():
     from fixtures import document_raw
     c = FakeClient(documents={'d1': contributed_document_raw(), 'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'confirm', {'documents': ['all']})
     assert 'Planned 1 change' in out and '3 annotations will be marked verified' in out
     assert w.ops[0]['doc'] == 'd1' and w.ops[0]['label'].startswith('Text 1: confirm 2 values, 1 link')
     assert 'd1' in [d['id'] for d in w.plan_payload()['documents']]  # d2 shares the fixture's ids, so it is named too
-    assert 'refs need a document' in call_tool(scan_ws(c), 'confirm', {'refs': ['s1.w1']})
+    assert 'refs need a document' in call_tool(fake_ws(c), 'confirm', {'refs': ['s1.w1']})
     # Field-restricted, project-wide.
-    w3 = scan_ws(c)
+    w3 = fake_ws(c)
     call_tool(w3, 'confirm', {'documents': ['all'], 'field': 'Gloss'})
     assert w3.ops[0]['span_ids'] == ['sp-g1'] and w3.ops[0]['link_ids'] == []
 
@@ -70,12 +70,12 @@ def test_a_document_name_in_documents_is_one_document_and_not_the_project():
     from fixtures import document_raw
     c = FakeClient(documents={'d1': contributed_document_raw(),
                              'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'confirm', {'documents': 'Text 2'})
     assert 'Nothing to confirm' in out or [op['doc'] for op in w.ops] == ['d2']
     assert 'd1' not in [op.get('doc') for op in w.ops]
     # The word itself, in either spelling, still covers the project.
-    w2 = scan_ws(c)
+    w2 = fake_ws(c)
     call_tool(w2, 'confirm', {'documents': 'ALL '})
     assert [op['doc'] for op in w2.ops] == ['d1']
 
@@ -84,7 +84,7 @@ def test_one_document_named_twice_is_reviewed_once():
     from fixtures import document_raw
     c = FakeClient(documents={'d1': contributed_document_raw(),
                              'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
-    w = scan_ws(c)
+    w = fake_ws(c)
     out = call_tool(w, 'confirm', {'documents': ['Text 1', 'd1']})
     assert [op['doc'] for op in w.ops] == ['d1']
     assert '3 annotations' in out, 'counted once, not twice'
@@ -134,7 +134,7 @@ def test_a_confirmation_of_a_document_leaves_out_what_the_plan_deletes():
     layers[1]['span_layers'][0]['spans'].append(
         {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2'],
          'metadata': {'prov': 'inferred', 'provSource': 'service:x'}})
-    w = scan_ws(FakeClient(documents={'d1': raw}))
+    w = fake_ws(FakeClient(documents={'d1': raw}))
     assert 'Planned' in call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
     assert '4 annotations will be marked verified' in call_tool(w, 'confirm', {'document': 'd1'})
     counts = execute_plan(w.client, w.ops, source='s', label='l', project=w.project)

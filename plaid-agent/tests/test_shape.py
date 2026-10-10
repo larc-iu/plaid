@@ -1,6 +1,6 @@
 """Word split/merge/delete and sentence split/merge: plan tools and execution."""
 import pytest
-from fixtures import scan_ws, FakeClient, document_raw, GLOSS
+from fixtures import fake_ws, FakeClient, document_raw, GLOSS
 
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.plan import execute_plan, normalize_ops
@@ -8,7 +8,7 @@ from plaid_agent.igt.plan import execute_plan, normalize_ops
 
 def ws(raw=None):
     c = FakeClient(documents={'d1': raw} if raw else None)
-    return scan_ws(c)
+    return fake_ws(c)
 
 
 def test_split_word_by_left_part_or_length():

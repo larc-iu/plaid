@@ -874,15 +874,12 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         # The documents with reviewable spans or morphemes by query, then
         # each is read so links and multi-word expressions count too.
         if isinstance(documents, str):
-            if ws.prefer_scan:
-                docs = ws.all_docs()
-            else:
-                from .queries import q_review_docs
-                ids = q_review_docs(ws, f)
-                if len(ids) > MAX_SCOPE_DOCS:
-                    raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
-                                    f'{MAX_SCOPE_DOCS} one plan covers; confirm document by document, or narrow with field.')
-                docs = [ws.doc(i) for i in ids]
+            from .queries import q_review_docs
+            ids = q_review_docs(ws, f)
+            if len(ids) > MAX_SCOPE_DOCS:
+                raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
+                                f'{MAX_SCOPE_DOCS} one plan covers; confirm document by document, or narrow with field.')
+            docs = [ws.doc(i) for i in ids]
         else:
             # By id, so a list that names one document twice (by name and by
             # id, or by two spellings of the name) reviews it once.

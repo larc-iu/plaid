@@ -291,16 +291,12 @@ def test_a_change_is_written_once_every_batch_holding_it_committed():
     assert b.written_rows() == [0, 1, 2]
 
 
-def _plan_of(spec, client, *tools, scan=False):
-    """sbs._plan with several changes staged in one workspace. ``scan`` has
-    an igt workspace read the documents rather than ask the query engine,
-    which the fake does not run."""
+def _plan_of(spec, client, *tools):
+    """sbs._plan with several changes staged in one workspace."""
     from importlib import import_module
     from plaid_agent.core.conversation import assistant_item, build_meta, user_item
     call_tool = import_module(f'plaid_agent.{spec["app"]}.toolkit').call_tool
     ws = spec['workspace'](client, spec['load'](client, spec['pid']))
-    if scan:
-        ws.prefer_scan = True
     for name, args in tools:
         out = call_tool(ws, name, dict(args))
         assert ws.ops, out
@@ -406,7 +402,7 @@ def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monke
     # An entry delete is in the igt executor's second batch.
     plan = _plan_of(spec, client,
                     ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
-                    ('delete_entry', {'entry_id': 'vi-gam2'}), scan=True)
+                    ('delete_entry', {'entry_id': 'vi-gam2'}))
     _second_send_fails(monkeypatch)
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}
@@ -426,8 +422,7 @@ def test_a_plan_with_no_change_written_in_full_says_it_is_part_of_the_plan(monke
     # The plan's one batch landed and its answer was lost, so no change is
     # known to be written in full.
     plan = _plan_of(spec, client,
-                    ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
-                    scan=True)
+                    ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}))
     real = core_plan.Batcher.flush
 
     def lost(self):

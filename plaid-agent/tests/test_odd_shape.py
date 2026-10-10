@@ -1,7 +1,7 @@
 """Every inference about roles comes from configuration: a project with no
 morpheme layer, fields not called Gloss (the gloss-like one not first), one
 lexicon with a schema naming its fields "meaning"/"category" and one with none."""
-from fixtures import scan_ws, odd_client
+from fixtures import fake_ws, odd_client
 
 from plaid_agent.igt.project import render_document
 from plaid_agent.igt.toolkit import call_tool
@@ -9,7 +9,7 @@ from plaid_agent.igt.toolkit import call_tool
 
 def ws():
     c = odd_client()
-    return scan_ws(c)
+    return fake_ws(c)
 
 
 def test_gloss_roles_come_from_names_and_schemas():
@@ -29,7 +29,7 @@ def test_gloss_roles_come_from_names_and_schemas():
 
 def test_tools_follow_the_configured_shape():
     w = ws()
-    out = call_tool(w, 'worklist', {'kind': 'unglossed'})
+    out = call_tool(w, 'worklist', {'kind': 'unglossed', 'document': 'Odd text'})
     assert 'words without a Meaning value' in out and 's1.w3' in out and 's2.w1' in out
     out = call_tool(w, 'corpus_stats', {'by': 'document'})
     head = out.splitlines()[0]

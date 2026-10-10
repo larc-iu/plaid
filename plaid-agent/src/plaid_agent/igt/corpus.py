@@ -83,6 +83,16 @@ class Corpus(BaseCorpus):
         return [self.word(var, **c), ['token', var, {'layer': self.W, **vs}],
                 ['not', ['token', '?bxm', {'layer': self.M, **vs}]]]
 
+    def shown_morph(self, var: str = '?m') -> List[list]:
+        """A morpheme token ``var`` that shows a form: its stored one, or,
+        alone in its word, the word's surface. A morpheme with no form beside
+        others is a gap the editor shows as ?, and no form at all."""
+        vs = {'doc': {'var': '?gxd'}, 'begin': {'var': '?gxb'}, 'end': {'var': '?gxe'}}
+        tok = lambda v: ['token', v, {'layer': self.M, **vs}]  # noqa: E731
+        return [self.morph(var), tok(var),
+                ['or', [self.has_form(var)],
+                 [['not', self.has_form(var)], ['not', tok('?ga'), tok('?gb'), ['precedes', '?ga', '?gb']]]]]
+
     def morph_form_clauses(self, var: str, spec: Dict[str, Any]) -> list:
         """Match a morpheme by its FORM: the stored metadata.form, or, for a
         morpheme without one, the surface it inherits from its word."""
@@ -143,9 +153,9 @@ class Corpus(BaseCorpus):
         return (doc,) + hit
 
     def label_ref(self, doc_id: str, token_id: str, budget: Optional[set] = None) -> str:
-        """``Doc s3.w2`` (the scan's label head) when the document is loaded
-        or the plan touches few enough documents to load them; else the
-        document name alone, quoted. Callers add the surface as the scan does."""
+        """``Doc s3.w2`` when the document is loaded or the plan touches few
+        enough documents to load them, else the document name alone, quoted.
+        Callers add the surface."""
         label = self.ws.doc_label(doc_id)
         if doc_id in self.ws._docs or (budget is not None and len(budget) <= LABEL_DOC_BUDGET):
             _, s, w, m = self.locate(doc_id, token_id)
@@ -186,7 +196,7 @@ class Corpus(BaseCorpus):
 class Unanalyzed:
     """Clauses for a word token ``var`` with no analysis at all: no link, no
     span on any layer, and no morpheme within it that has a form, a type, a
-    span, or a link, nor two morphemes (the scan's ``_analyzed`` negated)."""
+    span, or a link, nor two morphemes (``stats._analyzed`` negated)."""
 
     @staticmethod
     def clauses(c: Corpus, var: str = '?w') -> List[Any]:

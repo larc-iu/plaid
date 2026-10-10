@@ -18,13 +18,12 @@ from .plan import KIND, SCOPES, analysed_morphemes, move_phrase, settle_merges
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (t_set_analysis, check_respell_overlap, span_op, has_own_form, morpheme_form_op,
-                    parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
-from .stats import _analyzed, _docs
+
 
 def _bulk_note(ws: Workspace, ops: List[Dict[str, Any]], what: str) -> str:
     """What a bulk tool says back: the count, how many land in each
@@ -134,68 +133,13 @@ def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
     from .queries import q_replace_in_field, q_morpheme_forms, rx
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
-    document = a.get('document')
+    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
+              case_sensitive=bool(a.get('case_sensitive')))
     if _names_morpheme_forms(ws, a['field']):
-        if ws.use_scan(document):
-            return _scan_morpheme_forms(ws, rep, document)
-        spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
-                  case_sensitive=bool(a.get('case_sensitive')))
-        return q_morpheme_forms(ws, rep, spec, cap, document)
+        return q_morpheme_forms(ws, rep, spec, cap)
     f = ws.project.field(a['field'])
-    if ws.use_scan(document):
-        found = _scan_replace(ws, f, rep, document)
-    else:
-        spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
-                  case_sensitive=bool(a.get('case_sensitive')))
-        found = q_replace_in_field(ws, f, rep, spec, cap, document)
-    return found + _chained(ws, f, rep, found, document)
-
-
-def _scan_replace(ws: Workspace, f, rep, document: Optional[str]) -> List[Dict[str, Any]]:
-    """A replacement over the field's values, read from the documents (one,
-    or all when the workspace cannot query)."""
-    out: List[Dict[str, Any]] = []
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            if f.scope == 'Sentence':
-                units = [(s, f's{s.index}', s.text)]
-            elif f.scope == 'Word':
-                units = [(w, word_ref(s, w), w.surface) for w in s.words]
-            else:
-                units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for w in s.words for m in w.morphemes]
-            for u, ref, what in units:
-                sp = u.fields.get(f.name)
-                cur = ws.planned_value(f.layer_id, u.id, sp.value if sp else '')
-                if cur == '':
-                    continue
-                new = rep(cur)
-                if new == cur:
-                    continue
-                stored = sp.value if sp else ''
-                ws.note_stored(f.layer_id, u.id, stored)
-                out.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
-                            'span_id': sp.id if sp else None, 'value': new, 'doc': doc.id,
-                            **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:30])}',
-                                       f'{f.name} {qv(stored or cur)} → {qv(new)}'
-                                       + (' (cleared)' if new == '' else ''))})
-    return out
-
-
-def _scan_morpheme_forms(ws: Workspace, rep, document: Optional[str]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            for w in s.words:
-                for m in w.morphemes:
-                    if not has_own_form(m):
-                        continue  # a derived form is the word's surface: respell_all's job
-                    new = rep(m.form)
-                    if new == m.form:
-                        continue
-                    if not new.strip():
-                        raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
-                    out.append({**morpheme_form_op(ws, doc, word_ref(s, w), w, m, new), 'doc': doc.id})
-    return out
+    found = q_replace_in_field(ws, f, rep, spec, cap)
+    return found + _chained(ws, f, rep, found, a.get('document'))
 
 
 def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optional[str]) -> List[Dict[str, Any]]:
@@ -260,93 +204,29 @@ def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
     from .queries import q_respell_all, rx
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
-    if ws.use_scan(a.get('document')):
-        staged = _scan_respell(ws, rep, a.get('document'), bool(a.get('morpheme_forms')))
-    else:
-        spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
-                  case_sensitive=bool(a.get('case_sensitive')))
-        staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms')), cap)
-        if n_words > cap:
-            raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
-                            f'Narrow it (a document, a stricter pattern) and go in passes.')
+    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
+              case_sensitive=bool(a.get('case_sensitive')))
+    staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms')), cap)
+    if n_words > cap:
+        raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
+                        f'Narrow it (a document, a stricter pattern) and go in passes.')
     if a.get('lexicon'):
         staged = staged + _lexicon_renames(ws, rep)
     return staged
-
-
-def _scan_respell(ws: Workspace, rep, document: Optional[str], morpheme_forms: bool) -> List[Dict[str, Any]]:
-    """respell_all over the documents themselves, word by word, each word's
-    respelling followed by its morpheme forms'."""
-    out: List[Dict[str, Any]] = []
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            for w in s.words:
-                new = rep(w.surface)
-                if new == w.surface:
-                    continue
-                if not new.strip():
-                    raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; '
-                                    'a respelling cannot remove a word (retype_sentence can)')
-                check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
-                out.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
-                            'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}',
-                                                      f'respell {qv(w.surface)} → {qv(new)}')})
-                for m in w.morphemes if morpheme_forms else ():
-                    nm = rep(m.form) if has_own_form(m) else m.form
-                    if nm != m.form and nm.strip():
-                        out.append({**morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm), 'doc': doc.id})
-    return out
 
 
 def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     from .queries import q_copy_to_orthography
     target = ws.project.orthography(a['orthography'])
     src = None if (a.get('source') or 'baseline').lower() == 'baseline' else ws.project.orthography(a['source'])
-    if ws.use_scan(a.get('document')):
-        out = []
-        for doc in _docs(ws, a.get('document')):
-            for s in doc.sentences:
-                for w in s.words:
-                    cur = w.orthographies.get(target, '')
-                    if cur and not a.get('overwrite'):
-                        continue
-                    value = w.surface if src is None else w.orthographies.get(src, '')
-                    if not value or value == cur:
-                        continue
-                    out.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}',
-                                'value': value, 'doc': doc.id,
-                                **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} {qv(w.surface)}',
-                                           f'{target} = {qv(value)}')})
-        return out
-    return q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap, a.get('document'))
+    return q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap)
 
 
 def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     from .queries import q_set_field_for_form
     f = ws.project.field(a['field'])
     value = '' if a.get('value') is None else str(a['value'])
-    only_empty = bool(a.get('only_empty', True))
-    if not ws.use_scan(a.get('document')):
-        return q_set_field_for_form(ws, a['form'], f, value, only_empty, cap, a.get('document'))
-    same = _form_matcher(a['form'])
-    out = []
-    for doc in _docs(ws, a.get('document')):
-        for s in doc.sentences:
-            for w in s.words:
-                if f.scope == 'Word':
-                    units = [(w, word_ref(s, w), w.surface)] if same(w.surface) else []
-                else:
-                    units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if same(m.form)]
-                for u, ref, what in units:
-                    old = u.fields.get(f.name)
-                    cur = ws.planned_value(f.layer_id, u.id, old.value if old else '')
-                    if cur == value or (only_empty and cur != ''):
-                        continue
-                    ws.note_stored(f.layer_id, u.id, old.value if old else '')
-                    op = {**span_op(ws, doc, ref, what, f, u.id, old, value), 'doc': doc.id}
-                    ws.place_virtual(op)
-                    out.append(op)
-    return out
+    return q_set_field_for_form(ws, a['form'], f, value, bool(a.get('only_empty', True)), cap)
 
 
 SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
@@ -451,10 +331,6 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
         op['mode'] = mode
     if partial:
         op['partial'] = partial
-    if ws.prefer_scan:
-        # A workspace that cannot query (the tests' fake) found it by reading
-        # every document, and approval finds it the same way.
-        op['scan'] = True
     return _counted(ws, op, kept), found, kept, left
 
 
@@ -721,7 +597,7 @@ def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier) -> Lis
     fn = SCOPED.get(tool)
     if fn is None:
         raise ToolError(f'unknown corpus-wide tool {tool!r}')
-    with ws.resolving_rules(earlier):
+    with ws.resolving_rules(earlier), ws.corpus.within(args.get('document')):
         return fn(ws, dict(args), CANDIDATE_MAX)
 
 
@@ -822,8 +698,8 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
 
 def _form_matcher(form: str):
     """Whether a value is the form, case folded as the server folds it (Java's
-    simple case folding), so a scan of one document reaches the words the
-    project-wide query would."""
+    simple case folding), so a planned morpheme's form matches as the query
+    matches a stored one."""
     return _matcher(form, False, whole=True)
 
 
@@ -842,27 +718,28 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     args = rules.normalize({'form': form, 'field': field, 'value': value, 'only_empty': only_empty,
                             'document': doc_id}, ('only_empty',))
     args['value'] = value
-    edits = 0
-    if ws.use_scan(document):
-        # A word whose analysis the plan writes is read as that analysis, and
-        # a value on one of its morphemes goes into it (as set_field does).
-        same = _form_matcher(form)
-        planned = {op.get('word_id'): op for op in ws.ops if op.get('kind') == 'set_analysis'}
-        targets = []
-        if f.scope != 'Word' and planned:
-            for doc in _docs(ws, document):
-                for s in doc.sentences:
-                    for w in s.words:
-                        for k, pm in enumerate((planned.get(w.id) or {}).get('morphemes') or [], start=1):
-                            cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
-                                        if fv.get('layer_id') == f.layer_id), '')
-                            if same(pm.get('form')) and cur != value and not (only_empty and cur):
-                                targets.append((doc, f'{word_ref(s, w)}.m{k}'))
-        if targets:
-            with ws.staging():
-                for doc, ref in targets:
-                    edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), field=f, value=value)
-            edits = len(targets)
+    # A word whose analysis the plan writes is read as that analysis, and a
+    # value on one of its morphemes goes into it (as set_field does).
+    same = _form_matcher(form)
+    targets = []
+    for op in ws.ops if f.scope != 'Word' else ():
+        did = _doc_of_op(ws, op) if op.get('kind') == 'set_analysis' else None
+        if did is None or (doc_id and did != doc_id):
+            continue
+        doc = ws.doc(did)
+        s, w, _m = doc.find(op['word_id']) or (None, None, None)
+        if w is None:
+            continue
+        for k, pm in enumerate(op.get('morphemes') or [], start=1):
+            cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
+                        if fv.get('layer_id') == f.layer_id), '')
+            if same(pm.get('form')) and cur != value and not (only_empty and cur):
+                targets.append((doc, f'{word_ref(s, w)}.m{k}'))
+    if targets:
+        with ws.staging():
+            for doc, ref in targets:
+                edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), field=f, value=value)
+    edits = len(targets)
 
     def restate(op, found):
         if op.get('kind') != 'set_span' or found is None:
@@ -883,73 +760,28 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
 def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document: Optional[str] = None,
                             skip_analyzed: bool = False) -> str:
     """PLAN: apply one analysis (segmentation + morpheme fields) to every
-    occurrence of a word form. With skip_analyzed=true, words that already
-    have an analysis are left alone."""
+    occurrence of a word form (in one document when one is named). With
+    skip_analyzed=true, words that already have an analysis are left alone.
+    The words and their morpheme chains come by query, then one set_analysis
+    op per word."""
     form = (form or '').strip()
     if not form:
         raise ToolError('Give a form.')
-    if not ws.use_scan(document):
-        return _set_analysis_for_form_q(ws, form, morphemes, bool(skip_analyzed))
-    same = _form_matcher(form)
-    targets = []
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            for w in s.words:
-                if not same(w.surface):
-                    continue
-                if skip_analyzed and _analyzed(w):
-                    continue
-                targets.append((doc, s, w))
-    _check_cap(len(targets))
-    # Staged straight onto the real plan, one word at a time. It used to plan
-    # into a scratch `ws.ops = []` so a failure part-way left nothing behind,
-    # and that hid the plan from every guard `t_set_analysis` makes: a word
-    # already being split, a corpus-wide change reaching the document, a
-    # restore. Each looks at `ws.ops`, and each saw an empty plan. Instead the
-    # whole batch is reserved up front (so the cap still refuses before
-    # anything is staged) and the plan is put back as it was if one word
-    # fails.
-    ws.reserve(len(targets))
-    saved_reported = ws.reported_replaced, ws.reported_unlinked
-    first_note = ''
-    planned = []
-    with ws.staging():
-        for doc, s, w in targets:
-            note = t_set_analysis(ws, doc.id, word_ref(s, w), morphemes)
-            planned.append(('analysis', w.id))
-            if not first_note and 'differ from the surface' in note:
-                first_note = note[note.index('(note'):]
-    # Each inner call wrote a note of its own, and each said what it
-    # superseded. Those notes are thrown away here, so what they reported
-    # belongs to the one note this call does write: running the tool twice
-    # over a form said nothing about the first run being replaced, nor about
-    # the planned links to morphemes an earlier analysis had and this one
-    # does not.
-    ws.reported_replaced, ws.reported_unlinked = saved_reported
-    # By target, not by position: an analysis already planned for one of these
-    # words is REPLACED where it stands rather than appended.
-    by_target = {op_target(op): op for op in ws.ops}
-    ops = [by_target[t] for t in planned if t in by_target]
-    return _bulk_note(ws, ops, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-
-
-def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_analyzed: bool) -> str:
-    """The query path: word occurrences and their morpheme chains by query,
-    then one set_analysis op per word."""
     from .queries import q_analysis_targets, _docs_of
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.')
     out = parse_analysis(ws, morphemes)
-    words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
+    with ws.corpus.within(document):
+        words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
     _check_cap(len(words))
     ws.note_versions(w['document'] for w in words)
     budget = _docs_of([[w] for w in words])
     staged = []
     first_note = ''
-    # The same refusals the scan path makes through t_set_analysis. This path
-    # built its ops by hand and made none of them, so a plan already reshaping
-    # one of these words, or holding a corpus-wide change over their
-    # documents, was refused only at approval, if at all.
+    # The refusals t_set_analysis makes. These ops are built by hand, and once
+    # made none of them, so a plan already reshaping one of these words, or
+    # holding a corpus-wide change over their documents, was refused only at
+    # approval, if at all.
     for doc_id in sorted({w['document'] for w in words}):
         no_scope_reaches(ws, doc_id, ws.doc_label(doc_id))
     for w in words:
@@ -998,13 +830,8 @@ def links_to_in(doc, item_id: str) -> List[Dict[str, Any]]:
 
 
 def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
-    if not ws.prefer_scan:
-        from .queries import q_entry_links
-        return q_entry_links(ws, item_id)
-    out = []
-    for doc in ws.all_docs():
-        out.extend(links_to_in(doc, item_id))
-    return out
+    from .queries import q_entry_links
+    return q_entry_links(ws, item_id)
 
 
 def _ref_repair_ops(ws: Workspace, view, planner, *args) -> List[Dict[str, Any]]:

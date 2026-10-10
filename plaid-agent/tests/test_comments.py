@@ -26,10 +26,10 @@ def _row(cid, did, etype, eid, label, body, day):
 
 def _ws(app, rows):
     if app == 'igt':
-        from fixtures import scan_ws
+        from fixtures import fake_ws
         from fixtures import FakeClient
         from plaid_agent.igt.toolkit import call_tool, _IMPL
-        return scan_ws(FakeClient(comments=rows)), call_tool, _IMPL, 'Text 1'
+        return fake_ws(FakeClient(comments=rows)), call_tool, _IMPL, 'Text 1'
     if app == 'ud':
         from ud_fixtures import PID, FakeClient
         from plaid_agent.ud.project import load_project
@@ -100,7 +100,7 @@ def test_a_project_wide_listing_names_the_document_and_loads_only_a_few():
     reading the project's comments does not fetch every document to say where
     each one sits: past the budget a comment is shown by its label."""
     import copy
-    from fixtures import document_raw, scan_ws
+    from fixtures import document_raw, fake_ws
     from fixtures import FakeClient
     from plaid_agent.igt.toolkit import call_tool
     docs = {}
@@ -111,7 +111,7 @@ def test_a_project_wide_listing_names_the_document_and_loads_only_a_few():
     rows = [_row(f'c{i}', f'd{i}', 'token', 's-2', f'Sentence 2 of Text {i}', 'Note.', 1)
             for i in range(len(docs))]
     c = FakeClient(documents=docs, comments=rows)
-    ws = scan_ws(c)
+    ws = fake_ws(c)
     out = call_tool(ws, 'comments', {'limit': 200})
     assert '@ "Text 0" s2: Note.' in out
     last = len(docs) - 1

@@ -3,7 +3,7 @@
 so for a writer who does not maintain the lexicon it plans none of them, and
 says why, rather than stage a change the server refuses at approval."""
 
-from fixtures import scan_ws, FakeClient, project_raw, VOCAB
+from fixtures import fake_ws, FakeClient, project_raw, VOCAB
 
 from plaid_agent.igt.bulk import planned_changes
 from plaid_agent.igt.toolkit import call_tool
@@ -13,7 +13,7 @@ def _ws(maintainers, requester='writer@x.org', admin=False):
     p = project_raw()
     p['vocabs'][0]['maintainers'] = maintainers
     c = FakeClient(project=p)
-    w = scan_ws(c)
+    w = fake_ws(c)
     w.requester_id = requester
     w._requester_admin = admin
     return w

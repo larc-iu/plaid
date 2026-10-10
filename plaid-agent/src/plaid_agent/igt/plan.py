@@ -677,7 +677,6 @@ class Resolution:
 def _resolve_bulk_scope(res: Resolution, op):
     from .bulk import resolve_rule
     from ..core.tools import ToolError
-    res.ws.prefer_scan = bool(op.get('scan'))
     try:
         # Over the values the plan's earlier rules leave, as when it was staged.
         found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found))

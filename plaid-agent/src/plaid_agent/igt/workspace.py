@@ -168,9 +168,6 @@ class Workspace(BaseWorkspace):
         # without the turn loading it, read as the change was staged
         # (``note_versions``), so the plan is pinned to what the query saw.
         self._query_versions: Dict[str, Optional[int]] = {}
-        # Corpus-wide tools ask the query engine unless told to scan every
-        # document instead (tests compare the two).
-        self.prefer_scan = False
         # Links to morphemes of a planned analysis that a later change to that
         # word's analysis took out of the plan, and how many a note has told
         # the model about (the same watermark pair as `replaced`).
@@ -297,10 +294,6 @@ class Workspace(BaseWorkspace):
                shown_out: Optional[List[int]] = None) -> str:
         return render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
                                ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out)
-
-    def use_scan(self, document: Optional[str]) -> bool:
-        """Scan (one document, or everything when asked) rather than query."""
-        return bool(document) or self.prefer_scan
 
     # --- what a comment sits on ------------------------------------------
 

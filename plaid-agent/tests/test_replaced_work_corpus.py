@@ -64,7 +64,6 @@ def _igt_ws(monkeypatch, rows, raw=None, versions=None):
     client = igt_fx.FakeClient(documents={'d1': raw or igt_fx.document_raw()})
     _igt_engine(client, rows, versions)
     ws = Workspace(client, load_project(client, igt_fx.PID))
-    ws.prefer_scan = False
     return client, ws
 
 
@@ -200,7 +199,7 @@ def test_igt_deleting_an_entry_a_person_linked_is_flagged():
                     for link in v['vocab_links']:
                         link['metadata'] = stamp
         client = igt_fx.FakeClient(documents={'d1': raw})
-        ws = igt_fx.scan_ws(client)
+        ws = igt_fx.fake_ws(client)
         call_tool(ws, 'delete_entry', {'entry_id': 'vi-erg'})
         assert [op['kind'] for op in ws.ops] == ['delete_entry']
         assert [c['replaces_work'] for c in ws.plan_payload()['changes']] == [flagged]

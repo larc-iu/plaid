@@ -4,7 +4,7 @@ own, and the tools that move, merge, or delete links keep every member."""
 
 import pytest
 
-from fixtures import scan_ws
+from fixtures import fake_ws
 from fixtures_ext import mwe_client, MWE_LINK, PHRASE_ITEM
 
 from plaid_agent.igt.plan import execute_plan, normalize_ops
@@ -14,7 +14,7 @@ from plaid_agent.igt.workspace import op_target
 
 
 def ws(machine_mwe=False):
-    return scan_ws(mwe_client(machine_mwe))
+    return fake_ws(mwe_client(machine_mwe))
 
 
 def test_parse_keeps_the_expression_apart_from_own_links():
@@ -29,7 +29,9 @@ def test_parse_keeps_the_expression_apart_from_own_links():
     out = render_document(doc, w.project)
     assert '  w2 gam | mwe=gam akuna (w2+w3)\n' in out and '  w3 akuna | mwe=gam akuna (w2+w3)\n' in out
     assert 'mwe=entry (w2+w3): a multi-word expression' in out
-    assert 'Word "gam": 1 occurrence, 1 distinct analysis:\n  1\tmwe=gam akuna' in call_tool(w, 'analyses_of', {'form': 'gam'})
+    out = call_tool(w, 'analyses_of', {'form': 'gam'})
+    assert 'Word "gam": 1 occurrence.' in out and 'Links: gam akuna (1)' in out
+    assert '    s1.w2 gam | mwe=gam akuna (w2+w3)' in out
 
 
 def test_own_link_tools_leave_the_expression_alone():
@@ -131,7 +133,7 @@ def test_entry_tools_move_and_delete_the_whole_expression_once():
     c2._documents['d1']['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][1]['vocab_item'] = \
         {'id': 'vi-stale', 'form': 'zzz yyy'}
     c2._lexicon['items'].append({'id': 'vi-stale', 'form': 'zzz yyy', 'metadata': {'morphType': 'phrase'}})
-    out = call_tool(scan_ws(c2), 'check_lexicon', {'section': 'stale'})
+    out = call_tool(fake_ws(c2), 'check_lexicon', {'section': 'stale'})
     assert '1 links whose form no longer contains the entry form: gam akuna → "zzz yyy"' in out
     assert '2 links' not in out.split('\n')[0] or True
     assert 'Linked from 2 words and 0 morphemes' in call_tool(w, 'lexicon_entry', {'entry_id': PHRASE_ITEM})

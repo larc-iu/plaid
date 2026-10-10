@@ -7,9 +7,7 @@ tallies, and the ids of matching entities, instead of fetching every
 document and scanning it in Python. Documents are fetched only to render
 the handful of hits a tool shows (positional references, context), so cost
 follows what is displayed, not the size of the corpus. With ``document=``
-the tools still take the scan path over that one document, which gives the
-richer per-document output and serves as the reference implementation the
-query path is tested against.
+the same queries are held to that one document (``Corpus.within``).
 
 One function per tool, named ``q_<tool>``. The clauses they are built from,
 and the document lookups that turn an entity id back into a printable
@@ -35,7 +33,7 @@ MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow
 
 def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=None, extra=None,
                per_doc: Optional[int] = None) -> List[str]:
-    """Render token hits as the scan does: one line per word (deduplicated),
+    """Render token hits: one line per word (deduplicated),
     ``"Doc" sN.wN <word> || <sentence>``, or the sentence line for a
     sentence field. ``extra`` returns text appended per hit (concordance).
     ``per_doc`` caps the hits shown from any one document, with a line
@@ -126,7 +124,7 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
         return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None
     if where_l == 'morpheme':
         where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
-        total = c.count(where, ['?w'])  # words, as the scan counts
+        total = c.count(where, ['?w'])  # words
         rows, per_doc, docs = _spread_fetch(c, where, ['?m', '?w'], '?w', limit, 3)
         return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?m'])
     layer = c.scope_layer(field.scope)
@@ -174,7 +172,7 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
         counts, raw = _casefold_tally(c.group([c.word('?t')], ['?t.value']),
                                       lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)))
     elif what_l == 'morpheme':
-        counts, raw = _casefold_tally(c.group([c.morph('?m')], ['?m.metadata.form', '?m.value']),
+        counts, raw = _casefold_tally(c.group(c.shown_morph('?m'), ['?m.metadata.form', '?m.value']),
                                       lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1])) if not c.ignored(r[1]) else (None, None)))
     else:
         counts, raw = _casefold_tally(c.group([c.span('?s', field.layer_id)], ['?s.value']),
@@ -198,7 +196,7 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
             for form, doc, _n in c.group([c.morph('?m'), ['in', '?m.metadata.form', chunk]], ['?m.metadata.form', '?m.doc']):
                 spread[form.casefold()].add(doc)
         for chunk in _chunks(values):
-            for value, doc, _n in c.group([c.morph('?m'), ['not', c.has_form('?m')], ['in', '?m.value', chunk]],
+            for value, doc, _n in c.group(c.shown_morph('?m') + [['not', c.has_form('?m')], ['in', '?m.value', chunk]],
                                           ['?m.value', '?m.doc']):
                 spread[value.casefold()].add(doc)
     else:
@@ -235,20 +233,42 @@ def q_review_docs(ws: Workspace, f=None) -> List[str]:
     return out
 
 
-def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None):
-    """{form: count} over the whole project, plus {form: example document
-    names}; for sentence fields the groups are documents."""
+def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None, refs: bool = False):
+    """{form: count}, plus {form: examples}: the documents with the most, or
+    with ``refs`` (reads held to one document) every reference, in text order.
+    For sentence fields the groups are documents."""
+    from .project import word_ref
     c = ws.corpus
     names = c.doc_names()
     c.forget_clipping()
     examples: Dict[str, List[str]] = {}
+
+    def at(var: str) -> str:
+        """Where each row is: its document, or with ``refs`` the entity itself."""
+        return var if refs else f'{var}.doc'
+
+    def ref(eid: str):
+        """(text order, reference) of an entity of the held document. A word
+        at the morpheme level stands for the morpheme the editor derives."""
+        _doc, s, w, m = c.locate(c.document, eid)
+        if s is None:
+            return None
+        if w is None:
+            return (s.index, 0, 0), f's{s.index} {s.text[:50]}'
+        mi = m.index if m else (1 if lvl == 'morpheme' else 0)
+        return (s.index, w.index, mi), word_ref(s, w) + (f'.m{mi}' if mi else '')
+
     if lvl == 'sentence':
-        rows = c.group([c.sent('?t'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?t']]], ['?t.doc'])
-        return {names.get(d, d): n for d, n in rows}, examples
+        rows = c.group([c.sent('?t'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?t']]], [at('?t')])
+        if not refs:
+            return {names.get(d, d): n for d, n in rows}, examples
+        found = sorted(r for r in (ref(sid) for sid, _n in rows) if r)
+        name = names.get(c.document, c.document)
+        return ({name: len(found)} if found else {}), {name: [text for _k, text in found]}
     if kind == 'unanalyzed':
         where = [c.word('?w')] + Unanalyzed.clauses(c, '?w')
         counts = c.word_tally(where, '?w')
-        by_doc = c.group(where, ['?w.value', '?w.doc'])
+        by_doc = c.group(where, ['?w.value', at('?w')])
     elif kind in ('unverified', 'contributed'):
         # Distinct words carrying any span, morpheme, or link (their own, a
         # multi-word expression's, or a morpheme's) awaiting review.
@@ -260,21 +280,21 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
             unconfirmed_link = ['not', ['link', '?l', {'metadata': {'provConfirmed': True}}]]
             for wid, value, doc, _n in c.group([c.word('?w'), span, ['covers', '?s', '?w'], unconfirmed],
                                                ['?w', '?w.value', '?w.doc']):
-                ids[wid] = (value, doc)
+                ids[wid] = (value, wid if refs else doc)
             for wid, value, doc, _n in c.group([c.word('?w'), link, ['link-token', '?l', '?w'], unconfirmed_link],
                                                ['?w', '?w.value', '?w.doc']):
-                ids[wid] = (value, doc)
+                ids[wid] = (value, wid if refs else doc)
             if c.M:
                 for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [c.morph('?m', metadata=stamp),
                                                     ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]],
                                                    ['?w', '?w.value', '?w.doc']):
-                    ids[wid] = (value, doc)
+                    ids[wid] = (value, wid if refs else doc)
                 for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [span, ['covers', '?s', '?m'], unconfirmed],
                                                    ['?w', '?w.value', '?w.doc']):
-                    ids[wid] = (value, doc)
+                    ids[wid] = (value, wid if refs else doc)
                 for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [link, ['link-token', '?l', '?m'], unconfirmed_link],
                                                    ['?w', '?w.value', '?w.doc']):
-                    ids[wid] = (value, doc)
+                    ids[wid] = (value, wid if refs else doc)
         counts = Counter()
         by_doc = []
         for value, doc in ids.values():
@@ -288,7 +308,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         else:
             where = [c.word('?w'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?w']]]
         counts = c.word_tally(where, '?w')
-        by_doc = c.group(where, ['?w.value', '?w.doc'])
+        by_doc = c.group(where, ['?w.value', at('?w')])
     else:
         if kind == 'unlinked':
             where = c.in_word('?m', '?w') + [['not', ['vocab-link', '?m', '?v']], ['not', ['vocab-link', '?w', '?v2']]]
@@ -296,10 +316,10 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         else:
             where = [c.morph('?m'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
             bare = c.bare_word('?w')
-        rows = c.group(where, ['?m.metadata.form', '?m.value', '?m.doc'])
+        rows = c.group(where, ['?m.metadata.form', '?m.value', at('?m')])
         # A word nobody has segmented has the derived morpheme the editor
         # shows (the whole word), with no value and no link of its own.
-        rows += [(None, value, doc, n) for value, doc, n in c.group(bare, ['?w.value', '?w.doc'])]
+        rows += [(None, value, doc, n) for value, doc, n in c.group(bare, ['?w.value', at('?w')])]
         counts = Counter()
         by_doc = []
         for form, value, doc, n in rows:
@@ -313,7 +333,10 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         if value:
             docs_of[value.casefold()][doc] += n
     for key, dc in docs_of.items():
-        examples[key] = [f'"{names.get(d, d)}"' for d, _ in dc.most_common(3)]
+        if refs:
+            examples[key] = [text for _k, text in sorted(r for r in map(ref, dc) if r)]
+        else:
+            examples[key] = [f'"{names.get(d, d)}"' for d, _ in dc.most_common(3)]
     return dict(counts), examples
 
 
@@ -678,7 +701,7 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
                         gloss_items[value].add(iid)
         # Stale links, link by link through the link entity: a multi-word
         # expression's form is its members' surfaces in text order, exactly
-        # as the scan judges it.
+        # as the editor shows it.
         per_link: Dict[str, tuple] = {}
         item_links = [['vocab', '?v', {'layer': v['id']}], ['link-item', '?l', '?v'], ['link-token', '?l', '?t']]
         for iid, lid, value, begin, _n in c.group(item_links + [c.word('?t')], ['?v', '?l', '?t.value', '?t.begin']):
@@ -823,7 +846,7 @@ def _docs_of(rows: List[list]) -> set:
     return {e['document'] for r in rows for e in r if isinstance(e, dict) and e.get('document')}
 
 
-def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], document_id: Optional[str], cap: int) -> List[list]:
+def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], cap: int) -> List[list]:
     """The (span, token) rows whose value matches ``spec``, ``cap + 1`` at most
     so the caller can tell a capped read from a full one.
 
@@ -835,8 +858,6 @@ def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], document_id: Optio
     c = ws.corpus
     layer = c.scope_layer(f.scope)
     where = [c.span('?s', f.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
-    if document_id:
-        where.append(['in', '?s.doc', [document_id]])
     return c.entities(where, ['?s', '?t'], cap + 1, [['?t.doc'], ['?t.begin']])
 
 
@@ -870,11 +891,10 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
     return staged
 
 
-def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int,
-                       document_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     """The edits a replacement would make, or a refusal when more values match
     than one pass may consider."""
-    rows = q_replace_matches(ws, f, spec, document_id, cap)
+    rows = q_replace_matches(ws, f, spec, cap)
     if len(rows) > cap:
         raise ToolError(f'More than {cap} {f.name} values match, which is more than one pass may '
                         f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
@@ -925,21 +945,19 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
             morphs.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
                            **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}'),
                            '_pos': (m['document'], m['begin'], 1, m.get('precedence') or 0)})
-    # Interleave as the scan does: each word, then its morpheme forms.
+    # Interleaved: each word, then its morpheme forms.
     ordered = sorted(words + morphs, key=lambda op: op['_pos'])
     for op in ordered:
         op.pop('_pos', None)
     return ordered, len(words), len(morphs)
 
 
-def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
-                     document_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     """The stored morpheme forms a replacement changes, in text order: one
     set_morpheme_form op for each whose form differs afterwards. A morpheme
     showing its word's surface stores no form, and is respell_all's."""
     c = ws.corpus
-    where = ([c.word('?w'), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w')
-             + ([['in', '?m.doc', [document_id]]] if document_id else []))
+    where = [c.word('?w'), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w')
     rows = c.entities(where, ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
     if len(rows) > cap:
         raise ToolError(f'More than {cap} morpheme forms match, which is more than one pass may '
@@ -962,10 +980,9 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
     return staged
 
 
-def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwrite: bool, cap: int,
-                          document_id: Optional[str] = None):
+def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwrite: bool, cap: int):
     c = ws.corpus
-    where = [c.word('?t')] + ([['in', '?t.doc', [document_id]]] if document_id else [])
+    where = [c.word('?t')]
     if not overwrite:
         where.append(['not', ['token', '?t', {'metadata': {f'orthog:{target}': {'regex': '.'}}}]])
     rows = c.entities(where, ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
@@ -997,16 +1014,14 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
     return staged
 
 
-def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int,
-                         document_id: Optional[str] = None):
+def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int):
     from .project import Span
     c = ws.corpus
     spec = rx(form, whole=True)
-    in_doc = [['in', '?u.doc', [document_id]]] if document_id else []
     if f.scope == 'Word':
-        unit = [c.word('?u', value=spec)] + in_doc
+        unit = [c.word('?u', value=spec)]
     else:
-        unit = [c.morph_form_clauses('?u', spec)] + in_doc
+        unit = [c.morph_form_clauses('?u', spec)]
     with_span = [] if False else c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
                                             [['?u.doc'], ['?u.begin']])
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
@@ -1015,7 +1030,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     # A word of that form nobody has segmented: its morpheme is the derived
     # one the editor shows, stored nowhere and so holding no value, which the
     # plan makes when it writes the value (``virtual_at``).
-    bare = c.entities(c.bare_word('?u', value=spec) + in_doc, ['?u'], cap + 1,
+    bare = c.entities(c.bare_word('?u', value=spec), ['?u'], cap + 1,
                       [['?u.doc'], ['?u.begin']]) if f.scope == 'Morpheme' else []
     rows += [(_derived_morpheme(ws, u), None) for (u,) in bare if isinstance(u, dict) and not c.ignored(u.get('value'))]
     # Every read caps CANDIDATES, not matches, and they are ordered by document.

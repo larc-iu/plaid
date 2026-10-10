@@ -7,14 +7,14 @@ The causes come from the 2026-10-08 benchmark's failed run_code calls:
 load(d) for d in documents(), doc.sentences on a dict, guessed keys, and a
 missing quote answered as a fault in the tool."""
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from live import require_sandbox
 from plaid_agent.core.sandbox import keyed
 from plaid_agent.igt.toolkit import call_tool
 
 
 def test_a_document_tool_names_the_argument_when_handed_a_list():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     assert call_tool(w, 'read_document', {'document': ['Text 1']}).startswith('Error: document must be')
 
 
@@ -50,12 +50,12 @@ class TestInTheSandbox:
     pytestmark = require_sandbox()
 
     def test_load_takes_an_entry_of_documents(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'd = documents()[0]\nprint(load(d)["name"] == load(d["id"])["name"])'})
         assert out == 'True'
 
     def test_a_loaded_document_reads_by_attribute_too(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         code = '''
 n = 0
 for d in documents():
@@ -71,7 +71,7 @@ print(n, doc.sentences[0].words[0].ref == doc["sentences"][0]["words"][0]["ref"]
     def test_hasattr_and_getattr_answer_for_a_key(self):
         """Monty's own hasattr said False for every key, so a count guarded by
         it came out 0 with no error."""
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         code = ('w = load(documents()[0]).sentences[0].words[0]\n'
                 'print(hasattr(w, "morphemes"), hasattr(w, "zz"), getattr(w, "ref", None) == w["ref"], '
                 'getattr(w, "zz", 5))\n'
@@ -79,7 +79,7 @@ print(n, doc.sentences[0].words[0].ref == doc["sentences"][0]["words"][0]["ref"]
         assert call_tool(w, 'run_code', {'code': code}) == 'True False True 5\nraised'
 
     def test_a_guessed_key_names_the_keys_there_are_and_the_shape(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'load(documents()[0]).sentences[0].n'})
         assert out.startswith('Error') and 'no "n" here' in out and "'ref'" in out and "'words'" in out
         assert 'What load() returns:' in out and 'm["fields"].get("Gloss")' in out
@@ -87,7 +87,7 @@ print(n, doc.sentences[0].words[0].ref == doc["sentences"][0]["words"][0]["ref"]
         assert 'KeyError' in out and 'What load() returns:' in out
 
     def test_attribute_reads_on_other_values_still_work(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         code = '''
 import math
 from collections import Counter
@@ -101,7 +101,7 @@ print(math.pi > 3, c.most_common(1), a)
         assert call_tool(w, 'run_code', {'code': code}) == "True [('a', 2)] ('x',)"
 
     def test_a_variable_named_type_or_getattr_leaves_attribute_reads_working(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         code = ('m = load(documents()[0]).sentences[0].words[0].morphemes[0]\n'
                 'type = m.type\ngetattr = 1\nprint(m.ref == m["ref"])')
         assert call_tool(w, 'run_code', {'code': code}) == 'True'
@@ -109,34 +109,34 @@ print(math.pi > 3, c.most_common(1), a)
         assert call_tool(w, 'run_code', {'code': 'print(m.form == m["form"])'}) == 'True'
 
     def test_a_missing_key_of_a_large_dict_names_a_few_keys(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'd = {str(i): i for i in range(50000)}\nd.total'})
         assert "Its keys: '0', '1'" in out and 'and 49980 more' in out and len(out) < 2000
 
     def test_an_error_shows_the_code_as_written(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'doc = load(documents()[0])\nx = doc.sentences[0].n'})
         assert 'x = doc.sentences[0].n' in out and '_plaid_attr_' not in out and '~' not in out
 
     def test_code_monty_cannot_read_once_rewritten_runs_as_written(self, monkeypatch):
         from plaid_agent.core import sandbox
         monkeypatch.setattr(sandbox, 'keyed', lambda code: code + '\n)')
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         assert call_tool(w, 'run_code', {'code': 'print(1 + 1)'}) == '2'
 
     def test_a_typo_is_the_codes_fault_not_the_tools(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'x = w["lemma]'})
         assert out.startswith('Error: The code could not be read') and 'fault in the tool' not in out
 
     def test_next_over_a_generator_and_a_missing_name_say_what_the_sandbox_does(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'next((x for x in [1, 2] if x > 1), None)'})
         assert 'next(iter(...))' in out
         out = call_tool(w, 'run_code', {'code': 'from collections import OrderedDict'})
         assert 'The sandbox has these modules' in out
 
     def test_code_help_opens_with_the_short_shape(self):
-        w = scan_ws(FakeClient())
+        w = fake_ws(FakeClient())
         out = call_tool(w, 'code_help', {})
         assert out.startswith('A LOADED DOCUMENT IN SHORT') and 'by an entry of documents()' in out

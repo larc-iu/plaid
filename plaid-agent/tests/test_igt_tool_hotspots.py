@@ -9,7 +9,7 @@ reference spellings are tested here too, for parity.
 
 import copy
 
-from fixtures import FakeClient, lexicon_raw, project_raw, scan_ws
+from fixtures import FakeClient, lexicon_raw, project_raw, fake_ws
 
 from plaid_agent.igt.project import resolve
 from plaid_agent.igt.toolkit import call_tool
@@ -17,7 +17,7 @@ from plaid_agent.igt.trace import TRACER
 
 
 def ws(**kw):
-    return scan_ws(FakeClient(**kw))
+    return fake_ws(FakeClient(**kw))
 
 
 def shared_gloss_project():

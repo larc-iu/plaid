@@ -82,7 +82,6 @@ def _igt_ws():
     from plaid_agent.igt.workspace import Workspace
     c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
     w = Workspace(c, load_project(c, 'p1'))
-    w.prefer_scan = True
     w.web = NoWeb()
     # A file on the conversation: without one read_file refuses for want of an
     # attachment, which is the same answer with and without the bad number.

@@ -16,7 +16,7 @@ import tempfile
 
 import pytest
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from live import require_sandbox
 from node_exe import node_or_skip
 from test_pdf import Store
@@ -38,7 +38,7 @@ def _file(name, text, made=False):
 
 
 def _ws(*files):
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     w.files = Attachments(list(files))
     w.keeper = FileKeeper(Store(), 'c1')
     return w

@@ -312,7 +312,7 @@ def test_a_turns_step_line_counts_the_changes_its_plan_holds(monkeypatch):
     import json
     import sys
     sys.path.insert(0, 'tests')
-    from fixtures import FakeClient, scan_ws
+    from fixtures import FakeClient, fake_ws
     from plaid_agent.core.agent import Toolkit, run_turn
     from plaid_agent.igt.toolkit import call_tool, tools_for
     from plaid_agent.igt.trace import TRACER
@@ -332,7 +332,7 @@ def test_a_turns_step_line_counts_the_changes_its_plan_holds(monkeypatch):
         return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason='stop')])
 
     monkeypatch.setattr(agent.litellm, 'completion', fake)
-    ws = scan_ws(FakeClient())
+    ws = fake_ws(FakeClient())
     kit = Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)
     turn = run_turn(cfg(), kit, ws, 'system', [{'role': 'user', 'content': 'gloss'}])
     assert len(ws.ops) == 3

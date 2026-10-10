@@ -57,7 +57,7 @@ def test_a_delete_after_changes_that_stood_is_partly_applied(monkeypatch):
 def test_the_card_settles_with_no_approve(monkeypatch):
     spec = la.APPS['igt']()
     client = spec['client']()
-    plan = la._plan_of(spec, client, ('delete_entry', {'entry_id': 'vi-erg'}), scan=True)
+    plan = la._plan_of(spec, client, ('delete_entry', {'entry_id': 'vi-erg'}))
     _server_counts_more(monkeypatch)
     helper = la.sbs._approve(spec, client, plan)
     [error] = helper.errors

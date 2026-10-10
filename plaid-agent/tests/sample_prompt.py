@@ -53,8 +53,8 @@ def _workspace(app: str):
     """The workspace a test of ``app`` runs against, with the web on so the
     web tools are declared."""
     if app == 'igt':
-        from fixtures import FakeClient, scan_ws
-        return scan_ws(FakeClient())
+        from fixtures import FakeClient, fake_ws
+        return fake_ws(FakeClient())
     fixtures = importlib.import_module(APPS[app][1])
     client = getattr(fixtures, f'{app}_client')()
     project = importlib.import_module(f'plaid_agent.{app}.project').load_project(client, fixtures.PID)

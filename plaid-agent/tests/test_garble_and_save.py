@@ -8,7 +8,7 @@ letter came out as an Egyptian hieroglyph with the same last UTF-8 byte.
 import csv
 import io
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from live import require_sandbox
 from test_pdf import Store
 
@@ -27,7 +27,7 @@ def _file(name, text):
 
 
 def _ws(*files):
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     w.files = Attachments([_file(n, t) for n, t in files])
     w.keeper = FileKeeper(Store(), 'c1')
     return w
@@ -103,7 +103,7 @@ def _wancho_doc_ws():
     d['text_layers'][0]['text']['body'] = 'Ali-di ' + WANCHO + '\U0001E2C7 akuna. Gam-ar.'
     d['text_layers'][0]['token_layers'][1]['span_layers'][0]['spans'].append(
         {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2']})
-    return scan_ws(FakeClient(documents={'d1': d}))
+    return fake_ws(FakeClient(documents={'d1': d}))
 
 
 def test_a_change_to_a_word_in_a_rare_script_is_staged_when_the_model_typed_none_of_it():

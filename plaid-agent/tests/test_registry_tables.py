@@ -73,10 +73,10 @@ def test_every_igt_scope_kind_is_placed_at_its_document_on_the_card():
     """`locate` named one scope kind. A second is placed nowhere: it names no
     entity of its own, so every per-kind lookup below misses it and the row
     reaches the card with no document."""
-    from fixtures import FakeClient, scan_ws
+    from fixtures import FakeClient, fake_ws
     from plaid_agent.igt import changes
     from plaid_agent.igt.plan import SCOPES
-    ws = scan_ws(FakeClient())
+    ws = fake_ws(FakeClient())
     assert SCOPES, 'the sweep is green on an empty list without this'
     saved = changes.SCOPES
     try:
@@ -91,12 +91,12 @@ def test_every_igt_scope_kind_is_placed_at_its_document_on_the_card():
 def test_the_entries_a_plan_removes_have_one_reader():
     """The tools refuse a write to a doomed entry and the executor refuses a
     merge into one. Written twice, the two could disagree about the set."""
-    from fixtures import FakeClient, scan_ws
+    from fixtures import FakeClient, fake_ws
     from plaid_agent.igt.plan import KIND, removed_entries
     ops = [{'kind': 'delete_entry', 'item_id': 'vi-a', 'links': []},
            {'kind': 'merge_entries', 'keep_id': 'vi-b', 'remove_id': 'vi-c', 'links': []}]
     assert removed_entries(ops) == {'vi-a', 'vi-c'}
-    ws = scan_ws(FakeClient())
+    ws = fake_ws(FakeClient())
     ws.ops.extend(ops)
     assert ws.doomed_entries() == removed_entries(ops)
     declared = {n for n, k in KIND.items() if k.extra.get('removes_entry')}
@@ -179,8 +179,8 @@ def test_a_scope_kind_is_one_that_says_how_to_resolve_itself(app):
 def _scope_fixture(app):
     """A client and a project a plan can be resolved against."""
     if app == 'igt':
-        from fixtures import FakeClient, scan_ws
-        ws = scan_ws(FakeClient())
+        from fixtures import FakeClient, fake_ws
+        ws = fake_ws(FakeClient())
         return ws.client, ws.project
     if app == 'ud':
         from plaid_agent.ud.project import load_project
@@ -225,8 +225,8 @@ def test_the_compaction_spec_has_one_name_in_both_apps():
     from plaid_agent.igt.plan import KIND as IGT_KIND
     from plaid_agent.ud.plan import KIND as UD_KIND
     assert set(ud_spec(None)) == {n for n, k in UD_KIND.items() if k.compact_each}
-    from fixtures import FakeClient, scan_ws
-    assert set(igt_spec(scan_ws(FakeClient()))) == {n for n, k in IGT_KIND.items() if k.compact_each}
+    from fixtures import FakeClient, fake_ws
+    assert set(igt_spec(fake_ws(FakeClient()))) == {n for n, k in IGT_KIND.items() if k.compact_each}
     readme = (pathlib.Path(__file__).resolve().parent.parent / 'README.md').read_text()
     assert 'compact_spec' in readme and '`COMPACT`' not in readme
 

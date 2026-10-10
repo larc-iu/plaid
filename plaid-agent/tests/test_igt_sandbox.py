@@ -1,7 +1,7 @@
 """run_code over the IGT fixture: the view, a walk, a proposal."""
 
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from live import require_sandbox
 from plaid_agent.igt.sandbox import view
 from plaid_agent.igt.toolkit import call_tool
@@ -10,7 +10,7 @@ pytestmark = require_sandbox()
 
 
 def test_the_view_has_words_morphemes_fields_and_links():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     v = view(w.doc('d1'))
     word = v['sentences'][0]['words'][0]
     assert word['ref'] == 's1.w1' and word['fields'].get('Gloss') == 'Ali'
@@ -19,7 +19,7 @@ def test_the_view_has_words_morphemes_fields_and_links():
 
 
 def test_code_walks_the_documents_and_stages_a_proposal():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     code = '''
 n = 0
 for d in documents():

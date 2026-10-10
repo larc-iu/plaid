@@ -271,7 +271,7 @@ def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
     registry's SCOPE and EXCLUSIVE tags already answer. A second kind of
     either would have joined a plan that neither guard knew about."""
     import pytest
-    from fixtures import scan_ws
+    from fixtures import fake_ws
     from plaid_agent.core import opkind as ok
     from plaid_agent.core.tools import ToolError
     from plaid_agent.igt import plan
@@ -285,13 +285,13 @@ def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
     # and the rule holds both ways round: nothing joins a plan that has one, and
     # one does not join a plan that has anything.
     wipe = ok.OpKind('wipe', ('wipe', 'wipes'), apply=lambda ctx, op: 1, shape=ok.EXCLUSIVE)
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     monkeypatch.setattr(type(w), 'KIND', dict(plan.KIND, wipe=wipe))
     w.ops.append({'kind': 'wipe', 'label': 'a wipe'})
     with pytest.raises(ToolError, match='approved on its own'):
         w.add_op({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'value': 'x', 'label': ''})
 
-    w2 = scan_ws(FakeClient())
+    w2 = fake_ws(FakeClient())
     monkeypatch.setattr(type(w2), 'KIND', dict(plan.KIND, wipe=wipe))
     w2.add_op({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'value': 'x', 'label': ''})
     with pytest.raises(ToolError, match='plan of its own'):

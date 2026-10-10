@@ -1,7 +1,7 @@
 """Every planned change is located for the plan card: the document, the
 sentence and word to link to, and the change without its location."""
 
-from fixtures import FakeClient, document_raw, scan_ws, VOCAB
+from fixtures import FakeClient, document_raw, fake_ws, VOCAB
 
 from plaid_agent.core.plan import labelled
 
@@ -11,7 +11,7 @@ from plaid_agent.igt.toolkit import call_tool
 
 def _plan(*calls):
     c = FakeClient()
-    ws = scan_ws(c)
+    ws = fake_ws(c)
     for name, args in calls:
         call_tool(ws, name, args)
     return ws
@@ -118,7 +118,7 @@ def test_a_corpus_wide_respell_is_marked_through_its_counts():
 def test_a_document_name_holding_a_colon_keeps_its_change_whole():
     """Each change says where it starts in its label (core.plan.labelled), so
     a name's own colon is never taken for the end of the place."""
-    ws = scan_ws(FakeClient(documents={'d1': {**document_raw(), 'name': 'Elicited: list'}}))
+    ws = fake_ws(FakeClient(documents={'d1': {**document_raw(), 'name': 'Elicited: list'}}))
     for name, args in (('delete_word', {'document': 'Elicited: list', 'refs': ['s1.w3']}),
                        ('merge_sentences', {'document': 'Elicited: list', 'ref': 's2'})):
         call_tool(ws, name, args)

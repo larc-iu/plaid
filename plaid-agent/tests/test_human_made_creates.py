@@ -5,7 +5,7 @@ fake client refuses a null on a create as core does (bench note 5)."""
 
 import pytest
 
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from ud_fixtures import PID, ud_client
 
 from plaid_agent.igt.plan import execute_plan as igt_execute
@@ -59,7 +59,7 @@ def test_words_a_reshape_makes_as_human_made_are_written_with_their_forms(ud_ws)
 
 
 def test_a_gloss_on_an_unsegmented_word_as_human_made_makes_its_morpheme():
-    w = scan_ws(FakeClient())
+    w = fake_ws(FakeClient())
     igt_call(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m1'], 'field': 'Morph Gloss', 'value': 'go'})
     counts = igt_execute(w.client, w.plan_payload()['ops'], source='s', label='l', project=w.project,
                          stamp_mode='human')

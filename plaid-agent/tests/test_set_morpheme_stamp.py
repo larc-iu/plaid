@@ -6,7 +6,7 @@ Bulk Edit."""
 
 from plaid_client.testing import as_fragment
 
-from fixtures import FakeClient, document_raw, scan_ws
+from fixtures import FakeClient, document_raw, fake_ws
 
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.toolkit import call_tool
@@ -35,7 +35,7 @@ def _token_patch(c, token_id):
 
 
 def test_an_approved_form_correction_is_stamped():
-    w = scan_ws(FakeClient(documents={'d1': machine_analysed()}))
+    w = fake_ws(FakeClient(documents={'d1': machine_analysed()}))
     assert 'Planned 1' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m2', 'form': 'de'})
     w.client.calls.clear()
     execute_plan(w.client, w.ops, source=SOURCE, label='l', project=w.project)
@@ -47,7 +47,7 @@ def test_an_approved_form_correction_is_stamped():
 
 
 def test_an_approved_type_correction_is_stamped_and_a_contributors_is_contributed():
-    w = scan_ws(FakeClient(documents={'d1': machine_analysed()}))
+    w = fake_ws(FakeClient(documents={'d1': machine_analysed()}))
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m2', 'type': 'prefix'})
     w.client.calls.clear()
     execute_plan(w.client, w.ops, source=SOURCE, label='l', project=w.project,

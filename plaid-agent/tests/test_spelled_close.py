@@ -2,7 +2,7 @@
 headwords only, the type the affix marker names first, and how many more
 there are when the list is cut."""
 
-from fixtures import FakeClient, lexicon_raw, scan_ws
+from fixtures import FakeClient, lexicon_raw, fake_ws
 
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import marked_types
@@ -20,7 +20,7 @@ def _ws():
               {'id': 'suf', 'form': 'lam', 'metadata': {'gloss': 'S', 'morphType': 'suffix'}},
               {'id': 'cl', 'form': 'lam', 'metadata': {'gloss': 'C', 'morphType': 'enclitic'}}]
     lex['items'] += items
-    return scan_ws(FakeClient(lexicon=lex))
+    return fake_ws(FakeClient(lexicon=lex))
 
 
 def _offer(out):
@@ -43,7 +43,7 @@ def test_a_prefix_and_a_clitic_marker_offer_theirs_first():
 
 
 def test_a_short_list_says_no_more():
-    out = call_tool(scan_ws(FakeClient()), 'lexicon_entry', {'entry_form': 'di'})
+    out = call_tool(fake_ws(FakeClient()), 'lexicon_entry', {'entry_form': 'di'})
     assert _offer(out) == 'entry_form "-di" (suffix)'
 
 

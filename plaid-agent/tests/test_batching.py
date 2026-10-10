@@ -5,14 +5,14 @@ or type without rewriting its chain."""
 import pytest
 from plaid_client.testing import as_fragment
 
-from fixtures import scan_ws, FakeClient
+from fixtures import fake_ws, FakeClient
 
 from plaid_agent.igt.plan import execute_plan, normalize_ops
 from plaid_agent.igt.toolkit import call_tool
 
 
 def ws():
-    return scan_ws(FakeClient())
+    return fake_ws(FakeClient())
 
 
 def test_analyses_of_takes_several_forms():

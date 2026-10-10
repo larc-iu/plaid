@@ -106,7 +106,6 @@ def _ws_and_call(app):
         from plaid_agent.igt.workspace import Workspace
         c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
         w = Workspace(c, load_project(c, 'p1'))
-        w.prefer_scan = True
         w.files = attached(('wordlist.csv', WORDLIST))
         return w, call_tool
     if app == 'ud':

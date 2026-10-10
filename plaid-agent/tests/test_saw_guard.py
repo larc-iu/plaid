@@ -30,7 +30,8 @@ from plaid_agent.umr.trace import TRACER as UMR_TRACER  # noqa: E402
 # whatever the project holds.
 EXEMPT = {'code_help'}
 
-# Reads that always ask the query engine, which only the second fixture runs.
+# Reads run only against the engine that answers nothing, since ud's and umr's
+# fake clients refuse their queries.
 ENGINE_ONLY = {('igt', 'query'), ('ud', 'query'), ('umr', 'query'),
                ('ud', 'check_consistency'), ('umr', 'frequency_list')}
 
@@ -55,21 +56,21 @@ def _cases():
                 args[k] = values[k]
             if 'document' in (params.get('properties') or {}):
                 args.setdefault('document', values['document'])
-            for scan in ((False,) if (app, name) in ENGINE_ONLY else (True, False)):
-                out.append(pytest.param(app, name, args, scan,
-                                        id=f'{app}-{name}-{"scan" if scan else "engine"}'))
+            for empty in ((True,) if (app, name) in ENGINE_ONLY else (False, True)):
+                out.append(pytest.param(app, name, args, empty,
+                                        id=f'{app}-{name}-{"empty" if empty else "fixture"}'))
     return out
 
 
 CASES = _cases()
 
 
-@pytest.mark.parametrize('app,name,args,scan', CASES)
-def test_every_read_notes_what_it_showed(app, name, args, scan):
+@pytest.mark.parametrize('app,name,args,empty', CASES)
+def test_every_read_notes_what_it_showed(app, name, args, empty):
     toolkit, _, make, _ = APPS[app]
     if name == 'run_code' and sandbox.available():
         pytest.skip(sandbox.available())
-    ws = make(scan=scan)
+    ws = make(empty_engine=empty)
     ws.reads = []
     out = toolkit.call_tool(ws, name, dict(args))
     assert not out.startswith('Error'), out
@@ -89,7 +90,7 @@ def test_the_guard_covers_every_app():
 def test_run_code_notes_what_the_code_read_and_printed():
     """Documents loaded, queries run, and the lines printed, in that order,
     replacing whatever the reads the code made noted on their own."""
-    ws = smoke._ud(scan=False)
+    ws = smoke._ud(empty_engine=True)
     ws.reads = [{'n': 99, 'unit': 'match'}]
     out = ud_toolkit.call_tool(ws, 'run_code', {'code': (
         'd = load("Viaje")\nd2 = load("Viaje")\n'
@@ -105,7 +106,7 @@ def test_a_long_read_notes_the_sentences_shown_not_asked(monkeypatch):
     """Past the render budget a read shows fewer sentences than it asked
     for, and the note is what the model saw."""
     from plaid_agent.core import tools
-    ws = smoke._ud(scan=True)
+    ws = smoke._ud()
     doc = ws.doc('Viaje')
     total = len(doc.sentences)
     assert total >= 2

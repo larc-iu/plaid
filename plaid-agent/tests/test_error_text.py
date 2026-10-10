@@ -49,9 +49,9 @@ def test_a_comments_read_the_server_refuses_is_one_sentence(app):
     import sys
     sys.path.insert(0, 'tests')
     if app == 'igt':
-        from fixtures import FakeClient, scan_ws
+        from fixtures import FakeClient, fake_ws
         from plaid_agent.igt.toolkit import call_tool
-        ws, args = scan_ws(FakeClient()), {'document': 'd1'}
+        ws, args = fake_ws(FakeClient()), {'document': 'd1'}
     elif app == 'ud':
         from ud_fixtures import PID, FakeClient, document_raw, project_raw
         from plaid_agent.ud.project import load_project

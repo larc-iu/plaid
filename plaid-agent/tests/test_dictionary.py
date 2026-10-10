@@ -9,7 +9,7 @@ form where an id belongs loses the user's work quietly.
 
 import pytest
 
-from fixtures import FakeClient, VOCAB, project_raw, document_raw, scan_ws
+from fixtures import FakeClient, VOCAB, project_raw, document_raw, fake_ws
 from plaid_agent.igt.toolkit import call_tool
 
 # gloss and pos are ordinary text; variantOf points at one entry, seeAlso at
@@ -39,7 +39,7 @@ def dict_ws(items=None):
     c = FakeClient(project=raw, documents={'d1': document_raw()})
     c._lexicon = {'id': VOCAB, 'name': 'Lexicon',
                   'items': [dict(it, metadata=dict(it['metadata'])) for it in (items or ITEMS)]}
-    return scan_ws(c)
+    return fake_ws(c)
 
 
 def ops_of(w, kind):
@@ -448,7 +448,7 @@ def test_senses_of_an_attested_entry_are_reported_apart():
     c = FakeClient(project=raw, documents={'d1': doc})
     c._lexicon = {'id': VOCAB, 'name': 'Lexicon',
                   'items': [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]}
-    out = call_tool(scan_ws(c), 'check_lexicon', {'section': 'unused'})
+    out = call_tool(fake_ws(c), 'check_lexicon', {'section': 'unused'})
     # boil, its subsense simmer, and ferment: every sense under the headword.
     assert '3 senses not linked from a text themselves' in out
 

@@ -16,7 +16,8 @@ states a tally says so when one was.
 
 import math
 import re
-from typing import Any, Dict, List, Tuple
+from contextlib import contextmanager
+from typing import Any, Dict, List, Optional, Tuple
 
 from .java_regex import PatternError, translate
 from .limits import GROUP_LIMIT, ROW_LIMIT
@@ -134,6 +135,22 @@ def query_refused(e: Exception) -> ToolError:
     return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
 
 
+def _bound(clauses: List[Any]) -> List[str]:
+    """The entity variables (tokens, spans, links) the clauses bind, in order:
+    each one's own, and those every branch of an ``or`` binds. Never one bound
+    only under a ``not``."""
+    out: List[str] = []
+    for c in clauses:
+        if not (isinstance(c, list) and len(c) > 1):
+            continue
+        if c[0] in ('token', 'span', 'link') and isinstance(c[1], str) and c[1].startswith('?'):
+            out.append(c[1])
+        elif c[0] == 'or':
+            branches = [set(_bound(b)) for b in c[1:] if isinstance(b, list)]
+            out += sorted(set.intersection(*branches)) if branches else []
+    return list(dict.fromkeys(out))
+
+
 class Corpus(Clipping):
     """The query engine bound to one workspace (its client, its project).
 
@@ -145,12 +162,35 @@ class Corpus(Clipping):
         super().__init__()
         self.ws = ws
         self.p = ws.project
+        #: The one document every read is held to (:meth:`within`), or None.
+        self.document: Optional[str] = None
 
     # --- running ----------------------------------------------------------
+
+    @contextmanager
+    def within(self, document: Optional[str]):
+        """Hold every read made inside the block to one document, named as a
+        tool takes it (its name or id). None leaves the reads project-wide.
+        Each entity a clause of the query binds (a token, span or link) is
+        held to the document, so a tool's queries need no change of their own
+        to answer for one document."""
+        saved = self.document
+        self.document = self.ws.resolve_document_id(document) if document else None
+        try:
+            yield self.document
+        finally:
+            self.document = saved
+
+    def _held(self, where: List[Any]) -> List[Any]:
+        if not self.document:
+            return where
+        return list(where) + [['in', f'{v}.doc', [self.document]] for v in _bound(where)]
 
     def run(self, body: Dict[str, Any]) -> Dict[str, Any]:
         body = dict(body)
         body['scope'] = {'project_ids': [self.p.id]}
+        if 'where' in body:
+            body['where'] = self._held(body['where'])
         try:
             res = self.ws.client.query(body)
         except Exception as e:  # noqa: BLE001 - the model gets the engine's own message

@@ -1,0 +1,1343 @@
+{
+ "proj check_consistency {\"field\": \"Gloss\"}": "Consistency of Gloss (Word field): 1 values, 1 distinct.\nNo spelling or case variants among values.\nEvery form carries a single Gloss value.\n0 annotated but not linked to the lexicon.\n0 linked but with no Gloss value.",
+ "proj check_consistency {\"field\": \"Morph Gloss\"}": "Consistency of Morph Gloss (Morpheme field): 2 values, 2 distinct.\nNo spelling or case variants among values.\nEvery form carries a single Morph Gloss value.\n1 annotated but not linked to the lexicon: s1.w1.m1 Ali (Ali)\n0 linked but with no Morph Gloss value.",
+ "proj check_consistency {\"field\": \"Translation\"}": "Consistency of Translation (Sentence field): 1 values, 1 distinct.\nNo spelling or case variants among values.",
+ "proj check_lexicon {\"section\": \"glosses\"}": "Lexicon check: 4 entries in Lexicon, 2 links; section \"glosses\".\n0 entries whose gloss disagrees with the corpus.",
+ "proj check_lexicon {\"section\": \"homographs\"}": "Lexicon check: 4 entries in Lexicon, 2 links; section \"homographs\".\n1 homograph groups (0 with a repeated gloss, likely duplicates; the rest are separate entries sharing a form):\n  gam | gloss=fish (0 links) | gam | gloss=net (0 links)",
+ "proj check_lexicon {\"section\": \"stale\"}": "Lexicon check: 4 entries in Lexicon, 2 links; section \"stale\".\n0 links whose form no longer contains the entry form.",
+ "proj check_lexicon {\"section\": \"unused\"}": "Lexicon check: 4 entries in Lexicon, 2 links; section \"unused\".\n2 entries never linked from a text: gam, gam",
+ "proj check_lexicon {}": "Lexicon check: 4 entries in Lexicon, 2 links; each section capped, ask for one section for the full list.\n2 entries never linked from a text: gam, gam\n0 entries without a gloss.\n3 entries without a pos: -di, gam, gam\n1 homograph groups (0 with a repeated gloss, likely duplicates; the rest are separate entries sharing a form):\n  gam | gloss=fish (0 links) | gam | gloss=net (0 links)\n0 pairs of forms one character apart (possible variants or duplicates).\nNo references pointing nowhere.\n0 entries whose gloss disagrees with the corpus.\n0 corpus glosses linked to several entries.\n0 links whose form no longer contains the entry form.",
+ "proj concordance {\"pattern\": \"ERG\", \"where\": \"Morph Gloss\"}": "1 occurrence of \"ERG\" in Morph Gloss.\nThe hit's own Morph Gloss: ERG 1.\nWord patterns (hit in [brackets]), by frequency:\n  1\tAli-[di]  Morph Gloss=Ali-[ERG]\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w1 # [Ali-di] gam | seg=Ali-[di] | Morph Gloss=Ali-[ERG] | Gloss=Ali || Ali-di gam akuna.",
+ "proj concordance {\"pattern\": \"a\", \"regex\": true}": "4 occurrences of \"a\" in morpheme.\nThe hit's own Morph Gloss: (blank) 3, Ali 1.\nWord patterns (hit in [brackets]), by frequency:\n  1\tGam=[ar]\n  1\t[Ali]-di  Morph Gloss=[Ali]-ERG\n  1\t[Gam]=ar\n  1\t[gam]\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w1 # [Ali-di] gam | seg=[Ali]-di | Morph Gloss=[Ali]-ERG | Gloss=Ali || Ali-di gam akuna.\n  s1.w2 Ali-di [gam] akuna | seg=[gam] || Ali-di gam akuna.\n  s2.w1 # [Gam-ar] # | seg=[Gam]=ar || Gam-ar.\n  s2.w1 # [Gam-ar] # | seg=Gam=[ar] || Gam-ar.",
+ "proj concordance {\"pattern\": \"ali\", \"where\": \"Gloss\"}": "1 occurrence of \"ali\" in Gloss.\nWord patterns (hit in [brackets]), by frequency:\n  1\tAli-di\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w1 # [Ali-di] gam | seg=Ali-di | Morph Gloss=Ali-ERG | Gloss=Ali || Ali-di gam akuna.",
+ "proj concordance {\"pattern\": \"ali-di\", \"where\": \"baseline\"}": "1 occurrence of \"ali-di\" in baseline.\nWord patterns (hit in [brackets]), by frequency:\n  1\tAli-di\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w1 # [Ali-di] gam | seg=Ali-di | Morph Gloss=Ali-ERG | Gloss=Ali || Ali-di gam akuna.",
+ "proj concordance {\"pattern\": \"gam\"}": "2 occurrences of \"gam\" in morpheme.\nThe hit's own Morph Gloss: (blank) 2.\nWord patterns (hit in [brackets]), by frequency:\n  1\t[Gam]=ar\n  1\t[gam]\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w2 Ali-di [gam] akuna | seg=[gam] || Ali-di gam akuna.\n  s2.w1 # [Gam-ar] # | seg=[Gam]=ar || Gam-ar.",
+ "proj concordance {\"pattern\": \"zzz\"}": "No occurrences of \"zzz\".",
+ "proj copy_to_orthography {\"orthography\": \"IPA\", \"overwrite\": true}": {
+  "answer": "Planned 4 words in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 4 changes in 1 numbered entry). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nIn 1 document: \"Text 1\" 4.\nFor example:\n  Text 1 s1.w1 \"Ali-di\": IPA = \"Ali-di\"\n  Text 1 s1.w2 \"gam\": IPA = \"gam\"\n  Text 1 s1.w3 \"akuna\": IPA = \"akuna\"\n  Text 1 s2.w1 \"Gam-ar\": IPA = \"Gam-ar\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "document": null,
+     "orthography": "IPA",
+     "overwrite": true,
+     "source": "baseline"
+    },
+    "card": {
+     "args": {
+      "document": null,
+      "orthography": "IPA",
+      "overwrite": true,
+      "source": "baseline"
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       4
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_orthography": 4
+     },
+     "sample": [
+      {
+       "change": "IPA = \"Ali-di\"",
+       "label": "Text 1 s1.w1 \"Ali-di\": IPA = \"Ali-di\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 0,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "Ali-di",
+        "word": 1
+       },
+       "writes_text": false
+      },
+      {
+       "change": "IPA = \"gam\"",
+       "label": "Text 1 s1.w2 \"gam\": IPA = \"gam\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 7,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "gam",
+        "word": 2
+       },
+       "writes_text": false
+      },
+      {
+       "change": "IPA = \"akuna\"",
+       "label": "Text 1 s1.w3 \"akuna\": IPA = \"akuna\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 11,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "akuna",
+        "word": 3
+       },
+       "writes_text": false
+      },
+      {
+       "change": "IPA = \"Gam-ar\"",
+       "label": "Text 1 s2.w1 \"Gam-ar\": IPA = \"Gam-ar\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 18,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 2,
+        "sentence_id": "s-2",
+        "surface": "Gam-ar",
+        "word": 1
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "copy_to_orthography",
+     "total": 4
+    },
+    "change": "IPA copied from baseline",
+    "count": 4,
+    "counts": {
+     "set_orthography": 4
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "IPA: copy from baseline",
+    "kind": "bulk_scope",
+    "label": "IPA: copy from baseline, 4 words in 1 document, 1 of them replaces accepted work",
+    "matched": [
+     [
+      "d1",
+      4
+     ]
+    ],
+    "replaces_accepted": 1,
+    "tool": "copy_to_orthography",
+    "unit": [
+     "word",
+     "words"
+    ]
+   }
+  ]
+ },
+ "proj copy_to_orthography {\"orthography\": \"IPA\"}": {
+  "answer": "Planned 3 words in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 3 changes in 1 numbered entry). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 3.\nFor example:\n  Text 1 s1.w2 \"gam\": IPA = \"gam\"\n  Text 1 s1.w3 \"akuna\": IPA = \"akuna\"\n  Text 1 s2.w1 \"Gam-ar\": IPA = \"Gam-ar\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "document": null,
+     "orthography": "IPA",
+     "overwrite": false,
+     "source": "baseline"
+    },
+    "card": {
+     "args": {
+      "document": null,
+      "orthography": "IPA",
+      "overwrite": false,
+      "source": "baseline"
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       3
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_orthography": 3
+     },
+     "sample": [
+      {
+       "change": "IPA = \"gam\"",
+       "label": "Text 1 s1.w2 \"gam\": IPA = \"gam\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 7,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "gam",
+        "word": 2
+       },
+       "writes_text": false
+      },
+      {
+       "change": "IPA = \"akuna\"",
+       "label": "Text 1 s1.w3 \"akuna\": IPA = \"akuna\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 11,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "akuna",
+        "word": 3
+       },
+       "writes_text": false
+      },
+      {
+       "change": "IPA = \"Gam-ar\"",
+       "label": "Text 1 s2.w1 \"Gam-ar\": IPA = \"Gam-ar\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 18,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 2,
+        "sentence_id": "s-2",
+        "surface": "Gam-ar",
+        "word": 1
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "copy_to_orthography",
+     "total": 3
+    },
+    "change": "IPA copied from baseline",
+    "count": 3,
+    "counts": {
+     "set_orthography": 3
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "IPA: copy from baseline, where empty",
+    "kind": "bulk_scope",
+    "label": "IPA: copy from baseline, where empty, 3 words in 1 document",
+    "matched": [
+     [
+      "d1",
+      3
+     ]
+    ],
+    "replaces_accepted": 0,
+    "tool": "copy_to_orthography",
+    "unit": [
+     "word",
+     "words"
+    ]
+   }
+  ]
+ },
+ "proj corpus_stats {\"by\": \"Date\"}": "Date = 2020\n  1 document, 2 sentences, 4 words (4 distinct forms, 4 hapax, type/token 1.00), 5 morphemes (4 distinct, 3 hapax)\n  Words with any analysis: 50%; linked to the lexicon: 25%\n  Field coverage: Translation 50% (1/2 sentences), Gloss 25% (1/4 words), Morph Gloss 40% (2/5 morphemes)\n  Longest words: Ali-di (2: Ali-di), Gam-ar (2: Gam=ar)",
+ "proj corpus_stats {\"by\": \"document\"}": "document\tsentences\twords\tanalyzed\tlinked\tMorph Gloss\tTranslation\thapax\tTTR\tDate\nText 1\t2\t4\t50%\t25%\t40%\t50%\t100%\t1.00\t2020",
+ "proj corpus_stats {}": "Project \"igt-agent test\"\n  1 document, 2 sentences, 4 words (4 distinct forms, 4 hapax, type/token 1.00), 5 morphemes (4 distinct, 3 hapax)\n  Words with any analysis: 50%; linked to the lexicon: 25%\n  Field coverage: Translation 50% (1/2 sentences), Gloss 25% (1/4 words), Morph Gloss 40% (2/5 morphemes)\n  Longest words: Ali-di (2: Ali-di), Gam-ar (2: Gam=ar)",
+ "proj delete_entry {\"entry_form\": \"Ali\"}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 link(s) would be removed.",
+  "ops": [
+   {
+    "item_id": "vi-ali",
+    "kind": "delete_entry",
+    "label": "Delete entry \"Ali\" (Ali) (1 link removed)",
+    "links": [
+     "l-1"
+    ],
+    "name": "\"Ali\" (Ali)"
+   }
+  ]
+ },
+ "proj frequency_list {\"limit\": 2}": "4 wordforms, 4 tokens (showing 2). count\tdocuments\tform\n  1\t1\takuna\n  1\t1\tali-di",
+ "proj frequency_list {\"min_count\": 2}": "0 wordforms, 0 tokens. count\tdocuments\tform",
+ "proj frequency_list {\"what\": \"Gloss\"}": "1 Gloss values, 1 tokens, 3 empty. count\tdocuments\tform\n  1\t1\tAli",
+ "proj frequency_list {\"what\": \"Morph Gloss\"}": "2 Morph Gloss values, 2 tokens, 3 empty. count\tdocuments\tform\n  1\t1\tAli\n  1\t1\tERG",
+ "proj frequency_list {\"what\": \"Translation\"}": "1 Translation values, 1 tokens, 1 empty. count\tdocuments\tform\n  1\t1\tAli saw a fish.",
+ "proj frequency_list {\"what\": \"morpheme\"}": "4 morpheme forms, 5 tokens. count\tdocuments\tform\n  2\t1\tgam\n  1\t1\tali\n  1\t1\tar\n  1\t1\tdi",
+ "proj frequency_list {}": "4 wordforms, 4 tokens. count\tdocuments\tform\n  1\t1\takuna\n  1\t1\tali-di\n  1\t1\tgam\n  1\t1\tgam-ar",
+ "proj lexicon_entry {\"entry_form\": \"-di\"}": "Headword \"-di\" (id vi-erg, entry_form \"-di\")\n  gloss: ERG\n  morphType: suffix\nLinked from 0 words and 1 morpheme.\nExamples:\n  \"Text 1\" s1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
+ "proj lexicon_entry {\"entry_form\": \"Ali\"}": "Headword \"Ali\" (id vi-ali, entry_form \"Ali\")\n  gloss: Ali\n  pos: N\nLinked from 1 word and 0 morphemes.\nExamples:\n  \"Text 1\" s1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
+ "proj lexicon_entry {\"entry_form\": \"gam\", \"entry_gloss\": \"fish\"}": "Headword \"gam\" (1 of 2 spelled that way) (id vi-gam, entry_form \"gam#1\")\n  gloss: fish\nLinked from 0 words and 0 morphemes.",
+ "proj merge_entries {\"keep_form\": \"Ali\", \"remove_form\": \"-di\"}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 link(s) will move.",
+  "ops": [
+   {
+    "keep_id": "vi-ali",
+    "kind": "merge_entries",
+    "label": "Merge entry \"-di\" (ERG) into \"Ali\" (Ali): move 1 link, delete the former",
+    "links": [
+     {
+      "link_id": "l-2",
+      "token_ids": [
+       "m-1b"
+      ]
+     }
+    ],
+    "remove_id": "vi-erg"
+   }
+  ]
+ },
+ "proj replace_in_field {\"field\": \"Gloss\", \"pattern\": \"zzz\", \"replacement\": \"y\"}": {
+  "answer": "Nothing to change: no Gloss values matched.",
+  "ops": []
+ },
+ "proj replace_in_field {\"field\": \"Morph Gloss\", \"pattern\": \"ERG\", \"replacement\": \"OBL\", \"whole\": true}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches the whole value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "case_sensitive": true,
+     "document": null,
+     "field": "Morph Gloss",
+     "pattern": "ERG",
+     "regex": false,
+     "replacement": "OBL",
+     "whole": true
+    },
+    "card": {
+     "args": {
+      "case_sensitive": true,
+      "document": null,
+      "field": "Morph Gloss",
+      "pattern": "ERG",
+      "regex": false,
+      "replacement": "OBL",
+      "whole": true
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       1
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_span": 1
+     },
+     "mode": "the whole value, case-sensitive",
+     "sample": [
+      {
+       "change": "Morph Gloss \"ERG\" → \"OBL\"",
+       "label": "Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 0,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": 2,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "di",
+        "word": 1
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "replace_in_field",
+     "total": 1,
+     "transitions": [
+      {
+       "count": 1,
+       "from": "ERG",
+       "notes": [],
+       "to": "OBL"
+      }
+     ],
+     "transitions_more": [
+      0,
+      0
+     ],
+     "unit": [
+      "value",
+      "values"
+     ]
+    },
+    "change": "Morph Gloss \"ERG\" → \"OBL\"",
+    "count": 1,
+    "counts": {
+     "set_span": 1
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "Morph Gloss: replace \"ERG\" with \"OBL\" (the whole value, case-sensitive)",
+    "kind": "bulk_scope",
+    "label": "Morph Gloss: replace \"ERG\" with \"OBL\" (the whole value, case-sensitive), 1 value in 1 document, 1 of them replaces accepted work",
+    "matched": [
+     [
+      "d1",
+      1
+     ]
+    ],
+    "mode": "the whole value, case-sensitive",
+    "replaces_accepted": 1,
+    "tool": "replace_in_field",
+    "unit": [
+     "value",
+     "values"
+    ]
+   }
+  ]
+ },
+ "proj replace_in_field {\"field\": \"Translation\", \"pattern\": \"(\\\\w+)\\\\.$\", \"regex\": true, \"replacement\": \"\\\\1!\"}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches anywhere in the value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"Ali saw a fish.\" → \"Ali saw a fish!\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1 \"Ali-di gam akuna.\": Translation \"Ali saw a fish.\" → \"Ali saw a fish!\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "case_sensitive": true,
+     "document": null,
+     "field": "Translation",
+     "pattern": "(\\w+)\\.$",
+     "regex": true,
+     "replacement": "\\1!",
+     "whole": false
+    },
+    "card": {
+     "args": {
+      "case_sensitive": true,
+      "document": null,
+      "field": "Translation",
+      "pattern": "(\\w+)\\.$",
+      "regex": true,
+      "replacement": "\\1!",
+      "whole": false
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       1
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_span": 1
+     },
+     "mode": "anywhere in the value, case-sensitive",
+     "sample": [
+      {
+       "change": "Translation \"Ali saw a fish.\" → \"Ali saw a fish!\"",
+       "label": "Text 1 s1 \"Ali-di gam akuna.\": Translation \"Ali saw a fish.\" → \"Ali saw a fish!\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 0,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "Ali-di gam akuna.",
+        "word": null
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "replace_in_field",
+     "total": 1,
+     "transitions": [
+      {
+       "count": 1,
+       "from": "Ali saw a fish.",
+       "notes": [],
+       "to": "Ali saw a fish!"
+      }
+     ],
+     "transitions_more": [
+      0,
+      0
+     ],
+     "unit": [
+      "value",
+      "values"
+     ]
+    },
+    "change": "Translation matching \"(\\w+)\\.$\" → \"\\1!\"",
+    "count": 1,
+    "counts": {
+     "set_span": 1
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "Translation: replace matching \"(\\w+)\\.$\" with \"\\1!\" (regex, case-sensitive)",
+    "kind": "bulk_scope",
+    "label": "Translation: replace matching \"(\\w+)\\.$\" with \"\\1!\" (regex, case-sensitive), 1 value in 1 document, 1 of them replaces accepted work",
+    "matched": [
+     [
+      "d1",
+      1
+     ]
+    ],
+    "mode": "anywhere in the value, case-sensitive",
+    "replaces_accepted": 1,
+    "tool": "replace_in_field",
+    "unit": [
+     "value",
+     "values"
+    ]
+   }
+  ]
+ },
+ "proj respell_all {\"case_sensitive\": true, \"lexicon\": false, \"morpheme_forms\": false, \"pattern\": \"a\", \"replacement\": \"ä\"}": {
+  "answer": "Planned 3 changes in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 3 changes in 1 numbered entry). Describe the plan to the user in your reply.\nMatches anywhere in the value, case-sensitive.\nIn 1 document: \"Text 1\" 3.\nFor example:\n  Text 1 s1.w2: respell \"gam\" → \"gäm\"\n  Text 1 s1.w3: respell \"akuna\" → \"äkunä\"\n  Text 1 s2.w1: respell \"Gam-ar\" → \"Gäm-är\"\nStored as a rule, found again when the user approves.\n(3 words, 0 morpheme forms, 0 lexicon headwords.)",
+  "ops": [
+   {
+    "args": {
+     "case_sensitive": true,
+     "document": null,
+     "lexicon": false,
+     "morpheme_forms": false,
+     "pattern": "a",
+     "regex": false,
+     "replacement": "ä",
+     "whole": false
+    },
+    "card": {
+     "args": {
+      "case_sensitive": true,
+      "document": null,
+      "lexicon": false,
+      "morpheme_forms": false,
+      "pattern": "a",
+      "regex": false,
+      "replacement": "ä",
+      "whole": false
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       3
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "respell": 3
+     },
+     "mode": "anywhere in the value, case-sensitive",
+     "sample": [
+      {
+       "change": "respell \"gam\" → \"gäm\"",
+       "label": "Text 1 s1.w2: respell \"gam\" → \"gäm\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 7,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "gam",
+        "word": 2
+       },
+       "writes_text": true
+      },
+      {
+       "change": "respell \"akuna\" → \"äkunä\"",
+       "label": "Text 1 s1.w3: respell \"akuna\" → \"äkunä\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 11,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "akuna",
+        "word": 3
+       },
+       "writes_text": true
+      },
+      {
+       "change": "respell \"Gam-ar\" → \"Gäm-är\"",
+       "label": "Text 1 s2.w1: respell \"Gam-ar\" → \"Gäm-är\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 18,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 2,
+        "sentence_id": "s-2",
+        "surface": "Gam-ar",
+        "word": 1
+       },
+       "writes_text": true
+      }
+     ],
+     "tool": "respell_all",
+     "total": 3
+    },
+    "change": "respell \"a\" → \"ä\"",
+    "count": 3,
+    "counts": {
+     "respell": 3
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "respell \"a\" as \"ä\" (anywhere in the value, case-sensitive)",
+    "kind": "bulk_scope",
+    "label": "respell \"a\" as \"ä\" (anywhere in the value, case-sensitive), 3 changes in 1 document",
+    "matched": [
+     [
+      "d1",
+      3
+     ]
+    ],
+    "mode": "anywhere in the value, case-sensitive",
+    "replaces_accepted": 0,
+    "tool": "respell_all",
+    "unit": [
+     "change",
+     "changes"
+    ]
+   }
+  ]
+ },
+ "proj respell_all {\"pattern\": \"a\", \"replacement\": \"ä\"}": {
+  "answer": "Planned 10 changes in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 10 changes in 1 numbered entry). Describe the plan to the user in your reply. 3 of them replace work a person made or accepted, and the card says so.\nMatches anywhere in the value, ignoring case.\nIn 1 document: \"Text 1\" 7.\nFor example:\n  Text 1 s1.w1: respell \"Ali-di\" → \"äli-di\"\n  Text 1 s1.w1.m1 (in \"Ali-di\"): morpheme form \"Ali\" → \"äli\"\n  Text 1 s1.w2: respell \"gam\" → \"gäm\"\n  Text 1 s1.w3: respell \"akuna\" → \"äkunä\"\n  Text 1 s2.w1.m1 (in \"Gam-ar\"): morpheme form \"Gam\" → \"Gäm\"\n  Text 1 s2.w1.m2 (in \"Gam-ar\"): morpheme form \"ar\" → \"är\"\n  Lexicon: rename entry \"Ali\" → \"äli\"\n  Lexicon: rename entry \"gam\" → \"gäm\"\n  … 2 more\nStored as a rule, found again when the user approves.\n(4 words, 3 morpheme forms, 3 lexicon headwords.)",
+  "ops": [
+   {
+    "args": {
+     "case_sensitive": false,
+     "document": null,
+     "lexicon": true,
+     "morpheme_forms": true,
+     "pattern": "a",
+     "regex": false,
+     "replacement": "ä",
+     "whole": false
+    },
+    "card": {
+     "args": {
+      "case_sensitive": false,
+      "document": null,
+      "lexicon": true,
+      "morpheme_forms": true,
+      "pattern": "a",
+      "regex": false,
+      "replacement": "ä",
+      "whole": false
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       7
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "rename_entry": 3,
+      "respell": 4,
+      "set_morpheme_form": 3
+     },
+     "mode": "anywhere in the value, ignoring case",
+     "sample": [
+      {
+       "change": "respell \"Ali-di\" → \"äli-di\"",
+       "label": "Text 1 s1.w1: respell \"Ali-di\" → \"äli-di\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 0,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "Ali-di",
+        "word": 1
+       },
+       "writes_text": true
+      },
+      {
+       "change": "morpheme form \"Ali\" → \"äli\"",
+       "label": "Text 1 s1.w1.m1 (in \"Ali-di\"): morpheme form \"Ali\" → \"äli\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 0,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": 1,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "Ali",
+        "word": 1
+       },
+       "writes_text": false
+      },
+      {
+       "change": "respell \"gam\" → \"gäm\"",
+       "label": "Text 1 s1.w2: respell \"gam\" → \"gäm\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 7,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "gam",
+        "word": 2
+       },
+       "writes_text": true
+      },
+      {
+       "change": "respell \"akuna\" → \"äkunä\"",
+       "label": "Text 1 s1.w3: respell \"akuna\" → \"äkunä\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 11,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "akuna",
+        "word": 3
+       },
+       "writes_text": true
+      },
+      {
+       "change": "morpheme form \"Gam\" → \"Gäm\"",
+       "label": "Text 1 s2.w1.m1 (in \"Gam-ar\"): morpheme form \"Gam\" → \"Gäm\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 18,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": 1,
+        "sentence": 2,
+        "sentence_id": "s-2",
+        "surface": "Gam",
+        "word": 1
+       },
+       "writes_text": false
+      },
+      {
+       "change": "morpheme form \"ar\" → \"är\"",
+       "label": "Text 1 s2.w1.m2 (in \"Gam-ar\"): morpheme form \"ar\" → \"är\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 18,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": 2,
+        "sentence": 2,
+        "sentence_id": "s-2",
+        "surface": "ar",
+        "word": 1
+       },
+       "writes_text": false
+      },
+      {
+       "change": "rename entry \"Ali\" → \"äli\"",
+       "label": "Lexicon: rename entry \"Ali\" → \"äli\"",
+       "replaces_work": 0,
+       "where": {
+        "form": "Ali",
+        "item_id": "vi-ali",
+        "kind": "entry",
+        "vocab_id": "v1",
+        "vocab_name": "Lexicon"
+       },
+       "writes_text": false
+      },
+      {
+       "change": "rename entry \"gam\" → \"gäm\"",
+       "label": "Lexicon: rename entry \"gam\" → \"gäm\"",
+       "replaces_work": 0,
+       "where": {
+        "form": "gam",
+        "item_id": "vi-gam",
+        "kind": "entry",
+        "vocab_id": "v1",
+        "vocab_name": "Lexicon"
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "respell_all",
+     "total": 10
+    },
+    "change": "respell \"a\" → \"ä\"",
+    "count": 10,
+    "counts": {
+     "rename_entry": 3,
+     "respell": 4,
+     "set_morpheme_form": 3
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "respell \"a\" as \"ä\" (anywhere in the value, ignoring case)",
+    "kind": "bulk_scope",
+    "label": "respell \"a\" as \"ä\" (anywhere in the value, ignoring case), 10 changes in 1 document, 3 of them replace accepted work",
+    "matched": [
+     [
+      "d1",
+      7
+     ],
+     [
+      null,
+      3
+     ]
+    ],
+    "mode": "anywhere in the value, ignoring case",
+    "replaces_accepted": 3,
+    "tool": "respell_all",
+    "unit": [
+     "change",
+     "changes"
+    ]
+   }
+  ]
+ },
+ "proj search {\"pattern\": \".\", \"regex\": true, \"where\": \"Morph Gloss\"}": "1 word hit, holding 2 matching morphemes:\ns1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
+ "proj search {\"pattern\": \".*\", \"regex\": true, \"where\": \"morpheme\"}": "3 words hit, holding 5 matching morphemes:\ns1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.\ns1.w2 gam || Ali-di gam akuna.\ns2.w1 Gam-ar | seg=Gam=ar types=?,enclitic || Gam-ar.",
+ "proj search {\"pattern\": \"ERG\", \"where\": \"Morph Gloss\"}": "1 word hit, holding 1 matching morpheme:\ns1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
+ "proj search {\"pattern\": \"^gam-\", \"regex\": true}": "1 hits:\ns2.w1 Gam-ar | seg=Gam=ar types=?,enclitic || Gam-ar.",
+ "proj search {\"pattern\": \"a\", \"where\": \"morpheme\"}": "3 words hit, holding 4 matching morphemes:\ns1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.\ns1.w2 gam || Ali-di gam akuna.\ns2.w1 Gam-ar | seg=Gam=ar types=?,enclitic || Gam-ar.",
+ "proj search {\"pattern\": \"ali\", \"where\": \"Gloss\"}": "1 hits:\ns1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
+ "proj search {\"pattern\": \"fish\", \"where\": \"Translation\"}": "1 hits:\ns1 Translation=Ali saw a fish. | Ali-di gam akuna.",
+ "proj search {\"pattern\": \"gam\", \"where\": \"lexicon\"}": "2 lexicon entries:\ngam | gloss=fish (Lexicon)\ngam | gloss=net (Lexicon)",
+ "proj search {\"pattern\": \"gam\"}": "2 hits:\ns1.w2 gam || Ali-di gam akuna.\ns2.w1 Gam-ar | seg=Gam=ar types=?,enclitic || Gam-ar.",
+ "proj search {\"pattern\": \"nothing-here\"}": "No hits.",
+ "proj sequence_search {\"adjacent\": false, \"sequence\": [{\"Morph Gloss\": \"ERG\"}, {\"form\": \"akuna\"}]}": "1 sentence match:\ns1 [Ali-di] gam [akuna]\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w3 akuna",
+ "proj sequence_search {\"regex\": true, \"sequence\": [{\"form\": \"^g\"}]}": "2 sentences match:\ns1 Ali-di [gam] akuna\n    w2 gam\ns2 [Gam-ar]\n    w1 Gam-ar | seg=Gam=ar types=?,enclitic",
+ "proj sequence_search {\"sequence\": [{\"Gloss\": \"Ali\"}, {\"form\": \"gam\"}]}": "1 sentence match:\ns1 [Ali-di] [gam] akuna\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w2 gam",
+ "proj sequence_search {\"sequence\": [{\"form\": \"ali-di\"}, {\"form\": \"akuna\"}]}": "No sentence matches that sequence.",
+ "proj sequence_search {\"sequence\": [{\"form\": \"gam\"}, {\"form\": \"akuna\"}]}": "1 sentence match:\ns1 Ali-di [gam] [akuna]\n    w2 gam\n    w3 akuna",
+ "proj sequence_search {\"sequence\": [{\"form\": \"gam\"}]}": "1 sentence match:\ns1 Ali-di [gam] akuna\n    w2 gam",
+ "proj sequence_search {\"sequence\": [{\"morpheme\": \"ar\"}]}": "1 sentence match:\ns2 [Gam-ar]\n    w1 Gam-ar | seg=Gam=ar types=?,enclitic",
+ "proj sequence_search {\"sequence\": [{\"type\": \"suffix\"}, {\"form\": \"gam\"}]}": "1 sentence match:\ns1 [Ali-di] [gam] akuna\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w2 gam",
+ "proj set_analysis_for_form {\"form\": \"Ali-di\", \"morphemes\": [{\"form\": \"Ali\"}, {\"fields\": {\"Morph Gloss\": \"ERG\"}, \"form\": \"di\", \"type\": \"suffix\"}]}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w1 \"Ali-di\": Ali-di → Ali-di, Morph Gloss _-ERG (replaces 2 existing morpheme values) (note: forms \"Alidi\" differ from the surface \"Ali-di\"; that is allowed for allomorphy)",
+  "ops": [
+   {
+    "begin": 0,
+    "change_at": 23,
+    "end": 6,
+    "existing": [
+     {
+      "id": "m-1a",
+      "span_ids": [
+       "sp-m1a"
+      ]
+     },
+     {
+      "id": "m-1b",
+      "span_ids": [
+       "sp-m1b"
+      ]
+     }
+    ],
+    "kind": "set_analysis",
+    "label": "Text 1 s1.w1 \"Ali-di\": Ali-di → Ali-di, Morph Gloss _-ERG (replaces 2 existing morpheme values)",
+    "morpheme_layer_id": "tk-morph",
+    "morphemes": [
+     {
+      "fields": [],
+      "form": "Ali",
+      "morph_type": null
+     },
+     {
+      "fields": [
+       {
+        "layer_id": "sl-mgloss",
+        "value": "ERG"
+       }
+      ],
+      "form": "di",
+      "morph_type": "suffix"
+     }
+    ],
+    "text_id": "text1",
+    "word_id": "w-1"
+   }
+  ]
+ },
+ "proj set_analysis_for_form {\"form\": \"GAM\", \"morphemes\": [{\"fields\": {\"Morph Gloss\": \"fish\"}, \"form\": \"gam\"}]}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2 \"gam\": gam → gam, Morph Gloss fish",
+  "ops": [
+   {
+    "begin": 7,
+    "change_at": 20,
+    "end": 10,
+    "existing": [
+     {
+      "id": "m-2",
+      "span_ids": []
+     }
+    ],
+    "kind": "set_analysis",
+    "label": "Text 1 s1.w2 \"gam\": gam → gam, Morph Gloss fish",
+    "morpheme_layer_id": "tk-morph",
+    "morphemes": [
+     {
+      "fields": [
+       {
+        "layer_id": "sl-mgloss",
+        "value": "fish"
+       }
+      ],
+      "form": "gam",
+      "morph_type": null
+     }
+    ],
+    "text_id": "text1",
+    "word_id": "w-2"
+   }
+  ]
+ },
+ "proj set_analysis_for_form {\"form\": \"gam\", \"morphemes\": [{\"form\": \"gam\"}], \"skip_analyzed\": true}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2 \"gam\": gam → gam",
+  "ops": [
+   {
+    "begin": 7,
+    "change_at": 20,
+    "end": 10,
+    "existing": [
+     {
+      "id": "m-2",
+      "span_ids": []
+     }
+    ],
+    "kind": "set_analysis",
+    "label": "Text 1 s1.w2 \"gam\": gam → gam",
+    "morpheme_layer_id": "tk-morph",
+    "morphemes": [
+     {
+      "fields": [],
+      "form": "gam",
+      "morph_type": null
+     }
+    ],
+    "text_id": "text1",
+    "word_id": "w-2"
+   }
+  ]
+ },
+ "proj set_field_for_form {\"field\": \"Gloss\", \"form\": \"ali\", \"only_empty\": false, \"value\": \"Ali2\"}": {
+  "answer": "Nothing to change: no occurrences of \"ali\" matched.",
+  "ops": []
+ },
+ "proj set_field_for_form {\"field\": \"Gloss\", \"form\": \"gam\", \"value\": \"fish\"}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"fish\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w2 \"gam\": Gloss = \"fish\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "document": null,
+     "field": "Gloss",
+     "form": "gam",
+     "only_empty": true,
+     "value": "fish"
+    },
+    "card": {
+     "args": {
+      "document": null,
+      "field": "Gloss",
+      "form": "gam",
+      "only_empty": true,
+      "value": "fish"
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       1
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_span": 1
+     },
+     "sample": [
+      {
+       "change": "Gloss = \"fish\"",
+       "label": "Text 1 s1.w2 \"gam\": Gloss = \"fish\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 7,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": null,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "gam",
+        "word": 2
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "set_field_for_form",
+     "total": 1,
+     "transitions": [
+      {
+       "count": 1,
+       "from": "",
+       "notes": [],
+       "to": "fish"
+      }
+     ],
+     "transitions_more": [
+      0,
+      0
+     ],
+     "unit": [
+      "value",
+      "values"
+     ]
+    },
+    "change": "Gloss = \"fish\" on \"gam\"",
+    "count": 1,
+    "counts": {
+     "set_span": 1
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "Gloss: \"fish\" on every \"gam\" without a value",
+    "kind": "bulk_scope",
+    "label": "Gloss: \"fish\" on every \"gam\" without a value, 1 value in 1 document",
+    "matched": [
+     [
+      "d1",
+      1
+     ]
+    ],
+    "replaces_accepted": 0,
+    "tool": "set_field_for_form",
+    "unit": [
+     "value",
+     "values"
+    ]
+   }
+  ]
+ },
+ "proj set_field_for_form {\"field\": \"Morph Gloss\", \"form\": \"akuna\", \"value\": \"go\"}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"go\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w3.m1 \"akuna\": Morph Gloss = \"go\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "document": null,
+     "field": "Morph Gloss",
+     "form": "akuna",
+     "only_empty": true,
+     "value": "go"
+    },
+    "card": {
+     "args": {
+      "document": null,
+      "field": "Morph Gloss",
+      "form": "akuna",
+      "only_empty": true,
+      "value": "go"
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       1
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_span": 1
+     },
+     "sample": [
+      {
+       "change": "Morph Gloss = \"go\"",
+       "label": "Text 1 s1.w3.m1 \"akuna\": Morph Gloss = \"go\"",
+       "replaces_work": 0,
+       "where": {
+        "begin": 11,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": 1,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "akuna",
+        "word": 3
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "set_field_for_form",
+     "total": 1,
+     "transitions": [
+      {
+       "count": 1,
+       "from": "",
+       "notes": [],
+       "to": "go"
+      }
+     ],
+     "transitions_more": [
+      0,
+      0
+     ],
+     "unit": [
+      "value",
+      "values"
+     ]
+    },
+    "change": "Morph Gloss = \"go\" on \"akuna\"",
+    "count": 1,
+    "counts": {
+     "set_span": 1
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "Morph Gloss: \"go\" on every \"akuna\" without a value",
+    "kind": "bulk_scope",
+    "label": "Morph Gloss: \"go\" on every \"akuna\" without a value, 1 value in 1 document",
+    "matched": [
+     [
+      "d1",
+      1
+     ]
+    ],
+    "replaces_accepted": 0,
+    "tool": "set_field_for_form",
+    "unit": [
+     "value",
+     "values"
+    ]
+   }
+  ]
+ },
+ "proj set_field_for_form {\"field\": \"Morph Gloss\", \"form\": \"di\", \"only_empty\": false, \"value\": \"OBL\"}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves.",
+  "ops": [
+   {
+    "args": {
+     "document": null,
+     "field": "Morph Gloss",
+     "form": "di",
+     "only_empty": false,
+     "value": "OBL"
+    },
+    "card": {
+     "args": {
+      "document": null,
+      "field": "Morph Gloss",
+      "form": "di",
+      "only_empty": false,
+      "value": "OBL"
+     },
+     "documents": [
+      [
+       "d1",
+       "Text 1",
+       1
+      ]
+     ],
+     "documents_more": [
+      0,
+      0
+     ],
+     "kinds": {
+      "set_span": 1
+     },
+     "sample": [
+      {
+       "change": "Morph Gloss \"ERG\" → \"OBL\"",
+       "label": "Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"",
+       "replaces_work": 1,
+       "where": {
+        "begin": 0,
+        "document_id": "d1",
+        "document_name": "Text 1",
+        "kind": "token",
+        "morpheme": 2,
+        "sentence": 1,
+        "sentence_id": "s-1",
+        "surface": "di",
+        "word": 1
+       },
+       "writes_text": false
+      }
+     ],
+     "tool": "set_field_for_form",
+     "total": 1,
+     "transitions": [
+      {
+       "count": 1,
+       "from": "ERG",
+       "notes": [],
+       "to": "OBL"
+      }
+     ],
+     "transitions_more": [
+      0,
+      0
+     ],
+     "unit": [
+      "value",
+      "values"
+     ]
+    },
+    "change": "Morph Gloss = \"OBL\" on \"di\"",
+    "count": 1,
+    "counts": {
+     "set_span": 1
+    },
+    "documents": [
+     "d1"
+    ],
+    "head": "Morph Gloss: \"OBL\" on every \"di\"",
+    "kind": "bulk_scope",
+    "label": "Morph Gloss: \"OBL\" on every \"di\", 1 value in 1 document, 1 of them replaces accepted work",
+    "matched": [
+     [
+      "d1",
+      1
+     ]
+    ],
+    "replaces_accepted": 1,
+    "tool": "set_field_for_form",
+    "unit": [
+     "value",
+     "values"
+    ]
+   }
+  ]
+ },
+ "proj worklist {\"field\": \"Gloss\", \"kind\": \"unglossed\"}": "3 words without a Gloss value across 3 distinct forms. count\tform\texamples\n  1\takuna\ts1.w3\n  1\tgam\ts1.w2\n  1\tgam-ar\ts2.w1",
+ "proj worklist {\"field\": \"Translation\", \"kind\": \"unglossed\"}": "1 sentences without a Translation value (grouped by document) across 1 distinct forms. count\tform\texamples\n  1\tText 1\ts2 Gam-ar.",
+ "proj worklist {\"kind\": \"unanalyzed\"}": "2 words with no analysis at all across 2 distinct forms. count\tform\texamples\n  1\takuna\ts1.w3\n  1\tgam\ts1.w2",
+ "proj worklist {\"kind\": \"unglossed\"}": "4 morphemes without a Morph Gloss value across 3 distinct forms. count\tform\texamples\n  2\tgam\ts1.w2.m1, s2.w1.m1\n  1\takuna\ts1.w3.m1\n  1\tar\ts2.w1.m2",
+ "proj worklist {\"kind\": \"unlinked\", \"level\": \"word\"}": "3 words not linked to the lexicon across 3 distinct forms. count\tform\texamples\n  1\takuna\ts1.w3\n  1\tgam\ts1.w2\n  1\tgam-ar\ts2.w1",
+ "proj worklist {\"kind\": \"unlinked\"}": "4 morphemes not linked to the lexicon across 3 distinct forms. count\tform\texamples\n  2\tgam\ts1.w2.m1, s2.w1.m1\n  1\takuna\ts1.w3.m1\n  1\tar\ts2.w1.m2",
+ "proj worklist {\"kind\": \"unverified\"}": "Nothing to do: no words with annotations awaiting review (machine-made and unconfirmed, or a contributor's).",
+ "review check_consistency {\"field\": \"Gloss\"}": "Consistency of Gloss (Word field): 1 values, 1 distinct.\nNo spelling or case variants among values.\nEvery form carries a single Gloss value.\n0 annotated but not linked to the lexicon.\n2 linked but with no Gloss value: s1.w2 gam → gam akuna; s1.w3 akuna → gam akuna",
+ "review check_consistency {\"field\": \"Morph Gloss\"}": "Consistency of Morph Gloss (Morpheme field): 2 values, 2 distinct.\nNo spelling or case variants among values.\nEvery form carries a single Morph Gloss value.\n1 annotated but not linked to the lexicon: s1.w1.m1 Ali (Ali)\n0 linked but with no Morph Gloss value.",
+ "review check_lexicon {\"section\": \"stale\"}": "Lexicon check: 6 entries in Lexicon, 6 links; section \"stale\".\n1 links whose form no longer contains the entry form: gam akuna → \"zzz yyy\"",
+ "review check_lexicon {\"section\": \"unused\"}": "Lexicon check: 6 entries in Lexicon, 6 links; section \"unused\".\n2 entries never linked from a text: gam, gam",
+ "review check_lexicon {}": "Lexicon check: 6 entries in Lexicon, 6 links; each section capped, ask for one section for the full list.\n2 entries never linked from a text: gam, gam\n1 entries without a gloss: zzz yyy\n5 entries without a pos: -di, gam, gam, gam akuna, zzz yyy\n1 homograph groups (0 with a repeated gloss, likely duplicates; the rest are separate entries sharing a form):\n  gam | gloss=fish (0 links) | gam | gloss=net (0 links)\n0 pairs of forms one character apart (possible variants or duplicates).\nNo references pointing nowhere.\n0 entries whose gloss disagrees with the corpus.\n0 corpus glosses linked to several entries.\n1 links whose form no longer contains the entry form: gam akuna → \"zzz yyy\"",
+ "review confirm {\"documents\": [\"all\"]}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. (2 annotations will be marked verified.)",
+  "ops": [
+   {
+    "change_at": 8,
+    "contributed": [
+     "sp-g1"
+    ],
+    "kind": "confirm",
+    "label": "Text 1: confirm 1 value, 1 link",
+    "link_ids": [
+     "l-mwe"
+    ],
+    "on": {
+     "sp-g1": "w-1"
+    },
+    "span_ids": [
+     "sp-g1"
+    ],
+    "token_ids": []
+   }
+  ]
+ },
+ "review delete_entry {\"entry_form\": \"gam akuna\"}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 link(s) would be removed.",
+  "ops": [
+   {
+    "item_id": "vi-phrase",
+    "kind": "delete_entry",
+    "label": "Delete entry \"gam akuna\" (see a fish) (1 link removed)",
+    "links": [
+     "l-mwe"
+    ],
+    "name": "\"gam akuna\" (see a fish)"
+   }
+  ]
+ },
+ "review lexicon_entry {\"entry_form\": \"gam akuna\"}": "Headword \"gam akuna\" (id vi-phrase, entry_form \"gam akuna\")\n  gloss: see a fish\n  morphType: phrase\nLinked from 2 words and 0 morphemes (1 multi-word expression).\nExamples:\n  \"Text 1\" s1.w2 gam | mwe=gam akuna~ (w2+w3) | mwe=zzz yyy (w2+w3) || Ali-di gam akuna.\n  \"Text 1\" s1.w3 akuna | mwe=gam akuna~ (w2+w3) | mwe=zzz yyy (w2+w3) || Ali-di gam akuna.",
+ "review merge_entries {\"keep_form\": \"Ali\", \"remove_form\": \"gam akuna\"}": {
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 link(s) will move.",
+  "ops": [
+   {
+    "keep_id": "vi-ali",
+    "kind": "merge_entries",
+    "label": "Merge entry \"gam akuna\" (see a fish) into \"Ali\" (Ali): move 1 link, delete the former",
+    "links": [
+     {
+      "link_id": "l-mwe",
+      "token_ids": [
+       "w-2",
+       "w-3"
+      ]
+     }
+    ],
+    "remove_id": "vi-phrase"
+   }
+  ]
+ },
+ "review search {\"pattern\": \"akuna\"}": "1 hits:\ns1.w3 akuna | mwe=gam akuna~ (w2+w3) | mwe=zzz yyy (w2+w3) || Ali-di gam akuna.",
+ "review search {\"pattern\": \"gam\"}": "2 hits:\ns1.w2 gam | mwe=gam akuna~ (w2+w3) | mwe=zzz yyy (w2+w3) || Ali-di gam akuna.\ns2.w1 Gam-ar | seg=Gam=ar types=?,enclitic || Gam-ar.",
+ "review worklist {\"kind\": \"contributed\", \"user\": \"ann@x.com\"}": "1 words with unreviewed contributions by ann@x.com across 1 distinct forms. count\tform\texamples\n  1\tali-di\ts1.w1",
+ "review worklist {\"kind\": \"contributed\", \"user\": \"nobody@x.com\"}": "Nothing to do: no words with unreviewed contributions by nobody@x.com.",
+ "review worklist {\"kind\": \"contributed\"}": "1 words with unreviewed contributions across 1 distinct forms. count\tform\texamples\n  1\tali-di\ts1.w1",
+ "review worklist {\"kind\": \"unlinked\", \"level\": \"word\"}": "1 words not linked to the lexicon across 1 distinct forms. count\tform\texamples\n  1\tgam-ar\ts2.w1",
+ "review worklist {\"kind\": \"unverified\"}": "3 words with annotations awaiting review (machine-made and unconfirmed, or a contributor's) across 3 distinct forms. count\tform\texamples\n  1\takuna\ts1.w3\n  1\tali-di\ts1.w1\n  1\tgam\ts1.w2"
+}

@@ -7,7 +7,7 @@ approval and refused whole when they find anything else.
 import copy
 
 import fixtures as igt_fx
-from fixtures import FakeClient, scan_ws
+from fixtures import FakeClient, fake_ws
 from test_replaced_work_corpus import _store
 from test_stale_by_sentence import APPS, _approve
 import test_lost_answers as la
@@ -46,8 +46,7 @@ def _ws(store):
     second = copy.deepcopy(igt_fx.document_raw())
     second['id'], second['name'] = 'd2', 'Text 2'
     client._documents['d2'] = second
-    w = scan_ws(client)
-    w.prefer_scan = False
+    w = fake_ws(client)
     _engine(client, store)
     return client, w
 
