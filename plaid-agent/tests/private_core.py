@@ -176,6 +176,9 @@ def start() -> PrivateCore:
 
 
 if __name__ == '__main__':
+    # Held, so the wait below takes them and the core is stopped, rather than
+    # this process dying and leaving the core running.
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
     t0 = time.monotonic()
     core = start()
     print(f'plaid-core ready in {time.monotonic() - t0:.0f}s (pid {core.proc.pid})')
