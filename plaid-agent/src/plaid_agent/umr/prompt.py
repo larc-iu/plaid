@@ -91,7 +91,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'plan_contract': shared.plan_contract(),
     'project_shape': shared.project_shape(),
     'how_to_work': shared.how_to_work(),
-    'find_first': shared.find_first('node'),
+    'find_first': shared.find_first('node', '"the say-01 node", "the second person node"'),
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a concept, an aspect, a role, a modal strength'),
     'one_turn': shared.one_turn(),

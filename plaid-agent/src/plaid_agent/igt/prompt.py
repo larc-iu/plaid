@@ -89,7 +89,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'plan_contract': shared.plan_contract(),
     'project_shape': shared.project_shape(),
     'how_to_work': shared.how_to_work(),
-    'find_first': shared.find_first('item (worklist, search, frequency_list)'),
+    'find_first': shared.find_first('item (worklist, search, frequency_list)', '"the word ka", "the second word"'),
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a gloss, a form, a part of speech, a translation'),
     'one_turn': shared.one_turn(),

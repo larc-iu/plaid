@@ -84,3 +84,14 @@ def test_a_paragraph_nobody_wrote_refuses_where_the_prompt_is_assembled():
         shared.filled('a paragraph, then {nope}.', {'other': 'x'})
     # The holes the project fills when the prompt is built are not paragraphs.
     assert shared.filled('{shape} and {project_name}', {}) == '{shape} and {project_name}'
+
+
+def test_every_prompt_says_to_ask_which_one_and_that_only_the_last_message_is_read():
+    """The local model staged a change to the first of six "de" in the named
+    sentence, and answered a question beside a tool call where the user never
+    reads it, so its reply about the plan left the count out (benchmark,
+    2026-10-10). Each app names one thing in its own terms."""
+    for app, text in _built().items():
+        assert 'ask which one, list the candidates with their references, and plan nothing' in text, app
+        assert 'The reply the user reads is your LAST message of the turn.' in text, app
+        assert re.search(r'ONE thing the user names \("[^"]+", "[^"]+"\)', text), app

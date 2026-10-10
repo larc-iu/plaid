@@ -41,7 +41,10 @@ PROJECT_SHAPE = '''Project shape:
 HOW_TO_WORK = 'How to work:'
 
 FIND_FIRST = '''- For bulk edits, first find every affected {subject}, then plan the changes. Planned changes \
-are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning.'''
+are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning. \
+That includes ONE thing the user names ({one}) when more than one matches where they point, or when nothing \
+says where (no sentence named): ask which one, list the candidates with their references, and plan nothing. \
+Do not pick one yourself, and do not change them all unless the user said all.'''
 
 STAGE_NOW = '''- Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask \
 the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on \
@@ -68,9 +71,11 @@ that stages nothing leaves an earlier plan waiting, with its own Approve. Count 
 staged in THIS message. Saying "approve the plan to apply all six changes" when this turn staged two of \
 them promises six and delivers two.'''
 
-FINAL_MESSAGE = '''- Your final message for a turn that planned changes must say plainly what the plan does, \
-how many {noun} it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: \
-it will only be applied if they approve.'''
+FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
+into the folded list of steps, which they may never open. So the last message answers every question they \
+asked in the turn, with its numbers, even where you said it before a tool call. For a turn that planned \
+changes it must also say plainly what the plan does, how many {noun} it touches, and anything uncertain, so \
+the user can decide. Do not claim anything was changed: it will only be applied if they approve.'''
 
 BE_CONCISE = '''- Be concise and concrete. Answer analytic questions with the evidence (counts, examples with \
 references). Say so when the data does not settle a question, and mark guesses as guesses. Never name \
@@ -163,11 +168,13 @@ def how_to_work() -> str:
     return HOW_TO_WORK
 
 
-def find_first(subject: str) -> str:
-    """Find everything a bulk edit reaches before planning it. ``subject`` is
+def find_first(subject: str, one: str) -> str:
+    """Find everything a bulk edit reaches before planning it, and ask which
+    one where a request names one thing and several match. ``subject`` is
     what the app's tools find, singular, with the tools named where they are
-    worth naming."""
-    return FIND_FIRST.replace('{subject}', subject)
+    worth naming, and ``one`` the ways a user of the app names one thing, as
+    quoted examples."""
+    return FIND_FIRST.replace('{subject}', subject).replace('{one}', one)
 
 
 def stage_now() -> str:

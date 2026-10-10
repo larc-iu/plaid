@@ -90,7 +90,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'plan_contract': shared.plan_contract(),
     'project_shape': shared.project_shape(),
     'how_to_work': shared.how_to_work(),
-    'find_first': shared.find_first('word'),
+    'find_first': shared.find_first('word', '"the word que", "the second word"'),
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a lemma, a UPOS, a feature, a head, a relation'),
     'one_turn': shared.one_turn(),
