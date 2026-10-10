@@ -711,8 +711,8 @@ def test_a_replacement_is_one_rule_resolved_at_approval():
     _engine_for_replace(w, spans)
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob',
                                             'case_sensitive': False})
-    assert 'One change covering 3 values in 1 document.' in out
-    assert 'Stored as one change, found again when the user approves.' in out
+    assert 'Planned 3 values in 1 document, as one row on the card' in out
+    assert 'Stored as a rule, found again when the user approves.' in out
     assert '\nIn 1 document: "Text 1" 3.\n' in out
     assert 'more' not in out  # three lines of sample, and no "… -5 more" under it
     op = w.ops[0]
@@ -743,7 +743,7 @@ def test_a_respelling_past_the_cap_is_one_op_that_a_reshape_cannot_join(monkeypa
         return {'return': 'entities', 'results': []}
     w.client.query = query
     out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'lexicon': False, 'morpheme_forms': False})
-    assert 'One change covering 2 changes to words' in out
+    assert 'Planned 2 changes to words, as one row on the card' in out
     op = w.ops[0]
     assert op['kind'] == 'bulk_scope' and op['tool'] == 'respell_all' and op['counts'] == {'respell': 2}
     assert summarize(w.ops) == '2 respellings'
@@ -860,7 +860,7 @@ def test_a_bulk_answer_counts_its_changes_by_document(monkeypatch):
     # Machine output, so no change replaces a person's work and all four fold.
     _engine_for_replace(w, spans, metadata={'prov': 'inferred', 'provSource': 'service:x'})
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': '.', 'replacement': ':'})
-    assert out.startswith('Planned 1 change') and 'One change covering 4 values in 2 documents.' in out
+    assert out.startswith('Planned 4 values in 2 documents, as one row on the card')
     assert '\nIn 2 documents: "Elicited: LLEC Wordlist" 3, "Text 1" 1.\n' in out
     payload = w.plan_payload()
     rule, = payload['ops']

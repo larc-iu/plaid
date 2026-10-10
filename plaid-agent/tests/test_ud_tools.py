@@ -1222,7 +1222,7 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     ws = Workspace(client, load_project(client, PID))
     _engine_rows(ws, [('sp-l1', 'ir', 'ud1', 'uw-1'), ('sp-l3', 'mar', 'ud1', 'uw-3'), ('sp-x', 'Mar', 'other', 'uw-x')])
     out = run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare', case_sensitive=False)
-    assert out.startswith('Planned 2 lemma change(s) in 2 document(s), as one planned change.')
+    assert out.startswith('Planned 2 lemma change(s) in 2 document(s), as one row on the card.')
     assert '"Viaje": lemma "mar" → "mare"' in out
     op = ws.ops[0]
     assert op['kind'] == 'replace_scope' and op['count'] == 2 and op['documents'] == ['other', 'ud1']

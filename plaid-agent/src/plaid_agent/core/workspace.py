@@ -20,7 +20,7 @@ from plaid_client.constraints import value_set_allows
 
 from . import docload, fingerprint as fp, garble, opkind, work
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
-from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
+from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, plan_changes, reserve as core_reserve
 from .tools import ToolError
 from .trace import note as trace_note
 
@@ -822,8 +822,14 @@ class BaseWorkspace:
         return (f' {new} earlier planned change{"s" if new != 1 else ""} on the same '
                 f'target{"s" if new != 1 else ""} superseded.')
 
-    def planned_note(self, n: int) -> str:
-        """What a tool that staged ``n`` changes says back."""
-        return (f'Planned {n} change{"s" if n != 1 else ""} (nothing is written until the user approves; '
-                f'the plan now holds {len(self.ops)}). Describe the plan to the user in your reply.'
+    def planned_note(self, n: int, what: Optional[str] = None) -> str:
+        """What a tool that staged ``n`` changes says back. ``what`` says it
+        instead when the changes are one row on the card (a rule's values).
+        The plan's size is counted as the card counts it (``plan_changes``)."""
+        held, rows = plan_changes(self.ops), len(self.ops)
+        # plan_status and drop_planned number the entries, not the changes.
+        entries = '' if rows == held else f' in {rows} numbered entr{"y" if rows == 1 else "ies"}'
+        return (f'Planned {what or str(n) + " change" + ("s" if n != 1 else "")} (nothing is written until '
+                f'the user approves; the plan now holds {held} change{"s" if held != 1 else ""}{entries}). '
+                'Describe the plan to the user in your reply.'
                 + self.superseded_note())

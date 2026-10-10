@@ -30,6 +30,7 @@ from .bidi import for_model
 from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
+from .plan import plan_changes
 from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
@@ -986,7 +987,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 line = kit.tracer.progress(name, args)
                 on_progress(min(85, 8 + rounds * 5), line)
                 ws.announced = line
-                planned_before = len(ws.ops)
+                planned_before = plan_changes(ws.ops)
                 # A value typed in a rare script can come out garbled, and is
                 # refused before the tool sees it (see core.garble).
                 why = ws.garbled(args) if plan_call and hasattr(ws, 'garbled') else None
@@ -1009,9 +1010,11 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     withheld = ws.seen.take_made()
                     if vouches(ws, name, args):
                         ws.seen.add(result, unless=args, withheld=withheld)
-                planned = len(ws.ops) - planned_before
+                # In changes as the card counts them, so a rule over 7 values
+                # is 7 planned changes in the summary, not 1.
+                planned = plan_changes(ws.ops) - planned_before
                 if planned:
-                    on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
+                    on_progress(min(85, 8 + rounds * 5), planned_progress(plan_changes(ws.ops)))
                 if plan_call and not str(result).startswith('Error'):
                     unchanged = _plan_snapshot(ws) == before
                     if key in made and unchanged:

@@ -63,6 +63,26 @@ class PlanFull(Exception):
     """Staging these ops would push the plan past :data:`PLAN_MAX_OPS`."""
 
 
+# Ops that stand for many values: a rule (its `matched` list), igt's
+# corpus-wide scope and ud's replacement. Each is one row on the card.
+_MANY_KINDS = frozenset({'bulk_scope', 'replace_scope'})
+
+
+def changes_of(op: Dict[str, Any]) -> int:
+    """How many changes one stored op is, the number its card row counts: a
+    rule or a corpus-wide replacement is the values it changes, anything else
+    one. The step summary, the progress line and the tool's note all count
+    in it, so a rule over 7 values is 7 planned changes everywhere."""
+    if isinstance(op, dict) and (isinstance(op.get('matched'), list) or op.get('kind') in _MANY_KINDS):
+        return int(op.get('count') or 0)
+    return 1
+
+
+def plan_changes(ops: List[Dict[str, Any]]) -> int:
+    """The changes a plan holds (:func:`changes_of`)."""
+    return sum(changes_of(op) for op in ops)
+
+
 def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> None:
     """Refuse BEFORE staging what would not fit, so a tool never leaves half
     of its changes behind. ``note`` is the app's own sentence about what

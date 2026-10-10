@@ -221,7 +221,7 @@ def test_a_value_on_an_unsegmented_words_morpheme_is_written_with_the_morpheme(l
         p = load_project(c, s.project_id)
         w = Workspace(c, p)
         out = call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
-        assert 'Planned 1 change' in out, out
+        assert 'Planned 1 value in 1 document' in out, out
         execute_plan(c, w.plan_payload()['ops'], source='service:igt:assist:x', label='l', project=p)
         d = load_document(c, p, s.ids['d1'])
         [m] = d.sentences[0].words[2].morphemes

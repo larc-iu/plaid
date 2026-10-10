@@ -62,12 +62,12 @@ def _approved(client, w):
     return plan, helper
 
 
-def test_a_rule_is_one_change_whatever_it_counts_and_its_card_row_says_where():
+def test_a_rule_is_one_card_row_whatever_it_counts_and_says_where():
     store = {'sp-g1': 'VASP', 'sp-x2': 'VASP.3SG', 'sp-x3': 'X', 'sp-y1': 'VASP', 'sp-y2': 'VASP'}
     client, w = _ws(store)
     out = _replace(w, 'VASP', 'ASP')
-    assert out.startswith('Planned 1 change') and 'One change covering 4 values in 2 documents.' in out
-    assert 'Stored as one change, found again when the user approves.' in out
+    assert out.startswith('Planned 4 values in 2 documents, as one row on the card')
+    assert 'Stored as a rule, found again when the user approves.' in out
     [op] = w.ops
     assert op['label'] == ('Gloss: replace "VASP" with "ASP" (anywhere in the value, case-sensitive), 4 values in 2 documents, '
                            '4 of them replace accepted work')
@@ -87,7 +87,7 @@ def test_rules_compose_in_plan_order_when_staged_and_when_approved():
     client, w = _ws(store)
     _replace(w, 'X', 'Y', whole=True)
     out = _replace(w, 'Y', 'Z', whole=True)
-    assert 'One change covering 2 values in 1 document.' in out, out
+    assert 'Planned 2 values in 1 document, as one row on the card' in out, out
     assert {o['span_id']: o['value'] for o in planned_changes(w) if o['value'] == 'Z'} == {'sp-g1': 'Z', 'sp-x2': 'Z'}
     _plan, helper = _approved(client, w)
     assert not helper.errors, helper.errors
@@ -386,7 +386,7 @@ def test_a_copy_past_the_candidate_cap_says_it_covers_the_first_part(monkeypatch
     client, w = _ws({})
     _words_engine(client, 3, 66111)
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
-    assert 'One change covering 2 words in 1 document.' in out
+    assert 'Planned 2 words in 1 document, as one row on the card' in out
     assert ('Only the first 2 of the 66,111 words it would look at were read, in document order: this change '
             'covers 2 words among them, and the rest are not in the plan. Tell the user so: once they approve '
             'this, ask again (the same call) for the rest.') in out
@@ -410,7 +410,7 @@ def test_a_copy_under_the_cap_says_nothing_of_a_part(monkeypatch):
     client, w = _ws({})
     _words_engine(client, 3, 3)
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
-    assert 'One change covering 3 words in 1 document.' in out and 'Only the first' not in out
+    assert 'Planned 3 words in 1 document, as one row on the card' in out and 'Only the first' not in out
     [row] = w.plan_payload()['changes']
     assert rules.PARTIAL not in row['rule']
 

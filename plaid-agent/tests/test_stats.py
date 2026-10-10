@@ -107,7 +107,7 @@ def test_sequence_search():
 def test_bulk_plans():
     w = ws()
     out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
-    assert out.startswith('Planned 1 change') and changes(w)[-1]['value'] == 'OBL' and changes(w)[-1]['span_id'] == 'sp-m1b'
+    assert out.startswith('Planned 1 value in 1 document') and changes(w)[-1]['value'] == 'OBL' and changes(w)[-1]['span_id'] == 'sp-m1b'
     out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     assert changes(w)[-1]['value'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
@@ -140,14 +140,14 @@ def test_bulk_plans():
     w2 = ws()
     out = call_tool(w2, 'replace_in_field', {'field': 'morpheme form', 'pattern': 'ar', 'replacement': 'är', 'whole': True})
     [only] = changes(w2)
-    assert 'Planned 1 change' in out and only['kind'] == 'set_morpheme_form' and only['morpheme_id'] == 'm-4b'
+    assert 'Planned 1 morpheme form in 1 document' in out and only['kind'] == 'set_morpheme_form' and only['morpheme_id'] == 'm-4b'
     assert 'm2 (in "Gam-ar"): morpheme form "ar" → "är"' in only['label']
     out = call_tool(w2, 'replace_in_field', {'field': 'form', 'pattern': 'gam', 'replacement': 'x',
                                              'case_sensitive': False})
-    assert 'Planned 1 change' in out and 'm1 (in "Gam-ar"): morpheme form "Gam" → "x"' in out  # m-2 has no stored form: skipped
+    assert 'Planned 1 morpheme form in 1 document' in out and 'm1 (in "Gam-ar"): morpheme form "Gam" → "x"' in out  # m-2 has no stored form: skipped
     assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '.*', 'replacement': '', 'regex': True})
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
-    assert 'One change covering 3 words in 1 document.' in out  # w-1 already has IPA
+    assert 'Planned 3 words in 1 document, as one row on the card' in out  # w-1 already has IPA
     out = call_tool(w, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     assert 'Planned 1 change' in out and w.ops[-1]['kind'] == 'set_analysis' and w.ops[-1]['word_id'] == 'w-2'
     assert 'Nothing to change' in call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'skip_analyzed': True,
@@ -309,7 +309,7 @@ def test_set_field_for_form_fills_gaps_by_default():
     w = ws()
     out = call_tool(w, 'set_field_for_form', {'form': 'GAM', 'field': 'Morph Gloss', 'value': 'fish'})
     # One rule standing for both (core.rules).
-    assert 'Planned 1 change' in out and {op['token_id'] for op in changes(w)} == {'m-2', 'm-4a'}
+    assert 'Planned 2 values in 1 document' in out and {op['token_id'] for op in changes(w)} == {'m-2', 'm-4a'}
     # existing values are left alone unless only_empty=false
     assert 'Nothing to change' in call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL'})
     call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})

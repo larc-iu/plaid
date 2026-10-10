@@ -207,7 +207,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     counts = '' if document_id else by_document([labels[ch['document_id']]
                                                  for ch in found if ch['document_id']])
     counts = '\n' + counts if counts else ''
-    return (f'Planned {len(found)} {field} change(s){where}, as one planned change.'
+    return (f'Planned {len(found)} {field} change(s){where}, as one row on the card.'
             + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
             + f'{counts}\nFor example:\n  '

@@ -364,7 +364,7 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
                'label': f'{tool}: {len(staged)} changes in {len(docs)} documents ('
                         + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'
                         + work.counted_phrase(accepted)})
-    return (ws.planned_note(1) + f'\n  One change covering {len(staged)} changes to {what}.'
+    return (ws.planned_note(len(staged), f'{len(staged)} changes to {what}, as one row on the card')
             + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
             + _by_document(ws, staged) + '\nFor example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
@@ -431,7 +431,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     sample = [c['label'] for c in op[CARD]['sample']]
     changes = rules.transition_lines(op[CARD].get(rules.TRANSITIONS) or [],
                                      op[CARD].get(rules.TRANSITIONS_MORE) or [0, 0], unit)
-    return (ws.planned_note(1) + f'\n  One change covering {rules.count_line(n, unit, len(docs))}.'
+    return (ws.planned_note(n, f'{rules.count_line(n, unit, len(docs))}, as one row on the card')
             + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
             + (f'\n{_partial_note(op, unit)}' if op.get('partial') else '')
@@ -440,7 +440,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
                if changes else '')
             + _by_document(ws, kept) + '\nFor example:\n  ' + '\n  '.join(sample)
             + (f'\n  … {n - len(sample)} more' if n > len(sample) else '')
-            + '\nStored as one change, found again when the user approves.'
+            + '\nStored as a rule, found again when the user approves.'
             + (f' {_rewritten(len(rewrites))}' if rewrites else '')
             + left_for_analysis(left))
 
