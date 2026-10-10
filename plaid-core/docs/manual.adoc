@@ -61,7 +61,7 @@ By default, each project is private, and one of three permissions levels is need
 
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
 
-A request for a project, document, vocabulary or user that does not exist answers 404 to an admin.
+A request for a project, document or vocabulary that does not exist answers 404 to an admin.
 Anyone else gets the same 403 they would get for one that exists but is not theirs.
 When the 403 is for an id that resolves to nothing, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
 
@@ -377,7 +377,7 @@ The `send_message`/`sendMessage` function allows a client to broadcast a message
 client.messages.send_message(project_id, {"purpose": "ping", "message": "ping"})
 ----
 
-Note that the second positional argument, the `body`, can be any JSON value.
+Note that the second positional argument, `data`, can be any JSON value.
 A message is not saved and does not appear in the audit log.
 
 On the other end, a client may listen like so.
@@ -465,7 +465,7 @@ An `audit-log` event looks like this:
 
 Every write sends its own event, so `ops` always holds one operation, and a batch sends one event per write once it commits.
 `documents` lists every document the write changed.
-The event is a lightweight notice: it spells operation types with a colon (`document:update`) where the audit endpoint uses a slash, and it carries bare ids.
+The event is a lightweight notice: it spells operation types as `span_layer:create` where the audit endpoint has `span-layer/create`, and it carries bare ids.
 For the full entry, read the audit endpoint and match on `id`.
 
 == Services
@@ -823,8 +823,8 @@ Plaid stores all text in Unicode Normalization Form C (NFC), so an `á` sent as 
 This applies to a text's body and to every other string you write, such as span values, metadata and names.
 
 A body can therefore get shorter when it is saved.
-Token offsets always refer to the body as stored, which the answer to every write carries.
-An app that creates tokens in the same batch as a body can compute their offsets on the stored body with `composeText(body, cuts)` (`compose_text` in Python).
+Token offsets always refer to the body as stored, which a read or a body edit returns.
+An app that creates tokens in the same batch as a body can compute their offsets on the stored body with `composeText(body, cuts)` (`compose_text` in Python), sending the same cuts as the text's `tokenEdges`.
 
 There is one exception.
 Where a token begins or ends between a letter and a mark, such as a tone mark analysed as its own morpheme, the two are left uncomposed so that each token keeps its own character.
@@ -1044,7 +1044,7 @@ Plaid guarantees that the database will _never_ violate these, no matter what, b
 Consider these examples:
 
 * If a relation's source span is deleted, then Plaid deletes the relation as well, because a relation must have a span on either end in order to remain valid.
-* If a few characters are deleted in a text, then all token indexes are updated to maintain validity: tokens containing those characters will shrink or get deleted (if they turn into zero-length tokens), and not containing those characters which are anchored to subsequent text will have their indices decremented by the number of deleted tokens.
+* If a few characters are deleted in a text, then all token indexes are updated to maintain validity: tokens containing those characters will shrink or get deleted (if they turn into zero-length tokens), and not containing those characters which are anchored to subsequent text will have their indices decremented by the number of deleted characters.
 * If a span's only token is deleted, then the span will deleted, along with any dependent relations.
 
 These invariants have been incorporated into Plaid because of their broad desirability in linguistic annotation.
@@ -1348,7 +1348,7 @@ except Exception as e:
 ----
 
 A write in a batch can use the id of something an earlier write in the same batch creates.
-`b.ref()` stands for the id of the write queued last, and `b.ref(n)` for that of the nth:
+`b.ref()` stands for the id of the write queued last, and `b.ref(n)` for that of write `n`, counting from 0:
 
 [,python]
 ----
@@ -1358,7 +1358,8 @@ with client.batched() as b:
 ----
 
 The server runs a batch as one transaction, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
-A few things cannot go in a batch, such as locks, uploads and logging in, and the clients refuse them before sending.
+A few things cannot go in a batch, such as uploads, and the clients refuse them before sending.
+A lock call made on a batch is sent at once.
 
 === Bulk updates
 
@@ -1380,11 +1381,11 @@ A bulk update with an id that does not exist is refused whole.
 
 A write's answer can be lost after the server stored it, for instance when the connection drops or the laptop goes to sleep.
 Sending the write again must then not store it twice.
-Both clients take care of this on every write, using the two tools below.
+Both clients take care of this, using the two tools below.
 
 === Ids you mint
 
-Every create takes an optional `id`, so the client can choose a new row's id before sending it.
+Every create of project data takes an optional `id`, so the client can choose a new row's id before sending it.
 A create sent again with the same id is refused with 409 and `"error": "id-taken"`, even if the row was deleted meanwhile, so a late retry never brings back a deleted row.
 The id must be a UUIDv7, which both clients mint (`uuidv7()` in JavaScript, `uuid7()` in Python):
 
@@ -1402,11 +1403,11 @@ client.spans.create(layer_id, [token_id], "NOUN", id=span_id)
 
 === The Idempotency-Key header
 
-Any write may carry an `Idempotency-Key` header.
+Most writes may carry an `Idempotency-Key` header.
 If the same user sends the same request again under the same key within 24 hours, the server answers with the stored answer and writes nothing, marking it `Idempotent-Replayed: true`.
 The same key on a different request is refused with 422.
 
-Both clients send a key on every write, and send a write again under the same key when no answer arrives.
+Both clients send a key on every write that takes one, and send a write again under the same key when no answer arrives.
 `wasReplayed(answer)` (`was_replayed` in Python) tells whether an answer was a replay of an earlier send.
 
 == Trust
@@ -1541,7 +1542,7 @@ A machine writer may also record how confident it was.
 `provProb` is a single number between 0 and 1, the probability of the value it chose, and since it is flat a query can sort by it to put the least confident output first.
 Everything else, such as the top few alternatives, goes in the open map `provDetail`.
 
-Every machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and the version of the writer's own code in `provDetail.version`.
+A machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and every one records the version of its own code in `provDetail.version`.
 These details describe the original prediction and are kept after a person edits the value.
 So once `provConfirmed` is set, do not present `provProb` as confidence in the current value.
 
@@ -1609,7 +1610,7 @@ A rule the UD app declares on its dependency layer holds for a split made in the
 
 |`same-ancestor`
 |relation
-|Both ends of a relation lie in one token of `token-layer`, such as one sentence.
+|No relation runs from one token of `token-layer` to another, such as across sentences.
 
 |`single-span`
 |span
@@ -1796,8 +1797,8 @@ $ sudo -u plaid mkdir -p /srv/plaid && sudo cp plaid.jar /srv/plaid/
 $ cd /srv/plaid && sudo -u plaid java -jar plaid.jar
 ----
 
-On first launch Plaid asks for the administrator's email address and password, and that address is what the administrator signs in with.
-It then writes `data/config.toml` and starts listening on port 8080.
+On first launch Plaid writes `data/config.toml` and asks for the administrator's email address and password, which the administrator signs in with.
+It then starts listening on port 8080.
 Stop it with Ctrl+C once you have seen it start, and let a service manager run it from here on.
 
 == Running it as a service
@@ -1865,11 +1866,11 @@ Database migrations run on startup, and the bundled apps are part of the jar, so
 
 == Bringing in a class
 
-The administrator signs in first, at `https://plaid.example.edu/igt/`, and creates the instructor's account from a project's **Settings > Access**.
-The instructor creates the project and, in the same place, makes **invitation links**: each grants a role on the project, is good for a set number of uses and days, and lets whoever opens it choose their own password.
+The administrator signs in first, at `https://plaid.example.edu/igt/`, and creates the instructor's account on the **Users** tab of the admin area.
+The instructor creates the project and, in its **Settings > Access**, makes **invitation links**: each grants a role on the project, is good for a set number of uses and days, and lets whoever opens it choose their own password.
 One link with fifteen uses is a class.
 
-A student who forgets a password gets a password-reset link from the administrator, made in the same place.
+A student who forgets a password gets a password-reset link from the administrator, made in **Settings > Access**.
 The IGT guide's link:igt-guide.html#_sharing_and_permissions[Sharing and Permissions] section covers the roles.
 
 == Reading the log
