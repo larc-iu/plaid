@@ -3,8 +3,7 @@
 // nothing told: the screen kept the old membership, and the minute's read then
 // found nothing new, so the page stayed editable until a reload.
 import { describe, it, expect, vi } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 
 const ME = { id: 'b@x.com', isAdmin: false };
@@ -17,11 +16,10 @@ const setup = () => {
   };
   const client = makeFakeClient();
   client.projects.get = async () => structuredClone(server.project);
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: structuredClone(server.project),
     client,
-    projectId: 'proj-1',
     user: ME,
   });
   return { doc, server, raw };

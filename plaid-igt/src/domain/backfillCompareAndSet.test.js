@@ -4,8 +4,7 @@
 // page loaded (REV-F-BULK). It now names the value it read (compare-and-set)
 // and adds only what was missing.
 import { describe, it, expect } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const canonical = (v) =>
   JSON.stringify(v ?? null, (_k, x) =>
@@ -77,11 +76,9 @@ const setup = ({ serverFields = loadedFields, spanLayerLang } = {}) => {
   client.spanLayers = { ...client.spanLayers, setConfig: server.setConfig('span') };
   client.tokenLayers = { ...client.tokenLayers, setConfig: server.setConfig('token') };
   client.batched = server.batched;
-  const doc = new IgtDocument({
-    raw: buildRawDoc(),
+  const doc = makeIgtDoc({
     project: { id: 'proj-1', vocabs: [{ id: 'voc-1' }], maintainers: ['m@x'] },
     client,
-    projectId: 'proj-1',
     user: { id: 'm@x' },
     vocabularies: {
       'voc-1': { id: 'voc-1', name: 'Lex', items: [], config: { igt: { fields: loadedFields } } },

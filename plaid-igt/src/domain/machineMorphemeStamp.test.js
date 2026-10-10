@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 // The morpheme a write makes for an unanalyzed word carries that write's
 // stamp. Auto-analyze's link and copy steps are machine writes, so the
@@ -12,7 +11,7 @@ const ANN = { id: 'ann@x.com', isAdmin: false };
 beforeEach(() => resetIds());
 
 const docAs = (user, client) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw: buildRawDoc({ morphemes: [] }),
     project: {
       id: 'proj-1',
@@ -23,7 +22,6 @@ const docAs = (user, client) =>
     },
     vocabularies: { v1: { id: 'v1', items: [{ id: 'i-1', form: 'the' }], vocabLinks: [] } },
     client,
-    projectId: 'proj-1',
     user,
   });
 

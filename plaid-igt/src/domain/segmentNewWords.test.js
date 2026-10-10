@@ -5,8 +5,7 @@
 // spaces. Against a server that keeps what it stores (test/segmentServer.js).
 import { beforeEach, describe, expect, it } from 'vitest';
 import { isPendingId } from '@ui/domain/pendingIds.js';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
 
 beforeEach(() => resetIds());
@@ -38,19 +37,14 @@ const RAW = (tokenize) => {
 const wordLayer = (raw) => raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
 
 const open = (server) => {
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client: server.client,
-    projectId: 'proj-1',
     user: { id: 'a' },
   });
   doc._writes._retryDelay = () => 5;
   return doc;
 };
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const idle = async (doc) => {
   while (doc.isSaving) await settle();
 };

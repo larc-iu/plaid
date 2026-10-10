@@ -4,12 +4,11 @@
 // link sent again over one left a morpheme with two. A gloss is not beside
 // the document, and still goes again when another user wrote elsewhere.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const makeDoc = () => {
   const raw = buildRawDoc();
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(raw),
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: {
@@ -21,7 +20,6 @@ const makeDoc = () => {
       },
     },
     client: makeFakeClient({ reloadDoc: structuredClone(raw) }),
-    projectId: 'proj-1',
   });
   // Whether each write, as it is queued, changed what is kept beside.
   const beside = [];

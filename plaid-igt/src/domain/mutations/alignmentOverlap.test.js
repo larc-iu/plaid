@@ -4,17 +4,12 @@
 // speaker box, a row edit that changes the speaker with the text) and a new
 // segment have to refuse it too, or the next open reports the document broken.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from '../IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '../test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc } from '../test-helpers.js';
 import { overlapProblem } from '../alignmentTimes.js';
 
 function makeDoc(raw) {
-  return new IgtDocument({
+  return makeIgtDoc({
     raw,
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
-    client: makeFakeClient(),
-    projectId: 'proj-1',
   });
 }
 

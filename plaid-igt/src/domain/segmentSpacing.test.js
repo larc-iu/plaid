@@ -2,19 +2,15 @@
 // side it would touch other text, none where whitespace is there already (a
 // line break included). Against test/segmentServer.js.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
 
 beforeEach(() => resetIds());
 
 const open = (server) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client: server.client,
-    projectId: 'proj-1',
     user: { id: 'a' },
   });
 

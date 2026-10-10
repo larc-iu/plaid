@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 import {
   isVirtualMorphemeId,
   virtualMorphemeId,
@@ -12,12 +11,10 @@ import {
 // hands the editor, and what each mutation does when handed a virtual id.
 
 const makeDoc = (raw, client) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [], config: {} },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
   });
 
 const morphOf = (doc, wordIdx = 0) => doc.sentences[0].tokens[wordIdx].morphemes[0];
@@ -219,12 +216,11 @@ describe('bulkLinkVocab over unanalyzed words', () => {
     v1: { id: 'v1', items: [{ id: 'i-1', form: 'the' }], vocabLinks: [] },
   });
   const linkDoc = (client) =>
-    new IgtDocument({
+    makeIgtDoc({
       raw: buildRawDoc({ morphemes: [] }),
       project: { id: 'proj-1', vocabs: [], config: {} },
       vocabularies: vocabularies(),
       client,
-      projectId: 'proj-1',
     });
   const kindsOf = (client) =>
     client.calls.map((c) => c.kind).filter((k) => !/Operation|operationGroups/.test(k));

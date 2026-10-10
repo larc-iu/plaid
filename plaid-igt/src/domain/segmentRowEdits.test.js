@@ -7,8 +7,7 @@
 // ruling Q1), not as a segment gone. Against a server that keeps what it
 // stores (test/segmentServer.js).
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 import { digestOf, segmentServer } from '../test/segmentServer.js';
 
 const seg = (id, begin, end, timeBegin, timeEnd, extra = {}) => ({
@@ -41,16 +40,11 @@ const RAW = () => {
 };
 
 const open = (server, client = server.client, user = 'a') =>
-  new IgtDocument({
+  makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: user },
   });
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const idle = async (doc) => {
   while (doc.isSaving) await settle();
 };

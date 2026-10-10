@@ -8,6 +8,7 @@ import {
 import { fakeRaf } from '@/test/fakeRaf.js';
 import { notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useMediaOperations } from './useMediaOperations.js';
+import { settle } from '@/domain/test-helpers.js';
 
 vi.mock('@/utils/feedback', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -25,8 +26,6 @@ vi.mock('@/utils/feedback', async (importOriginal) => ({
 // what the hook ended on cannot tell a guarded request from an unguarded one.
 // What is asserted here is the sequence of `{url, loading, error}` the tab
 // actually SHOWED.
-
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const deferred = () => {
   let resolve;

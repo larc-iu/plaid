@@ -9,8 +9,7 @@ import {
   wantedConstraints,
 } from './igtConstraints.js';
 import { getIgtLayerInfo } from './layerInfo.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { IgtDocument } from './IgtDocument.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 beforeEach(() => resetIds());
 
@@ -197,12 +196,10 @@ describe('the screen after a word merge', () => {
       { id: 'sp-2', tokens: ['w-2'], value: 'N' },
     ];
     const client = makeFakeClient();
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: { id: 'proj-1', vocabs: [], config: {} },
-      vocabularies: {},
       client,
-      projectId: 'proj-1',
     });
     await doc.mergeTokens(['w-1', 'w-2']);
     const spans = doc.layerInfo.spanLayers.word[0].spans;

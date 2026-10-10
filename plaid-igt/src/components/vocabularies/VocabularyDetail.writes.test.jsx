@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { settle } from '@/domain/test-helpers.js';
 
 // The vocabulary's schema writes and its name take their turn in one queue,
 // closing the tab asks while they are on their way, and the vocabulary's own
@@ -101,10 +102,6 @@ const mount = async (client, at) => {
   await view.step(async () => {});
   return view;
 };
-
-const settle = async () => {
-  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-};
 const asks = () => {
   const e = new Event('beforeunload', { cancelable: true });
   window.dispatchEvent(e);
@@ -156,7 +153,7 @@ describe('the vocabulary screen', () => {
       } catch {
         threw = true;
       }
-      await settle();
+      await settle(5);
     });
     expect(threw).toBe(false);
     expect(Object.keys(tagsetsManager.props.tagsets)).toEqual(['case']);
@@ -165,7 +162,7 @@ describe('the vocabulary screen', () => {
     server.config.igt.tagsets = { case: next.case, moods: { mode: 'closed', tags: [] } };
     await view.step(async () => {
       tagsetsManager.props.onSaveChanges(server.config.igt.tagsets);
-      await settle();
+      await settle(5);
     });
     expect(Object.keys(tagsetsManager.props.tagsets).sort()).toEqual(['case', 'moods']);
     await view.unmount();
@@ -181,7 +178,7 @@ describe('the vocabulary screen', () => {
     expect(asks()).toBe(true);
     await view.step(async () => {
       held.resolve();
-      await settle();
+      await settle(5);
     });
     expect(asks()).toBe(false);
     await view.unmount();
@@ -196,12 +193,12 @@ describe('the vocabulary screen', () => {
     await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
     await view.step(async () => {
       button('Save').click();
-      await settle();
+      await settle(5);
     });
     expect(calls).toEqual(['setConfig']);
     await view.step(async () => {
       held.resolve();
-      await settle();
+      await settle(5);
     });
     expect(calls).toEqual(['setConfig', 'update']);
     await view.unmount();
@@ -222,18 +219,18 @@ describe('the vocabulary screen', () => {
     await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
     await view.step(async () => {
       button('Save').click();
-      await settle();
+      await settle(5);
     });
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     // The read failed and waits its turn to be tried again.
     expect(reads).toBe(1);
     expect(asks()).toBe(true);
     await view.step(async () => {
       await new Promise((r) => setTimeout(r, 1100));
-      await settle();
+      await settle(5);
     });
     expect(reads).toBe(2);
     expect(asks()).toBe(false);
@@ -269,12 +266,12 @@ describe('the vocabulary screen', () => {
     await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
     await view.step(async () => {
       button('Save').click();
-      await settle();
+      await settle(5);
     });
     expect(asks()).toBe(true);
     await view.step(async () => {
       await new Promise((r) => setTimeout(r, 2300));
-      await settle();
+      await settle(5);
     });
     expect(calls).toEqual(['setConfig', 'setConfig', 'update', 'update']);
     expect(feedback.notifyError).not.toHaveBeenCalled();
@@ -295,11 +292,11 @@ describe('the vocabulary screen', () => {
     await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
     await view.step(async () => {
       button('Save').click();
-      await settle();
+      await settle(5);
     });
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     expect(calls).toEqual(['setConfig', 'update']);
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
@@ -315,7 +312,7 @@ describe('the vocabulary screen', () => {
     );
     await view.step(async () => {
       settings.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
-      await settle();
+      await settle(5);
     });
     expect(confirm).toHaveBeenCalledTimes(1);
     // Refused: the Entries tab stays.
@@ -421,12 +418,12 @@ describe('the vocabulary schema written from a stale page', () => {
     const read = structuredClone(server.config.igt.fields);
     await view.step(async () => {
       firstInlineSwitch().click();
-      await settle();
+      await settle(5);
     });
     const first = structuredClone(server.config.igt.fields);
     await view.step(async () => {
       firstInlineSwitch().click();
-      await settle();
+      await settle(5);
     });
     expect(sent.map(([key, o]) => [key, o.expected])).toEqual([
       ['fields', read],
@@ -444,7 +441,7 @@ describe('the vocabulary schema written from a stale page', () => {
     const theirs = structuredClone(server.config.igt.fields);
     await view.step(async () => {
       firstInlineSwitch().click();
-      await settle();
+      await settle(5);
     });
     expect(server.config.igt.fields).toEqual(theirs);
     expect(feedback.notifyError).toHaveBeenCalledWith(
@@ -469,7 +466,7 @@ describe('the vocabulary schema written from a stale page', () => {
       } catch {
         threw = true;
       }
-      await settle();
+      await settle(5);
     });
     expect(threw).toBe(true);
     expect(Object.keys(server.config.igt.tagsets).sort()).toEqual(['cases', 'moods']);

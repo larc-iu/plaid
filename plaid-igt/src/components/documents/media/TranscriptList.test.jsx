@@ -4,6 +4,7 @@ import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
 import { pendingId, recordSettled } from '@ui/domain/pendingIds.js';
 import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
+import { settle } from '@/domain/test-helpers.js';
 
 // The transcript rows against a fake document: what a row shows, what a
 // keystroke writes, and where focus goes next. The real mutations are covered
@@ -81,7 +82,6 @@ const press = (el, key, init = {}) => {
   el.dispatchEvent(ev);
   return ev;
 };
-const settle = () => new Promise((r) => setTimeout(r, 0));
 // React's onBlur listens for `focusout` at the root, not the non-bubbling
 // `blur`, so this is what moving focus away looks like to a component.
 const blur = (el) => el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));

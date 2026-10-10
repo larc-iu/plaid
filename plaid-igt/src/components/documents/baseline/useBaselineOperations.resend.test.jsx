@@ -8,8 +8,7 @@ import { act } from 'react';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
 import { useBaselineOperations } from './useBaselineOperations.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc as buildDoc, resetIds } from '@/domain/test-helpers.js';
+import { buildRawDoc as buildDoc, resetIds, makeIgtDoc } from '@/domain/test-helpers.js';
 
 // These tests are of the edit's own send: "Tokenize new text" is off, so
 // typing adds no words (newTextWords and its batch have tests of their own).
@@ -35,12 +34,9 @@ beforeEach(() => {
 });
 
 const open = (server) => {
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client: server.client,
-    projectId: 'proj-1',
     user: { id: 'a' },
   });
   doc._writes._retryDelay = () => 5;

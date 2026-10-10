@@ -9,8 +9,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
 import { anyDocumentSaving, useSavingGuard } from '@ui/hooks/useSavingGuard.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, resetIds } from '@/domain/test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc, settle } from '@/domain/test-helpers.js';
 import { digestOf, segmentServer } from '@/test/segmentServer.js';
 
 const toasts = vi.hoisted(() => ({ warn: [], error: [] }));
@@ -41,12 +40,9 @@ const RAW = () =>
   });
 
 const open = (server) => {
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client: server.client,
-    projectId: 'proj-1',
     user: { id: 'a' },
   });
   doc.onError = (message, err, title) => toasts.error.push({ message, err, title });
@@ -82,7 +78,6 @@ const setValue = (el, value) => {
 const press = (el, key, init = {}) =>
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
 const blur = (el) => el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const row = (root, n) => root.querySelector(`textarea[aria-label="Segment ${n} text"]`);
 const noteOf = (root, n) => {
@@ -520,12 +515,9 @@ describe('two pages edit the same row (Q1 on a row)', () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
     // Another user's page edits row 2 from its own transcript.
-    const theirs = new IgtDocument({
+    const theirs = makeIgtDoc({
       raw: structuredClone(server.stored),
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-      vocabularies: {},
       client: server.connect('b'),
-      projectId: 'proj-1',
       user: { id: 'b' },
     });
     expect(await theirs.editAlignment('a-2', { text: 'deux', timeBegin: 1, timeEnd: 2 })).toBe(

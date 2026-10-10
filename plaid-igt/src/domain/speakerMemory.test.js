@@ -3,8 +3,7 @@
 // and was refused 403 on every edit. Only someone who may write it does, and a
 // writer's suggestions still hold every speaker the document's own rows use.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const project = () => ({
   id: 'proj-1',
@@ -31,11 +30,10 @@ const raw = () =>
 const open = (user) => {
   const client = makeFakeClient();
   client.projects.setConfig = vi.fn(async () => ({}));
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: raw(),
     project: project(),
     client,
-    projectId: 'proj-1',
     user,
   });
   return { doc, client };

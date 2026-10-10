@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc } from './test-helpers.js';
 import { linkChangedTo } from '@ui/lib/cellConflict.js';
 
 // A lexicon link edit refused because the document moved on (409) after a
@@ -145,12 +144,11 @@ function linkServer() {
 
 const openDoc = async () => {
   const { server, client, project } = linkServer();
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: server.raw(),
     project,
     vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: structuredClone(server.items) } },
     client,
-    projectId: 'proj-1',
   });
   const errors = [];
   doc.onError = (msg, err, label) => errors.push({ msg, err, label });

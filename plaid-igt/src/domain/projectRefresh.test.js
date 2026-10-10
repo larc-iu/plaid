@@ -4,8 +4,7 @@
 // one opened since still refused values the server allows (V6 H6-4). The
 // project is read again with every refetch and on a return to the tab.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const tagsets = (mode) => ({ igt: { tagsets: { Cats: { delimiters: '.', mode, values: [] } } } });
 const loaded = { id: 'proj-1', vocabs: [], config: tagsets('suggest') };
@@ -15,11 +14,9 @@ const setup = () => {
   const server = { project: { id: 'proj-1', vocabs: [], config: tagsets('closed') } };
   const client = makeFakeClient();
   client.projects.get = async () => structuredClone(server.project);
-  const doc = new IgtDocument({
-    raw: buildRawDoc(),
+  const doc = makeIgtDoc({
     project: structuredClone(loaded),
     client,
-    projectId: 'proj-1',
   });
   return { doc, client, server };
 };
@@ -130,11 +127,9 @@ describe('remembering a speaker', () => {
       }
       server.config[ns][key] = value;
     };
-    const doc = new IgtDocument({
-      raw: buildRawDoc(),
+    const doc = makeIgtDoc({
       project: { id: 'proj-1', vocabs: [], config: { igt: { speakers: ['Ana'] } } },
       client,
-      projectId: 'proj-1',
       // Project config is a maintainer's to write (speakerMemory.test.js).
       user: { id: 'admin@x.com', isAdmin: true },
     });

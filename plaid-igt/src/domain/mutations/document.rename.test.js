@@ -1,21 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { IgtDocument } from '../IgtDocument.js';
-import { buildRawDoc, makeFakeClient } from '../test-helpers.js';
+import { buildRawDoc, makeIgtDoc } from '../test-helpers.js';
 
 // The Details tab's save writes the name the way the shared `rename` does:
 // trimmed, and never blank. One rule for every writer of a document's name.
 
 const makeDoc = () =>
-  new IgtDocument({
+  makeIgtDoc({
     raw: buildRawDoc({ metadata: {} }),
     project: {
       id: 'proj-1',
       vocabs: [],
       config: { igt: { documentMetadata: [{ name: 'Date' }] } },
     },
-    vocabularies: {},
-    client: makeFakeClient(),
-    projectId: 'proj-1',
   });
 
 const updates = (doc) => doc.client.calls.filter((c) => c.kind === 'documents.update');

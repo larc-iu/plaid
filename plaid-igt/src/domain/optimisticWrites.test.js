@@ -3,8 +3,7 @@
 // the document shows in between is what an annotator sees while the round
 // trip is in flight.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 import { isPendingId } from '@ui/domain/pendingIds.js';
 
 const GROUPS = ['tokens', 'spans', 'vocabLinks', 'vocabItems'];
@@ -46,18 +45,16 @@ const vocabularies = () => ({
 
 const makeDoc = ({ raw = buildRawDoc(), ...options } = {}) => {
   const { client, release } = heldClient({ ...options, reloadDoc: structuredClone(raw) });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(raw),
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: vocabularies(),
     client,
-    projectId: 'proj-1',
   });
   return { doc, client, release };
 };
 
 const word = (doc, i) => doc.sentences[0].tokens[i];
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => resetIds());
 

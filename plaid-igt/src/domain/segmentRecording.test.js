@@ -5,8 +5,7 @@
 // says what went unsaved (`takeRecordingRefusal`), so the refusal makes no
 // toast or banner of its own.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
 
 const R1 = '/api/v1/documents/d/media?v=1-6';
@@ -31,12 +30,9 @@ const serverWith = (segments, body = 'one two three') => {
 // `watched`: a Media tab is shown (`watchRecording`), whose notice of the
 // change takes the refusal.
 const open = (server, { watched = true } = {}) => {
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client: server.client,
-    projectId: 'proj-1',
     user: { id: 'a' },
   });
   doc._writes._retryDelay = () => 2;
@@ -49,8 +45,6 @@ const open = (server, { watched = true } = {}) => {
   doc.unwatch = watched ? doc.watchRecording() : () => {};
   return doc;
 };
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const idle = async (doc) => {
   while (doc.isSaving) await settle();
 };

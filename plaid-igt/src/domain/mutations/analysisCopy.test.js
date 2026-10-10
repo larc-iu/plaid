@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from '../IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '../test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from '../test-helpers.js';
 
 // A document where "kat" (w-2) is analyzed as ka-t / cat-PL with a link on
 // the first morpheme, and "the" (w-1) is an untouched default word.
@@ -52,7 +51,7 @@ const clientFor = (opts) => {
   return client;
 };
 const docFor = (raw, client) =>
-  new IgtDocument({ raw, client, project, projectId: project.id, vocabularies: vocabsOf() });
+  makeIgtDoc({ raw, client, project, projectId: project.id, vocabularies: vocabsOf() });
 
 const targetAnalysis = {
   word: { vocabItemId: null, fields: { POS: 'N' } },

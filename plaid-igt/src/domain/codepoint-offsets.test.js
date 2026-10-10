@@ -2,8 +2,7 @@
 // ONE code point but TWO UTF-16 units, so in "😀 cat dog" the word "cat" is
 // code-point [2,5] (it would be UTF-16 [3,6]). Token offsets are code points.
 import { describe, it, expect } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient } from './test-helpers.js';
+import { buildRawDoc, makeIgtDoc } from './test-helpers.js';
 import {
   findUntokenizedRanges,
   tokenizeText,
@@ -12,12 +11,9 @@ import {
 } from '../utils/tokenizationUtils.js';
 
 const makeDoc = (raw) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw,
     project: { id: 'proj-1', config: { plaid: {} } },
-    vocabularies: {},
-    client: makeFakeClient(),
-    projectId: 'proj-1',
   });
 
 describe('code-point offsets (astral text)', () => {

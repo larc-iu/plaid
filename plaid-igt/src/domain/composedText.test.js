@@ -2,8 +2,7 @@
 // it, and every token measured on it is measured on the composed text.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc } from './test-helpers.js';
 import { digestOf, segmentServer } from '../test/segmentServer.js';
 import { parseCsv } from '../import/cldf/readDataset.js';
 import { readEaf } from '../import/elan/readEaf.js';
@@ -27,12 +26,9 @@ describe('the Baseline tab', () => {
 
   it('measures the words of a new sentence on the text composed', async () => {
     const server = segmentServer(tokenized('uno dos'));
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: structuredClone(server.stored),
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-      vocabularies: {},
       client: server.client,
-      projectId: 'proj-1',
       user: { id: 'a' },
     });
     doc._writes._retryDelay = () => 5;
@@ -64,12 +60,9 @@ describe('a character a token edge keeps decomposed', () => {
       morphemes: [],
     });
     const server = segmentServer(raw);
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: structuredClone(server.stored),
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-      vocabularies: {},
       client: server.client,
-      projectId: 'proj-1',
       user: { id: 'a' },
     });
     doc._writes._retryDelay = () => 5;

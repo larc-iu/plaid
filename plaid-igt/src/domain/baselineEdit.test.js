@@ -4,8 +4,7 @@
 // answer is lost.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc as buildDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc as buildDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 // These tests are of the edit's own send: "Tokenize new text" is off, so
 // typing adds no words (newTextWords and its batch have tests of their own).
@@ -18,12 +17,9 @@ const buildRawDoc = (opts) => {
 import { digestOf, segmentServer } from '../test/segmentServer.js';
 
 function makeDoc({ raw, client }) {
-  return new IgtDocument({
+  return makeIgtDoc({
     raw,
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
   });
 }
 
@@ -209,12 +205,9 @@ describe('editBaselineText against the stored text', () => {
     metadata: { timeBegin, timeEnd },
   });
   const open = (server) => {
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: structuredClone(server.stored),
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-      vocabularies: {},
       client: server.client,
-      projectId: 'proj-1',
       user: { id: 'a' },
     });
     doc._writes._retryDelay = () => 5;
@@ -333,12 +326,10 @@ describe('editBaselineText against the stored text', () => {
         deleted: { tokens: ['w-2', 'm-2'], spans: [], relations: [], vocabLinks: ['L1'] },
       },
     });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
       vocabularies: { v1: { id: 'v1', name: 'Lex', items: [{ id: 'i1', form: 'cat' }] } },
       client,
-      projectId: 'proj-1',
     });
     expect(doc.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['L1']);
     const gaps = [{ start: 3, end: 7, value: '' }];
@@ -352,12 +343,9 @@ describe('editBaselineText against the stored text', () => {
 // (U1). Against a server that keeps what it stores.
 describe('editBaselineText: what became of a save', () => {
   const open = (server) => {
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: structuredClone(server.stored),
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-      vocabularies: {},
       client: server.client,
-      projectId: 'proj-1',
       user: { id: 'a' },
     });
     doc._writes._retryDelay = () => 2;

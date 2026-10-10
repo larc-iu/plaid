@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { settle } from '@/domain/test-helpers.js';
 
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),
@@ -21,9 +22,6 @@ const setValue = (el, value) => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 };
 const button = (name) => all(document.body, 'button').find((b) => b.textContent.trim() === name);
-const settle = async () => {
-  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-};
 
 const FIELDS = [
   { name: 'gloss', type: 'text' },
@@ -124,7 +122,7 @@ describe('Bulk Add', () => {
     await view.step(() => button('Next: review').click());
     await view.step(async () => {
       button('Add 2').click();
-      await settle();
+      await settle(5);
     });
     const sent = bulkCreate.mock.calls[0][0];
     expect(sent.map((c) => c.metadata.source)).toEqual(['Word list', 'Word list']);
@@ -156,7 +154,7 @@ describe('Bulk Add', () => {
     await view.step(() => button('Next: review').click());
     await view.step(async () => {
       button('Add 1').click();
-      await settle();
+      await settle(5);
     });
     expect(document.body.textContent).toContain('The server went away.');
     await view.step(() => button('Back to review').click());

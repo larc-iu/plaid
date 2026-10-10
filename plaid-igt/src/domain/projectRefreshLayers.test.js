@@ -6,8 +6,7 @@
 // through (REV-W-SETTINGS2 O1). The document's layers now take the config the
 // project read gives them.
 import { describe, it, expect } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const setup = () => {
   resetIds();
@@ -22,11 +21,10 @@ const setup = () => {
   };
   const client = makeFakeClient();
   client.projects.get = async () => structuredClone(server.project);
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: structuredClone(server.project),
     client,
-    projectId: 'proj-1',
   });
   return { doc, server };
 };

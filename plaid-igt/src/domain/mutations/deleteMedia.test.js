@@ -1,17 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from '../IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '../test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc } from '../test-helpers.js';
 
 // Deleting a recording drops the speech-detection cuts measured on it, in the
 // same operation, so a replacement of the same length does not bring them back.
 
 const makeDoc = (raw) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw,
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
-    client: makeFakeClient(),
-    projectId: 'proj-1',
   });
 
 beforeEach(() => resetIds());

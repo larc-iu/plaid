@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { settle } from '@/domain/test-helpers.js';
 
 // The entry form's saves: each shows at once and is sent in its turn. What the
 // list shows afterwards must be what the server holds, a new entry's form must
@@ -476,9 +477,6 @@ describe('the entry form', () => {
 // it refused, someone else's change) is skipped, and a Bulk Add whose plan
 // would now write something else goes back to its review.
 describe('Bulk Add and Replace', () => {
-  const settle = async () => {
-    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-  };
   const kinds = (calls) => calls.map(([kind]) => kind);
   const replaceEdit = async (view) => {
     await view.step(() => button('Replace').click());
@@ -486,7 +484,7 @@ describe('Bulk Add and Replace', () => {
     await view.step(() => setValue(document.getElementById('vocab-replace-with'), 'X'));
     await view.step(async () => {
       button('Replace 1 value').click();
-      await settle();
+      await settle(5);
     });
   };
   const bulkAdd = async (view, label = 'Add 2') => {
@@ -496,7 +494,7 @@ describe('Bulk Add and Replace', () => {
     await view.step(() => button('Next: review').click());
     await view.step(async () => {
       button(label).click();
-      await settle();
+      await settle(5);
     });
   };
   let mounted = null;
@@ -540,7 +538,7 @@ describe('Bulk Add and Replace', () => {
     expect(kinds(calls)).toEqual(['bulkUpdate']);
     await view.step(async () => {
       held.resolve();
-      await settle();
+      await settle(5);
     });
     expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkUpdate']);
     expect(calls[1][1]).toEqual([{ id: 'a', form: 'uno-X' }]);
@@ -551,7 +549,7 @@ describe('Bulk Add and Replace', () => {
     await replaceEdit(view);
     await view.step(async () => {
       held.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     expect(kinds(calls)).toEqual(['bulkUpdate']);
     expect(feedback.notifyWarning).toHaveBeenCalledWith(
@@ -578,7 +576,7 @@ describe('Bulk Add and Replace', () => {
     };
     await view.step(async () => {
       button('Replace 2 values').click();
-      await settle();
+      await settle(5);
     });
     expect(stubbed.calls).toEqual([['bulkUpdate', [{ id: 'a', form: 'uno-X' }]]]);
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
@@ -606,7 +604,7 @@ describe('Bulk Add and Replace', () => {
     added = true;
     await view.step(async () => {
       button('Add 2').click();
-      await settle();
+      await settle(5);
     });
     expect(kinds(stubbed.calls)).toEqual([]);
     expect(document.body.textContent).toContain('Entries changed since this review.');
@@ -619,7 +617,7 @@ describe('Bulk Add and Replace', () => {
     expect(kinds(calls)).toEqual(['bulkUpdate']);
     await view.step(async () => {
       held.resolve();
-      await settle();
+      await settle(5);
     });
     expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkCreate']);
   });
@@ -642,7 +640,7 @@ describe('Bulk Add and Replace', () => {
     await replaceEdit(view);
     await view.step(async () => {
       held.resolve();
-      await settle();
+      await settle(5);
     });
     expect(kinds(calls)).toEqual(['create', 'bulkUpdate']);
     expect(calls[1][1]).toEqual([{ id: 'server-1', form: 'dos-X' }]);
@@ -653,7 +651,7 @@ describe('Bulk Add and Replace', () => {
     await bulkAdd(view, 'Add 1 · update 1');
     await view.step(async () => {
       held.resolve();
-      await settle();
+      await settle(5);
     });
     const update = calls.find(([kind]) => kind === 'bulkUpdate');
     expect(update).toBeTruthy();
@@ -665,7 +663,7 @@ describe('Bulk Add and Replace', () => {
     await bulkAdd(view);
     await view.step(async () => {
       held.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkCreate']);
   });
@@ -675,9 +673,6 @@ describe('Bulk Add and Replace', () => {
 // typed into the entry open NOW, which need not be the one it was about, and a
 // refused new entry goes back to a form that can be sent again.
 describe('a refused entry write', () => {
-  const settle = async () => {
-    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-  };
   let mounted = null;
   afterEach(async () => {
     await mounted?.unmount();
@@ -699,7 +694,7 @@ describe('a refused entry write', () => {
     await view.step(() => setValue(glossInput(), 'two, not saved'));
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     expect(formInput().value).toBe('dos');
     expect(glossInput().value).toBe('two, not saved');
@@ -717,7 +712,7 @@ describe('a refused entry write', () => {
     await view.step(() => button('Create').click());
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     expect(feedback.notifySuccess).not.toHaveBeenCalled();
     expect(formInput().value).toBe('nuevo');
@@ -726,7 +721,7 @@ describe('a refused entry write', () => {
     expect(hasUnsavedDraft()).toBe('The entry you have typed');
     await view.step(async () => {
       button('Create').click();
-      await settle();
+      await settle(5);
     });
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
     // A create that lands says nothing: the list already shows it.
@@ -756,13 +751,13 @@ describe('a refused entry write', () => {
     await view.step(() => setValue(formInput(), 'nuevo'));
     await view.step(async () => {
       button('Create').click();
-      await settle();
+      await settle(5);
     });
     const idOf = (call) => call.at(-1)?.id;
     expect(calls.map(([kind]) => kind)).toEqual(['create']);
     await view.step(async () => {
       first.resolve();
-      await settle();
+      await settle(5);
     });
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
     expect(idOf(calls[1])).not.toBe(idOf(calls[0]));
@@ -778,11 +773,11 @@ describe('a refused entry write', () => {
     await view.step(() => button('Create').click());
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     await view.step(async () => {
       button('Create').click();
-      await settle();
+      await settle(5);
     });
     const idOf = (call) => call.at(-1)?.id;
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
@@ -798,7 +793,7 @@ describe('a refused entry write', () => {
     await view.step(() => button('Create').click());
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     await view.step(() => button('Cancel').click());
     await view.step(() =>
@@ -809,7 +804,7 @@ describe('a refused entry write', () => {
     await view.step(() => setValue(formInput(), 'nuevo'));
     await view.step(async () => {
       button('Create').click();
-      await settle();
+      await settle(5);
     });
     const idOf = (call) => call.at(-1)?.id;
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
@@ -831,7 +826,7 @@ describe('a refused entry write', () => {
           method: 'POST',
         }),
       );
-      await settle();
+      await settle(5);
     });
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
     const idOf = (call) => call.at(-1)?.id;
@@ -862,7 +857,7 @@ describe('a refused entry write', () => {
     expect(listed()).toEqual(['uno-EDIT']);
     await view.step(async () => {
       refused.reject(new Error('refused'));
-      await settle();
+      await settle(5);
     });
     // The first read failed, the second is on the wire: still saving.
     expect(reads).toBe(2);
@@ -870,7 +865,7 @@ describe('a refused entry write', () => {
     expect(listed()).toEqual(['uno-EDIT']);
     await view.step(async () => {
       offline.resolve();
-      await settle();
+      await settle(5);
     });
     expect(writes.isSaving).toBe(false);
     expect(listed()).toEqual(['uno']);

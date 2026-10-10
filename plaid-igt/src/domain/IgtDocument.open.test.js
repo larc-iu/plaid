@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 // Opening a document in IGT writes nothing. The layer rules are declared at
 // setup and by the settings that change them, and a morph type cached on a
@@ -27,12 +26,10 @@ describe('IgtDocument.reconcileOnOpen', () => {
   it('writes nothing for a bare word, which derives a morpheme of its own', async () => {
     const raw = buildRawDoc({ words: twoWords, morphemes: [m('m-1', 0, 3)] });
     const client = makeFakeClient();
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: { id: 'proj-1', vocabs: [], config: {} },
-      vocabularies: {},
       client,
-      projectId: 'proj-1',
     });
 
     const res = await doc.reconcileOnOpen();
@@ -50,8 +47,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
   // name of whoever opened it.
   it('neither declares rules nor writes a drifted morph type', async () => {
     const client = makeFakeClient();
-    const doc = new IgtDocument({
-      raw: buildRawDoc(),
+    const doc = makeIgtDoc({
       project: {
         id: 'proj-1',
         vocabs: [{ id: 'v1' }],
@@ -67,7 +63,6 @@ describe('IgtDocument.reconcileOnOpen', () => {
         },
       },
       client,
-      projectId: 'proj-1',
     });
 
     const res = await doc.reconcileOnOpen();

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from '../IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '../test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from '../test-helpers.js';
 
 // A delete names the recording on screen (H36-SETTINGS-LIVE-1). One replaced
 // by someone else since is refused, nothing else is written, the refusal says
@@ -12,12 +11,9 @@ const NEW = '/api/v1/documents/doc-1/media?v=2000-7';
 beforeEach(() => resetIds());
 
 const makeDoc = (raw, client) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw,
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
   });
 
 describe('deleteMedia names the recording', () => {

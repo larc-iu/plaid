@@ -4,8 +4,7 @@
 // The same holds for the morpheme an unanalyzed word needs before anything can
 // point at it.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const WRITER = { id: 'wren@example.com' };
 
@@ -52,7 +51,7 @@ const server = () => {
 const PROJECT = () => ({ id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } });
 
 const makeDoc = (client, raw = buildRawDoc()) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw,
     project: PROJECT(),
     vocabularies: {
@@ -65,7 +64,6 @@ const makeDoc = (client, raw = buildRawDoc()) =>
       },
     },
     client,
-    projectId: 'proj-1',
     user: WRITER,
   });
 

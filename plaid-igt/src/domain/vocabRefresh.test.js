@@ -1,20 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 // A lexicon read again (the popover opening, the tab coming back) must not
 // take off the screen an edit made while the read was out: the read was
 // answered before the edit reached the server.
 
 const makeDoc = (client) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw: buildRawDoc({}),
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: {} },
     vocabularies: {
       v1: { id: 'v1', name: 'Lex', items: [{ id: 'i-cat', form: 'cat' }], vocabLinks: [] },
     },
     client,
-    projectId: 'proj-1',
   });
 
 beforeEach(() => resetIds());

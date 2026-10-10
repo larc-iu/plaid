@@ -1,20 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
 import {
   buildAnchorIndex,
   buildEntryAnchorIndex,
   describeAnchor,
   anchorCaption,
 } from './commentAnchors.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc } from './test-helpers.js';
 
 const makeDoc = (opts = {}) =>
-  new IgtDocument({
+  makeIgtDoc({
     raw: buildRawDoc(opts),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
-    client: makeFakeClient(),
-    projectId: 'proj-1',
   });
 
 beforeEach(() => resetIds());

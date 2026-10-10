@@ -3,8 +3,7 @@
 // (alignmentTimes.js) has to hold on THAT document too: the change elsewhere
 // may be what makes the overlap a same-voice one (REV-MEDIA-3).
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, resetIds } from './test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
 
 const seg = (id, begin, end, timeBegin, timeEnd, speaker) => ({
@@ -19,20 +18,15 @@ const serverWith = (segments, body = 'one two three') =>
   segmentServer(buildRawDoc({ body, words: [], morphemes: [], alignmentTokens: segments }));
 
 const open = (server) => {
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: structuredClone(server.stored),
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client: server.client,
-    projectId: 'proj-1',
     user: { id: 'a' },
   });
   doc._writes._retryDelay = () => 2;
   doc.onError = () => {};
   return doc;
 };
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const idle = async (doc) => {
   while (doc.isSaving) await settle();
 };
