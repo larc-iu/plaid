@@ -1285,7 +1285,7 @@
         (let [[body tokens ops] (random-edit-case r)
               applied (try (:text/body (:text (ta/apply-text-edits ops {:text/body body} tokens)))
                            (catch clojure.lang.ExceptionInfo _ nil))]
-          (is (= applied (#'ta/ops-body ops body))
+          (is (= applied (ta/edit-ops-body ops body))
               (str "seed " seed " case " case-n ": " (pr-str body) " " (pr-str ops))))))))
 
 (deftest many-edits-with-one-out-of-order-apply-quickly

@@ -1744,13 +1744,14 @@
         (let [joined (join-at-token-edges o near (vec edits))]
           (if (or merged? (not= joined edits)) (edits->ops joined) ops))))))
 
-(declare apply-text-edits*)
+(declare apply-text-edits)
 
-(defn- ops-body
-  "The text `ops` make of `old`, or nil when one of them does not fit it.
-  Through a gap buffer, so ops in nearly their order cost the text they
-  move. Applying them in turn copies the whole text for each op out of
-  order, which took seconds on a long text pasted over by another."
+(defn edit-ops-body
+  "The text `ops` (running coordinates, applied in turn) make of `old`, or
+  nil when one of them does not fit it. Through a gap buffer, so ops in
+  nearly their order cost the text they move. Applying them in turn copies
+  the whole text for each op out of order, which took seconds on a long text
+  pasted over by another."
   [ops ^String old]
   (let [^ints o (.toArray (.codePoints old))
         n (alength o)
@@ -1851,10 +1852,6 @@
   edits over a long text, with the write lock held. Other op lists are
   applied a run of such ops at a time: one op out of that order among the
   7,000 a long line retyped gave cost a minute applied in turn."
-  [ops text tokens]
-  (apply-text-edits* ops text tokens))
-
-(defn- apply-text-edits*
   [ops text tokens]
   (let [ops (vec (take-while some? ops))
         ^String body (:text/body text)
@@ -2051,12 +2048,6 @@
         same? (fn [{:keys [start end value]}]
                 (and (< start end) (= value (cp/cp-subs old start end))))]
     (into [] (remove same?) gaps)))
-
-(defn edit-ops-body
-  "The text `ops` (running coordinates, applied in turn) make of `old`, or
-  nil when one does not fit it."
-  [ops ^String old]
-  (ops-body ops old))
 
 (defn gap-ops
   "Running ops for `gaps` (old-body order, never touching, see
