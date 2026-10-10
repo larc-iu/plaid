@@ -113,3 +113,56 @@ def test_the_reply_keeps_how_long_it_took(monkeypatch):
     assert not helper.errors, helper.errors
     conv, _meta = store.load('c1')
     assert conv['display'][-1]['elapsed_ms'] >= 50
+
+
+def test_the_transcript_sent_is_held_to_the_window_before_the_first_call(monkeypatch):
+    """H13-UPGRADE-2: a record written under another model's window was sent
+    whole once and refused. It is held to this model's share before it is
+    sent, oldest tool results first."""
+    from plaid_agent.core.conversation import DROPPED, ConversationStore, build_meta, user_item
+    client = FakeClient()
+    store = ConversationStore(client, 'u@x', 'p1', 'igt')
+    big = 'word ' * 4000
+    messages = [{'role': 'user', 'content': 'first'},
+                {'role': 'assistant', 'content': None,
+                 'tool_calls': [{'id': 't1', 'type': 'function', 'function': {'name': 's', 'arguments': '{}'}}]},
+                {'role': 'tool', 'tool_call_id': 't1', 'content': big},
+                {'role': 'assistant', 'content': 'Found it.'},
+                {'role': 'user', 'content': 'Which words are unglossed?'}]
+    conv = {'messages': messages, 'display': [user_item('first'), user_item('Which words are unglossed?')]}
+    store.save('c1', conv, build_meta(None, 'c1', conv, 'igt:assist:fake', 'fake/model',
+                                      pending={'kind': 'turn', 'request_id': 'r1',
+                                               'service_id': 'igt:assist:fake'}))
+    seen = {}
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        seen['transcript'] = transcript
+        seen['shrink'] = ws.shrink
+        return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [], usage={'sent': 10, 'received': 1})
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    svc = _service()
+    svc.cfg = ModelConfig(model=UNKNOWN, context_window=6000)
+    helper = Helper()
+    svc.process_request(_request(client), helper)
+    assert not helper.errors, helper.errors
+    tool = [m for m in seen['transcript'] if m.get('role') == 'tool']
+    assert tool and tool[0]['content'] == DROPPED
+    assert seen['transcript'][-1]['content'].endswith('Which words are unglossed?')
+    assert callable(seen['shrink'])
+
+
+def test_a_learned_window_is_the_one_the_reply_records(monkeypatch):
+    """H13-PANEL-1: the gauge shows the window a refusal named."""
+    from plaid_agent.core import agent
+    monkeypatch.setattr(agent, '_learned', {UNKNOWN: 65536})
+    client = FakeClient()
+    store = _seed(client)
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [], usage={'sent': 1000, 'received': 20})
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    svc = _service()
+    svc.cfg = ModelConfig(model=UNKNOWN)
+    svc.process_request(_request(client), Helper())
+    conv, _meta = store.load('c1')
+    assert conv['display'][-1]['usage']['window'] == 65536

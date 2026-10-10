@@ -47,6 +47,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from .limits import DOC_CACHE_SIZE
+from .trace import reading_line
 
 # How many document reads may be in flight at once. Deliberately well under
 # the server's default pool of ten: the assistant is one of several things
@@ -189,7 +190,7 @@ class Reader:
         # the read is still running or starts here. A walk that reported only
         # the documents it had to wait for would go quiet exactly when the
         # reading ahead is working, which reads as a hang.
-        self._on_progress(f'Reading "{label}"…' if label else 'Reading a document…')
+        self._on_progress(reading_line({'document': label}) if label else 'Reading a document…')
         if future is not None:
             doc = future.result()
             self._start_more()

@@ -12,6 +12,7 @@ one read without re-reading.
 """
 
 import json
+import re
 import threading
 from types import SimpleNamespace
 import time
@@ -27,6 +28,7 @@ from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, ret
 
 from .bidi import for_model
 from .filetools import vouches
+from .limits import cuts
 from .rounds import call_record, new_round
 from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
@@ -289,7 +291,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 now = time.monotonic()
                 if now - last_thought >= STREAM_INTERVAL_S:
                     last_thought = now
-                    on_thinking(thought)
+                    on_thinking(clean_reasoning(thought) or '')
             if piece:
                 if seam and text and not text[-1].isspace() and not piece[0].isspace():
                     text += '\n\n'
@@ -305,14 +307,14 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         # A timeout, a rate limit or a provider that is down is not a provider
         # that refuses to stream: asking again at once without streaming would
         # only fail the same way, and :func:`_complete` decides about retries.
-        if chunks or is_timeout(e, litellm) or isinstance(e, transient_errors(litellm)):
+        if chunks or is_timeout(e, litellm) or isinstance(e, transient_errors(litellm)) or too_long(e):
             raise
         # A call abandoned at a stop asks nothing more of the provider.
         if abandoned is not None and abandoned.is_set():
             raise TurnCancelled() from e
         return litellm.completion(**kwargs)
     if thought:
-        on_thinking(thought)
+        on_thinking(clean_reasoning(thought) or '')
     if text:
         on_text(text)
     # litellm's builder, for a model litellm knows. For one it does not (a
@@ -381,12 +383,23 @@ def _assembled(chunks: List[Any]):
 _NOT_TEXT_DELTAS = ('tool_calls', 'function_call', 'reasoning_content', 'thinking_blocks')
 
 
+_THINK_TAGS = re.compile(r'</?think>')
+
+
+def clean_reasoning(text: Any) -> Optional[str]:
+    """The reasoning as the reader is shown it: without stray ``<think>`` and
+    ``</think>`` tags, which some servers send as the reasoning of a call that
+    did not reason, and None when nothing else is left."""
+    if not isinstance(text, str):
+        return None
+    return _THINK_TAGS.sub('', text).strip() or None
+
+
 def _thinking_of(msg) -> Optional[str]:
     """The reasoning a provider returned beside the reply
     (``reasoning_content``), or None when it returned none. Kept in the round
     for the reader, never in the transcript the model is sent."""
-    t = getattr(msg, 'reasoning_content', None)
-    return t.strip() or None if isinstance(t, str) else None
+    return clean_reasoning(getattr(msg, 'reasoning_content', None))
 
 
 def _joined(*parts: Optional[str]) -> Optional[str]:
@@ -494,10 +507,65 @@ def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Opt
         return f'The model did not answer within {timeout:g} seconds.' if timeout \
             else 'The model did not answer in time.'
     if _ProviderError and isinstance(e, _ProviderError):
-        if isinstance(e, getattr(litellm, 'ContextWindowExceededError', ())):
-            return 'The conversation is too long for the model.'
+        if too_long(e):
+            return TOO_LONG_LINE
         return 'The model could not answer.'
     return None
+
+
+#: What the reader is told when a turn does not fit the model even after the
+#: older tool results were dropped (`learn_window`, the loop's one retry).
+TOO_LONG_LINE = 'This conversation is too long for the model. Start a new conversation.'
+
+
+def too_long(e: BaseException) -> bool:
+    """The provider refused the request as longer than the model takes."""
+    return isinstance(e, getattr(litellm, 'ContextWindowExceededError', ()))
+
+
+# The window a provider's refusal named, per model, for this process: what a
+# model behind a server litellm does not know takes, learned the first time a
+# request was refused as too long (`learn_window`).
+_learned: Dict[str, int] = {}
+_learned_lock = threading.Lock()
+
+# How a refusal names the window: llama-server's "the available context size
+# (65536 tokens)", OpenAI's and vLLM's "maximum context length is 8192
+# tokens", Anthropic's "210000 tokens > 200000 maximum".
+_NAMED_WINDOW = (re.compile(r'(?:context (?:size|length|window)|context length)\D{0,30}?(\d[\d,]{2,})', re.I),
+                 re.compile(r'>\s*(\d[\d,]{2,})\s*maximum', re.I))
+
+#: The share of what was known (or sent) taken as the window when a refusal
+#: names none.
+UNNAMED_WINDOW_SHARE = 0.5
+
+
+def _named_window(text: str) -> Optional[int]:
+    for rx in _NAMED_WINDOW:
+        m = rx.search(text)
+        if m:
+            n = int(m.group(1).replace(',', ''))
+            if n > 0:
+                return n
+    return None
+
+
+def learn_window(model: str, e: BaseException, sent: Optional[int] = None) -> Optional[int]:
+    """The window ``model`` takes, learned from a refusal as too long: the
+    figure the refusal names, or when it names none, a share of the window
+    known so far or of the ``sent`` tokens. Kept for this process, so the
+    gauge and every later turn hold the transcript to it (`context_window`).
+    None when there is nothing to go on."""
+    n = _named_window(str(e))
+    if n is None:
+        known = [x for x in (context_window(model), sent) if x]
+        if not known:
+            return None
+        n = int(min(known) * UNNAMED_WINDOW_SHARE)
+    with _learned_lock:
+        was = _learned.get(model)
+        _learned[model] = min(was, n) if was else n
+        return _learned[model]
 
 
 def usage_of(resp) -> Optional[Dict[str, int]]:
@@ -549,9 +617,17 @@ def context_window(model: str, stated: Optional[int] = None) -> Optional[int]:
     litellm's record is about a model of that name somewhere. Nothing else is
     tried, such as the same model under another provider's name, because that
     would be a guess.
+
+    A window a provider's refusal named (`learn_window`) is the fact about
+    the deployment as it answered, and wins when it is smaller.
     """
-    if stated:
-        return stated
+    with _learned_lock:
+        learned = _learned.get(model)
+    known = stated or _library_window(model)
+    return min(learned, known) if learned and known else learned or known
+
+
+def _library_window(model: str) -> Optional[int]:
     try:
         info = litellm.get_model_info(model) or {}
     except Exception:  # noqa: BLE001 - an unknown model is the normal case, not an error
@@ -635,11 +711,24 @@ def turn_trace(e: BaseException):
     return list(getattr(e, 'turn_steps', None) or []), getattr(e, 'turn_partial', None) or ''
 
 
+def turn_reply_round(e: BaseException) -> Optional[str]:
+    """The round a turn that ended with ``e`` stored for the reasoning of the
+    model call under way (the reader watched it stream), or None."""
+    return getattr(e, 'turn_reply_round', None)
+
+
+#: Shrinks the transcript a model call was refused as too long for:
+#: ``(history, new)``, the turn's earlier messages and its own so far, to a
+#: shorter ``history``, or None when nothing more can go.
+Shrink = Callable[[List[Dict[str, Any]], List[Dict[str, Any]]], Optional[List[Dict[str, Any]]]]
+
+
 def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: List[Dict[str, Any]],
              on_progress: Callable[[int, str], None] = lambda p, m: None,
              cancelled: Callable[[], bool] = lambda: False,
              on_text: Callable[[str], None] = lambda t: None,
-             on_thinking: Optional[Callable[[str], None]] = None) -> TurnResult:
+             on_thinking: Optional[Callable[[str], None]] = None,
+             shrink: Optional[Shrink] = None) -> TurnResult:
     """Run one turn: model call, tool calls, repeat, final text. ``cancelled``
     is polled before every tool call and while a model call waits; once it answers
     True the turn ends with :class:`TurnCancelled`. ``on_text`` receives the
@@ -658,25 +747,46 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     round under way when it made any. A stop seen by the client's own
     checkpoint (a progress line sent from inside a tool raises
     :class:`ServiceCancelled`, which is not an ``Exception``) carries them
-    too."""
+    too. The reasoning the reader watched for the call under way is stored
+    as a round of its own (:func:`turn_reply_round`).
+
+    A model call the provider refuses as too long is asked once more after
+    the window its refusal names is learned (`learn_window`) and ``shrink``
+    (by default the workspace's, ``ws.shrink``, set by the service) dropped
+    older tool results to fit it."""
     trace: List[Dict[str, Any]] = []
-    live: Dict[str, Any] = {'round': None, 'text': ''}
+    live: Dict[str, Any] = {'round': None, 'text': '', 'n': 1}
     keeper = getattr(ws, 'rounds', None)
     if keeper is not None:
         keeper.follow(trace)
     if on_thinking is None:
         on_thinking = keeper.think if keeper is not None else (lambda t: None)
+    if shrink is None:
+        shrink = getattr(ws, 'shrink', None)
     try:
         return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, live, keeper,
-                         on_thinking)
+                         on_thinking, shrink)
     except (Exception, ServiceCancelled) as e:
         rnd = live['round']
         if keeper is not None and rnd is not None and rnd['calls'] and not keeper.store(rnd):
             _unstored(trace, rnd)
         # The text of the call under way, or of a call whose tools never ran.
         partial = live['text'] or (rnd.get('said', '') if rnd is not None and not rnd['calls'] else '')
+        # The reasoning of the call under way, or of a call whose tools never
+        # ran, which the reader saw stream: its own round.
+        reply_round = None
+        thought = (rnd.get('thinking') if rnd is not None and not rnd['calls'] else None) \
+            or clean_reasoning(keeper.thinking if keeper is not None else None)
+        if keeper is not None and thought:
+            n = live['n']
+            kept = new_round(n, cfg.model, _asked(_clean_transcript(transcript)) if n == 1 else None)
+            kept['thinking'] = thought
+            if partial:
+                kept['said'] = partial
+            if keeper.store(kept):
+                reply_round = kept['id']
         try:
-            e.turn_steps, e.turn_partial = trace, partial
+            e.turn_steps, e.turn_partial, e.turn_reply_round = trace, partial, reply_round
         except AttributeError:  # an exception type that takes no attributes keeps none
             pass
         raise
@@ -701,7 +811,8 @@ def _asked(history: List[Dict[str, Any]]) -> Optional[str]:
 
 def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
               trace: List[Dict[str, Any]], live: Dict[str, Any], keeper,
-              on_thinking: Callable[[str], None] = lambda t: None) -> TurnResult:
+              on_thinking: Callable[[str], None] = lambda t: None,
+              shrink: Optional[Shrink] = None) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
     rounds = 0
@@ -729,9 +840,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                   + [{'role': 'user', 'content': nudge}]}
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
-        text_seen('')
-        on_thinking('')
-        resp = _complete(cfg, kwargs, text_seen, cancelled, on_thinking)
+        live['n'] = rounds + 1
+        resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new
+                   + [{'role': 'user', 'content': nudge}])
         spend.add(resp)
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
@@ -763,6 +874,26 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             return None, False
         return rnd['id'], bool(thinking)
 
+    def ask(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
+        """One model call. Refused as too long, it is asked once more on a
+        transcript `shrink` cut to the window the refusal named."""
+        text_seen('')
+        on_thinking('')
+        try:
+            return _complete(cfg, kwargs, text_seen, cancelled, on_thinking)
+        except Exception as e:
+            if not too_long(e) or shrink is None:
+                raise
+            learn_window(cfg.model, e)
+            smaller = shrink(history, new)
+            if smaller is None:
+                raise
+            print(f'{cfg.model} refused the request as too long; asking again with older tool results dropped')
+            history[:] = smaller
+            text_seen('')
+            on_thinking('')
+            return _complete(cfg, {**kwargs, 'messages': messages()}, text_seen, cancelled, on_thinking)
+
     while True:
         if cancelled():
             raise TurnCancelled()
@@ -773,9 +904,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             kwargs['temperature'] = cfg.temperature
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
-        text_seen('')
-        on_thinking('')
-        resp = _complete(cfg, kwargs, text_seen, cancelled, on_thinking)
+        live['n'] = rounds + 1
+        resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new)
         spend.add(resp)
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
@@ -817,6 +947,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             saved_before = len(getattr(getattr(ws, 'keeper', None), 'saved', None) or ())
             key = (name, raw)
             repeated = False
+            nothing = False
+            cut = False
             saw = None
             try:
                 args = json.loads(raw)
@@ -827,18 +959,22 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             else:
                 key = (name, json.dumps(args, sort_keys=True, default=str))
                 plan_call = kit.tracer.kind(name) == PLAN and name not in META_TOOLS
-                before = _plan_snapshot(ws) if plan_call and key in made else None
-                on_progress(min(85, 8 + rounds * 5), kit.tracer.progress(name, args))
+                before = _plan_snapshot(ws) if plan_call else None
+                line = kit.tracer.progress(name, args)
+                on_progress(min(85, 8 + rounds * 5), line)
+                ws.announced = line
                 planned_before = len(ws.ops)
                 # A value typed in a rare script can come out garbled, and is
                 # refused before the tool sees it (see core.garble).
                 why = ws.garbled(args) if plan_call and hasattr(ws, 'garbled') else None
                 # What the call reads is noted here (`BaseWorkspace.note_read`).
                 ws.reads = []
+                cuts_before = cuts()
                 try:
                     result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
                 finally:
-                    saw, ws.reads = ws.reads, None
+                    saw, ws.reads, ws.announced = ws.reads, None, None
+                cut = cuts() > cuts_before
                 # The lines a plan shows isolate their values (core.bidi). The
                 # model reads them plain, so it never copies an isolate.
                 result = for_model(result)
@@ -854,23 +990,29 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 if planned:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
                 if plan_call and not str(result).startswith('Error'):
-                    made.add(key)
-                    if before is not None and _plan_snapshot(ws) == before:
+                    unchanged = _plan_snapshot(ws) == before
+                    if key in made and unchanged:
                         result, repeated = ALREADY_PLANNED, True
+                    else:
+                        # A plan call that went through and left the plan as
+                        # it was planned nothing, and its step says so.
+                        nothing = unchanged
+                    made.add(key)
             failed = str(result).startswith('Error')
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
             first = not rnd['calls']
             trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned, saved=saved,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
                                     said=rnd.get('said') if first else None,
-                                    thought=first and keeper is not None and bool(rnd.get('thinking'))))
+                                    thought=first and keeper is not None and bool(rnd.get('thinking')),
+                                    nothing=nothing and not failed))
             if keeper is not None and first:
                 # The round's text and reasoning are on its first step now,
                 # not the call's.
                 keeper.text = ''
                 keeper.thinking = ''
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
-            rnd['calls'].append(call_record(c['id'], name, raw, result))
+            rnd['calls'].append(call_record(c['id'], name, raw, result, cut=cut))
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:
                 failing['times'] += 1
             else:

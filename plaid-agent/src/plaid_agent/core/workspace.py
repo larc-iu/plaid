@@ -175,8 +175,17 @@ class BaseWorkspace:
     def reader(self) -> docload.Reader:
         if self._reader is None:
             cache = self.DOC_CACHE or docload.DocCache(0)
-            self._reader = docload.Reader(self.load_doc, cache, self.on_progress)
+            self._reader = docload.Reader(self.load_doc, cache, self._loading)
         return self._reader
+
+    def _loading(self, line: str) -> None:
+        """The reader's line for a document it loads, unless the line the
+        turn showed for the call under way (``announced``) already names it,
+        with the span the call asked for."""
+        shown = getattr(self, 'announced', None)
+        if shown and line.endswith('…') and shown.startswith(line[:-1]):
+            return
+        self.on_progress(line)
 
     def _version_of(self, entry: dict):
         """The :class:`docload.Stamp` to cache a listed document under, or

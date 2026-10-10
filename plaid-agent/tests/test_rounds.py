@@ -436,3 +436,185 @@ def test_a_round_over_the_cap_cuts_the_reasoning_first():
     assert _bytes(out) <= 4000 and out['fitted'] is True
     assert 'characters cut to fit the store' in out['thinking']
     assert out['calls'][0]['result'] == 'x' * 3000
+
+
+# --- hunt round 13 ------------------------------------------------------------------
+
+
+def test_the_reasoning_of_a_call_stopped_while_it_reasoned_is_kept_in_a_round_of_its_own(monkeypatch):
+    """H13-TRACE-2: the reader watched it stream, so a stop does not lose it.
+    A stop in the first call keeps the question as received too."""
+    client = FakeClient()
+    stop = {'now': False}
+
+    def stream():
+        yield _thought_chunk('Weighing ')
+        yield _thought_chunk('the glosses.')
+        yield _chunk('Half')
+        time.sleep(0.3)
+        stop['now'] = True
+        time.sleep(2)
+        yield _chunk(' more')
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: stream())
+    with pytest.raises(TurnCancelled) as e:
+        run_turn(ModelConfig(model='fake/m'), _kit({}), _ws(client), 'system',
+                 [{'role': 'user', 'content': 'hi'}], cancelled=lambda: stop['now'])
+    [rnd] = _rounds(client)
+    assert agent.turn_reply_round(e.value) == rnd['id']
+    assert rnd['thinking'] == 'Weighing the glosses.' and rnd['said'] == 'Half' and rnd['asked'] == 'hi'
+    from plaid_agent.core.conversation import error_item
+    item = error_item('Stopped.', stopped=True, reply_round=agent.turn_reply_round(e.value))
+    assert item['reply_round'] == rnd['id'] and item['reply_thought'] is True
+
+
+def test_a_failure_after_a_round_keeps_the_reasoning_of_the_call_under_way(monkeypatch):
+    client = FakeClient()
+    calls = iter([_with_reasoning(_calls(('c1', 'search', '{"q": "kai"}')), 'First.')])
+
+    def completion(**kw):
+        nxt = next(calls, None)
+        if nxt is not None:
+            return nxt
+        raise RuntimeError('down')
+    monkeypatch.setattr(agent.litellm, 'completion', completion)
+    ws = _ws(client)
+    with pytest.raises(RuntimeError) as e:
+        run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': 'a'}), ws, 'system',
+                 [{'role': 'user', 'content': 'hi'}])
+    # No reasoning came for the failed call: nothing more is stored.
+    assert len(_rounds(client)) == 1 and agent.turn_reply_round(e.value) is None
+
+
+def test_a_bare_think_tag_is_no_reasoning(monkeypatch):
+    """H13-PANEL-4: llama-server's Qwen sends `<think>` as the reasoning of a
+    call that did not reason. It is not stored and the step has no Thinking."""
+    client = FakeClient()
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _with_reasoning(_calls(('c1', 'search', '{"q": "kai"}')), '<think>'),
+        _with_reasoning(_reply('Done.'), '<think>\nReal thought.\n</think>')]))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': 'a'}), _ws(client), 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    first, reply = _rounds(client)
+    assert 'thinking' not in first and not turn.steps[0].get('thought')
+    assert reply['thinking'] == 'Real thought.'
+    assert agent.clean_reasoning(' \n<think></think> ') is None
+
+
+def test_cut_comes_from_the_cut_not_from_the_words(monkeypatch):
+    """H13-TRACE-4: a result that only mentions truncation is not cut, and one
+    `truncate` cut is."""
+    from plaid_agent.core.limits import MAX_RESULT_CHARS
+    from plaid_agent.core.tools import truncate
+    client = FakeClient()
+    answers = {'odd': 'short\n... [truncated: 3 more characters; narrow the request]',
+               'long': lambda: truncate('x' * (MAX_RESULT_CHARS + 10))}
+    kit = Toolkit(tools_for=lambda ws: [],
+                  call_tool=lambda ws, n, a: (lambda v: v() if callable(v) else v)(answers[a['q']]), tracer=TRACER)
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _calls(('c1', 'search', '{"q": "odd"}'), ('c2', 'search', '{"q": "long"}')), _reply('ok')]))
+    run_turn(ModelConfig(model='fake/m', stream=False), kit, _ws(client), 'system',
+             [{'role': 'user', 'content': 'hi'}])
+    [rnd] = _rounds(client)
+    odd, long = rnd['calls']
+    assert 'cut' not in odd and long['cut'] is True
+
+
+def test_a_round_write_waiting_out_the_server_gives_up_when_the_turn_is_stopped(monkeypatch):
+    """H13-TRACE-6: Stop took minutes while a round write waited out 503s."""
+    from plaid_agent.core import conversation as conv_mod
+    client = FakeClient()
+    stop = {'now': False}
+    tries = []
+
+    def away(*a, **k):
+        tries.append(1)
+        stop['now'] = True
+        raise PlaidAPIError(503, 'away')
+    monkeypatch.setattr(conv_mod, '_pause', lambda s: None)
+    ws = _ws(client)
+    ws.rounds.cancelled = lambda: stop['now']
+    monkeypatch.setattr(client.user_data, 'put', away)
+    assert ws.rounds.store({'id': 'r1', 'n': 2, 'calls': []}) is False
+    assert len(tries) == 1
+
+
+def test_a_plan_call_that_planned_nothing_says_so(monkeypatch):
+    """H13-PANEL-3: never "Planned" over a call that left the plan as it was."""
+    from plaid_agent.core.trace import PLAN
+    tracer = Tracer(kind=lambda n: PLAN, describe=lambda n, a: f'Planned replacing {a["q"]}',
+                    progress=lambda n, a: 'Planning…')
+
+    class PlanWs(Ws):
+        def __init__(self):
+            self.ops = []
+
+    def call(ws, name, args):
+        if args['q'] == 'hit':
+            ws.ops.append({'kind': 'set', 'v': 1})
+            return 'Planned 1 change.'
+        return 'Nothing to change: no Gloss values matched.'
+    client = FakeClient()
+    ws = PlanWs()
+    ws.rounds = RoundKeeper(_store(client), 'c1')
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _calls(('c1', 'replace', '{"q": "miss"}'), ('c2', 'replace', '{"q": "hit"}')), _reply('ok')]))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False),
+                    Toolkit(tools_for=lambda ws: [], call_tool=call, tracer=tracer), ws, 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    miss, hit = turn.steps
+    assert miss['label'] == 'Nothing to change: replacing miss' and miss['nothing'] is True
+    assert hit['label'] == 'Planned replacing hit' and 'nothing' not in hit and hit['planned'] == 1
+
+
+def test_a_request_refused_as_too_long_is_asked_again_on_a_transcript_held_to_the_window_it_named(monkeypatch):
+    """H13-PANEL-1: the window is learned from the refusal, kept for the
+    process, and the call asked once more with older results dropped."""
+    monkeypatch.setattr(agent, '_learned', {})
+    client = FakeClient()
+    refusal = agent.litellm.ContextWindowExceededError(
+        'request (65646 tokens) exceeds the available context size (65536 tokens)', model='x', llm_provider='openai')
+    sent = []
+    monkeypatch.setattr(agent.litellm, 'completion', _model([refusal, _reply('Fits now.')],
+                                                            before=lambda kw: sent.append(kw['messages'])))
+    ws = _ws(client)
+    seen = {}
+
+    def shrink(history, new):
+        seen['window'] = agent.context_window('fake/unknown-model')
+        return [m for m in history if m['role'] != 'tool']
+    ws.shrink = shrink
+    history = [{'role': 'user', 'content': 'q'},
+               {'role': 'assistant', 'content': None,
+                'tool_calls': [{'id': 't', 'type': 'function', 'function': {'name': 's', 'arguments': '{}'}}]},
+               {'role': 'tool', 'tool_call_id': 't', 'content': 'x' * 100}, {'role': 'user', 'content': 'next'}]
+    turn = run_turn(ModelConfig(model='fake/unknown-model', stream=False), _kit({}), ws, 'system', history)
+    assert turn.text == 'Fits now.' and seen['window'] == 65536
+    assert any(m['role'] == 'tool' for m in sent[0]) and not any(m['role'] == 'tool' for m in sent[1])
+    assert agent.context_window('fake/unknown-model', 131072) == 65536, 'the learned window wins when smaller'
+
+
+def test_a_request_still_too_long_after_the_one_retry_fails_with_the_line(monkeypatch):
+    monkeypatch.setattr(agent, '_learned', {})
+    client = FakeClient()
+    refusal = lambda: agent.litellm.ContextWindowExceededError('too long', model='x', llm_provider='openai')  # noqa: E731
+    monkeypatch.setattr(agent.litellm, 'completion', _model([refusal(), refusal()]))
+    ws = _ws(client)
+    ws.shrink = lambda history, new: history[-1:]
+    with pytest.raises(Exception) as e:
+        run_turn(ModelConfig(model='fake/m2', stream=False), _kit({}), ws, 'system',
+                 [{'role': 'user', 'content': 'a'}, {'role': 'user', 'content': 'b'}])
+    assert agent.model_failure_line(e.value) == agent.TOO_LONG_LINE
+    # Named no window and none was known: half of nothing is nothing to go on.
+    assert agent.context_window('fake/m2') is None
+
+
+def test_learn_window_reads_the_figure_each_provider_names(monkeypatch):
+    monkeypatch.setattr(agent, '_learned', {})
+    for text, n in (('request (65646 tokens) exceeds the available context size (65536 tokens)', 65536),
+                    ("This model's maximum context length is 8192 tokens. However, you requested 9000", 8192),
+                    ('prompt is too long: 210000 tokens > 200000 maximum', 200000)):
+        monkeypatch.setattr(agent, '_learned', {})
+        assert agent.learn_window('m', RuntimeError(text)) == n
+    monkeypatch.setattr(agent, '_learned', {})
+    assert agent.learn_window('m', RuntimeError('too long'), sent=10_000) == 5_000

@@ -24,7 +24,7 @@ import atexit
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
-from .limits import MAX_RESULT_CHARS
+from .limits import MAX_RESULT_CHARS, cuts, forget_cuts, note_cut
 from .tools import ToolError
 
 # Characters of output handed back. Literally every tool result's budget, not
@@ -315,6 +315,7 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     reason = available()
     if reason:
         raise CodeError(f'Code cannot run on this assistant: {reason}.')
+    cut_before = cuts()
     if not isinstance(code, str) or not code.strip():
         raise CodeError('Give code to run, as a string.')
     from pydantic_monty import (CollectString, MontyCrashedError, MontyRuntimeError, MontySyntaxError,
@@ -356,6 +357,7 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
         out = (out + '\n' if out and not out.endswith('\n') else out) + f'=> {value!r}'
     if not out.strip():
         return 'The code ran and printed nothing, and its last line had no value. Print what you want to see.'
+    forget_cuts(cut_before)
     return _truncate(out)
 
 
@@ -369,6 +371,8 @@ def _partial(printed) -> str:
 def _truncate(s: str, cap: int = OUTPUT_MAX) -> str:
     if len(s) <= cap:
         return s
+    if cap == OUTPUT_MAX:
+        note_cut()
     return s[:cap] + f'\n... [truncated: {len(s) - cap} more characters; print less, or summarize in the code]'
 
 

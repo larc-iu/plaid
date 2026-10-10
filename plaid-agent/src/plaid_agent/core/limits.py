@@ -8,10 +8,31 @@ return, how much one reply may fetch) belongs here. A number that is about
 what an app annotates stays in the app.
 """
 
+import threading
+
 # The most characters one tool result may be. Past it the result is cut and
 # says so, because a model that is handed a hundred kilobytes of rows loses
 # the thread of the question it asked.
 MAX_RESULT_CHARS = 12000
+
+# How many results this thread has cut to MAX_RESULT_CHARS, so the loop knows
+# a call's answer was cut (its round says ``cut``) without reading the answer:
+# a document or a printed line may hold the words a cut ends with.
+_cuts = threading.local()
+
+
+def note_cut() -> None:
+    _cuts.n = cuts() + 1
+
+
+def cuts() -> int:
+    return getattr(_cuts, 'n', 0)
+
+
+def forget_cuts(n: int) -> None:
+    """Back to ``n``: what code read through a tool was cut for the code,
+    not for the model."""
+    _cuts.n = n
 
 # What a RENDER may cost, which is the result's budget less room for the
 # header the tool writes around it (which sentences were shown, where to

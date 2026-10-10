@@ -117,3 +117,11 @@ def test_code_steps_read_as_reads_in_igt_and_ud():
         for name in ('run_code', 'code_help'):
             assert 'code' not in describe(name, {}).lower()
             assert 'code' not in tracer.progress(name, {}).lower()
+
+
+def test_a_label_never_draws_a_value_reordered_by_its_own_formatting_characters():
+    """H13-TRACE-3: a search the model wrote as RLO "evil" read "live"."""
+    from plaid_agent.core.trace import q
+    assert q('‮evil') == '“evil”'
+    assert q('a‪b‬c⁦d⁩') == '“abcd”'
+    assert q(None) == '“”'

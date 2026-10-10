@@ -81,10 +81,16 @@ def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]],
 # --- the words an app's descriptions are built from -----------------------------
 # Shared so two apps phrase the same shapes the same way.
 
+# Embeddings, overrides and isolates inside a value: an isolate keeps an
+# override to the value but still applies it there, so a search the model
+# wrote as RLO "evil" read "live" in its label.
+_FORMATTING = {c: None for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A))}
+
+
 def q(v: Any) -> str:
     """A value as the reader sees it, in typographic quotes, isolated
-    (:mod:`.bidi`)."""
-    return f'“{iso(v)}”'
+    (:mod:`.bidi`), without the formatting characters that would reorder it."""
+    return f'“{iso(None if v is None else str(v).translate(_FORMATTING))}”'
 
 
 def in_doc(a: Dict[str, Any]) -> str:
@@ -242,6 +248,19 @@ def failed_label(label: str) -> str:
     return label
 
 
+NOTHING = 'Nothing to change: '
+
+
+def nothing_label(label: str) -> str:
+    """The line for a plan call that went through and left the plan as it
+    was: "Nothing to change: replacing “QQZX” → “3SG” in Gloss", never
+    "Planned" over a card that does not hold it."""
+    for done, _tried in _FAILED_VERBS:
+        if label.startswith(done):
+            return NOTHING + label[len(done):]
+    return NOTHING + label
+
+
 def _the_named_document(s: Dict[str, Any], args: Dict[str, Any]) -> bool:
     """A note that the call read one document, on a call that named it: the
     label already names it, so "1 document" after it says nothing. The step
@@ -253,7 +272,7 @@ def _the_named_document(s: Dict[str, Any], args: Dict[str, Any]) -> bool:
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
                failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
-               said: Optional[str] = None, thought: bool = False) -> Dict[str, Any]:
+               said: Optional[str] = None, thought: bool = False, nothing: bool = False) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
@@ -267,7 +286,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     ``round_id`` names the model call it belongs to, whose stored round holds
     its input and output, and ``said`` is the text the model wrote in that
     call, on the round's first step only. ``thought`` says that round holds
-    the model's reasoning, on the same step, so the panel offers it."""
+    the model's reasoning, on the same step, so the panel offers it.
+    ``nothing`` marks a plan call that left the plan as it was."""
     kind = tracer.kind(name)
     if kind == DOCUMENT and saw and not failed:
         label = f'Read {q(args.get("document"))}'
@@ -277,9 +297,11 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     if shown and not failed:
         label = f'{label}: {say_saw(shown)}'
     item = {'id': call_id, 'name': name, 'kind': kind,
-            'label': failed_label(label) if failed else label}
+            'label': failed_label(label) if failed else nothing_label(label) if nothing else label}
     if failed:
         item['failed'] = True
+    elif nothing:
+        item['nothing'] = True
     elif kind == DOCUMENT and args.get('document'):
         item['document'] = str(args['document'])
     if planned:

@@ -281,7 +281,7 @@ def test_a_provider_failure_is_one_plain_line():
     assert model_failure_line(errors['timeout']) == 'The model did not answer in time.'
     assert model_failure_line(errors['server']) == 'The model could not answer.'
     assert model_failure_line(errors['connection']) == 'The model could not answer.'
-    assert model_failure_line(errors['window']) == 'The conversation is too long for the model.'
+    assert model_failure_line(errors['window']) == 'This conversation is too long for the model. Start a new conversation.'
     assert model_failure_line(RuntimeError('a bug')) is None
 
 

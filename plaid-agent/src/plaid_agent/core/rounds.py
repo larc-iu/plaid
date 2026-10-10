@@ -25,7 +25,7 @@ import hashlib
 import json
 import threading
 import traceback
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from plaid_client import PlaidAPIError, uuid7
 
@@ -57,16 +57,13 @@ def new_round(n: int, model: Optional[str], asked: Optional[str] = None) -> Dict
     return out
 
 
-#: The end of a result `tools.truncate` cut, which the model read as cut.
-_CUT = '\n... [truncated: '
-
-
-def call_record(call_id: str, name: str, arguments: str, result: str) -> Dict[str, Any]:
+def call_record(call_id: str, name: str, arguments: str, result: str, cut: bool = False) -> Dict[str, Any]:
     """One tool call as its round keeps it: the arguments as the model wrote
-    them, whole, and the result exactly as the model was sent it."""
+    them, whole, and the result exactly as the model was sent it. ``cut``:
+    the result was cut to `limits.MAX_RESULT_CHARS` (`limits.note_cut`)."""
     result = str(result)
     out = {'id': call_id, 'name': name, 'arguments': arguments, 'result': result, 'chars': len(result)}
-    if _CUT in result:
+    if cut:
         out['cut'] = True
     return out
 
@@ -147,6 +144,9 @@ class RoundKeeper:
         # Called when ``thinking`` grew (the service sends a progress event).
         self.on_thinking = lambda: None
         self.stored: Set[str] = set()
+        # The turn was stopped: a round write waiting out a server that is
+        # away gives up, and its steps are drawn unstored.
+        self.cancelled: Callable[[], bool] = lambda: False
         self.system = system
         self.tools = tools
 
@@ -177,7 +177,7 @@ class RoundKeeper:
             if rnd.get('n') == 1 and self.system is not None:
                 value['prompt'] = self._keep_prompt()
             value = fit(value, value_budget(s.client))
-            _patiently(lambda: s.client.user_data.put(s.user_id, self.key(rnd['id']), value))
+            _patiently(lambda: s.client.user_data.put(s.user_id, self.key(rnd['id']), value), self.cancelled)
         except Exception:  # noqa: BLE001 - the turn goes on, the step is drawn unopenable
             traceback.print_exc()
             return False

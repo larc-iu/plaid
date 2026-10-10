@@ -468,6 +468,8 @@ def test_a_plan_whose_id_is_not_a_uuidv7_is_settled_as_out_of_date():
                              'assistant. Ask the assistant to plan again.']
     conv, meta = store.load('c1')
     assert conv['display'][1]['status'] == 'stale' and not meta.get('pending')
+    # The card says why, after a reload too (H13-UPGRADE-3).
+    assert conv['display'][1]['reason'] == 'This plan was made by an earlier version of the assistant.'
     assert not client.writes
 
 

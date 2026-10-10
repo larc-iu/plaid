@@ -32,6 +32,7 @@ them on the wire, so both sides read one record.
 
 import copy
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -85,17 +86,17 @@ _AWAY = (None, 0, 502, 503, 504)
 _pause = time.sleep
 
 
-def _patiently(call):
+def _patiently(call, stop: Callable[[], bool] = lambda: False):
     """``call()``, tried again while the server is away, up to
-    :data:`SERVER_AWAY_S`. Any other refusal is raised at once. A put
-    replaces the whole value, so sending it again stores what sending it once
-    does."""
+    :data:`SERVER_AWAY_S`, or until ``stop()`` says to give up. Any other
+    refusal is raised at once. A put replaces the whole value, so sending it
+    again stores what sending it once does."""
     waited, delay = 0.0, 1.0
     while True:
         try:
             return call()
         except PlaidAPIError as e:
-            if e.status not in _AWAY or waited >= SERVER_AWAY_S:
+            if e.status not in _AWAY or waited >= SERVER_AWAY_S or stop():
                 raise
         _pause(delay)
         waited += delay
@@ -497,7 +498,7 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
 def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
                version: Optional[str] = None, service: Optional[str] = None,
                steps: Optional[List[Dict[str, Any]]] = None,
-               partial: Optional[str] = None) -> Dict[str, Any]:
+               partial: Optional[str] = None, reply_round: Optional[str] = None) -> Dict[str, Any]:
     """A turn that ended without an answer. ``model``, ``version`` and
     ``service`` say which assistant it was asked of, as on an answer.
 
@@ -506,7 +507,9 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
     that holds its input and output, as an answer's do. ``partial`` is the
     text the model call under way had written when the turn ended. A failed
     turn's messages leave the model transcript (a retry must not send them
-    again), so the item is the only record of them in the conversation."""
+    again), so the item is the only record of them in the conversation.
+    ``reply_round`` names the round that keeps the reasoning of the model
+    call under way (`agent.turn_reply_round`), as an answer's does."""
     item: Dict[str, Any] = {'kind': 'error', 'text': text, 'created_at': now_iso()}
     if stopped:
         item['stopped'] = True
@@ -515,6 +518,9 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
         item['steps_summary'] = summarize_steps(steps)
     if partial:
         item['partial'] = partial
+    if reply_round:
+        item['reply_round'] = reply_round
+        item['reply_thought'] = True
     if model:
         item['model'] = model
     if version:
@@ -815,6 +821,10 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
 #: What the model is told of a plan the user discarded.
 DISCARDED_NOTE = '(note) The user discarded the plan; nothing was changed.'
 
+#: Why a plan staged before turns recorded their service (or with an id the
+#: ids it creates cannot be drawn from) is refused, on its card.
+EARLIER_VERSION = 'This plan was made by an earlier version of the assistant.'
+
 # The outcomes of a plan that wrote to the project.
 WROTE = ('applied', 'partial')
 
@@ -1041,6 +1051,14 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
         if excess <= 0:
             break
     return {**conv, 'display': display}
+
+
+def held_transcript(messages: List[Dict[str, Any]],
+                    transcript: Optional[Tuple[int, Callable[[Any], int]]] = None) -> List[Dict[str, Any]]:
+    """The model transcript held to ``transcript`` (``(limit, measure)``, as
+    `prune` takes it), oldest tool results dropped first: what a turn sends,
+    so a record written under another window is not sent whole."""
+    return prune({'messages': list(messages), 'display': []}, sys.maxsize, transcript)['messages']
 
 
 # --- sending a message again ----------------------------------------------------

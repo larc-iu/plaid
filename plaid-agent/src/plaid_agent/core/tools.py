@@ -11,7 +11,7 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit, read_int, sentence_number
-from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
+from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET, note_cut
 from .trace import ranges
 
 
@@ -29,6 +29,7 @@ def truncate(s: str) -> str:
     what to do about it. Every tool answer goes through this."""
     if len(s) <= MAX_RESULT_CHARS:
         return s
+    note_cut()
     return s[:MAX_RESULT_CHARS] + (f'\n... [truncated: {len(s) - MAX_RESULT_CHARS} more characters; '
                                    f'narrow the request]')
 

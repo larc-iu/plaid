@@ -74,14 +74,15 @@ from . import prompt as shared_prompt
 from .guidelines import in_reading_order
 from .limits import MAX_PROJECTS, TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
-from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed, turn_trace,
+from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed, turn_reply_round,
+                    turn_trace,
                     context_window, model_failure_line, ping_model, run_turn, token_counter)
 from .files import Attachments, FileKeeper
 from .garble import seed
 from .guidelines import in_context as guidelines_in_context
-from .conversation import (DISCARDED_NOTE, MESSAGE_ROOM, ConversationStore, MissingConversation, answered_last,
+from .conversation import (DISCARDED_NOTE, EARLIER_VERSION, MESSAGE_ROOM, ConversationStore, MissingConversation, answered_last,
                            assistant_item, build_meta, conversation_bytes, error_item, find_plan, kept_meta,
-                           now_iso, partial_note, partial_tally, pending_kept, plan_settling, proposed_changes,
+                           held_transcript, now_iso, partial_note, partial_tally, pending_kept, plan_settling, proposed_changes,
                            prune, record_budget, rewind_for_retry, settle_plan, title_from, turn_ending,
                            user_item, value_cap)
 from .files import store_parts, sweep_orphans
@@ -1061,6 +1062,7 @@ class BaseAssistantService(BaseService):
 
         def cancelled() -> bool:
             return bool(getattr(response_helper, 'cancelled', False)) or cancel()
+        keeper.cancelled = cancelled
 
         # A stop asked for while the turn is being set up (the progress
         # lines sent while a document or another project loads are the
@@ -1116,6 +1118,21 @@ class BaseAssistantService(BaseService):
         def fit(record):
             """The record held to its budget (`prune`)."""
             return prune(record, record_budget(client), self.transcript_budget(model, overhead))
+
+        def shrink(history, new):
+            """``history`` held to the window a refusal named, less what the
+            turn added (`agent.Shrink`), or None when nothing more can go."""
+            budget = self.transcript_budget(model, overhead)
+            if budget is None:
+                return None
+            limit, measure = budget
+            held = held_transcript(history, (limit - sum(measure(m) for m in new), measure))
+            return held if held != history else None
+        # Held to the window before it is sent, not only when the turn is
+        # written: a record written under another model's window, or before
+        # its window was known, was sent whole once and refused.
+        transcript = held_transcript(transcript, self.transcript_budget(model, overhead))
+        ws.shrink = shrink
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
@@ -1135,7 +1152,8 @@ class BaseAssistantService(BaseService):
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
                                     error_item('Stopped.', stopped=True, model=model, version=self.version,
-                                               service=self.service_id, steps=steps, partial=partial),
+                                               service=self.service_id, steps=steps, partial=partial,
+                                               reply_round=turn_reply_round(e)),
                                     fit=fit),
                         request_id, model)
             response_helper.complete({'kind': 'stopped'})
@@ -1151,7 +1169,8 @@ class BaseAssistantService(BaseService):
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
                                     error_item(line, model=model, version=self.version,
-                                               service=self.service_id, steps=steps, partial=partial),
+                                               service=self.service_id, steps=steps, partial=partial,
+                                               reply_round=turn_reply_round(e)),
                                     fit=fit),
                         request_id, model)
             response_helper.error(line)
@@ -1337,8 +1356,8 @@ class BaseAssistantService(BaseService):
         # Nor can a plan whose id is not a UUIDv7, which the ids of what it
         # creates are drawn from (`core.plan.Minter`).
         if not item.get('service') or not drawable(plan_id):
-            said = 'This plan was made by an earlier version of the assistant.'
-            settled('stale', f'(note) The plan was not applied: {said} Nothing was written.')
+            said = EARLIER_VERSION
+            settled('stale', f'(note) The plan was not applied: {said} Nothing was written.', reason=said)
             response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return
         ops = plan.get('ops') or []

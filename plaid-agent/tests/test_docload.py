@@ -201,4 +201,17 @@ def test_a_walk_says_what_it_is_reading_even_when_it_did_not_wait(reader_factory
     r.get('d1', 1, 'First')
     r.get('d2', 1, 'Second')
     r.get('d3', 1, 'Third')  # not read ahead, read here
-    assert said == ['Reading "First"…', 'Reading "Second"…', 'Reading "Third"…']
+    assert said == ['Reading “First”…', 'Reading “Second”…', 'Reading “Third”…']
+
+
+def test_the_loader_says_nothing_over_the_line_that_named_the_span():
+    """H13-PANEL-6: `Reading “Text 4”, sentences 1–10…` stays, not replaced by
+    the loader's line without the span. A walk's documents are still said."""
+    from plaid_agent.core.workspace import BaseWorkspace
+    said = []
+    ws = BaseWorkspace.__new__(BaseWorkspace)
+    ws.on_progress = said.append
+    ws.announced = 'Reading “Text 4”, sentences 1–10…'
+    ws._loading('Reading “Text 4”…')
+    ws._loading('Reading “Text 5”…')
+    assert said == ['Reading “Text 5”…']
