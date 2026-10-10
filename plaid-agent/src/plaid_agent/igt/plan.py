@@ -1332,15 +1332,14 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     the same rows. Without one they are drawn from a fresh id."""
     return run_plan(
         KIND, client, ops, source=source, stamp_mode=stamp_mode, contributor=contributor, detail=detail, seed=seed,
-        validate=validate_ops, resolve=lambda o: (resolve_scopes(client, project, o, requester), []),
+        validate=validate_ops, resolve=lambda o: resolve_scopes(client, project, o, requester),
         normalize=normalize_ops, check=lambda o: check_entries(client, o, project),
         execute=lambda o, notes, stamps, ids, tracker: _execute(
             client, o, label=label, project=project, counts=Counter(), notes=notes, stamps=stamps, tracker=tracker,
             ids=ids, requester=requester))
 
 
-def resolve_scopes(client, project, ops: List[Dict[str, Any]],
-                   requester: Optional[str] = None) -> List[Dict[str, Any]]:
+def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Optional[str] = None):
     """The per-span ops a stored corpus-wide change stands for, computed
     again NOW by the same function that previewed it. Approval has already
     refused the plan if a matched document moved since, so what is found
@@ -1348,12 +1347,13 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
 
     Each scope kind declares its own resolver and this dispatches on that, so
     a kind added later is resolved without being named here."""
+    notes: List[str] = []
     if not any(ok.resolver(KIND, op) for op in ops):
-        return ops
+        return ops, notes
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
     res = Resolution(client, project, requester)
-    keep = rule_keep(res.ws, ops)
+    keep = rule_keep(res.ws, ops, notes)
 
     def check(op, found):
         # A rule must find what it found when it was staged, in every
@@ -1368,25 +1368,20 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
     # counted it (`bulk.settle_rules`).
     from .bulk import later_rule_wins
     rows = {op[ok.ROW] for op in ops if rules.is_rule(op) and ok.ROW in op}
-    return ok.resolve_ops(KIND, res, ops, keep, check=check, final=lambda out: later_rule_wins(out, rows, ok.ROW))
+    return ok.resolve_ops(KIND, res, ops, keep, check=check,
+                          final=lambda out: later_rule_wins(out, rows, ok.ROW)), notes
 
 
-def rule_keep(ws, ops: List[Dict[str, Any]]):
+def rule_keep(ws, ops: List[Dict[str, Any]], notes: Optional[List[str]] = None):
     """Whether a change a rule found is one it writes, given the plan ``ops``
-    (`bulk.rule_keep`): a change the model made by name beats one a rule
-    finds, whichever came first (the rule previewed stored values, not
-    planned), a value on a morpheme an analysis of the plan rewrites is moot,
-    and one on what the plan certainly removes has nothing to land on."""
+    (:func:`core.opkind.named_beats_scope`, which notes each drop in
+    ``notes``): a change the model made by name beats it, and a value on a
+    morpheme an analysis of the plan rewrites is moot."""
     from .workspace import op_target
-    named = [op for op in ops if not ok.resolver(KIND, op)]
-    explicit = {op_target(op) for op in named} - {None}
     analysed = analysed_morphemes(ops)
-    removed = ok.removed_ids(KIND, named, only_certain=True)
-
-    def keep(o):
-        return (op_target(o) not in explicit and not ws.moot_under(o, analysed)
-                and not ({o.get('token_id'), o.get('word_id'), o.get('morpheme_id')} & removed))
-    return keep
+    return ok.named_beats_scope(
+        KIND, ops, notes, target=op_target,
+        moot=lambda o: 'an analysis the plan writes replaces it' if ws.moot_under(o, analysed) else None)
 
 
 def _doc_name(ws, doc_id: str) -> str:

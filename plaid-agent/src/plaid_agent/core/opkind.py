@@ -456,6 +456,47 @@ def clash_message(victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> s
             'Keep one of the two (plan_status, drop_planned), or plan them in separate turns.')
 
 
+def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], notes: Optional[List[str]] = None,
+                      target: Optional[Callable[[Dict[str, Any]], Any]] = None,
+                      moot: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None
+                      ) -> Callable[[Dict[str, Any]], bool]:
+    """``keep(op)`` for :func:`resolve_ops`: whether a change a scope found
+    joins a plan whose other ops are ``ops``.
+
+    A change the model made by name beats one a scope finds, whichever came
+    first: the scope read stored values, not planned ones, so last-wins by
+    position would let it override a change the user read on the card. So
+    does a change by name that the found one would meet as a write and a
+    delete of one thing (:func:`delete_clash`): left in, that pair refused the
+    plan at the last step. ``target(op)`` is what an op writes to (by default
+    the kind's own declaration), and ``moot(op)`` the app's own reason a found
+    change has nothing to do, or None. Each drop is noted in ``notes``, since
+    the card counted the change and the applied message has to account for it
+    going."""
+    target = target or (lambda op: target_of(reg, op))
+    named = [op for op in ops if not resolver(reg, op)]
+    explicit = {target(op) for op in named} - {None}
+    gone = removed_ids(reg, named, only_certain=True)
+
+    def why(op: Dict[str, Any]) -> Optional[str]:
+        if target(op) in explicit:
+            return 'the plan already makes that change by name'
+        clash = delete_clash(reg, named, op, gone)
+        if clash:
+            if clash[0] is not op:
+                return 'another change in this plan writes to what it deletes'
+            return ('the plan deletes what it confirms' if op.get('kind') == 'confirm'
+                    else 'the plan deletes what it writes to')
+        return moot(op) if moot is not None else None
+
+    def keep(op: Dict[str, Any]) -> bool:
+        reason = why(op)
+        if reason and notes is not None:
+            notes.append(f'dropped: {op.get("label") or op.get("kind")} ({reason})')
+        return not reason
+    return keep
+
+
 def target_of(reg: Mapping[str, OpKind], op: Dict[str, Any]):
     """What an operation writes to, or ``None`` when nothing can supersede
     it. An undeclared kind has no target rather than raising: this runs while

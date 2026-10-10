@@ -580,24 +580,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
         return ops, notes
     if project is None:
         raise ValueError('a change over a whole document needs the project to read it with')
-    # A change the model made by name beats one a scope finds at approval,
-    # whichever came first: the scope previewed stored attributes, not planned
-    # ones, so last-wins by position would let it override a set_attributes the
-    # user read on the card.
-    named = [op for op in ops if not ok.resolver(KIND, op)]
-    named_targets = {ok.target_of(KIND, op) for op in named} - {None}
-    named_gone = ok.removed_ids(KIND, named, only_certain=True)
-
-    def keep(o) -> bool:
-        if ok.target_of(KIND, o) in named_targets:
-            notes.append(f'dropped: {o.get("label") or o.get("kind")} (the plan already names '
-                         f'that node)')
-            return False
-        if ok.written_to(KIND, o) & named_gone:
-            notes.append(f'dropped: {o.get("label") or o.get("kind")} (the plan deletes what it '
-                         f'writes to)')
-            return False
-        return True
+    keep = ok.named_beats_scope(KIND, ops, notes)
 
     return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep), notes
 

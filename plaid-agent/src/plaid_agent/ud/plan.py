@@ -704,49 +704,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
         return ops, notes
     if project is None:
         raise ValueError('a whole-document review needs the project to read the document with')
-    # A change the model made by name beats one a scope finds at approval,
-    # whichever came first: the scope's preview read stored values, not
-    # planned ones, and last-wins by position would let it override a
-    # set_field the user read on the card.
-    named = [op for op in ops if not ok.resolver(KIND, op)]
-    named_entities = {entity_of(op) for op in named} - {None}
-    named_gone = ok.removed_ids(KIND, named, only_certain=True)
-
-    def named_too(o) -> bool:
-        """The model made this same change by name, on the same span or the
-        same relation. Which entity each kind names is the kind's own
-        declaration, so this held for four kinds named here and none of the
-        ones added since."""
-        return entity_of(o) in named_entities
-
-    def clashes(o) -> str:
-        """Why this change the scope found cannot stand beside what the model
-        named, and '' where the two do not meet.
-
-        The same rule seen a second way: a change made by name also beats one
-        a scope finds when the two would meet as a write and a delete of one
-        span (confirming a value a set_field clears, discarding one a confirm
-        names). Left in, that pair refused the plan at the last step, after
-        the user had approved it.
-        """
-        clash = ok.delete_clash(KIND, named, o, named_gone)
-        if not clash:
-            return ''
-        victim, _killer = clash
-        if victim is not o:
-            return 'another change in this plan writes to what it deletes'
-        return ('the plan deletes what it confirms' if o.get('kind') == 'confirm'
-                else 'the plan deletes what it writes to')
-
-    def keep(o) -> bool:
-        """Whether a change the scope stands for joins the plan. A clash is
-        noted: the card counted this change, so the applied message has to
-        account for it going."""
-        why = clashes(o)
-        if why:
-            notes.append(f'dropped: {o.get("label") or o.get("kind")} ({why})')
-            return False
-        return not named_too(o)
+    keep = ok.named_beats_scope(KIND, ops, notes, target=entity_of)
 
     # The documents a scope reaches now must be the ones it was pinned to,
     # checked and locked by: `check_reach` refuses the plan otherwise.
