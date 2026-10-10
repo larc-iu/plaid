@@ -48,6 +48,9 @@ RENDER_BUDGET = MAX_RESULT_CHARS - RENDER_HEADER_ROOM
 GROUP_LIMIT = 100000
 ROW_LIMIT = 100000
 
+#: The longest comment a plan may post, in characters.
+COMMENT_MAX_CHARS = 10000
+
 # How many rows a read tool shows by default, and the most it will show when
 # asked: (default, cap) for every tool BOTH apps offer. Written once per app
 # they drifted apart for no reason anyone could name, so one tool answered with

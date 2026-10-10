@@ -20,7 +20,7 @@ from collections import Counter
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit
-from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
+from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, COMMENT_MAX_CHARS, READ_LIMITS
 from .plan import labelled
 from .tools import ToolError, server_refused, truncate
 
@@ -110,6 +110,40 @@ def comments_on_values(ws, document: Optional[str] = None, ref: Optional[str] = 
     """:func:`comments`, for an app whose comments can also sit on one value
     of a thing (``field``)."""
     return read_comments(ws, document, ref, field, limit)
+
+
+def add_comment(ws, document: Optional[str] = None, body: Optional[str] = None,
+                ref: Optional[str] = None) -> str:
+    """PLAN: a comment, under the user's name, on the document or on what
+    ``ref`` names in it."""
+    return plan_comment(ws, document, body, ref, None)
+
+
+def add_comment_on_values(ws, document: Optional[str] = None, body: Optional[str] = None,
+                          ref: Optional[str] = None, field: Optional[str] = None) -> str:
+    """:func:`add_comment`, for an app whose comments can also sit on one
+    value of a thing (``field``)."""
+    return plan_comment(ws, document, body, ref, field)
+
+
+def plan_comment(ws, document: Optional[str], body: Optional[str], ref: Optional[str],
+                 field: Optional[str]) -> str:
+    """The one way a comment is planned. What it may sit on, what refuses it
+    and how its card row reads are the app's
+    (:meth:`BaseWorkspace.comment_placed`). A comment on something the same
+    plan deletes is refused as it is staged, in either order, by the
+    certain-delete guard every op passes (`BaseWorkspace.add_op`), so the model
+    can still put the two in separate turns."""
+    body = (body or '').strip()
+    if not body:
+        raise ToolError('Give body: the text of the comment.')
+    if len(body) > COMMENT_MAX_CHARS:
+        raise ToolError(f'A comment holds at most {COMMENT_MAX_CHARS} characters.')
+    doc = ws.doc(document)
+    short = body[:60] + ('…' if len(body) > 60 else '')
+    ws.add_op({'kind': 'add_comment', 'body': body, 'document_id': doc.id,
+               **ws.comment_placed(doc, ref, field, short)})
+    return ws.planned_note(1)
 
 
 def read_comments(ws, document: Optional[str], ref: Optional[str], field: Optional[str],

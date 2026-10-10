@@ -340,6 +340,19 @@ class Workspace(BaseWorkspace):
             return 'token', m.id, f'{m.form}, in {w.surface}, {where}', m.form
         return 'token', w.id, f'{w.surface}, {where}', w.surface
 
+    def comment_placed(self, doc: IgtDoc, ref, field, short: str) -> Dict[str, Any]:
+        # A comment reshapes nothing, so a corpus-wide change in the same plan
+        # cannot collide with it. What can is its anchor: a comment on a word,
+        # morpheme or value the plan deletes is refused by the certain-delete
+        # guard. A text edit is the one case the guard cannot see, since what
+        # it deletes is a guess, so the two are refused here.
+        from .tools import refuse_comment_and_text_edit
+        etype, eid, caption, what = self.comment_caption(doc, ref, field)
+        where = f'{self.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{self.doc_label(doc.id)}"'
+        refuse_comment_and_text_edit(self, eid, where, commenting=True)
+        return {'entity_type': etype, 'entity_id': eid, 'anchor_label': caption,
+                **labelled(where, f'comment "{short}"' + (f' (on {field})' if field else ''))}
+
     def comment_target(self, doc: IgtDoc, ref: str, field: Optional[str] = None) -> tuple:
         return self.comment_caption(doc, ref, field)[:2]
 

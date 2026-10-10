@@ -516,7 +516,7 @@ KIND = ok.registry([
     OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel,
            extra={'entity': _relation_entity}),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
-           apply=apply_add_comment),
+           apply=apply_add_comment, token_keys=('entity_id',)),
 ])
 
 # Every table below is the registry read a different way.

@@ -116,7 +116,7 @@ def test_add_comment_plans_with_the_editors_captions_and_posts_on_approval():
     assert ops[4]['label'] == 'Text 1 s1.w1.m2 "di": comment "ERG is right" (on Morph Gloss)'
     assert all(o['document_id'] == 'd1' for o in ops) and len(ops) == 6  # comments never replace one another
     assert 'has no Gloss value' in call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1.w2', 'field': 'Gloss', 'body': 'x'})
-    assert 'must not be empty' in call_tool(w, 'add_comment', {'document': 'd1', 'body': '  '})
+    assert 'Give body' in call_tool(w, 'add_comment', {'document': 'd1', 'body': '  '})
     assert [d['id'] for d in w.plan_payload()['documents']] == ['d1']
     counts = execute_plan(c, ops[:3], source='s', label='l')
     assert counts == {'comments': 3}

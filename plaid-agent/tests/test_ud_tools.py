@@ -1429,7 +1429,7 @@ def test_the_worklist_sees_unconfirmed_dependencies(ws):
 
 def test_a_comment_is_a_plan_op_on_a_sentence_or_the_document(ws):
     out = run(ws, 'add_comment', document='Viaje', ref='s1', body='Is "al" right here?')
-    assert out == 'Planned a comment on s1 of "Viaje".'
+    assert out.startswith('Planned 1 change')
     op = ws.ops[0]
     assert op['kind'] == 'add_comment' and op['entity_type'] == 'token' and op['entity_id'] == 'us-1'
     assert op['anchor_label'].startswith('s1: Vamos al mar.')

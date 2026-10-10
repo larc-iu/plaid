@@ -1036,36 +1036,6 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
 
 # --- comments -------------------------------------------------------------------
 
-def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = None,
-                  field: Optional[str] = None) -> str:
-    """PLAN: post a comment, under the user's name, on a document, a
-    sentence, a word, a morpheme, or one of their field values."""
-    body = (body or '').strip()
-    if not body:
-        raise ToolError('body must not be empty')
-    if len(body) > 10000:
-        raise ToolError('a comment holds at most 10000 characters')
-    doc = ws.doc(document)
-    # No `reshape_guards` here, deliberately: a comment reshapes nothing, so a
-    # corpus-wide change in the same plan cannot collide with it. What CAN
-    # collide is its anchor. The server resolves the anchor to find the owner
-    # whose permissions apply, and an anchor that does not exist fails closed,
-    # so a comment on a word, morpheme or value the same plan deletes would
-    # refuse the batch it shares after the user approved it. A comment
-    # outlives its anchor once written (that is the ruling), but it cannot be
-    # written onto one that is already gone. `normalize_ops` drops such a
-    # comment with a note, whichever order the two were planned in. A text
-    # edit is the one case where the drop is not right: what it deletes is a
-    # guess, so the two are refused here instead.
-    etype, eid, caption, what = ws.comment_caption(doc, ref, field)
-    where = f'{ws.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{ws.doc_label(doc.id)}"'
-    refuse_comment_and_text_edit(ws, eid, where, commenting=True)
-    ws.add_op({'kind': 'add_comment', 'entity_type': etype, 'entity_id': eid, 'body': body, 'anchor_label': caption,
-               'document_id': doc.id,
-               **labelled(where, f'comment "{body[:60]}{"…" if len(body) > 60 else ""}"'
-                          + (f' (on {field})' if field else ''))})
-    return ws.planned_note(1)
-
 
 # --- restore ------------------------------------------------------------------------
 

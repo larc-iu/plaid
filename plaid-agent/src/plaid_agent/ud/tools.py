@@ -86,6 +86,21 @@ class Workspace(BaseWorkspace):
                     index[w.relation_id] = w.relation_metadata
         return index
 
+    def comment_placed(self, doc: 'UdDoc', ref, field, short: str) -> Dict[str, Any]:
+        # The same refusals every other edit to a document owes: a parse or a
+        # boundary move in the same plan renumbers or rewrites what ``ref``
+        # names.
+        _guards(self, doc)
+        if field:
+            raise ToolError('A comment here sits on a sentence or on the document, never on one value.')
+        if not ref:
+            return {'entity_type': 'document', 'entity_id': doc.id, 'anchor_label': (doc.name or '')[:200],
+                    'ref': None, 'label': f'comment on the document: {qv(short)}'}
+        thing = doc.sentences[[s.id for s in doc.sentences].index(self.comment_anchor(doc, str(ref)))]
+        where = f's{thing.index}'
+        return {'entity_type': 'token', 'entity_id': thing.id, 'anchor_label': f'{where}: {thing.text[:120]}'[:200],
+                'ref': where, 'label': f'comment on {where}: {qv(short)}'}
+
     def comment_anchor(self, doc: 'UdDoc', ref: str) -> str:
         # A sentence's comments hang off its token.
         thing = resolve(doc, ref)
@@ -1251,31 +1266,3 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     return (f'Planned a parse of {len(ids)} document(s) with {chosen.get("service_name")} '
             f'in {lang}: ' + shown + '.' + warn
             + ' A parse rewrites a document, so it is the only kind of change in this plan.')
-
-
-def t_add_comment(ws: Workspace, document: str = None, body: str = None, ref: str = None) -> str:
-    """PLAN: a note on a sentence or on the document."""
-    body = (body or '').strip()
-    if not body:
-        raise ToolError('Give body: the text of the note.')
-    if len(body) > 10000:
-        raise ToolError('A comment holds at most 10000 characters.')
-    doc = ws.doc(document)
-    # The same three refusals every other edit to a document owes. This had
-    # one of them, so a comment could be anchored on a sentence token that a
-    # parse or a boundary move in the same plan deletes.
-    _guards(ws, doc)
-    if ref:
-        thing = resolve(doc, str(ref))
-        if not isinstance(thing, Sentence):
-            raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence (s3) or on the document.')
-        entity_type, entity_id = 'token', thing.id
-        anchor = f's{thing.index}: {thing.text[:120]}'
-        where = f's{thing.index}'
-    else:
-        entity_type, entity_id, anchor, where = 'document', doc.id, doc.name, None
-    short = body[:60] + ('…' if len(body) > 60 else '')
-    ws.add_op({'kind': 'add_comment', 'entity_type': entity_type, 'entity_id': entity_id, 'body': body,
-               'anchor_label': anchor[:200], 'document_id': doc.id, 'ref': where,
-               'label': f'comment on {where or "the document"}: {qv(short)}'})
-    return f'Planned a comment on {where or "the document"} of "{doc.name}".'

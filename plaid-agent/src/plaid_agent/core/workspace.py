@@ -354,6 +354,13 @@ class BaseWorkspace:
             raise ToolError('A comment here sits on a sentence or on the document, never on one value.')
         return 'token', self.comment_anchor(doc, ref)
 
+    def comment_placed(self, doc, ref: Optional[str], field: Optional[str], short: str) -> Dict[str, Any]:
+        """Where a planned comment sits and how its card row reads: its
+        ``entity_type``, ``entity_id`` and ``anchor_label`` (the caption the
+        editor gives that anchor), and its ``label``. ``short`` is the start
+        of its text. Raises what refuses it here."""
+        raise NotImplementedError
+
     def comment_ref(self, doc, comment: Dict[str, Any]) -> Optional[str]:
         """Where in ``doc`` a comment's anchor sits, as the reference the tools
         speak, or None when that anchor is gone."""
