@@ -102,6 +102,10 @@ describe('WorkTrace', () => {
       expect(pre.className).toContain('whitespace-pre ');
       expect(pre.className).toContain('overflow-auto');
       expect(pre.className).not.toContain('break-words');
+      // Each line takes its own direction, as wide as its text from the left.
+      const lines = all(pre, 'span[dir="auto"]');
+      expect(lines.length).toBe(pre.textContent.split('\n').length);
+      expect(lines.every((l) => l.className.includes('w-max'))).toBe(true);
     }
     expect(pres).toContain(CODE);
     expect(pres).toContain('40\n');

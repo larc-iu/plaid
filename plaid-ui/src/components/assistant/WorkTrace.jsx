@@ -142,6 +142,20 @@ const markedFormatting = (text) => {
   return out;
 };
 
+// Each line in its own direction, so a right-to-left line (an Arabic
+// sentence a tool printed) reads as it should. A line is a block as wide as
+// its text, starting at the left edge, so a long right-to-left line still
+// scrolls sideways into view rather than running off to the left. The line
+// keeps its newline, so the block's text is the text it was given.
+const lineByLine = (text) => {
+  const lines = String(text).split('\n');
+  return lines.map((line, i) => (
+    <span key={i} dir="auto" className="block min-h-4 w-max">
+      {markedFormatting(i < lines.length - 1 ? `${line}\n` : line)}
+    </span>
+  ));
+};
+
 // A block of text as it was: monospace, scrollable, with Copy. A block
 // that is the whole of its disclosure needs no heading of its own.
 const Block = ({ heading, text, after, exported }) => (
@@ -150,7 +164,7 @@ const Block = ({ heading, text, after, exported }) => (
       {heading && <span className="font-medium">{heading}</span>}
       {!exported && <CopyButton text={text} />}
     </div>
-    <pre className={PRE}>{markedFormatting(text)}</pre>
+    <pre className={PRE}>{lineByLine(text)}</pre>
     {after && <span>{after}</span>}
   </div>
 );
@@ -165,7 +179,7 @@ const InputBlock = ({ call, exported }) => {
     return (
       <>
         <Block heading="Input" text={main} exported={exported} />
-        {lines && <pre className={PRE}>{markedFormatting(lines)}</pre>}
+        {lines && <pre className={PRE}>{lineByLine(lines)}</pre>}
       </>
     );
   return lines ? <Block heading="Input" text={lines} exported={exported} /> : null;
