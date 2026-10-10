@@ -12,57 +12,19 @@ vi.mock('../../lib/notify.js', () => ({
 }));
 
 const { notifyError } = await import('../../lib/notify.js');
-const { MemoryRouter } = await import('react-router-dom');
-const { renderComponent, all, byText } = await import('../../test/renderComponent.jsx');
-const { documentsBundle } = await import('../../test/fakeClient.js');
-const { fakeAssistantService } = await import('../../test/fakeAssistantService.js');
-const { AssistantChat } = await import('./AssistantChat.jsx');
+const { all, byText } = await import('../../test/renderComponent.jsx');
+const chat = await import('../../test/assistantChat.jsx');
+const { chatClient, flush, mountChat, typeAndSend } = chat;
 const { jobs, serviceCache } = await import('./jobs.js');
 
-const ADAPTER = {
-  app: 'igt',
-  command: 'plaid-igt-agent',
-  intro: 'Ask about this project.',
-  examples: [],
-  textName: 'the transcription',
-  convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
-  CITE_RE: /<cite\s[^>]*\/>/g,
-  citationTitle: () => 'Sentence',
-  citationHref: () => '/sentence',
-  citationToMarkdown: (m) => m,
-  ExampleCard: () => null,
-  groupOf: () => ({ key: 'doc', title: 'Text 1', href: null }),
-  changePlace: () => ({ name: 'Text 1', href: null }),
-  parseCitationHref: () => null,
-  // A project the listing marks `igt: false` is not set up for this app.
-  opensProject: (p) => p.igt !== false,
-};
+// A project the listing marks `igt: false` is not set up for this app.
+const ADAPTER = { ...chat.ADAPTER, opensProject: (p) => p.igt !== false };
 
-const SERVICE = {
-  serviceId: 'igt:assist:one',
-  serviceName: 'Assistant one',
-  online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet', maxProjects: 5 },
-};
-const OLD_SERVICE = {
-  ...SERVICE,
-  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet' },
-};
+const SERVICE = { ...chat.SERVICE, extras: { ...chat.SERVICE.extras, maxProjects: 5 } };
+const OLD_SERVICE = chat.SERVICE;
 
 const B = { id: 'pB', name: 'Lamkang B' };
 const C = { id: 'pC', name: 'Lamkang C' };
-
-const META = {
-  id: 'c1',
-  title: 'A thread',
-  createdAt: '2026-09-11T00:00:00Z',
-  updatedAt: '2026-09-12T00:00:00Z',
-  serviceId: SERVICE.serviceId,
-  model: 'sonnet',
-  turns: 1,
-  about: null,
-  pending: null,
-};
 
 const CONV = {
   messages: [
@@ -75,75 +37,12 @@ const CONV = {
   ],
 };
 
-// `where`: what discovery answers for each project.
-const fakeClient = ({ service = SERVICE, conv = CONV, where = {} } = {}) => {
-  const records = new Map([
-    ['igt:assistant:p1:meta:c1', META],
-    ['igt:assistant:p1:conv:c1', conv],
-  ]);
-  // The assistant: it writes the record, the page only asks.
-  const assistant = fakeAssistantService(records);
-  return {
-    records,
-    messages: {
-      discoverServices: vi.fn(async (pid) => (pid === 'p1' ? [service] : (where[pid] ?? []))),
-      requestService: vi.fn(assistant.requestService),
-      attachServiceRequest: vi.fn().mockResolvedValue({}),
-      cancelServiceRequest: vi.fn().mockResolvedValue({}),
-    },
-    userData: {
-      list: vi.fn(async (userId, { prefix } = {}) =>
-        [...records]
-          .filter(([key]) => (prefix ? key.startsWith(prefix) : key.includes(':meta:')))
-          .map(([key, value]) => ({ key, value })),
-      ),
-      get: vi.fn(async (userId, key) => (records.has(key) ? { value: records.get(key) } : null)),
-      put: vi.fn(async (userId, key, value) => {
-        records.set(key, value);
-      }),
-      delete: vi.fn(async (userId, key) => {
-        records.delete(key);
-      }),
-    },
-    projects: {
-      list: vi.fn().mockResolvedValue([{ id: 'p1', name: 'Lamkang A' }, B, C]),
-      ...documentsBundle(),
-    },
-  };
-};
+const B_AND_C = [{ id: 'p1', name: 'Lamkang A' }, B, C];
+const fakeClient = ({ service = SERVICE, conv = CONV, where = {} } = {}) =>
+  chatClient({ service, conv, where, projects: B_AND_C });
 
 const mount = (client, conversationId = 'c1') =>
-  renderComponent(
-    <MemoryRouter initialEntries={['/projects/p1']}>
-      <AssistantChat
-        projectId="p1"
-        projectName="Lamkang A"
-        client={client}
-        userId="u1"
-        canWrite
-        adapter={ADAPTER}
-        conversationId={conversationId}
-      />
-    </MemoryRouter>,
-  );
-
-const flush = async (m, times = 4) => {
-  for (let i = 0; i < times; i++)
-    await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
-};
-
-const typeAndSend = (m, value) =>
-  m.step(() => {
-    const box = m.container.querySelector('textarea');
-    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(
-      box,
-      value,
-    );
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
-    );
-  });
+  mountChat(client, { conversationId, adapter: ADAPTER });
 
 const lastAsked = (client) =>
   client.records.get('igt:assistant:p1:conv:c1').display.findLast((d) => d.kind === 'user');
@@ -549,27 +448,20 @@ describe('AssistantChat when another assistant takes over', () => {
   const TWO = { ...SERVICE, serviceId: 'igt:assist:two', serviceName: 'Assistant two' };
   const both = { pB: [SERVICE, TWO], pC: [SERVICE] };
   const mountNew = (client) =>
-    renderComponent(
-      <MemoryRouter initialEntries={['/projects/p1']}>
-        <AssistantChat
-          projectId="p1"
-          client={client}
-          userId="u1"
-          canWrite
-          adapter={ADAPTER}
-          conversationId={null}
-          renderEmpty={({ choice }) => (
-            <div>
-              {choice.assistants.map((s) => (
-                <button key={s.serviceId} type="button" onClick={() => choice.choose(s.serviceId)}>
-                  {`Use ${s.serviceName}`}
-                </button>
-              ))}
-            </div>
-          )}
-        />
-      </MemoryRouter>,
-    );
+    mountChat(client, {
+      projectName: undefined,
+      adapter: ADAPTER,
+      conversationId: null,
+      renderEmpty: ({ choice }) => (
+        <div>
+          {choice.assistants.map((s) => (
+            <button key={s.serviceId} type="button" onClick={() => choice.choose(s.serviceId)}>
+              {`Use ${s.serviceName}`}
+            </button>
+          ))}
+        </div>
+      ),
+    });
   const twoClient = () => {
     const client = fakeClient({ where: both });
     client.messages.discoverServices.mockImplementation(async (pid) =>

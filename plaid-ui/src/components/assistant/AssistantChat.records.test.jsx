@@ -13,48 +13,10 @@ vi.mock('../../lib/notify.js', () => ({
   notifyWarning: vi.fn(),
 }));
 
-const { MemoryRouter } = await import('react-router-dom');
-const { renderComponent, all } = await import('../../test/renderComponent.jsx');
-const { AssistantChat } = await import('./AssistantChat.jsx');
+const { all } = await import('../../test/renderComponent.jsx');
 const { jobs, serviceCache } = await import('./jobs.js');
-const { fakeAssistantService } = await import('../../test/fakeAssistantService.js');
-
-const ADAPTER = {
-  app: 'igt',
-  command: 'plaid-igt-agent',
-  intro: 'Ask about this project.',
-  examples: [],
-  textName: 'the transcription',
-  convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
-  CITE_RE: /<cite\s[^>]*\/>/g,
-  citationTitle: () => 'Sentence',
-  citationHref: () => '/sentence',
-  citationToMarkdown: (m) => m,
-  ExampleCard: () => null,
-  groupOf: () => ({ key: 'doc', title: 'Text 1', href: null }),
-  changePlace: () => ({ name: 'Text 1', href: null }),
-  parseCitationHref: () => null,
-  opensProject: () => true,
-};
-
-const SERVICE = {
-  serviceId: 'igt:assist:one',
-  serviceName: 'Assistant one',
-  online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet' },
-};
-
-const META = {
-  id: 'c1',
-  title: 'A thread',
-  createdAt: '2026-09-11T00:00:00Z',
-  updatedAt: '2026-09-12T00:00:00Z',
-  serviceId: SERVICE.serviceId,
-  model: 'sonnet',
-  turns: 1,
-  about: null,
-  pending: null,
-};
+const chat = await import('../../test/assistantChat.jsx');
+const { KEYS, META, SERVICE, chatClient, mountChat, typeAndSend } = chat;
 
 const CONV = {
   messages: [
@@ -67,81 +29,31 @@ const CONV = {
   ],
 };
 
-const KEYS = { meta: 'igt:assistant:p1:meta:c1', conv: 'igt:assistant:p1:conv:c1' };
-
 // The user's data as core keeps it (404 for what is gone), written only by
 // the assistant.
 const fakeClient = ({ meta = META, conv = CONV } = {}) => {
-  const records = new Map([
-    [KEYS.meta, meta],
-    [KEYS.conv, conv],
-  ]);
-  const assistant = fakeAssistantService(records, { answer: 'Answered.' });
+  const client = chatClient({ meta, conv, answer: 'Answered.' });
+  const { records } = client;
   const gone = () => Object.assign(new Error('Not found'), { status: 404 });
-  return {
-    records,
-    assistant,
-    messages: {
-      discoverServices: vi.fn(async () => [SERVICE]),
-      requestService: vi.fn(assistant.requestService),
-      attachServiceRequest: vi.fn(() => new Promise(() => {})),
-      cancelServiceRequest: vi.fn().mockResolvedValue({}),
-    },
-    userData: {
-      list: vi.fn(async () =>
-        [...records]
-          .filter(([key]) => key.includes(':meta:'))
-          .map(([key, value]) => ({ key, value })),
-      ),
-      get: vi.fn(async (_u, key) => {
-        if (!records.has(key)) throw gone();
-        return { key, value: structuredClone(records.get(key)), version: 1 };
-      }),
-      put: vi.fn(),
-      delete: vi.fn(),
-    },
-    projects: { list: vi.fn().mockResolvedValue([{ id: 'p1', name: 'Lamkang A' }]) },
-    server: { limits: vi.fn().mockResolvedValue({}) },
-    serverNow: () => new Date(),
-  };
+  client.messages.attachServiceRequest = vi.fn(() => new Promise(() => {}));
+  client.userData.get = vi.fn(async (_u, key) => {
+    if (!records.has(key)) throw gone();
+    return { key, value: structuredClone(records.get(key)), version: 1 };
+  });
+  client.userData.put = vi.fn();
+  client.userData.delete = vi.fn();
+  client.server = { limits: vi.fn().mockResolvedValue({}) };
+  client.serverNow = () => new Date();
+  return client;
 };
 
 const ops = (client) => client.messages.requestService.mock.calls.map((c) => c[2].op);
 
 const button = (m, label) => all(m.container, 'button').find((b) => b.textContent.trim() === label);
 
-const mount = (client) =>
-  renderComponent(
-    <MemoryRouter initialEntries={['/projects/p1']}>
-      <AssistantChat
-        projectId="p1"
-        projectName="Lamkang A"
-        client={client}
-        userId="u1"
-        canWrite
-        adapter={ADAPTER}
-        conversationId="c1"
-      />
-    </MemoryRouter>,
-  );
+const mount = (client) => mountChat(client);
 
-const flush = async (m, times = 6) => {
-  for (let i = 0; i < times; i++)
-    await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
-};
-
-const typeAndSend = (m, value) =>
-  m.step(() => {
-    const box = m.container.querySelector('textarea');
-    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(
-      box,
-      value,
-    );
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
-    );
-  });
+const flush = (m, times = 6) => chat.flush(m, times);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -330,19 +242,7 @@ describe('a first message the service never took', () => {
       if (a[2].op === 'send') throw Object.assign(new Error('Unavailable'), { status: 503 });
       return client.assistant.requestService(...a);
     });
-    const m = await renderComponent(
-      <MemoryRouter initialEntries={['/projects/p1']}>
-        <AssistantChat
-          projectId="p1"
-          projectName="Lamkang A"
-          client={client}
-          userId="u1"
-          canWrite
-          adapter={ADAPTER}
-          conversationId={null}
-        />
-      </MemoryRouter>,
-    );
+    const m = await mountChat(client, { conversationId: null });
     await flush(m);
     await typeAndSend(m, 'First words.');
     await flush(m, 10);

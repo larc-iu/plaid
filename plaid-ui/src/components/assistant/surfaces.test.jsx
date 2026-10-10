@@ -19,49 +19,11 @@ vi.mock('../../lib/notify.js', () => ({
 const { notifySuccess, notifyError } = await import('../../lib/notify.js');
 const { MemoryRouter } = await import('react-router-dom');
 const { renderComponent, byText } = await import('../../test/renderComponent.jsx');
-const { documentsBundle } = await import('../../test/fakeClient.js');
-const { fakeAssistantService } = await import('../../test/fakeAssistantService.js');
+const { ADAPTER, chatClient, flush } = await import('../../test/assistantChat.jsx');
 const { AssistantChat } = await import('./AssistantChat.jsx');
 const { AssistantPanel } = await import('./AssistantPanel.jsx');
 const { AssistantTab } = await import('./AssistantTab.jsx');
 const { jobs, lastOpen, serviceCache } = await import('./jobs.js');
-
-const ADAPTER = {
-  app: 'igt',
-  command: 'plaid-igt-agent',
-  intro: 'Ask about this project.',
-  examples: [],
-  textName: 'the transcription',
-  convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
-  CITE_RE: /<cite\s[^>]*\/>/g,
-  citationTitle: () => 'Sentence',
-  citationHref: () => '/sentence',
-  citationToMarkdown: (m) => m,
-  ExampleCard: () => null,
-  groupOf: () => ({ key: 'doc', title: 'Text 1', href: null }),
-  changePlace: () => ({ name: 'Text 1', href: null }),
-  parseCitationHref: () => null,
-  opensProject: () => true,
-};
-
-const SERVICE = {
-  serviceId: 'igt:assist:one',
-  serviceName: 'Assistant one',
-  online: true,
-  extras: { tasks: ['assist'], app: 'igt', record: 3, model: 'sonnet' },
-};
-
-const META = {
-  id: 'c1',
-  title: 'A thread',
-  createdAt: '2026-09-11T00:00:00Z',
-  updatedAt: '2026-09-12T00:00:00Z',
-  serviceId: SERVICE.serviceId,
-  model: 'sonnet',
-  turns: 1,
-  about: null,
-  pending: null,
-};
 
 // One saved conversation with a plan still to decide, which is what the apply
 // tests press.
@@ -78,42 +40,7 @@ const CONV = {
   ],
 };
 
-const fakeClient = () => {
-  const records = new Map([
-    ['igt:assistant:p1:meta:c1', META],
-    ['igt:assistant:p1:conv:c1', CONV],
-  ]);
-  // The assistant: it writes the record, the page only asks.
-  const assistant = fakeAssistantService(records);
-  return {
-    records,
-    assistant,
-    messages: {
-      discoverServices: vi.fn().mockResolvedValue([SERVICE]),
-      requestService: vi.fn(assistant.requestService),
-      attachServiceRequest: vi.fn().mockResolvedValue({}),
-      cancelServiceRequest: vi.fn().mockResolvedValue({}),
-    },
-    userData: {
-      list: vi.fn(async (userId, { prefix } = {}) =>
-        [...records]
-          .filter(([key]) => (prefix ? key.startsWith(prefix) : key.includes(':meta:')))
-          .map(([key, value]) => ({ key, value })),
-      ),
-      get: vi.fn(async (userId, key) => (records.has(key) ? { value: records.get(key) } : null)),
-      put: vi.fn(async (userId, key, value) => {
-        records.set(key, value);
-      }),
-      delete: vi.fn(async (userId, key) => {
-        records.delete(key);
-      }),
-    },
-    projects: {
-      list: vi.fn().mockResolvedValue([]),
-      ...documentsBundle(),
-    },
-  };
-};
+const fakeClient = () => chatClient({ conv: CONV, projects: [] });
 
 // What the page asked the service for, by op, in order. An open tab also
 // holds the conversation it shows (`hold`).
@@ -130,12 +57,6 @@ const base = (client) => ({
 
 const mount = (element, at = '/projects/p1') =>
   renderComponent(<MemoryRouter initialEntries={[at]}>{element}</MemoryRouter>);
-
-// Let the reads a mount starts, and the promise chain behind a job, run out.
-const flush = async (m, times = 4) => {
-  for (let i = 0; i < times; i++)
-    await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
-};
 
 // What `compact` reaches, which is three class names and nothing else: the
 // chat's own card, the transcript's padding and the composer's.
