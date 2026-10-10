@@ -62,7 +62,7 @@ On your profile you set a display name and a picture, change your password, and 
 The editor has a few levels you move between:
 
 * **Projects**: the list of all projects you can access. This is your home screen after signing in.
-* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
+* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Guidelines**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
 * **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
@@ -278,7 +278,7 @@ What you do here:
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
 * **Show only the rows you need**. Click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
-* **Copy as IGT**. Copy one sentence for a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX keeps characters like ə and ∅ as they are, so typeset it with XeLaTeX or LuaLaTeX. Gloss parts written in capitals, such as NOM or 1SG, are set in small caps.
+* **Copy as IGT**. Copy one sentence for a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX keeps characters like ə and ∅ as they are, so typeset it with XeLaTeX or LuaLaTeX. In LaTeX, gloss parts written in capitals, such as NOM or 1SG, are set in small caps.
 
 Move around the grid with **Enter** or **Tab** (next cell, Shift for the previous one), **↑** and **↓** (rows), and **←** and **→** from the ends of a value.
 **Alt+click** a word to open it on the Tokenize tab.
@@ -289,13 +289,13 @@ The full set of gestures is collected under <<_keyboard_shortcuts>>.
 Plaid IGT tracks who, or what, produced every value.
 Four states are distinguished in the grid:
 
-* A value **you typed** shows plain. So does a marked value once you have edited or confirmed it.
+* A value **you typed** shows plain. A marked value you have edited or confirmed keeps only a thin violet underline.
 * A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to accept or discard it.
 * A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to accept or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter. A guess on a **pale teal** background comes from the linked lexicon entry, and one on plain background from what the same form was given elsewhere in the project.
 
 Hover over an annotation to see where it came from.
-Editing a marked value confirms it, so the violet and amber disappear as you work through a document.
+Editing a marked value confirms it, so the violet and amber italics disappear as you work through a document.
 The small form beneath a word or morpheme is the lexicon entry it is linked to.
 
 A member whose work is reviewed is a **contributor**.
@@ -323,7 +323,7 @@ In the Analyze tab, hover a sentence's label, a word, or a morpheme and click it
 A badge with a number marks a thread that already has comments.
 
 The **Comments** tab lists every thread in the document, newest activity first.
-Click a thread to open it, and click its heading to jump to its sentence.
+Click a thread to open it, and click its arrow to jump to its sentence.
 Comments take Markdown.
 You can edit your own, and a maintainer can remove any.
 
@@ -386,14 +386,14 @@ Every entry has a **Form**, its reference form or headword, which is required.
 Beyond the form, an entry carries a set of fields.
 A new vocabulary starts with a few built in:
 
-* **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines. Required.
-* **Gloss**: the entry's gloss, offered as a guess for the Gloss field of anything linked to it. Required.
+* **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines.
+* **Gloss**: the entry's gloss, offered as a guess for the Gloss field of anything linked to it.
 * **POS**: the entry's part of speech.
 * **Definition**: a fuller definition or note.
 * **Status**: how far along the entry is, held to a closed list (draft, reviewed, published).
 
 You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
-A field marked **inline** shows both as a column in the vocabulary table and on each entry's row in the link popover.
+A field marked **inline** also shows on each entry's row in the link popover.
 Other fields stay on the entry's own edit form.
 
 A field can be held to a **tagset** (see <<_tagsets>>), so a part of speech is always `n` and never sometimes `noun`.
@@ -471,8 +471,8 @@ Everything it produces shows in violet until you accept or discard it (see <<_pr
 
 1. **Propose translations.** A translation service drafts a free translation for every sentence. It runs first because the later steps read the translation. Needs a connected translation service.
 2. **Copy previous analyses.** Every word that has not been analyzed at all is given the analysis the same word form has most often had elsewhere in the project. This is built in and needs no service (see <<_copying_previous_analyses>>).
-3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word that still has none. Needs a connected analysis service.
-4. **Link to the lexicon.** Words and morphemes with no link yet are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. Needs the project to have a vocabulary.
+3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word a person has not analyzed. Needs a connected analysis service.
+4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. Needs the project to have a vocabulary.
 
 A service step is unavailable when no service for it is online.
 
@@ -511,7 +511,7 @@ A project's **Activity** tab, for maintainers, shows who has been working and on
 
 The upper table counts each person's **changes** over a window you choose.
 A change is one action, so importing a corpus counts once, not once per sentence.
-Beside each count is a fortnight of daily bars and the documents the person touched.
+Each row also counts the documents the person touched, with a bar for each day of the window.
 Below it, the members who have made no changes in that window are named.
 
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
@@ -549,7 +549,7 @@ An import fills it in, and a field named with a tag in parentheses, such as `Glo
 **Tokenize new text**, on by default, splits the text added on the Baseline and Media tabs, and by the assistant, into words.
 
 The **ignored tokens** rule says which tokens carry no word-level annotation and host no morphemes, usually punctuation.
-**Ignore punctuation and symbols** takes every punctuation mark and symbol except ∅.
+**Unicode punctuation** takes every punctuation mark and symbol except ∅ and pictographs such as ★.
 Its exceptions are the **characters that behave as letters**, such as the apostrophe of an orthography that writes a glottal stop with one.
 Each listed character joins the word around it instead of splitting it, and stays on the word's form in the lexicon.
 **Explicit list** instead takes only the tokens you list, separated by commas.
@@ -659,7 +659,7 @@ A line above each answer sums up the work behind it, such as "read 87 sentences 
 Opened, it lists each step the assistant took, and a step opens to show exactly what it read.
 
 When you ask it to change something, it does not touch the data.
-It proposes a **plan**, which you **Approve** or **Discard**.
+It proposes a **plan**, which you **Approve and apply** or **Discard**.
 The plan lists every change under the document or lexicon it lands in, and each word links to its place in the editor, so a change can be checked before it is approved.
 A change that rewrites your baseline text is marked **Rewrite**, and one that changes something a person made or accepted is marked **Accepted**.
 A change over the whole project, such as replacing a gloss everywhere, is one row with its counts, and **Show where** lists the documents.
@@ -715,7 +715,7 @@ Where the assistant can look things up on the web, it also reads a PDF from a li
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at, as does the handle on the right edge of the window.
 The panel stays open as you move around, and it can be dragged wider or narrower.
 It picks up the last conversation you had in the project you are in and keeps it as you move from document to document.
-The panel's history lists your other conversations, and **⤢** moves the open one to the **Assistant** tab.
+The panel's history lists your other conversations, and **Open in Assistant** moves the open one to the **Assistant** tab.
 
 A question asked on a document is about that document, unless it names another.
 **Ask**, beside **Copy** on a sentence, puts that sentence into the question.
@@ -918,7 +918,7 @@ Some entries are marked with their kind:
 * **Import**: a file brought in.
 * **Automatic**: a run of a service or of a built-in step, such as Auto-analyze's.
 * **Assistant**: an approved Assistant plan.
-* **Bulk edit**: a change made in Bulk Edit.
+* **Bulk edit**: a change made in Bulk Edit or a vocabulary's **Replace**.
 * **Guess taken**: a faint guess accepted.
 * **Review**: a proposal accepted as it stands.
 * **Repair**: a repair of the document's data, rather than an edit.
@@ -963,7 +963,7 @@ An **administrator** can also create accounts directly from the same Access sect
 Scripts and services should not borrow your sign-in.
 Mint a named **API token** on your profile page instead.
 It can be revoked on its own, and its name appears in the history.
-A token cannot change a password, create or revoke tokens, create an account, or make invitation and password-reset links.
+A token cannot manage accounts or passwords, create or revoke tokens, or make invitation and password-reset links.
 
 = Administration
 
@@ -999,7 +999,7 @@ In any field that holds language data, type a backslash followed by a two-letter
 
 The codes are Praat's, so if you already use Praat they are the ones you know.
 There are over four hundred of them, and the full list is under **Settings → Text and vocab → Special characters**.
-For anything not in the list, `ɐ` and the like give any character by its Unicode number.
+For anything not in the list, `\u0250` and the like give any character by its Unicode number.
 Type two backslashes for a plain backslash.
 
 Codes work in the Analyze grid, the baseline, the transcript, lexicon entries, and document metadata.
@@ -1026,7 +1026,7 @@ The tables below give the shortcuts as they come.
 You can change most of them under **Profile**, in **Keyboard shortcuts**: choose **Change** beside an action and press the keys you want.
 A change follows your account to any computer you sign in on, and shows in the `?` legends.
 **Reset** puts one shortcut back and **Reset all** puts back every one.
-Enter, Tab, the arrow keys, Escape, Backspace, and `-` and `=` in a morpheme form cannot be reassigned.
+Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned, with or without Shift.
 
 [[_anywhere]]
 == Any screen
@@ -1049,7 +1049,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, and `-` and `=` in a morpheme for
 | **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_details>>.
 | **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first. In a cell with nothing typed, **Esc** lets the next **Tab** leave the grid, and **Shift+Tab** go back before it.
 | **Alt+↓** | List every value the project has given this form, with counts. **↑** / **↓** move through the list, **Enter** takes the highlighted value, **Esc** closes the list. A field held to a tagset opens its list on its own.
-| **Enter** (sentence field) | Save the value and stay. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
+| **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
 | **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form, delete the morpheme.
