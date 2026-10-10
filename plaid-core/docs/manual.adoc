@@ -51,8 +51,8 @@ We will discuss layers more shortly.
 
 == Users and Permissions
 Plaid offers a built-in **user** system which allows individuals to log in with a password.
-A user's id is their email address as typed, in Unicode NFC, in lowercase, with any whitespace, control or format character (a no-break space, a byte order mark, a zero-width space) at either end removed. An address with such a character inside it is refused when an account is made.
-Every route that takes an id or an email (creating an account, logging in, invites, member and maintainer grants, tokens, private data, search) reads it the same way, so `Ana@Example.org` and `ana@example.org` name one account, and two accounts never differ only in case, composition or an invisible character at an end.
+A user's id is their email address, compared without regard to case, Unicode composition, or invisible characters at either end.
+So `Ana@Example.org` and `ana@example.org` name one account.
 By default, each project is private, and one of three permissions levels is needed in order to interact with one:
 
 * **Maintainers** have full privileges for working with projects: they may edit documents and also modify the project's configuration.
@@ -62,69 +62,58 @@ By default, each project is private, and one of three permissions levels is need
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
 
 A request for a project, document, vocabulary or user that does not exist answers 404 to an admin.
-Anyone else gets the 403 they would get for one that exists but is not theirs, so the status does not tell them whether it exists.
-When the id a request names (in its path, its body, or an op of a `/batch`) resolves to nothing, the 403's body also carries `"unresolved": true` beside its `error`.
-A client reads that as "changed or removed by someone else" rather than as a missing permission.
-A user's record and profile picture are readable by every signed-in user, so an unknown user there is a 404 to everyone.
-Adding or removing a project member or vocabulary maintainer who has no account is a 400.
+Anyone else gets the same 403 they would get for one that exists but is not theirs.
+When the 403 is for an id that resolves to nothing, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
 
 Permissions say what a person may do, not how far their work is trusted.
-A project may separately mark members whose work needs a second look, whatever their role; that mark lives in the project's configuration and is described under <<Provenance>>.
+A project may also mark members whose work needs review, whatever their role, as described under <<Provenance>>.
 
-Each user may upload a **profile picture**, which appears wherever they are named in the apps: the header, project and vocabulary rosters, and the user administration screen.
-Pictures are normalized on the server, which crops them to a square, scales them to a single configured size (`[media] avatar_size_px`), and re-encodes them.
-That last step also strips camera metadata, so GPS coordinates embedded in a phone photo are not served back out to everyone else in the instance.
+Each user may upload a **profile picture**, which appears wherever they are named in the apps.
+The server crops it to a square, scales it to `[media] avatar_size_px`, and strips its camera metadata.
 You may set or remove your own picture, and an admin may set or remove anyone's.
-A user with no picture is shown their initials instead.
 
-A sign-in or API token is read from the `Authorization` header only, never from a URL, where it would land in access logs and in anything the URL is copied into.
-An image, audio or video element cannot send that header, so a picture's or a recording's URL carries a **link token** in its query string instead.
-A link token opens one kind of resource and is refused everywhere else, as a bearer token included.
+=== Tokens and sign-out
 
-* `POST /api/v1/avatar-link` answers `{token, expires-at}`. The token opens any user's picture as `GET /api/v1/users/:id/avatar?avatar-token=...`. `users.avatarUrl(id, avatarHash)` in JavaScript (async) and `users.avatar_url(id, avatar_hash)` in Python mint one token per client, keep it until ten minutes of it are left (half its life, for one made near the end of a sign-in), and build the URL with it. `users.avatarToken()` (`users.avatar_token()`) answers the token itself.
-* `POST /api/v1/documents/:id/media/link` answers `{url, expires-at}`: the document's `media-url` with a `media-token` that opens that one recording, for as long as its user can read the project.
+A sign-in or API token is read from the `Authorization` header only, never from a URL.
+An image or audio element cannot send that header, so the URL of a picture or a recording carries a short-lived **link token** instead.
+The clients build these URLs for you:
 
-A link token lasts `[media] avatar_link_ttl_seconds` (a day) or `[media] link_ttl_seconds` (six hours), and never longer than the credential that made it.
-It stops working when its user signs out, changes password or is deactivated, and one made with a named API token stops when that token is revoked.
-A token scoped to projects may make a media link for a recording in those projects, but no avatar token.
-The access log shows both parameters as `<redacted>`.
+* `users.avatarUrl(id, avatarHash)` (`users.avatar_url(id, avatar_hash)` in Python) gives a URL for any user's picture, using a token from `POST /api/v1/avatar-link`.
+* `POST /api/v1/documents/:id/media/link` answers `{url, expires-at}`, a URL that opens one document's recording.
+
+A link token opens nothing else, lasts at most `[media] avatar_link_ttl_seconds` or `[media] link_ttl_seconds`, and stops working when the credential that made it does.
 
 Signing out of an app forgets the sign-in in that browser tab only.
-To end every sign-in of your account on every device, for example on a laptop left signed in elsewhere, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript), which sends `POST /api/v1/logout`.
-Every sign-in token of yours stops working at once, the calling client's included.
-Named API tokens are not affected: revoke one with `api_tokens.revoke` (`apiTokens.revoke`).
+To end every sign-in of your account on every device, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript).
+Named API tokens are not affected, and are revoked one at a time with `api_tokens.revoke` (`apiTokens.revoke`).
 
-A named API token acts as its owner in every request but a few, since it is handed to services and scripts and never expires.
-It cannot change a password (its owner's, or for an admin anyone's), mint or revoke API tokens, or mint an invite of any kind (`POST /invites`: a link to a project, a signup link or a password reset link).
-An admin's named token also cannot create an account (`POST /users`, which sets a password), make or unmake an admin (`is-admin` in `PATCH /users/:id`), deactivate or reactivate an account (`DELETE /users/:id`, `POST /users/:id/activate`), clear the login rate limits (`DELETE /admin/rate-limits`), or write or delete another user's private data (`PUT` and `DELETE /users/:id/data/:key`). Its owner's own private data, and project and vocabulary members, it may change.
-An invite, an account, an admin or a reactivated login made with the token would outlive revoking it.
-Each of these answers 403 "This needs a signed-in session, not an API token." and changes nothing.
-Sign-in tokens are not limited this way.
+A named API token acts as its owner, but since it never expires, it cannot do the few things that would outlive revoking it.
+It cannot change a password, mint or revoke API tokens, or mint an invite.
+An admin's named token also cannot create, promote, deactivate or reactivate accounts, clear login rate limits, or write another user's private data.
+These answer 403 "This needs a signed-in session, not an API token."
 
 === Private user data
 
-Each user also has a small private **key/value store** (`/users/{id}/data/{key}`), meant for application state that should follow a person across devices and sessions but belongs to nobody else: assistant conversations, drafts, interface preferences.
-A key is any string the client chooses (apps namespace theirs, e.g. `igt:assistant:<project>:...`), the value is any JSON document up to `[user_data] max_value_mb` (5 MB by default, published as `limits.userDataValueBytes` on `GET /info`), and the store can be listed by key prefix or by a glob over the whole key (`*` for any run, `?` for one character, e.g. `igt:assistant:*:meta:*`), optionally with values.
-The listing is ordered by key and paginated like every other collection (see <<Pagination>>).
-A page asked for with values is the largest response the API can be made to produce, so the clients page this one at 100 entries a request rather than the usual 1000, a bound their `list` methods take as `page_size` / `pageSize`.
-Only the owning user and admins can read or write it; nothing in it is audited or time-travelable, and it is deleted with the user.
-Every entry has a `version`, a whole number that every write of it raises by one (a new entry is version 1), and reads, listings and writes answer it.
-A write may name the version it was made from (`?version=`, the `version` option of `user_data.put` / `userData.put`), and is then refused with 409 and `error: "version-mismatch"`, the stored `version` and `updated-at`, when another write landed since. `version=0` writes only an entry that does not exist yet, and an entry deleted since answers version 0.
-A record with more than one writer, such as an assistant conversation that the browser and the assistant service both write, reads the entry again on a 409 and makes its change on what it finds, so neither writer puts back a copy from before the other's write.
-A write without `version` replaces the entry whatever its version.
-An admin can also list entries across every account at once (`/admin/user-data`), narrowing by key prefix or by a glob over the whole key — which is how an app browses one feature's records without dragging every other key's value along.
-It is not a place for annotation data, which belongs in layers where it is shared, audited, and queryable, nor for media, which has its own endpoints.
+Each user also has a small private **key/value store** (`/users/{id}/data/{key}`) for application state that should follow a person across devices, such as assistant conversations, drafts and interface preferences.
+Only the owner and admins can read or write it, and nothing in it is audited.
+It is not a place for annotation data, which belongs in layers where it is shared and queryable.
+
+A key is any string, and apps namespace theirs (`igt:assistant:<project>:...`).
+A value is any JSON document up to `[user_data] max_value_mb` (5 MB by default).
+The store can be listed by key prefix or by a glob over the whole key (`igt:assistant:*:meta:*`), with or without values.
+
+Every entry has a `version` that each write raises by one.
+A write that passes the version it was made from (`?version=`, or the `version` option of `user_data.put` / `userData.put`) is refused with 409 when another write landed in between.
+`version=0` writes only an entry that does not exist yet.
 
 === Guidelines
 
-A project may carry a flat list of **guidelines** (`/projects/{id}/guidelines`, `/guidelines/{id}`): short Markdown documents recording the conventions the people working on it have agreed to — how a hard case is annotated, what a field is for, what the project leaves alone.
-Each has a `title` (the handle an assistant asks for one by), a Markdown `body`, and a `pinned` flag that an assistant reads as "send this one in full on every turn".
-Titles are deliberately **not** unique: refusing a write because a title is taken would throw away a document that had just been typed, so a client warns about it instead, and anything resolving a guideline by title has to answer for every match rather than pick one.
-Reading takes Reader access and writing takes Writer, matching comments rather than layer configuration: the people who annotate are the people who discover what the conventions have to be.
-The list is ordered by title and paginated like every other collection (see <<Pagination>>); without `include-bodies` each entry carries `body-chars` instead of its text, so a caller can budget before fetching any.
-A PATCH may be made CONDITIONAL by passing `updated-at` (the `updated-at` the caller last read): if somebody else saved in between the write is refused with a 409 and nothing is written, which is what stops two people editing one guideline from silently overwriting each other. Omit it and the write is unconditional, which is what a pin toggle or a script wants.
-Writes ARE audited, so a change appears in the project's audit feed with the row as it now stands and announces on its event stream — but guidelines are project-scoped rather than document-scoped, so they are not time-travelable: `?as-of=` on these routes is a 400, not an answer.
-They are deleted with the project.
+A project may carry a list of **guidelines** (`/projects/{id}/guidelines`): short Markdown documents recording the conventions its annotators have agreed on.
+Each has a `title`, a `body`, and a `pinned` flag, which tells an assistant to read that guideline on every turn.
+Readers may read them and writers may edit them.
+
+A PATCH that passes `updated-at`, the value the caller last read, is refused with 409 if someone else saved in between.
+Writes appear in the project's audit log, but guidelines have no time travel.
 
 == Clients
 Plaid's functionality is exposed for development as a REST API.
@@ -194,7 +183,6 @@ Its type declarations are at `/client/plaid-client.d.ts`.
 Collection endpoints (documents, users, API tokens, audit, and similar lists) are paginated.
 Over raw HTTP they return an envelope of the form `{"entries": [...], "next-cursor": "..."}`, where each page holds at most 100 entries by default (1000 maximum, set via `?limit=`).
 To fetch the next page, pass the opaque `next-cursor` value back verbatim as `?cursor=` (it is `null` on the final page).
-The cursors are keyset-based, so pages stay stable under concurrent inserts.
 
 The official Python and JavaScript clients handle this for you: their `.list()`-style methods (e.g. `projects.list()`, `projects.list_documents(...)` / `listDocuments(...)`) transparently follow the cursors and return the full flat list.
 Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are available when you want to drive pagination yourself.
@@ -202,15 +190,8 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 == Audit Log
 
 Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
-Uploading and deleting a document's recording are recorded too, as operations of type `media/upload` and `media/delete`, and each moves the document's version. The recording itself is a file, not part of the log, so time travel and a restore cannot bring back a deleted one.
-A delete may name the recording it means with `media-version`, the `?v=` of the document's `media-url` (`mediaVersion` / `media_version` in the clients). It is refused with 409, `media-changed` and the current `media-url` when the stored recording is another one, so a page still showing a replaced recording cannot delete its replacement.
-An upload to a document that already has a recording is refused with 409, `media-exists` and the current `media-url`.
-An upload that is not audio or video is refused with 415.
-So is a WAV whose samples are not PCM, 32-bit float, A-law or mu-law, such as IMA or Microsoft ADPCM, GSM 6.10 or 64-bit float, since browsers cannot play one.
-The `error` names its coding.
-Audit history is retained indefinitely — it is both the forensic record and the source for document time travel (see below), so pruning it trades away history. Operators monitor disk via the `/health` endpoint's `audit` block.
-
-The log can be queried like so:
+The log is kept indefinitely, and it is what document time travel reads from (see <<Document Time Travel>>).
+It can be queried like so:
 
 [,python]
 ----
@@ -225,33 +206,15 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 # Luke G, 2025-07-09T20:27:59.611Z: Merge morphemes (4 writes)
 ----
 
-=== Credentials in the audit log
-
-Each entry names the user who made it (`user`) and, when the write was signed with a named API token, that token's id and name (`api_token`, `apiToken` in JavaScript).
-It also says what kind of credential signed the write, as `credential` on the entry (its first write) and on each operation in `ops`:
-
-[cols="1,3"]
-|===
-|`credential` |What signed the write
-
-|`login`
-|A session from signing in with a password: the apps, or a script that signs in.
-
-|`named-token`
-|A named API token, such as a script, or a service run on its owner's token.
-
-|`delegated`
-|The short-lived token a service is handed to act for the person who asked it (a delegating service, such as an assistant).
-|===
-
-So a script run on a person's named token is told apart from that person's own edits in the browser, although both are theirs.
-The server sets it from the token it validated, never from anything the client sends, and the log holds a token's id, never the token.
-Operations written before this was recorded (2026-10-06) have no `credential`, and neither do the server's own writes.
-From 2026-10-06 to 2026-10-08 a named token that held a service connection when it wrote was recorded as `service`. Since then the kind is read from the token alone, so the same token's writes are `named-token`.
+Each entry names the user who made it, and the named API token if one signed the write.
+It also records what kind of credential signed it, as `credential`: `login` for a password sign-in, `named-token` for a named API token, and `delegated` for a token a service was handed to act for someone (see <<Acting on the requester's behalf>>).
+This tells a script run on a person's token apart from that person's own edits.
 
 === Logical operations
 
-Each entry in the log is a **logical unit**, not necessarily a single write. Many user-meaningful actions are implemented as a run of low-level writes: "merge two morphemes" deletes tokens, creates one, moves spans, and so on. To keep the log readable, a client can declare the run as one **operation** with a human label. Every write made while the operation is open is tagged with it, and the audit endpoints fold the tagged writes into ONE entry whose `message` is your label and whose `ops` are the individual writes (each with its own auto-generated `description`):
+Many actions are made of several writes: "merge two morphemes" deletes tokens, creates one, and moves spans.
+To keep the log readable, a client can group such a run into one **operation** with a label.
+The audit log then shows the run as one entry whose `message` is the label and whose `ops` are the individual writes:
 
 [,python]
 ----
@@ -270,39 +233,28 @@ await c.withOperation("Merge morphemes", async () => {
 });
 ----
 
-A manual form exists too (`c.begin_operation(msg)` / `c.end_operation()`, `c.beginOperation(msg)` / `c.endOperation()`) for an operation whose end is not lexically scoped, for example one that spans a UI interaction. Ending an operation is purely local unless you pass a refined label (`c.end_operation("Merged 3 morphemes")`, or `op.set_message(...)` / `setMessage(...)` inside the scoped form), which relabels the entry now that the outcome is known.
+An operation is not a transaction: if the third of five writes fails, the first two stay.
+Use a batch inside the operation for anything that must be all-or-nothing (see <<Atomic Batches>>).
+An operation opened inside another joins the outer one, so actions can call each other freely.
 
-Things to know:
+A request to a service made inside an operation carries the operation along, and the service's writes are filed under your entry.
+Pass `no_operation=True` (`noOperation: true` in JavaScript) when the service's work should be an entry of its own.
 
-* **An operation is not a transaction.** If the third of five writes fails, the first two stay committed and appear in the log under the operation. Use a batch (`c.batched()`) inside the operation for any step that must be all-or-nothing. A batch that is not inside an operation is still shown as one entry (its writes share a `batch_id`), just without a label.
-* **Nesting flattens.** Opening an operation while one is open joins the outer one; the outer label wins. This lets composed actions call each other without worrying about it.
-* **Broadcast messages never join.** A message sent with `send_message`/`sendMessage` is not saved and writes nothing to the log, so it is never part of an operation, even when sent inside one.
-* **Services join automatically.** A request to a service made while an operation is open carries the operation with it, and the service's writes fold under your entry, so "re-transcribe" can be one entry covering both the client's cleanup writes and everything the ASR service created. A request made with `no_operation=True` (`noOperation: true` in the options of `requestService`) carries none, and the service's writes are an entry of their own. A client has one open operation at a time, so a request that is its own action, such as approving an assistant's plan or starting a service run, is made that way: an edit still saving when it is sent would otherwise take in all of its writes. The apps make them so.
-* **An operation is its caller's.** A write may join an operation that its caller started, or one handed to it with a service request that is still running. The caller is the user, whichever session or named token they write with, but a delegated token counts only for the operations its own writes started. A service joins the operation it was handed only with writes in the project the request was made in, and only until the request ends, which it also does when the service's connection drops or the server restarts. A write that names any other operation is refused with 403 and writes nothing, and so is a service request that carries one. An operation that a service's first write starts for a request is the requester's, who may write into it and relabel it afterwards.
-* **Time travel targets.** Each entry carries `time` (its first write) and `end_time`, the time to read at to see the whole operation done. To view the document as it was after the operation, pass `end_time` as `as_of`. Each op in `ops` carries an `end_time` of its own as well: its `time` when it was written alone, or the time of its batch's last write when it ran in a batch, because a read at a time inside a batch shows the document as it was before the whole batch. To view the state after one op, pass `ops[i].end_time`, not `ops[i].time`.
-* The label is client-supplied free text for readability only. The structured forensic record (the operation type and the per-row images) is unchanged.
+Each entry carries `time`, its first write, and `end_time`.
+To see a document as it was after the whole operation, read it as of `end_time`.
+Each op in `ops` has an `end_time` too, for viewing the state after that one write.
 
-==== Kinds of operation
+=== Kinds of operation
 
-An operation may also say what kind of operation it is and what it refers to. The label is for a person to read. The kind and the reference are for a program: a study of how a project was annotated can count its operations by kind without reading labels.
+An operation may also say what **kind** of operation it is, so that a program can count operations without reading their labels.
+The kind is one of a fixed list, and any other value is refused with a 400.
+An optional `ref` (at most 1024 characters) says what the operation refers to.
 
 [,python]
 ----
-with c.operation("Assistant: gloss 12 words", kind="assistant-plan",
-                 ref="conv:4f2a/plan:9c1e/service:igt:assist:glm-5.2"):
+with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
     ...
 ----
-
-[,javascript]
-----
-await c.withOperation("Import ELAN corpus", async () => {
-  ...
-}, { kind: "import", ref: "format:elan" });
-----
-
-The manual forms take them too: `c.begin_operation(msg, kind=..., ref=...)` and `c.beginOperation(msg, { kind, ref })`. On the wire they are `?group-kind=` and `?group-ref=` beside `?group-id=`. The audit endpoints return them as `kind` and `ref` on the entry, and `GET /operation-groups/:id` returns them too, each only when the operation has one.
-
-The kind is one of this list. The server refuses any other value with a 400, so a misspelled kind never reaches the log.
 
 [cols="1,3,2"]
 |===
@@ -310,39 +262,36 @@ The kind is one of this list. The server refuses any other value with a 400, so 
 
 |`assistant-plan`
 |An assistant plan the user approved, being applied.
-|`conv:<conversation id>/plan:<plan id>/service:<service id>`. The service id comes last and may itself hold a `/`.
+|`conv:<conversation>/plan:<plan>/service:<service>`
 
 |`service-run`
-|One run of a service, with every write the service made for it.
-|`service:<service id>`, or `builtin:<name>` for a rule an app runs in the browser: IGT writes `rule-based-punctuation` (its tokenizer), `analysis-copy` and `precedent` (Auto-analyze's copy and linking steps)
+|One run of a service, with every write it made.
+|`service:<id>`, or `builtin:<name>` for a rule an app runs in the browser
 
 |`import`
 |A file or archive read into a project.
-|`format:<format>`: the apps write `native`, `fwbackup`, `flextext`, `elan`, `cldf` and `table` (a vocabulary's Bulk Add) in igt, `conllu` in UD and `umr` in UMR
+|`format:<format>`, such as `format:elan`
 
 |`bulk-edit`
-|One change made across many places at once, such as igt's Bulk Edit or UD's Grew rewrite.
-|`action:<name>`: igt writes `respell`, `replace`, `reanalyze` and `merge` (Bulk Edit) and `vocab-replace` (a vocabulary's Replace), UD writes `grew-rewrite`
+|One change made across many places at once.
+|`action:<name>`, such as `action:respell`
 
 |`guess-adoption`
-|A person taking a suggested value as their own: in igt, a guess or a value from a cell's alternatives put into an empty cell, or a word accepted together with its guesses. Accepting what is already stored, with no guess in it, is a `review`.
+|A person taking a suggested value as their own.
 |none
 
 |`repair`
-|A repair an app makes by itself when a document opens, or a conversion of stored data run through the API. A repair is nobody's edit: it is shown in History and the audit log, labelled, but never counted as anyone's last edit or activity.
+|A repair an app makes by itself when a document opens. It is never counted as anyone's edit.
 |none
 
 |`review`
-|A person accepting machine or contributed work already stored, as it stands. In igt that is a word's analysis accepted with nothing guessed in it, a sentence field accepted, or a vocabulary link or multi-word expression accepted. In UD it is a word's or a sentence's predictions accepted, and in UMR a node or a sentence's graph accepted. An accept that also takes a guess is a `guess-adoption` instead.
+|A person accepting machine or contributed work as it stands.
 |none
 |===
 
-The reference is free text of at most 1024 characters, and a longer one is refused rather than cut. Both are recorded from the operation's first write, like the label, and never change afterwards: relabelling an operation changes only its label. Nesting flattens here too, so a service joining your operation, or an operation opened inside yours, records your kind and reference, not its own. Both are optional.
-
 === Custom messages for single writes
 
-For a single write, you can replace its auto-generated `description` by passing a message as the `audit_message` / `auditMessage` argument of a write method that has one.
-It is the last argument of most writes. In JavaScript, `projects.delete`, `documents.uploadMedia` and `documents.deleteMedia` take an options object after it, and user-data and comment writes take none:
+A single write can carry its own message in place of the generated `description`, as the `audit_message` / `auditMessage` argument:
 
 [,python]
 ----
@@ -350,17 +299,14 @@ c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {s
 # logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
 ----
 
-[,javascript]
-----
-await c.spans.setMetadata(spanId, { approved: true }, "Approve span {spanId}");
-----
+A `{...}` placeholder is filled in with any parameter of the request, spelled the way your client spells it.
+The message is stored as written, so do not put a secret in it.
 
-The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter: just write the parameter the way your client spells it (snake_case in Python, camelCase in JavaScript). A placeholder that names no parameter of the request is left as-is. The message is stored verbatim, so do not template a parameter that may carry a secret (e.g. a password) into the log. To label a run of several writes, use an operation (above) rather than repeating a message on each write.
+=== Filtering the log
 
-=== Filtering by operation type
-
-All three audit endpoints accept `op_types` / `opTypes`, which narrows the read to the operation types you name.
-The useful case is a client that caches something derived from the project and wants a cheap way to ask whether that cache is stale, without paging the whole log:
+The audit endpoints take filters, so a client can ask a narrow question without paging a project's whole history.
+`op_types` / `opTypes` keeps only the operation types you name, written as in an entry's `ops[i].type` (`span-layer/create`, `document/update`).
+`kinds` keeps only operations of the kinds you name.
 
 [,python]
 ----
@@ -372,87 +318,47 @@ changes = c.projects.audit(
 )
 ----
 
-[,javascript]
-----
-const changes = await c.projects.audit(
-  projectId, lastChecked, undefined, undefined,
-  ['span-layer/create', 'span-layer/delete', 'span-layer/update'],
-);
-----
+An entry of a machine run can hold tens of thousands of writes.
+A page read with `ops_limit` / `opsLimit` keeps only each entry's oldest operations, and `op-count` says how many there are in all.
+To read the rest of one entry, pass its id as `entry_id` / `entryId` with a `start_time` at the last operation you have.
 
-Write each type exactly as it appears in an entry's `ops[i].type`, which is `entity/verb`: `span-layer/create`, `document/update`, `token/bulk-delete`.
-An op type that is not spelled that way is rejected with a 400 rather than silently matching nothing.
+=== Last edit per document
 
-WARNING: The SSE stream spells the same operation differently — `span_layer:create`, snake_cased and colon-separated. See <<Event Reference>>. Use the `entity/verb` form here.
-
-Filtering applies to individual **operations**, exactly the way the time window and the endpoint's own scope do. An entry appears when one of its operations matches, and carries only the operations that matched. So a batch that created a span layer and fifty spans comes back, under a `span-layer/create` filter, as that batch holding its one layer-create.
-
-=== Filtering by kind
-
-Every audit endpoint also accepts `kinds`, which keeps only the entries of operations of the kinds you name (see <<Kinds of operation>>), as a list or a comma-separated string:
-
-[,python]
-----
-# Every accept in a document, and every guess taken
-reviewed = c.documents.audit(document_id, kinds=["review", "guess-adoption"])
-----
-
-[,javascript]
-----
-const page = await c.projects.auditPage(projectId, {
-  kinds: ["review", "guess-adoption"], order: "desc",
-});
-----
-
-On the wire it is `?kinds=review,guess-adoption`. A kind outside the list is refused with a 400, for the same reason a misspelled op type is.
-Unlike the op-type filter, this one keeps or drops an entry whole, since the kind belongs to the operation and not to its individual writes. An entry that is not an operation with a kind (an untagged operation, a batch, a single write) never matches.
-The two filters combine: with both, an entry must be of one of the kinds and still carries only the writes of the op types named.
-
-=== Long entries
-
-An entry carries every one of its operations, and one operation of a machine run can hold tens of thousands of writes.
-Every entry also has `op-count` (`opCount` in JavaScript), how many operations it has in the read.
-A page read takes `ops_limit` / `opsLimit` (1 to 1000), which keeps only each entry's oldest operations in `ops`, the first among them. Every other field of the entry is the same as without it.
-`entry_id` / `entryId` reads that one entry rather than a page (no entries when the window and filters leave none of its operations).
-Together they fetch the rest of an entry the limit cut: read it again from the time of the last operation held, which comes back as the first.
-
-[,python]
-----
-page = c.documents.audit_page(document_id, order="desc", ops_limit=100)
-entry = page["entries"][0]
-more = c.documents.audit_page(document_id, entry_id=entry["id"],
-                              start_time=entry["ops"][-1]["time"], ops_limit=101)
-----
-
-[,javascript]
-----
-const page = await c.documents.auditPage(documentId, { order: "desc", opsLimit: 100 });
-const entry = page.entries[0];
-const more = await c.documents.auditPage(documentId, {
-  entryId: entry.id, startTime: entry.ops.at(-1).time, opsLimit: 101,
-});
-----
-
-=== Your last edit in each document
-
-`my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project.
-It returns a `{document id: timestamp}` map, and a document the caller has never written to is simply absent.
-A write in an operation of kind `repair` (an app's repair when a document opens, or a conversion of stored data) is not counted, and it leaves the document's `time-modified` where it was, so opening a document never makes it the last edited.
-Its version still moves.
+`my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project:
 
 [,python]
 ----
 mine = c.projects.my_last_edits(project_id)
+# {document id: timestamp}
 ----
 
-[,javascript]
+A document the caller never wrote to is absent.
+Repairs an app makes when a document opens are not counted.
+
+=== Document Time Travel
+
+A document read accepts an `as-of` time and returns the document exactly as it stood at that moment:
+
+[,python]
 ----
-const mine = await c.projects.myLastEdits(projectId);
+# Read old name by providing time in the past
+client.documents.get(document_id, as_of="2025-07-08T09:00:00Z")["name"]
+#=> "Old Name"
 ----
 
-This is read from the log rather than kept as a field, so it accounts for every write to the project, whether through either client, an import, a service, or another application on the same substrate.
-It is as true of documents written years ago as of the one edited a minute ago.
-Deriving the same answer by paging the audit log would mean reading a project's whole history, where this is one indexed read.
+A time in the middle of an atomic batch reads as just before the batch, so you never see a half-applied change.
+Deleted documents can still be read at times when they existed.
+Access always follows the user's current membership, not their membership at that time.
+
+A maintainer can also bring a document back to an earlier state with `POST /api/v1/documents/{id}/restore?as-of=...`.
+Everything deleted since comes back under its original id, everything added since is removed, and the restore is itself an ordinary entry in the log.
+With `dry-run=true` nothing is written, and the answer says what would change.
+
+=== Vocabulary Time Travel
+
+A vocabulary is shared across projects, so its history is its own.
+`vocabLayers.get(id, includeItems, asOf)` reads a vocabulary as it was, `vocabLayers.getItemAt(id, itemId, asOf)` reads one entry, deleted or not, and `vocabLayers.audit` reads the vocabulary's log.
+A maintainer of the vocabulary can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
 
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
@@ -461,7 +367,7 @@ This is intended to support two purposes:
 * Ad hoc client-to-client features which you will implement on top of this communication channel, such as chat between individual annotators.
 * Audit log listening, allowing clients to receive immediate notice whenever a change has been made to any document in the project. (Note that these are sent automatically by Plaid.)
 
-NOTE: Messaging is a general-purpose medium. For the common case of plugging in an external tool—an NLP model, a tokenizer, an importer—that performs work on request, use <<Services>> below, which is purpose-built for that and addresses requests to a specific service rather than broadcasting them.
+NOTE: To plug in an external tool that does work on request, such as a parser or a tokenizer, use <<Services>> below.
 
 This functionality is exposed in two simple functions in the client.
 The `send_message`/`sendMessage` function allows a client to broadcast a message to all clients in the project:
@@ -472,8 +378,7 @@ client.messages.send_message(project_id, {"purpose": "ping", "message": "ping"})
 ----
 
 Note that the second positional argument, the `body`, can be any JSON value.
-A message is not saved and does not appear in the audit log, so it never joins an open operation (see <<Logical operations>>).
-Made on a batch it still waits for the batch, so a message queued after the writes goes out after them.
+A message is not saved and does not appear in the audit log.
 
 On the other end, a client may listen like so.
 Note that there are two arguments for the message.
@@ -496,7 +401,6 @@ def on_event(event_type, event_data):
         document_id = op["document"]
         description = op["description"]
         print(f"User {user} performed operation `{op_type}` on document {document_id} at {time}: '{description}'")
-
 
 client.messages.listen(project_id, on_event)
 ----
@@ -524,41 +428,19 @@ User user1@example.com performed operation `document:update` on document 35424d6
 
 === Event Reference
 
-`GET /api/v1/projects/{id}/listen` is an ordinary `text/event-stream`, so you can consume it without the official clients.
-Every frame is a named SSE event whose `data:` line holds one JSON object.
-Reader access to the project is required, and the connection carries the same `Authorization: Bearer` header as any other request.
-
-Four event names appear on the stream:
+`GET /api/v1/projects/{id}/listen` is an ordinary server-sent event stream, so you can consume it without the official clients.
+It needs reader access, and each event's `data:` line holds one JSON object.
 
 [cols="1,4"]
 |===
-| `connected` | Sent once, immediately on connect: `{"status": "connected", "client-id": "<uuid>"}`. The `client-id` is what heartbeat confirmations quote.
-| `heartbeat` | A liveness ping, sent every 30 seconds by default. Its `data:` line is the JSON string `"ping"`. You must answer each one with `POST /api/v1/projects/{id}/heartbeat`, whose body is `{"client-id": "..."}` quoting the id from the `connected` event. After two consecutive unanswered pings the server closes the connection.
-| `message` | A payload broadcast by another client through `send_message`/`sendMessage`.
+| `connected` | Sent once on connect, with the `client-id` that heartbeat answers quote.
+| `heartbeat` | Sent every 30 seconds. Answer each with `POST /api/v1/projects/{id}/heartbeat` and the body `{"client-id": "..."}`, or the server closes the stream after two missed pings.
+| `message` | A payload broadcast by another client. Its `data` is the value that was sent, unchanged.
 | `audit-log` | One database write, sent automatically by Plaid.
 |===
 
-The official clients answer `connected` and `heartbeat` for you and never surface them, so a listener callback registered with `listen` sees only `message` and `audit-log`.
-
-==== message
-
-[,json]
-----
-{
-  "type": "message",
-  "id": "61094844-5c70-46e2-be8f-e65dc42f9c7e",
-  "project": "b1f2c4d6-0000-4000-8000-000000000001",
-  "user": "user1@example.com",
-  "time": "2025-07-09T20:14:36.168Z",
-  "data": {"purpose": "ping", "message": "ping"}
-}
-----
-
-`data` is whatever value was handed to `send_message`/`sendMessage`, reproduced exactly.
-It is opaque application data, so, like `metadata` and `config` elsewhere in the API, its keys are never re-cased by the clients: a key written as `case-marker` arrives as `case-marker` in both Python and JavaScript.
-The envelope around it follows the usual per-language convention.
-
-==== audit-log
+The official clients handle `connected` and `heartbeat` themselves, so a `listen` callback sees only the last two.
+An `audit-log` event looks like this:
 
 [,json]
 ----
@@ -581,58 +463,24 @@ The envelope around it follows the usual per-language convention.
 }
 ----
 
-* **`ops` always holds exactly one element.** Every write announces itself separately, and its `id` equals the enclosing event's `id`. An atomic batch is not folded into one event: it emits one `audit-log` event per sub-operation, all of them after the batch commits, so you never observe a state the database rolled back.
-* **`type`** on an operation is `entity:verb`, with the entity name snake_cased: `document:create`, `span:delete`, `token_layer:update`.
-* **`projects`** and **`documents`** are arrays of ids. `documents` folds in every document whose version the write bumped, which is how multi-document writes (deleting a vocab item, for instance) reach document-scoped listeners. Either may be empty: a project-level write such as `text_layer:create` carries no document, and an operation's own `project` or `document` field is `null` in the same situation.
-* **`user`** is a user id, which is the login address.
-* **`time`** is stamped when the event is published, not when the row was written. For a single write those are the same instant to within a millisecond, but a long atomic batch publishes only after it commits, so its events can be measurably later than the operations they describe. Correlate by `id`, never by `time`.
-
-==== Relationship to the audit log endpoint
-
-An `audit-log` event names the same operation that `GET /api/v1/projects/{id}/audit` reports, but the two payloads are deliberately not interchangeable.
-The event is a lightweight notification designed to be cheap to emit on every write, while the endpoint is an enriched query result.
-The differences:
-
-[cols="1,2,2"]
-|===
-| | SSE `audit-log` event | `GET .../audit` entry
-
-| Key names
-| Bare: `id`, `user`, `ops`, and on an operation `type`, `project`, `document`.
-| Namespace-prefixed: `audit/id`, `audit/user`, `audit/ops`, `op/type`, `op/project`, `op/document`.
-
-| Operation type spelling
-| `document:create` (colon, entity snake_cased)
-| `document/create` (slash, entity kebab-cased)
-
-| References
-| Bare id strings.
-| Hydrated objects, e.g. `{"user/id": ..., "user/display-name": ...}` and `{"document/id": ..., "document/name": ...}`.
-
-| Grouping
-| One operation per event, always.
-| Batches and labeled operations are folded into a single entry holding all their member operations, with `audit/end-time`, `audit/batch-id`, `audit/group-id`, and `audit/message` where they apply.
-
-| Extra fields
-| None.
-| `op/time`, `op/end-time`, `op/user`, `op/batch-id`, `op/credential`, `audit/api-token` and `audit/credential`.
-|===
-
-If you need the enriched form, treat the event as a trigger and read the endpoint, matching on `id`.
+Every write sends its own event, so `ops` always holds one operation, and a batch sends one event per write once it commits.
+`documents` lists every document the write changed.
+The event is a lightweight notice: it spells operation types with a colon (`document:update`) where the audit endpoint uses a slash, and it carries bare ids.
+For the full entry, read the audit endpoint and match on `id`.
 
 == Services
 
 A **service** is an external program that registers itself on a project and performs work on request.
 The motivating case is NLP: you might have a Python program that runs a parser, a tokenizer, or a large language model, and you want annotators to be able to invoke it from the editor with the click of a button.
-Because a service is just another client speaking to Plaid's REST API, it can be written in any language and run anywhere that can reach the server—it authenticates with an ordinary token (typically a named API token; see <<Clients>>) and needs **writer** access to the project.
+A service is just another client of the API, so it can be written in any language and run anywhere that can reach the server, with a token that has **writer** access to the project.
 
-There are two sides to the system: a program that **serves** (offers to do work) and a client that **requests** work. The server sits in the middle: it tracks which services are currently connected, routes each request to the one service it names, and relays that service's replies back to the requester. Nothing is broadcast—a request reaches only its target service, and a reply reaches only the client that made the request.
+The server sits between a service and the clients that use it.
+It keeps track of which services are connected, sends each request to the one service it names, and passes that service's replies back to the client that asked.
 
 === Offering a service
 
-A service calls `serve` with a handler that Plaid invokes once per incoming request.
-The handler receives the request's data and a **response helper** with three methods: `progress(percent, message)` to report intermediate progress, `complete(result)` to return a final result, and `error(message)` to signal failure.
-The helper reports under the service's own account (`POST /projects/{id}/service-requests/{request-id}/events`), and the server takes a request's progress and result only from the account holding the service channel the request was sent down. A service whose channel reopens under the same account still reports what it was sent.
+A service calls `serve` with a handler, which Plaid runs once per request.
+The handler receives the request's data and a **response helper**, with which it reports `progress(percent, message)` and finishes with `complete(result)` or `error(message)`.
 
 [,python]
 ----
@@ -680,9 +528,8 @@ const registration = client.messages.serve(
 
 === Discovering and requesting
 
-A client first asks which services are available, then sends a request to one by its `service_id`.
-`discover_services`/`discoverServices` returns every service the project has ever seen: the ones connected right now carry `online: true`, and previously-seen services that are currently down carry `online: false` plus a `last_seen_at` stamp. A connected service also says who runs it, as the caller sees it: `runner_name` / `runnerName` (the display name of the account whose channel it is), `run_by_you` / `runByYou`, and `serves_you` / `servesYou`, whether it would take the caller's requests on this project (see <<Acting on the requester's behalf>> for who a delegating service serves).
-Only an online service can take work—filter on `online` before offering a "run" action:
+A client asks which services a project has with `discover_services` / `discoverServices`.
+Services seen before but not connected now come back with `online: false`, and only an online service can take work.
 
 [,python]
 ----
@@ -692,12 +539,8 @@ services = client.messages.discover_services(project_id)
 #   "online": True, "last_seen_at": "2026-06-12T02:43:17Z"}]
 ----
 
-A project maintainer can prune the registry with `discard_service`/`discardService`, which forgets a previously-seen offline service (it reappears if it ever reconnects); discarding a currently-connected service is rejected with a 409.
-
-`request_service`/`requestService` sends work to a named service and waits for its result.
-The data you pass reaches the service's handler with its keys recased for the handler's language, as everywhere else in the API: a Python caller's `document_id` arrives in a JavaScript handler as `documentId`.
-The value the service passes to `complete` is what you get back.
-An optional progress callback fires for each `progress` update the service reports:
+`request_service` / `requestService` sends work to a service by its id and waits for the value the service passes to `complete`.
+An optional callback receives each progress report:
 
 [,python]
 ----
@@ -723,15 +566,15 @@ const result = await client.messages.requestService(
 console.log("Service returned:", result);
 ----
 
-If the service reports an error, the request fails with that error rather than returning a result.
+The timeout counts silence, not the length of the run, so a service that keeps reporting progress can work as long as it needs.
+Giving up on the wait does not end the request, and the result can be picked up later (see <<Presence and persistence>>).
+Such an error is marked `pending`, unlike one where the service itself failed.
 
-The timeout measures **silence**, not the length of the run: every event the service sends starts it again, so a service that reports its progress can work for as long as it needs to and only a service that has genuinely gone quiet is given up on. Set it to how long you are willing to hear nothing.
+=== Describing a service
 
-Giving up does not end the request. The service goes on working, and its result waits on the server under the request id (see <<Presence and persistence>>). Errors of that kind are marked, so a caller can tell the difference without matching on messages: `err.pending === true` in JavaScript, `exc.pending` in Python, on a timeout, an abort, or a dropped connection. An error without it is the end of the request. A caller that recorded the request id should keep it when the error is `pending` and forget it otherwise.
-
-=== Describing a service: tasks, summary, and parameters
-
-The fields above (`service_name`, `description`) are enough for a human to recognize a service, but an application that plugs services into a fixed slot—"tokenize this document", "parse it", "transcribe the audio"—needs more: which services are eligible for that slot, what arguments each accepts, and what each one does. A service advertises all of this in its **`extras`**, an open metadata map that rides along with registration and comes back verbatim from discovery. Filling it in with the standard shape below lets a client offer the user a service picker, an arguments form, and a readable summary—without hard-coding anything about a particular service.
+A client that offers a service in a fixed slot, such as "tokenize this document", needs to know which services fit the slot and what arguments each one takes.
+A service says so in its **`extras`**, which come back unchanged from discovery.
+From these, an app can build a picker, an arguments form and a description without knowing anything about a particular service.
 
 [,python]
 ----
@@ -747,44 +590,26 @@ extras = build_extras(
                    description="Model language."),
     ],
 )
-# Pass it as the service's extras (a BaseService subclass assembles this for you):
 client.messages.serve(project_id, service_info, handle_request, extras)
 ----
 
-The standard `extras` keys are:
+`tasks`:: The slots the service fills: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (segment and gloss words), `draft-graph` (draft a meaning representation graph), `translate`, `detect-speech`, `assist` (a chat assistant), or `compare` (score one document's annotation against another's).
+`summary`:: A longer description in Markdown, for what the one-line `description` cannot say.
+`parameters`:: The arguments a user may set for each request. Each has a `key`, a `label` and a `type` (`string`, `number`, `boolean`, `enum`, `multiselect`, or `field`, one of the project's annotation fields), with an optional `default`.
 
-`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (propose a morpheme segmentation and glosses for words), `draft-graph` (draft a meaning representation graph over a document's sentences, for correction by hand), `translate` (propose a free translation for each sentence), `detect-speech` (propose time-aligned speech regions for a recording), `assist` (a conversational assistant that takes chat turns over a project), `compare` (score one document's annotation against another document's of the same text, writing a report on the scored document's metadata rather than annotation; the request names the other document as `against`). A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
-`summary`:: A longer, human-readable description (Markdown), shown on demand—use it for what the one-line `description` is too short to say.
-`parameters`:: An ordered list of the arguments a user may set per request. Each entry is a small descriptor; the client renders a form from it and sends the chosen values as part of the request data.
-
-A parameter descriptor has a `key` (the field its value is sent under), a `label`, and a `type`, plus optional `description`, `default`, and `required`. The types are `string` (optional `placeholder`, `multiline`), `number` (optional `min`, `max`, `step`, `slider`), `boolean`, `enum`/`multiselect` (each with `options`, a list of `{value, label}`), and `field` (with a `scope`), the name of one of the project's annotation fields at that scope. An application that knows the project's fields offers them to choose from. To anything else a `field` is a string. The `Param.*` builders produce these in Python; in JavaScript you write the equivalent objects.
-
-[NOTE]
-====
-A parameter's `key` is a *value*—the literal field name the argument is sent under—so it travels over the wire unchanged: a client reads the key exactly as the service declared it (`model_size`), sends the argument under that key, and it arrives back at the service unchanged. Because a snake_case or camelCase key contains no wire separator, this round-trips in either direction, so the rule is simply: declare each `key` in your own language's convention and read the argument back under that same key. (The `extras` *field names*—`schema_version`, `tasks`, `parameters`, …—are different: those are recased like the rest of the API, so a Python author writes `schema_version` and a JavaScript client sees `schemaVersion`. Only the `key` is exempt, because it is a value rather than a field name.)
-====
-
-Most tasks are *write* tasks: the service edits the project directly and the client reloads. `detect-speech` is the exception, because a time-aligned segment is a stretch of the baseline and therefore cannot exist without text. A detect-speech service writes nothing; it returns its regions in the response, as `segments`, a list of `{time_begin, time_end, speaker?}` in seconds. The client holds them as proposals and creates a real segment only when a person types into one.
-
-Helpers in both clients save you from re-implementing this shape. On the **service-authoring** side (Python), `Param.*` build the parameter descriptors and `build_extras` assembles the whole object (a `BaseService` subclass does this for you). On the **selecting/UI** side (JavaScript), `filterServicesByTask` picks the services for a slot and `getServiceSummary`/`getParamSchema` read a service's summary and parameter schema. The value logic—turning a schema into initial form values and validated request values—exists in both: `buildDefaultValues`/`coerceParamValues` in JavaScript, `default_values`/`coerce` in Python.
+A parameter's value reaches the service under exactly the `key` it declared.
+Most services write to the project and the client reloads, but `detect-speech` writes nothing: it returns time regions as `segments`, which the app offers as proposals.
+In JavaScript, `filterServicesByTask` picks the services for a slot, and `getParamSchema` and `buildDefaultValues` help build the form.
 
 === Stopping a request
 
-A requester can ask a service to stop work already under way (`DELETE /projects/{id}/service-requests/{request-id}`; `cancelServiceRequest` / `cancel_service_request`). Nothing is interrupted: cancellation is **cooperative**, and the request ends at the next point the handler looks.
+A client can ask a service to stop with `cancelServiceRequest` / `cancel_service_request`.
+Nothing is interrupted, though: the service stops at the next point where it checks.
+Every call to `progress()` is such a point, so a service that reports its progress can be stopped with no further work, and the request ends with `stopped: true` rather than as a failure.
 
-The handler barely has to look, though, because **`progress()` is that point**. Reporting progress raises `ServiceCancelled` (Python) / throws `ServiceCancelled` (JavaScript) once a stop has been asked for, so a service that already reports progress through its work is cancellable without a line of change. `serve` catches it and ends the request as *stopped* rather than *failed*: the result carries `stopped: true`, so a client can tell "you stopped it" from "it broke".
-
-Two things a handler may still want:
-
-`helper.raise_if_cancelled()`:: An explicit checkpoint, for a long loop that reports no progress.
-`helper.critical()`:: A stretch that must finish once begun, almost always the writes. Checkpoints inside it do not raise, so a document is never left half-written, and the stop takes effect at the first checkpoint after the block. In Python it is a context manager (`with helper.critical():`), in JavaScript it takes the function to run (`await helper.critical(async () => { … })`).
-
-[IMPORTANT]
-====
-**Report the result inside the critical block, with the work it describes.** A checkpoint placed after the last write has nothing left to prevent, so all it can do is throw away a result the service has already earned: the document is fully written, and the request still comes back `stopped: true` with no payload. A caller then understates what happened, and a multi-step caller abandons the steps after a step that actually succeeded.
-
-All five bundled services had `helper.progress(100, 'Done')` sitting between the writes and `complete()`. Measured against the Punkt tokenizer, every stop that arrived during the write phase hit it: six for six wrote the document in full and reported themselves stopped. A stop that arrives once everything is done is meant to be ignored.
-====
+Writes should not be cut off halfway, so wrap them in `helper.critical()`, inside which a stop waits.
+Report the result inside the same block, or a stop that arrives after the writes would throw away a finished result.
+`helper.raise_if_cancelled()` adds a checkpoint to a long loop that reports no progress.
 
 [,python]
 ----
@@ -800,53 +625,45 @@ def handle(self, data, helper):
         helper.complete({'glossed': len(results)})
 ----
 
-What a service cannot do is stop in the middle of one long blocking call. The bundled Whisper transcriber is the example: the transcription is a single call into the model with nothing to poll inside it, so a stop asked for during it takes effect when that call returns — before anything is written, which is the part that matters.
-
-[IMPORTANT]
-====
-In Python, `ServiceCancelled` inherits `BaseException`, not `Exception` — the same choice `asyncio.CancelledError` made, and for the same reason. Almost every handler wraps its work in `except Exception` to report a failure; if a stop were an `Exception`, that handler would swallow it and report an error instead, and a stop caught inside a per-item loop would be shrugged off and the loop would carry on. A `finally` still runs, so cleanup is unaffected. In JavaScript, where `catch` catches everything, a handler that catches broadly must re-throw a `ServiceCancelled` itself.
-====
-
-[IMPORTANT]
-====
-A handler must not run on the channel's own reader thread, or it blocks the very channel that carries `service_cancel` for the request it is running, and the stop is not read until the work it was meant to stop has finished. `BaseService` handles this: it takes its single-flight lock and then runs the work on a thread of its own, so one request at a time is still the rule and the channel stays readable. A service written directly against `serve` must do the same.
-====
-
-To test a handler without a server, `plaid_client.testing` (Python) loads a service file, gives it a fake client with the request, lock and batch surface, and runs one request through `BaseService` on the thread the server would use, recording every progress beat and terminal report. The bundled services' own tests are written against it.
+In Python the stop is a `ServiceCancelled` exception derived from `BaseException`, so `except Exception` does not swallow it.
+In JavaScript, a handler that catches every error must re-throw a `ServiceCancelled`.
 
 === Presence and persistence
 
-A service can take work **only while connected**. There is no request queue: a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.
-This keeps the model simple and is a good fit for the typical setup, where a service is a long-running helper process that is either up or down.
-If you need a request to survive a service being briefly unavailable, you would build that durability yourself on top of Plaid (for instance, by recording pending work in your own layer and retrying).
+A service can take work only while it is connected.
+There is no queue: a request to a service that is down fails at once.
+If you need a request to survive a service being briefly unavailable, you would build that yourself, for instance by recording pending work in your own layer and retrying.
 
-The **requester's** connection is a different matter: a request outlives it. If the stream that submitted a request closes (a browser tab reloaded during a minutes-long turn, a script that timed out), the service goes on, its progress keeps being recorded, and its result is kept on the server for fifteen minutes after it arrives. The requester comes back for it by request id (`GET /projects/{id}/service-requests/{request-id}`; `attachServiceRequest` / `attach_service_request` in the clients), which replays the latest progress and then delivers the result, or the stored result at once if the request already finished; only the user who submitted the request, or an admin, may rejoin it, and several connections may watch one request. A client that wants to be able to come back mints the request id itself (`?request-id=`, a UUID; the `requestId` / `request_id` option of the request call), so it can record the id somewhere durable before the request is even accepted; submitting an id that names a request that user already made rejoins it instead of starting another, so a retry after a dropped connection is safe. Every request stream opens with an `accepted` event naming the id (`onAccepted` / `on_accepted`).
+The requester's connection is a different matter, because a request outlives it.
+If a browser tab is reloaded during a long run, the service carries on, and its result is kept on the server for fifteen minutes.
+The requester picks it up by request id with `attachServiceRequest` / `attach_service_request`, which replays the latest progress and then the result.
 
-`DELETE /projects/{id}/service-requests/{request-id}` (`cancelServiceRequest` / `cancel_service_request`) asks the service to stop: the service sees a `service_cancel` event on its channel, and a handler built on the clients' helpers reads it as `responseHelper.cancelled` / `response_helper.cancelled`. Whether to stop is the handler's decision (a write under way should finish), and the request still ends with whatever the handler then reports. Every request also tells the service who asked (`requester_id` / `requesterId`, beside the request data), delegating or not.
+A client that wants to be able to come back mints the request id itself (the `requestId` / `request_id` option), so it can save the id before the request starts.
+Sending the same id again rejoins the request rather than starting another, so retrying is safe.
 
-What *does* persist is the discovery record: each registration upserts a per-project "seen services" row (name, description, extras, last-seen time), which is why discovery can list offline services. This lets an application show a stable picker—including a default service a maintainer chose—even when the service happens to be down, instead of the option silently vanishing.
+Each service id allows one connection per project, and a second one is refused with 409.
+Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
+`registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 
-Each `service_id` admits **one live connection per project**: a second registration while another instance holds the id is rejected with a 409. A service reconnecting after a network blip is not penalized—if the previously-held connection is dead but not yet reaped, the newcomer simply takes it over.
-
-=== Surviving a server restart
-
-A registration is self-healing, in both clients. The service holds its request channel open, and a supervisor reopens it whenever it drops, so **restarting the Plaid server does not mean restarting its services**: each one re-registers itself, typically within seconds of the server answering again, and its work continues without an operator touching it. Retrying has no attempt budget, so an outage of any length is survivable, and the same loop covers a server that is not up *yet*: services and server can be started in either order.
-
-A reopened channel counts as connected only once the server has actually answered it, so `registration.is_connected()`/`isConnected()` is a true reading of whether the server currently sees the service as online, distinct from `is_running()`/`isRunning()`, which stays true throughout an outage. Python services built on `BaseService` also report the transitions on stdout, one line when the connection is lost and one when it returns, so an operator watching a service's terminal can see it heal rather than restart it on a hunch. The only startup failure that stops a service is a token the server rejects, which no amount of retrying would fix.
-
-NOTE: Like real-time messaging, service activity is **not** recorded in the audit log—only the document changes a service makes through ordinary writes are. The writes a service performs are attributed to whatever token it authenticates with, so giving a service its own named API token makes its edits clearly identifiable in the audit history.
+NOTE: Service requests are not recorded in the audit log, but the writes a service makes are, under the token it runs with. Giving a service its own named API token makes its edits easy to pick out.
 
 === Acting on the requester's behalf
 
-A service normally does its work with its **own** credentials: whoever launched it chose a token, and every edit it makes is that token's. That is the right model for a tokenizer or a parser, whose output is the same no matter who asked. It is the wrong model for a service that does arbitrary work at a user's direction—an assistant that edits whatever a user tells it to—because such a service would let any writer act with the service's (often broader) permissions, and the audit log would name the service rather than the person.
+A service normally works with its own credentials, so every edit it makes is its own.
+That suits a tokenizer or a parser, whose output does not depend on who asked.
+It does not suit an assistant that edits whatever a user tells it to, which should be able to do only what that user could do.
 
-A service that declares **`delegation`** in its `extras` (`build_extras(..., delegation=True)`, or `BaseService(..., delegation=True)`) instead acts on the **requester's** behalf. For each request the server mints a short-lived token for the user who submitted it (lifetime `auth.delegated_token_ttl_seconds`, one hour by default) and delivers it with the request as `delegated_token`; `BaseService` turns that into `request_data["requester_client"]`, a `PlaidClient` authenticated as that user. Everything the service does through that client is checked against the requester's own permissions and attributed to them in the audit log, exactly as if they had made the edits themselves. Because such a service can do nothing for a user that the user could not do directly, **readers** may drive it too (for read-only work such as exploratory queries), whereas a plain service accepts requests from writers only.
+A service that declares `delegation` in its `extras` (`BaseService(..., delegation=True)`) acts on the requester's behalf instead.
+For each request the server hands it a short-lived token for the person who asked, which `BaseService` offers as `request_data["requester_client"]`.
+Everything done with that client is checked against the requester's permissions and recorded as theirs, so readers may use such a service too.
 
-A delegating service acts for members other than the one who runs it only where its runner is a **maintainer** of the project, or an **administrator**. A service a writer or a reader runs still connects and runs on its own token, and serves its runner, but any other member's request to it is refused with 403, naming the service by its `service-name` ("IGT Assistant is run by Ana, who is not a maintainer of this project, so it acts only for Ana here."), and the service is handed nothing. The same holds for each other project a request names: one the runner does not maintain refuses the request, naming the project ("IGT Assistant is run by Ana, who is not a maintainer of Kalamang. Remove Kalamang from this conversation to go on."). The token handed to a service someone else runs reaches the projects of the request where its runner is still a maintainer (every one, for an administrator runner), and this is asked again on every use: a runner who stops maintaining a project, is removed from it or is deactivated takes the reach of the tokens already handed out with them, and a `/listen` stream such a token opened there closes. A request is never handed to a channel another account opened under the same service id after the checks.
+The token reaches only the projects the request is about: the one it was made on, and any others it names with `project_ids` / `projectIds`.
+Even there, it cannot do what only maintainers may, such as changing members, layers or configuration.
+A delegating service acts for people other than the one running it only in projects that person maintains, or anywhere if they are an admin.
 
-The delegated token is a session token with a short lifetime, and it is **scoped to projects**. It reaches the project the request was submitted on, and the other projects the request names (`?project-ids=`, a comma-separated list, the `projectIds` / `project_ids` option of the request call) that the requester can read. The server refuses it everywhere else: in other projects, on admin and user routes, on listings, and on project creation. Of the requester's private data it reaches one entry at a time whose key names a project in reach as one of its `:`-separated segments, and a listing by `prefix` (with no `pattern`) whose segments before the last name such a project, as an assistant lists the files of one conversation (`igt:assistant:<project>:file:<conversation>:`). The one user route open to it is `GET /users/:id` for the requester's own id, so a service can read whether the requester is an administrator, who counts as a maintainer in the projects in reach. Another user's record, and any change to the requester's own, are refused. A vocabulary is within its reach only when a project in reach links it, and a query made with it must name its projects in `:scope`. Even there it cannot act on the vocabulary as a whole, whatever the requester's rights: it cannot rename or delete the vocabulary, add or remove its maintainers, link it to or unlink it from a project, change its config, or restore its entries (including a `dry-run` preview). It can still rename, merge and delete single entries where the requester may, and those changes reach every project the vocabulary is shared with. In the same way it cannot do what only a project's maintainers may, whatever the requester's rights: it cannot add or remove a project's readers, writers or maintainers, rename or delete the project, change its config, create, rename, delete or reorder a layer, change a layer's config or constraints, repair a whole layer, or read the project's activity tally or its telemetry events. These answer 403 with an `error` that says so. It can still restore a single document (`POST /documents/{id}/restore`) where the requester maintains the project, and repair a layer in one document. It deletes only comments the requester wrote, never another member's, even where the requester maintains the project or the vocabulary. It may join an operation that its own writes started or that its request carried, and it may relabel (`PATCH /operation-groups/:id`) an operation that its own writes started, and no other, so a service can refine the label of the work it did for the request. The service is told which projects its token reaches (`delegated_projects` / `delegatedProjects`, beside the request data). Whoever runs a delegating service holds these tokens, and the scope keeps each one to what the requester could do in the projects the request is about. It never outlives the credential that asked for it: a request made with a delegated token hands the service a token that expires no later. A delegated token cannot open a service channel, and a channel opened with any token that expires closes when it does. The token is revoked by the user's logout like any other session, and it should be used for the one request it arrived with and then dropped.
-
-The assistants (`plaid-agent` in the source tree, run as `plaid-igt-agent` or `plaid-ud-agent`) are the reference delegating services: a chat assistant over a project, backed by whatever model the operator configures, whose edits are proposed as plans the user approves and are then applied under the user's own account. Unlike the single-file services bundled in the jar, they are a package with its own dependencies, so it is installed separately rather than extracted next to the data directory—from a checkout for now, since it is not yet published to PyPI. It is also the reference for a service that owns its own state through the requester: each conversation lives in the requesting user's private key/value store (see <<Users and Permissions>>), and the service is its only writer: the browser sends a request for each thing the user does (a message, an approval, a discard, a delete) and reads the record, and the service writes the reply into that record before reporting the request done, so the answer lands whether or not the browser is still watching and a browser that comes back rejoins the running request or reads the finished reply. An operator states what users should know about an assistant, such as where its model runs and where what users send it goes, with `--disclosure "..."`. The Assistant panel shows that text as given, as coming from whoever runs the assistant.
+The assistants (`plaid-agent` in the source tree) are delegating services.
+Their edits are proposed as plans, which the user approves before they are applied under the user's own account.
+Whoever runs an assistant can state where its model runs and where users' messages go with `--disclosure "..."`, and the Assistant panel shows that text.
 
 = Layer Types
 
@@ -955,9 +772,8 @@ A project has many **documents**, and each has a name and a unique ID:
 
 === Reading part of a document
 
-Reading a document with `include_body` / `includeBody` returns every layer in the project, with all of that document's rows attached.
-That is the right default, but a project is often shared: the UD editor and the IGT editor can sit on one substrate, and each cares about a slice of it.
-Pass `layers` to read only the slice you need.
+Reading a document with `include_body` / `includeBody` returns every layer in the project.
+When several apps share a project, each may care about only a slice of it, so you can pass `layers` to read only the layers you name:
 
 [,python]
 ----
@@ -976,18 +792,15 @@ const doc = await client.documents.get(
 );
 ----
 
-You may name layers of any kind — text, token, span, or relation — and two rules decide what comes back:
+A named layer comes with its contents, and the layers above it come along empty to keep the usual nesting.
+So naming just a POS span layer gives you its spans inside an empty token layer and an empty text layer, and you add those layers to get the tokens and the text.
+An id that is not a layer of the document's project is an error.
 
-* A layer **appears** when you named it, or when it is an **ancestor** of a layer you named. Ancestors are there so the response keeps its usual nesting: a span layer still arrives inside its token layer, inside its text layer.
-* A layer carries its own **contents** (its text, tokens, spans, relations, vocabs) only when you named it. An ancestor you did not name arrives empty.
+=== Recordings
 
-So naming just a POS span layer gives you those spans, wrapped in an empty token layer and an empty text layer. Add the token layer to get the tokens the spans point at, and the text layer to get the text body. Descendants are never implied: naming a token layer gets you its tokens, not the span layers beneath it.
-
-The filter reaches the database, so the rows you excluded are never fetched or joined against metadata. It works on time-travel reads too (`as_of` with `layers`).
-
-An id that is not a layer of this document's project is an error, not a quietly smaller response: a stale or mistyped layer id would otherwise be indistinguishable from that layer being empty.
-
-NOTE: The response keeps its nested shape. If you want flat rows across a document (or across a project), that is what the link:query.html[query language] is for.
+A document may carry one audio or video recording, which the apps use for transcription.
+Uploading or deleting it appears in the audit log, but the file itself is not kept there, so a deleted recording cannot be brought back.
+An upload is refused with 409 when the document already has a recording, and with 415 when the file is not audio or video that a browser can play.
 
 == Texts
 
@@ -1000,37 +813,27 @@ A text object looks something like this:
 { id: "9cfafcc6", document: "01d01a27", body: "Fido barks", digest: "4d7e1a…" }
 ----
 
-`digest` identifies the body: it is the SHA-256 of the body's UTF-8 bytes, in lowercase hex.
-Every read of a text carries it, both `GET /texts/{id}` and a document read with its body.
+`digest` is the SHA-256 of the body's UTF-8 bytes, in lowercase hex.
+It names the body's current state, and edits use it to check that they are working on the body they think they are (see <<Changing a text's body>>).
 
 [[composed-text]]
 === Composed text
 
-Plaid stores all text composed, in Unicode Normalization Form C (NFC).
-An `á` sent as `a` followed by a combining acute accent (U+0301) is stored as the one character `á`.
-This holds for a text's body and for every other string a write sends: span and relation values, metadata keys and values, names, vocabulary forms and fields, configs and constraints, guidelines, comments, display names, and the `?audit-message=` and `?group-message=` labels.
-Four things are kept exactly as sent: private user data, passwords, a query (which matches canonically equivalent text on its own, see the query manual), and client events.
+Plaid stores all text in Unicode Normalization Form C (NFC), so an `á` sent as `a` plus a combining acute accent is stored as the single character `á`.
+This applies to a text's body and to every other string you write, such as span values, metadata and names.
 
-A body sent decomposed is stored composed, and its length can shrink.
-Token offsets are always offsets in the body as stored, so make tokens on the stored body: the answer to a write that saved a body carries it, and so does every read.
-When a save composes text that was typed beside a letter it composes with, the letter and the mark become one character, and the character stays with the token that held the letter.
-One exception: where a token begins or ends between a letter and a mark that would compose with it (a tone mark that is a morpheme or a word of its own), that character stays decomposed, so each token keeps its own characters and none is left with no text.
-The body is then NFC everywhere but there, and a later save composes the character once no token edge falls inside it.
-A mark that composes with nothing before it stays a character of its own, in the token that held it: `ẹ́` typed as `e`, a dot below and an acute is stored as `ẹ` and the acute, and a token over the acute alone still covers it.
-Nothing is refused for it.
-A whole body sent back with such a character as it was read is no change there.
-`POST /texts` takes `token-edges`, the offsets where the tokens the client makes next begin and end, so a body written with a mark of its own token (an archive of such a text) keeps it decomposed.
-An app that makes tokens in the same batch as a body it sends can measure them on the composed body with the clients' `composeText(body, cuts)` (JavaScript) or `compose_text(body, cuts)` (Python), `cuts` being where the text's tokens begin and end: the server stores its `text`, and a token measured at `[b, e)` on the body sent is at `[at(b), at(e))` in it.
+A body can therefore get shorter when it is saved.
+Token offsets always refer to the body as stored, which the answer to every write carries.
+An app that creates tokens in the same batch as a body can compute their offsets on the stored body with `composeText(body, cuts)` (`compose_text` in Python).
+
+There is one exception.
+Where a token begins or ends between a letter and a mark, such as a tone mark analysed as its own morpheme, the two are left uncomposed so that each token keeps its own character.
 
 === Changing a text's body
 
-`PATCH /texts/{id}` changes the body in one of two forms, and the tokens over the text follow the change.
-
-* `body`: the whole new body. Plaid compares it with the stored body to find what changed, and moves, resizes or deletes tokens to match.
-* `edits`: the changes an editor made, in order, each at the place it was made. Use this form from an editor that knows where the cursor was.
-
-`edits` is a list of edit operations.
-Indices are code points, and each operation's index is in the body as the operations before it left it:
+`PATCH /texts/{id}` changes a text's body, and the tokens over the text follow the change.
+You may send the whole new `body`, and Plaid works out what changed.
+An editor that knows where the cursor was sends `edits` instead, which say exactly where each change was made:
 
 [,js]
 ----
@@ -1039,75 +842,9 @@ Indices are code points, and each operation's index is in the body as the operat
 { type: "replace", index: 0, length: 3, value: "dog" } // put "dog" in place of 3 code points at 0
 ----
 
-Only the net change counts: typing a word one letter at a time and inserting it at once are the same edit, and a letter deleted and typed back is no change.
-Every change stays exactly where it was made.
-The body the edits make is then composed (see <<composed-text>>), and the answer carries the body as stored and its digest, which is the `base` of the next edit.
-
-The tokens of every token layer take a change the same way, whichever app or script made the layer:
-
-* A change inside a token, or touching the token's edge with no whitespace between, grows or shrinks the token. Letters typed at a word's end become part of the word.
-* A space typed inside a token does not split it. The token now holds the space.
-* Deleting the whitespace between two tokens keeps both, now side by side. Text then typed between them with no whitespace goes to the first.
-* New text apart from every token, with whitespace between, belongs to none of them.
-* A token is deleted only when all its text is deleted. A token typed over whole keeps its place on the new text, and so does a sentence typed over whole with its separator.
-* Several whole words typed over as words of their own are each typed over: `不 大` typed over as `x y` keeps the word `不` on `x` and `大` on `y`, with everything on them. With fewer new words than old, the last new word goes to the old word left that shares the most letters with it, the first on a tie, and the other old words are deleted (`cat eel` typed over as `one` keeps `eel`).
-* An edit that only deletes, or only types, is taken exactly as made, wherever it falls: a deletion over a word boundary shrinks both words, and deletes only a word all of whose letters it takes.
-* An edit that both deletes and types, reaching inside several words or inside one and holding or typing words with whitespace between (a paste over a line, a transcript row or the whole body, a selection typed over), is read the way a `body` save reads the same change of that stretch (below), when that reading deletes no word or sentence the edit as sent keeps, or deletes fewer. Otherwise it is taken as made. Pasting a text back with a word added, removed or typed over changes only that word, and every other word keeps its token and everything on it.
-* A token is never moved onto another word, and nothing that hangs off it is deleted or moved.
-
-A `body` save is read as the smallest change from the stored body to the new one, and where that change could stand in more than one place for the same new body, Plaid picks the place that disturbs the fewest tokens.
-It reads each changed stretch word by word too, and takes that reading when it deletes fewer words than the diff as it stands, or only words the diff deletes too: `ac d cda` saved as `ac X` keeps `d` on `X` and deletes `cda`, where the diff as it stands deletes both.
-Where each reading deletes a different word (`the a ab` saved as `the aX`), the diff's is taken (`a` on `aX`, `ab` deleted).
-Changes inside one word that would delete a token inside it, such as `cow` analysed `co` + `w` saved as `abc`, are read as the word typed over, so the word keeps its place and its morphemes go, as the same change sent as `edits` does.
-A `body` save never deletes a token with a letter of it left in the new body, except a token inside a word it reads as typed over, as above: a change that deletes the whitespace between two words, with or without letters of them, keeps both words on what is left of them, as the same change sent as `edits` does.
-An editor that knows where the cursor was sends `edits`, which say exactly where.
-
-Where typed text goes is decided by the words: the tokens of a layer that forbids overlap and has a parent or a layer nested under it, and is not nested under another such layer.
-A text with no such layer has its other tokens, all but the sentences, decide.
-A layer nested under the words, at any depth, keeps to its words' edges, as morphemes and syntactic words do.
-Every other token follows the words' decision, so a node over a word on a layer beside the words stays on it.
-Partition layers follow the words' edges.
-Text typed between two sentences that no token takes goes by where it was typed: right before the next sentence's first character it joins that sentence, unless it holds a line break.
-Otherwise, right after a sentence's last character, in the middle of a longer run of whitespace, or in a `body` save, which says nothing of where the text was typed, it joins the sentence before.
-Text typed before the text's first sentence that holds a line break with other than whitespace before it becomes a sentence of its own, on the partition layer the words are nested under (or the text's only partition layer), never on another partition layer such as one token over the whole document, up to the first letter after its last line break, so the first sentence keeps its place and what hangs off it.
-This goes by the text before the first sentence after the save, whatever the save's shape: an insert, an insert with other changes, or a `body` save.
-The answer's `reshape.tokens` lists that sentence with its `layer` and `text`.
-Whitespace alone typed there joins the first sentence, which begins at the start of the text. The first sentence's words, and a token that follows it, do not begin on that whitespace.
-A token of a layer that forbids overlap beside the words, whose extent is a sentence's less whitespace at its edges, such as a time-alignment segment over its sentence, follows that sentence: it covers whatever the sentence covers after the change, less whitespace at its edges.
-A token of a layer that allows overlap, such as a node, never follows a sentence. It keeps to its words.
-A zero-width token of a layer that forbids overlap, such as an empty time-alignment segment, that a token of its layer grows over goes to that token's edge on the side it stood, so the two never overlap.
-A sentence never begins or ends on whitespace it did not begin or end on, except the first sentence over whitespace typed at the start of the text.
-
-Where two words, two sentences, or two tokens of a layer that forbids overlap beside the words (two time-alignment rows) meet with no whitespace between them, an insert may say which of them its text belongs to with `side`: `"before"` for the one that ends there, `"after"` for the one that begins there, and the sentences and the tokens that follow them go with it.
-Without it, or where nothing meets, the text goes as the rules above say.
-
-[,js]
-----
-{ type: "insert", index: 7, value: "x", side: "after" }   // typed at the front of the token at 7
-----
-
-A word layer whose config sets `splitOnSpace` to `true` in the `plaid` namespace (`SPLIT_ON_SPACE_KEY` in both clients) has a space typed inside one of its tokens split it there.
-Spaces the token already had do not split it.
-The token stays on the part holding the most of its old letters, the first on a tie, with its annotations and the tokens as long as it.
-Each other part holding a letter of the token becomes a new token of the same layer, and for each layer under it where the token had a token as long as itself (syntactic words, morphemes), the new token gets a new token of that layer as long as it.
-A part holding only typed text is text typed apart from the token and belongs to no token.
-The tokens of the layers under it are placed by where they stand.
-One that lies in one part goes with that part.
-One that reaches over a cut stays, with its annotations and links, on the part the token stays on (else the first part it reaches) and is cut to it, and each other part it reaches gets a new token of its layer over its letters there, with nothing on it.
-One left with no letter of any part is deleted.
-Only a layer of role `syntactic-word` (see <<Roles>>) deals its tokens out: where it held as many tokens as long as the token as there are parts (a multi-word token, `can't` as `ca` + `n't`, typed as `ca n't`), those go one to each part in order of `precedence`, so each stays on its own letters.
-Any other token inside it goes to the part holding most of its letters and is cut to it, and is deleted when it holds no letter of any part.
-A token over several words that began or ended with it begins or ends where the token now does.
-The answer's `reshape.tokens` names each new token with its `layer`.
-The key holds for every word of the text, so on a word layer two apps share, one app's key decides for both.
-This holds for `body` and `edits` alike.
-
-Send `base` with `edits`: the `digest` of the body the edits were made on.
-The edits apply only when the stored body is still that body.
-Otherwise the answer is `409` with `text-changed: true` and the stored `digest`, and nothing is written.
-An edit with `base` needs no `document-version`.
-Without `base`, the edits apply to whatever body is stored.
-`base` may also be sent with `body`.
+Indices count code points, and each edit applies to the body as the edits before it left it.
+Send `base`, the `digest` of the body the edits were made on, and the edits apply only if the stored body is still that body.
+Otherwise the answer is 409 with `text-changed: true`, and nothing is written.
 
 [,js]
 ----
@@ -1115,7 +852,15 @@ PATCH /texts/9cfafcc6
 { edits: [ { type: "insert", index: 10, value: "!" } ], base: "4d7e1a…" }
 ----
 
-The answer is the text with its new `digest`, and `reshape`: what the change did to the rest of the document.
+Tokens follow the text the way a person would expect.
+Letters typed inside a word or at its end become part of the word, and a word is deleted only when all of its letters are.
+A word typed over keeps its place, and its annotations, on the new text.
+
+A space typed inside a word does not split it, unless the word layer's config sets `splitOnSpace` to `true` in the `plaid` namespace.
+Where two words meet with no space between them, an insert at the boundary may say which word its text joins with `side: "before"` or `side: "after"`.
+
+The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
+An editor can update its own copy of the document from it instead of reading the document again.
 
 [,js]
 ----
@@ -1123,11 +868,6 @@ The answer is the text with its new `digest`, and `reshape`: what the change did
   reshape: { tokens: [], spans: [], "vocab-links": [],
              deleted: { tokens: [], spans: [], relations: [], "vocab-links": [] } } }
 ----
-
-`reshape.tokens` lists the tokens whose extent changed, `spans` and `vocab-links` those whose token lists changed, and `deleted` the ids of everything the change deleted.
-An editor can update its own copy of the document from it instead of reading the document again.
-
-A list of edit operations may also be sent as `body`. It is then applied exactly as sent, with no reading of the change, the form for a program that computes its own positions.
 
 == Tokens
 
@@ -1141,7 +881,7 @@ For each **token layer**, each document may have many **token**s, which are defi
 
 Note the following:
 
-1. `begin` and `end` must form valid substring indices for the given text. They are 0-based offsets measured in **Unicode code points** (`begin` inclusive, `end` exclusive) — not UTF-16 code units or bytes, so a supplementary-plane character (an emoji, or a Supplementary-Plane script such as Gothic, cuneiform, or CJK Extension B) counts as a single position. Code-point offsets are language-neutral: Python's `str` indexing and SQLite's `substr`/`length` already count code points, and Plaid's server and clients all agree on this unit.
+1. `begin` and `end` must form valid substring indices for the given text. They are counted in Unicode code points, not UTF-16 code units or bytes, so an emoji is one position.
 2. By default, zero-length tokens where `begin == end` are valid.
 3. By default, tokens may overlap.
 4. Plaid sorts tokens by `begin` when determining their linear order in the document. For tokens with identical `begin`, Plaid uses the optional `precedence` value wherever available, such that tokens with lower precedence appear earlier in linear order.
@@ -1218,16 +958,8 @@ We can create links between them and the above vocab items with vocab links like
 Notice that multiple tokens may be specified, allowing for multi-word and non-contiguous lexical items.
 
 Deleting a vocab item deletes every link to it.
-A screen that shows how many links an entry has before deleting it can pass that count (`expected_link_count` / `{ expectedLinkCount }`), and the delete is then refused with a 409 when the entry has any other number of links by the time it runs.
-The refusal carries the number of links the entry has now as `links`, beside the message.
-
-To merge entries into one, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` (`POST /api/v1/vocab-items/{id}/merge` with `{"losers": [...]}`) moves every link of the losers to the survivor and deletes the losers, in one operation.
-A moved link keeps its id and metadata. A link on words the survivor is already linked to is deleted instead, since it would say the same thing twice.
-The links are read when the merge runs, so a link someone made to a loser after the caller looked moves with the rest.
-Every loser must be in the survivor's vocabulary, and a loser that no longer exists is skipped, so repeating a merge changes nothing.
-It needs maintainer rights on the vocabulary, and answers `{"moved": n, "duplicates": n, "removed": [...]}`.
-Metadata that names a loser by its id, as a string anywhere in a value, is rewritten to name the survivor, in the same operation: in the vocabulary's other entries, and on every document, text, token, span, relation and link in a project the vocabulary is linked to. A list that already names the survivor drops the loser instead. Each rewritten document has its version bumped.
-The survivor's own reference to a loser (its parent was one) is left for the caller to rewrite, in the same batch as the merge, since the rewrite would make the entry name itself.
+To merge entries, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` moves every link of the losers to the survivor and deletes the losers, in one operation.
+Metadata elsewhere that names a loser by its id is rewritten to name the survivor.
 
 == Metadata and Config
 
@@ -1242,7 +974,8 @@ You might use a config to store legal tags for a given layer:
 { id: "...", name: "POS Tags", config: { tags: ["NOUN", "VERB", /* ... */] } }
 ----
 
-As for metadata, the canonical use is recording whether a human or a machine produced an annotation — Plaid standardizes this as the <<Provenance>> convention, including where a model's confidence and prediction details go:
+As for metadata, one common use is recording whether a human or a machine produced an annotation.
+Plaid standardizes this as the <<Provenance>> convention:
 
 [,js]
 ----
@@ -1272,16 +1005,9 @@ As for metadata, the canonical use is recording whether a human or a machine pro
 
 === Editing metadata
 
-`set_metadata` / `setMetadata` replaces an entity's whole metadata, and `delete_metadata` / `deleteMetadata` clears it.
-To change part of it, `patch_metadata` / `patchMetadata` takes a list of **ops**, applied in order as one operation:
-
-`{"op": "set", "path": [...], "value": v}`:: Writes `v` at the path, creating any missing objects along it. `null` is an ordinary value here.
-`{"op": "delete", "path": [...]}`:: Removes the key at the path. Deleting a key that is not there does nothing.
-
-A path is a list of keys into the nested metadata, the first being a top-level key, so a path of one key sets or deletes a top-level key whole.
-A path that runs through a value that is not an object (a string, a number, a list) is refused with a 400, and then none of the ops apply.
-Because the server applies the ops, two people editing different keys of one object do not overwrite each other.
-For example, with coreference entities kept in a document's metadata under `corefud.entities`, adding one entity and removing another touches only those two keys:
+`set_metadata` / `setMetadata` replaces an entity's whole metadata.
+To change part of it, `patch_metadata` / `patchMetadata` takes a list of **ops**, so two people editing different keys of one object do not overwrite each other.
+Each op sets or deletes the value at a path of keys:
 
 [,python]
 ----
@@ -1291,15 +1017,11 @@ client.documents.patch_metadata(doc_id, [
 ])
 ----
 
-Both clients also ship `metadataOps(fragment)` / `metadata_ops(fragment)`, which turns an object of top-level keys into ops (a `null` value becomes a delete), and `applyMetadataOps(metadata, ops)` / `apply_metadata_ops(metadata, ops)`, which applies ops to a local copy the way the server does, for an app that updates its view before the server answers.
-
 === Editing config
 
-`set_config` / `setConfig` replaces the value of one key under one namespace (`PUT .../config/<namespace>/<key>`), and `delete_config` / `deleteConfig` removes it.
-Other keys, in the same namespace or another, are left alone.
-
-A settings page that wrote back the value it loaded would undo a save another maintainer made after it loaded.
-To prevent that, a write can name the value it read, and it is then refused with a 409 when the stored value is anything else:
+Config is organized by **namespace**, one per app, and `set_config` / `setConfig` writes one key under one namespace without touching the others.
+A settings page that writes back what it loaded could undo another maintainer's save, so a write may pass the value it read as `expected`.
+It is then refused with 409 if the stored value has changed:
 
 [,python]
 ----
@@ -1307,13 +1029,6 @@ tagsets = project["config"]["igt"]["tagsets"]
 client.projects.set_config(project_id, "igt", "tagsets", {**tagsets, "Case": {"mode": "open", "values": []}},
                            expected=tagsets)
 ----
-
-In JavaScript the same is `setConfig(id, namespace, key, value, auditMessage, { expected })`, and `deleteConfig` takes `{ expected }` in the same place.
-A key that was absent is expected as `None` / `null` (in JavaScript `expected: undefined` counts the same, as long as the `expected` key is given).
-On the wire this is `?if-unchanged=true` with the body `{"expected": ..., "value": ...}` (a DELETE sends `{"expected": ...}`).
-The check compares one key's whole value, so it holds inside an atomic batch too, where a 409 rolls back the batch.
-Values are compared as JSON, so `1` and `1.0` are the same number and the order of keys does not matter.
-A cell that already holds the value being written passes too, so a save sent again after its answer was lost succeeds.
 
 NOTE: Config and metadata values are schema-less, meaning that keys and values are unconstrained. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
 
@@ -1383,9 +1098,7 @@ Instead, you build and edit the partition with four operations:
 
 These editing operations are available on `any` and `non-overlapping` layers too, where they serve as convenient shortcuts.
 In every case, dependent spans and vocab-links are preserved: a split keeps them on the original (left) token, and a merge reparents the right token's spans and vocab-links onto the surviving left token.
-A split that sends `keep: "right"` keeps the original token, with its id, spans, vocab-links, comments and metadata, on the right half instead, and the new token, whose id it answers (and which `id` names), is the left half.
-That is for new text put in front of a token's own, such as a transcription inserted before a sentence, so the sentence's translation stays on the text it translates.
-Descendants the split cuts keep theirs on the same side as the token split, so a word and its morphemes keep their annotations together.
+A split may pass `keep: "right"` to keep the original token on the right half instead, which suits new text typed in front of a token, such as a transcription inserted before a sentence.
 
 [,python]
 ----
@@ -1403,8 +1116,7 @@ new_id = client.tokens.split(dogs_id, 3)["id"]
 client.tokens.merge(dogs_id, new_id)
 ----
 
-Some relations must stay inside one token, such as a dependency tree inside its sentence, while others cross such tokens by design, such as a coreference chain across sentences.
-A relation layer of the first kind declares a `same-ancestor` constraint (see <<layer-constraints>>), and a split that leaves one of its relations crossing the new boundary deletes it in the same transaction, whoever made the split.
+A relation layer whose relations must stay inside one sentence can declare this as a rule (see <<layer-constraints>>), and a split then deletes any of its relations that would cross the new boundary.
 
 === Token Layer Hierarchy
 
@@ -1564,31 +1276,18 @@ await client2.documents.checkLock(documentId);
 // -> HTTP 204
 ----
 
-A lock belongs to the acquire that took it, not to the user.
-While it is held, every other acquire is refused with HTTP 423, one by the same user included, so two runs of one user's work cannot share a lock and one cannot release it under the other.
-The acquire answers with a `lockId`, and only that id renews or releases the lock.
-A renewal only extends a live lock: once the lock has expired or an admin has dropped it, `renewLock` is refused with HTTP 423 even when nobody holds the document, because another user's edit may have landed in between.
-It is given to the holder alone: `checkLock`, a refused acquire and the admin list of locks name the user who holds the lock, never its id.
-Writes carry no lock id. A write to a locked document passes for the user who holds the lock and renews it. Anyone else's write is refused with HTTP 423.
-A lock covers the writes made to the document itself.
-A write made on a project or a vocabulary does not wait for it, even when it changes what a locked document holds: merging or deleting a vocabulary entry moves or removes the document's links to it, and deleting a layer removes what the document has in that layer.
-A holder that must not write over such a change writes in strict mode (see <<Strict Mode>>): after a merge or delete of an entry its document links to, its next write answers 409.
+A lock belongs to the acquire that took it, which answers with a `lockId`.
+Only that id renews or releases the lock, and every other acquire is refused with HTTP 423, even one by the same user.
+Writes need no lock id: the holder's writes pass and renew the lock, and anyone else's are refused with 423.
 
-An acquire may name its holder itself: `acquireLock(documentId, auditMessage, newLockId)` (`new_lock_id=` in Python, `?new-lock-id=` on the wire) takes the lock under an id the client minted, such as a fresh UUID.
-Sent again while that holder has the lock, it answers 200 with the same id, so an acquire whose answer was lost can be retried, and released, instead of standing in everyone's way until it expires.
-An id is spent once its holder releases it, even before the acquire arrives: an acquire held up in the network that lands after the release takes nothing and answers 423.
-
-An acquire waits for a write already under way on the document to finish.
-Every write either lands before the acquire answers, and the holder's first read sees it, or is refused with HTTP 423.
-A holder therefore never plans its work from a read that a write it did not see is about to change.
-The cost is that an acquire can wait behind a long save.
+A lock covers writes to the document itself.
+A change made at the level of a project or vocabulary, such as merging a vocabulary entry the document links to, does not wait for it.
+A holder that must not write over such a change can work in strict mode as well.
 
 Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
 They should be used only where necessary in order to minimize the risk of invariant violations stemming from concurrent modifications.
 
-Both clients wrap these calls in a block that holds the lock for the length of the work and releases it on the way out, including on error.
-The block is one holder, and its handle carries the id as `lock.lockId` (`lock.lock_id` in Python).
-The block mints that id and sends it with the acquire, so an acquire that got no answer is sent again, at most three sends in all, and released if none is answered:
+Both clients offer a block that takes the lock, renews it while the work runs, and releases it at the end, even on an error:
 
 [,js]
 ----
@@ -1603,25 +1302,17 @@ with client.documents.locked(document_id):
     rebuild_tokens(client, document_id)  # delete + recreate this document's tokens
 ----
 
-The block also renews the lock while it runs, which matters for a service.
-The expiration timer is refreshed by the holder's writes, so a parser that loads a model, reads the document, spends minutes in inference and only then writes holds the lock for its first minute and nothing after that: the lock lapses in silence and an edit can land between the read the work was planned from and the write about to go out.
-The block renews on a timer instead, reading the window from the `expiresAt` the acquire returned.
-If a renewal fails the lock is gone, and the block says so rather than carrying on: every later write from that client raises `DocumentLockLost` (`documentLockLost` is set on the client until the block exits), and a block that reached its end anyway ends with that error instead of reporting success.
-Work that has not written yet can give up sooner by reading `lock.lost` on the handle the block is given.
+If the lock is lost partway through, the block stops the work rather than letting it write.
 
 == Atomic Batches
 
 Finally, you may also submit multiple requests in **batch**es.
 Batches are **atomic** meaning that we guarantee that either they will all succeed or all fail.
 This is a very useful guarantee whenever you have sophisticated data integrity requirements that must be orchestrated using more than one request.
-The guarantee holds up to 1,000 operations, the server's cap on one batch request (`limits.batch-operations` in `GET /api/v1/info`, `MAX_BATCH_OPS` in both clients).
-Both clients send a larger batch as consecutive requests, each atomic on its own, so a failure in a later one leaves the earlier ones committed.
-The error then says how much was saved: `committed` is the number of operations saved (0 when none were) and `committedResults` (`committed_results` in Python) holds their results in queue order.
+One batch request holds at most 1,000 operations, and the clients send a larger batch as several requests, each atomic on its own.
 
-A batch is an object rather than a mode of the client.
-`batched` hands your block a batch carrying the same resources as the client (`b.documents`, `b.tokens`, and the rest), and a write made on that batch is queued instead of sent.
-The queue is submitted when the block ends (as one request, up to the 1,000-operation cap), and dropped if the block raises.
-A write made on the *client* while a batch is open is never part of it and goes over the wire at once, so code that knows nothing of your batch cannot land inside it.
+A batch is a separate object from the client.
+Writes made on a batch are queued and sent together, while writes made on the client go out at once.
 
 Here is an example of how to submit a batch using the JavaScript client:
 
@@ -1656,28 +1347,8 @@ except Exception as e:
     print(f"Batch failed: {e}")
 ----
 
-Where the queue is not built inside a single block, open the batch yourself with `batch()` and send it with `submit()`, or drop it with `abort()`:
-
-[,js]
-----
-const b = client.batch();
-b.documents.update(documentIdOne, "New Name for Doc 1");
-b.documents.update(documentIdTwo, "New Name for Doc 2");
-const results = await b.submit();
-----
-
-[,python]
-----
-b = client.batch()
-b.documents.update(document_id_one, "New Name for Doc 1")
-b.documents.update(document_id_two, "New Name for Doc 2")
-results = b.submit()
-----
-
-Either way you get one result per queued write, in the order the writes were queued.
-
-A write in a batch can use the id an earlier write in the same batch creates, so a create and the write that depends on it (an entry and the link to it, say) succeed or fail together.
-`b.ref()` stands for the id the write queued last will get, `b.ref(n)` for that of the nth write queued (counting from 0, or from the end when negative), and `b.ref(n, k)` for the kth of the ids a bulk create answers with:
+A write in a batch can use the id of something an earlier write in the same batch creates.
+`b.ref()` stands for the id of the write queued last, and `b.ref(n)` for that of the nth:
 
 [,python]
 ----
@@ -1686,39 +1357,13 @@ with client.batched() as b:
     b.vocab_links.create(b.ref(), [token_id])
 ----
 
-A reference goes in the body of a later write on the same batch, at any depth.
-The client refuses one anywhere else: in a path, on another batch, or in a call made on the client.
-
-On the wire an operation lists its references beside its body, as `"refs": [{"at": ["vocab-item"], "op": n}]`, or `{"at": [...], "op": n, "index": k}` for the kth of a bulk create's ids.
-`at` is a path into the body, of object keys and list indexes, and the body holds `null` there.
-The server puts the id at each path when it runs that operation.
-It never searches a body, so a value in your data that looks like a reference is stored as you sent it.
-A reference in a path, rather than a body, is not supported.
-A reference to an operation that is not before it, to one that answered no such id, or to a path that does not lead to a `null`, refuses the whole batch with a 400.
-When a batch is sent as several requests, a write cannot refer to one in an earlier request, and the client refuses such a batch before sending any of it.
-
-A vocab item belongs to no document, so the `document-version` a strict-mode client stamps on its create has nothing to be checked against on its own.
-Created alone, the entry is refused with a 400 unless `document-id` names the document the version is for.
-Naming a document takes read access to it, a 403 otherwise. A document that no longer exists answers an admin 409 and anyone else 403, as an unknown id does.
-In a batch the stamp is left to the batch's other writes, such as the link the entry is made for.
-A read made on a batch—any GET, and `query`—is answered from the server there and then rather than queued, so a read may be made on the batch or on the client as you please.
-The server runs a batch as one transaction holding its single write lock for the whole of it, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
-A document lock is taken and released on its own, never in a batch: a rollback could not give back a lock, so the server refuses a batch that takes, renews or releases one with a 400 before running any of it.
-A write to any other route that refuses an `Idempotency-Key` (see below) is refused in a batch the same way, keyed or not, with a 400 naming the operation: logging in or out, minting an API token or an invite, redeeming or looking up an invite, `/admin`, uploads, private user data and the service routes.
-A batch carried as an operation of a batch is judged by the same rule, so it may not hold any of these either.
-Their answers are not project data, and some are secrets, which a keyed batch would otherwise keep with the rest of its answer.
-A read of such a route may still be made in a batch.
-A `query` sent to the server inside a batch is answered there like any read, and reads what the batch's earlier operations wrote. A query the server refuses refuses the whole batch. It runs while the batch holds the database's write lock, so it has 2 seconds, not 30, and one that takes longer refuses the batch with 408. Send a slow query on its own.
-Both clients raise when such a call is made on a batch, before anything is sent, so make it on the client.
+The server runs a batch as one transaction, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
+A few things cannot go in a batch, such as locks, uploads and logging in, and the clients refuse them before sending.
 
 === Bulk updates
 
-A batch of many single updates is expensive: every request in it is processed on its own inside the one transaction, and each writes its own operation.
-When the changes are all of one kind, use the bulk endpoints instead, which apply a whole list in one operation and one transaction.
-`bulk_create` and `bulk_delete` exist for tokens, spans, relations, vocab links and vocab items.
-A bulk delete skips an id that is already deleted and deletes the rest, and one whose ids are all deleted answers 204 and changes nothing, alone or in a batch.
-An id that still exists in a project you cannot write refuses the whole list with 403.
-`bulk_update` exists for spans and relations (a value, metadata ops, or both, per entry), for tokens (metadata ops per entry) and for vocab items (a form, metadata ops, or both, per entry):
+When many writes are all of one kind, the bulk endpoints are much faster than a batch of single writes.
+`bulk_create` and `bulk_delete` exist for tokens, spans, relations, vocab links and vocab items, and `bulk_update` for tokens, spans, relations and vocab items:
 
 [,python]
 ----
@@ -1728,41 +1373,20 @@ client.spans.bulk_update([
 ])
 ----
 
-A `value` is set only when the key is present (`null` sets a null value), and an entry's `metadata` is a list of ops, as for `patch_metadata` (see <<Editing metadata>>).
-The entries may lie in several documents of one project; every document touched has its version bumped.
-An id that does not exist refuses the whole update, so an update never silently skips an entry.
+A bulk delete skips ids that are already gone.
+A bulk update with an id that does not exist is refused whole.
 
 == Retrying a write
 
-A write's answer can be lost after the server stored it: the connection drops, a proxy answers 502 or 504, the laptop sleeps.
+A write's answer can be lost after the server stored it, for instance when the connection drops or the laptop goes to sleep.
 Sending the write again must then not store it twice.
-Plaid gives you two tools for this, and both clients use them on every write.
+Both clients take care of this on every write, using the two tools below.
 
 === Ids you mint
 
-Every create that answers an id takes an optional `id` in its body: projects, documents (and a document's copy), texts, the five kinds of layer, tokens (and the token a split makes), spans, relations, vocab items, vocab links, guidelines and comments.
-In a bulk create each item may carry its own `id`, and items with and without one may be mixed.
-The rows inside a copied document always get ids from the server.
-
-The id must be a UUIDv7 (RFC 9562) whose time lies after 2020 and at most an hour ahead of the server's clock, otherwise the create is refused with 400.
-Rows are read in id order, so an id of another version, or one stamped far in the past or future, would sort before or after everyone else's rows for good.
-One id named twice in one bulk create is a 400.
-
-An id that was used before, by a row of any kind, is refused with 409, and the body says so (the message names the kind of row that holds it):
-
-[,json]
-----
-{"error": "id-taken", "id-taken": true, "id": "0199...", "deleted": false, "message": "A span with id 0199... already exists."}
-----
-
-That holds for an id whose row was since deleted too (`"deleted": true`, and "existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
-A comment has no history, so only a comment that still exists holds its id.
-Tell `id-taken` apart from a version conflict by the body, never by the status alone.
-
-With the id known before the create is sent, a later write in the same batch can name it directly, and `b.ref()` is only needed for ids the server mints.
-
-Both clients mint these ids: `uuidv7()` in JavaScript and `uuid7()` in Python.
-Each create method takes the id as an option, `{ id }` as the last argument in JavaScript and `id=` in Python:
+Every create takes an optional `id`, so the client can choose a new row's id before sending it.
+A create sent again with the same id is refused with 409 and `"error": "id-taken"`, even if the row was deleted meanwhile, so a late retry never brings back a deleted row.
+The id must be a UUIDv7, which both clients mint (`uuidv7()` in JavaScript, `uuid7()` in Python):
 
 [,js]
 ----
@@ -1778,55 +1402,12 @@ client.spans.create(layer_id, [token_id], "NOUN", id=span_id)
 
 === The Idempotency-Key header
 
-Every other write, and every create too, may carry an `Idempotency-Key` header of 8 to 128 letters, digits or `. _ : -`.
-The server keeps the answer to a write sent with a key for 24 hours (`[idempotency] retention_hours` in `config.toml`), scoped to the user who sent it.
-The same key sent again by the same user for the same request is answered with that stored answer: the same status and body, the same `X-Document-Versions`, and `Idempotent-Replayed: true`.
-Nothing is written again, nothing is announced on the project's stream, and no history entry is added.
-The replay comes before every other check, including the `document-version` one, so a strict resend of a write that landed is not refused as stale.
+Any write may carry an `Idempotency-Key` header.
+If the same user sends the same request again under the same key within 24 hours, the server answers with the stored answer and writes nothing, marking it `Idempotent-Replayed: true`.
+The same key on a different request is refused with 422.
 
-Two sends are the same request when they have the same method, path, body and query parameters.
-`group-id`, `group-message`, `group-kind`, `group-ref` and `audit-message` only label a write and are left out, while `document-version` counts.
-The same key for a different request is refused with 422, whose `error` is `idempotency-key-reused` (and `"idempotency-key-reused": true`, with the sentence under `message`).
-Only a success is kept: a write refused for any reason (a version conflict, a lock, a bad request, a busy database) wrote nothing, and sending it again runs it again.
-`POST /query` writes nothing, so a key on it is accepted and changes nothing: the query runs again on every send and no answer is kept.
-
-A `/batch` takes one key for the whole batch.
-The key is refused with 400 on the routes a batch cannot carry, or whose answer is a secret: the lock routes, uploads (media and profile pictures), private user data, login and logout, minting an API token, an invite, a media link or an avatar token, redeeming or looking up an invite, `/admin`, and the service routes.
-A write to one of them is refused inside a batch too, and inside a batch carried by a batch, so a batch's stored answer never holds a secret.
-A GET ignores it.
-
-=== Idempotency keys in the clients
-
-Both clients send a key on every write that is not a signal (`outOfBand`) or a call a batch cannot carry (`noBatch`: an upload, private user data, or a call that mints a secret).
-Redeeming and looking up an invite (`redeemInvite`, `lookupInvite`, `redeem_invite`, `lookup_invite`) are made before there is a client, carry no key and are never batched.
-A queued write has none of its own: its batch request has one, and a batch the client splits past 1,000 operations sends one key per part.
-When a keyed write gets no answer (no response at all, 502 or 504), the client sends it again under the same key, up to three times after about 1, 3 and 9 seconds, unless the browser says it is offline.
-The error that finally escapes carries the key (`idempotencyKey`, `idempotency_key`), so a caller that sends the write again under it later is answered from the first send if it landed.
-
-An answer the server replayed (`Idempotent-Replayed: true`) is marked, whether the client sent it again on its own or the caller did.
-`wasReplayed(answer)` in JavaScript and `was_replayed(answer)` in Python say whether it was, and so whether the write stored nothing new.
-In JavaScript the mark is `replayed: true`, not enumerable, on the answer object or array. In Python the answer is a `dict` or `list` subclass whose `replayed` is `True`.
-Either way the answer reads, compares and serializes as an unmarked one would.
-Only an answer with a JSON object or list body carries the mark. An empty or text answer does not.
-A batch's results are marked when its request was replayed. A batch past the server's cap goes as several requests, and its results are marked when any of them was replayed, since then some of the batch stored nothing new. The same holds for `committedResults` (`committed_results`) when a later request fails.
-
-A caller that runs an operation again from the top can make it send the same keys.
-`client.keySeed()` (`key_seed()` in Python) gives a seed, and an operation opened with it numbers its writes, so the nth write sent inside it takes the key `<seed>.<n>` on every run, with the `document-version` the first run stamped:
-
-[,js]
-----
-const keys = client.keySeed();
-const send = () => client.withOperation("Gloss word", async () => { ... }, { keys });
-await send();   // and if its answer was lost, later:
-await send();   // the writes that landed are replayed, the rest run
-----
-
-[,python]
-----
-keys = client.key_seed()
-with client.operation("Gloss word", keys=keys):
-    ...
-----
+Both clients send a key on every write, and send a write again under the same key when no answer arrives.
+`wasReplayed(answer)` (`was_replayed` in Python) tells whether an answer was a replay of an earlier send.
 
 == Trust
 
@@ -1892,7 +1473,7 @@ A layer carries at most one role, and the inventory is deliberately small:
 | `time-alignment` | token layer | Tokens aligned to a media timeline, for audio or video.
 |===
 
-Plaid itself attaches meaning to one of these values only: a space typed inside a word deals out the tokens of a `syntactic-word` layer under it (see `splitOnSpace` above).
+Plaid itself acts on one of these roles only: a space typed inside a word deals out the tokens of a `syntactic-word` layer under it.
 These names are rather blessed conventional names for communicating the meaning of a layer that apps are expected to honor when present.
 The app that first sets the project up might record the roles of its sentence and word layers like this:
 
@@ -1910,7 +1491,7 @@ We also advise app developers to consider the _absence_ of a role tag to be a me
 
 === Text direction
 
-One further shared convention lives on a **document**, in the same reserved namespace but under its `metadata` rather than a layer's config:
+One further shared convention lives in a **document's** metadata, under the same reserved namespace:
 
 [,js]
 ----
@@ -1919,112 +1500,65 @@ await client.documents.patchMetadata(docId, [
 ]);
 ----
 
-The value is `"ltr"` or `"rtl"`, and the key's absence means "read the text", which is what almost every document says.
-Plaid's substrate has no notion of what language anything is in, and for a single field it does not need one: a string is a sequence of code points, and the Unicode bidirectional algorithm lays it out.
-What that cannot settle is the order of COLUMNS in an interlinear block or a dependency grid, because the container holding them also holds row labels written in the metalanguage.
-So a client resolves one direction per document and lays its grid out by it, falling back to counting the strong characters in the document's own text.
-This is an override for the corpus that text cannot speak for, such as a right-to-left language written in a Latin transliteration.
-
-Note that document metadata is otherwise a flat table of fields a person entered, one per name, and this key is an object.
-A client that walks metadata generically, such as an exporter writing one column per key, should skip the `plaid` namespace rather than serialize it.
+The value is `"ltr"` or `"rtl"`, and without it a client takes the direction from the document's own text.
+Set it where the text cannot speak for itself, such as a right-to-left language written in a Latin transliteration.
+A client that walks metadata generically, such as an exporter, should skip the `plaid` namespace.
 
 == Provenance
 
-Annotation projects routinely mix human labor with machine output—a parser fills in a first pass, an auto-linker proposes vocabulary links, an importer carries another tool's analysis—and it matters enormously which is which: machine output is cheap and replaceable, while human judgment is expensive and must never be silently destroyed.
-Some projects also take in work that is a person's but not yet checked—a community member's transcription, a student's glosses—which must be kept apart from both.
-Plaid standardizes these distinctions as the **provenance** convention: flat metadata keys on annotation entities (spans, relations, vocab links, and optionally tokens) along two axes.
-The `prov` key records the **origin** (absent: a trusted person, a _verifier_; `inferred`: a machine; `contributed`: a person whose work is reviewed, a _contributor_), and `provConfirmed` records **trust** (a verifier vouched for the value).
-Together they put every entity in one of four states.
+Annotation projects often mix human work with machine output, and it matters which is which: machine output is cheap to replace, while human judgment must never be silently destroyed.
+Some projects also take in work that is a person's but not yet checked, such as a student's glosses.
+Plaid records these distinctions in a few metadata keys, which put every annotation in one of four states.
+
+`prov` records where a value came from: no key for a trusted person (a _verifier_), `inferred` for a machine, and `contributed` for a person whose work is reviewed (a _contributor_).
+`provConfirmed: true` records that a verifier has vouched for the value.
+`provSource` names who produced it, such as `service:my-tagger` or `user:<userId>`.
 
 [cols="1,2,3"]
 |===
 | State | Metadata | Meaning
 
-| **human** | _no provenance keys_ | A verifier made it. The absence of the `prov` key is the discriminator.
+| **human** | _no provenance keys_ | A verifier made it.
 | **machine** | `prov: "inferred"`, `provSource: "<producer>"` | An algorithm or service made it, and nobody has vouched for it yet.
 | **contributed** | `prov: "contributed"`, `provSource: "user:<userId>"` | A contributor made it, and no verifier has vouched for it yet.
-| **verified** | either of the above, plus `provConfirmed: true` | A verifier confirmed or edited it. `prov` and `provSource` stay, so the origin remains traceable.
+| **verified** | either of the above, plus `provConfirmed: true` | A verifier confirmed or edited it.
 |===
 
-`provSource` names the producer: `service:<serviceId>` for services, `rule:<name>` for built-in rule algorithms, `user:<userId>` for a contributor, or an app-specific id such as `gloss:doc-frequency` or `flex-import`.
-The presence of the `prov` key is what marks an entity as somebody's proposal; any value other than `contributed` reads as machine-made.
-The keys are deliberately flat scalars, which the query system's metadata filters match well, so questions like "show me every unverified machine annotation in this document" are ordinary queries.
-
-Who counts as a contributor is the **project's** decision, recorded once for every app under the reserved `plaid` config namespace:
+Who counts as a contributor is the project's decision, recorded under the `plaid` config namespace:
 
 [source,json]
 ----
 "config": { "plaid": { "review": { "users": ["ann@example.org"], "roles": ["writer"] } } }
 ----
 
-`users` names people whose work is reviewed whatever their access level, and `roles` names whole project roles (`reader`, `writer`, `maintainer`; an admin without an explicit role counts as a maintainer).
-Either list may be absent, and an absent `review` means nobody is reviewed.
-This is deliberately separate from the permission model: the maintainer, writer and reader lists say what a person may do, and the review lists say whose work needs a verifier's look, so a trusted collaborator can be a writer without a mark and a student can be a maintainer with one.
-Every Plaid app that writes on a person's behalf consults it (Plaid IGT and Plaid UD show it as a per-member checkbox on their access screens), and an app for a setting where all writers are contributors need only set `roles` to `["writer"]` when it creates a project.
-Both clients ship `readReview`, `isReviewed`, `projectRole` and `withReviewedUser` (Python: `read_review`, `is_reviewed`, `project_role`, `with_reviewed_user`) for reading and editing it, and `writerPolicy(contributorId)` / `WriterPolicy(contributor_id)`, which turns "is this person a contributor" into the stamps their creates, edits and confirmations carry and the material their review gestures act on, so rule 3 below has one implementation across apps.
+`users` names individual people and `roles` names whole project roles, and an absent `review` means nobody is reviewed.
+This is separate from permissions, so a trusted collaborator can be a writer without review and a student can be a maintainer with it.
+Both clients offer `isReviewed` / `is_reviewed` for reading it.
 
-A producer may also record **prediction extras**—how confident it was, and what else it considered—in two further reserved slots, split along the queryability line:
+=== Prediction details
 
-`provProb`:: One flat number in [0, 1]: the producer's probability for *the value it chose*. Because it is a flat scalar, it filters and orders in the query language, so "review the least-confident machine output first" is an ordinary query. Provide it only when you can honestly produce a probability—a raw log-probability or unnormalized score is not one, and belongs in `provDetail` instead.
-`provDetail`:: One open map for everything else: top-k alternatives or distributions, the model name and version, raw scores. It is deliberately nested (and therefore not query-matchable—anything worth filtering on goes in `provProb`), and deliberately unconstrained inside, with one piece of advice: record the top handful of alternatives, not whole-vocabulary distributions.
+A machine writer may also record how confident it was.
+`provProb` is a single number between 0 and 1, the probability of the value it chose, and since it is flat a query can sort by it to put the least confident output first.
+Everything else, such as the top few alternatives, goes in the open map `provDetail`.
 
-Prediction extras describe the machine's *original* prediction.
-They are kept even after a human edits the entity—the history is valuable for audit and retraining—which means a consumer must not present `provProb` as confidence in the *current* value once the entity is verified: any human edit verifies (rule 3 below), so `provConfirmed` is exactly the flag to check before displaying it.
+Every machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and the version of the writer's own code in `provDetail.version`.
+These details describe the original prediction and are kept after a person edits the value.
+So once `provConfirmed` is set, do not present `provProb` as confidence in the current value.
 
-Of the bundled services, the Whisper transcriber records its per-segment scores this way (`provDetail.avgLogprob` / `provDetail.noSpeechProb` / `provDetail.model`—and no `provProb`, since a log-probability is not a calibrated probability), and the Stanza parser records `provDetail.model` and `provDetail.language` (its pipeline exposes no per-prediction probabilities; a parser that has them would add `provProb` plus a top-k distribution in the detail map).
-On the read side, the UD editor consumes distributions a parser records under `provDetail.uposProbs` / `provDetail.xposProbs` / `provDetail.deprelProbs` (each a flat `{label: probability}` map): the top-k floats above the rest of the vocabulary in the corresponding cell's dropdown as a "Parser suggestions" group, and machine-made cells describe their origin (producer, model, `provProb`) in their hover tooltip.
+=== The write contract
 
-Because `provDetail` is open, consumers that want to work across producers need agreed key names inside it.
-The IGT app's producers (the PolyGloss analyzer, the built-in analysis-copy rule, and a guess a person adopts in the editor) record the *predicted value itself* under `provDetail.value` on a span and `provDetail.form` on a morpheme token, mirroring the entity's own field.
-The entity's value may later be edited, so this copy is what makes "accepted as-is" and "corrected" distinguishable once an entity is verified, which is the basis of any accuracy report.
-A producer that has a distribution records it as a top-k `{label: probability}` map under `provDetail.valueProbs` (spans) or `provDetail.formProbs` (morpheme tokens), the chosen label included, with `provProb` duplicating that label's entry as the flat, queryable copy.
+Every machine writer, whether a service, a built-in rule or an importer, is expected to follow three rules:
 
-Every machine writer also says what made the prediction and which version of the writer ran, under `provDetail.model` and `provDetail.version`.
-`model` is the model's name for a language model (`gpt-oss-120b`), and the tool with its release for anything else (`stanza==1.11.0`, `nltk==3.9.1`, `whisper-small`).
-A writer made only of rules in its own code, such as the UMR skeleton-from-glosses service, has no `model`.
-`version` is `<release>+<hash>`: the Plaid release the writer ran on, then the first 8 hex digits of a SHA-256.
-For a bundled service the hash is of the service's own file, which holds its prompt, its rules and its defaults, so `git show <commit>:<path> | sha256sum` tells whether that commit's code wrote a value (line endings count as the repository stores them).
-The Python client computes it as `BaseService.version`, and `machine_detail(version, model=...)` in `plaid_client.service` builds the map.
-For an assistant the hash is of its system prompt template, every tool schema and the code of its harness and its app, which writes the rest of what the model reads (see the plaid-agent README, "Model and prompt version").
-An approved assistant plan's writes carry the model and version of the turn that proposed the plan, and their `provSource` names the service that turn answered as, so a plan approved after the assistant was restarted on another model still names one producer. When a contributor approves, the writes are the contributor's, and the model and version stay beside them with the assistant's source as `provDetail.guess`, as for any guess a contributor adopts.
-The AnCast scorer writes a report rather than an annotation, and names the same two things as `tool` and `serviceVersion`.
-A rule an app runs in the browser is a writer too. Its `model` is `builtin:<name>` (IGT's `builtin:analysis-copy` and `builtin:precedent`), and its `version` is the app's package version, then the first 8 hex digits of a SHA-256 over every file whose change changes what the rule writes, hashed in the browser from the files as the app bundles them.
-Those files are the rule's own (`analysisMemory.js`, `autoLink.js`), `autoPass.js`, which runs both, the mutation that writes the output, every file of IGT and plaid-ui they import (`precedent.js`, which holds the linking policy, among them) and the client's `provenance.js`.
-`plaid-igt/src/domain/builtinSources.json` lists them for each rule, and a unit test keeps the list equal to the imports.
-What is hashed is one `sha256sum` line per file, in the list's order, so at a given commit this gives the same 8 hex digits:
+1. A machine writer may freely create new material and freely **replace machine-made, unverified material**, its own or another machine's.
+2. A machine writer must **never modify or delete human-made, contributed or verified material** unless the user asks it to for that run. For services, this is a boolean `overwrite` parameter, off by default.
+3. **A verifier's edit of a machine-made or contributed annotation verifies it**, and so does an explicit accept. **A contributor's edit of any annotation marks it contributed.**
 
-[source,sh]
-----
-C=<commit> NAME=precedent  # or analysis-copy
-git show "$C:plaid-igt/src/domain/builtinSources.json" | jq -r --arg n "$NAME" '.[$n][]' |
-  while read -r p; do echo "$(git show "$C:$p" | sha256sum | cut -c1-64)  $p"; done |
-  sha256sum | cut -c1-8
-----
+Rule 3 lets an editor show proposals apart from checked work, with the marking fading as a verifier works through the material.
+Both clients offer helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the keys to add to everything a service creates, and `isProtected(metadata)` / `is_protected(metadata)` checks rule 2.
+On the reading side, `provState` / `prov_state` tells which of the four states an entity is in.
 
-A release does not stamp the apps' package versions, which read `0.0.0` in every build, so for these the hash is what names the code.
-Keep the rest of `provDetail` small: these two strings, what was predicted, and the handful of scores a reviewer would use.
-
-The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
-
-1. A machine writer may freely create new material and freely **replace machine-made, unverified material**—its own or another machine's. Unverified machine output is by definition replaceable.
-2. A machine writer must **never modify or delete human-made, contributed or verified material** unless explicitly told to, via a per-run, user-facing opt-in. For services, the idiom is a declared boolean `overwrite` parameter, so the option renders in the standard argument form and is off by default. A contributor's work is a person's work, however unreviewed.
-3. **A verifier's edit of a machine-made or contributed annotation verifies it**: alongside the new value, the editing app also merges `provConfirmed: true`. Explicit confirm gestures (clicking to accept a proposed link, for example) do the same. **A contributor's edit of any annotation marks it contributed**: the app merges the contributed stamp and drops any earlier confirmation, so a verifier sees that a confirmed value was changed. A contributor accepting a machine proposal records it as a contribution, not a verification.
-
-Rule 3 is what lets editors render proposals distinctly (Plaid's apps use violet italics for machine output and amber for contributions) and have the marking dissolve naturally as a verifier works through the material—each touched annotation graduates to verified, while everything still violet remains fair game for the next machine pass.
-
-For service authors, both clients ship helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the fragment to merge into everything you create (every bulk create accepts per-item `metadata`) and takes the prediction extras as options (`stampInferred(source, {prob, detail})` / `stamp_inferred(source, prob=, detail=)`), `serviceSource(serviceId)` / `service_source(service_id)` builds the canonical producer id, and `isProtected(metadata)` / `is_protected(metadata)` implements the rule-2 check against material you are about to destroy.
-Born-verified material—an import carrying upstream human approval, or a guess written only upon explicit user confirmation—uses `confirmedInferred` / `confirmed_inferred` instead.
-On the reading side, `provState` / `prov_state` classifies an entity into the four states, `needsReview` / `needs_review` is what a review UI marks and sweeps, and `provOrigin` / `prov_origin` tells a verified entity's two origins apart.
-A service running on behalf of a contributor (the IGT assistant applying a plan a contributor approved, for example) stamps with `stampContributed(userId)` / `stamp_contributed(user_id)` and rewrites with `contributeOnEdit` / `contribute_on_edit`, which also drops an earlier confirmation; these helpers return fragments of top-level keys, which `metadataOps` / `metadata_ops` turns into the ops a PATCH takes (a null value becomes a delete), and `mergeMetadata` / `merge_metadata` applies a fragment to a local copy, as `applyMetadataOps` / `apply_metadata_ops` over those ops does, refusing what the server would refuse.
-
-[NOTE]
-====
-Word and sentence tokens are substrate and are not stamped: IGT's built-in tokenizer, the Punkt tokenizer service and the bundled UD parser all write them with no provenance keys, and the run's operation in the audit log (`service-run`, with `builtin:<name>` or `service:<id>` as its ref) names what made them.
-Other tokens MAY carry provenance where a service writes them as part of its analysis (the bundled UD parser stamps the syntactic words it creates, as it does their annotations and relations).
-The write contract protects annotation _content_; substrate segmentation is guarded by the structural rules in <<Token Layer Constraints>>.
-
-One migration wrinkle: machine output written _before_ a producer adopted this convention carries no provenance keys and therefore reads as human-made. The first guarded re-run over such a document will refuse; one run with `overwrite` enabled replaces and re-stamps it.
-====
+Word and sentence tokens are not stamped.
+The run's entry in the audit log says what made them.
 
 == Reconciliation Across Apps
 
@@ -2036,8 +1570,8 @@ From the IGT app's perspective, this is a totally unproblematic change to make.
 However, on the UD side, it is a strict requirement that all dependency relations must _never_ cross sentence boundaries, and this change in the IGT app at the shared sentence tokenization layer has caused an invariant violation in the UD app.
 
 Plaid cannot know about this invariant by itself, because it is application-specific.
-The UD app can tell it, though, by declaring the rule on its relation layer (see <<layer-constraints>>), and then the split deletes the crossing relations in its own transaction.
-An invariant that no declared rule expresses is left to the UD app to deal with the next time that document is opened.
+The UD app can tell it, though, by declaring the rule on its relation layer (see <<layer-constraints>>), and then the split deletes the crossing relations itself.
+Any invariant that no declared rule expresses is left to the UD app to deal with the next time that document is opened.
 
 The discipline that resolves this is easy to state, and in the interest of smooth interoperability, we encourage all app developers to adhere to it:
 
@@ -2058,11 +1592,8 @@ Opening the document is the baseline; reconciling on a live update is the very s
 [[layer-constraints]]
 == Layer Constraints
 
-An app can declare **rules** on the token, span and relation layers it uses, and Plaid enforces them inside every write, whoever makes it.
-A rule declared by the UD app on its dependency layer holds for a split made in the IGT app, for a service, for a script and for a restore alike.
-Stored data always keeps the rules its layers declare.
-
-Each rule is a **constraint** object with a `type` and the type's parameters:
+An app can declare **rules** on the token, span and relation layers it uses, and Plaid enforces them on every write, whoever makes it.
+A rule the UD app declares on its dependency layer holds for a split made in the IGT app, a service, or a script alike.
 
 [cols="1,1,3",options="header"]
 |===
@@ -2070,7 +1601,7 @@ Each rule is a **constraint** object with a `type` and the type's parameters:
 
 |`max-in-degree`
 |relation
-|A span is the target of at most `max` relations of the layer. A relation from a span to itself counts.
+|A span is the target of at most `max` relations of the layer.
 
 |`acyclic`
 |relation
@@ -2078,7 +1609,7 @@ Each rule is a **constraint** object with a `type` and the type's parameters:
 
 |`same-ancestor`
 |relation
-|Both ends of a relation lie in one token of `token-layer`, such as one sentence. An end's place is the first token of its span. An end in no token of `token-layer` crosses nothing, so deleting every sentence of a document deletes none of the relations outside them, and a relation is judged again when sentences are made over its ends. The token layer must be on the same text layer and allow no overlap.
+|Both ends of a relation lie in one token of `token-layer`, such as one sentence.
 
 |`single-span`
 |span
@@ -2090,7 +1621,7 @@ Each rule is a **constraint** object with a `type` and the type's parameters:
 
 |`coextensive`
 |token
-|A token has exactly the extent of a token of its parent layer. Several may share one parent's extent.
+|A token has exactly the extent of a token of its parent layer.
 
 |`single-link`
 |token
@@ -2099,9 +1630,8 @@ Each rule is a **constraint** object with a `type` and the type's parameters:
 
 === Declaring
 
-Rules are declared per app, under the app's own **namespace**, so two apps sharing a layer never overwrite each other's lists.
-Plaid enforces every namespace's list.
-Declaring needs maintainer privileges.
+Each app declares its rules under its own namespace, so two apps sharing a layer do not overwrite each other's lists.
+Declaring needs maintainer privileges, and a list the layer's data already breaks is refused with 422.
 
 [source,python]
 ----
@@ -2111,101 +1641,31 @@ client.relation_layers.set_constraints(deps_layer_id, "ud", [
 ])
 ----
 
-In JavaScript the same call is `client.relationLayers.setConstraints(depsLayerId, "ud", [...])`, and the parameters are camelCase (`tokenLayer`, `selfLoops`).
-On the wire it is `PUT /api/v1/relation-layers/<id>/constraints/ud` with the body `{"constraints": [...]}`, and the same routes exist on token and span layers.
-The answer is the layer's whole map, from namespace to list, which every read of a layer also carries as `constraints`.
-
-A list the layer's stored data already breaks is refused with 422 and the violations, and nothing is stored.
-Passing `expected`, the list you read for that namespace (`None` or `null` when there was none), makes the write refuse with 409 and `constraints-changed` when someone declared since.
-`delete_constraints` (`deleteConstraints`) removes a namespace's list.
-
-Two more routes help before declaring:
-
-* `check_constraints` (`POST .../constraints/check`) lists the violations a list would meet, and writes nothing.
-* `repair_constraints` (`POST .../constraints/repair`) applies the remedies described below to every violation in the layer's stored data, as one operation per document (`layer/repair-constraints`), and lists what is left.
-  A repair deletes no value: doubled spans are joined as a merge joins them, and a joined value outside the list's `value-set` is listed among what is left.
-  A join a `value-set` already stored on the layer would refuse leaves that token as it is.
-
-A declaration, removal or repair that changes nothing (the list was already stored, there was none to remove, the data broke no rule) is not recorded: it adds no entry to the history and starts no operation group.
-
-A repair leaves a document another user holds the lock on as it is, and lists it under `locked`, as `{document, locked-by}`.
-Its violations stay in the list of what is left, so declaring the rules waits for a repair after the lock is released.
-
-Repairing a whole layer needs maintainer privileges.
-Passing `document` (`repair_constraints(layer_id, constraints, document=doc_id)`, or `repairConstraints(layerId, constraints, undefined, { document })` in JavaScript) repairs that document alone, and a writer may ask.
-A document of another project, or an id no document has, is refused as any id the caller cannot see is (see <<Users and Permissions>>).
-An app uses this when a writer opens a document on a layer that holds none of its rules yet.
+`check_constraints` lists what a list would break, without writing anything.
+`repair_constraints` fixes what can be fixed and lists the rest, and a writer may run it on a single document by passing `document`.
+An app uses this when a writer opens a document whose layer does not hold its rules yet.
 
 === Rule violations
 
-Rules are checked once, at the end of the write's transaction: after a single write, or after the last operation of a batch.
-A batch may pass through a state that breaks a rule, as long as its end does not.
+A write that breaks a rule on what it wrote itself, such as a second head for a word, is refused with 422 and stores nothing.
+The answer lists each violation, and `violationsOf(err)` (`violations_of` in Python) reads them.
+Rules are checked once at the end of a batch, so a batch may pass through a broken state on the way.
 
-When a write breaks a rule on a row it wrote itself, it is refused with 422 and nothing is stored.
-Creating a second head for a word, a relation across two sentences, or a value outside a closed list is refused this way.
-The body names each violation:
-
-[source,json]
-----
-{
-  "error": "A span is the target of 2 relations in \"Deps\" (at most 1 is allowed).",
-  "violations": [
-    {"constraint": "max-in-degree", "namespace": "ud", "layer": "<relation layer id>",
-     "layer-name": "Deps", "document": "<document id>", "at": "<span id>",
-     "ids": ["<relation id>", "<relation id>"]}
-  ],
-  "violation-count": 1
-}
-----
-
-A `value-set` violation also names the `value` and the `parts` not in the list.
-At most 100 violations are listed, and `violation-count` is the total.
-`violationsOf(err)` in JavaScript and `violations_of(err)` in Python read them off a refused write.
-
-When a write breaks a rule on rows it did not write, because it changed what they rest on, Plaid applies the rule's **remedy** in the same transaction instead of refusing the write:
-
-* `same-ancestor`: the relations left crossing are deleted. This is what happens to a dependency tree when another app splits its sentence.
-* `coextensive`: the tokens left without a parent of their extent are deleted, with everything on them. This is what happens to a word's analyses when another app merges two words.
-* `single-span`: of the spans a token merge leaves on one token, the survivor's own span is kept (else the one with the smallest id) and takes the distinct values of the others, joined with `join-with` (`" | "` by default) in text order, and the others are deleted with their relations. A joined value the layer's `value-set` would refuse is not joined.
-* `single-link`: of the single-token links a merge leaves on one token, the survivor's own is kept (else the one with the smallest id) and the others are deleted.
-
-The remedies run as their own operation, `layer/apply-constraints`, in the same batch and group as the write that set them off, so History shows them under it.
-`max-in-degree`, `acyclic` and `value-set` have no remedy: a write elsewhere that would break one is refused. A restore and a copy are not refused by them (see <<Values a list does not govern>>).
-
-A batch larger than 1,000 operations is sent as several transactions, each checked on its own.
-A batch that moves several relations should therefore send every delete before any create.
+A write that breaks a rule on rows it did not write, by changing what they rest on, is not refused.
+Instead Plaid applies the rule's **remedy**: a sentence split deletes the dependency relations left crossing it, and a word merge deletes the analyses left without a word of their extent.
+`max-in-degree`, `acyclic` and `value-set` have no remedy, so a write that would break them elsewhere is refused.
 
 === Values a list does not govern
 
-Three kinds of write keep a value outside a `value-set` list:
-
-* An **unverified machine value**: a span or relation whose metadata has `prov` other than `contributed` and no `provConfirmed: true` (see <<Provenance>>). Confirming such a value is refused when the value is not listed.
-* A write in an **import**: an operation of kind `import` (see <<Kinds of operation>>). Importers keep what the source says and report what is off the list.
-* A **document copy** or a **restore** from history. Both write back values that were already stored.
-
-A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
-
-The `acyclic` and `max-in-degree` rules take the last two the same way: a relation an import, a copy or a restore wrote does not count against them, so a cycle or a second head an import brings stands (a file that stores an inverse role in the direction it was written, say), and so does one a restore brings back, while one a later write makes is refused.
-For `max-in-degree` a person may replace one of the heads an import gave a span, by deleting it and making a new one or by moving its source, since the span has no more heads than before. A write that gives such a span another head is refused, and so is one that leaves it more than `max` heads people wrote, such as replacing a second imported head.
-Only a write that can close a cycle is checked against `acyclic`: one that makes a relation, moves one of its ends, or moves its value from one in `except-values` to one that counts. Relabelling a relation between counted values, or confirming it, is not refused even when it lies on a stored cycle.
-A relabel keeps an imported relation imported for both rules.
-Declaring either rule again over such data refuses only a cycle made wholly of relations other writes made, or a span that more than `max` such relations point at.
-
-A part of a value is compared with the list after trimming exactly what JavaScript's `String.prototype.trim` trims: Unicode white space, including the no-break spaces, and the byte order mark.
-`valueSetAllows(constraint, value)` in JavaScript and `value_set_allows(constraint, value)` in Python read a value the same way.
+Three kinds of write may keep a value outside a `value-set` list: an unverified machine value, a write made by an import, and a restore or copy of what was stored before.
+Any later edit of such a value is checked against the list.
+Imported relations are likewise exempt from `acyclic` and `max-in-degree`, so a file that has a cycle can still be read in.
 
 == References in Metadata
 
 An app sometimes needs to point from one of its rows to another row of the same document, in a way no relation can express.
-Plaid UMR, for example, records on each node without a word anchor the id of the sentence token it belongs to, so that it can tell such a node apart from one another app's edit has moved.
-Metadata is the place for this, and Plaid keeps such a reference pointing at the same row wherever the rows themselves are recreated:
-
-* **Restoring** a document to an earlier time re-inserts rows under their old ids, so a reference to a restored row finds it again.
-* **Copying** a document gives every row a fresh id, and any metadata value that is exactly the id of a row being copied (a text, token, span, relation or vocabulary link, or the document itself) becomes the copy's id for that row. Nested maps and arrays are followed. Map keys, strings that merely contain an id, and ids of things outside the document (layers, vocabulary entries) are left as they are.
-* **Plaid IGT's archive** does the same when it imports a project, for every app's rows, including references to other documents of the archive.
-
-The rule is exact equality with a whole string value, so a reference should be stored as the bare id.
-A reference from one document into another document's tokens or spans is not rewritten by any of these, and an app should not rely on one.
+Metadata is the place for this, and Plaid keeps such a reference pointing at the right row when rows are restored or a document is copied.
+Store the reference as the bare id, as a whole string value.
 
 = Querying
 
@@ -2291,41 +1751,17 @@ await client.query({
 Queries always read the current state of your data: there is no time-travel parameter (one passed as `asOf` is refused).
 For a document's history, see the <<Audit Log>>.
 
-=== Document Time Travel
-
-A document GET accepts an `as-of` query parameter carrying an ISO-8601 instant, e.g. `GET /api/v1/documents/{id}?as-of=2026-06-01T12:00:00Z&include-body=true`, and returns the document exactly as it stood at that moment — reconstructed from the audit log, so it is always available, requires no configuration, and is never stale. A few details worth knowing:
-
-* Time travel is read-only and defined on the top-level document GET and on the vocabulary reads below. Document sub-routes (media, locks, metadata) and all other endpoints refuse `as-of` with a 400.
-* A timestamp landing in the middle of an atomic batch request is treated as falling just before that request began, so you never observe a half-applied request. A batch the client split past 1,000 operations is several requests, and a moment between two of them is observed as it was.
-* A timestamp at or after the present simply returns the current state.
-* Documents that have since been deleted remain readable at timestamps when they existed, for users with current access to the project.
-* Access control always reflects *current* project membership, not membership as of the requested time.
-
-==== Restoring a Document
-
-`POST /api/v1/documents/{id}/restore?as-of=2026-06-01T12:00:00Z` brings the document back to its state at that moment, as one operation. Every layer is covered: what was deleted since then comes back under its original id, what was added since is removed, and what changed is set back, token lists and metadata included. Because ids come back, anything that still refers to an entity by id, such as a comment, finds it again. A layer deleted since that time, and a vocabulary link whose entry no longer exists or whose vocabulary has left the project, cannot come back; they are skipped and listed under `skipped` in the response, along with whatever depended on them. The response is a summary of the changes, and with `dry-run=true` nothing is written and the summary says what would change. A restore is an ordinary entry in the audit log, so the state just before it can be restored in turn. Restoring requires maintainer privileges, and `document-version` applies as on any other write.
-
-=== Vocabulary Time Travel
-
-A vocabulary is shared across projects, so its history is its own rather than part of any document's.
-
-* `GET /api/v1/vocab-layers/{id}?as-of=2026-06-01T12:00:00Z&include-items=true` returns the vocabulary as it was at that moment, in the same shape as the live read, its entries included with `include-items`. A vocabulary that did not exist then is a 404. In the clients: `vocabLayers.get(id, includeItems, asOf)` and `vocab_layers.get(id, include_items=, as_of=)`.
-* `GET /api/v1/vocab-layers/{id}/items/{item-id}?as-of=...` returns one entry as it was then, also when it has been deleted since, and 404 when it was not in the vocabulary at that time. `as-of` is required. In the clients: `vocabLayers.getItemAt(id, itemId, asOf)` and `vocab_layers.get_item_at(id, item_id, as_of)`.
-* `GET /api/v1/vocab-layers/{id}/audit` is the vocabulary's audit log: every change to it or to its entries, with the same parameters, entry shape and paging as a document's log. Vocabulary links are not listed there, since they belong to the document they annotate. In the clients: `vocabLayers.audit` and `vocabLayers.auditPage`, `vocab_layers.audit` and `vocab_layers.audit_page`, taking the same arguments as the document log's.
-
-==== Restoring a Vocabulary Entry
-
-`POST /api/v1/vocab-layers/{id}/items/{item-id}/restore?as-of=...` puts one entry back as it was at that moment, as one operation. A deleted entry comes back under its original id with its form and fields, and a living entry has its form and fields set back. Links are not part of an entry, so a deleted entry's links do not come back with it: restoring each linking document to a time when the link existed brings them back, now that the entry exists again. The response is `{inserted, form, metadata, total}`, with `total` zero when nothing changes, and with `dry-run=true` nothing is written. When the form is set back, every document linking the entry gets a new version, returned in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A time when the entry did not exist is a 400. Restoring requires maintainer privileges on the vocabulary. In the clients: `vocabLayers.restoreItem(id, itemId, asOf, { dryRun }, auditMessage)` and `vocab_layers.restore_item(id, item_id, as_of, dry_run=, audit_message=)`.
-
 == Further Reading
 
 See link:query.html[the query language reference] for comprehensive information about how queries work.
 
 = Configuration
 
-Plaid is configured through a single https://toml.io[TOML] file. You do not have to create it: on first launch Plaid writes `config.toml` into the data directory (`data/config.toml`) with every setting at its default value. To change something, edit that file and restart the server.
+Plaid is configured through a single https://toml.io[TOML] file.
+On first launch Plaid writes `config.toml` into the data directory with every setting at its default.
+To change something, edit that file and restart the server.
 
-To load a config file from a non-default location, either pass `--config` on the command line or set the `PLAID_CONFIG` environment variable:
+To load a config file from another location, pass `--config` on the command line or set the `PLAID_CONFIG` environment variable:
 
 [source,console]
 ----
@@ -2337,17 +1773,16 @@ $ PLAID_CONFIG=/etc/plaid/config.toml java -jar plaid.jar
 = Deployment
 
 This section is for whoever runs Plaid for other people: a course, a research group, a documentation project.
-It assumes nothing beyond the <<_configuration>> section above.
-Plaid is one process with one SQLite database, so a small machine that stays on is enough: a departmental virtual machine or the smallest cloud instance will serve a class.
+Plaid is one process with one SQLite database, so a small machine that stays on is enough.
 
 == Requirements
 
-* A machine that stays on, reachable by your users, running Linux (the notes below are for Linux; the jar itself runs anywhere Java does).
+* A machine that stays on, reachable by your users, running Linux (the jar itself runs anywhere Java does, but these notes are for Linux).
 * https://www.oracle.com/java/technologies/downloads/[JDK 21 or later].
 * `plaid.jar` from https://github.com/larc-iu/plaid/releases[the releases page].
 * A hostname, if you want HTTPS (and you do, for anything that leaves your desk).
 
-Everything Plaid stores lives in one directory, `data/`, next to the jar (or wherever `[database] path` and the other paths in `config.toml` point): the database `plaid.db`, uploaded recordings under `media/`, nightly backups under `backups/`, the configuration file, the signing secret `jwt-secret.txt`, and logs if you send them to a file.
+Everything Plaid stores lives in one directory, `data/`, next to the jar: the database, uploaded recordings, nightly backups, the configuration file and the signing secret.
 Keep that directory private to the account that runs Plaid.
 
 == First launch
@@ -2361,10 +1796,9 @@ $ sudo -u plaid mkdir -p /srv/plaid && sudo cp plaid.jar /srv/plaid/
 $ cd /srv/plaid && sudo -u plaid java -jar plaid.jar
 ----
 
-On first launch Plaid asks for the administrator's email address and password.
-That address is the account's permanent id and what you sign in with.
-It then writes `data/config.toml` with every setting at its default and starts listening on port 8080.
-Stop it with Ctrl+C once you have seen it start; from here on a service manager runs it.
+On first launch Plaid asks for the administrator's email address and password, and that address is what the administrator signs in with.
+It then writes `data/config.toml` and starts listening on port 8080.
+Stop it with Ctrl+C once you have seen it start, and let a service manager run it from here on.
 
 == Running it as a service
 
@@ -2395,16 +1829,13 @@ $ sudo systemctl enable --now plaid
 $ sudo journalctl -u plaid -f      # follow the log
 ----
 
-Pass those two JDK flags here rather than leaving them off.
-Plaid's database driver needs them, and started without them the server relaunches itself with them added — which works, but leaves the first JVM sitting idle for the life of the service, holding a few hundred megabytes it will never use.
-
-Leave `[logging] file` unset so the log goes to stdout, where journald keeps and rotates it.
+Leave `[logging] file` unset so the log goes to journald, which keeps and rotates it.
 
 == HTTPS
 
-Plaid speaks plain HTTP on its port.
-Put a reverse proxy in front of it to terminate HTTPS, and serve the apps and the API through the same hostname so browsers see one origin and no CORS configuration is needed.
-https://caddyserver.com/[Caddy] does this in three lines and fetches its certificates itself:
+Plaid speaks plain HTTP, so put a reverse proxy in front of it to provide HTTPS.
+Serve the apps and the API through the same hostname, and no CORS configuration is needed.
+https://caddyserver.com/[Caddy] does this in a few lines and fetches its certificates itself:
 
 [source,text]
 ----
@@ -2416,41 +1847,29 @@ plaid.example.edu {
 }
 ----
 
-Two things any proxy must allow for: request bodies as large as `[media] max_file_size_mb` (recordings are uploaded whole), and the server's event streams, which are long-lived responses the proxy must pass through without buffering.
-Caddy does both with the configuration above; nginx needs `client_max_body_size` raised and `proxy_buffering off` on the `/api/` location.
-
-If the proxy must run on another hostname than the API, list the app's origin under `[cors] allowed_origins` instead.
+Any proxy must allow request bodies as large as `[media] max_file_size_mb`, since recordings are uploaded whole, and must pass the server's event streams through without buffering.
+Caddy does both with the configuration above, while nginx needs `client_max_body_size` raised and `proxy_buffering off` on the `/api/` location.
 
 == Backups
 
-Every night at `[backup] time` (03:00 by default) Plaid writes a consistent, compacted snapshot of the database to `data/backups/plaid-backup-<timestamp>.zip` and keeps the most recent `retention` of them.
-That protects against a bad edit, not against a lost machine: copy the newest zip somewhere else on a schedule, and copy `data/media/` with it, since recordings are files on disk and not in the database.
+Every night at `[backup] time` (03:00 by default) Plaid writes a snapshot of the database to `data/backups/` and keeps the most recent `[backup] retention` of them.
+That protects against a bad edit but not against a lost machine, so copy the newest backup somewhere else on a schedule, together with `data/media/`.
+An admin can also take a backup by hand from the admin pages.
 
-An admin can take one outside the schedule with `POST /api/v1/admin/backup` (the admin pages' Back up now, `client.admin.backup()` in both clients).
-It answers once the zip is written, which takes minutes on a large database, with the backup block of `GET /api/v1/admin/server`.
-One backup is written at a time: while one runs, the nightly one or one asked for by hand, another is refused with 409 (`"A backup is already being written. It is listed here when it is done."`), and the backup block names its start under `running`.
-
-For a backup right now while the server runs, use SQLite's own copy rather than `cp` (the database is in WAL mode, and a plain copy misses recent writes):
-
-[source,console]
-----
-$ sqlite3 /srv/plaid/data/plaid.db ".backup /srv/plaid/data/manual-$(date +%F).db"
-----
-
-To restore: stop the service, put the database file from the backup in place of `data/plaid.db` (removing any `plaid.db-wal` and `plaid.db-shm` beside it), restore `data/media/`, and start the service.
+To restore, stop the service, put the database file from the backup in place of `data/plaid.db` (removing any `plaid.db-wal` and `plaid.db-shm` beside it), restore `data/media/`, and start the service.
 
 == Upgrading
 
-Take a backup, replace `plaid.jar`, restart the service.
-Database migrations run on startup.
-The bundled apps are part of the jar, so they upgrade with it.
+Take a backup, replace `plaid.jar`, and restart the service.
+Database migrations run on startup, and the bundled apps are part of the jar, so they upgrade with it.
 
 == Bringing in a class
 
-The administrator signs in first, at `https://plaid.example.edu/igt/`, and either runs the course project themselves or creates the instructor's account from a project's **Settings > Access**, where an administrator can also add and reset users.
-The instructor creates the project and, under the same **Access** section, mints **invitation links**: each grants a role on the project, is good for a set number of uses and days, and lets whoever opens it choose their own password.
+The administrator signs in first, at `https://plaid.example.edu/igt/`, and creates the instructor's account from a project's **Settings > Access**.
+The instructor creates the project and, in the same place, makes **invitation links**: each grants a role on the project, is good for a set number of uses and days, and lets whoever opens it choose their own password.
 One link with fifteen uses is a class.
-A student who forgets a password gets a password-reset link from the administrator, minted in the same place.
+
+A student who forgets a password gets a password-reset link from the administrator, made in the same place.
 The IGT guide's link:igt-guide.html#_sharing_and_permissions[Sharing and Permissions] section covers the roles.
 
 == Reading the log
@@ -2464,17 +1883,12 @@ GET /api/v1/projects/019ecd83-7617-7501/audit 403 2ms user=sam@example.edu ip=10
 POST /api/v1/login 401 220ms user=- ip=203.0.113.9
 ----
 
-`user=` names the account the request was authenticated as, `user=-` one that was not (a refused token, a failed login, or anything Plaid rejected before checking credentials).
-A request signed with a named API token carries `token=<id>` as well, which is how to tell a person from their script.
-
-Everything an administrator needs from it is also on the **Logs** tab of the IGT app's admin area, which does not require a log file and works the same way under journald.
-It reads a buffer the server keeps in memory: requests in one half, with a column per field and a filter for an account, a status class or a search, and everything else in the other half, so a bulk import cannot push an error out of sight.
-It holds what has been logged since the last restart, at info and above.
-Where `[logging] file` is set, the tail of the file itself is on the same tab, and that is the only place to read messages from the libraries Plaid runs on and anything from before the restart.
+`user=` names the account that made the request, and a request signed with a named API token also carries `token=<id>`.
+The same lines can be read on the **Logs** tab of the IGT app's admin area, which needs no log file.
 
 == Settings worth a look
 
-* `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days; a shared lab machine may want a day. This and every other token lifetime (`[auth] delegated_token_ttl_seconds`, `[media] link_ttl_seconds`, `[media] avatar_link_ttl_seconds`) must be a positive whole number of seconds, or the server refuses to start.
+* `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days, and a shared lab machine may want a day. Every token lifetime setting must be a positive whole number of seconds, or the server refuses to start.
 * `[media] max_file_size_mb`: the largest recording a document may carry. Raise the proxy's limit with it.
 * `[user_data] max_value_mb`: the largest private data value, which is how long an assistant conversation can grow before it is full. The default is 5 MB. `[server] max_json_body_mb` must be at least 1 more, or the server refuses to start, so raise the two together.
 * `[api] expose_openapi`: turn off if the API description should not be public.
