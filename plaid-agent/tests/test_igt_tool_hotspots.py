@@ -119,6 +119,14 @@ def test_search_on_a_name_two_fields_share_searches_each():
     assert out == f'Gloss (Word): No hits.\n\nGloss (Morpheme): 1 hits:\n{line}', out
 
 
+def test_a_search_of_a_shared_name_notes_one_count():
+    # One step, one count: the label said "0 matches, 1 match" for one search.
+    w = ws(project=shared_gloss_project())
+    w.reads = []
+    call_tool(w, 'search', {'pattern': 'ERG', 'where': 'Gloss'})
+    assert w.reads == [{'n': 1, 'unit': 'match', 'of': 1}]
+
+
 def test_a_field_named_with_its_scope_in_words_is_that_field():
     w = ws(project=shared_gloss_project())
     p = w.project

@@ -120,8 +120,11 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         # a question about each: answered for each, under its full name.
         alike = ws.project.fields_sharing_name(where_name)
         if alike:
-            return '\n\n'.join(f'{f.name}: ' + t_search(ws, pattern, f.name, document, regex, limit, case_sensitive)
-                               for f in alike)
+            start = len(ws.reads) if ws.reads is not None else 0
+            text = '\n\n'.join(f'{f.name}: ' + t_search(ws, pattern, f.name, document, regex, limit, case_sensitive)
+                                 for f in alike)
+            _merge_notes(ws, start)
+            return text
         field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
     if not ws.use_scan(document):
         from .queries import q_search
@@ -154,6 +157,18 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
                     if len(out) < limit:
                         out.append(f'{tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
     return _finish(ws, out, total, limit, 'hits', 'match')
+
+
+def _merge_notes(ws, start):
+    """One note for the searches of a name several fields share, as the
+    step is one search: their hits shown out of their hits found, added up."""
+    if ws.reads is None or len(ws.reads) - start < 2:
+        return
+    notes = ws.reads[start:]
+    of = [n.get('of') for n in notes]
+    del ws.reads[start:]
+    ws.note_read(sum(n['n'] for n in notes), notes[0]['unit'],
+                 of=sum(of) if all(o is not None for o in of) else None)
 
 
 def _finish(ws, out, total, limit, noun, unit):
