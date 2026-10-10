@@ -87,6 +87,13 @@ const leavingBy = (e) => {
 // digit boxes, plain times, or an hours box on a long recording.
 const TIME_COLUMN =
   'flex w-[5.5rem] shrink-0 flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground';
+// Every row's grid: times, speaker, text, buttons. On a phone the text takes
+// a line of its own under the other three, which keep their widths, so the
+// buttons stay on screen and the text keeps room to be read.
+const ROW_GRID =
+  'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 min-[520px]:grid-cols-[auto_minmax(6rem,8rem)_1fr_auto]';
+const ROW_TEXT = 'col-span-full row-start-2 min-[520px]:col-span-1 min-[520px]:row-start-auto';
+const ROW_BUTTONS = 'col-start-3 row-start-1 min-[520px]:col-start-auto min-[520px]:row-start-auto';
 
 const isPlayChord = (e) => keys.is('media.playSegment', e);
 
@@ -349,7 +356,8 @@ const SegmentRow = memo(function SegmentRow({
       data-segment-id={token.id}
       data-row-time={timeBeginOf(token)}
       className={cn(
-        'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border px-2 py-1.5',
+        ROW_GRID,
+        'rounded-md border px-2 py-1.5',
         ROW_OFFSCREEN,
         active && 'border-primary/60 bg-primary/5',
       )}
@@ -411,11 +419,11 @@ const SegmentRow = memo(function SegmentRow({
       )}
 
       {readOnly ? (
-        <p dir="auto" className="whitespace-pre-wrap py-1.5 font-text text-sm">
+        <p dir="auto" className={cn(ROW_TEXT, 'whitespace-pre-wrap py-1.5 font-text text-sm')}>
           {text}
         </p>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div className={cn(ROW_TEXT, 'flex flex-col gap-0.5')}>
           <Textarea
             ref={attachText}
             value={draft}
@@ -466,7 +474,7 @@ const SegmentRow = memo(function SegmentRow({
         </div>
       )}
 
-      <div className="flex items-center gap-0.5">
+      <div className={cn(ROW_BUTTONS, 'flex items-center gap-0.5')}>
         <Button
           variant="ghost"
           size="icon"
@@ -631,7 +639,8 @@ const ProposalRow = memo(function ProposalRow({
       data-vad-proposal-row={proposal.id}
       data-row-time={proposal.timeBegin}
       className={cn(
-        'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5',
+        ROW_GRID,
+        'rounded-md border border-dashed px-2 py-1.5',
         ROW_OFFSCREEN,
         active && 'bg-muted/60',
       )}
@@ -668,12 +677,15 @@ const ProposalRow = memo(function ProposalRow({
         placeholder="Proposed segment"
         compose
         aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, text`}
-        className="min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]"
+        className={cn(
+          ROW_TEXT,
+          'min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]',
+        )}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={commit}
       />
-      <div className="flex gap-1">
+      <div className={cn(ROW_BUTTONS, 'flex gap-1')}>
         <Button
           variant="ghost"
           size="icon"
@@ -790,7 +802,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
   return (
     <div
       data-row-time="Infinity"
-      className="grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5"
+      className={cn(ROW_GRID, 'rounded-md border border-dashed px-2 py-1.5')}
     >
       <div className={TIME_COLUMN}>
         <span>{formatTime(prevEnd)}</span>
@@ -807,7 +819,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
         onChange={(e) => setSpeaker(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <div className="flex flex-col gap-1">
+      <div className={cn(ROW_TEXT, 'flex flex-col gap-1')}>
         <Textarea
           ref={attachText}
           value={draft}
@@ -826,7 +838,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
             : `Playback must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`}
         </p>
       </div>
-      <div className="h-8 w-8" />
+      <div className={cn(ROW_BUTTONS, 'h-8 w-8')} />
     </div>
   );
 });
@@ -1263,21 +1275,25 @@ export function TranscriptList({
             {segments.length === 1 ? '1 segment' : `${segments.length} segments`}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="transcript-play-on-focus"
-            checked={!!mediaOps.autoPlayOnFocus}
-            onCheckedChange={(on) => mediaOps.setAutoPlayOnFocus(on)}
-          />
-          <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
-            Play segment on entry
-          </Label>
+        {/* Wraps on a phone: the switch and its label stay together, and the
+            buttons go to a line of their own. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <Switch
+              id="transcript-play-on-focus"
+              checked={!!mediaOps.autoPlayOnFocus}
+              onCheckedChange={(on) => mediaOps.setAutoPlayOnFocus(on)}
+            />
+            <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
+              Play segment on entry
+            </Label>
+          </div>
           {/* Transcribe and Clear segments, passed in by the tab: they belong
               beside what they change, but this list stays presentational. */}
           {headerActions && (
             <>
-              <span className="mx-1 h-5 w-px bg-border" />
-              {headerActions}
+              <span className="mx-1 hidden h-5 w-px bg-border min-[520px]:block" />
+              <div className="flex flex-wrap items-center gap-2">{headerActions}</div>
             </>
           )}
         </div>
