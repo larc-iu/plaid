@@ -1309,20 +1309,18 @@ function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary
 \\fancyhead[LO]{\\small\\itshape\\nouppercase{\\rightmark}}
 \\renewcommand{\\headrulewidth}{0pt}
 \\fancypagestyle{plain}{\\fancyhf{}\\fancyhead[LE,RO]{\\small\\thepage}}
-% The running head: the text's number and name, as written.
-\\renewcommand{\\chaptermark}[1]{\\markboth{Text \\thechapter: #1}{Text \\thechapter: #1}}
+% The running head: the text's name, as written.
+\\renewcommand{\\chaptermark}[1]{\\markboth{#1}{#1}}
 % A page left blank so the next part begins on a right-hand page has no head.
 \\makeatletter
 \\renewcommand{\\cleardoublepage}{\\clearpage\\if@twoside\\ifodd\\c@page\\else
   \\hbox{}\\thispagestyle{empty}\\newpage\\fi\\fi}
 \\makeatother
 
-% Headings. A text runs on after the one before it, under its number and
-% name, and never begins at the foot of a page. The number is labeled, since
-% a name often has a number of its own. The page it begins on has
-% no running head. For each text on a new page, make \\PlaidTextBreak
-% \\clearpage.
-\\newcommand{\\PlaidTextBreak}{}
+% Headings. Each text begins on a new page under its name, and that page
+% has no running head. For the texts to run on, one after the other, make
+% \\PlaidTextBreak empty: a heading then never begins at the foot of a page.
+\\newcommand{\\PlaidTextBreak}{\\clearpage}
 \\makeatletter
 % A new page when less than #1 is left on this one.
 \\newcommand{\\PlaidNeedspace}[1]{\\par\\penalty-100\\begingroup
@@ -1331,9 +1329,12 @@ function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary
   \\endgroup}
 \\renewcommand{\\chapter}{\\par\\PlaidTextBreak\\PlaidNeedspace{12\\baselineskip}%
   \\thispagestyle{plain}\\global\\@topnum\\z@\\@afterindentfalse\\secdef\\@chapter\\@schapter}
-\\newcommand{\\PlaidHeading}[1]{\\addvspace{2.5\\baselineskip plus .5\\baselineskip}%
-  {\\parindent\\z@\\raggedright\\normalfont\\LARGE #1\\par}\\nobreak\\vskip 1.25\\baselineskip}
-\\def\\@makechapterhead#1{\\PlaidHeading{{\\normalsize\\scshape text \\thechapter\\par}\\nobreak\\vskip.1\\baselineskip #1}}
+% A heading at the top of a page is set four lines down, one in mid-page
+% (texts run on) has room above it.
+\\newcommand{\\PlaidHeading}[1]{\\ifdim\\pagetotal>\\z@\\addvspace{2.5\\baselineskip plus .5\\baselineskip}%
+  \\else\\vspace*{4\\baselineskip}\\fi
+  {\\parindent\\z@\\raggedright\\normalfont\\huge #1\\par}\\nobreak\\vskip 2\\baselineskip}
+\\def\\@makechapterhead#1{\\PlaidHeading{#1}}
 \\def\\@makeschapterhead#1{\\PlaidHeading{#1}}
 \\makeatother
 

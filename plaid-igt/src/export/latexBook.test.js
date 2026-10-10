@@ -578,9 +578,11 @@ describe('buildLatexBook', () => {
     expect(files[1].data).toContain('\\markboth{Abbreviations}{Abbreviations}');
     // Data prints as typed: no font makes -- an en dash or " a closing quotation mark.
     expect(main.match(/Ligatures=TeXOff/g)).toHaveLength(2);
-    // A text's number is labeled over its name, which may have a number of its own.
-    expect(main).toContain('{\\normalsize\\scshape text \\thechapter\\par}');
-    expect(main).toContain('\\markboth{Text \\thechapter: #1}');
+    // Each text begins on a new page, under its name alone, which is also its running head.
+    expect(main).toContain('\\newcommand{\\PlaidTextBreak}{\\clearpage}');
+    expect(main).toContain('\\def\\@makechapterhead#1{\\PlaidHeading{#1}}');
+    expect(main).toContain('\\renewcommand{\\chaptermark}[1]{\\markboth{#1}{#1}}');
+    expect(main).not.toContain('\\thechapter:');
     // The last block of a long example is broken like the others, never left one word long.
     expect(main).toContain('\\apptocmd{\\glw@printilgsetup}{\\parfillskip=\\z@\\hbadness=\\@M}');
     expect(files.find((f) => f.path === 'latexmkrc').data).toContain('$pdf_mode = 4;');

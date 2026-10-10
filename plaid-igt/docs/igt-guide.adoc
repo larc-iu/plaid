@@ -849,7 +849,7 @@ Each field goes out under its own language where the project knows it, and the b
 
 A LaTeX book export turns the documents in its scope into a book of interlinear texts: a title, a table of contents, a list of abbreviations, and one chapter per document.
 Each sentence is a numbered example with the lines the Analyze tab shows, then the free translation and the other sentence fields.
-Each text follows the one before it under its own heading, and a punctuation mark is set with the word it belongs to.
+Each text begins on a new page under its name, and a punctuation mark is set with the word it belongs to.
 The lines of an example print every character as it was typed, `+--+` as two hyphens included, while the translation and the other sentence fields are set as prose, with curly quotation marks and `+--+` as a dash.
 The preset's **Example lines** and **Sentence fields** lists turn each line on or off and set their order.
 **Document metadata** lists each document's metadata under its chapter heading.
