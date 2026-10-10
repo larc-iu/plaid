@@ -258,7 +258,24 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
     if others:
         lost += f'{" and" if losing else ", dropping"} {len(others)} annotation(s) of other layers that would cross it'
     return (f'Planned: s{sentence.index} splits before "{thing.form}"{lost}. '
-            f'Sentences after it renumber.')
+            f'Sentences after it renumber.' + _headless_after(sentence, thing))
+
+
+def _headless_after(sentence: Sentence, first: Word) -> str:
+    """The words a split before ``first`` leaves without a head, by the
+    references they will have once it is applied. A model fixed the new
+    sentence's two and left the colon at the end of the first one headless."""
+    cut = list(_crossing_words(sentence, first.token.begin))
+    if not cut:
+        return ''
+    after = first.token.begin
+
+    def ref(w):
+        if w.token.begin < after:
+            return f's{sentence.index}.w{w.index}'
+        return f's{sentence.index + 1}.w{w.index - first.index + 1} after the split'
+    return (' Once it is applied, these words have no head: '
+            + ', '.join(f'"{clip(w.form)}" ({ref(w)})' for w in cut) + '.')
 
 
 def _root_of(sentence) -> Optional[Word]:

@@ -625,3 +625,13 @@ def test_a_rule_under_another_namespace_counts_too():
     call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
     assert ws.ops[-1]['relation_ids'] == ['r-4']
     assert ws.ops[-1]['delete_relation_ids'] == []
+
+
+def test_a_split_names_the_words_it_leaves_without_a_head(ws):
+    """A model fixed the heads in the new sentence and left a word of the
+    first one headless. The result names every word the cut orphans, by the
+    reference it has once the split is applied."""
+    out = run(ws, 'split_sentence', document='Viaje', ref='s1.w2')
+    # "Vamos | al mar ." cut before "a": "a" and "el" are s2.w1 and s2.w2 after it.
+    assert out.endswith('Once it is applied, these words have no head: "mar" (s2.w3 after the split), '
+                        '"." (s2.w4 after the split).'), out
