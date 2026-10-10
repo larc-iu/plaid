@@ -140,7 +140,23 @@ def test_a_search_says_how_many_of_how_many():
 
 def test_the_summary_counts_the_sentences_read():
     steps = [trace_step(TRACER, f'c{i}', 'read_document', {'document': f'D{i % 40}'},
-                        saw=[{'n': 1, 'unit': 'sentence', 'of': 10, 'which': '1'}])
+                        saw=[{'n': 1, 'unit': 'sentence', 'of': 10, 'which': str(i // 40 + 1)}])
              for i in range(87)]
     steps.append(trace_step(TRACER, 'x', 'search', {'pattern': 'ka'}, saw=[{'n': 3, 'unit': 'match'}]))
     assert summarize_steps(steps) == 'read 87 sentences in 40 documents · 1 search · 88 steps'
+
+
+def test_a_sentence_read_again_counts_once():
+    # Six reads of the first 11 sentences of one document read 11 sentences,
+    # not 66. The same numbers in another document are other sentences, and a
+    # note that does not say which counts in full.
+    steps = [trace_step(TRACER, f'c{i}', 'read_document', {'document': 'D'},
+                        saw=[{'n': 11, 'unit': 'sentence', 'of': 72, 'which': '1–11'}]) for i in range(6)]
+    steps.append(trace_step(TRACER, 'd', 'read_document', {'document': 'D'},
+                            saw=[{'n': 3, 'unit': 'sentence', 'of': 72, 'which': '10–12'}]))
+    steps.append(trace_step(TRACER, 'e', 'read_document', {'document': 'E'},
+                            saw=[{'n': 2, 'unit': 'sentence', 'of': 9, 'which': '1, 3'}]))
+    cut = '1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 2…'
+    steps.append(trace_step(TRACER, 'f', 'read_document', {'document': 'F'},
+                            saw=[{'n': 30, 'unit': 'sentence', 'of': 90, 'which': cut}]))
+    assert summarize_steps(steps) == 'read 44 sentences in 3 documents · 9 steps'

@@ -97,11 +97,12 @@ const CopyButton = ({ text }) => {
   );
 };
 
-// A block of text as it was: monospace, scrollable, with Copy.
+// A block of text as it was: monospace, scrollable, with Copy. A block
+// that is the whole of its disclosure needs no heading of its own.
 const Block = ({ heading, text, after, exported }) => (
   <div className="my-1 flex flex-col gap-0.5">
-    <div className="flex items-center justify-between gap-2">
-      <span className="font-medium">{heading}</span>
+    <div className={cn('flex items-center gap-2', heading ? 'justify-between' : 'justify-end')}>
+      {heading && <span className="font-medium">{heading}</span>}
       {!exported && <CopyButton text={text} />}
     </div>
     <pre className={PRE}>{text}</pre>
@@ -227,7 +228,7 @@ const Asked = ({ rounds, id, gone }) => {
   if (!state.round) return <RoundStatus state={state} />;
   return (
     <div className="mb-1 ml-4">
-      <Block heading="Input" text={state.round.asked ?? ''} />
+      <Block text={state.round.asked ?? ''} />
     </div>
   );
 };

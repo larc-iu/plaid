@@ -135,6 +135,8 @@ describe('WorkTrace', () => {
       <TraceSteps steps={STEPS} rounds={rounds} firstRound="r1" />,
     );
     await view.step(() => byText(view.container, 'button', 'Message as received').click());
+    // The message is the whole of its disclosure: no Input heading over it.
+    expect(view.container.textContent).not.toContain('Input');
     await view.step(() => byText(view.container, 'button', 'Instructions').click());
     const pres = texts(view.container, 'pre');
     expect(pres).toContain('[In "Text 1"] Which verbs?');
@@ -180,6 +182,22 @@ describe('runs of reads', () => {
     expect(
       foldReads([read(1), read(2), read(3, 'Now the next.'), read(4)]).every((r) => r.step),
     ).toBe(true);
+  });
+
+  it('counts a sentence read again in a run once', () => {
+    const again = (id, document, which, n) => ({
+      id,
+      kind: 'document',
+      document,
+      saw: [{ n, unit: 'sentence', of: 72, which }],
+    });
+    const run = [
+      ...[1, 2, 3, 4, 5, 6].map((i) => again(`a${i}`, 'D', '1–11', 11)),
+      again('b', 'D', '10–12', 3),
+      again('c', 'E', '1, 3', 2),
+      again('d', 'F', '1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 2…', 30),
+    ];
+    expect(runLabel(run)).toBe('Read 44 sentences in 3 documents');
   });
 
   it('draws a run as one row that opens to its reads', async () => {

@@ -285,10 +285,38 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     return item
 
 
+def which_numbers(which: Any) -> Optional[List[int]]:
+    """The numbers a ``which`` names (``3–7, 9``), or None when it names
+    something else or was cut short."""
+    if not isinstance(which, str) or not which or '…' in which:
+        return None
+    out: List[int] = []
+    for piece in which.split(', '):
+        lo, _, hi = piece.partition('–')
+        if not lo.isdigit() or (hi and not hi.isdigit()):
+            return None
+        out.extend(range(int(lo), int(hi or lo) + 1))
+    return out
+
+
 def sentences_read(steps: List[Dict[str, Any]]) -> int:
-    """The sentences the document reads among ``steps`` showed the model."""
-    return sum(s['n'] for st in steps if st.get('kind') == DOCUMENT and not st.get('failed')
-               for s in st.get('saw') or () if s.get('unit') == 'sentence')
+    """The sentences the document reads among ``steps`` showed the model, a
+    sentence read twice in one document counted once. A note that does not
+    say which sentences counts in full."""
+    seen = set()
+    loose = 0
+    for st in steps:
+        if st.get('kind') != DOCUMENT or st.get('failed'):
+            continue
+        for s in st.get('saw') or ():
+            if s.get('unit') != 'sentence':
+                continue
+            numbers = which_numbers(s.get('which'))
+            if numbers is None:
+                loose += s['n']
+            else:
+                seen.update((st.get('document'), n) for n in numbers)
+    return len(seen) + loose
 
 
 def summarize_steps(steps: List[Dict[str, Any]]) -> str:

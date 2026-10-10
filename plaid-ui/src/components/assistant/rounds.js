@@ -119,13 +119,34 @@ export const foldReads = (steps) => {
   return out;
 };
 
-// The row a run of reads folds into: `Read 43 sentences in 9 documents`.
+// The numbers a note's `which` names (`3–7, 9`), or null when it names
+// something else or was cut short. As plaid-agent's `which_numbers`.
+const whichNumbers = (which) => {
+  if (typeof which !== 'string' || !which || which.includes('…')) return null;
+  const out = [];
+  for (const piece of which.split(', ')) {
+    const [lo, hi] = piece.split('–');
+    if (!/^\d+$/.test(lo) || (hi !== undefined && !/^\d+$/.test(hi))) return null;
+    for (let n = Number(lo); n <= Number(hi ?? lo); n++) out.push(n);
+  }
+  return out;
+};
+
+// The row a run of reads folds into: `Read 43 sentences in 9 documents`. A
+// sentence read twice in one document counts once, as in the summary line
+// the service writes (plaid-agent `sentences_read`).
 export const runLabel = (run) => {
   const docs = new Set(run.map((s) => s.document).filter(Boolean)).size || run.length;
-  const sentences = run
-    .flatMap((s) => s.saw || [])
-    .filter((n) => n.unit === 'sentence')
-    .reduce((a, n) => a + (n.n || 0), 0);
+  const seen = new Set();
+  let loose = 0;
+  for (const s of run)
+    for (const n of s.saw || []) {
+      if (n.unit !== 'sentence') continue;
+      const numbers = whichNumbers(n.which);
+      if (numbers) for (const k of numbers) seen.add(`${s.document}\u0000${k}`);
+      else loose += n.n || 0;
+    }
+  const sentences = seen.size + loose;
   return sentences
     ? `Read ${plural(sentences, 'sentence', 'sentences')} in ${plural(docs, 'document', 'documents')}`
     : `Read ${plural(docs, 'document', 'documents')}`;
