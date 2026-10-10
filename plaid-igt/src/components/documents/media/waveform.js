@@ -18,11 +18,12 @@ const MIN_BAR_HEIGHT = 2;
 export const MAX_CANVAS_WIDTH = 16384;
 
 // Buckets the decoded audio is reduced to, once, so every zoom and scroll
-// redraws from these instead of decoding again. 500 a second is 2 ms per
-// bucket, finer than the timeline is ever zoomed, and the cap keeps an
-// hour-long recording to 4 MB.
-const PEAK_BUCKETS_PER_SECOND = 500;
-const MAX_PEAK_BUCKETS = 1_000_000;
+// redraws from these instead of decoding again. 1000 a second is 1 ms per
+// bucket, one bucket a pixel at the timeline's closest zoom (MAX_ZOOM), and
+// the cap keeps an hour-long recording to 15 MB. Past the cap a bucket is
+// a little longer than 1 ms.
+const PEAK_BUCKETS_PER_SECOND = 1000;
+const MAX_PEAK_BUCKETS = 4_000_000;
 // Bars are scaled against this percentile of the peaks rather than the single
 // loudest sample, so one door slam does not flatten an hour of speech.
 const PEAK_NORMALIZE_PERCENTILE = 0.99;

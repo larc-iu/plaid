@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { clampResize, freeStretch } from '../../../domain/alignmentTimes.js';
+import { clampResize, freeStretch, MIN_SEGMENT } from '../../../domain/alignmentTimes.js';
 import { useWaveform } from './useWaveform.js';
 import { readTimelineView, writeTimelineView } from './timelineView.js';
 
@@ -10,12 +10,15 @@ const TIMELINE_HEIGHT = 100;
 const WHEEL_LINE_HEIGHT = 16;
 
 // How far the zoom can go, named once: the wheel, the buttons and Fit all read
-// the same bounds. Below MIN_ZOOM a segment is thinner than its own border;
-// above MAX_ZOOM a minute of audio is six thousand pixels.
+// the same bounds. Below MIN_ZOOM a segment is thinner than its own border.
+// MAX_ZOOM is a millisecond a pixel, so an edge can be placed to the
+// millisecond by eye, as the time boxes place it by hand.
 export const MIN_ZOOM = 4;
-export const MAX_ZOOM = 100;
+export const MAX_ZOOM = 1000;
 // How long a zoom or a scroll rests before the view is kept.
 const VIEW_SAVE_DELAY_MS = 400;
+// How far a press may move and still be a click on the track.
+const CLICK_SLOP_PX = 3;
 
 // The drawn stretch is let grow to this many screens before it is cut back.
 const DRAWN_SCREENS_MAX = 5;
@@ -432,8 +435,11 @@ export const useTimelineOperations = (mediaOps) => {
       setIsDragging(false);
       setTempSelection(null);
 
-      // If it's just a click (very small selection), seek to that time
-      if (Math.abs(end - start) < 0.1) {
+      // A press that hardly moved is a click, which seeks. Measured in
+      // pixels, since a tenth of a second is a hundred of them at the
+      // closest zoom.
+      const slop = Math.max(MIN_SEGMENT, CLICK_SLOP_PX / mediaOps.pixelsPerSecond);
+      if (Math.abs(end - start) < slop) {
         handleTimelineClick(start);
       } else {
         // If it's a proper selection, create a time range for annotation
@@ -449,6 +455,7 @@ export const useTimelineOperations = (mediaOps) => {
       dragRange,
       handleTimelineClick,
       handleSelectionCreate,
+      mediaOps.pixelsPerSecond,
     ],
   );
 

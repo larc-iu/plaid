@@ -117,18 +117,18 @@ describe('barsFor', () => {
 
 describe('peaksOfInSlices', () => {
   it('reads what peaksOf reads, handing the page back between slices', async () => {
-    // A minute at 16 kHz is 30,000 buckets: two slices.
+    // Half a minute is 30,000 buckets: two slices.
     const samples = Float32Array.from(
-      { length: 60 * 16000 },
+      { length: 30 * 16000 },
       (_, i) => Math.sin(i / 7) * ((i % 9973) / 9973),
     );
     let pauses = 0;
-    const sliced = await peaksOfInSlices([samples], 60, {
+    const sliced = await peaksOfInSlices([samples], 30, {
       pause: async () => {
         pauses += 1;
       },
     });
-    const whole = peaksOf([samples], 60);
+    const whole = peaksOf([samples], 30);
     expect(pauses).toBe(1);
     expect(sliced.level).toBe(whole.level);
     expect(Array.from(sliced.peaks)).toEqual(Array.from(whole.peaks));

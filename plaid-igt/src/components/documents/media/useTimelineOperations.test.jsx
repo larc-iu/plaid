@@ -107,8 +107,8 @@ describe('useTimelineOperations: the needle', () => {
     const h = await mount(ops);
     expect(needle(h)).toBe(at(0));
 
-    // A press and a release within a tenth of a second of each other is a
-    // click, not a drag: it seeks rather than selecting.
+    // A press and a release a few pixels apart is a click, not a drag: it
+    // seeks rather than selecting.
     await mouse(h, 'mousedown', 50);
     await mouse(h, 'mouseup', 50.5);
     expect(media.currentTime).toBe(5);
@@ -151,6 +151,25 @@ describe('useTimelineOperations: the needle', () => {
     expect(ops.setPopoverOpened).toHaveBeenLastCalledWith(true);
     expect(media.currentTime).toBe(2);
     expect(needle(h)).toBe(at(2));
+    await h.unmount();
+  });
+
+  it('zoomed to a millisecond a pixel, a short drag selects and a press that hardly moved still seeks', async () => {
+    // Measured in time, a tenth of a second was a hundred pixels at this
+    // zoom: a drag of fifty seeked instead of selecting.
+    const media = fakeMediaElement();
+    const ops = makeOps({ pixelsPerSecond: 1000, mediaElement: media });
+    const h = await mount(ops);
+
+    await mouse(h, 'mousedown', 5000);
+    await mouse(h, 'mousemove', 5050);
+    await mouse(h, 'mouseup', 5050);
+    expect(ops.setSelection).toHaveBeenLastCalledWith({ start: 5, end: 5.05 });
+
+    await mouse(h, 'mousedown', 7000);
+    await mouse(h, 'mouseup', 7002);
+    expect(ops.setSelection).toHaveBeenCalledTimes(1);
+    expect(media.currentTime).toBe(7);
     await h.unmount();
   });
 
