@@ -473,8 +473,13 @@ def _additions(ops: List[Dict[str, Any]]) -> str:
     concepts the plan writes are in front of the model when it reports. A
     count alone let a draft with :ARG0 pass for the :experiencer the user
     asked for."""
-    made = [str(op.get('label')) for op in ops
-            if op.get('label') and op.get('kind') in ('create_node', 'create_edge')]
+    def said(op):
+        # A new node's attributes too, so a value written as an attribute
+        # where the user asked for a node shows as one.
+        line = attr_line(op.get('attrs')) if op.get('kind') == 'create_node' else ''
+        label = str(op.get('label'))
+        return label.replace(f'/ {op.get("concept")})', f'/ {op.get("concept")} {line})', 1) if line else label
+    made = [said(op) for op in ops if op.get('label') and op.get('kind') in ('create_node', 'create_edge')]
     if not made:
         return ''
     shown = made[:REMOVALS_SHOWN]

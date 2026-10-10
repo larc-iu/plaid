@@ -436,9 +436,10 @@ def test_every_tool_that_plans_says_so_in_its_first_word():
 def test_apply_penman_says_the_nodes_and_roles_it_adds(ws):
     """A count alone let a draft written with :ARG0 pass, in the model's own
     report, for the :experiencer the user asked for."""
-    text = SENTENCE_1_PENMAN.replace(':aspect performance)', ':aspect performance\n    :place (s1h / house))')
+    text = SENTENCE_1_PENMAN.replace(':aspect performance)',
+                                     ':aspect performance\n    :place (s1h / house :refer-number plural))')
     out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
-    assert 'It adds: add (s1h / house); s1b :place s1h.' in out, out
+    assert 'It adds: add (s1h / house :refer-number plural); s1b :place s1h.' in out, out
     assert 'roles and concepts against any the user named' in out
 
 
