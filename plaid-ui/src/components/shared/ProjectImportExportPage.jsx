@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Check, Download, FileText, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { useProject } from '../../hooks/useProject.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess, notifyWarning } from '../../lib/notify.js';
 import { NotUtf8FileError, readTextFile } from '../../lib/textFile.js';
@@ -111,12 +112,9 @@ const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">
  *   null for an error the toast should report.
  */
 export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
-  const { projectId } = useParams();
-  const { getClient, user, logout } = useAuth();
-
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const { getClient, user } = useAuth();
+  const { projectId, project, loading, error } = useProject({ logoutOnAuthError: true });
+  const loadError = error ? humanizeError(error, 'Failed to load this project.') : '';
   useDocumentTitle('Import and export', project?.name);
 
   // Import state
@@ -132,37 +130,6 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });
   const [skipped, setSkipped] = useState([]);
   const [exportFailure, setExportFailure] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const client = getClient();
-      if (!client) {
-        logout();
-        return;
-      }
-      try {
-        const p = await client.projects.get(projectId);
-        if (cancelled) return;
-        setProject(p);
-        setLoadError('');
-      } catch (err) {
-        if (cancelled) return;
-        if (err.status === 401) {
-          logout();
-          return;
-        }
-        setLoadError(humanizeError(err, 'Failed to load this project.'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
 
   // While an import is running, guard against losing it midway: warn on tab
   // close or reload (the blocking dialog below prevents clicking away in-app).

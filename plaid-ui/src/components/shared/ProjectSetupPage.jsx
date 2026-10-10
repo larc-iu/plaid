@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { canManageProject } from '../../domain/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { useProject } from '../../hooks/useProject.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { appRoutes } from '../../lib/uiConfig.js';
@@ -25,36 +26,16 @@ import { SetupBlocked } from './SetupBlocked.jsx';
  * `card` describes what the button makes.
  */
 export const ProjectSetupPage = ({ layerInfo, setup }) => {
-  const { projectId } = useParams();
   const navigate = useNavigate();
   const { getClient, user } = useAuth();
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { projectId, project, loading, error, reload } = useProject();
   const [saving, setSaving] = useState(false);
   useDocumentTitle('Configuration', project?.name);
   const documentsHref = appRoutes().documents(projectId);
 
-  // The project as it is now: `quiet` keeps the page on screen while it is read.
-  const read = async ({ quiet = false } = {}) => {
-    try {
-      if (!quiet) setLoading(true);
-      const client = getClient();
-      if (!client) throw new Error('Not authenticated');
-      setProject(await client.projects.get(projectId));
-    } catch (err) {
-      console.error('Failed to load the project:', err);
-      if (!quiet) notifyError(humanizeError(err, 'Failed to load the project.'));
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  };
-
-  // Once per project. `read` is redefined every render, so naming it here
-  // would read again on every render.
   useEffect(() => {
-    read();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+    if (error) notifyError(humanizeError(error, 'Failed to load the project.'));
+  }, [error]);
 
   const info = layerInfo(project);
 
@@ -71,7 +52,7 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
       notifyError(humanizeError(err, 'Failed to set up the project.'));
       // The layers may have landed before a later step failed. Show the
       // project as it is now, not the copy the button was pressed on.
-      await read({ quiet: true });
+      await reload({ quiet: true });
     } finally {
       setSaving(false);
     }

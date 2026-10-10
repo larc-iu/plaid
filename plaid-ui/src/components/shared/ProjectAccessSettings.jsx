@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { notifyError } from '../../lib/notify.js';
 import { canManageProject } from '../../domain/permissions.js';
-import { useLatestCall } from '../../hooks/useLatestCall.js';
+import { useProject } from '../../hooks/useProject.js';
 import { Card, CardContent } from '../ui/card.jsx';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
@@ -26,47 +25,20 @@ import { ProjectAccessTokens } from './ProjectAccessTokens.jsx';
  *   project too (a maintainer who steps down loses the Settings tab).
  */
 export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdate }) => {
-  const { projectId } = useParams();
   const { user, getClient } = useAuth();
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // A's member table and A's roles never stand under B's heading
+  // (useProject keeps the newest read only).
+  const { projectId, project, loading, error, reload } = useProject();
 
-  // One route component serves every project id, so walking from A to B starts
-  // a second read without ending the first and A can answer last, putting A's
-  // member table and A's roles under B's heading.
-  const begin = useLatestCall();
-
-  const fetchProject = async () => {
-    const isCurrent = begin();
-    try {
-      setLoading(true);
-      const data = await getClient().projects.get(projectId);
-      if (!isCurrent()) return null;
-      setProject(data);
-      return data;
-    } catch (err) {
-      if (!isCurrent()) return null;
-      console.error('Error fetching project:', err);
-      setProject(null);
-      notifyError('Failed to load the project');
-      return null;
-    } finally {
-      if (isCurrent()) setLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (error) notifyError('Failed to load the project');
+  }, [error]);
 
   const changed = async () => {
-    const data = await fetchProject();
+    const data = await reload();
     onProjectUpdate?.();
     return data;
   };
-
-  // Once per project. `fetchProject` is redefined every render, so naming it
-  // here would refetch on every render.
-  useEffect(() => {
-    fetchProject();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
 
   const denied = (message) => (
     <Notice tone="error" role="alert">
@@ -74,14 +46,12 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
     </Notice>
   );
 
-  // Only the project the path names is shown. Until it is in hand, Loading
-  // stands in, and a project the reader left is never drawn under the next
-  // one's id. A re-read after a change keeps the screen mounted, or the member
-  // table, a search being typed and an open dialog would all be thrown away on
-  // every role change.
-  const current = project?.id === projectId ? project : null;
-  if (!current) return project === null && !loading ? denied('Project not found') : <Loading />;
-  if (!canManageProject(current, user))
+  // Only the project the path names is shown (useProject). Until it is in
+  // hand, Loading stands in. A re-read after a change keeps the screen mounted,
+  // or the member table, a search being typed and an open dialog would all be
+  // thrown away on every role change.
+  if (!project) return loading ? <Loading /> : denied('Project not found');
+  if (!canManageProject(project, user))
     return denied('You do not have permission to manage this project.');
 
   return (
@@ -89,7 +59,7 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
       <Card>
         <CardContent className="pt-2">
           <ProjectAccessScreen
-            project={current}
+            project={project}
             projectId={projectId}
             client={getClient()}
             user={user}

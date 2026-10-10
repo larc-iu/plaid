@@ -13,7 +13,9 @@ const client = vi.hoisted(() => ({
   },
   query: (...args) => query.fn(...args),
 }));
-vi.mock('../../contexts/AuthContext.jsx', () => ({
+// The shared useAuth, which the app's AuthContext re-exports and plaid-ui's
+// useProject reads.
+vi.mock('@ui/contexts/useAuth.js', () => ({
   useAuth: () => ({ getClient: () => client, user: { id: 'u1' } }),
 }));
 vi.mock('../projects/ProjectTabs.jsx', () => ({ ProjectTabs: () => null }));

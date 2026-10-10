@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState } from 'react';
 import { Info } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { useProject } from '../../hooks/useProject.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { Button } from '../ui/button';
@@ -50,49 +50,20 @@ export const ProjectDocumentsPage = ({
   rowHref,
   newDocument: NewDocument,
 }) => {
-  const { projectId } = useParams();
-  const [project, setProject] = useState(null);
-  const [documents, setDocuments] = useState([]);
+  // Documents are not embedded on the project. They come from their own
+  // listing.
+  const {
+    projectId,
+    project,
+    documents,
+    loading,
+    error: loadError,
+    reload,
+  } = useProject({ withDocuments: true, logoutOnAuthError: true });
+  const error = loadError ? 'Failed to load the documents' : '';
   useDocumentTitle(project?.name);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [settingUp, setSettingUp] = useState(false);
-  const { user, getClient, logout } = useAuth();
-
-  const fetchProjectAndDocuments = async () => {
-    try {
-      setLoading(true);
-      const client = getClient();
-      if (!client) throw new Error('Not authenticated');
-      // Documents are not embedded on the project. They come from their own
-      // listing.
-      const [projectData, docsList] = await Promise.all([
-        client.projects.get(projectId),
-        client.projects.listDocuments(projectId),
-      ]);
-      setProject(projectData);
-      setDocuments(docsList || []);
-      setError('');
-    } catch (err) {
-      if (err.message === 'Not authenticated' || err.status === 401) {
-        // Clear the rejected token before redirecting, else the login page
-        // bounces back.
-        logout();
-        return;
-      }
-      setError('Failed to load the documents');
-      console.error('Error fetching project:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Once per project. `fetchProjectAndDocuments` is redefined every render,
-  // so naming it here would refetch on every render.
-  useEffect(() => {
-    fetchProjectAndDocuments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  const { user, getClient } = useAuth();
 
   const info = layerInfo(project);
   const canManage = canManageProject(project, user);
@@ -104,13 +75,13 @@ export const ProjectDocumentsPage = ({
       if (!client) throw new Error('Not authenticated');
       await setup.adopt(client, project, info);
       notifySuccess(`Set up for ${setup.app}`);
-      await fetchProjectAndDocuments();
+      await reload();
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);
       notifyError(humanizeError(err, 'Failed to set up the project.'));
       // What landed before the failure is shown, not the copy the button was
       // pressed on.
-      await fetchProjectAndDocuments();
+      await reload();
     } finally {
       setSettingUp(false);
     }
@@ -120,9 +91,7 @@ export const ProjectDocumentsPage = ({
 
   if (!project) {
     return (
-      <LoadError onRetry={error ? fetchProjectAndDocuments : undefined}>
-        {error || 'Project not found'}
-      </LoadError>
+      <LoadError onRetry={error ? reload : undefined}>{error || 'Project not found'}</LoadError>
     );
   }
 
@@ -171,7 +140,7 @@ export const ProjectDocumentsPage = ({
         </div>
 
         {error && (
-          <LoadError onRetry={fetchProjectAndDocuments} className="mb-4">
+          <LoadError onRetry={reload} className="mb-4">
             {error}
           </LoadError>
         )}

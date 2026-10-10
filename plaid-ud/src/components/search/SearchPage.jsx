@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
@@ -26,6 +25,7 @@ import { CountBy } from './CountBy.jsx';
 import { refinePattern } from './refine.js';
 import { RewritePreview } from './RewritePreview.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { useProject } from '@ui/hooks/useProject.js';
 
 // Ask for everything the query API will return. The server hard-caps an
 // entities query at 100k rows and has no offset/cursor, so this is effectively
@@ -36,14 +36,17 @@ const RESULT_LIMIT = 100000;
 // blocks) previews a rewrite of every sentence it changes, to apply from the
 // preview. The box decides which by its text (looksLikeGrs).
 export const SearchPage = () => {
-  const { projectId } = useParams();
   const { getClient, user } = useAuth();
-
-  const [project, setProject] = useState(null);
-  const [documents, setDocuments] = useState([]);
+  // A listing that fails leaves the search with document ids for names.
+  const {
+    projectId,
+    project,
+    documents,
+    loading,
+    error: readError,
+  } = useProject({ withDocuments: 'optional' });
+  const loadError = readError ? humanizeError(readError, 'Failed to load the project.') : '';
   useDocumentTitle('Search', project?.name);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
 
   const [queryText, setQueryText] = useState('');
   const [running, setRunning] = useState(false);
@@ -67,32 +70,6 @@ export const SearchPage = () => {
   // Set by the quick box: run as soon as the pattern it wrote is in state.
   // Running from inside its handler would use the previous text.
   const [pendingRun, setPendingRun] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const client = getClient();
-        if (!client) throw new Error('Not authenticated');
-        const [proj, docs] = await Promise.all([
-          client.projects.get(projectId),
-          client.projects.listDocuments(projectId).catch(() => []),
-        ]);
-        if (cancelled) return;
-        setProject(proj);
-        setDocuments(docs || []);
-        setLoadError('');
-      } catch (err) {
-        if (!cancelled) setLoadError(humanizeError(err, 'Failed to load the project.'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const layerInfo = useMemo(() => getUdLayerInfo(project), [project]);
   const docName = useCallback((id) => documents.find((d) => d.id === id)?.name || id, [documents]);
