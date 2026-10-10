@@ -980,6 +980,12 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     args = {}
             except json.JSONDecodeError as e:
                 args, result = {}, f'Error: arguments were not valid JSON ({e})'
+                # Sent back as they came, they are the next request's: a
+                # server that reads a call's arguments (llama-server) refuses
+                # the whole conversation, every retry, and the turn is lost.
+                # A call cut off at the context's end did this. The call's
+                # round keeps them as written.
+                c['function']['arguments'] = '{}'
             else:
                 key = (name, json.dumps(args, sort_keys=True, default=str))
                 plan_call = kit.tracer.kind(name) == PLAN and name not in META_TOOLS

@@ -411,3 +411,24 @@ def test_a_step_names_the_files_its_call_saved(monkeypatch):
     result = _turn(monkeypatch, script, tool, ws=ws)
     assert [s.get('saved') for s in result.steps] == [['words.csv'], None]
     assert result.summary == '1 read · saved 1 file · 2 steps'
+
+
+def test_arguments_that_are_not_json_are_not_sent_back(monkeypatch):
+    """A call cut off at the end of the context window had arguments that
+    were not JSON. Sent back with the next request, llama-server refused the
+    whole conversation (500, every retry) and the turn was lost. The model
+    is told, and the next request carries {} in their place."""
+    sent = []
+
+    class Seen(Script):
+        def __call__(self, **kwargs):
+            sent.append(kwargs['messages'])
+            return super().__call__(**kwargs)
+
+    script = Seen(_resp(calls=[_call(1, 'look', '{"pattern": "mz", "wher')]), _resp('Done.'))
+    turn = _turn(monkeypatch, script)
+    assert turn.text == 'Done.'
+    call = next(m for m in sent[1] if m.get('tool_calls'))['tool_calls'][0]
+    assert call['function']['arguments'] == '{}'
+    answer = next(m for m in sent[1] if m.get('role') == 'tool')
+    assert answer['content'].startswith('Error: arguments were not valid JSON')
