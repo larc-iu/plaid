@@ -470,34 +470,7 @@ class PlaidClient {
           auditMessage,
           body,
         }),
-      /**
-       * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
-       * @param {string} id - The resource ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (id, body, auditMessage) =>
-        this._request("PUT", `/api/v1/vocab-links/${id}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a vocab link.
-       * @param {string} id - The resource ID
-       */
-      deleteMetadata: (id, auditMessage) =>
-        this._request("DELETE", `/api/v1/vocab-links/${id}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a vocab link with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} id - The resource ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (id, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/vocab-links/${id}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "vocab-links"),
       /**
        * Get a vocab link by ID
        * @param {string} id - The resource ID
@@ -647,36 +620,7 @@ class PlaidClient {
           auditMessage,
           body: bodyOf({ name }),
         }),
-      /**
-       * Set a configuration value for a layer in an editor namespace.
-       * @param {string} id - The resource ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {any} configValue - Configuration value to set
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-       *   was absent). The write is then refused with a 409 when the stored value differs.
-       */
-      setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
-        this._request(
-          "PUT",
-          `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, configValue, options),
-        ),
-      /**
-       * Remove a configuration value for a layer.
-       * @param {string} id - The resource ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
-       */
-      deleteConfig: (id, namespace, configKey, auditMessage, options) =>
-        this._request(
-          "DELETE",
-          `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, undefined, options, true),
-        ),
+      ...configMethods(this, "vocab-layers"),
       /**
        * List all vocab layers accessible to user. Transparently follows
        * pagination cursors and returns the full flat array.
@@ -738,34 +682,7 @@ class PlaidClient {
     };
 
     this.relations = {
-      /**
-       * Replace all metadata for a relation.
-       * @param {string} relationId - The relation ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (relationId, body, auditMessage) =>
-        this._request("PUT", `/api/v1/relations/${relationId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a relation.
-       * @param {string} relationId - The relation ID
-       */
-      deleteMetadata: (relationId, auditMessage) =>
-        this._request("DELETE", `/api/v1/relations/${relationId}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a relation with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} relationId - The relation ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (relationId, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/relations/${relationId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "relations"),
       /**
        * Update the target span of a relation.
        * @param {string} relationId - The relation ID
@@ -869,61 +786,9 @@ class PlaidClient {
     };
 
     this.spanLayers = {
-      /**
-       * Set a configuration value for a layer in an editor namespace.
-       * @param {string} spanLayerId - The span layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {any} configValue - Configuration value to set
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-       *   was absent). The write is then refused with a 409 when the stored value differs.
-       */
-      setConfig: (spanLayerId, namespace, configKey, configValue, auditMessage, options) =>
-        this._request(
-          "PUT",
-          `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, configValue, options),
-        ),
-      /**
-       * Remove a configuration value for a layer.
-       * @param {string} spanLayerId - The span layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
-       */
-      deleteConfig: (spanLayerId, namespace, configKey, auditMessage, options) =>
-        this._request(
-          "DELETE",
-          `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, undefined, options, true),
-        ),
+      ...configMethods(this, "span-layers"),
       ...constraintMethods(this, "span-layers"),
-      /**
-       * Get a span layer by ID.
-       * @param {string} spanLayerId - The span layer ID
-       */
-      get: (spanLayerId) =>
-        this._request("GET", `/api/v1/span-layers/${spanLayerId}`),
-      /**
-       * Delete a span layer.
-       * @param {string} spanLayerId - The span layer ID
-       */
-      delete: (spanLayerId, auditMessage) =>
-        this._request("DELETE", `/api/v1/span-layers/${spanLayerId}`, {
-          auditMessage,
-        }),
-      /**
-       * Update a span layer's name.
-       * @param {string} spanLayerId - The span layer ID
-       * @param {string} name - The name
-       */
-      update: (spanLayerId, name, auditMessage) =>
-        this._request("PATCH", `/api/v1/span-layers/${spanLayerId}`, {
-          auditMessage,
-          body: bodyOf({ name }),
-        }),
+      ...layerMethods(this, "span-layers"),
       /**
        * Create a new span layer.
        * @param {string} tokenLayerId - The token layer ID
@@ -933,16 +798,6 @@ class PlaidClient {
         this._request("POST", "/api/v1/span-layers", {
           auditMessage,
           body: bodyOf({ id, "token-layer-id": tokenLayerId, name }),
-        }),
-      /**
-       * Shift a span layer's display order.
-       * @param {string} spanLayerId - The span layer ID
-       * @param {string} direction - The direction ("up" or "down")
-       */
-      shift: (spanLayerId, direction, auditMessage) =>
-        this._request("POST", `/api/v1/span-layers/${spanLayerId}/shift`, {
-          auditMessage,
-          body: bodyOf({ direction }),
         }),
     };
 
@@ -1021,34 +876,7 @@ class PlaidClient {
           auditMessage,
           body,
         }),
-      /**
-       * Replace all metadata for a span.
-       * @param {string} spanId - The span ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (spanId, body, auditMessage) =>
-        this._request("PUT", `/api/v1/spans/${spanId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a span.
-       * @param {string} spanId - The span ID
-       */
-      deleteMetadata: (spanId, auditMessage) =>
-        this._request("DELETE", `/api/v1/spans/${spanId}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a span with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} spanId - The span ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (spanId, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/spans/${spanId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "spans"),
     };
 
     // Server-level facts. Read once, and again only when they may have
@@ -1126,34 +954,7 @@ class PlaidClient {
     };
 
     this.texts = {
-      /**
-       * Replace all metadata for a text.
-       * @param {string} textId - The text ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (textId, body, auditMessage) =>
-        this._request("PUT", `/api/v1/texts/${textId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a text.
-       * @param {string} textId - The text ID
-       */
-      deleteMetadata: (textId, auditMessage) =>
-        this._request("DELETE", `/api/v1/texts/${textId}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a text with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} textId - The text ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (textId, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/texts/${textId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "texts"),
       /**
        * Create a new text in a document's text layer. A text is a container for
        * one long string in `body` for a given layer.
@@ -2083,16 +1884,7 @@ class PlaidClient {
     };
 
     this.tokenLayers = {
-      /**
-       * Shift a token layer's display order.
-       * @param {string} tokenLayerId - The token layer ID
-       * @param {string} direction - The direction ("up" or "down")
-       */
-      shift: (tokenLayerId, direction, auditMessage) =>
-        this._request("POST", `/api/v1/token-layers/${tokenLayerId}/shift`, {
-          auditMessage,
-          body: bodyOf({ direction }),
-        }),
+      ...layerMethods(this, "token-layers"),
       /**
        * Create a new token layer.
        * @param {string} textLayerId - The text layer ID
@@ -2118,61 +1910,8 @@ class PlaidClient {
             "parent-token-layer-id": parentTokenLayerId,
           }),
         }),
-      /**
-       * Set a configuration value for a layer in an editor namespace.
-       * @param {string} tokenLayerId - The token layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {any} configValue - Configuration value to set
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-       *   was absent). The write is then refused with a 409 when the stored value differs.
-       */
-      setConfig: (tokenLayerId, namespace, configKey, configValue, auditMessage, options) =>
-        this._request(
-          "PUT",
-          `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, configValue, options),
-        ),
-      /**
-       * Remove a configuration value for a layer.
-       * @param {string} tokenLayerId - The token layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
-       */
-      deleteConfig: (tokenLayerId, namespace, configKey, auditMessage, options) =>
-        this._request(
-          "DELETE",
-          `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, undefined, options, true),
-        ),
+      ...configMethods(this, "token-layers"),
       ...constraintMethods(this, "token-layers"),
-      /**
-       * Get a token layer by ID.
-       * @param {string} tokenLayerId - The token layer ID
-       */
-      get: (tokenLayerId) =>
-        this._request("GET", `/api/v1/token-layers/${tokenLayerId}`),
-      /**
-       * Delete a token layer.
-       * @param {string} tokenLayerId - The token layer ID
-       */
-      delete: (tokenLayerId, auditMessage) =>
-        this._request("DELETE", `/api/v1/token-layers/${tokenLayerId}`, {
-          auditMessage,
-        }),
-      /**
-       * Update a token layer's name.
-       * @param {string} tokenLayerId - The token layer ID
-       * @param {string} name - The name
-       */
-      update: (tokenLayerId, name, auditMessage) =>
-        this._request("PATCH", `/api/v1/token-layers/${tokenLayerId}`, {
-          auditMessage,
-          body: bodyOf({ name }),
-        }),
     };
 
     this.documents = {
@@ -2356,34 +2095,7 @@ class PlaidClient {
           auditMessage,
           queryParams: { "media-version": mediaVersion },
         }),
-      /**
-       * Replace all metadata for a document.
-       * @param {string} documentId - The document ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (documentId, body, auditMessage) =>
-        this._request("PUT", `/api/v1/documents/${documentId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a document.
-       * @param {string} documentId - The document ID
-       */
-      deleteMetadata: (documentId, auditMessage) =>
-        this._request("DELETE", `/api/v1/documents/${documentId}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a document with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} documentId - The document ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (documentId, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/documents/${documentId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "documents"),
       /**
        * Get audit log for a document. Transparently follows pagination cursors
        * and returns the full flat array. Each entry, and each of its `ops`,
@@ -2574,36 +2286,7 @@ class PlaidClient {
         this._request("DELETE", `/api/v1/projects/${id}/readers/${userId}`, {
           auditMessage,
         }),
-      /**
-       * Set a configuration value for a project in an editor namespace.
-       * @param {string} id - The resource ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {any} configValue - Configuration value to set
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-       *   was absent). The write is then refused with a 409 when the stored value differs.
-       */
-      setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
-        this._request(
-          "PUT",
-          `/api/v1/projects/${id}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, configValue, options),
-        ),
-      /**
-       * Remove a configuration value for a project.
-       * @param {string} id - The resource ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
-       */
-      deleteConfig: (id, namespace, configKey, auditMessage, options) =>
-        this._request(
-          "DELETE",
-          `/api/v1/projects/${id}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, undefined, options, true),
-        ),
+      ...configMethods(this, "projects"),
       /**
        * Assign a user as a maintainer for this project.
        * @param {string} id - The resource ID
@@ -2819,70 +2502,8 @@ class PlaidClient {
     };
 
     this.textLayers = {
-      /**
-       * Set a configuration value for a layer in an editor namespace.
-       * @param {string} textLayerId - The text layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {any} configValue - Configuration value to set
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-       *   was absent). The write is then refused with a 409 when the stored value differs.
-       */
-      setConfig: (textLayerId, namespace, configKey, configValue, auditMessage, options) =>
-        this._request(
-          "PUT",
-          `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, configValue, options),
-        ),
-      /**
-       * Remove a configuration value for a layer.
-       * @param {string} textLayerId - The text layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
-       */
-      deleteConfig: (textLayerId, namespace, configKey, auditMessage, options) =>
-        this._request(
-          "DELETE",
-          `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, undefined, options, true),
-        ),
-      /**
-       * Get a text layer by ID.
-       * @param {string} textLayerId - The text layer ID
-       */
-      get: (textLayerId) =>
-        this._request("GET", `/api/v1/text-layers/${textLayerId}`),
-      /**
-       * Delete a text layer.
-       * @param {string} textLayerId - The text layer ID
-       */
-      delete: (textLayerId, auditMessage) =>
-        this._request("DELETE", `/api/v1/text-layers/${textLayerId}`, {
-          auditMessage,
-        }),
-      /**
-       * Update a text layer's name.
-       * @param {string} textLayerId - The text layer ID
-       * @param {string} name - The name
-       */
-      update: (textLayerId, name, auditMessage) =>
-        this._request("PATCH", `/api/v1/text-layers/${textLayerId}`, {
-          auditMessage,
-          body: bodyOf({ name }),
-        }),
-      /**
-       * Shift a text layer's display order within the project.
-       * @param {string} textLayerId - The text layer ID
-       * @param {string} direction - The direction ("up" or "down")
-       */
-      shift: (textLayerId, direction, auditMessage) =>
-        this._request("POST", `/api/v1/text-layers/${textLayerId}/shift`, {
-          auditMessage,
-          body: bodyOf({ direction }),
-        }),
+      ...configMethods(this, "text-layers"),
+      ...layerMethods(this, "text-layers"),
       /**
        * Create a new text layer for a project.
        * @param {string} projectId - The project ID
@@ -2896,34 +2517,7 @@ class PlaidClient {
     };
 
     this.vocabItems = {
-      /**
-       * Replace all metadata for a vocab item.
-       * @param {string} id - The resource ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (id, body, auditMessage) =>
-        this._request("PUT", `/api/v1/vocab-items/${id}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a vocab item.
-       * @param {string} id - The resource ID
-       */
-      deleteMetadata: (id, auditMessage) =>
-        this._request("DELETE", `/api/v1/vocab-items/${id}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a vocab item with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} id - The resource ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (id, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/vocab-items/${id}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "vocab-items"),
       /**
        * Create a new vocab item
        * @param {string} vocabLayerId - The vocab layer ID
@@ -3028,17 +2622,7 @@ class PlaidClient {
     };
 
     this.relationLayers = {
-      /**
-       * Shift a relation layer's display order.
-       * @param {string} relationLayerId - The relation layer ID
-       * @param {string} direction - The direction ("up" or "down")
-       */
-      shift: (relationLayerId, direction, auditMessage) =>
-        this._request(
-          "POST",
-          `/api/v1/relation-layers/${relationLayerId}/shift`,
-          { auditMessage, body: bodyOf({ direction }) },
-        ),
+      ...layerMethods(this, "relation-layers"),
       /**
        * Create a new relation layer.
        * @param {string} spanLayerId - The span layer ID
@@ -3049,61 +2633,8 @@ class PlaidClient {
           auditMessage,
           body: bodyOf({ id, "span-layer-id": spanLayerId, name }),
         }),
-      /**
-       * Set a configuration value for a layer in an editor namespace.
-       * @param {string} relationLayerId - The relation layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {any} configValue - Configuration value to set
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-       *   was absent). The write is then refused with a 409 when the stored value differs.
-       */
-      setConfig: (relationLayerId, namespace, configKey, configValue, auditMessage, options) =>
-        this._request(
-          "PUT",
-          `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, configValue, options),
-        ),
-      /**
-       * Remove a configuration value for a layer.
-       * @param {string} relationLayerId - The relation layer ID
-       * @param {string} namespace - The config namespace
-       * @param {string} configKey - The config key
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
-       */
-      deleteConfig: (relationLayerId, namespace, configKey, auditMessage, options) =>
-        this._request(
-          "DELETE",
-          `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`,
-          configRequest(auditMessage, undefined, options, true),
-        ),
+      ...configMethods(this, "relation-layers"),
       ...constraintMethods(this, "relation-layers"),
-      /**
-       * Get a relation layer by ID.
-       * @param {string} relationLayerId - The relation layer ID
-       */
-      get: (relationLayerId) =>
-        this._request("GET", `/api/v1/relation-layers/${relationLayerId}`),
-      /**
-       * Delete a relation layer.
-       * @param {string} relationLayerId - The relation layer ID
-       */
-      delete: (relationLayerId, auditMessage) =>
-        this._request("DELETE", `/api/v1/relation-layers/${relationLayerId}`, {
-          auditMessage,
-        }),
-      /**
-       * Update a relation layer's name.
-       * @param {string} relationLayerId - The relation layer ID
-       * @param {string} name - The name
-       */
-      update: (relationLayerId, name, auditMessage) =>
-        this._request("PATCH", `/api/v1/relation-layers/${relationLayerId}`, {
-          auditMessage,
-          body: bodyOf({ name }),
-        }),
     };
 
     this.tokens = {
@@ -3248,34 +2779,7 @@ class PlaidClient {
           auditMessage,
           body: bodyOf({ begin, end }),
         }),
-      /**
-       * Replace all metadata for a token.
-       * @param {string} tokenId - The token ID
-       * @param {any} body - The request body
-       */
-      setMetadata: (tokenId, body, auditMessage) =>
-        this._request("PUT", `/api/v1/tokens/${tokenId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
-      /**
-       * Remove all metadata from a token.
-       * @param {string} tokenId - The token ID
-       */
-      deleteMetadata: (tokenId, auditMessage) =>
-        this._request("DELETE", `/api/v1/tokens/${tokenId}/metadata`, {
-          auditMessage,
-        }),
-      /**
-       * Edit metadata for a token with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
-       * @param {string} tokenId - The token ID
-       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
-       */
-      patchMetadata: (tokenId, body, auditMessage) =>
-        this._request("PATCH", `/api/v1/tokens/${tokenId}/metadata`, {
-          auditMessage,
-          rawBody: body,
-        }),
+      ...metadataMethods(this, "tokens"),
     };
 
     this.messages = {
@@ -4439,6 +3943,118 @@ function configRequest(auditMessage, value, options, isDelete = false) {
     queryParams: { "if-unchanged": true },
     rawBody: isDelete ? { expected } : { expected, value },
     skipResponseTransform: true,
+  };
+}
+
+/**
+ * The three metadata methods of a bundle whose entities carry metadata, on
+ * `/api/v1/<kind>/<id>/metadata`. Metadata is opaque, so no body is re-cased.
+ */
+function metadataMethods(client, kind) {
+  const path = (id) => `/api/v1/${kind}/${id}/metadata`;
+  return {
+    /**
+     * Replace all metadata of an entity. Keys left out of the new map are removed.
+     * @param {string} id - The entity's ID
+     * @param {object} body - The new metadata map
+     * @param {string} [auditMessage] - Audit message for this write
+     */
+    setMetadata: (id, body, auditMessage) =>
+      client._request("PUT", path(id), { auditMessage, rawBody: body }),
+    /**
+     * Remove all metadata from an entity.
+     * @param {string} id - The entity's ID
+     * @param {string} [auditMessage] - Audit message for this write
+     */
+    deleteMetadata: (id, auditMessage) => client._request("DELETE", path(id), { auditMessage }),
+    /**
+     * Edit an entity's metadata with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
+     * @param {string} id - The entity's ID
+     * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
+     * @param {string} [auditMessage] - Audit message for this write
+     */
+    patchMetadata: (id, body, auditMessage) =>
+      client._request("PATCH", path(id), { auditMessage, rawBody: body }),
+  };
+}
+
+/**
+ * The two config methods of a bundle whose records carry editor config, on
+ * `/api/v1/<kind>/<id>/config/<namespace>/<key>`.
+ */
+function configMethods(client, kind) {
+  const path = (id, namespace, configKey) => `/api/v1/${kind}/${id}/config/${namespace}/${configKey}`;
+  return {
+    /**
+     * Set a configuration value in an editor namespace.
+     * @param {string} id - The record's ID
+     * @param {string} namespace - The config namespace
+     * @param {string} configKey - The config key
+     * @param {any} configValue - Configuration value to set
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+     *   was absent). The write is then refused with a 409 when the stored value differs.
+     */
+    setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
+      client._request(
+        "PUT",
+        path(id, namespace, configKey),
+        configRequest(auditMessage, configValue, options),
+      ),
+    /**
+     * Remove a configuration value.
+     * @param {string} id - The record's ID
+     * @param {string} namespace - The config namespace
+     * @param {string} configKey - The config key
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {{expected?: any}} [options] - `expected`, as on setConfig.
+     */
+    deleteConfig: (id, namespace, configKey, auditMessage, options) =>
+      client._request(
+        "DELETE",
+        path(id, namespace, configKey),
+        configRequest(auditMessage, undefined, options, true),
+      ),
+  };
+}
+
+/**
+ * The get, delete, update and shift methods of the four layer bundles, on
+ * `/api/v1/<kind>/<layerId>`.
+ */
+function layerMethods(client, kind) {
+  const path = (layerId) => `/api/v1/${kind}/${layerId}`;
+  return {
+    /**
+     * Get a layer by ID.
+     * @param {string} layerId - The layer ID
+     */
+    get: (layerId) => client._request("GET", path(layerId)),
+    /**
+     * Delete a layer.
+     * @param {string} layerId - The layer ID
+     * @param {string} [auditMessage] - Audit message for this write
+     */
+    delete: (layerId, auditMessage) => client._request("DELETE", path(layerId), { auditMessage }),
+    /**
+     * Rename a layer.
+     * @param {string} layerId - The layer ID
+     * @param {string} name - The new name
+     * @param {string} [auditMessage] - Audit message for this write
+     */
+    update: (layerId, name, auditMessage) =>
+      client._request("PATCH", path(layerId), { auditMessage, body: bodyOf({ name }) }),
+    /**
+     * Move a layer one place in its display order.
+     * @param {string} layerId - The layer ID
+     * @param {string} direction - The direction ("up" or "down")
+     * @param {string} [auditMessage] - Audit message for this write
+     */
+    shift: (layerId, direction, auditMessage) =>
+      client._request("POST", `${path(layerId)}/shift`, {
+        auditMessage,
+        body: bodyOf({ direction }),
+      }),
   };
 }
 

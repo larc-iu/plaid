@@ -69,7 +69,7 @@ function jsParams(lines) {
     else if (tags.length && l.trim()) tags[tags.length - 1] += ' ' + l.trim();
   }
   const params = [];
-  const re = /^@param\s+\{([^}]+)\}\s+(\[?[\w.\[\]]+\]?)\s*-?\s*(.*)/;
+  const re = /^@param\s+\{((?:[^{}]|\{[^{}]*\})+)\}\s+(\[?[\w.\[\]]+\]?)\s*-?\s*(.*)/;
   for (const t of tags) {
     const m = t.match(re);
     if (!m) continue;
@@ -171,6 +171,15 @@ function parseJSDoc(content) {
     }
   }
   
+  // Method helpers like `function metadataMethods(client, kind) { ... }`,
+  // whose methods a bundle takes with `...metadataMethods(this, "spans")`.
+  const helpers = {};
+  const helperRegex = /^function (\w+Methods)\(client\b[^)]*\) \{\n([\s\S]*?)\n\}$/gm;
+  let helperMatch;
+  while ((helperMatch = helperRegex.exec(content)) !== null) {
+    helpers[helperMatch[1]] = bundleMethods(helperMatch[2]);
+  }
+
   // Look for bundle assignments like this.vocabLinks = { ... };
   // Require at least a newline inside the braces to skip one-liners like `this.x = {};`
   const bundleRegex = /this\.(\w+)\s*=\s*\{(\n[\s\S]*?)\n\s*\};/g;
@@ -178,240 +187,203 @@ function parseJSDoc(content) {
 
   while ((bundleMatch = bundleRegex.exec(content)) !== null) {
     const [, bundleName, bundleContent] = bundleMatch;
-
-    // Look for method assignments within this bundle
-    // Matches both old style (methodName: this._method.bind(this)) and new style (methodName: (args) => ...)
-    const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*(?:this\._|\([^)]*\)\s*=>)/g;
-    let methodMatch;
-    
-    while ((methodMatch = methodRegex.exec(bundleContent)) !== null) {
-      const [, docContent, methodName] = methodMatch;
-      
-      const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
-      const description = jsDescription(lines);
-      const params = jsParams(lines);
-      
-      methods.push({ 
-        name: methodName, 
-        description, 
-        params,
-        bundle: bundleName 
-      });
+    const found = bundleMethods(bundleContent);
+    const spreadRegex = /\.\.\.(\w+Methods)\(this\b/g;
+    let spreadMatch;
+    while ((spreadMatch = spreadRegex.exec(bundleContent)) !== null) {
+      const from = helpers[spreadMatch[1]];
+      if (!from) throw new Error(`${bundleName} spreads ${spreadMatch[1]}, which is not a method helper`);
+      found.push(...from.map((m) => ({ ...m, index: spreadMatch.index })));
     }
+    found.sort((a, b) => a.index - b.index);
+    for (const { index, ...method } of found) methods.push({ ...method, bundle: bundleName });
   }
-  
+
   return methods;
 }
 
-// Parse Python docstrings
+// The documented methods of a bundle's or helper's object literal, with where
+// each starts. Matches both old style (methodName: this._method.bind(this)) and
+// new style (methodName: (args) => ...).
+function bundleMethods(body) {
+  const found = [];
+  const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*(?:this\._|\([^)]*\)\s*=>)/g;
+  let methodMatch;
+  while ((methodMatch = methodRegex.exec(body)) !== null) {
+    const [, docContent, methodName] = methodMatch;
+    const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
+    found.push({
+      name: methodName,
+      description: jsDescription(lines),
+      params: jsParams(lines),
+      index: methodMatch.index,
+    });
+  }
+  return found;
+}
+
+// Parse Python docstrings. A method goes in the bundle of its `<Name>Resource`
+// class, or the client's ('misc') in any other class. A mixin class like
+// `_MetadataMethods` is no bundle of its own: its methods go in each resource
+// that lists it as a base.
 function parsePythonDoc(content) {
   const methods = [];
   const lines = content.split('\n');
-  
+  const mixins = {};
+  const resourceBases = {};
+  let currentClass = null;
+
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const defMatch = line.match(/^\s*(?:async )?def (\w+)\(([^)]*)\)(?:\s*->\s*[^:]+)?:/);
-
-    if (defMatch) {
-      const methodName = defMatch[1];
-      const rawParams = defMatch[2];
-      
-      // Skip private methods, but allow main PlaidClient.__init__
-      if (methodName.startsWith('_')) {
-        // Only allow the main PlaidClient.__init__ method
-        if (methodName === '__init__') {
-          // Check if this is in the main PlaidClient class (not a resource class)
-          let isMainClient = false;
-          for (let k = i - 1; k >= Math.max(0, i - 50); k--) {
-            if (lines[k].match(/^class PlaidClient:/)) {
-              isMainClient = true;
-              break;
-            }
-            if (lines[k].match(/^class \w+Resource/)) {
-              break; // Found a resource class first, not main client
-            }
-          }
-          if (!isMainClient) continue;
-        } else {
-          continue; // Skip all other private methods
-        }
+    const classMatch = lines[i].match(/^class (\w+)(?:\(([^)]*)\))?:/);
+    if (classMatch) {
+      currentClass = classMatch[1];
+      if (/^_\w+Methods$/.test(currentClass)) mixins[currentClass] = [];
+      if (currentClass.endsWith('Resource')) {
+        resourceBases[currentClass] = (classMatch[2] || '').split(',').map((b) => b.trim());
       }
-      if (line.includes('async def') || methodName.endsWith('_async')) continue; // Skip async duplicates
-      
-      // Check for decorators above the method
-      let decorators = [];
-      for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
-        const decoratorMatch = lines[j].trim().match(/^@(\w+)/);
-        if (decoratorMatch) {
-          decorators.unshift(decoratorMatch[1]); // Add to front to maintain order
-        } else if (lines[j].trim() && !lines[j].trim().startsWith('#')) {
-          break; // Stop if we hit non-decorator, non-comment line
-        }
-      }
-      
-      // Look for docstring on the next lines
-      let docstringStart = -1;
-      let docstringEnd = -1;
-      
-      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-        if (lines[j].trim().startsWith('"""')) {
-          docstringStart = j;
-          break;
-        }
-      }
-      
-      if (docstringStart !== -1) {
-        // Check for single-line docstring: """Description."""
-        const trimmedStart = lines[docstringStart].trim();
-        if (trimmedStart.startsWith('"""') && trimmedStart.endsWith('"""') && trimmedStart.length > 6) {
-          docstringEnd = docstringStart;
-        } else {
-          // Find end of multi-line docstring
-          for (let j = docstringStart; j < lines.length; j++) {
-            if (j > docstringStart && lines[j].trim().endsWith('"""')) {
-              docstringEnd = j;
-              break;
-            }
-          }
-        }
-        
-        if (docstringEnd !== -1) {
-          // Extract docstring content (relative indentation kept for code blocks)
-          const raw = lines.slice(docstringStart, docstringEnd + 1)
-            .map(line => line.replace(/^(\s*)"""/, '$1').replace(/"""\s*$/, ''));
-          const sectionRe = /^\s*(Args|Arguments|Returns|Raises|Yields|Attributes|Note|Notes|Example|Examples):\s*$/;
-          const descLines = [];
-          for (const l of raw) {
-            if (sectionRe.test(l)) break;
-            descLines.push(l);
-          }
-          const description = renderDescription(descLines);
+      continue;
+    }
+    if (!/^\s*(?:async )?def \w+\(/.test(lines[i])) continue;
 
-          // Args: one entry per `name: text` line; deeper-indented lines continue
-          // the previous entry.
-          const params = [];
-          const argsIndex = raw.findIndex(l => /^\s*(Args|Arguments):\s*$/.test(l));
-          if (argsIndex !== -1) {
-            let argIndent = null;
-            for (let k = argsIndex + 1; k < raw.length; k++) {
-              const l = raw[k];
-              if (!l.trim() || sectionRe.test(l)) break;
-              const indent = l.match(/^\s*/)[0].length;
-              const m = l.match(/^\s*(\w+)(?:\s*\([^)]*\))?:\s*(.*)$/);
-              if (m && (argIndent === null || indent <= argIndent)) {
-                argIndent = indent;
-                const [, name, desc] = m;
-                params.push({ name, type: 'Any', optional: false, description: desc });
-              } else if (params.length) {
-                params[params.length - 1].description += ' ' + l.trim();
-              }
-            }
-            for (const p of params) {
-              p.optional = /optional/i.test(p.description);
-              p.description = inlineCode(p.description);
-            }
-          }
+    // A signature may run over several lines.
+    let sigEnd = i;
+    let signature = lines[i];
+    const sigRe = /^\s*(?:async )?def (\w+)\(([\s\S]*)\)(?:\s*->\s*[^:]+)?:\s*$/;
+    while (!sigRe.test(signature) && sigEnd + 1 < lines.length && sigEnd - i < 10) {
+      sigEnd++;
+      signature += ' ' + lines[sigEnd].trim();
+    }
+    const defMatch = signature.match(sigRe);
+    if (!defMatch) continue;
+    const [, methodName, rawParams] = defMatch;
+    const isMainInit = methodName === '__init__' && currentClass === 'PlaidClient';
+    if (methodName.startsWith('_') && !isMainInit) continue;
+    if (/^\s*async def/.test(lines[i]) || methodName.endsWith('_async')) continue; // Skip async duplicates
 
-          // Try to infer bundle from surrounding class context
-          let bundleName = 'misc';
-          
-          // Special handling for main PlaidClient.__init__
-          if (methodName === '__init__') {
-            // Check if this is the main PlaidClient class
-            let isMainClient = false;
-            for (let k = i - 1; k >= Math.max(0, i - 50); k--) {
-              if (lines[k].match(/^class PlaidClient:/)) {
-                isMainClient = true;
-                break;
-              }
-              if (lines[k].match(/^class \w+Resource/)) {
-                break;
-              }
-            }
-            if (isMainClient) {
-              bundleName = 'misc';
-            }
-          } else {
-            // Look backwards to find the class this method belongs to
-            for (let k = i - 1; k >= 0; k--) {
-              const classMatch = lines[k].match(/^class (\w+?)(?:\(|:)/);
-              if (classMatch) {
-                const className = classMatch[1];
-                if (className.endsWith('Resource')) {
-                  // Convert camelCase to snake_case
-                  bundleName = className.replace('Resource', '')
-                    .replace(/([A-Z])/g, '_$1')
-                    .toLowerCase()
-                    .replace(/^_/, '');
-                }
-                break;
-              }
-            }
-          }
-          
-          methods.push({
-            name: methodName,
-            description,
-            params,
-            bundle: bundleName,
-            decorators: decorators
+    // Decorators above the method
+    const decorators = [];
+    for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+      const decoratorMatch = lines[j].trim().match(/^@(\w+)/);
+      if (decoratorMatch) {
+        decorators.unshift(decoratorMatch[1]);
+      } else if (lines[j].trim() && !lines[j].trim().startsWith('#')) {
+        break;
+      }
+    }
+
+    let description = '';
+    let params = [];
+    const docstring = pythonDocstring(lines, sigEnd + 1);
+    if (docstring) {
+      ({ description, params } = docstring);
+    } else {
+      // No docstring: params from the signature
+      for (const part of rawParams.split(',')) {
+        const trimmed = part.trim();
+        if (!trimmed || trimmed === 'self' || trimmed === 'cls' || trimmed === '*') continue;
+        // Strip default values, *, ** prefixes, and type annotations
+        const cleaned = trimmed.replace(/^\*{1,2}/, '').replace(/\s*[:=].*$/, '');
+        if (cleaned) {
+          params.push({
+            name: cleaned,
+            type: 'Any',
+            optional: trimmed.includes('=') || trimmed.includes('| None'),
+            description: '',
           });
         }
-      } else {
-        // No docstring — extract params from function signature
-        const params = [];
-        if (rawParams) {
-          for (const part of rawParams.split(',')) {
-            const trimmed = part.trim();
-            if (!trimmed || trimmed === 'self' || trimmed === 'cls') continue;
-            // Strip default values, *, ** prefixes, and type annotations
-            if (trimmed === '*') continue;
-            const cleaned = trimmed.replace(/^\*{1,2}/, '').replace(/\s*[:=].*$/, '');
-            if (cleaned) {
-              params.push({
-                name: cleaned,
-                type: 'Any',
-                optional: trimmed.includes('=') || trimmed.includes('| None'),
-                description: ''
-              });
-            }
-          }
-        }
+      }
+    }
 
-        let bundleName = 'misc';
-        if (methodName === '__init__') {
-          let isMainClient = false;
-          for (let k = i - 1; k >= Math.max(0, i - 50); k--) {
-            if (lines[k].match(/^class PlaidClient/)) { isMainClient = true; break; }
-            if (lines[k].match(/^class \w+Resource/)) break;
-          }
-          if (!isMainClient) continue;
-        } else {
-          for (let k = i - 1; k >= 0; k--) {
-            const classMatch = lines[k].match(/^class (\w+?)(?:\(|:)/);
-            if (classMatch) {
-              const className = classMatch[1];
-              if (className.endsWith('Resource')) {
-                bundleName = className.replace('Resource', '')
-                  .replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
-              }
-              break;
-            }
-          }
-        }
+    const method = { name: methodName, description, params, decorators };
+    if (currentClass in mixins) {
+      mixins[currentClass].push(method);
+    } else if (currentClass && currentClass.endsWith('Resource')) {
+      methods.push({ ...method, bundle: resourceBundle(currentClass) });
+    } else {
+      methods.push({ ...method, bundle: 'misc' });
+    }
+  }
 
-        methods.push({
-          name: methodName,
-          description: '',
-          params,
-          bundle: bundleName,
-          decorators: decorators
-        });
+  // Each resource's mixed-in methods, unless the resource defines its own.
+  for (const [className, bases] of Object.entries(resourceBases)) {
+    const bundle = resourceBundle(className);
+    const own = new Set(methods.filter((m) => m.bundle === bundle).map((m) => m.name));
+    for (const base of bases) {
+      for (const method of mixins[base] || []) {
+        if (!own.has(method.name)) methods.push({ ...method, bundle });
       }
     }
   }
-  
+
   return methods;
+}
+
+// "SpanLayersResource" -> "span_layers"
+function resourceBundle(className) {
+  return className.replace('Resource', '').replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+}
+
+// The docstring opening within a few lines of `from`, as a rendered
+// description and its Args, or null when there is none.
+function pythonDocstring(lines, from) {
+  let docstringStart = -1;
+  for (let j = from; j < Math.min(from + 4, lines.length); j++) {
+    if (lines[j].trim().startsWith('"""')) {
+      docstringStart = j;
+      break;
+    }
+  }
+  if (docstringStart === -1) return null;
+  let docstringEnd = -1;
+  const trimmedStart = lines[docstringStart].trim();
+  if (trimmedStart.endsWith('"""') && trimmedStart.length > 6) {
+    docstringEnd = docstringStart;
+  } else {
+    for (let j = docstringStart + 1; j < lines.length; j++) {
+      if (lines[j].trim().endsWith('"""')) {
+        docstringEnd = j;
+        break;
+      }
+    }
+  }
+  if (docstringEnd === -1) return null;
+
+  // Docstring content, relative indentation kept for code blocks
+  const raw = lines.slice(docstringStart, docstringEnd + 1)
+    .map(line => line.replace(/^(\s*)"""/, '$1').replace(/"""\s*$/, ''));
+  const sectionRe = /^\s*(Args|Arguments|Returns|Raises|Yields|Attributes|Note|Notes|Example|Examples):\s*$/;
+  const descLines = [];
+  for (const l of raw) {
+    if (sectionRe.test(l)) break;
+    descLines.push(l);
+  }
+  const description = renderDescription(descLines);
+
+  // Args: one entry per `name: text` line; deeper-indented lines continue
+  // the previous entry.
+  const params = [];
+  const argsIndex = raw.findIndex(l => /^\s*(Args|Arguments):\s*$/.test(l));
+  if (argsIndex !== -1) {
+    let argIndent = null;
+    for (let k = argsIndex + 1; k < raw.length; k++) {
+      const l = raw[k];
+      if (!l.trim() || sectionRe.test(l)) break;
+      const indent = l.match(/^\s*/)[0].length;
+      const m = l.match(/^\s*(\w+)(?:\s*\([^)]*\))?:\s*(.*)$/);
+      if (m && (argIndent === null || indent <= argIndent)) {
+        argIndent = indent;
+        const [, name, desc] = m;
+        params.push({ name, type: 'Any', optional: false, description: desc });
+      } else if (params.length) {
+        params[params.length - 1].description += ' ' + l.trim();
+      }
+    }
+    for (const p of params) {
+      p.optional = /optional/i.test(p.description);
+      p.description = inlineCode(p.description);
+    }
+  }
+  return { description, params };
 }
 
 // Group methods by API bundle

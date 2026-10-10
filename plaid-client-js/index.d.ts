@@ -7,6 +7,72 @@ interface ConfigWriteOptions {
   expected?: any;
 }
 
+/** The metadata methods of a bundle whose entities carry metadata. */
+interface MetadataMethods {
+  setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(id: string, auditMessage?: string): Promise<any>;
+  patchMetadata(id: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
+}
+
+/** The config methods of a bundle whose records carry editor config. */
+interface ConfigMethods {
+  setConfig(
+    id: string,
+    namespace: string,
+    configKey: string,
+    configValue: any,
+    auditMessage?: string,
+    options?: ConfigWriteOptions,
+  ): Promise<any>;
+  deleteConfig(
+    id: string,
+    namespace: string,
+    configKey: string,
+    auditMessage?: string,
+    options?: ConfigWriteOptions,
+  ): Promise<any>;
+}
+
+/** The get, delete, update and shift methods of the four layer bundles. */
+interface LayerMethods {
+  get(layerId: string): Promise<any>;
+  delete(layerId: string, auditMessage?: string): Promise<any>;
+  update(layerId: string, name: string, auditMessage?: string): Promise<any>;
+  shift(layerId: string, direction: string, auditMessage?: string): Promise<any>;
+}
+
+/** The layer-constraint methods of the span, token and relation layer bundles. */
+interface ConstraintMethods {
+  setConstraints(
+    layerId: string,
+    namespace: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
+  deleteConstraints(
+    layerId: string,
+    namespace: string,
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<any>;
+  checkConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
+  repairConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+    options?: { document?: string },
+  ): Promise<{
+    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    locked: { document: string; lockedBy: string }[];
+    violations: ConstraintViolation[];
+    violationCount: number;
+  }>;
+}
+
 /** A single page of a cursor-paginated collection. */
 interface Page<T = any> {
   entries: T[];
@@ -159,7 +225,7 @@ interface SSEConnection {
   error: (Error & { status?: number }) | null;
 }
 
-interface VocabLinksBundle {
+interface VocabLinksBundle extends MetadataMethods {
   create(
     vocabItem: string,
     tokens: any[],
@@ -169,9 +235,6 @@ interface VocabLinksBundle {
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
-  setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
-  deleteMetadata(id: string, auditMessage?: string): Promise<any>;
-  patchMetadata(id: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
   get(id: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
 }
@@ -188,7 +251,7 @@ interface VocabItemRestoreSummary {
   total: number;
 }
 
-interface VocabLayersBundle {
+interface VocabLayersBundle extends ConfigMethods {
   /** `asOf` reads the vocabulary as it was at that instant. */
   get(id: string, includeItems?: boolean, asOf?: string): Promise<any>;
   /** One entry as it was at `asOf`, also when it has been deleted since. */
@@ -213,21 +276,6 @@ interface VocabLayersBundle {
   ): Promise<VocabItemRestoreSummary>;
   delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, name: string, auditMessage?: string): Promise<any>;
-  setConfig(
-    id: string,
-    namespace: string,
-    configKey: string,
-    configValue: any,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  deleteConfig(
-    id: string,
-    namespace: string,
-    configKey: string,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
   list(): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number }): AsyncGenerator<any[]>;
@@ -244,18 +292,7 @@ interface VocabLayersBundle {
   ): Promise<any>;
 }
 
-interface RelationsBundle {
-  setMetadata(
-    relationId: string,
-    body: any,
-    auditMessage?: string,
-  ): Promise<any>;
-  deleteMetadata(relationId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(
-    relationId: string,
-    body: MetadataOp[],
-    auditMessage?: string,
-  ): Promise<any>;
+interface RelationsBundle extends MetadataMethods {
   setTarget(
     relationId: string,
     spanId: string,
@@ -283,71 +320,16 @@ interface RelationsBundle {
   bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
 }
 
-interface SpanLayersBundle {
-  setConfig(
-    spanLayerId: string,
-    namespace: string,
-    configKey: string,
-    configValue: any,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  deleteConfig(
-    spanLayerId: string,
-    namespace: string,
-    configKey: string,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  get(spanLayerId: string): Promise<any>;
-  delete(spanLayerId: string, auditMessage?: string): Promise<any>;
-  update(
-    spanLayerId: string,
-    name: string,
-    auditMessage?: string,
-  ): Promise<any>;
+interface SpanLayersBundle extends ConfigMethods, LayerMethods, ConstraintMethods {
   create(
     tokenLayerId: string,
     name: string,
     auditMessage?: string,
     opts?: { id?: string },
   ): Promise<any>;
-  shift(
-    spanLayerId: string,
-    direction: string,
-    auditMessage?: string,
-  ): Promise<any>;
-  setConstraints(
-    layerId: string,
-    namespace: string,
-    constraints: LayerConstraint[],
-    auditMessage?: string,
-    options?: ConstraintWriteOptions,
-  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
-  deleteConstraints(
-    layerId: string,
-    namespace: string,
-    auditMessage?: string,
-    options?: ConstraintWriteOptions,
-  ): Promise<any>;
-  checkConstraints(
-    layerId: string,
-    constraints: LayerConstraint[],
-  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
-  repairConstraints(
-    layerId: string,
-    constraints: LayerConstraint[],
-    auditMessage?: string,
-    options?: { document?: string },
-  ): Promise<{
-    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
-    locked: { document: string; lockedBy: string }[];
-    violations: ConstraintViolation[];
-    violationCount: number;
-  }>;
 }
 
-interface SpansBundle {
+interface SpansBundle extends MetadataMethods {
   setTokens(spanId: string, tokens: any[], auditMessage?: string): Promise<any>;
   create(
     spanLayerId: string,
@@ -363,15 +345,9 @@ interface SpansBundle {
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
-  setMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
-  deleteMetadata(spanId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(spanId: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
 }
 
-interface TextsBundle {
-  setMetadata(textId: string, body: any, auditMessage?: string): Promise<any>;
-  deleteMetadata(textId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(textId: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
+interface TextsBundle extends MetadataMethods {
   create(
     textLayerId: string,
     documentId: string,
@@ -1016,12 +992,7 @@ interface InvitesBundle {
   revoke(id: string, auditMessage?: string): Promise<any>;
 }
 
-interface TokenLayersBundle {
-  shift(
-    tokenLayerId: string,
-    direction: string,
-    auditMessage?: string,
-  ): Promise<any>;
+interface TokenLayersBundle extends ConfigMethods, LayerMethods, ConstraintMethods {
   create(
     textLayerId: string,
     name: string,
@@ -1030,56 +1001,6 @@ interface TokenLayersBundle {
     auditMessage?: string,
     opts?: { id?: string },
   ): Promise<any>;
-  setConfig(
-    tokenLayerId: string,
-    namespace: string,
-    configKey: string,
-    configValue: any,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  deleteConfig(
-    tokenLayerId: string,
-    namespace: string,
-    configKey: string,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  get(tokenLayerId: string): Promise<any>;
-  delete(tokenLayerId: string, auditMessage?: string): Promise<any>;
-  update(
-    tokenLayerId: string,
-    name: string,
-    auditMessage?: string,
-  ): Promise<any>;
-  setConstraints(
-    layerId: string,
-    namespace: string,
-    constraints: LayerConstraint[],
-    auditMessage?: string,
-    options?: ConstraintWriteOptions,
-  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
-  deleteConstraints(
-    layerId: string,
-    namespace: string,
-    auditMessage?: string,
-    options?: ConstraintWriteOptions,
-  ): Promise<any>;
-  checkConstraints(
-    layerId: string,
-    constraints: LayerConstraint[],
-  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
-  repairConstraints(
-    layerId: string,
-    constraints: LayerConstraint[],
-    auditMessage?: string,
-    options?: { document?: string },
-  ): Promise<{
-    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
-    locked: { document: string; lockedBy: string }[];
-    violations: ConstraintViolation[];
-    violationCount: number;
-  }>;
 }
 
 /** Handle passed to a `documents.locked()` block. */
@@ -1100,7 +1021,7 @@ export declare class DocumentLockLost extends Error {
   readonly cause?: unknown;
 }
 
-interface DocumentsBundle {
+interface DocumentsBundle extends MetadataMethods {
   checkLock(documentId: string): Promise<any>;
   /**
    * Take the lock as a new holder. The answer's `lockId` names it:
@@ -1156,17 +1077,6 @@ interface DocumentsBundle {
       /** The recording meant, the `?v=` of the document's `mediaUrl`. A 409 when the stored one is another. */
       mediaVersion?: string;
     },
-  ): Promise<any>;
-  setMetadata(
-    documentId: string,
-    body: any,
-    auditMessage?: string,
-  ): Promise<any>;
-  deleteMetadata(documentId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(
-    documentId: string,
-    body: MetadataOp[],
-    auditMessage?: string,
   ): Promise<any>;
   audit(
     documentId: string,
@@ -1280,26 +1190,11 @@ interface MessagesBundle {
   cancelServiceRequest(projectId: string, requestId: string): Promise<void>;
 }
 
-interface ProjectsBundle {
+interface ProjectsBundle extends ConfigMethods {
   addWriter(id: string, userId: string, auditMessage?: string): Promise<any>;
   removeWriter(id: string, userId: string, auditMessage?: string): Promise<any>;
   addReader(id: string, userId: string, auditMessage?: string): Promise<any>;
   removeReader(id: string, userId: string, auditMessage?: string): Promise<any>;
-  setConfig(
-    id: string,
-    namespace: string,
-    configKey: string,
-    configValue: any,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  deleteConfig(
-    id: string,
-    namespace: string,
-    configKey: string,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
   addMaintainer(
     id: string,
     userId: string,
@@ -1349,41 +1244,11 @@ interface ProjectsBundle {
   create(name: string, auditMessage?: string, opts?: { id?: string }): Promise<any>;
 }
 
-interface TextLayersBundle {
-  setConfig(
-    textLayerId: string,
-    namespace: string,
-    configKey: string,
-    configValue: any,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  deleteConfig(
-    textLayerId: string,
-    namespace: string,
-    configKey: string,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  get(textLayerId: string): Promise<any>;
-  delete(textLayerId: string, auditMessage?: string): Promise<any>;
-  update(
-    textLayerId: string,
-    name: string,
-    auditMessage?: string,
-  ): Promise<any>;
-  shift(
-    textLayerId: string,
-    direction: string,
-    auditMessage?: string,
-  ): Promise<any>;
+interface TextLayersBundle extends ConfigMethods, LayerMethods {
   create(projectId: string, name: string, auditMessage?: string, opts?: { id?: string }): Promise<any>;
 }
 
-interface VocabItemsBundle {
-  setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
-  deleteMetadata(id: string, auditMessage?: string): Promise<any>;
-  patchMetadata(id: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
+interface VocabItemsBundle extends MetadataMethods {
   create(
     vocabLayerId: string,
     form: string,
@@ -1408,71 +1273,16 @@ interface VocabItemsBundle {
   update(id: string, form: string, auditMessage?: string): Promise<any>;
 }
 
-interface RelationLayersBundle {
-  shift(
-    relationLayerId: string,
-    direction: string,
-    auditMessage?: string,
-  ): Promise<any>;
+interface RelationLayersBundle extends ConfigMethods, LayerMethods, ConstraintMethods {
   create(
     spanLayerId: string,
     name: string,
     auditMessage?: string,
     opts?: { id?: string },
   ): Promise<any>;
-  setConfig(
-    relationLayerId: string,
-    namespace: string,
-    configKey: string,
-    configValue: any,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  deleteConfig(
-    relationLayerId: string,
-    namespace: string,
-    configKey: string,
-    auditMessage?: string,
-    options?: ConfigWriteOptions,
-  ): Promise<any>;
-  get(relationLayerId: string): Promise<any>;
-  delete(relationLayerId: string, auditMessage?: string): Promise<any>;
-  update(
-    relationLayerId: string,
-    name: string,
-    auditMessage?: string,
-  ): Promise<any>;
-  setConstraints(
-    layerId: string,
-    namespace: string,
-    constraints: LayerConstraint[],
-    auditMessage?: string,
-    options?: ConstraintWriteOptions,
-  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
-  deleteConstraints(
-    layerId: string,
-    namespace: string,
-    auditMessage?: string,
-    options?: ConstraintWriteOptions,
-  ): Promise<any>;
-  checkConstraints(
-    layerId: string,
-    constraints: LayerConstraint[],
-  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
-  repairConstraints(
-    layerId: string,
-    constraints: LayerConstraint[],
-    auditMessage?: string,
-    options?: { document?: string },
-  ): Promise<{
-    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
-    locked: { document: string; lockedBy: string }[];
-    violations: ConstraintViolation[];
-    violationCount: number;
-  }>;
 }
 
-interface TokensBundle {
+interface TokensBundle extends MetadataMethods {
   create(
     tokenLayerId: string,
     text: string,
@@ -1510,13 +1320,6 @@ interface TokensBundle {
     tokenId: string,
     begin?: number,
     end?: number,
-    auditMessage?: string,
-  ): Promise<any>;
-  setMetadata(tokenId: string, body: any, auditMessage?: string): Promise<any>;
-  deleteMetadata(tokenId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(
-    tokenId: string,
-    body: MetadataOp[],
     auditMessage?: string,
   ): Promise<any>;
 }

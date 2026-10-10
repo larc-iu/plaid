@@ -513,7 +513,7 @@ def test_a_write_is_taken_only_as_the_real_client_takes_it():
     c.tokens.bulk_update([{'id': 't', 'metadata': ops}], audit_message='m')
     c.tokens.bulk_delete(['t'], audit_message='m')
     c.tokens.patch_metadata('t', ops, audit_message='m')
-    c.spans.patch_metadata(span_id='s', body=ops)
+    c.spans.patch_metadata(id='s', body=ops)
     assert c.patches('tokens') == [('t', ops), ('t', ops)] and c.patches('spans') == [('s', ops)]
     with pytest.raises(AttributeError):
         c.texts.bulk_update  # the real TextsResource has none

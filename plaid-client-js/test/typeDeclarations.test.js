@@ -34,6 +34,17 @@ function declaredMethods(body) {
   return new Set([...body.matchAll(/^\s{2}([A-Za-z_$][\w$]*)\s*[<(]/gm)].map((m) => m[1]));
 }
 
+/** The methods an interface declares, with those of the interfaces it extends. */
+function interfaceMethods(name) {
+  const header = declarations.match(new RegExp(`^(?:export )?interface ${name}(?: extends ([\\w, ]+))? \\{`, "m"));
+  assert.ok(header, `index.d.ts has no \`interface ${name}\``);
+  const parents = header[1] ? header[1].split(/,\s*/) : [];
+  return new Set([
+    ...declaredMethods(blockBody(header[0])),
+    ...parents.flatMap((parent) => [...interfaceMethods(parent)]),
+  ]);
+}
+
 const classBody = blockBody("export declare class PlaidClient {");
 const client = new PlaidClient("http://localhost:1", "token");
 
@@ -49,7 +60,7 @@ test("every bundle method is declared in index.d.ts", () => {
   for (const [name, bundle] of bundles) {
     const declared = classBody.match(new RegExp(`^\\s{2}${name}:\\s*(\\w+);`, "m"));
     assert.ok(declared, `PlaidClient.${name} is not declared in index.d.ts`);
-    const methods = declaredMethods(blockBody(`interface ${declared[1]} {`));
+    const methods = interfaceMethods(declared[1]);
     const missing = Object.entries(bundle)
       .filter(([key, value]) => typeof value === "function" && !methods.has(key))
       .map(([key]) => `${name}.${key}`);

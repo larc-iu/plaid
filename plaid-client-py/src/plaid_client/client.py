@@ -167,6 +167,130 @@ class _ConstraintMethods:
                              body=body, audit_message=audit_message)
 
 
+class _MetadataMethods:
+    """The three metadata methods of a resource whose entities carry
+    metadata, on ``/api/v1/<_kind>/<id>/metadata``. Metadata is opaque, so no
+    body is re-cased."""
+
+    _kind = None
+
+    def set_metadata(self, id: str, body: Any, audit_message=None) -> Any:
+        """Replace all metadata of an entity. Keys left out of the new map are
+        removed.
+
+        Args:
+            id: The entity's ID
+            body: The new metadata map
+        """
+        return self._request('PUT', f'/api/v1/{self._kind}/{id}/metadata',
+                             raw_body=body, audit_message=audit_message)
+
+    def delete_metadata(self, id: str, audit_message=None) -> Any:
+        """Remove all metadata from an entity.
+
+        Args:
+            id: The entity's ID
+        """
+        return self._request('DELETE', f'/api/v1/{self._kind}/{id}/metadata',
+                             audit_message=audit_message)
+
+    def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
+        """Edit an entity's metadata with a list of ops applied in order, in
+        one operation.
+
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
+
+        Args:
+            id: The entity's ID
+            body: The metadata ops
+        """
+        return self._request('PATCH', f'/api/v1/{self._kind}/{id}/metadata',
+                             raw_body=body, audit_message=audit_message)
+
+
+class _ConfigMethods:
+    """The two config methods of a resource whose records carry editor
+    config, on ``/api/v1/<_kind>/<id>/config/<namespace>/<key>``."""
+
+    _kind = None
+
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
+        """Set a configuration value in an editor namespace.
+
+        Args:
+            id: The record's ID
+            namespace: The config namespace
+            config_key: The config key
+            config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
+        """
+        return self._request('PUT', f'/api/v1/{self._kind}/{id}/config/{namespace}/{config_key}',
+                             **_config_request(audit_message, config_value, expected))
+
+    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
+        """Remove a configuration value.
+
+        Args:
+            id: The record's ID
+            namespace: The config namespace
+            config_key: The config key
+            expected: As on ``set_config``.
+        """
+        return self._request('DELETE', f'/api/v1/{self._kind}/{id}/config/{namespace}/{config_key}',
+                             **_config_request(audit_message, _UNSET, expected))
+
+
+class _LayerMethods:
+    """The get, delete, update and shift methods of the four layer resources,
+    on ``/api/v1/<_kind>/<layer_id>``."""
+
+    _kind = None
+
+    def get(self, layer_id: str) -> Any:
+        """Get a layer by ID.
+
+        Args:
+            layer_id: The layer ID
+        """
+        return self._request('GET', f'/api/v1/{self._kind}/{layer_id}')
+
+    def delete(self, layer_id: str, audit_message=None) -> Any:
+        """Delete a layer.
+
+        Args:
+            layer_id: The layer ID
+        """
+        return self._request('DELETE', f'/api/v1/{self._kind}/{layer_id}', audit_message=audit_message)
+
+    def update(self, layer_id: str, name: str, audit_message=None) -> Any:
+        """Rename a layer.
+
+        Args:
+            layer_id: The layer ID
+            name: The new name
+        """
+        return self._request('PATCH', f'/api/v1/{self._kind}/{layer_id}',
+                             body=_body_of(name=name), audit_message=audit_message)
+
+    def shift(self, layer_id: str, direction: str, audit_message=None) -> Any:
+        """Move a layer one place in its display order.
+
+        Args:
+            layer_id: The layer ID
+            direction: The direction ("up" or "down")
+        """
+        return self._request('POST', f'/api/v1/{self._kind}/{layer_id}/shift',
+                             body=_body_of(direction=direction), audit_message=audit_message)
+
+
 _UNSET_MESSAGE = object()
 
 
@@ -236,7 +360,9 @@ class _Resource:
         return self._client._request(method, path, **kwargs)
 
 
-class VocabLinksResource(_Resource):
+class VocabLinksResource(_MetadataMethods, _Resource):
+    _kind = 'vocab-links'
+
     def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None) -> Any:
         """Create a new vocab link between tokens and a vocab item.
@@ -278,45 +404,6 @@ class VocabLinksResource(_Resource):
         """
         return self._request('DELETE', '/api/v1/vocab-links/bulk', body=body, audit_message=audit_message)
 
-    def set_metadata(self, id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a vocab link.
-
-        The entire metadata map is replaced - existing metadata keys not
-        included in the request will be removed.
-
-        Args:
-            id: The resource ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/vocab-links/{id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, id: str, audit_message=None) -> Any:
-        """Remove all metadata from a vocab link.
-
-        Args:
-            id: The resource ID
-        """
-        return self._request('DELETE', f'/api/v1/vocab-links/{id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a vocab link with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            id: The resource ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/vocab-links/{id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
     def get(self, id: str) -> Any:
         """Get a vocab link by ID.
 
@@ -334,7 +421,9 @@ class VocabLinksResource(_Resource):
         return self._request('DELETE', f'/api/v1/vocab-links/{id}', audit_message=audit_message)
 
 
-class VocabLayersResource(_Resource):
+class VocabLayersResource(_ConfigMethods, _Resource):
+    _kind = 'vocab-layers'
+
     def get(self, id: str, *, include_items: bool | None = None,
             as_of: str | None = None) -> Any:
         """Get a vocab layer by ID.
@@ -471,34 +560,6 @@ class VocabLayersResource(_Resource):
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
-                   expected: Any = _UNSET) -> Any:
-        """Set a configuration value for a vocab layer in an editor namespace.
-
-        Args:
-            id: The resource ID
-            namespace: The config namespace
-            config_key: The config key
-            config_value: Configuration value to set
-            expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
-        """
-        return self._request('PUT', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, config_value, expected))
-
-    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None,
-                      expected: Any = _UNSET) -> Any:
-        """Remove a configuration value for a vocab layer.
-
-        Args:
-            id: The resource ID
-            namespace: The config namespace
-            config_key: The config key
-            expected: As on ``set_config``.
-        """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, _UNSET, expected))
-
     def list(self) -> Any:
         """List all vocab layers accessible to the current user.
 
@@ -560,42 +621,8 @@ class VocabLayersResource(_Resource):
         return self._request('DELETE', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}', audit_message=audit_message)
 
 
-class RelationsResource(_Resource):
-    def set_metadata(self, relation_id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a relation.
-
-        Args:
-            relation_id: The relation ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/relations/{relation_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, relation_id: str, audit_message=None) -> Any:
-        """Remove all metadata from a relation.
-
-        Args:
-            relation_id: The relation ID
-        """
-        return self._request('DELETE', f'/api/v1/relations/{relation_id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, relation_id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a relation with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            relation_id: The relation ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/relations/{relation_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
+class RelationsResource(_MetadataMethods, _Resource):
+    _kind = 'relations'
 
     def set_target(self, relation_id: str, span_id: str, audit_message=None) -> Any:
         """Update the target span of a relation.
@@ -707,72 +734,8 @@ class RelationsResource(_Resource):
         return self._request('PATCH', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
 
-class SpanLayersResource(_ConstraintMethods, _Resource):
+class SpanLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
     _kind = 'span-layers'
-
-    def get(self, span_layer_id: str) -> Any:
-        """Get a span layer by ID.
-
-        Args:
-            span_layer_id: The span layer ID
-        """
-        return self._request('GET', f'/api/v1/span-layers/{span_layer_id}')
-
-    def delete(self, span_layer_id: str, audit_message=None) -> Any:
-        """Delete a span layer.
-
-        Args:
-            span_layer_id: The span layer ID
-        """
-        return self._request('DELETE', f'/api/v1/span-layers/{span_layer_id}', audit_message=audit_message)
-
-    def update(self, span_layer_id: str, name: str, audit_message=None) -> Any:
-        """Update a span layer's name.
-
-        Args:
-            span_layer_id: The span layer ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/span-layers/{span_layer_id}',
-                             body=_body_of(name=name), audit_message=audit_message)
-
-    def set_config(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
-                   expected: Any = _UNSET) -> Any:
-        """Set a configuration value for a span layer in an editor namespace.
-
-        Args:
-            span_layer_id: The span layer ID
-            namespace: The config namespace
-            config_key: The config key
-            config_value: Configuration value to set
-            expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
-        """
-        return self._request('PUT', f'/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, config_value, expected))
-
-    def delete_config(self, span_layer_id: str, namespace: str, config_key: str, audit_message=None,
-                      expected: Any = _UNSET) -> Any:
-        """Remove a configuration value for a span layer.
-
-        Args:
-            span_layer_id: The span layer ID
-            namespace: The config namespace
-            config_key: The config key
-            expected: As on ``set_config``.
-        """
-        return self._request('DELETE', f'/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, _UNSET, expected))
-
-    def shift(self, span_layer_id: str, direction: str, audit_message=None) -> Any:
-        """Shift a span layer's display order.
-
-        Args:
-            span_layer_id: The span layer ID
-            direction: The direction ("up" or "down")
-        """
-        return self._request('POST', f'/api/v1/span-layers/{span_layer_id}/shift',
-                             body=_body_of(direction=direction), audit_message=audit_message)
 
     def create(self, token_layer_id: str, name: str, audit_message=None, *,
                id: str | None = None) -> Any:
@@ -790,42 +753,8 @@ class SpanLayersResource(_ConstraintMethods, _Resource):
                              body=_body_of(id=_UNSET if id is None else id, token_layer_id=token_layer_id, name=name), audit_message=audit_message)
 
 
-class SpansResource(_Resource):
-    def set_metadata(self, span_id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a span.
-
-        Args:
-            span_id: The span ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/spans/{span_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, span_id: str, audit_message=None) -> Any:
-        """Remove all metadata from a span.
-
-        Args:
-            span_id: The span ID
-        """
-        return self._request('DELETE', f'/api/v1/spans/{span_id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, span_id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a span with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            span_id: The span ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/spans/{span_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
+class SpansResource(_MetadataMethods, _Resource):
+    _kind = 'spans'
 
     def set_tokens(self, span_id: str, tokens: list, audit_message=None) -> Any:
         """Replace the tokens associated with a span.
@@ -926,7 +855,9 @@ class SpansResource(_Resource):
         return self._request('PATCH', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
 
-class TextsResource(_Resource):
+class TextsResource(_MetadataMethods, _Resource):
+    _kind = 'texts'
+
     def create(self, text_layer_id: str, document_id: str, body: str,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None,
                token_edges: list | None = None) -> Any:
@@ -1018,43 +949,6 @@ class TextsResource(_Resource):
                              body=_body_of(edits=edits, base=_UNSET if base is None else base),
                              audit_message=audit_message,
                              versioned=(base is None) if versioned is None else versioned)
-
-    def set_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a text.
-
-        Args:
-            text_id: The text ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/texts/{text_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, text_id: str, audit_message=None) -> Any:
-        """Remove all metadata from a text.
-
-        Args:
-            text_id: The text ID
-        """
-        return self._request('DELETE', f'/api/v1/texts/{text_id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a text with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            text_id: The text ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/texts/{text_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
 
 class UsersResource(_Resource):
     def list(self, *, q: str | None = None) -> Any:
@@ -1909,72 +1803,8 @@ class InvitesResource(_Resource):
                              audit_message=audit_message)
 
 
-class TokenLayersResource(_ConstraintMethods, _Resource):
+class TokenLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
     _kind = 'token-layers'
-
-    def get(self, token_layer_id: str) -> Any:
-        """Get a token layer by ID.
-
-        Args:
-            token_layer_id: The token layer ID
-        """
-        return self._request('GET', f'/api/v1/token-layers/{token_layer_id}')
-
-    def delete(self, token_layer_id: str, audit_message=None) -> Any:
-        """Delete a token layer.
-
-        Args:
-            token_layer_id: The token layer ID
-        """
-        return self._request('DELETE', f'/api/v1/token-layers/{token_layer_id}', audit_message=audit_message)
-
-    def update(self, token_layer_id: str, name: str, audit_message=None) -> Any:
-        """Update a token layer's name.
-
-        Args:
-            token_layer_id: The token layer ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/token-layers/{token_layer_id}',
-                             body=_body_of(name=name), audit_message=audit_message)
-
-    def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
-                   expected: Any = _UNSET) -> Any:
-        """Set a configuration value for a token layer in an editor namespace.
-
-        Args:
-            token_layer_id: The token layer ID
-            namespace: The config namespace
-            config_key: The config key
-            config_value: Configuration value to set
-            expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
-        """
-        return self._request('PUT', f'/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, config_value, expected))
-
-    def delete_config(self, token_layer_id: str, namespace: str, config_key: str, audit_message=None,
-                      expected: Any = _UNSET) -> Any:
-        """Remove a configuration value for a token layer.
-
-        Args:
-            token_layer_id: The token layer ID
-            namespace: The config namespace
-            config_key: The config key
-            expected: As on ``set_config``.
-        """
-        return self._request('DELETE', f'/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, _UNSET, expected))
-
-    def shift(self, token_layer_id: str, direction: str, audit_message=None) -> Any:
-        """Shift a token layer's display order.
-
-        Args:
-            token_layer_id: The token layer ID
-            direction: The direction ("up" or "down")
-        """
-        return self._request('POST', f'/api/v1/token-layers/{token_layer_id}/shift',
-                             body=_body_of(direction=direction), audit_message=audit_message)
 
     def create(self, text_layer_id: str, name: str, *, overlap_mode: Any = _UNSET,
                parent_token_layer_id: Any = _UNSET, audit_message=None,
@@ -2021,7 +1851,9 @@ class TokenLayersResource(_ConstraintMethods, _Resource):
 LOCK_ACQUIRE_RETRY_S = 0.5
 
 
-class DocumentsResource(_Resource):
+class DocumentsResource(_MetadataMethods, _Resource):
+    _kind = 'documents'
+
     def check_lock(self, document_id: str) -> Any:
         """Get information about a document lock.
 
@@ -2350,42 +2182,6 @@ class DocumentsResource(_Resource):
         return self._request('POST', '/api/v1/documents',
                              body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name, metadata=metadata), audit_message=audit_message)
 
-    def set_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a document.
-
-        Args:
-            document_id: The document ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/documents/{document_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, document_id: str, audit_message=None) -> Any:
-        """Remove all metadata from a document.
-
-        Args:
-            document_id: The document ID
-        """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a document with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            document_id: The document ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/documents/{document_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
     def audit(self, document_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
               op_types=None, kinds=None) -> Any:
@@ -2663,7 +2459,9 @@ class MessagesResource(_Resource):
         return svc.cancel_service_request(self._client, project_id, request_id)
 
 
-class ProjectsResource(_Resource):
+class ProjectsResource(_ConfigMethods, _Resource):
+    _kind = 'projects'
+
     def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
         """Create a new project.
 
@@ -2839,34 +2637,6 @@ class ProjectsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/projects/{id}/maintainers/{user_id}', audit_message=audit_message)
 
-    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
-                   expected: Any = _UNSET) -> Any:
-        """Set a configuration value for a project in an editor namespace.
-
-        Args:
-            id: The resource ID
-            namespace: The config namespace
-            config_key: The config key
-            config_value: Configuration value to set
-            expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
-        """
-        return self._request('PUT', f'/api/v1/projects/{id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, config_value, expected))
-
-    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None,
-                      expected: Any = _UNSET) -> Any:
-        """Remove a configuration value for a project.
-
-        Args:
-            id: The resource ID
-            namespace: The config namespace
-            config_key: The config key
-            expected: As on ``set_config``.
-        """
-        return self._request('DELETE', f'/api/v1/projects/{id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, _UNSET, expected))
-
     def audit(self, project_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
               op_types=None, kinds=None) -> Any:
@@ -2957,70 +2727,8 @@ class ProjectsResource(_Resource):
         return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
 
 
-class TextLayersResource(_Resource):
-    def get(self, text_layer_id: str) -> Any:
-        """Get a text layer by ID.
-
-        Args:
-            text_layer_id: The text layer ID
-        """
-        return self._request('GET', f'/api/v1/text-layers/{text_layer_id}')
-
-    def delete(self, text_layer_id: str, audit_message=None) -> Any:
-        """Delete a text layer.
-
-        Args:
-            text_layer_id: The text layer ID
-        """
-        return self._request('DELETE', f'/api/v1/text-layers/{text_layer_id}', audit_message=audit_message)
-
-    def update(self, text_layer_id: str, name: str, audit_message=None) -> Any:
-        """Update a text layer's name.
-
-        Args:
-            text_layer_id: The text layer ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/text-layers/{text_layer_id}',
-                             body=_body_of(name=name), audit_message=audit_message)
-
-    def set_config(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
-                   expected: Any = _UNSET) -> Any:
-        """Set a configuration value for a text layer in an editor namespace.
-
-        Args:
-            text_layer_id: The text layer ID
-            namespace: The config namespace
-            config_key: The config key
-            config_value: Configuration value to set
-            expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
-        """
-        return self._request('PUT', f'/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, config_value, expected))
-
-    def delete_config(self, text_layer_id: str, namespace: str, config_key: str, audit_message=None,
-                      expected: Any = _UNSET) -> Any:
-        """Remove a configuration value for a text layer.
-
-        Args:
-            text_layer_id: The text layer ID
-            namespace: The config namespace
-            config_key: The config key
-            expected: As on ``set_config``.
-        """
-        return self._request('DELETE', f'/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, _UNSET, expected))
-
-    def shift(self, text_layer_id: str, direction: str, audit_message=None) -> Any:
-        """Shift a text layer's order within the project.
-
-        Args:
-            text_layer_id: The text layer ID
-            direction: The direction ("up" or "down")
-        """
-        return self._request('POST', f'/api/v1/text-layers/{text_layer_id}/shift',
-                             body=_body_of(direction=direction), audit_message=audit_message)
+class TextLayersResource(_ConfigMethods, _LayerMethods, _Resource):
+    _kind = 'text-layers'
 
     def create(self, project_id: str, name: str, audit_message=None, *,
                id: str | None = None) -> Any:
@@ -3038,7 +2746,9 @@ class TextLayersResource(_Resource):
                              body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name), audit_message=audit_message)
 
 
-class VocabItemsResource(_Resource):
+class VocabItemsResource(_MetadataMethods, _Resource):
+    _kind = 'vocab-items'
+
     def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None) -> Any:
         """Create a new vocab item.
@@ -3167,109 +2877,8 @@ class VocabItemsResource(_Resource):
         return self._request('PATCH', f'/api/v1/vocab-items/{id}',
                              body=_body_of(form=form), audit_message=audit_message)
 
-    def set_metadata(self, id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a vocab item.
-
-        Args:
-            id: The resource ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/vocab-items/{id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, id: str, audit_message=None) -> Any:
-        """Remove all metadata from a vocab item.
-
-        Args:
-            id: The resource ID
-        """
-        return self._request('DELETE', f'/api/v1/vocab-items/{id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a vocab item with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            id: The resource ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/vocab-items/{id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-
-class RelationLayersResource(_ConstraintMethods, _Resource):
+class RelationLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
     _kind = 'relation-layers'
-
-    def get(self, relation_layer_id: str) -> Any:
-        """Get a relation layer by ID.
-
-        Args:
-            relation_layer_id: The relation layer ID
-        """
-        return self._request('GET', f'/api/v1/relation-layers/{relation_layer_id}')
-
-    def delete(self, relation_layer_id: str, audit_message=None) -> Any:
-        """Delete a relation layer.
-
-        Args:
-            relation_layer_id: The relation layer ID
-        """
-        return self._request('DELETE', f'/api/v1/relation-layers/{relation_layer_id}', audit_message=audit_message)
-
-    def update(self, relation_layer_id: str, name: str, audit_message=None) -> Any:
-        """Update a relation layer's name.
-
-        Args:
-            relation_layer_id: The relation layer ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/relation-layers/{relation_layer_id}',
-                             body=_body_of(name=name), audit_message=audit_message)
-
-    def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
-                   expected: Any = _UNSET) -> Any:
-        """Set a configuration value for a relation layer in an editor namespace.
-
-        Args:
-            relation_layer_id: The relation layer ID
-            namespace: The config namespace
-            config_key: The config key
-            config_value: Configuration value to set
-            expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
-        """
-        return self._request('PUT', f'/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, config_value, expected))
-
-    def delete_config(self, relation_layer_id: str, namespace: str, config_key: str, audit_message=None,
-                      expected: Any = _UNSET) -> Any:
-        """Remove a configuration value for a relation layer.
-
-        Args:
-            relation_layer_id: The relation layer ID
-            namespace: The config namespace
-            config_key: The config key
-            expected: As on ``set_config``.
-        """
-        return self._request('DELETE', f'/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}',
-                             **_config_request(audit_message, _UNSET, expected))
-
-    def shift(self, relation_layer_id: str, direction: str, audit_message=None) -> Any:
-        """Shift a relation layer's display order.
-
-        Args:
-            relation_layer_id: The relation layer ID
-            direction: The direction ("up" or "down")
-        """
-        return self._request('POST', f'/api/v1/relation-layers/{relation_layer_id}/shift',
-                             body=_body_of(direction=direction), audit_message=audit_message)
 
     def create(self, span_layer_id: str, name: str, audit_message=None, *,
                id: str | None = None) -> Any:
@@ -3287,42 +2896,8 @@ class RelationLayersResource(_ConstraintMethods, _Resource):
                              body=_body_of(id=_UNSET if id is None else id, span_layer_id=span_layer_id, name=name), audit_message=audit_message)
 
 
-class TokensResource(_Resource):
-    def set_metadata(self, token_id: str, body: Any, audit_message=None) -> Any:
-        """Replace all metadata for a token.
-
-        Args:
-            token_id: The token ID
-            body: The request body
-        """
-        return self._request('PUT', f'/api/v1/tokens/{token_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
-
-    def delete_metadata(self, token_id: str, audit_message=None) -> Any:
-        """Remove all metadata from a token.
-
-        Args:
-            token_id: The token ID
-        """
-        return self._request('DELETE', f'/api/v1/tokens/{token_id}/metadata',
-                             audit_message=audit_message)
-
-    def patch_metadata(self, token_id: str, body: Any, audit_message=None) -> Any:
-        """Edit metadata for a token with a list of ops applied in order.
-
-        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
-        creating missing objects along it; ``{"op": "delete", "path": [...]}``
-        removes the key at the path (a no-op when absent). A path is a
-        non-empty list of keys, the first a top-level key. A path through a
-        non-object is refused (400). See :func:`metadata_ops` and
-        :func:`apply_metadata_ops`.
-
-        Args:
-            token_id: The token ID
-            body: The metadata ops
-        """
-        return self._request('PATCH', f'/api/v1/tokens/{token_id}/metadata',
-                             raw_body=body, audit_message=audit_message)
+class TokensResource(_MetadataMethods, _Resource):
+    _kind = 'tokens'
 
     def get(self, token_id: str) -> Any:
         """Get a token.
