@@ -7,11 +7,11 @@ words the reference singles out marked so the reader's eye lands on what the
 claim rests on.
 """
 
-import re
 from typing import Any, Dict, List
 
 from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
 from ..core.limits import MAX_FOCUS
+from ..core.refs import read_ref_list
 from .project import ALL_COLUMNS, UdDoc, deps_of, parse_ref, resolve
 from .tools import Workspace
 
@@ -21,44 +21,9 @@ BRACE_RE = brace_re(REF)
 # A bare reference is unambiguous only when the turn read exactly one document.
 BARE_RE = bare_re(r's\d+\.w\d+(?:-\d+)?')
 
-# One part of a ref="…" list: a whole reference, or only the piece that differs
-# from the one before it ("s3.w2,w5"). The `w` is optional on a continuation,
-# because REF above accepts "s3.w2,3" and a part that matched nothing silently
-# repeated the word before it.
-PART_RE = re.compile(r'(?:s(\d+))?\.?(?:w?(\d+)(?:-(\d+))?)?')
-
-
 def parse_refs(ref: str) -> List[str]:
-    """``"s3.w2,w5"`` -> ``['s3.w2', 's3.w5']``. Each part may leave off what
-    it shares with the part before it."""
-    out: List[str] = []
-    si = wi = None
-    for part in (ref or '').split(','):
-        part = part.strip()
-        # Every group in PART_RE is optional, so `.match` succeeds on anything
-        # with a zero-length match and the `if not m` below was dead code: a
-        # part that matched NOTHING carried the previous word forward and
-        # repeated the reference before it. "s3.w2,garbage" marked word 2
-        # twice. A part has to match all of itself to count.
-        m = PART_RE.fullmatch(part)
-        if not part or not m:
-            continue
-        s, w, w2 = m.groups()
-        # A reference is 1-BASED, so a zero is not a place: it reads as absent
-        # and turns one reference into a different, valid-looking one.
-        if any(p is not None and int(p) == 0 for p in (s, w, w2)):
-            continue
-        si = int(s) if s else si
-        if si is None:
-            continue
-        wi = int(w) if w else (None if s else wi)
-        if wi is None:
-            out.append(f's{si}')
-        elif w2:
-            out.append(f's{si}.w{wi}-{w2}')
-        else:
-            out.append(f's{si}.w{wi}')
-    return out
+    """``"s3.w2,w5"`` -> ``['s3.w2', 's3.w5']`` (:func:`core.refs.read_ref_list`)."""
+    return read_ref_list(ref, ('w',), ranged=True)
 
 
 VIEWS = ('table', 'tree')

@@ -181,7 +181,9 @@ def test_a_garbage_part_of_a_reference_list_is_dropped_not_repeated():
     carried the previous word forward, marking one word twice and losing the
     other."""
     assert parse_refs('s3.w2,garbage') == ['s3.w2']
-    assert parse_refs('s3.w2, and w5') == ['s3.w2']
+    # A stray word between two references is skipped, the rest kept, as in
+    # every app (core.refs.read_ref_list).
+    assert parse_refs('s3.w2, and w5') == ['s3.w2', 's3.w5']
     assert parse_refs('s3.w2,') == ['s3.w2']
     assert parse_refs('s3.w2,,w4') == ['s3.w2', 's3.w4']
     assert parse_refs('s3.w2,-') == ['s3.w2']
@@ -196,7 +198,8 @@ def test_a_zero_index_is_not_a_place():
     into a different, valid-looking one: IGT's `s3.w0.m1` became `s3.m1`,
     a shape its own parser refuses."""
     for bad in ['s0', 's3.w0', 's0.w1', 's3.w2-0']:
-        assert parse_refs(bad) == [], bad
+        with pytest.raises(ValueError):
+            parse_refs(bad)
     # And a real reference still parses, including the list forms.
     assert parse_refs('s3.w2') == ['s3.w2']
     assert parse_refs('s3.w2,w5') == ['s3.w2', 's3.w5']

@@ -14,11 +14,11 @@ into the editor at that sentence. The model never pastes interlinear text
 itself: a citation is cheaper for it and better for the reader.
 """
 
-import re
 from typing import Any, Dict, List
 
 from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
 from ..core.limits import MAX_FOCUS
+from ..core.refs import read_ref_list
 from .project import Sentence, Word, join_morphemes, joiner_between, parse_ref, resolve, segmentation
 from .workspace import Workspace
 
@@ -27,39 +27,9 @@ BRACE_RE = brace_re(REF)
 # A bare reference ("s32.w16") is unambiguous only when the turn read one document.
 BARE_RE = bare_re(REF)
 
-# One part of a ref="…" list: a whole reference, or only the piece that
-# differs from the one before it ("s3.w2,w5", "s3.w2.m1,m3").
-PART_RE = re.compile(r'(?:s(\d+))?\.?(?:w(\d+))?\.?(?:m(\d+))?')
-
-
 def parse_refs(ref: str) -> List[str]:
-    """The references in one ``ref="…"``: usually one, or several in the same
-    sentence separated by commas or spaces, each inheriting from the one
-    before it what it leaves out."""
-    out: List[str] = []
-    si = wi = None
-    for part in re.split(r'[,;\s]+', (ref or '').strip()):
-        if not part:
-            continue
-        m = PART_RE.fullmatch(part)
-        if not m or not any(m.groups()):
-            continue  # a stray word between references ("s3.w2 and w5"): skip it, keep the rest
-        s_, w_, m_ = m.groups()
-        # A reference is 1-BASED, so a zero is not a place. Reading it as
-        # "absent" silently turned `s3.w0` into the whole of s3, and `s3.w0.m1`
-        # into `s3.m1`, which is a shape this very function refuses.
-        if any(p is not None and int(p) == 0 for p in (s_, w_, m_)):
-            continue
-        if s_:
-            si, wi = int(s_), (int(w_) if w_ else None)
-        elif w_:
-            wi = int(w_)
-        if si is None or (m_ and wi is None):
-            continue  # says neither which sentence nor which word it means
-        out.append(f's{si}' + (f'.w{wi}' if wi else '') + (f'.m{int(m_)}' if m_ else ''))
-    if not out:
-        raise ValueError(f'Bad reference "{ref}": use s<n>, s<n>.w<n>, or s<n>.w<n>.m<n>')
-    return out
+    """The references in one ``ref="…"`` (:func:`core.refs.read_ref_list`)."""
+    return read_ref_list(ref, ('w', 'm'))
 
 
 def tiers(project) -> List[Dict[str, str]]:

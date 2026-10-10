@@ -16,7 +16,7 @@ a reading that guessed would put a value on a word nobody named.
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 # A form after the number, set off the way a model quotes one: in quotes, in
 # brackets, after "=" or ":", or after a space.
@@ -94,6 +94,42 @@ def read_ref(ref, letters: Sequence[str], ranged: bool = False) -> Optional[Ref]
     if not form or _ANOTHER.search(form):
         return None
     return Ref(sentence, parts, until, form)
+
+
+def read_ref_list(ref, letters: Sequence[str], ranged: bool = False) -> List[str]:
+    """The references in one citation's ``ref="…"``, written as the tools
+    print them: usually one, or several separated by commas or spaces, each
+    leaving off what it shares with the one before it ("s3.w2,w5",
+    "s3.w2.m1,m3"). A part that is not a reference (a stray word, a zero,
+    which no 1-based place is) is skipped and the rest kept. Each part is read
+    by :func:`read_ref`, so a citation takes every spelling a tool takes.
+    Raises ValueError when nothing in it is a reference."""
+    out: List[str] = []
+    prev: Optional[Ref] = None
+    for part in re.split(r'[,;\s]+', str(ref or '').strip()):
+        if not part:
+            continue
+        got = read_ref(part, letters, ranged) if re.match(r'(?i)s\s*\d', part) else None
+        if got is None and prev is not None and not re.match(r'(?i)s\s*\d', part):
+            # A continuation: the place it starts at (its letter, the first
+            # one for a bare number) inherits everything above it.
+            m = re.match(r'(?i)([a-z]?)\s*\d', part)
+            level = letters.index(m.group(1).lower()) if m and m.group(1).lower() in letters \
+                else (0 if m and not m.group(1) and letters else None)
+            if level is not None:
+                above = f's{prev.sentence}' + ''.join(f'.{letter}{n}' for letter, n
+                                                     in zip(letters[:level], prev.parts[:level]) if n)
+                if len(above.split('.')) == level + 1:
+                    part = part if m.group(1) else letters[level] + part
+                    got = read_ref(f'{above}.{part}', letters, ranged)
+        if got is None or got.form is not None or got.sentence == 0 or 0 in got.parts or got.until == 0:
+            continue
+        prev = got
+        out.append(f's{got.sentence}' + ''.join(f'.{letter}{n}' for letter, n in zip(letters, got.parts) if n)
+                   + (f'-{got.until}' if got.until else ''))
+    if not out:
+        raise ValueError(f'"{ref}" names no reference.')
+    return out
 
 
 def unquote(text: str) -> str:
