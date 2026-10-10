@@ -13,6 +13,7 @@ import {
   tableCell,
 } from '@ui/components/assistant/citations.js';
 import { isUmrProject } from '@ui/domain/umrProject.js';
+import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, deepLink, sentenceHref } from './cite.js';
 
@@ -51,17 +52,6 @@ const changeTitle = (where) => {
     );
   if (where.kind === 'document') return where.documentName || '';
   return '';
-};
-
-// The heading a change is filed under: its document. Changes with no location
-// share one untitled group.
-const groupOf = (projectId, where) => {
-  if (!where) return { key: 'other', title: 'Other changes', href: null };
-  return {
-    key: `doc:${where.documentId}`,
-    title: where.documentName || where.documentId,
-    href: changeHref(projectId, { kind: 'document', documentId: where.documentId }),
-  };
 };
 
 // What a plan row shows: the node as a link, with its reference beside it. A
@@ -131,10 +121,9 @@ export const UMR_ASSISTANT = {
   citationHref: sentenceHref,
   citationToMarkdown,
   ExampleCard,
-  changeHref,
-  changeTitle,
   changePlace,
-  groupOf,
+  // The heading a change is filed under: its document.
+  groupOf: documentGroupOf(changeHref),
   parseCitationHref,
   // The assistant reads a project set up for UMR, and no other.
   opensProject: isUmrProject,

@@ -332,7 +332,6 @@ const finishJob = async (j, store) => {
     j.declined = true;
     j.why = refused.message;
     j.gone = refused.why === 'gone';
-    j.held = refused.why === 'held';
   }
   if (j.error?.pending === true && j.kind === 'turn') notifyWarning(LOST_CONTACT, 'Assistant');
   let result;
@@ -686,7 +685,6 @@ export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => 
     planId: p.planId || null,
     conv,
     recorded: true,
-    attached: true,
     tab,
     progress: p.kind === 'apply' ? 'Applying changes…' : 'Thinking…',
     startedAt: Date.parse(p.startedAt) || Date.now(),

@@ -476,7 +476,7 @@ export const AssistantChat = ({
         // here ends what the line was about.
         if ((j.declined || j.gone) && j.why)
           setNotice({ convId: j.id, text: j.why, gone: !!j.gone });
-        else if (!j.declined || j.cleared) setNotice((n) => (n?.gone ? n : null));
+        else if (!j.declined) setNotice((n) => (n?.gone ? n : null));
         // A message the record never took was not sent. It comes back to
         // the composer, unless something new has been typed since.
         if (j.unsent && !j.recorded) {
@@ -485,9 +485,7 @@ export const AssistantChat = ({
           // next send.
           if (j.unsentFiles?.length) setAttachments((now) => (now.length ? now : j.unsentFiles));
         }
-        // An answer that landed late (after the page stopped waiting for it)
-        // arrives while the reader may be typing somewhere else.
-        if (!j.late) inputRef.current?.focus();
+        inputRef.current?.focus();
       } else {
         // The message went after what had landed meanwhile (`startTurn`).
         if (j.rebased && activeRef.current !== j.conv) {
