@@ -47,7 +47,7 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         open={open}
         onOpenChange={setOpen}
         title="Speech detection"
-        description="Proposed segments appear on the timeline and in the transcript. Each becomes a segment when you type into it. Proposals are kept with the document until discarded."
+        description="Proposals show on the timeline and in the transcript, dashed. Type into one to make it a segment."
         className="sm:max-w-md"
         progress={detectRun}
         error={status === 'error' ? error : null}
