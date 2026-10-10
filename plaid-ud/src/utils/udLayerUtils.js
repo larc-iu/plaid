@@ -47,7 +47,7 @@ export const UD_SPAN_CONFIG_KEYS = {
 // Display labels (UD terminology). The keys are the internal config-flag names
 // (kept for interop): `wordTokenLayer` is the orthographic surface layer — a UD
 // "token" layer — and `morphemeTokenLayer` holds UD syntactic "words".
-export const UD_LAYER_LABELS = {
+const UD_LAYER_LABELS = {
   textLayer: 'Text layer',
   sentenceTokenLayer: 'Sentence layer',
   wordTokenLayer: 'Token layer',

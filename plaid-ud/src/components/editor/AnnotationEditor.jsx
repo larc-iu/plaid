@@ -22,9 +22,10 @@ import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
 import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
-import { canEditProject, readOnlyReason } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { NotSetUpForUd } from './NotSetUpForUd.jsx';
+import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
+import { setupHref } from '../projects/setup.jsx';
 import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
@@ -504,12 +505,12 @@ export const AnnotationEditor = () => {
     return (
       <div className="min-h-screen w-full">
         <div className="flex justify-center py-16">
-          <Notice tone="warning" className="max-w-lg p-4">
-            <p className="font-medium">Not set up for UD</p>
-            <p className="mt-1">
-              <NotSetUpForUd project={project} user={user} />
-            </p>
-          </Notice>
+          <NotSetUpNotice
+            app="UD"
+            canManage={canManageProject(project, user)}
+            setupHref={setupHref(project.id)}
+            className="max-w-lg p-4"
+          />
         </div>
       </div>
     );

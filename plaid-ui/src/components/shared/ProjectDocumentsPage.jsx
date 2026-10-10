@@ -11,6 +11,7 @@ import { DocumentTable } from './DocumentTable.jsx';
 import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
+import { SetupBlocked } from './SetupBlocked.jsx';
 
 /**
  * A project's Documents tab in plaid-ud and plaid-umr: the list of documents,
@@ -29,12 +30,13 @@ import { Notice } from './Notice.jsx';
  * - `tabs`: the app's project tab strip component.
  * - `layerInfo(project)`: the app's reading of the project's layers, with
  *   `isConfigured`.
- * - `setup`: `{ app, note, adopt(client, project, info), blocked?(info, projectId) }`.
- *   `app` is the short name the notice uses ("Not set up for UD"), `note` the
- *   line a maintainer reads above the button, `adopt` does the setting up.
- *   `blocked(info, projectId)`, when it returns `{ title, body, action }`, is what a
- *   maintainer sees instead of the button: the project lacks something the
- *   app cannot make.
+ * - `setup`: `{ app, note, adopt(client, project, info),
+ *   blocked?(info, projectId, project) }`, the object the app's setup page
+ *   (ProjectSetupPage) takes too. `app` is the short name the notice uses
+ *   ("Not set up for UD"), `note` the line a maintainer reads above the
+ *   button, `adopt` does the setting up. `blocked`, when it returns
+ *   `{ title, body, action }`, is what a maintainer sees instead of the
+ *   button (SetupBlocked): the project lacks something the app cannot make.
  * - `tableLayers(info)`: `{ wordLayerId, seedLayerId }` for `DocumentTable`.
  * - `rowHref(projectId, documentId, counts)`: where a row opens.
  * - `newDocument`: a component drawn beside the heading for a writer, given
@@ -125,35 +127,30 @@ export const ProjectDocumentsPage = ({
   }
 
   if (!info.isConfigured) {
-    const blocked = canManage ? setup.blocked?.(info, projectId) : null;
+    const blocked = canManage ? setup.blocked?.(info, projectId, project) : null;
     return (
       <>
         <Tabs projectId={projectId} project={project} />
         <div className="flex justify-center py-16">
-          <Notice tone="warning" icon={Info} className="max-w-lg gap-3 p-4">
-            <div className="flex flex-col items-start gap-3">
-              <p className="font-medium">
-                {blocked ? blocked.title : `Not set up for ${setup.app}`}
-              </p>
-              {!canManage && (
-                <p className="text-muted-foreground">A project maintainer can set it up.</p>
-              )}
-              {canManage && !blocked && (
-                <>
-                  <p className="text-muted-foreground">{setup.note}</p>
-                  <Button size="sm" onClick={handleSetUp} disabled={settingUp}>
-                    {settingUp ? 'Saving…' : `Set up for ${setup.app}`}
-                  </Button>
-                </>
-              )}
-              {blocked && (
-                <>
-                  <p className="text-muted-foreground">{blocked.body}</p>
-                  {blocked.action}
-                </>
-              )}
-            </div>
-          </Notice>
+          {blocked ? (
+            <SetupBlocked blocked={blocked} className="max-w-lg gap-3 p-4" />
+          ) : (
+            <Notice tone="warning" icon={Info} className="max-w-lg gap-3 p-4">
+              <div className="flex flex-col items-start gap-3">
+                <p className="font-medium">Not set up for {setup.app}</p>
+                {canManage ? (
+                  <>
+                    <p className="text-muted-foreground">{setup.note}</p>
+                    <Button size="sm" onClick={handleSetUp} disabled={settingUp}>
+                      {settingUp ? 'Saving…' : `Set up for ${setup.app}`}
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">A project maintainer can set it up.</p>
+                )}
+              </div>
+            </Notice>
+          )}
         </div>
       </>
     );

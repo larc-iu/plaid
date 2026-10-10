@@ -3,17 +3,9 @@ import { Plus } from 'lucide-react';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { adoptSubstrate } from '../../domain/udProjectSetup.js';
+import { SETUP } from '../projects/setup.jsx';
 import { Button } from '@ui/components/ui/button';
 import { ProjectDocumentsPage } from '@ui/components/shared/ProjectDocumentsPage.jsx';
-
-// UD's layers are the same in every project, so setting one up is one button
-// (see `adoptSubstrate`).
-const SETUP = {
-  app: 'UD',
-  note: 'Adds UD annotation. The text and tokens do not change.',
-  adopt: (client, project) => adoptSubstrate(client, project),
-};
 
 // UD counts its words (the morpheme layer), and a document with no words yet
 // counts its tokens.

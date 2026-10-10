@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
+import { setupHref } from '../projects/setup.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '@ui/domain/permissions.js';
@@ -267,27 +269,7 @@ export const SearchPage = () => {
         <h2 className="text-2xl font-semibold tracking-tight">Search</h2>
 
         {!layerInfo.isConfigured ? (
-          <Notice tone="warning">
-            <div>
-              <p className="font-medium">Not set up for UD</p>
-              {/* Only a maintainer can make a layer, so only a maintainer is
-                  offered the way to. Everyone else is told who can. */}
-              {canManage ? (
-                <p>
-                  This project is not set up for UD.{' '}
-                  <Link
-                    className="text-primary underline underline-offset-4"
-                    to={`/projects/${projectId}/configuration`}
-                  >
-                    Set it up
-                  </Link>
-                  .
-                </p>
-              ) : (
-                <p>This project is not set up for UD. A project maintainer can set it up.</p>
-              )}
-            </div>
-          </Notice>
+          <NotSetUpNotice app="UD" canManage={canManage} setupHref={setupHref(projectId)} />
         ) : (
           <>
             {/* A plain lookup writes a pattern into the box below rather than

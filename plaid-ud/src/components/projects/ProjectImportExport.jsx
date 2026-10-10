@@ -1,3 +1,4 @@
+import { setupHref } from './setup.jsx';
 import JSZip from 'jszip';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { importErrorText } from '../../domain/conlluImport.js';
@@ -109,8 +110,6 @@ const FORMAT = {
   exportDocuments,
   zip,
 };
-
-const setupHref = (projectId) => `/projects/${projectId}/configuration`;
 
 export const ProjectImportExport = () => (
   <ProjectImportExportPage tabs={ProjectTabs} setupHref={setupHref} format={FORMAT} />

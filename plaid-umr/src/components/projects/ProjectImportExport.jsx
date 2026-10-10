@@ -1,3 +1,4 @@
+import { setupHref } from './setup.jsx';
 import JSZip from 'jszip';
 import { exportProjectUmr } from '../../domain/umrExport.js';
 import { UnwritableUmrError } from '../../domain/format/umrFile.js';
@@ -40,8 +41,6 @@ const FORMAT = {
   zip,
   exportFailure,
 };
-
-const setupHref = (projectId) => `/projects/${projectId}/configuration`;
 
 export const ProjectImportExport = () => (
   <ProjectImportExportPage tabs={ProjectTabs} setupHref={setupHref} format={FORMAT} />

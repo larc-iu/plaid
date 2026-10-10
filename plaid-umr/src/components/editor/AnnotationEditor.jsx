@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
+import { setupHref } from '../projects/setup.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -138,25 +140,12 @@ export const AnnotationEditor = () => {
     return (
       <div className="min-h-screen w-full">
         <div className="flex justify-center py-16">
-          <Notice tone="warning" className="max-w-lg p-4">
-            <p className="font-medium">Not set up for UMR</p>
-            {canManageProject(project, user) ? (
-              <p className="mt-1">
-                This project is not set up for UMR.{' '}
-                <Link
-                  className="font-medium underline underline-offset-2"
-                  to={`/projects/${projectId}/configuration`}
-                >
-                  Set it up
-                </Link>
-                .
-              </p>
-            ) : (
-              <p className="mt-1">
-                This project is not set up for UMR. A project maintainer can set it up.
-              </p>
-            )}
-          </Notice>
+          <NotSetUpNotice
+            app="UMR"
+            canManage={canManageProject(project, user)}
+            setupHref={setupHref(projectId)}
+            className="max-w-lg p-4"
+          />
         </div>
       </div>
     );

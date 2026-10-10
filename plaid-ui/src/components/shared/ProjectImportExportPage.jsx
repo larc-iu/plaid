@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Check, Download, FileText, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { Check, Download, FileText, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
@@ -16,6 +16,7 @@ import { Progress } from '../ui/progress';
 import { baseFileName, dedupeFileName, sanitizeFileName } from './archiveNames.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
+import { NotSetUpNotice } from './NotSetUpNotice.jsx';
 
 const downloadBlob = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -370,28 +371,11 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
             </CardHeader>
             <CardContent>
               {!configured ? (
-                <Notice tone="warning" icon={TriangleAlert}>
-                  <p className="font-medium">Not set up for {format.app}</p>
-                  {/* Only a maintainer can make a layer, so only a maintainer
-                      is offered the way to. */}
-                  {canManage ? (
-                    <p>
-                      This project is not set up for {format.app}.{' '}
-                      <Link
-                        className="text-primary underline underline-offset-4"
-                        to={setupHref(projectId)}
-                      >
-                        Set it up
-                      </Link>
-                      .
-                    </p>
-                  ) : (
-                    <p>
-                      This project is not set up for {format.app}. A project maintainer can set it
-                      up.
-                    </p>
-                  )}
-                </Notice>
+                <NotSetUpNotice
+                  app={format.app}
+                  canManage={canManage}
+                  setupHref={setupHref(projectId)}
+                />
               ) : (
                 <div className="flex flex-col gap-4">
                   <Dropzone

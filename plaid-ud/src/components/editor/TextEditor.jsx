@@ -11,8 +11,9 @@ import { containsToken } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
-import { canEditProject, readOnlyReason } from '@ui/domain/permissions.js';
-import { NotSetUpForUd } from './NotSetUpForUd.jsx';
+import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
+import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
+import { setupHref } from '../projects/setup.jsx';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { ParseDialog } from './services/ParseDialog.jsx';
@@ -416,9 +417,13 @@ export const TextEditor = () => {
       {!canEdit && <Notice className="mb-3">Read-only. {readOnlyReason(project, user)}</Notice>}
 
       {setupIncomplete && (
-        <Notice tone="warning" className="mb-3">
-          <NotSetUpForUd project={project} user={user} />
-        </Notice>
+        <NotSetUpNotice
+          app="UD"
+          canManage={canManageProject(project, user)}
+          setupHref={setupHref(project.id)}
+          title={false}
+          className="mb-3"
+        />
       )}
 
       {behind && !readOnly && (
