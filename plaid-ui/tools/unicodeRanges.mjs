@@ -1,6 +1,6 @@
-// What the Unicode range generators share (plaid-umr's tools/letterClasses.mjs):
-// the pin, the ranges a pattern matches, and the packed string plaid-ui's
-// src/lib/unicodeRanges.js reads back.
+// What the Unicode range generators share (plaid-umr's tools/letterClasses.mjs,
+// plaid-igt's tools/punctuationClasses.mjs): the pin, the ranges a pattern
+// matches, and the packed string plaid-ui's src/lib/unicodeRanges.js reads back.
 
 /**
  * Stops the run unless this node's Unicode is `pinned`. Moving a pin is a

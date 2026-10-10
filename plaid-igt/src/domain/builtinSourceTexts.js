@@ -30,6 +30,7 @@ import s25 from '@ui/domain/glossCase.js?raw';
 import s27 from './bulk.js?raw';
 import s28 from './morphTypeCaches.js?raw';
 import s29 from '@ui/domain/permissions.js?raw';
+import s30 from '@ui/lib/unicodeRanges.js?raw';
 
 export const SOURCE_TEXTS = {
   'plaid-client-js/src/ids.js': s24,
@@ -59,4 +60,5 @@ export const SOURCE_TEXTS = {
   'plaid-ui/src/domain/pendingIds.js': s21,
   'plaid-ui/src/domain/permissions.js': s29,
   'plaid-ui/src/domain/setupGuard.js': s23,
+  'plaid-ui/src/lib/unicodeRanges.js': s30,
 };

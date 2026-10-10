@@ -21,7 +21,8 @@
     "plaid-ui/src/domain/glossCase.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js",
-    "plaid-ui/src/domain/setupGuard.js"
+    "plaid-ui/src/domain/setupGuard.js",
+    "plaid-ui/src/lib/unicodeRanges.js"
   ],
   "precedent": [
     "plaid-client-js/src/ids.js",
@@ -46,6 +47,7 @@
     "plaid-ui/src/domain/glossCase.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js",
-    "plaid-ui/src/domain/permissions.js"
+    "plaid-ui/src/domain/permissions.js",
+    "plaid-ui/src/lib/unicodeRanges.js"
   ]
 }
