@@ -1358,12 +1358,10 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Option
     def check(op, found):
         # A rule must find what it found when it was staged, in every
         # document (`core.rules.check_matched`): the plan is refused whole
-        # otherwise. A scope staged before rules is held to its documents.
+        # otherwise.
         if rules.is_rule(op):
             rules.check_matched(op, rules.matched(KIND, found, lambda o: o.get('doc'), res.ws.replaces_work),
                                 lambda d: _doc_name(res.ws, d))
-        else:
-            check_reach(op, found, lambda o: o.get('doc'))
     # A value two rules change is written once, by the later one, as staging
     # counted it (`bulk.settle_rules`).
     from .bulk import later_rule_wins

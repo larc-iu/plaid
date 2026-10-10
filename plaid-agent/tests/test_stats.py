@@ -127,13 +127,16 @@ def test_bulk_plans():
     # 4 words (case-insensitive, like search) + the stored morpheme forms of those words
     # (Ali, Gam, ar) + every lexicon headword the pattern hits (Ali, gam, gam), as Bulk Edit does.
     assert 'Planned 10 changes' in out and '(4 words, 3 morpheme forms, 3 lexicon headwords.)' in out
-    kinds = [o['kind'] for o in w.ops[-10:]]
+    # One rule on the card, found again at approval.
+    assert w.ops[-1]['kind'] == 'bulk_scope' and w.ops[-1]['tool'] == 'respell_all'
+    found = changes(w)[-10:]
+    kinds = [o['kind'] for o in found]
     assert kinds.count('respell') == 4 and kinds.count('set_morpheme_form') == 3 and kinds.count('rename_entry') == 3
-    respells = [o for o in w.ops if o['kind'] == 'respell']
+    respells = [o for o in found if o['kind'] == 'respell']
     assert respells[-1]['value'] == 'Gäm-är'
-    forms = {o['morpheme_id']: o['form'] for o in w.ops if o['kind'] == 'set_morpheme_form'}
+    forms = {o['morpheme_id']: o['form'] for o in found if o['kind'] == 'set_morpheme_form'}
     assert forms == {'m-1a': 'äli', 'm-4a': 'Gäm', 'm-4b': 'är'}
-    assert {o['item_id']: o['form'] for o in w.ops if o['kind'] == 'rename_entry'} == {'vi-ali': 'äli', 'vi-gam': 'gäm', 'vi-gam2': 'gäm'}
+    assert {o['item_id']: o['form'] for o in found if o['kind'] == 'rename_entry'} == {'vi-ali': 'äli', 'vi-gam': 'gäm', 'vi-gam2': 'gäm'}
     assert 'Planned 3 changes' in call_tool(ws(), 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True,
                                                                     'morpheme_forms': False, 'lexicon': False})
     # replace_in_field on the stored morpheme forms (derived forms are left to respell_all)
@@ -148,6 +151,9 @@ def test_bulk_plans():
     assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '.*', 'replacement': '', 'regex': True})
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
     assert 'Planned 3 words in 1 document, as one row on the card' in out  # w-1 already has IPA
+    # The respelling above is a rule reaching Text 1, so an analysis is planned
+    # on its own.
+    w = ws()
     out = call_tool(w, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     assert 'Planned 1 change' in out and w.ops[-1]['kind'] == 'set_analysis' and w.ops[-1]['word_id'] == 'w-2'
     assert 'Nothing to change' in call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'skip_analyzed': True,
@@ -253,14 +259,9 @@ def test_a_clipped_read_is_never_reported_as_the_whole_corpus():
 
 def test_a_failing_tool_call_leaves_no_partial_plan():
     w = ws()
-    # the cap: 10 items would change, cap it at 2 for the test
-    import plaid_agent.igt.bulk as bulk
-    old = bulk.PLAN_MAX_OPS
-    bulk.PLAN_MAX_OPS = 2
-    try:
-        assert 'more than the 2' in call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
-    finally:
-        bulk.PLAN_MAX_OPS = old
+    # a respelling that would empty a word
+    assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '^.*$', 'regex': True,
+                                                                 'replacement': ''})
     assert w.ops == []
     # a bad ref in a multi-ref call
     assert 'not a morpheme' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2', 's1.w2'], 'field': 'Morph Gloss', 'value': 'x'})

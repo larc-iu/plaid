@@ -118,12 +118,11 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
 
 # --- corpus-wide changes as ONE op ----------------------------------------------
 #
-# Each corpus-wide tool's query path is a function of (workspace, args, cap)
-# that returns the per-span ops it would stage. Under PLAN_MAX_OPS those ops are
-# staged as they are, in step with the scan path. Past it, the plan holds ONE
-# `bulk_scope` op naming the tool and its arguments, and the same function
-# runs again at approval (igt.plan.resolve_scopes), with every document the
-# preview matched pinned by version so what is found then is what was counted.
+# Each corpus-wide tool is a function of (workspace, args, cap) that returns the
+# per-span ops it would stage (``SCOPED``). The plan holds ONE rule naming the
+# tool and its arguments (``core.rules``), and the same function runs again at
+# approval (igt.plan.resolve_scopes), which refuses the plan if it finds
+# anything other than what was counted.
 
 # Candidates one pass may consider; past it, narrow and go in passes. Not
 # the same number as UD's REPLACE_MAX, which counts the CHANGES one plan
@@ -261,15 +260,42 @@ def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
     from .queries import q_respell_all, rx
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
-    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
-              case_sensitive=bool(a.get('case_sensitive')))
-    staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms', True)), cap)
-    if n_words > cap:
-        raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
-                        f'Narrow it (a document, a stricter pattern) and go in passes.')
-    if a.get('lexicon', True):
+    if ws.use_scan(a.get('document')):
+        staged = _scan_respell(ws, rep, a.get('document'), bool(a.get('morpheme_forms')))
+    else:
+        spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
+                  case_sensitive=bool(a.get('case_sensitive')))
+        staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms')), cap)
+        if n_words > cap:
+            raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
+                            f'Narrow it (a document, a stricter pattern) and go in passes.')
+    if a.get('lexicon'):
         staged = staged + _lexicon_renames(ws, rep)
     return staged
+
+
+def _scan_respell(ws: Workspace, rep, document: Optional[str], morpheme_forms: bool) -> List[Dict[str, Any]]:
+    """respell_all over the documents themselves, word by word, each word's
+    respelling followed by its morpheme forms'."""
+    out: List[Dict[str, Any]] = []
+    for doc in _docs(ws, document):
+        for s in doc.sentences:
+            for w in s.words:
+                new = rep(w.surface)
+                if new == w.surface:
+                    continue
+                if not new.strip():
+                    raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; '
+                                    'a respelling cannot remove a word (retype_sentence can)')
+                check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
+                out.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
+                            'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}',
+                                                      f'respell {qv(w.surface)} → {qv(new)}')})
+                for m in w.morphemes if morpheme_forms else ():
+                    nm = rep(m.form) if has_own_form(m) else m.form
+                    if nm != m.form and nm.strip():
+                        out.append({**morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm), 'doc': doc.id})
+    return out
 
 
 def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
@@ -325,45 +351,6 @@ def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dic
 
 SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
           'copy_to_orthography': _scoped_copy, 'set_field_for_form': _scoped_set_for_form}
-
-
-def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str, Any]], unit: str,
-           what: str) -> str:
-    """Stage what a corpus-wide tool computed: op by op under the cap, as one
-    bulk_scope op past it. Either way the plan is pinned to the documents as
-    the query saw them (``note_versions``), and a bulk_scope op carries how
-    many of its changes replace a person's work, counted now from the
-    provenance the query returned, since it is resolved again only when
-    approved."""
-    docs = sorted({op['doc'] for op in staged if op.get('doc')})
-    ws.note_versions(docs)
-    if len(staged) <= PLAN_MAX_OPS:
-        # A stored morpheme a planned analysis rewrites is left as that
-        # analysis has it, as the scan path leaves it (the funnel would refuse
-        # the whole call over it).
-        analysed = analysed_morphemes(ws.ops)
-        kept = [op for op in staged if not ws.moot_under(op, analysed)]
-        ws.add_ops(kept)
-        return _bulk_note(ws, kept, what) + left_for_analysis(len(staged) - len(kept))
-    _clear_of_reshapes(ws, docs)
-    # Staged as one scope, its ops never pass add_op, so the values they would
-    # write are held to their layers' lists here, as op by op under the cap.
-    for op in staged:
-        ws.refuse_off_list(op)
-    counts: Dict[str, int] = {}
-    for op in staged:
-        counts[op['kind']] = counts.get(op['kind'], 0) + 1
-    accepted = ws.count_replaced_work(staged)
-    ws.add_op({'kind': 'bulk_scope', 'tool': tool, 'args': args, 'counts': counts, 'count': len(staged),
-               'documents': docs, work.COUNTED: accepted,
-               'label': f'{tool}: {len(staged)} changes in {len(docs)} documents ('
-                        + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'
-                        + work.counted_phrase(accepted)})
-    return (ws.planned_note(len(staged), f'{len(staged)} changes to {what}, as one row on the card')
-            + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
-               if accepted else '')
-            + _by_document(ws, staged) + '\nFor example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
-            + (f'\n  … {len(staged) - SAMPLE_LINES} more' if len(staged) > SAMPLE_LINES else ''))
 
 
 def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change: str, head: str, what: str,
@@ -788,58 +775,25 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     glosses, and links survive. Patterns apply within a word, never across
     word boundaries. As in the editor's Bulk Edit, the replacement is carried
     into the stored morpheme forms of the respelled words and into every
-    lexicon headword it matches, unless switched off."""
+    lexicon headword it matches, unless switched off. Staged as one rule."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
-    staged: List[Dict[str, Any]] = []
-    n_words = n_morphs = n_entries = 0
-    if not ws.use_scan(document):
-        args = {'pattern': pattern, 'replacement': replacement, 'regex': bool(regex), 'whole': bool(whole),
-                'case_sensitive': bool(case_sensitive), 'morpheme_forms': bool(morpheme_forms), 'lexicon': bool(lexicon)}
-        staged = _scoped_respell(ws, args, CANDIDATE_MAX)
-        kinds = [op['kind'] for op in staged]
-        out = _stage(ws, 'respell_all', args, staged, 'respell', 'words')
-        if staged:
-            out += (f'\n({kinds.count("respell")} words, {kinds.count("set_morpheme_form")} morpheme forms, '
-                    f'{kinds.count("rename_entry")} lexicon headwords.)')
-        return out + (_kept_lexicons(ws, rep) if lexicon else '')
-    analysed = analysed_morphemes(ws.ops)
-    left = 0
-    for doc in _docs(ws, document):
-        for s in doc.sentences:
-            for w in s.words:
-                new = rep(w.surface)
-                if new == w.surface:
-                    continue
-                if not new.strip():
-                    raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; '
-                                    'a respelling cannot remove a word (retype_sentence can)')
-                check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
-                staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
-                               'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}', f'respell {qv(w.surface)} → {qv(new)}')})
-                n_words += 1
-                if not morpheme_forms:
-                    continue
-                for m in w.morphemes:
-                    if not has_own_form(m):
-                        continue
-                    nm = rep(m.form)
-                    if nm == m.form or not nm.strip():
-                        continue
-                    if m.id in analysed:
-                        left += 1
-                        continue
-                    staged.append(morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm))
-                    n_morphs += 1
-    if lexicon:
-        renames = _lexicon_renames(ws, rep)
-        staged += renames
-        n_entries = len(renames)
-    _check_cap(len(staged))
-    ws.add_ops(staged)
-    out = _bulk_note(ws, staged, 'words')
-    if staged:
-        out += (f'\n({n_words} words, {n_morphs} morpheme forms, {n_entries} lexicon headwords.)')
-    out += left_for_analysis(left)
+    doc_id = ws.doc(document).id if document else None
+    args = rules.normalize({'pattern': pattern, 'replacement': replacement, 'regex': regex, 'whole': whole,
+                            'case_sensitive': case_sensitive, 'morpheme_forms': morpheme_forms,
+                            'lexicon': lexicon, 'document': doc_id},
+                           ('regex', 'whole', 'case_sensitive', 'morpheme_forms', 'lexicon'))
+    args['replacement'] = replacement or ''
+    shown, _ = rules.pattern_words(pattern, bool(regex))
+    mode = rules.match_mode(pattern, bool(regex), bool(whole), bool(case_sensitive))
+    out = _stage_rule(ws, 'respell_all', args, ('change', 'changes'),
+                      change=f'respell {shown} → {qv(replacement)}',
+                      head=f'respell {shown} as {qv(replacement)} ({mode})', what='words', mode=mode)
+    key = ('rule', 'respell_all', rules.fingerprint_args(args))
+    keep = rule_keep(ws, ws.ops)
+    kinds = [o['kind'] for o in ws.rule_found.get(key, []) if keep(o)]
+    if kinds and any(rules.is_rule(o) and rules.target(o) == key for o in ws.ops):
+        out += (f'\n({kinds.count("respell")} words, {kinds.count("set_morpheme_form")} morpheme forms, '
+                f'{kinds.count("rename_entry")} lexicon headwords.)')
     return out + (_kept_lexicons(ws, rep) if lexicon else '')
 
 

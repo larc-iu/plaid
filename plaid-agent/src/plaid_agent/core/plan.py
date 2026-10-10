@@ -63,9 +63,9 @@ class PlanFull(Exception):
     """Staging these ops would push the plan past :data:`PLAN_MAX_OPS`."""
 
 
-# Ops that stand for many values: a rule (its `matched` list) and the
-# apps' corpus-wide scope ops. Each is one row on the card.
-_MANY_KINDS = frozenset({'bulk_scope', 'replace_scope'})
+#: The key an app sets on a stored op that stands for ``count`` values without
+#: being a rule (which its ``matched`` list says). Each is one row on the card.
+MANY = 'many'
 
 
 def changes_of(op: Dict[str, Any]) -> int:
@@ -73,7 +73,7 @@ def changes_of(op: Dict[str, Any]) -> int:
     rule or a corpus-wide replacement is the values it changes, anything else
     one. The step summary, the progress line and the tool's note all count
     in it, so a rule over 7 values is 7 planned changes everywhere."""
-    if isinstance(op, dict) and (isinstance(op.get('matched'), list) or op.get('kind') in _MANY_KINDS):
+    if isinstance(op, dict) and (isinstance(op.get('matched'), list) or op.get(MANY)):
         return int(op.get('count') or 0)
     return 1
 

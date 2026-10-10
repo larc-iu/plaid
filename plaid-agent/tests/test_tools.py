@@ -730,10 +730,8 @@ def test_a_replacement_is_one_rule_resolved_at_approval():
 
 
 
-def test_a_respelling_past_the_cap_is_one_op_that_a_reshape_cannot_join(monkeypatch):
-    from plaid_agent.igt import bulk
+def test_a_respelling_is_one_rule_that_a_reshape_cannot_join():
     from plaid_agent.igt.plan import execute_plan, summarize, validate_ops
-    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 1)
     w = scan_ws(FakeClient())
     w.prefer_scan = False
 
@@ -746,10 +744,10 @@ def test_a_respelling_past_the_cap_is_one_op_that_a_reshape_cannot_join(monkeypa
         return {'return': 'entities', 'results': []}
     w.client.query = query
     out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'lexicon': False, 'morpheme_forms': False})
-    assert 'Planned 2 changes to words, as one row on the card' in out
+    assert 'Planned 2 changes in 1 document, as one row on the card' in out, out
     op = w.ops[0]
     assert op['kind'] == 'bulk_scope' and op['tool'] == 'respell_all' and op['counts'] == {'respell': 2}
-    assert summarize(w.ops) == '2 respellings'
+    assert summarize(w.ops) == 'respell "a" → "ä" (2 changes)'
     # Nothing that reshapes a reached document may join the plan, in either order.
     assert 'corpus-wide change' in call_tool(w, 'split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2})
     with pytest.raises(ValueError, match='meet for the first time'):

@@ -21,7 +21,7 @@ from ..core.bidi import qrx, qv
 from ..core.limits import SAMPLE_LINES
 from ..core.provenance import unmark
 from ..core.history import doc_label
-from ..core.plan import by_document
+from ..core.plan import MANY, by_document
 from ..core.replace import replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
@@ -189,7 +189,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     shown = qrx(pattern) if regex else qv(pattern)
     ws.add_op({'kind': 'replace_scope', 'field': field, 'pattern': pattern, 'replacement': replacement,
                'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
-               'document_id': document_id, 'documents': docs, 'count': len(found), 'ref': None,
+               'document_id': document_id, 'documents': docs, 'count': len(found), MANY: True, 'ref': None,
                work.COUNTED: accepted, 'change': f'{field} {shown} → {qv(replacement)}',
                CARD: _card(field, pattern, replacement, bool(regex), bool(whole), bool(case_sensitive),
                            found, names),

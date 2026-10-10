@@ -380,19 +380,6 @@ def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_
     assert '1 morpheme of words whose analysis this plan rewrites was left as planned' in out, out
 
 
-def test_the_query_path_leaves_them_too():
-    """Under the cap a corpus-wide tool's query path stages its ops as they
-    are, and the funnel would refuse the whole call over one of them."""
-    from plaid_agent.igt.bulk import _stage
-    w = scan_ws(FakeClient())
-    _analyse_ali(w)
-    ops = [{'kind': 'set_span', 'layer_id': 'sl-mgloss', 'token_id': tid, 'span_id': sid, 'value': 'X',
-            'doc': 'd1', 'label': f'{tid}: X'} for tid, sid in (('m-1a', 'sp-m1a'), ('m-4a', None))]
-    out = _stage(w, 'set_field_for_form', {}, ops, 'set_span', 'values')
-    assert [op.get('token_id') for op in w.ops] == [None, 'm-4a'], out
-    assert 'was left as planned' in out
-
-
 @pytest.mark.parametrize('analysis_first', [True, False])
 def test_a_deleted_entry_never_deletes_a_link_an_analysis_took_with_its_morpheme(analysis_first):
     """A new analysis of s1.w1 deletes m-1b, and the server takes l-2 (-di)
