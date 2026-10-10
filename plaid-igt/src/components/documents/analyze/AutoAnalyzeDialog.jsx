@@ -13,6 +13,7 @@ import { resolveAutoAnalysis } from '@/domain/igtConfig';
 import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
+import { countOf } from '@ui/lib/plural.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { runHeldNotice } from '@ui/components/services/runHeld.js';
 
@@ -214,13 +215,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     // be said.
     const noteFailures = (result, verb) => {
       const failed = result?.sentencesFailed?.length ?? 0;
-      if (failed) parts.push(`could not ${verb} ${plural(failed, 'sentence')}`);
+      if (failed) parts.push(`could not ${verb} ${countOf(failed, 'sentence')}`);
     };
     // A field a service reads only for context, and went on without.
     const noteMissing = (name, scope, what) => {
       if (name) parts.push(`read no ${what} (no ${scope} field “${name}”)`);
     };
-    const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
     const identifiers = {
       documentId: doc.id,
       projectId: project.id,
@@ -271,7 +271,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         await reload();
         const n = result?.sentencesWritten ?? result?.sentences_written;
         if (n > 0) {
-          parts.push(`proposed translations for ${plural(n, 'sentence')}`);
+          parts.push(`proposed translations for ${countOf(n, 'sentence')}`);
           wrote = true;
         }
         noteFailures(result, 'translate');
@@ -306,7 +306,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         if (wasStopped) return halt();
         copiedWordIds = ids || [];
         if (copied) {
-          parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
+          parts.push(`copied previous analyses onto ${countOf(copied, 'word')}`);
           wrote = true;
         }
       }
@@ -341,13 +341,13 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         await reload();
         const n = result?.wordsWritten ?? result?.words_written;
         if (n > 0) {
-          parts.push(`proposed analyses for ${plural(n, 'word')}`);
+          parts.push(`proposed analyses for ${countOf(n, 'word')}`);
           wrote = true;
         }
         const prot = result?.skipped?.protected ?? 0;
         if (prot)
           parts.push(
-            `left ${plural(prot, 'word')} with a person’s morphemes or morpheme glosses alone (“Overwrite human-edited annotations” replaces them)`,
+            `left ${countOf(prot, 'word')} with a person’s morphemes or morpheme glosses alone (“Overwrite human-edited annotations” replaces them)`,
           );
         noteFailures(result, 'analyze');
         noteMissing(result?.translationFieldMissing, 'sentence', 'translations');

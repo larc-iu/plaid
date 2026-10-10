@@ -38,6 +38,7 @@ import {
   readFieldLang,
 } from '../domain/igtConfig.js';
 import { ROLES } from '@larc-iu/plaid-client';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 import { readTagsetName } from '../domain/tagsets.js';
 import { normalizeVocabFields } from '../domain/vocabFields.js';
 import {
@@ -366,7 +367,7 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   const itemIds = new Set(items.map((it) => it.id));
   const nodes = commentNodes(comments, (type, id) => type === 'vocab-item' && itemIds.has(id));
   const dropped = (comments || []).length - nodes.length;
-  if (dropped > 0) onWarning?.(`${plural(dropped, 'comment')} on deleted entries not exported`);
+  if (dropped > 0) onWarning?.(`${countOf(dropped, 'comment')} on deleted entries not exported`);
   return {
     id: vocab?.id ?? null,
     name: vocab?.name ?? null,
@@ -740,8 +741,6 @@ function commentNodes(comments, archived = () => true) {
     }));
 }
 
-const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
-
 /**
  * One document. `mediaFile` is the archive path of the embedded media (or
  * null). Offsets are code points into baseline.body; times are seconds.
@@ -824,7 +823,7 @@ export function serializeDocumentNative(
   const dropped = (comments || []).length - nodes.length;
   if (dropped > 0) {
     onWarning?.(
-      `${plural(dropped, 'comment')} not exported (what they are about is deleted, or belongs to another app)`,
+      `${countOf(dropped, 'comment')} not exported (what they are about is deleted, or belongs to another app)`,
     );
   }
 

@@ -16,6 +16,7 @@ import { bulkInChunks } from '../../domain/bulk.js';
 import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstraints.js';
 import { humanizeError } from '../../../../plaid-ui/src/lib/errors.js';
 import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import {
   UNCARRIED_PLAID_KEYS,
@@ -25,8 +26,6 @@ import {
 } from '../../domain/otherLayers.js';
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
-
-const plural = (n, noun, nouns = `${noun}s`) => `${n} ${n === 1 ? noun : nouns}`;
 
 // The keys of the archive's `layers` naming this app's own token layers.
 const OWN_LAYER_KEYS = [
@@ -335,7 +334,7 @@ export async function declareOtherLayerRules({ client, restored, warnings = [] }
       const { pending } = await ensureLayerConstraints(client, wanted, { canManage: true });
       for (const p of pending) {
         warnings.push(
-          `Another app's rules for "${r.name}" are not in force (${plural(p.violationCount, 'annotation breaks', 'annotations break')} them)`,
+          `Another app's rules for "${r.name}" are not in force (${countOf(p.violationCount, 'annotation breaks', 'annotations break')} them)`,
         );
       }
     } catch (err) {
@@ -387,7 +386,7 @@ export async function importOtherLayerData({
     const layer = restored.tokenLayers.get(oldLayerId);
     if (!layer) {
       warnings.push(
-        `"${name}": ${plural(rows.length, 'token')} from another app skipped (${NOT_DESCRIBED})`,
+        `"${name}": ${countOf(rows.length, 'token')} from another app skipped (${NOT_DESCRIBED})`,
       );
       continue;
     }
@@ -420,7 +419,7 @@ export async function importOtherLayerData({
     const spanLayerId = restored.spanLayers.get(oldLayerId);
     if (!spanLayerId) {
       warnings.push(
-        `"${name}": ${plural(rows.length, 'annotation')} from another app skipped (${NOT_DESCRIBED})`,
+        `"${name}": ${countOf(rows.length, 'annotation')} from another app skipped (${NOT_DESCRIBED})`,
       );
       continue;
     }
@@ -436,7 +435,7 @@ export async function importOtherLayerData({
     }
     if (kept.length < rows.length) {
       warnings.push(
-        `"${name}": ${plural(rows.length - kept.length, 'annotation')} from another app skipped (unresolvable tokens)`,
+        `"${name}": ${countOf(rows.length - kept.length, 'annotation')} from another app skipped (unresolvable tokens)`,
       );
     }
     const ids = await refs.create('span', specs, (sent) =>
@@ -454,7 +453,7 @@ export async function importOtherLayerData({
     const relationLayerId = restored.relationLayers.get(oldLayerId);
     if (!relationLayerId) {
       warnings.push(
-        `"${name}": ${plural(rows.length, 'relation')} from another app skipped (${NOT_DESCRIBED})`,
+        `"${name}": ${countOf(rows.length, 'relation')} from another app skipped (${NOT_DESCRIBED})`,
       );
       continue;
     }
@@ -471,7 +470,7 @@ export async function importOtherLayerData({
     }
     if (kept.length < rows.length) {
       warnings.push(
-        `"${name}": ${plural(rows.length - kept.length, 'relation')} skipped (unresolvable annotations)`,
+        `"${name}": ${countOf(rows.length - kept.length, 'relation')} skipped (unresolvable annotations)`,
       );
     }
     const ids = await refs.create('relation', specs, (sent) =>

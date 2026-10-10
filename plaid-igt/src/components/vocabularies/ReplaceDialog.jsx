@@ -24,6 +24,7 @@ import {
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
 import { isolate } from '@ui/lib/bidi.js';
+import { countOf } from '@ui/lib/plural.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
@@ -40,8 +41,6 @@ import { skippedNote } from '../projects/bulk/bulkShared.js';
 // entries where a field is missing, and Bulk Edit rewrites document text,
 // where there is no blank to fill.
 const REPLACE_MATCH_TYPES = [...MATCH_TYPES, { id: MATCH_EMPTY, label: 'is empty' }];
-
-const plural = (n, word, words = `${word}s`) => `${n.toLocaleString()} ${n === 1 ? word : words}`;
 
 const Checkbox = ({ checked, onChange, indeterminate = false, ...rest }) => (
   <input
@@ -194,7 +193,7 @@ export const ReplaceDialog = ({
           notifyWarning(note.trim(), filling ? 'Nothing set' : 'Nothing replaced');
         else
           notifySuccess(
-            `${plural(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.${note}`,
+            `${countOf(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.${note}`,
             filling ? 'Set' : 'Replaced',
           );
         setFind('');
@@ -297,7 +296,7 @@ export const ReplaceDialog = ({
           {asked && !error && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span>
-                <strong>{plural(rows.length, 'match', 'matches')}</strong>,{' '}
+                <strong>{countOf(rows.length, 'match', 'matches')}</strong>,{' '}
                 <strong>{chosen.length.toLocaleString()}</strong> selected
               </span>
               {writable.length > 0 && (
@@ -322,13 +321,13 @@ export const ReplaceDialog = ({
           )}
           {outsideTagset > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {plural(outsideTagset, 'value')} would fall outside the{' '}
+              {countOf(outsideTagset, 'value')} would fall outside the{' '}
               <strong>{target?.tagset ?? 'field'}</strong> tagset and cannot be written.
             </p>
           )}
           {emptied > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {plural(emptied, 'entry', 'entries')} would be left with no form and cannot be
+              {countOf(emptied, 'entry', 'entries')} would be left with no form and cannot be
               written.
             </p>
           )}
@@ -378,7 +377,7 @@ export const ReplaceDialog = ({
               ? filling
                 ? 'Setting…'
                 : 'Replacing…'
-              : `${filling ? 'Set' : 'Replace'} ${plural(chosen.length, 'value')}`}
+              : `${filling ? 'Set' : 'Replace'} ${countOf(chosen.length, 'value')}`}
           </Button>
         </DialogFooter>
       </DialogContent>
