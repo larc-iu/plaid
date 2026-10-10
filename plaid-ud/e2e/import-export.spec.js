@@ -96,10 +96,23 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
   await expect(page.getByText(id1, { exact: true })).toBeVisible();
   await expect(page.getByText(id2, { exact: true })).toBeVisible();
 
+  // A name a file system would spell otherwise: the zip records it exactly.
+  const odd = `${id1} with Mr.`;
+  const docs = await client.projects.listDocuments(PID);
+  await client.documents.update(docs.find((d) => d.name === id1).id, odd);
+
   // --- Project-wide export downloads a .zip ---
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/\.zip$/);
+
+  // --- The zip imports again, every document under its exact name ---
+  await page.locator('input[type=file]').setInputFiles(await download.path());
+  await page.getByRole('button', { name: /^Import/ }).click();
+  await expect(page.getByText(/Imported 2 of 2/)).toBeVisible({ timeout: 30_000 });
+  const names = (await client.projects.listDocuments(PID)).map((d) => d.name);
+  expect(names.filter((n) => n === odd)).toHaveLength(2);
+  expect(names.filter((n) => n === id2)).toHaveLength(2);
 });

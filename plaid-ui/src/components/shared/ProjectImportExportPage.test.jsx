@@ -214,10 +214,12 @@ describe('export', () => {
     });
     const view = await mount(format);
     await run(view);
-    expect(format.zip).toHaveBeenCalledWith([
+    const files = format.zip.mock.calls[0][0];
+    expect(files.slice(0, 2)).toEqual([
       { path: 'Story.xy', text: '1' },
       { path: 'Story (2).xy', text: '2' },
     ]);
+    expect(files[2].path).toBe('plaid-documents.json');
     expect(notify.notifySuccess).toHaveBeenCalledWith('Exported 2 documents.');
     await view.unmount();
   });
@@ -270,6 +272,73 @@ describe('export', () => {
     const view = await mount(format);
     await run(view);
     expect(notify.notifyError).toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+describe('a zip the export made, imported again', () => {
+  // H15-REVIEW-2: an entry's name is a safe spelling of the document's, so
+  // the import reads the exact name from the zip's own record.
+  const NAMES = ['Interview with Mr.', 'U.S.', '.notes', 'a  b', 'a b', '...', 'Ali: story 1'];
+
+  it("names every document exactly as the project did, though two share an entry's spelling", async () => {
+    const format = baseFormat();
+    format.exportDocuments = vi.fn(async () => ({
+      documents: NAMES.length,
+      entries: NAMES.map((name, i) => ({ name, text: `${i}` })),
+      skipped: [],
+    }));
+    let zipped;
+    format.zip = vi.fn(async (files) => {
+      zipped = files;
+      return new Blob(['zip']);
+    });
+    format.unzip = vi.fn(async () =>
+      zipped.map((f) => ({ path: f.path, bytes: new TextEncoder().encode(f.text) })),
+    );
+    const seen = [];
+    format.prepareImport = vi.fn(async () => async ({ text, index, name, push }) => {
+      seen.push([text, name]);
+      push({ key: `${index}`, name, status: 'imported', warnings: [] });
+    });
+    const view = await mount(format);
+    await view.step(async () => {
+      button(view.container, 'Export').click();
+      await settle();
+      await settle();
+    });
+    await drop(view, [file('Ay Bee.zip', 'zip')]);
+    await view.step(async () => {
+      button(view.container, 'Import').click();
+      await settle();
+      await settle();
+    });
+    expect(seen).toEqual(NAMES.map((name, i) => [`${i}`, name]));
+    expect(view.container.textContent).toContain(`Imported ${NAMES.length} of ${NAMES.length}`);
+    await view.unmount();
+  });
+
+  it('names loose files by a record dropped beside them, and imports no record', async () => {
+    const format = baseFormat();
+    const seen = [];
+    format.prepareImport = vi.fn(async () => async ({ index, name, push }) => {
+      seen.push(name);
+      push({ key: `${index}`, name, status: 'imported', warnings: [] });
+    });
+    const view = await mount(format);
+    const record = JSON.stringify({
+      documents: [{ file: 'Interview with Mr.xy', name: 'Interview with Mr.' }],
+    });
+    await drop(view, [
+      file('Interview with Mr.xy', 'a'),
+      file('other.xy', 'b'),
+      file('plaid-documents.json', record),
+    ]);
+    await view.step(async () => {
+      button(view.container, 'Import').click();
+      await settle();
+    });
+    expect(seen).toEqual(['Interview with Mr.', 'other']);
     await view.unmount();
   });
 });

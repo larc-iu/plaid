@@ -7,14 +7,22 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useProject } from '../../hooks/useProject.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess, notifyWarning } from '../../lib/notify.js';
-import { NotUtf8FileError, readTextFile } from '../../lib/textFile.js';
+import { decodeText, NotUtf8FileError, readTextFile } from '../../lib/textFile.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Progress } from '../ui/progress';
-import { baseFileName, dedupeFileName } from './archiveNames.js';
+import {
+  baseFileName,
+  dedupeFileName,
+  entryFileName,
+  isNamesRecord,
+  namesRecord,
+  NAMES_FILE,
+  readNamesRecord,
+} from './archiveNames.js';
 import { saveBlob, sanitizeFilename } from '../../lib/download.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
@@ -81,6 +89,54 @@ const Dropzone = ({ onFiles, disabled, accept, children }) => {
   );
 };
 
+const isZip = (file) => /\.zip$/i.test(file.name);
+
+/**
+ * The dropped files as files to import, each with the document name its
+ * archive records for it, or null. A `.zip` the app can open gives its
+ * entries, named by the zip's own record, and a loose record names the loose
+ * files beside it. A zip that cannot be opened is `{ file, failed }`.
+ */
+const filesToImport = async (files, unzip) => {
+  const out = [];
+  const looseRecord = files.find((f) => isNamesRecord(f.name));
+  const looseNames = looseRecord
+    ? readNamesRecord(await readTextFile(looseRecord).catch(() => ''))
+    : new Map();
+  for (const file of files) {
+    if (file === looseRecord) continue;
+    if (!unzip || !isZip(file)) {
+      out.push({ file, recorded: looseNames.get(file.name) ?? null });
+      continue;
+    }
+    let entries;
+    try {
+      entries = await unzip(file);
+    } catch (err) {
+      out.push({ file, failed: err });
+      continue;
+    }
+    const record = entries.find((e) => isNamesRecord(e.path));
+    let names = new Map();
+    if (record) {
+      try {
+        names = readNamesRecord(decodeText(record.bytes));
+      } catch {
+        // A record that is not text names nothing.
+      }
+    }
+    for (const e of entries) {
+      if (e === record) continue;
+      const name = entryFileName(e.path);
+      out.push({
+        file: new File([e.bytes], name, { lastModified: file.lastModified }),
+        recorded: names.get(name) ?? null,
+      });
+    }
+  }
+  return out;
+};
+
 const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">{text}</code>;
 
 /**
@@ -107,7 +163,12 @@ const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">
  * - `exportDocuments({ client, project, projectId, onProgress })`: resolves
  *   to `{ documents, entries: [{ name, text }], skipped: [{ name, reason }] }`,
  *   where `documents` is how many the project has.
- * - `zip(files: [{ path, text }])`: resolves to the zip's Blob.
+ * - `zip(files: [{ path, text }])`: resolves to the zip's Blob. Beside the
+ *   documents it holds NAMES_FILE, each document's exact name, since an
+ *   entry's name is only a safe spelling of it.
+ * - `unzip(file)` (optional): resolves to a dropped zip's entries,
+ *   `[{ path, bytes }]`, so the zip an export made imports as it is, each
+ *   document under the name the zip records.
  * - `exportFailure(err)`: an element that shows why an export was refused, or
  *   null for an error the toast should report.
  */
@@ -168,10 +229,21 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       return;
     }
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      setImportProgress({ done: i, total: files.length, current: file.name });
-      const name = baseFileName(file.name, format.extension);
+    const queue = await filesToImport(files, format.unzip);
+    for (let i = 0; i < queue.length; i++) {
+      const { file, recorded, failed } = queue[i];
+      setImportProgress({ done: i, total: queue.length, current: file.name });
+      const name = recorded ?? baseFileName(file.name, format.extension);
+      if (failed) {
+        push({
+          key: `${i}-zip`,
+          file: file.name,
+          name: file.name,
+          status: 'rejected',
+          reason: 'Failed to open the zip',
+        });
+        continue;
+      }
       let text;
       try {
         text = await readTextFile(file);
@@ -206,7 +278,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       }
     }
 
-    setImportProgress({ done: files.length, total: files.length, current: '' });
+    setImportProgress({ done: queue.length, total: queue.length, current: '' });
     setImporting(false);
     setFiles([]);
     const imported = acc.filter((r) => r.status === 'imported').length;
@@ -243,18 +315,22 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
         notifyError('No documents could be exported. All are empty.');
         return;
       }
-      const used = new Set();
-      const blob = await format.zip(
-        found.entries.map((e) => ({
-          path: dedupeFileName(e.name, format.extension, used),
-          text: e.text,
-        })),
-      );
+      const used = new Set([NAMES_FILE]);
+      const files = found.entries.map((e) => ({
+        path: dedupeFileName(e.name, format.extension, used),
+        name: e.name,
+        text: e.text,
+      }));
+      const blob = await format.zip([
+        ...files.map(({ path, text }) => ({ path, text })),
+        { path: NAMES_FILE, text: namesRecord(files) },
+      ]);
+      const count = files.length;
       saveBlob(blob, `${sanitizeFilename(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
-        notifyWarning(`Exported ${used.size}. ${skippedAcc.length} skipped (empty).`);
+        notifyWarning(`Exported ${count}. ${skippedAcc.length} skipped (empty).`);
       } else {
-        notifySuccess(`Exported ${used.size} document${used.size === 1 ? '' : 's'}.`);
+        notifySuccess(`Exported ${count} document${count === 1 ? '' : 's'}.`);
       }
     } catch (err) {
       const shown = format.exportFailure?.(err);
@@ -342,7 +418,8 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                   >
                     <FileText className="h-10 w-10 text-muted-foreground" />
                     <p className="text-sm">
-                      Drop {code(format.extension)} files here, or click to choose
+                      Drop {code(format.extension)}
+                      {format.unzip ? <> or {code('.zip')}</> : null} files here, or click to choose
                     </p>
                   </Dropzone>
 

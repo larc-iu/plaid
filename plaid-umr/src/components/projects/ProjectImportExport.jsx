@@ -20,6 +20,14 @@ const zip = (files) => {
   return archive.generateAsync({ type: 'blob' });
 };
 
+const unzip = async (file) => {
+  const archive = await JSZip.loadAsync(file);
+  const entries = Object.values(archive.files).filter((e) => !e.dir);
+  return Promise.all(
+    entries.map(async (e) => ({ path: e.name, bytes: await e.async('uint8array') })),
+  );
+};
+
 // A value a .umr file cannot hold refuses the whole export, and the page lists
 // each one where the export button is.
 const exportFailure = (err) =>
@@ -28,7 +36,7 @@ const exportFailure = (err) =>
 const FORMAT = {
   app: 'UMR',
   extension: '.umr',
-  accept: '.umr,.txt',
+  accept: '.umr,.txt,.zip',
   importTitle: 'Import UMR files',
   exportWhat: (
     <>
@@ -39,6 +47,7 @@ const FORMAT = {
   prepareImport,
   exportDocuments,
   zip,
+  unzip,
   exportFailure,
 };
 
