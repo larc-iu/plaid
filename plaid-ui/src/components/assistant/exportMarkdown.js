@@ -26,6 +26,13 @@ import {
   planProjectAt,
 } from './projectReach.js';
 
+// The isolates the service and the tab put around names and values
+// (FSI, LRI, RLI, PDI) keep a right-to-left name to itself on screen. In a
+// file they are invisible characters a text search trips over, so the lines
+// written here go without them. What the person typed is left as it is.
+const ISOLATES = /[\u2066-\u2069]/g;
+const plain = (text) => String(text ?? '').replace(ISOLATES, '');
+
 // A citation's card, linked into the project it cites: another project the
 // conversation reads, or its own.
 const cardToMarkdown = (c, ctx) =>
@@ -124,10 +131,10 @@ const filesLine = (label, files) =>
 // written after the last step. Outputs stay out.
 const workToMarkdown = (out, d) => {
   if (d.stepsSummary && d.steps?.length > 0) {
-    out.push(`*${d.stepsSummary}*`, '');
+    out.push(`*${plain(d.stepsSummary)}*`, '');
     for (const s of d.steps) {
       if (s.said) out.push(quoted(s.said), '');
-      const label = markdownText(s.label || s.name || '');
+      const label = markdownText(plain(s.label || s.name || ''));
       // A failed step is red in the panel. A change says so in its own words
       // ("Could not plan …"), a read does not.
       out.push(`- ${label}${s.failed && !/^Could not /.test(label) ? ' (failed)' : ''}`);
@@ -157,13 +164,13 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       out.push('## You', '');
       if (reachChanged(display, i)) {
         const line = d.projects?.length ? withProjects(d.projects) : homeOnly(projectName);
-        out.push(`*${markdownText(line)}*`, '');
+        out.push(`*${markdownText(plain(line))}*`, '');
       }
       out.push(d.text || '', '');
       if (d.files?.length) out.push(filesLine('Attached', d.files), '');
     } else if (d.kind === 'error') {
       workToMarkdown(out, d);
-      out.push(`> **Error:** ${d.text || ''}`, '');
+      out.push(`> **Error:** ${plain(d.text)}`, '');
     } else {
       out.push('## Assistant', '');
       // What it did before answering, in the service's own words.
@@ -177,21 +184,23 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       if (fetched.length) out.push(filesLine('Fetched', fetched), '');
       if (made.length) out.push(filesLine('Files', made), '');
       if (d.unavailableProjects?.length)
-        out.push(`*${markdownText(couldNotOpen(d.unavailableProjects))}*`, '');
+        out.push(`*${markdownText(plain(couldNotOpen(d.unavailableProjects)))}*`, '');
       if (d.text) {
         // A citation into another project is titled with that project's name.
         const cited = namedCitations(d.citations, projectId, projectNamesAt(display, i));
-        out.push(replyToMarkdown(d.text, cited, ctx), '');
+        out.push(plain(replyToMarkdown(d.text, cited, ctx)), '');
       }
       if (d.plan)
         out.push(
-          planToMarkdown(
-            d.plan,
-            d.status,
-            !!d.interrupted,
-            d.outcome,
-            planProjectAt(display, i),
-            d.reason,
+          plain(
+            planToMarkdown(
+              d.plan,
+              d.status,
+              !!d.interrupted,
+              d.outcome,
+              planProjectAt(display, i),
+              d.reason,
+            ),
           ),
           '',
         );

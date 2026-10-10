@@ -5,6 +5,26 @@ const md = (display) =>
   conversationToMarkdown({ display }, { title: 'T' }, { origin: '', projectId: 'p1', adapter: {} });
 
 describe('conversationToMarkdown', () => {
+  // H13-PANEL: a search of the file for `Read “Lezgi` missed every label,
+  // since the service puts isolates around names for the screen.
+  it('writes names and values without the isolates the screen uses', () => {
+    const FSI = '\u2068';
+    const PDI = '\u2069';
+    const out = md([
+      { kind: 'user', text: 'Read it.' },
+      {
+        kind: 'assistant',
+        text: 'Done.',
+        stepsSummary: '1 step',
+        steps: [{ name: 'read_document', label: `Read “${FSI}Lezgi text 1${PDI}”` }],
+        plan: { id: 'p', summary: `Gloss = "${FSI}AOR${PDI}"`, changes: [] },
+      },
+    ]);
+    expect(out).toContain('- Read “Lezgi text 1”');
+    expect(out).toContain('Gloss = "AOR"');
+    expect(out).not.toMatch(/[\u2066-\u2069]/);
+  });
+
   it('writes the steps line only for a turn that called a tool, as the panel shows it', () => {
     const noTool = md([{ kind: 'assistant', text: 'Hi.', stepsSummary: '0 steps', steps: [] }]);
     expect(noTool).not.toContain('0 steps');
