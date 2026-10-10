@@ -92,8 +92,19 @@ export const useRounds = (client, userId, app, projectId, convId) =>
 // reads other projects (a message carries `projects`): a Set, or null while
 // it is read or when there is no need. With `closedTurns` (projectReach.js) it
 // says which turns show their step labels only.
+// Read again when a message names a project not named before, so a project
+// the reader was given since the list was read is not shown closed.
 export const useReadable = (client, display) => {
-  const wanted = !!client && (display || []).some((d) => d?.kind === 'user' && d.projects?.length);
+  const named = [
+    ...new Set(
+      (display || []).flatMap((d) =>
+        d?.kind === 'user' ? (d.projects || []).map((p) => p?.id).filter(Boolean) : [],
+      ),
+    ),
+  ]
+    .sort()
+    .join(' ');
+  const wanted = !!client && named !== '';
   const [ids, setIds] = useState(null);
   useEffect(() => {
     if (!wanted) return undefined;
@@ -105,7 +116,7 @@ export const useReadable = (client, display) => {
     return () => {
       alive = false;
     };
-  }, [client, wanted]);
+  }, [client, wanted, named]);
   return wanted ? ids : null;
 };
 

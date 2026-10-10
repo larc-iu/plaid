@@ -44,7 +44,11 @@ const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 // (a round reader), with each output cut to fit and a closed project's left
 // out, and `results`, the output each step shows, by step id.
 export const prepareExport = (conv, { projectId, readable, stored = new Map() }) => {
-  const opens = (id) => !id || id === projectId || !readable || readable.has(id);
+  // The conversation's own project is closed too once it is gone (an
+  // administrator exporting a deleted project's conversation): every turn
+  // then shows its step labels only, as the admin viewer draws it.
+  const homeOpen = !readable || readable.has(projectId);
+  const opens = (id) => !id || (id === projectId ? homeOpen : !readable || readable.has(id));
   const rename = (projects) => projects.map((p) => (opens(p.id) ? p : { ...p, name: OTHER }));
   const results = new Map();
   const shown = new Map();
@@ -79,7 +83,13 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
     thinkingShortened: 0,
   };
   let budget = TOOL_OUTPUT_TOTAL;
-  const closedAt = closedTurns(conv?.display, opens);
+  const closedAt = homeOpen
+    ? closedTurns(conv?.display, opens)
+    : new Set(
+        (conv?.display || []).flatMap((d, i) =>
+          d?.kind === 'assistant' || d?.kind === 'error' ? [i] : [],
+        ),
+      );
   const display = (conv?.display || []).map((d, i) => {
     if (d.kind === 'user') return d.projects ? { ...d, projects: rename(d.projects) } : d;
     if (d.kind !== 'assistant' && d.kind !== 'error') return d;

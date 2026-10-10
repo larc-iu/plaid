@@ -463,6 +463,39 @@ describe('its parts', () => {
     );
   });
 
+  it("leaves out every turn's inputs, outputs and reasoning when the conversation's own project is gone", () => {
+    const stored = new Map([
+      [
+        'a1',
+        {
+          id: 'a1',
+          thinking: 'Ponder home.',
+          calls: [{ id: 's1', arguments: '{"pattern":"ZQX"}', result: 'r' }],
+        },
+      ],
+    ]);
+    const gone = {
+      display: [
+        { kind: 'user', text: 'q' },
+        {
+          kind: 'assistant',
+          text: 'a',
+          steps: [{ id: 's1', name: 'search', label: 'Searched', round: 'a1', thought: true }],
+        },
+      ],
+    };
+    const { rounds, left, results } = prepareExport(gone, {
+      projectId: HOME,
+      readable: new Set([OPEN]),
+      stored,
+    });
+    expect(results.get('s1')).toBe('(not included)');
+    expect(rounds.peek('a1').calls[0].arguments).toBe('{}');
+    expect(rounds.peek('a1').thinking).toBeUndefined();
+    expect(left.inputs).toBe(1);
+    expect(left.thinking).toBe(1);
+  });
+
   it('keeps a rule for the page root and drops one for nothing on it', () => {
     const style = sheetOf(
       ':root { --x: 1; } .nowhere { color: red; } body::before { content: ""; }',
