@@ -227,6 +227,24 @@ describe('formatExample', () => {
     ]);
   });
 
+  it('sets running text as prose and the cells as typed: quotation marks turned, dashes made', () => {
+    const s = sentenceOf([word('"a--b\'', [['a--b', 'x--y']])], {
+      Translation: span("He said \"it's 'mine'\" -- twice---no."),
+    });
+    const tex = formatExample(s, SEL);
+    expect(lineOf(tex, 'glft')).toEqual([
+      '{\\PlaidTranslation{He said “it’s ‘mine’” – twice—no.}}',
+    ]);
+    // The book's fonts make no TeX ligatures, so a cell prints every character as it is.
+    expect(lineOf(tex, 'gla')[0]).toContain('"a--b\'');
+    expect(lineOf(tex, 'glb')).toContain('\\PlaidMorphemeField{x--y}');
+  });
+
+  it('leaves the quotation marks of right-to-left running text as they are', () => {
+    const s = sentenceOf([word('a')], { Translation: span('قال "نعم"') });
+    expect(lineOf(formatExample(s, SEL), 'glft')[0]).toContain('"\\PlaidScript{Arabic}{نعم}"');
+  });
+
   it('takes the first sentence field with a value as the translation', () => {
     const s = sentenceOf([word('a')], { Note: span('only a note') });
     expect(lineOf(formatExample(s, SEL), 'glft')).toEqual(['{\\PlaidTranslation{only a note}}']);
@@ -557,6 +575,14 @@ describe('buildLatexBook', () => {
       '\\lingset{exnoformat=\\begingroup\\textdir TLT\\PlaidExampleNumber X\\endgroup}',
     );
     expect(files[1].data).toContain('\\textsc{pl}}{plural}');
+    expect(files[1].data).toContain('\\markboth{Abbreviations}{Abbreviations}');
+    // Data prints as typed: no font makes -- an en dash or " a closing quotation mark.
+    expect(main.match(/Ligatures=TeXOff/g)).toHaveLength(2);
+    // A text's number is labeled over its name, which may have a number of its own.
+    expect(main).toContain('{\\normalsize\\scshape text \\thechapter\\par}');
+    expect(main).toContain('\\markboth{Text \\thechapter: #1}');
+    // The last block of a long example is broken like the others, never left one word long.
+    expect(main).toContain('\\apptocmd{\\glw@printilgsetup}{\\parfillskip=\\z@\\hbadness=\\@M}');
     expect(files.find((f) => f.path === 'latexmkrc').data).toContain('$pdf_mode = 4;');
   });
 

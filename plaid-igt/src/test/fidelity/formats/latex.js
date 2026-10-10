@@ -88,7 +88,7 @@ export default {
     'layers.tokenizeNewTextOff': PROJECT_CONFIG,
     'layers.fieldSentence': {
       carried: 'changed',
-      how: 'The first sentence field with a value in a sentence, in the preset\'s order, is its free translation, in quotes and unlabeled. Every other one follows under its name ("Note: ...").',
+      how: 'The first sentence field with a value in a sentence, in the preset\'s order, is its free translation, in quotes and unlabeled. Every other one follows under its name ("Note: ..."). Both are set as prose: a straight quotation mark prints curly, turned the way it faces, and -- and --- print as dashes, in text read left to right.',
     },
     'layers.fieldWord': {
       carried: 'changed',

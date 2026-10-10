@@ -251,14 +251,34 @@ const inScript = (rendered, text, docDir, macro = null) => {
  */
 const heading = (value) => {
   const set = runText(value, 'ltr');
-  const plain = texEscape(texLine(value));
+  const plain = texEscape(asProse(texLine(value)));
   return set === plain ? plain : `\\texorpdfstring{${set}}{${plain}}`;
+};
+
+// The book's fonts make no TeX ligatures, so every character of the data
+// prints as itself: -- under a morpheme is two hyphens, not an en dash, and a
+// straight quotation mark in a word stays straight. Running text (a
+// translation, a name, a note) is set as a book sets prose instead: -- is an
+// en dash and --- an em dash, as TeX would make them, and each straight
+// quotation mark is turned the way it faces, “ and ‘ at the start of a word,
+// ” and ’ after one, so it's has an apostrophe. Text read right to left is
+// left as it is.
+const OPENS_QUOTE_RE = /[\s([{—–“‘]/u;
+const asProse = (text) => {
+  const dashed = text.replace(/---/g, '—').replace(/--/g, '–');
+  return dashed.replace(/["']/g, (q, i) => {
+    const opening = i === 0 || OPENS_QUOTE_RE.test(dashed[i - 1]);
+    if (q === '"') return opening ? '“' : '”';
+    return opening ? '‘' : '’';
+  });
 };
 
 /** A value that is not a cell (a translation, a name, a heading), escaped and set in its script. */
 const runText = (value, docDir, macro = null) => {
   const text = texLine(value);
-  return text === '' ? '' : inScript(texEscape(text), text, docDir, macro);
+  if (text === '') return '';
+  const prose = valueDir(text, docDir) === RTL ? text : asProse(text);
+  return inScript(texEscape(prose), text, docDir, macro);
 };
 
 const plainCell = (macro, docDir) => (text) =>
@@ -920,6 +940,7 @@ export function formatAbbreviations(tags, projectConfig) {
   return [
     '\\chapter*{Abbreviations}',
     '\\phantomsection\\addcontentsline{toc}{chapter}{Abbreviations}',
+    '\\markboth{Abbreviations}{Abbreviations}',
     '',
     ...(rows.length
       ? ['\\begin{PlaidAbbreviationList}', ...rows, '\\end{PlaidAbbreviationList}']
@@ -1288,11 +1309,17 @@ function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary
 \\fancyhead[LO]{\\small\\itshape\\nouppercase{\\rightmark}}
 \\renewcommand{\\headrulewidth}{0pt}
 \\fancypagestyle{plain}{\\fancyhf{}\\fancyhead[LE,RO]{\\small\\thepage}}
-% The running head: the chapter's number and name, as written.
-\\renewcommand{\\chaptermark}[1]{\\markboth{\\thechapter\\quad #1}{\\thechapter\\quad #1}}
+% The running head: the text's number and name, as written.
+\\renewcommand{\\chaptermark}[1]{\\markboth{Text \\thechapter: #1}{Text \\thechapter: #1}}
+% A page left blank so the next part begins on a right-hand page has no head.
+\\makeatletter
+\\renewcommand{\\cleardoublepage}{\\clearpage\\if@twoside\\ifodd\\c@page\\else
+  \\hbox{}\\thispagestyle{empty}\\newpage\\fi\\fi}
+\\makeatother
 
 % Headings. A text runs on after the one before it, under its number and
-% name, and never begins at the foot of a page. The page it begins on has
+% name, and never begins at the foot of a page. The number is labeled, since
+% a name often has a number of its own. The page it begins on has
 % no running head. For each text on a new page, make \\PlaidTextBreak
 % \\clearpage.
 \\newcommand{\\PlaidTextBreak}{}
@@ -1306,7 +1333,7 @@ function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary
   \\thispagestyle{plain}\\global\\@topnum\\z@\\@afterindentfalse\\secdef\\@chapter\\@schapter}
 \\newcommand{\\PlaidHeading}[1]{\\addvspace{2.5\\baselineskip plus .5\\baselineskip}%
   {\\parindent\\z@\\raggedright\\normalfont\\LARGE #1\\par}\\nobreak\\vskip 1.25\\baselineskip}
-\\def\\@makechapterhead#1{\\PlaidHeading{\\thechapter\\hspace{.75em}#1}}
+\\def\\@makechapterhead#1{\\PlaidHeading{{\\normalsize\\scshape text \\thechapter\\par}\\nobreak\\vskip.1\\baselineskip #1}}
 \\def\\@makeschapterhead#1{\\PlaidHeading{#1}}
 \\makeatother
 
@@ -1320,6 +1347,8 @@ function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary
 % ---- Fonts ----------------------------------------------------------------
 % Charis SIL sets Latin (IPA included), Greek and Cyrillic. A character it
 % lacks is taken from the first installed font in this list that has it.
+% No font makes TeX ligatures, so -- and a straight quotation mark in the
+% data print as typed.
 \\def\\PlaidFallbacks{}
 \\newcommand{\\PlaidFallbackFont}[1]{%
   \\IfFontExistsTF{#1}{\\edef\\PlaidFallbacks{\\PlaidFallbacks "#1:mode=harf;",}}{}}
@@ -1330,11 +1359,11 @@ ${fallbackFonts(scripts)}
 \\IfFontExistsTF{Noto Serif}{\\renewcommand{\\PlaidMainFont}{Noto Serif}}{}
 \\IfFontExistsTF{Charis}{\\renewcommand{\\PlaidMainFont}{Charis}}{}
 \\IfFontExistsTF{Charis SIL}{\\renewcommand{\\PlaidMainFont}{Charis SIL}}{}
-\\setmainfont{\\PlaidMainFont}[Renderer=HarfBuzz,RawFeature={fallback=plaidfallback}]
+\\setmainfont{\\PlaidMainFont}[Renderer=HarfBuzz,Ligatures=TeXOff,RawFeature={fallback=plaidfallback}]
 % A script written right to left has a font of its own.
 \\newcommand{\\PlaidScriptFont}[2]{%
   \\IfFontExistsTF{#2}%
-    {\\expandafter\\newfontfamily\\csname PlaidFont#1\\endcsname{#2}[Renderer=HarfBuzz]}%
+    {\\expandafter\\newfontfamily\\csname PlaidFont#1\\endcsname{#2}[Renderer=HarfBuzz,Ligatures=TeXOff]}%
     {\\expandafter\\let\\csname PlaidFont#1\\endcsname\\relax}}
 \\DeclareRobustCommand{\\PlaidScript}[2]{{\\csname PlaidFont#1\\endcsname #2}}
 \\ifdefined\\AddToNoCaseChangeList\\AddToNoCaseChangeList{\\PlaidScript}\\fi
@@ -1344,9 +1373,9 @@ ${scriptFonts(scripts)}
 % A sentence too long for the line breaks into blocks, set ragged right, and
 % an example too long for the page continues on the next.
 \\lingset{glbreaking,glrightskip=0pt plus .5\\hsize,aboveglftskip=.3ex}
-% A line's space between examples, and a little between the blocks of one
-% that breaks.
-\\lingset{aboveexskip=1.4ex plus .6ex minus .3ex,belowexskip=1.4ex plus .6ex minus .3ex,
+% Most of a line's space between examples, and a little between the blocks
+% of one that breaks.
+\\lingset{aboveexskip=1ex plus .5ex minus .2ex,belowexskip=1ex plus .5ex minus .2ex,
   extraglskip=.6ex}
 \\usepackage{luacode}
 % A long example breaks into blocks, and a line that has a value somewhere in
@@ -1436,6 +1465,10 @@ end, 'plaid.glossrows')
 \\usepackage{etoolbox}
 \\makeatletter
 \\patchcmd{\\gl@wrap@below@ft@a}{\\vskip\\lingaboveglftskip}{\\par\\nobreak\\vskip\\lingaboveglftskip}{}{}
+% The blocks of a long example are evened out, so the last is never one or
+% two words alone on lines of their own: its last block is broken like any
+% other, ragged right, rather than left as short as it comes.
+\\apptocmd{\\glw@printilgsetup}{\\parfillskip=\\z@\\hbadness=\\@M}{}{}
 \\makeatother
 % An example's number reads left to right in a text written right to left too,
 % and the vocabulary links to it.
@@ -1464,9 +1497,8 @@ end, 'plaid.glossrows')
 \\newcommand{\\PlaidTranslation}[1]{‘#1’}           % the free translation
 \\newcommand{\\PlaidSentenceField}[2]{\\newline\\textit{#1:} #2} % every other sentence field
 \\newcommand{\\PlaidSpeaker}[1]{\\textsc{#1}:}      % the speaker
-\\newcommand{\\PlaidMetadata}[2]{\\item[#1] #2}     % a document's metadata
-\\newenvironment{PlaidMetadataList}{\\begin{description}\\small
-  \\setlength{\\itemsep}{0pt}\\setlength{\\parsep}{0pt}}{\\end{description}}
+\\newcommand{\\PlaidMetadata}[2]{\\par\\noindent\\hangindent=1em\\hangafter=1 \\textit{#1:}\\enspace #2\\par} % a document's metadata, labeled as a sentence field is
+\\newenvironment{PlaidMetadataList}{\\par\\small\\raggedright\\parskip=0pt\\relax}{\\par\\addvspace{\\baselineskip}}
 \\newcommand{\\PlaidAbbreviation}[2]{\\item[#1] #2}
 \\newenvironment{PlaidAbbreviationList}{%
   \\begin{multicols}{2}\\raggedright
