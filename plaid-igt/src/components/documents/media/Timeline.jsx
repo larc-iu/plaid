@@ -504,6 +504,9 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 // on every segment they were a heavy bar between every pair,
                 // and the pointer's resize cursor finds them anyway. Never on a
                 // sliver, where they would cover it.
+                // Inside the segment, which clips what overhangs it: a handle
+                // half outside was a 2px target.
+                const grip = tokenWidth > 20 ? 6 : 3;
                 const handleClass =
                   tokenWidth <= 20
                     ? 'opacity-0'
@@ -578,11 +581,11 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                         className={handleClass}
                         style={{
                           position: 'absolute',
-                          left: '-2px',
+                          left: 0,
                           top: 0,
                           bottom: 0,
-                          width: '4px',
-                          backgroundColor: colors.stroke,
+                          width: `${grip}px`,
+                          boxShadow: `inset 3px 0 0 ${colors.stroke}`,
                           cursor: 'ew-resize',
                           zIndex: 5,
                         }}
@@ -615,11 +618,11 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                         className={handleClass}
                         style={{
                           position: 'absolute',
-                          right: '-2px',
+                          right: 0,
                           top: 0,
                           bottom: 0,
-                          width: '4px',
-                          backgroundColor: colors.stroke,
+                          width: `${grip}px`,
+                          boxShadow: `inset -3px 0 0 ${colors.stroke}`,
                           cursor: 'ew-resize',
                           zIndex: 5,
                         }}
