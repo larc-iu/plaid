@@ -164,7 +164,8 @@ def test_a_form_the_sentence_holds_twice_needs_its_number(ws):
     assert out == 'Error: s3.la: s3 has 2 words spelled "la": s3.w1, s3.w4. Name one by its number.'
     assert not ws.ops
     assert run(ws, 'set_field', document='Linea', refs=['s3.la#2'], field='upos', value='DET') \
-        == 'Planned upos = "DET" on 1 word(s): s3.w4'
+        == ('Planned upos = "DET" on 1 word(s): s3.w4 Not in this plan: s3 also has "la" at w1. If the user '
+            'named the word by its form alone, they did not say which: drop this change and ask them.')
     out = run(ws, 'set_field', document='Linea', refs=['s3.la#3'], field='upos', value='DET')
     assert out.startswith('Error: s3.la#3: s3 has 2 word(s) spelled "la", so there is no #3.')
     out = run(ws, 'set_field', document='Linea', refs=['s3.perro'], field='upos', value='NOUN')

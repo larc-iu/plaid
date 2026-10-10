@@ -1691,3 +1691,19 @@ def test_a_value_copied_back_from_a_read_is_written_without_its_mark(ws):
     # Only a trailing mark is a read's.
     run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='xpos', value='a~b')
     assert ws.ops[-1]['value'] == 'a~b'
+
+
+def test_a_change_by_reference_says_which_words_of_the_same_form_it_leaves(ws):
+    """Asked to retag "de" in a sentence holding six, a model changed the
+    first and never saw the others. The result names the words of the same
+    form in the same sentence that the plan leaves out."""
+    s = ws.doc('Viaje').sentences[0]
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'x'})
+    assert 'Not in this plan' not in out, out
+    s.words[4].form = 'MAR'  # "Vamos a el mar MAR": two words "mar" in s1, told apart by case only
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'upos', 'value': 'X'})
+    assert out.endswith(' Not in this plan: s1 also has "mar" at w5. If the user named the word by its form '
+                        'alone, they did not say which: drop this change and ask them.'), out
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4', 's1.w5'], 'field': 'upos',
+                                      'value': 'X'})
+    assert 'Not in this plan' not in out, out

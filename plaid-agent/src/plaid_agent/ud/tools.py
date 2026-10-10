@@ -594,7 +594,31 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     ws.add_ops(staged)
     what = f'{field} = "{value}"' if value else f'{field} cleared'
     return f'Planned {what} on {len(words)} word(s): ' + ', '.join(
-        word_ref(ws.sentence_of(doc, w), w) for w in words)
+        word_ref(ws.sentence_of(doc, w), w) for w in words) + _same_form_left(ws, doc, words)
+
+
+def _same_form_left(ws: Workspace, doc: UdDoc, words: List[Word]) -> str:
+    """The words of the same form in the same sentence that a change by
+    reference leaves out, said after it. Asked to retag "de" in a sentence
+    holding six, a model changed the first and never saw the other five, so
+    the user was neither asked which one nor told."""
+    named = {w.id for w in words}
+    notes = []
+    seen = set()
+    for w in words:
+        s = ws.sentence_of(doc, w)
+        key = (s.index, w.form.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        rest = [o for o in s.words if o.id not in named and o.form.casefold() == key[1]]
+        if rest:
+            notes.append(f's{s.index} also has "{clip(w.form)}" at ' + ', '.join(f'w{o.index}' for o in rest))
+    if not notes:
+        return ''
+    more = f', and {len(notes) - 3} more sentences' if len(notes) > 3 else ''
+    return (' Not in this plan: ' + '; '.join(notes[:3]) + more + '. If the user named the word by its form '
+            'alone, they did not say which: drop this change and ask them.')
 
 
 def _pairs(bundle: str) -> Dict[str, str]:
@@ -744,7 +768,7 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
         return (f'Nothing to change: {feature}={value} is already set on every word named.' if value
                 else f'Nothing to change: none of the words named has {feature}.')
     what = f'{feature}={value}' if value else f'{feature} removed'
-    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed)
+    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed) + _same_form_left(ws, doc, words)
 
 
 def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = None,
