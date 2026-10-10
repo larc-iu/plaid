@@ -531,13 +531,33 @@ def test_a_round_write_waiting_out_the_server_gives_up_when_the_turn_is_stopped(
     def away(*a, **k):
         tries.append(1)
         stop['now'] = True
-        raise PlaidAPIError(503, 'away')
+        raise PlaidAPIError('HTTP 503', status=503)
     monkeypatch.setattr(conv_mod, '_pause', lambda s: None)
     ws = _ws(client)
     ws.rounds.cancelled = lambda: stop['now']
     monkeypatch.setattr(client.user_data, 'put', away)
     assert ws.rounds.store({'id': 'r1', 'n': 2, 'calls': []}) is False
     assert len(tries) == 1
+
+
+def test_the_prompt_write_of_a_first_round_gives_up_when_the_turn_is_stopped(monkeypatch):
+    """H13-TRACE-6 review: the first round writes the prompt before itself,
+    and that write waited the server out whatever the stop said."""
+    from plaid_agent.core import conversation as conv_mod
+    client = FakeClient()
+    stop = {'now': False}
+    tries = []
+
+    def away(*a, **k):
+        tries.append(1)
+        stop['now'] = True
+        raise PlaidAPIError('HTTP 503', status=503)
+    monkeypatch.setattr(conv_mod, '_pause', lambda s: None)
+    ws = _ws(client, system='sys', tools=[])
+    ws.rounds.cancelled = lambda: stop['now']
+    monkeypatch.setattr(client.user_data, 'put', away)
+    assert ws.rounds.store({'id': 'r1', 'n': 1, 'calls': []}) is False
+    assert len(tries) == 2, 'the prompt once, the round once'
 
 
 def test_a_plan_call_that_planned_nothing_says_so(monkeypatch):

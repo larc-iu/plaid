@@ -197,7 +197,7 @@ class RoundKeeper:
             there = s.client.user_data.list(s.user_id, prefix=key, page_size=1) or []
             if not any(isinstance(e, dict) and e.get('key') == key for e in there):
                 value = prompt_value(self.system, self.tools or [])
-                _patiently(lambda: s.client.user_data.put(s.user_id, key, value))
+                _patiently(lambda: s.client.user_data.put(s.user_id, key, value), self.cancelled)
         except PlaidAPIError:
             traceback.print_exc()
             return None
