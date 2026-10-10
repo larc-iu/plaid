@@ -53,6 +53,9 @@ NAMES = ('run_code', 'code_help')
 # few of them for a large dict. The builtins it uses are bound when it is
 # defined, so code that names a variable type or getattr (a key named
 # "type" makes the first likely) does not break every attribute read after it.
+# hasattr and getattr answer for a key the same way: Monty's own say False and
+# the default for every key, so `if hasattr(w, "morphemes")` skipped every
+# word and a count came out 0 with no error (benchmark, 2026-10-10).
 READER = '_plaid_attr_'
 PRELUDE = '''
 def _plaid_attr_(o, name, _type=type, _dict=dict, _getattr=getattr, _len=len, _repr=repr, _str=str,
@@ -65,6 +68,16 @@ def _plaid_attr_(o, name, _type=type, _dict=dict, _getattr=getattr, _len=len, _r
         raise _AttributeError('no "' + name + '" here. Its keys: ' + ', '.join(keys)
                               + (', and ' + _str(more) + ' more' if more > 0 else ''))
     return _getattr(o, name)
+
+def hasattr(o, name, _type=type, _dict=dict, _hasattr=hasattr):
+    if _type(o) is _dict and name in o:
+        return True
+    return _hasattr(o, name)
+
+def getattr(o, name, *default, _type=type, _dict=dict, _getattr=getattr):
+    if _type(o) is _dict and name in o:
+        return o[name]
+    return _getattr(o, name, *default)
 '''
 
 # Attribute names a dict could never mean as a key in a model's code (every

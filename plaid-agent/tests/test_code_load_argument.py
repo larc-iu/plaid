@@ -68,6 +68,16 @@ print(n, doc.sentences[0].words[0].ref == doc["sentences"][0]["words"][0]["ref"]
         out = call_tool(w, 'run_code', {'code': code})
         assert out.endswith(' True') and not out.startswith('Error')
 
+    def test_hasattr_and_getattr_answer_for_a_key(self):
+        """Monty's own hasattr said False for every key, so a count guarded by
+        it came out 0 with no error."""
+        w = scan_ws(FakeClient())
+        code = ('w = load(documents()[0]).sentences[0].words[0]\n'
+                'print(hasattr(w, "morphemes"), hasattr(w, "zz"), getattr(w, "ref", None) == w["ref"], '
+                'getattr(w, "zz", 5))\n'
+                'try:\n    getattr(w, "zz")\nexcept AttributeError:\n    print("raised")')
+        assert call_tool(w, 'run_code', {'code': code}) == 'True False True 5\nraised'
+
     def test_a_guessed_key_names_the_keys_there_are_and_the_shape(self):
         w = scan_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'load(documents()[0]).sentences[0].n'})
