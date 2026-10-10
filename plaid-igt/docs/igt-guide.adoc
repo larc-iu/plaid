@@ -174,7 +174,7 @@ Every segment is a row you can edit:
 * **Shift+Space** pauses and resumes the segment you are in without leaving the row.
 * **Shift+←** and **Shift+→** move playback one second.
 * **Space** plays and pauses the whole recording when you are not typing in a box.
-* **Alt+Enter** splits the segment at playback, its text between the words at the caret, and **Alt+M** merges it with the next segment. The words, their annotations and the sentences are unchanged.
+* **Alt+Enter** splits the segment at playback, its text between the words at the caret, and **Alt+M** merges it with the next segment. The words, their annotations and the sentences are unchanged, so two segments in different sentences do not merge.
 
 A change to a row's text is saved as it is on the Baseline tab, and the words in it keep their analysis.
 When someone else changed the same segment's text while you were editing it, the row shows their text with yours under it.
@@ -837,6 +837,7 @@ The order matters because the texts link to entries that must already be there, 
 CLDF has no place for vocabulary links, the marks that tell machine work from a person's, or most morpheme types, so these are left out, and the preset lists them before the export runs.
 * **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one.
 **Segment words into morphemes** decides whether the tiers reach below the word, and **One tier set per speaker** gives each speaker their own tiers.
+A segment that crosses a sentence break is left out, and the export says how many.
 * **LaTeX book** (`.zip`): LaTeX source for a book of the texts, to compile with LuaLaTeX.
 See <<_latex_book>>.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.

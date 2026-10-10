@@ -227,6 +227,25 @@ describe('time alignment', () => {
     expect(valuesOf(tierNamed(dom, 'Sentence'))).toEqual(['uno dos', 'tres']);
   });
 
+  it('says how many segments it left out for crossing a sentence break', () => {
+    const warnings = [];
+    buildEafDocument(
+      twoSentenceDoc([
+        makeAlignmentToken('a1', 0, 3, 0.5, 1.0),
+        makeAlignmentToken('a2', 4, 12, 1.0, 4.0),
+      ]),
+      OPTIONS,
+      { ...CONTEXT, onWarning: (m) => warnings.push(m) },
+    );
+    expect(warnings).toEqual(['1 segment crosses a sentence break and was left out.']);
+    const none = [];
+    buildEafDocument(twoSentenceDoc([makeAlignmentToken('a1', 0, 7, 0.5, 2.0)]), OPTIONS, {
+      ...CONTEXT,
+      onWarning: (m) => none.push(m),
+    });
+    expect(none).toEqual([]);
+  });
+
   it('exports an unaligned document with value-less time slots', () => {
     const dom = build(makeFixtureDoc());
     const slots = all(dom, 'TIME_SLOT');

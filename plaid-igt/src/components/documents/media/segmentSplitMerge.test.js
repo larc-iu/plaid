@@ -253,4 +253,22 @@ describe('merging segments', () => {
     expect(await doc.mergeSegment('seg-1')).toBe(false);
     expect(kinds(doc)).toEqual([]);
   });
+
+  it('refuses two segments in different sentences', async () => {
+    const raw = buildRawDoc({
+      body: BODY,
+      words: wordsOf(BODY),
+      sentences: [
+        { id: 's-1', begin: 0, end: 14 },
+        { id: 's-2', begin: 14, end: BODY.length },
+      ],
+      alignmentTokens: two().textLayers[0].tokenLayers.find((l) => l.id === 'alignL').tokens,
+    });
+    const doc = makeIgtDoc({ raw });
+    expect(doc.segmentMergePlan('seg-1')).toEqual({
+      error: 'The two segments are in different sentences.',
+    });
+    expect(await doc.mergeSegment('seg-1')).toBe(false);
+    expect(kinds(doc)).toEqual([]);
+  });
 });

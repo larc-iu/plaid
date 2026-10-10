@@ -31,7 +31,10 @@
 // is server-enforced :non-overlapping and createAlignment refuses temporal
 // inversions, so text order tracks time order). An alignment token straddling a
 // sentence boundary belongs to no sentence: it is dropped and its sentences stay
-// unaligned, rather than being given a time that isn't theirs.
+// unaligned, rather than being given a time that isn't theirs, and the export
+// warns with the count. The Media tab refuses a merge that would make one, but
+// a Tokenize split inside a segment, a selection across a break, or another
+// client can still make one.
 //
 // UNALIGNED DOCUMENTS still export. TIME_VALUE is optional on TIME_SLOT
 // precisely so partially aligned annotations can exist (EAF 2.8 §2.4.1), so a
@@ -308,7 +311,10 @@ function buildModel(igtDoc, options, nextAnn) {
   });
 
   const overlapped = prelim.filter((p) => p.overlapped).length;
-  return { timeSlots, sentences, speakers, wantSegmentTier, overlapped };
+  // Segments that cross a sentence break: inside no sentence, so not written.
+  const placed = new Set(prelim.flatMap((p) => containedAlignments(p.sentence, validAlignment)));
+  const straddling = validAlignment.filter((t) => !placed.has(t)).length;
+  return { timeSlots, sentences, speakers, wantSegmentTier, overlapped, straddling };
 }
 
 // ---- tier emission ---------------------------------------------------------
@@ -388,6 +394,13 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
       `${model.overlapped} sentence${model.overlapped === 1 ? '' : 's'} overlap in time with ` +
         'another on the same tier, so they were written without times. Turn on "One tier set per ' +
         'speaker" to keep the alignment of overlapping speech.',
+    );
+  }
+
+  if (model.straddling && onWarning) {
+    const n = model.straddling;
+    onWarning(
+      `${n} segment${n === 1 ? ' crosses' : 's cross'} a sentence break and ${n === 1 ? 'was' : 'were'} left out.`,
     );
   }
 

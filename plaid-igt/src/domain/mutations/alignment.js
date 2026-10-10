@@ -1076,7 +1076,7 @@ export const alignmentMutations = {
   /**
    * How merging segment `alignmentId` with the next one in the text would go,
    * or `{ error }`. The next one is the segment after it in time, unless that
-   * one is cross-talk, which is refused. Answers `{ segment, next, times,
+   * one is cross-talk or in another sentence, which are refused. Answers `{ segment, next, times,
    * speaker, loss }`: the merged times and speaker, and in `loss` the next
    * segment's speaker when the two differ (`speaker`) and the keys of its
    * metadata with another value than this one's (`keys`), which the merge
@@ -1090,6 +1090,12 @@ export const alignmentMutations = {
     const segment = tokens[i];
     const next = tokens[i + 1];
     if (!next) return { error: 'This is the last segment.' };
+    // A segment across a sentence break belongs to no sentence in an ELAN
+    // export, and merging sentences is the Tokenize tab's.
+    const sentenceBreak = (info.sentenceTokenLayer?.tokens || []).some(
+      (s) => s.begin > segment.begin && s.begin < next.end,
+    );
+    if (sentenceBreak) return { error: 'The two segments are in different sentences.' };
     const a = segment.metadata || {};
     const b = next.metadata || {};
     const aBegin = a.timeBegin ?? 0;
