@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.token
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.bulk :as bulk]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
@@ -99,86 +100,51 @@
                                db doc-id)
                               {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
 
-   ["/bulk" {:conflicting true
-             :post {:summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys "
-                                  "are:\n"
-                                  "<body>token-layer-id</body>, the token's layer\n"
-                                  "<body>text</body>, the ID of the token's text\n"
-                                  "<body>begin</body>, the inclusive Unicode code-point offset at which the token begins\n"
-                                  "<body>end</body>, the exclusive Unicode code-point offset at which the token ends\n"
-                                  "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
-                                  "<body>metadata</body>, an optional map of metadata\n"
-                                  "<body>id</body>, optional, the new token's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
-                    :middleware [[pra/wrap-writer-required bulk-get-project-id]
-                                 [prm/wrap-document-version bulk-get-document-id]
-                                 metadata/wrap-inline-metadata-shape-guard]
-                    :parameters {:query [:map [:document-version {:optional true} :int]]
-                                 :body [:sequential
-                                        [:map
-                                         [:id {:optional true} :uuid]
-                                         [:token-layer-id :uuid]
-                                         [:text :uuid]
-                                         [:begin int?]
-                                         [:end int?]
-                                         [:precedence {:optional true} int?]
-                                         [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{tokens :body} :parameters db :db user-id :user/id :as request}]
-                               (let [tokens-attrs (mapv (fn [token-data]
-                                                          (let [{:keys [id token-layer-id text begin end precedence metadata]} token-data
-                                                                attrs (cond-> {:token/layer token-layer-id
-                                                                               :token/text text
-                                                                               :token/begin begin
-                                                                               :token/end end}
-                                                                        (some? id) (assoc :token/id id)
-                                                                        (some? precedence) (assoc :token/precedence precedence))]
-                                                            (if metadata
-                                                              (assoc attrs :metadata metadata)
-                                                              attrs)))
-                                                        tokens)
-                                     doc-id (bulk-get-document-id request)
-                                     result (tok/bulk-create db tokens-attrs user-id)]
-                                 (if (:success result)
-                                   (prm/assoc-document-version-in-header
-                                    {:status 201 :body {:ids (:extra result)}}
-                                    db doc-id)
-                                   {:status (or (:code result) 500) :body (prm/error-body result)})))}
-             :patch {:summary (str "Patch the metadata of many tokens in a single operation. Provide an array of objects whose "
-                                   "keys are:\n<body>id</body>, the token's id\n"
-                                   "<body>metadata</body>, a list of metadata ops, as for PATCH on one entity's metadata\n"
-                                   "The tokens may lie in several documents of one project; every document touched has "
-                                   "its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown "
-                                   "id refuses the whole update. <query>document-version</query> names one document, so it "
-                                   "is refused when the entries reach more than one.")
-                     :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
-                                  [prm/wrap-document-version bulk-update-get-document-id]
-                                  metadata/wrap-inline-metadata-shape-guard]
-                     :parameters {:query [:map [:document-version {:optional true} :int]]
-                                  :body [:sequential [:map [:id :uuid] [:metadata metadata/metadata-ops-schema]]]}
-                     :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
-                                (let [{:keys [success code error extra]} (tok/bulk-update db items user-id)]
-                                  (if success
-                                    (prm/assoc-document-versions-in-header
-                                     {:status 200 :body {:count (:count extra)}}
-                                     db (:documents extra))
-                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-             :delete {:summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. All "
-                                    "tokens must belong to the same document (400 otherwise). As with "
-                                    "single delete, each deleted token also drags down the descendant tokens nested "
-                                    "within it (and their dependent spans, relations, and vocab-links) if the layer "
-                                    "has child token layers.")
-                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-project-id]
-                                   [pra/wrap-writer-required bulk-get-project-id]
-                                   [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:query [:map [:document-version {:optional true} :int]]
-                                   :body [:sequential :uuid]}
-                      :handler (fn [{{token-ids :body} :parameters db :db user-id :user/id :as request}]
-                                 (let [doc-id (bulk-get-document-id request)
-                                       {:keys [success code error]} (tok/bulk-delete db token-ids user-id)]
-                                   (if success
-                                     (prm/assoc-document-version-in-header
-                                      {:status 204}
-                                      db doc-id)
-                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+   (bulk/bulk-routes
+    {:create-summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys "
+                          "are:\n"
+                          "<body>token-layer-id</body>, the token's layer\n"
+                          "<body>text</body>, the ID of the token's text\n"
+                          "<body>begin</body>, the inclusive Unicode code-point offset at which the token begins\n"
+                          "<body>end</body>, the exclusive Unicode code-point offset at which the token ends\n"
+                          "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
+                          "<body>metadata</body>, an optional map of metadata\n"
+                          "<body>id</body>, optional, the new token's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
+     :create-entry [:map
+                    [:id {:optional true} :uuid]
+                    [:token-layer-id :uuid]
+                    [:text :uuid]
+                    [:begin int?]
+                    [:end int?]
+                    [:precedence {:optional true} int?]
+                    [:metadata {:optional true} [:map-of string? any?]]]
+     :->attrs (fn [{:keys [id token-layer-id text begin end precedence]}]
+                (cond-> {:token/layer token-layer-id
+                         :token/text text
+                         :token/begin begin
+                         :token/end end}
+                  (some? id) (assoc :token/id id)
+                  (some? precedence) (assoc :token/precedence precedence)))
+     :bulk-create tok/bulk-create
+     :update-summary (str "Patch the metadata of many tokens in a single operation. Provide an array of objects whose "
+                          "keys are:\n<body>id</body>, the token's id\n"
+                          "<body>metadata</body>, a list of metadata ops, as for PATCH on one entity's metadata\n"
+                          "The tokens may lie in several documents of one project; every document touched has "
+                          "its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown "
+                          "id refuses the whole update. <query>document-version</query> names one document, so it "
+                          "is refused when the entries reach more than one.")
+     :update-entry [:map [:id :uuid] [:metadata metadata/metadata-ops-schema]]
+     :bulk-update tok/bulk-update
+     :update-project-fn bulk-update-get-project-id
+     :update-document-fn bulk-update-get-document-id
+     :delete-summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. All "
+                          "tokens must belong to the same document (400 otherwise). As with "
+                          "single delete, each deleted token also drags down the descendant tokens nested "
+                          "within it (and their dependent spans, relations, and vocab-links) if the layer "
+                          "has child token layers.")
+     :bulk-delete tok/bulk-delete
+     :project-fn bulk-get-project-id
+     :document-fn bulk-get-document-id})
 
    ["/:token-id"
     {:conflicting true

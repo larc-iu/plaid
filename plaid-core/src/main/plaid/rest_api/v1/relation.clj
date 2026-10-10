@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.relation
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.bulk :as bulk]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.middleware :as prm]
@@ -112,74 +113,38 @@
                                db doc-id)
                               {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
 
-   ["/bulk" {:conflicting true
-             :post {:summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys "
-                                  "are:\n"
-                                  "<body>relation-layer-id</body>, the relation's layer\n"
-                                  "<body>source</body>, the span id of the relation's source\n"
-                                  "<body>target</body>, the span id of the relation's target\n"
-                                  "<body>value</body>, the relation's value\n"
-                                  "<body>metadata</body>, an optional map of metadata\n"
-                                  "<body>id</body>, optional, the new relation's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
-                    :middleware [[pra/wrap-writer-required bulk-get-project-id]
-                                 [prm/wrap-document-version bulk-get-document-id]
-                                 metadata/wrap-inline-metadata-shape-guard]
-                    :parameters {:query [:map [:document-version {:optional true} :int]]
-                                 :body [:sequential
-                                        [:map
-                                         [:id {:optional true} :uuid]
-                                         [:relation-layer-id :uuid]
-                                         [:source :uuid]
-                                         [:target :uuid]
-                                         [:value schema/atomic-value]
-                                         [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{relations :body} :parameters db :db user-id :user/id :as request}]
-                               (let [relations-attrs (mapv (fn [relation-data]
-                                                             (let [{:keys [id relation-layer-id source target value metadata]} relation-data
-                                                                   attrs (cond-> {:relation/layer relation-layer-id
-                                                                                  :relation/source source
-                                                                                  :relation/target target
-                                                                                  :relation/value value}
-                                                                           (some? id) (assoc :relation/id id))]
-                                                               (if metadata
-                                                                 (assoc attrs :metadata metadata)
-                                                                 attrs)))
-                                                           relations)
-                                     doc-id (bulk-get-document-id request)
-                                     result (r/bulk-create db relations-attrs user-id)]
-                                 (if (:success result)
-                                   (prm/assoc-document-version-in-header
-                                    {:status 201 :body {:ids (:extra result)}}
-                                    db doc-id)
-                                   {:status (or (:code result) 500)
-                                    :body (prm/error-body result)})))}
-             :patch {:summary "Update many relations in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the relation's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a list of metadata ops, as for PATCH on one entity's metadata\nThe relations may lie in several documents of one project; every document touched has its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown id refuses the whole update. <query>document-version</query> names one document, so it is refused when the entries reach more than one."
-                     :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
-                                  [prm/wrap-document-version bulk-update-get-document-id]
-                                  metadata/wrap-inline-metadata-shape-guard]
-                     :parameters {:query [:map [:document-version {:optional true} :int]]
-                                  :body [:sequential [:map [:id :uuid] [:value {:optional true} schema/atomic-value] [:metadata {:optional true} metadata/metadata-ops-schema]]]}
-                     :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
-                                (let [{:keys [success code error extra]} (r/bulk-update db items user-id)]
-                                  (if success
-                                    (prm/assoc-document-versions-in-header
-                                     {:status 200 :body {:count (:count extra)}}
-                                     db (:documents extra))
-                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-             :delete {:summary "Delete multiple relations in a single operation. Provide an array of IDs."
-                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-project-id]
-                                   [pra/wrap-writer-required bulk-get-project-id]
-                                   [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:query [:map [:document-version {:optional true} :int]]
-                                   :body [:sequential :uuid]}
-                      :handler (fn [{{relation-ids :body} :parameters db :db user-id :user/id :as request}]
-                                 (let [doc-id (bulk-get-document-id request)
-                                       {:keys [success code error]} (r/bulk-delete db relation-ids user-id)]
-                                   (if success
-                                     (prm/assoc-document-version-in-header
-                                      {:status 204}
-                                      db doc-id)
-                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+   (bulk/bulk-routes
+    {:create-summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys "
+                          "are:\n"
+                          "<body>relation-layer-id</body>, the relation's layer\n"
+                          "<body>source</body>, the span id of the relation's source\n"
+                          "<body>target</body>, the span id of the relation's target\n"
+                          "<body>value</body>, the relation's value\n"
+                          "<body>metadata</body>, an optional map of metadata\n"
+                          "<body>id</body>, optional, the new relation's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
+     :create-entry [:map
+                    [:id {:optional true} :uuid]
+                    [:relation-layer-id :uuid]
+                    [:source :uuid]
+                    [:target :uuid]
+                    [:value schema/atomic-value]
+                    [:metadata {:optional true} [:map-of string? any?]]]
+     :->attrs (fn [{:keys [id relation-layer-id source target value]}]
+                (cond-> {:relation/layer relation-layer-id
+                         :relation/source source
+                         :relation/target target
+                         :relation/value value}
+                  (some? id) (assoc :relation/id id)))
+     :bulk-create r/bulk-create
+     :update-summary "Update many relations in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the relation's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a list of metadata ops, as for PATCH on one entity's metadata\nThe relations may lie in several documents of one project; every document touched has its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown id refuses the whole update. <query>document-version</query> names one document, so it is refused when the entries reach more than one."
+     :update-entry [:map [:id :uuid] [:value {:optional true} schema/atomic-value] [:metadata {:optional true} metadata/metadata-ops-schema]]
+     :bulk-update r/bulk-update
+     :update-project-fn bulk-update-get-project-id
+     :update-document-fn bulk-update-get-document-id
+     :delete-summary "Delete multiple relations in a single operation. Provide an array of IDs."
+     :bulk-delete r/bulk-delete
+     :project-fn bulk-get-project-id
+     :document-fn bulk-get-document-id})
 
    ;; Get, update, delete by ID
    ["/:relation-id"

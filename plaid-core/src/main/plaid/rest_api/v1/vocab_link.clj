@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.vocab-link
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.bulk :as bulk]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
@@ -109,69 +110,44 @@
                            {:status (or (:code result) 500)
                             :body (prm/error-body result)})))}}]
 
-   ["/bulk" {:conflicting true
-             :post {:summary (str "Create multiple vocab links in a single operation. Provide an array of objects whose keys are:\n"
-                                  "<body>vocab-item</body>, the vocab item to link\n"
-                                  "<body>tokens</body>, the IDs of the tokens to link\n"
-                                  "<body>metadata</body>, an optional map of metadata\n"
-                                  "<body>id</body>, optional, the new link's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.\n"
-                                  "Entries may reference different vocab items, but all tokens across the call must belong to one document.")
-                    ;; project-WRITER gates the document; each distinct vocab
-                    ;; layer must also be vocab-READABLE (same as single create,
-                    ;; relaxed 2026-06-10). The single-id reader middleware can't
-                    ;; express N layers, so that check runs in the handler.
-                    :middleware [[pra/wrap-writer-required bulk-get-project-id]
-                                 [prm/wrap-document-version bulk-get-document-id]
-                                 metadata/wrap-inline-metadata-shape-guard]
-                    :parameters {:query [:map [:document-version {:optional true} :int]]
-                                 :body [:sequential
-                                        [:map
-                                         [:id {:optional true} :uuid]
-                                         [:vocab-item :uuid]
-                                         [:tokens [:vector :uuid]]
-                                         [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{links :body} :parameters db :db user-id :user/id user-record :user/record :as req}]
-                               ;; Admins bypass the reader gate (as `wrap-vocab-reader-required`
-                               ;; does), so an unknown item falls through to the SQL invariant's
-                               ;; 400 rather than a misleading 403.
-                               (let [item-ids (->> links (map :vocab-item) distinct)
-                                     unreadable (when-not (user/admin? user-record)
-                                                  (remove #(user-can-access-vocab-item? db % user-id) item-ids))]
-                                 (if (seq unreadable)
-                                   {:status 403
-                                    :body {:error (str "User " user-id " lacks read access to vocab item(s) " (vec unreadable))}}
-                                   (let [attrs-vec (mapv (fn [{:keys [id vocab-item tokens metadata]}]
-                                                           (cond-> {:vocab-link/vocab-item vocab-item
-                                                                    :vocab-link/tokens tokens}
-                                                             (some? id) (assoc :vocab-link/id id)
-                                                             metadata (assoc :metadata metadata)))
-                                                         links)
-                                         doc-id (bulk-get-document-id req)
-                                         result (vocab-link/bulk-create db attrs-vec user-id)]
-                                     (if (:success result)
-                                       (prm/assoc-document-version-in-header
-                                        {:status 201 :body {:ids (:extra result)}}
-                                        db doc-id)
-                                       {:status (or (:code result) 500)
-                                        :body (prm/error-body result)})))))}
-             :delete {:summary "Delete multiple vocab links in a single operation. Provide an array of IDs."
-                      ;; Mirror single delete's gate: project-WRITER + vocab-WRITER
-                      ;; on each distinct vocab layer touched.
-                      :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-project-id]
-                                   [pra/wrap-writer-required bulk-get-project-id]
-                                   [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:query [:map [:document-version {:optional true} :int]]
-                                   :body [:sequential :uuid]}
-                      :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as req}]
-                                 (or (pra/vocab-layers-refusal db (keep #(vocab-link/get-vocab-layer db %) ids) user-id)
-                                     (let [doc-id (bulk-get-document-id req)
-                                           {:keys [success code error]} (vocab-link/bulk-delete db ids user-id)]
-                                       (if success
-                                         (prm/assoc-document-version-in-header
-                                          {:status 204}
-                                          db doc-id)
-                                         {:status (or code 500)
-                                          :body {:error (or error "Internal server error")}}))))}}]
+   (bulk/bulk-routes
+    {:create-summary (str "Create multiple vocab links in a single operation. Provide an array of objects whose keys are:\n"
+                          "<body>vocab-item</body>, the vocab item to link\n"
+                          "<body>tokens</body>, the IDs of the tokens to link\n"
+                          "<body>metadata</body>, an optional map of metadata\n"
+                          "<body>id</body>, optional, the new link's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.\n"
+                          "Entries may reference different vocab items, but all tokens across the call must belong to one document.")
+     :create-entry [:map
+                    [:id {:optional true} :uuid]
+                    [:vocab-item :uuid]
+                    [:tokens [:vector :uuid]]
+                    [:metadata {:optional true} [:map-of string? any?]]]
+     :->attrs (fn [{:keys [id vocab-item tokens]}]
+                (cond-> {:vocab-link/vocab-item vocab-item
+                         :vocab-link/tokens tokens}
+                  (some? id) (assoc :vocab-link/id id)))
+     :bulk-create vocab-link/bulk-create
+     ;; project-WRITER gates the document; each distinct vocab layer must
+     ;; also be vocab-READABLE (same as single create, relaxed 2026-06-10).
+     ;; The single-id reader middleware can't express N layers, so the check
+     ;; runs here. Admins bypass it (as `wrap-vocab-reader-required` does), so
+     ;; an unknown item falls through to the SQL invariant's 400 rather than a
+     ;; misleading 403.
+     :create-check (fn [{db :db user-id :user/id user-record :user/record} links]
+                     (let [item-ids (->> links (map :vocab-item) distinct)
+                           unreadable (when-not (user/admin? user-record)
+                                        (remove #(user-can-access-vocab-item? db % user-id) item-ids))]
+                       (when (seq unreadable)
+                         {:status 403
+                          :body {:error (str "User " user-id " lacks read access to vocab item(s) " (vec unreadable))}})))
+     :delete-summary "Delete multiple vocab links in a single operation. Provide an array of IDs."
+     :bulk-delete vocab-link/bulk-delete
+     ;; Mirror single delete's gate: project-WRITER + vocab-WRITER on each
+     ;; distinct vocab layer touched.
+     :delete-check (fn [{db :db user-id :user/id} ids]
+                     (pra/vocab-layers-refusal db (keep #(vocab-link/get-vocab-layer db %) ids) user-id))
+     :project-fn bulk-get-project-id
+     :document-fn bulk-get-document-id})
 
    ["/:id"
     {:conflicting true
