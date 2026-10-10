@@ -25,33 +25,25 @@
 </style>
 ++++
 
-NOTE: This is the reference for Plaid's query language: the full clause set, the wire
-shape, and the engine's limits. For an example-led introduction, see the
-Querying chapter of link:manual.html#_querying[the manual].
+NOTE: This is the reference for Plaid's query language.
+For an introduction by example, see the Querying chapter of link:manual.html#_querying[the manual].
 
-A query searches Plaid data across every project you can read, in one
-request. You describe a **pattern**, the entities (spans, tokens, relations,
-vocab items) you are looking for and the relationships between them, and the
-engine returns every match. It is exposed as `POST /api/v1/query` and as a
-`query()` method on the official clients. Examples here use the Python client,
-with a JavaScript snippet where the two differ (see <<Clients and casing>>).
+A query searches Plaid data across every project you can read, in one request.
+You describe a **pattern**, the entities you are looking for and how they relate, and Plaid returns every match.
+Queries are sent as `POST /api/v1/query`, or with the `query()` method of the official clients.
+The examples here use the Python client.
 
 == Mental model
 
-A query is a pattern you match against your data: you name the things you are
-looking for, say how they relate, and Plaid returns every combination that fits.
+A query is a pattern you match against your data.
+You name the things you are looking for, say how they relate, and Plaid returns every combination that fits.
 
 * You declare **variables** (`?s`, `?t`, …) for the entities you want.
-* You write a list of **clauses**. Each clause either describes a single entity (a
-  span on the `pos` layer with value `NOUN`, call it `?s`) or relates two of them
-  (`?s covers ?t`).
-* All clauses must hold at once (an implicit AND); reusing a variable in two
-  clauses **joins** them, so the name must stand for the same thing in both places.
+* You write a list of **clauses**. Each clause either describes one entity (a span on the `pos` layer with value `NOUN`, call it `?s`) or relates two of them (`?s covers ?t`).
+* All clauses must hold at once. Using a variable in two clauses **joins** them, so the name stands for the same thing in both.
 * You ask for some of those variables back, as ids, full entities, or a count.
 
-Disjunction (`or`) and negation (`not`) are written as explicit clauses, and the
-`seq` shorthand covers the common "this token, then that token" case. All of them
-are built from the same handful of basic clauses.
+Alternatives (`or`) and negation (`not`) are clauses of their own, and `seq` is a shorthand for "this token, then that token".
 
 [,python]
 ----
@@ -74,10 +66,12 @@ result = client.query({
 #     "count": N, "truncated": false}
 ----
 
+NOTE: To keep them readable, the examples write a layer as a name such as `pos` or `UPOS`.
+A real query names a layer by its id (see <<Layer addressing>>), so read `"layer": "pos"` as "the id of the layer called pos".
+
 == Request shape
 
-A query is a JSON object. The wire keys are below; the clients recase them from
-your language's idiom (see <<Clients and casing>>).
+A query is a JSON object with these keys:
 
 [cols="1,1,4"]
 |===
@@ -92,23 +86,17 @@ your language's idiom (see <<Clients and casing>>).
 | `bindings`      | no  | Substitute `?name` placeholders with literals you supply (see <<Bindings>>).
 |===
 
-NOTE: For legibility, examples in this reference write a layer as a readable name
-(e.g. `pos`, `UPOS`) where a real query carries the layer's UUID — layers are
-addressed by id only (see <<Layer addressing>>). Read `"layer": "pos"` as "the id of
-the layer called pos".
+The clients accept these keys in your language's own casing (see <<Clients and casing>>).
 
 == Variables
 
-A variable is a string beginning with `?`: `"?s1"`, `"?token"`, `"?head"`.
-The name is arbitrary; what matters is that the same name in two clauses refers to
-the same entity (that is the join). Every variable in `find` must be bound by some
-positive clause in `where`. Names beginning with `?__` are reserved for the
-engine; a `find` variable may not use one.
+A variable is a string beginning with `?`, such as `"?s1"` or `"?head"`.
+The name is up to you, and the same name in two clauses refers to the same entity.
+Every variable in `find` must appear in some clause of `where`, and names beginning with `?__` are reserved.
 
 == Bindings
 
-If some value, like the ID of a layer, is known before the query is executed, you
-may put it into the query as a literal, like the span layer ID below:
+If a value such as a layer id is known before the query runs, you can write it into the query directly:
 
 [,python]
 ----
@@ -118,9 +106,8 @@ may put it into the query as a literal, like the span layer ID below:
 }
 ----
 
-However, it's often more convenient to use **bindings** instead, where a variable
-takes the value's place, and the variable is separately bound in a `"bindings"`
-map:
+It is often more convenient to put a placeholder in its place and supply the value separately in `bindings`.
+The two queries mean exactly the same thing:
 
 [,python]
 ----
@@ -131,14 +118,8 @@ map:
 }
 ----
 
-This is a convenience for you: these two example queries are behaviorally
-identical, and under the hood, before the latter query is executed, it is
-transformed into the former query by having all bound variables substituted
-with their bound values.
-
-A binding value is a scalar (string / number / boolean) or a non-empty
-list of scalars. A list in a `value` position matches any of them
-(see <<Value matching>>):
+A binding is a string, number or boolean, or a non-empty list of them.
+A list in a `value` position matches any of its members:
 
 [,python]
 ----
@@ -146,33 +127,29 @@ list of scalars. A list in a `value` position matches any of them
 ["span", "?s", {"layer": "UPOS", "value": "?tags"}]
 ----
 
-Bindings are strict. Every binding must be referenced, and a placeholder may only
-stand where a literal is allowed; using one where a variable is required (in
-`find`, as the entity slot of a clause, in `order-by`) is an error.
+Every binding must be used, and a placeholder may stand only where a literal could.
+Using one where a variable is required, such as in `find` or `order-by`, is an error.
 
 == Entity clauses
 
-An entity clause is `[kind, "?var", {constraints}]`. The **kind** picks the entity
-type (and its table and access-control scope); the **constraint map** filters it.
+An entity clause is `[kind, "?var", {constraints}]`.
+The **kind** says what sort of entity it is, and the **constraint map** filters it.
 
 [cols="1,2,3"]
 |===
 | Kind | Constraints | Notes
 
 | `span`     | `layer`, `value`, `doc`, `metadata`                   | `value` matches the stored annotation value.
-| `token`    | `layer`, `value`, `doc`, `begin`, `end`, `metadata`   | `value` is the token's surface text (the slice of the text body); `begin` / `end` are 0-based Unicode code-point offsets (begin inclusive, end exclusive).
-| `relation` | `layer`, `value`, `doc`, `source`, `target`, `metadata` | `source` / `target` may be inline variables (see <<Relationship clauses>>).
-| `vocab`    | `layer`, `form`, `metadata`                           | Vocab items are global; scoped via project grants (see <<Scope and access control>>).
+| `token`    | `layer`, `value`, `doc`, `begin`, `end`, `metadata`   | `value` is the token's surface text. `begin` and `end` are code-point offsets.
+| `relation` | `layer`, `value`, `doc`, `source`, `target`, `metadata` | `source` and `target` may be variables (see <<Relationship clauses>>).
+| `vocab`    | `layer`, `form`, `metadata`                           | A vocabulary entry.
 | `document` | `name`, `id`, `metadata`                              | A document.
-| `text`     | `body`, `doc`, `metadata`                             | A document's text content; `body` is the raw text.
-| `link`     | `item`, `doc`, `metadata`                             | A vocab link: the annotation that ties one or more tokens to a vocab item (several tokens make a multi-word expression). `item` is a vocab variable (a join) or an item id; its metadata carries provenance. Scoped through its document.
+| `text`     | `body`, `doc`, `metadata`                             | A document's text. `body` is the text itself.
+| `link`     | `item`, `doc`, `metadata`                             | A vocab link, which ties one or more tokens to a vocab item. `item` is a vocab variable or an item id.
 |===
 
-All constraints are optional, but a layer-less entity is still confined to your
-readable projects. Two clauses on the same variable conjoin their constraints:
-splitting compatible constraints across clauses combines them, while contradictory
-ones (a `span` `?s` with `value` `NOUN` in one clause and `VERB` in another) match
-nothing.
+All constraints are optional.
+Two clauses on the same variable combine their constraints, so contradictory ones (`NOUN` in one clause and `VERB` in the other) match nothing.
 
 [,python]
 ----
@@ -185,10 +162,9 @@ nothing.
 
 == Field access (dot paths)
 
-A `?variable` followed by a **dot path** (`?t.begin`) reads one of that entity's
-fields. The result is a scalar, usable in a <<Predicate clauses,predicate>>, in
-<<Ordering,order-by>>, or in an <<Aggregates,aggregate>>. So to keep only the
-tokens that begin at or after offset 5:
+A variable followed by a **dot path**, such as `?t.begin`, reads one field of that entity.
+You can use it in a <<Predicate clauses,predicate>>, in <<Ordering,order-by>>, or in an <<Aggregates,aggregate>>.
+For example, to keep only the tokens that begin at or after offset 5:
 
 [,python]
 ----
@@ -196,7 +172,7 @@ tokens that begin at or after offset 5:
 [">=", "?t.begin", 5]
 ----
 
-Supported names, by type:
+Each kind has these fields:
 
 [cols="1,3"]
 |===
@@ -211,45 +187,21 @@ Supported names, by type:
 | layer variable  | `name`, `id`, `config.KEY…`
 |===
 
-`doc` is the document id and `id` is the entity's own id. `metadata` and
-`config` go deeper: the segment after them is a key, and you can keep descending
-into nested objects (`?s.metadata.author.name`, `?sl.config.editor.color`).
+`doc` is the document's id and `id` is the entity's own.
+After `metadata` or `config` comes a key, and you can keep descending into nested objects (`?s.metadata.author.name`).
 
-`layer` (every annotation entity — span/token/relation/vocab) and `source`/`target`
-(a relation's endpoint spans) are **reference fields** — opaque id columns, the
-dot-path spelling of the `layer` / `source` / `target` constraint slots. Like other ids they take only `=`, `!=`,
-and `in` (no ordering), and they compare to a **variable or an id**, never a
-name: `["=", "?s.layer", "?sl"]` joins to a layer variable, and
-`["=", "?r.source", "?sp"]` is the same as the `<<Relationship clauses,source>>`
-clause. A bare layer *name* on the right (`["=", "?s.layer", "pos"]`) is a
-400 — match a layer by name with the `layer` constraint or a layer-variable
-clause instead.
+`layer`, `source` and `target` hold ids, so they compare only with `=`, `!=` and `in`, and only to a variable or an id.
+`["=", "?s.layer", "?sl"]` joins a span to a layer variable, while a layer name in that position is an error.
 
-The field name itself (`begin`, `value`, the `metadata`/`config` word) is part
-of the query language, so it is matched loosely: case and `-`/`_` are ignored,
-and you may spell it in whatever idiom your client uses (`?t.begin` and
-`?t.Begin` are the same). The keys after `metadata`/`config`, though, are your
-data: they are matched exactly and case-sensitive
-(`?s.metadata.caseMarker` is not `?s.metadata.casemarker`), mirroring how
-metadata and config are stored. A key is composed (Unicode NFC) before it is
-looked up, as every stored key is, so `fórm` typed with a combining accent
-finds the key `fórm`. A key containing a literal `.` can't be reached
-with a dot path. Use the <<Metadata,`metadata` constraint>> for those. Every
-other character belongs to the key, brackets included: `?s.metadata.m.x[0]`
-reads the key `x[0]`, not the first element of an array `x`. A dot path reads
-object keys only, and a segment that is nothing but an index
-(`?d.metadata.genre.[0]`) is a 400. To match inside an array, see
-<<Metadata>>.
+Field names such as `begin` are matched loosely, ignoring case and `-` or `_`, so you can spell them in your client's style.
+The keys after `metadata` or `config` are your own data, so they are matched exactly, case included.
+A dot path reads object keys only, so a key that contains a `.`, or a value inside an array, needs the <<Metadata,`metadata` constraint>> instead.
 
 == Constraints
 
-A constraint slot can be filled in several ways. These forms apply wherever a
-constraint map appears, in entity clauses and in `seq` elements alike.
+A constraint can be written in several ways, which work the same in entity clauses and in `seq` elements.
 
 === Value matching
-
-A scalar constraint can be given four ways. Which forms are allowed depends on the
-key:
 
 [cols="2,3,2"]
 |===
@@ -258,55 +210,17 @@ key:
 | Literal `"NOUN"`              | exact equality                  | any key
 | List `["NOUN", "PROPN"]`      | any of these                    | `value`, `form`, `doc`, `begin`, `end`, `name`, `body`, `id`
 | Regex `{"regex": "^w"}`       | pattern match (see <<Regular expressions>>) | `value`, `form`, `name`, `body`
-| Variable `{"var": "?v"}`      | bind the column, not filter (see <<Value variables>>) | `value`, `form`, `begin`, `end`, `doc`
+| Variable `{"var": "?v"}`      | bind the value instead of filtering it (see <<Value variables>>) | `value`, `form`, `begin`, `end`, `doc`
 |===
 
-`layer` is not in any of these lists: it must resolve to a single layer (see
-<<Layer addressing>>) or hold a layer variable.
+`layer` takes none of these forms.
+It must be a single layer id or a layer variable (see <<Layer addressing>>).
 
 === Regular expressions
 
-A regex spec is `{"regex": "<pattern>"}`, optionally with `"flags": "i"`
-(case-insensitive, the only flag). Patterns are Java regular expressions, the
-syntax accepted by
-https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html[`java.util.regex.Pattern`].
-Matching is a substring search against the decoded value: a pattern matches
-anywhere unless you anchor it with `^` / `$`. Stick to common syntax
-(`. * + ? [ ] ^ $ |`) for patterns that port to other regex engines. A malformed
-pattern, or one longer than 4,096 characters, is a 400.
-
-A value matches when the pattern finds a match in it as stored, or in its
-Unicode NFC form with the pattern in NFC. So a pattern matches text that is
-canonically equivalent to it: `pʰá` typed composed finds it stored decomposed
-(`a` and U+0301), and the reverse. A combining mark searched for on its own
-finds it wherever a value stores it as a mark.
-
-An equality with a text (a bare value, a list of values, a `literal`, `=`,
-`!=` and `in`) compares canonically equivalent text as equal too: `pʰá`
-composed equals it decomposed, and two marks typed in either order are the
-same text (Arabic shadda before or after fatha, a Thai tone mark before or
-after a vowel below). A text that has no other spelling (most text
-without combining marks) is compared as stored, by the index. An equality
-between two values (the same variable in two clauses) compares them as stored.
-
-Character classes read every script. Patterns are compiled with Java's
-`UNICODE_CHARACTER_CLASS`, so the classes take Java's Unicode definitions:
-`\w` is any alphabetic character (letters, letter numbers such as `Ⅶ`, and
-other alphabetic symbols), a mark, a decimal digit, a connector such as `_`, or
-a joiner (U+200C, U+200D), `\d` is a decimal digit in any script, `\s` is any
-Unicode white space (U+00A0 too), and `\b` is a boundary next to such a `\w`.
-On Arabic text `^\w+$` matches `الكتاب`, and `\d` matches `٣`. The POSIX
-classes such as `\p{Alpha}` and `\p{Punct}` take their Unicode meaning too.
-Name a category or script when you mean one, such as `\p{L}` for any letter or
-`\p{IsArabic}` for Arabic. The `i` flag folds case in every script, with
-Unicode's folding, so `^istanbul$` with `i` matches `İstanbul`.
-
-These are the readings of a pattern sent to the API. The search boxes in
-Plaid's apps rewrite what a person types before they send it, and read `\w`,
-`\d`, `\s`, `\b` and scripts the same way. Their case-insensitive match
-differs: it keeps `ı` and `İ` apart from `i`. A pattern they cannot rewrite
-the same way, such as a block (`\p{InCyrillic}`) or a POSIX class, is refused
-in the box with a message.
+A regex is written `{"regex": "<pattern>"}`, optionally with `"flags": "i"` for a case-insensitive match.
+Patterns use Java's https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html[regular expression syntax], and a pattern matches anywhere in a value unless you anchor it with `^` or `$`.
+A malformed pattern, or one longer than 4,096 characters, is an error.
 
 [,python]
 ----
@@ -314,11 +228,18 @@ in the box with a message.
 ["vocab", "?v", {"form": {"regex": "ция$", "flags": "i"}}]
 ----
 
+Character classes cover every script.
+`\w` matches letters, marks and digits in any script, `\d` any decimal digit, and `\s` any white space, so `^\w+$` matches `الكتاب` and `\d` matches `٣`.
+To name a category or a script, use `\p{L}` for any letter or `\p{IsArabic}` for Arabic.
+
+Text is compared as a reader would see it.
+A pattern or an equality matches text that differs only in how its characters are composed, so `pʰá` typed with a precomposed `á` finds it stored as `a` plus an accent.
+Two marks typed in either order count as the same text too.
+
 === Value variables
 
-Write `{"var": "?v"}` where a literal would go and the clause binds that column
-instead of filtering it. The same variable in two clauses joins them, so you can
-require two entities to share a value without knowing it up front:
+Write `{"var": "?v"}` where a literal would go, and the clause binds that value instead of filtering it.
+The same value variable in two clauses requires the two entities to share a value, without your knowing what it is:
 
 [,python]
 ----
@@ -328,66 +249,24 @@ require two entities to share a value without knowing it up front:
 ["!=", "?a", "?b"]
 ----
 
-The explicit `{"var": …}` wrapper is load-bearing: a plain string is always a
-literal, so a real value like `"?x"` is never mistaken for a variable. Value
-variables are join / comparison helpers only; they bind a value, not an entity, so
-they cannot appear in `find`.
+A plain string is always a literal, so a value such as `"?x"` is never taken for a variable.
+A value variable holds a value, not an entity, so it cannot appear in `find`.
 
 === Comparing JSON types
 
-A `value` and a metadata value are stored as JSON, so each has a type: string,
-number, boolean, null, array or object. Matching keeps to the type, with these
-consequences:
+Values and metadata are stored as JSON, so each has a type, and matching respects it.
+`{"value": 3}` matches the number `3` and not the string `"3"`, and a string never equals a number.
 
-* A literal in a constraint map matches the stored JSON exactly, type and
-  spelling included. `{"value": 3}` matches the number `3`, not the string
-  `"3"`. It also does not match a number stored as `3.0`, and whether a number
-  is stored as `3` or `3.0` depends on the client that wrote it (JavaScript
-  always writes `3`, Python writes `3.0` for a float).
-* A predicate compares the decoded value, so numbers compare as numbers:
-  `["=", "?s.value", 3]` matches both `3` and `3.0`. A string never equals a
-  number, on any field: `{"begin": "3"}` and `["=", "?t.begin", "3"]` match no
-  token, and `{"form": 3}` matches no entry, not even one whose form is the
-  text `3`. Under `<` and `>` a number sorts before any text.
-* A boolean decodes to the number `1` or `0`. `["=", "?s.value", true]` and
-  `["=", "?s.value", 1]` both match a stored `true` and a stored `1`, while
-  `["=", "?s.value", "true"]` matches nothing. A regex, in a constraint map or
-  in `~`, sees the text `1` or `0`, so `{"regex": "true"}` never matches a
-  boolean.
-* A value variable joins values of one type. A string never joins a number,
-  wherever either is stored (a span's `value`, a token's `begin`, a vocab
-  entry's `form`, a token's surface), numbers join as numbers (`3` joins
-  `3.0`), and a boolean joins `1` or `0`.
+A constraint map matches the stored value exactly, so `{"value": 3}` does not match a number stored as `3.0`.
+A predicate compares numbers as numbers, so `["=", "?s.value", 3]` matches both.
+Use a predicate when you compare numeric values (see <<Predicate clauses>>).
+
+A boolean reads as the number `1` or `0`.
+`["=", "?s.value", true]` matches a stored `true` or `1`, but `"true"` as a string matches nothing.
 
 === Metadata
 
-Any entity can carry metadata, an arbitrary JSON object. It is therefore common
-to want to constrain an entity query by just a certain portion of the whole
-JSON object. There are some special semantics at play for accomplishing this:
-
-* A plain value matches by equality, JSON type included: `{"score": 5}` matches the
-number `5`, not the string `"5"`, and `{"ok": true}` matches the boolean, not the
-string `"true"`.
-* A list means "any of these", a shorthand for several separate literals, not a
-value to match as a whole. Each member is a string, number, boolean or null.
-A `{"literal": …}` member reads as its value. A regex in a list is a 400 (write
-one regex with `|` for the alternatives), and so is a list inside a list. The
-same holds for a list on any other key and for `in`. The `genre` example matches a document whose `genre`
-is the string `"news"` or the string `"opinion"`; it does not match one whose
-`genre` is the array `["news", "opinion"]`.
-* A regex runs against the value's text: for a scalar, the decoded value (a string
-without its surrounding quotes, so `^[0-9]+$` matches the string `"123"`); for an
-array or object, the serialized JSON (for example `["news","opinion"]`), with
-every letter written as itself (`["café"]`, not `["caf\u00e9"]`). That
-serialized form is the only way a regex reaches inside a non-scalar value.
-* A plain string beginning with `?` is refused with a 400. Metadata is matched,
-never bound, so a variable there could only ever read as a literal that no row
-equals. To match a value that really does begin with `?` (a gloss like `?PL`),
-wrap it: `{"literal": "?PL"}`, beside `{"regex": ...}`. The wrapper takes a
-single value or a list of them, and means exactly what the bare form means:
-`{"literal": null}` matches a stored null as a bare `null` does.
-
-Some examples:
+Any entity can carry metadata, an arbitrary JSON object, and the `metadata` constraint matches some of its keys:
 
 [,python]
 ----
@@ -397,61 +276,42 @@ Some examples:
 ["span", "?s", {"layer": "Gloss", "metadata": {"gloss": {"literal": "?PL"}}}]
 ----
 
-Matching a metadata value that is itself an array or object is not well
-supported. If you need to do so, either restructure the metadata to remove
-the array/object, or match the serialized JSON with a regex. Suppose `genre` is
-stored as the array `["news", "opinion"]`: a regex sees it as the text
-`["news","opinion"]`, so a pattern can pick out an element inside it. For example,
-to match documents whose `genre` array includes `"news"`:
+A plain value matches by equality, type included.
+A list means "any of these", so the `genre` example matches a `genre` of `"news"` or `"opinion"`, not a `genre` that is the array `["news", "opinion"]`.
+A regex runs against the value's text.
 
-[,python]
-----
-# genre stored as e.g. ["news", "opinion"]; match the serialized text
-["document", "?d", {"metadata": {"genre": {"regex": "\"news\""}}}]
-----
+Metadata is matched, never bound, so a string beginning with `?` is an error there.
+To match a value that really begins with `?`, such as the gloss `?PL`, wrap it as `{"literal": "?PL"}`.
 
-This is brittle: the regex has to match SQLite's exact serialization (compact, no
-spaces, with object keys in whatever order they were stored), so reach for it only
-as a last resort.
+Matching a value that is itself an array or object is not well supported.
+A regex sees such a value as its compact JSON text, so `{"regex": "\"news\""}` finds a `genre` array that includes `"news"`.
+This is brittle, and restructuring the metadata is usually the better fix.
 
-Keys are arbitrary strings, kept verbatim and case-sensitive, and composed
-(Unicode NFC) as every stored key is. The lookup is indexed
-against the entity you have already narrowed to, so it is cheap, but metadata is
-free-form: treat it as a filter on a search you have already narrowed, not a
-primary search key.
+Keys are matched exactly, case included.
+Metadata is best used to narrow a search that other constraints have already narrowed, not as the main thing you search by.
 
 === Filtering by document
 
-An annotation's `doc` is its document's ID. It takes an ID, a list of IDs,
-or a value variable. A document variable or a name there is a 400, since it
-could never equal an ID. To select by document name (or any
-document property), bind the annotation's `doc` to a value variable and equate it
-to a `document` clause:
+An annotation's `doc` is its document's id.
+It takes an id, a list of ids, or a value variable.
+To select by a document's name or other properties, bind `doc` to a value variable and equate it with a `document` clause:
 
 [,python]
 ----
 ["span", "?s", {"layer": "POS", "doc": {"var": "?dv"}}],
 ["document", "?d", {"name": {"regex": "^interview-"}}],
-["=", "?dv", "?d"]   # the span's document_id equals this document's id
+["=", "?dv", "?d"]   # the span's document is this document
 ----
 
-Two annotations sharing the same `doc` value variable means "in the same document"
-without a `document` clause at all.
+Two annotations sharing one `doc` value variable are in the same document.
 
 == Relationship clauses
 
-A relationship clause is `[op, "?a", "?b"]`, a named edge between two variables.
-This is where the structure between entities comes from. Each operator fixes the
-entity kind of both operands, shown as `(kind, kind)` after the signature; a
-variable used at the wrong kind (a span where a token is required) is a 400. Only
-spans, tokens, relations, vocab items, and links take part in these clauses;
-documents and texts do not.
+A relationship clause is `[op, "?a", "?b"]`, a named relation between two variables, and it is where the structure of a query comes from.
+Each operator takes two particular kinds of entity, shown after it below, and a variable of the wrong kind is an error.
+In the diagrams, tokens are boxed words, a bracket marks the tokens a span covers, and an arrow is a relation.
 
-In the diagrams below, tokens are boxed words, a bracket marks the tokens a span
-covers, and an arrow is a relation edge.
-
-**Coverage.** `["covers", "?span", "?token"]` (`span`, `token`): the span
-includes that token.
+**Coverage.** `["covers", "?span", "?token"]` (`span`, `token`): the span includes that token.
 
 ....
    ┌─ ?s ─┐
@@ -459,8 +319,7 @@ includes that token.
       ?t
 ....
 
-**Precedence.** `["precedes", "?t1", "?t2"]` (`token`, `token`): `?t2` is the
-immediate next token after `?t1`.
+**Precedence.** `["precedes", "?t1", "?t2"]` (`token`, `token`): `?t2` is the next token after `?t1`.
 
 ....
    [ dogs ][ run ]
@@ -468,8 +327,7 @@ immediate next token after `?t1`.
        └──▶──┘
 ....
 
-`["precedes*", "?t1", "?t2"]` (`token`, `token`): `?t1` comes somewhere before
-`?t2`, not just right before.
+`["precedes*", "?t1", "?t2"]` (`token`, `token`): `?t1` comes somewhere before `?t2`, not just right before.
 
 ....
    [ the ][ big ][ dog ]
@@ -477,13 +335,10 @@ immediate next token after `?t1`.
       └──── … ───▶┘
 ....
 
-"Next" and "before" follow Plaid's standard reading order `(begin, precedence,
-end, id)`, the order tokens appear in as you read a document. Both are scoped to a
-single text and a single token layer: a word token never precedes a morpheme
-token, and neither relation reaches across texts.
+Both follow the order in which tokens are read in a document.
+They relate tokens of one layer in one text only, so a word never precedes a morpheme.
 
-**Nesting.** `["within", "?child", "?parent"]` (`token`, `token`): the extent of
-`?child` sits inside the extent of `?parent`.
+**Nesting.** `["within", "?child", "?parent"]` (`token`, `token`): the extent of `?child` lies inside the extent of `?parent`.
 
 ....
    word       [  replayed  ]
@@ -491,8 +346,7 @@ token, and neither relation reaches across texts.
                    ?child
 ....
 
-**First token.** `["first-in", "?token", "?container"]` (`token`, `token`):
-`?token` is within `?container` and is the first token of its layer there.
+**First token.** `["first-in", "?token", "?container"]` (`token`, `token`): `?token` is within `?container` and is the first token of its layer there.
 
 ....
    sentence  [ the dog runs ]
@@ -500,15 +354,10 @@ token, and neither relation reaches across texts.
               ?token
 ....
 
-Both compare tokens by their code-point offsets, so they work across layers: naming
-child and parent on different token layers (morpheme within word within sentence)
-is how you walk a hierarchy. Nesting is non-strict, so a child whose extent
-exactly fills its parent still counts, but a token is never within itself.
-`first-in` also requires that no token on the same layer as `?token` in the
-container comes before it in that same reading order.
+These two compare tokens by their offsets, so they work across layers, and they are how you walk a hierarchy of morphemes within words within sentences.
+A child that exactly fills its parent counts as within it, but a token is never within itself.
 
-**Overlap.** `["overlaps", "?a", "?b"]` (`span`, `span`): the two spans share at
-least one token.
+**Overlap.** `["overlaps", "?a", "?b"]` (`span`, `span`): the two spans share at least one token.
 
 ....
        [a][b][c][d]
@@ -516,8 +365,7 @@ least one token.
    ?y        └────┘
 ....
 
-**Containment.** `["contains", "?a", "?b"]` (`span`, `span`): span `?a` covers
-every token span `?b` does.
+**Containment.** `["contains", "?a", "?b"]` (`span`, `span`): span `?a` covers every token span `?b` does.
 
 ....
        [a][b][c]
@@ -525,8 +373,7 @@ every token span `?b` does.
    ?b     └─┘
 ....
 
-**Coextension.** `["coextensive", "?a", "?b"]` (`span`, `span`): the two spans
-cover exactly the same tokens.
+**Coextension.** `["coextensive", "?a", "?b"]` (`span`, `span`): the two spans cover exactly the same tokens.
 
 ....
        [a][b][c]
@@ -534,13 +381,10 @@ cover exactly the same tokens.
    ?y  └───────┘
 ....
 
-All three compare spans by the set of tokens each covers, so a discontinuous span
-works too, and all three exclude a span from matching itself. That is why
-`coextensive` is useful: it finds two different spans over the same tokens (e.g. a
-POS span lined up with an NER span).
+These three compare spans by the tokens they cover, so they work for discontinuous spans too.
+None of them matches a span with itself, which makes `coextensive` useful for finding two different spans over the same tokens, such as a POS span and an NER span.
 
-**Source.** `["source", "?relation", "?span"]` (`relation`, `span`): the span at
-the relation's source end.
+**Source.** `["source", "?relation", "?span"]` (`relation`, `span`): the span at the relation's source end.
 
 ....
             ?relation
@@ -548,8 +392,7 @@ the relation's source end.
      ?span
 ....
 
-**Target.** `["target", "?relation", "?span"]` (`relation`, `span`): the span at
-the relation's target end.
+**Target.** `["target", "?relation", "?span"]` (`relation`, `span`): the span at the relation's target end.
 
 ....
             ?relation
@@ -557,8 +400,7 @@ the relation's target end.
                        ?span
 ....
 
-The two ends can be written inline on the `relation` clause or as separate edges;
-the two are equivalent:
+A relation's ends can also be written inside the `relation` clause, which means the same thing:
 
 [,python]
 ----
@@ -570,20 +412,16 @@ the two are equivalent:
 ["target", "?r", "?d"]
 ----
 
-**Reachability.** `["related*", "?a", "?b", {layer}]` (`span`, `span`): `?b` is
-reached from `?a` by following one or more relation edges on the named layer.
+**Reachability.** `["related*", "?a", "?b", {layer}]` (`span`, `span`): `?b` is reached from `?a` by following one or more relations of the named layer.
 
 ....
    [x] ──▶ [y] ──▶ [z]
    ?a               ?b
 ....
 
-The trailing map is required: it names the relation `layer`, and may add a
-`value` each edge must carry (a literal or a list of literals only; a regex or
-value variable there is a 400). It follows one or more
-hops, never zero, so `?a related* ?a` matches only through a cycle. Every span
-reached along the path must itself sit in a span layer within your scope, so the
-search never crosses into a project you cannot read.
+The map at the end is required and names the relation `layer`.
+It may also give a `value`, or a list of values, that every step must carry.
+At least one step is taken, so `?a related* ?a` matches only through a cycle.
 
 [,python]
 ----
@@ -591,19 +429,15 @@ search never crosses into a project you cannot read.
 ["related*", "?head", "?node", {"layer": "dep"}]
 ----
 
-**Vocab link.** `["vocab-link", "?token", "?vocab"]` (`token`, `vocab`): the
-token is linked to that vocab item.
+**Vocab link.** `["vocab-link", "?token", "?vocab"]` (`token`, `vocab`): the token is linked to that vocab item.
 
 ....
    [ Fido ] ──▶  vocab { form: "Fido" }
     ?token        ?v
 ....
 
-**Link entity.** When the link itself matters (who made it, whether anyone
-confirmed it, how many tokens it covers), bind it as a `link` entity and walk to
-its tokens and item: `["link-token", "?link", "?token"]` (`link`, `token`) and
-`["link-item", "?link", "?vocab"]` (`link`, `vocab`). The `item` constraint on the
-`link` clause is the inline form of `link-item`.
+**Link entity.** When the link itself matters, such as whether anyone confirmed it or how many tokens it covers, bind it as a `link` entity.
+`["link-token", "?link", "?token"]` (`link`, `token`) and `["link-item", "?link", "?vocab"]` (`link`, `vocab`) then reach its tokens and its entry.
 
 [,python]
 ----
@@ -618,9 +452,8 @@ its tokens and item: `["link-token", "?link", "?token"]` (`link`, `token`) and
 
 == Predicate clauses
 
-A predicate compares two already-bound terms: `[op, a, b]` where `op` is one of
-`=`, `!=`, `<`, `>`, `+<=+`, `>=` and each term is a variable, a
-<<Field access (dot paths),field path>>, or a literal.
+A predicate compares two terms: `[op, a, b]`, where `op` is one of `=`, `!=`, `<`, `>`, `+<=+` or `>=`.
+Each term is a variable, a <<Field access (dot paths),field path>>, or a literal.
 
 [,python]
 ----
@@ -631,21 +464,15 @@ A predicate compares two already-bound terms: `[op, a, b]` where `op` is one of
 ["=",  "?s.metadata.gloss", {"literal": "?PL"}]   # a literal that begins with ?
 ----
 
-* On entity variables only `=` / `!=` are allowed (ids have no order); this is
-  how you say "two distinct matches" and keep an entity from matching itself.
-  An entity or layer variable compares on its id, so the other term must be a
-  variable, a field path, or an id: a bare name is a 400, since it could only
-  ever match nothing. To compare an annotation's text, use its field path
-  (`?s.value`) or constrain the clause.
-* On value variables and literals, all six operators work.
-* A term beginning with `?` reads as a variable. For a literal that really does
-  begin with `?`, use the same `{"literal": …}` wrapper the
-  <<Metadata,metadata constraint>> takes. It wraps one string, number, or
-  boolean.
-* Both variable terms must be bound elsewhere in `where`; a predicate filters, it
-  never introduces a variable. Predicates are not allowed inside `not`.
+Entity variables compare by id, so they take only `=` and `!=`.
+That is how you ask for two distinct matches, or keep an entity from matching itself.
+Value variables and literals take all six operators.
 
-Two more predicates work on a field path (or, for `in`, also a variable):
+A predicate only filters, so its variables must be bound by other clauses.
+A term beginning with `?` is a variable, and a literal that begins with `?` is wrapped as `{"literal": "?PL"}`.
+Predicates may not appear inside `not`.
+
+Two more predicates work on a field path:
 
 [,python]
 ----
@@ -654,25 +481,14 @@ Two more predicates work on a field path (or, for `in`, also a variable):
 ["in", "?s.value", ["NOUN", "PROPN"]]         # membership / alternation
 ----
 
-* `~` matches a **text** field (`value`, `form`, `name`, `body`, a
-  `metadata`/`config` value, or a token's surface `value`) against a
-  regular expression. The right side is a bare pattern string or a
-  `{"regex": …, "flags": "i"?}` spec (only the `i` — case-insensitive — flag is
-  supported). Regexes run against the decoded text, so anchors (`^`, `$`) work.
-  `~` on a number or id field is a 400.
-* `in` keeps rows whose left term equals one of the listed literals — the
-  predicate form of a <<Constraints,list constraint>>. The list must be non-empty
-  literals. On a <<Field access (dot paths),reference field>> the members must be
-  ids, not names.
-* Like the comparison predicates, `~` and `in` are not allowed inside `not`.
+`~` matches a text field against a regular expression, given as a bare pattern or as a `{"regex": ...}` spec.
+`in` keeps rows whose term equals one of a non-empty list of literals.
 
 === Constraints, two ways
 
-Most things you can say in an entity clause's **constraint map** you can also say
-as a standalone predicate over a **field path** — the same filter, two spellings,
-the same result. The constraint map is the compact, common form; the predicate
-("triple") form is the composable, Datalog-style one. Both are first-class;
-neither is preferred, and neither is going away. Pick whichever reads better.
+Most filters can be written either in a constraint map or as a predicate over a field path, with the same result.
+The constraint map is more compact, while predicates can compare fields of different entities.
+Use whichever reads better.
 
 [cols="1,1"]
 |===
@@ -700,22 +516,12 @@ neither is preferred, and neither is going away. Pick whichever reads better.
 | `["~", "?s.metadata.k", "x"]`
 |===
 
-The triple form's strength is composition: a bare `["span", "?s"]` plus
-predicates lets you filter on fields of *different* entities and join them, where
-a single constraint map only describes one entity.
-
-The two forms return the same rows for the categorical (string) values that
-annotations almost always carry. The one nuance is a *numeric* annotation value:
-a predicate/field-path reads it as a number (so `["=", "?s.value", 5]` and
-`["in", "?s.value", [5]]` match a stored `5.0`), while the constraint map
-compares the stored text (`{"value": 5}` does not). Stick to one form when
-comparing numeric annotation values.
+The two forms differ only for numeric values, as described under <<Comparing JSON types>>.
 
 == Sequences (`seq`)
 
-A `seq` clause walks one token layer; each element matches a token at the next
-position, and consecutive elements are adjacent by `precedes`. It is the readable
-form of a chain of `covers` + `precedes`.
+A `seq` clause walks one token layer, matching each of its elements to the next token in turn.
+It is a readable way of writing a chain of `covers` and `precedes`.
 
 [,python]
 ----
@@ -733,17 +539,9 @@ form of a chain of `covers` + `precedes`.
              ?d      ?n
 ....
 
-Each element is `[kind, {constraints}]`, optionally followed by `"as", "?var"` to
-capture it. A `span` element matches a token that the span covers; a `token`
-element matches the sequence token directly. A `span` element takes `layer` /
-`value` / `metadata`, a `token` element `value` / `begin` / `end` / `metadata`.
-
-The `seq` config map takes `layer` (required) and an optional `doc` to pin the
-whole sequence to one document. Those two belong to the config and nowhere else:
-the config's `layer` is the token layer the sequence walks, so a `token`
-element carrying its own `layer` is a 400, and so is a `doc` on an element of
-either kind. (A `span` element's `layer` is its own span layer, which is a
-different thing, and it is kept.)
+Each element is `[kind, {constraints}]`, optionally followed by `"as", "?var"` to name it.
+A `span` element matches a token that such a span covers, and a `token` element matches the token itself.
+The first map of the `seq` names the token layer to walk, and may also pin the sequence to one document with `doc`.
 
 === Quantifiers
 
@@ -774,15 +572,13 @@ Wrap an element to repeat it:
             the big dog   (DET ADJ NOUN)
 ....
 
-Only fixed (non-quantified) elements may be named with `"as"`; a quantified
-element is anonymous filler. Unbounded quantifiers (`*`, `+`) are not supported;
-use a bounded `rep`. A bounded quantifier is tried at each allowed length, so the
-query above matches both DET NOUN and DET ADJ NOUN.
+A repeated element cannot be named with `"as"`.
+There is no unbounded `*` or `+`, so use `rep` with an upper bound.
 
 == Disjunction (`or`)
 
-For "this OR that", use `["or", group, group, …]` where each group is a list of
-clauses (all of which must hold together). The query matches if any group matches.
+For "this or that", write `["or", group, group, …]`, where each group is a list of clauses that must hold together.
+The query matches if any group matches.
 
 [,python]
 ----
@@ -798,23 +594,13 @@ clauses (all of which must hold together). The query matches if any group matche
           └─ VERB
 ....
 
-Surrounding clauses (the ones outside the `or`) apply to every branch. Rules:
-
-* At least 2 groups, each a non-empty list of clauses.
-* Every `find` variable must be bound in every group, with the same kind
-  in each, or it is a 400.
-* `or` may nest, and a group may contain a `seq`.
-* Each group runs as its own query and the results are combined, with duplicates
-  removed (a row matching two groups appears once).
-
-For "one field is one of several values", prefer a value list
-(`{"value": ["NOUN", "PROPN"]}`), which is simpler and faster than separate `or`
-branches.
+An `or` needs at least two groups, and every `find` variable must be bound in each of them.
+The clauses outside the `or` apply to every group, and a row that matches two groups appears once.
+For one field taking one of several values, a list such as `{"value": ["NOUN", "PROPN"]}` is simpler and faster.
 
 == Negation (`not`)
 
-`["not", clause, …]` takes one or more clauses and matches when they have no
-joint match in your data.
+`["not", clause, …]` takes one or more clauses and matches when they have no match together.
 
 [,python]
 ----
@@ -834,47 +620,25 @@ joint match in your data.
         ?t
 ....
 
-What the `not` means depends on which variables it shares with the rest of the
-query:
-
-* A variable also used outside the `not` is held to that binding, so the `not`
-  is checked once per value. Above, `?t` appears outside, so the `not` reads
-  "this particular `?t` has no covering NOUN span."
-* A variable used only inside the `not` is existential: "there is no such
-  thing." Here `?s` is only inside, giving "there is no NOUN span covering
-  `?t`." Such a variable stays local to the `not` and cannot be a `find`
-  variable.
-
-The body may itself contain `or`, `seq`, or another `not`.
+A variable that is also used outside the `not` keeps its value there, so above, the `not` asks about one particular `?t`.
+A variable used only inside the `not` means "there is no such thing", so `?s` reads as "there is no NOUN span covering `?t`".
+Such a variable cannot be in `find`.
 
 == Layer addressing
 
-Wherever a clause takes a `layer`, a scalar reference is the layer's **ID** (its
-UUID) — that is the only way to name a *specific* layer. There is no addressing by
-layer name or `Project/Layer` path: names are non-unique across a
-multi-tenant instance (two unrelated projects routinely share a layer name), so
-resolving one to a single layer is brittle, whereas an ID always identifies exactly
-one layer.
+A `layer` is named by its **id**.
+Layer names are not unique, since two unrelated projects often share one, so a name or a path in place of an id is an error.
+A program that knows a layer's name got it from the API, along with its id.
 
 [,python]
 ----
 ["span", "?s", {"layer": "98ef7a32-...-1327101afee3"}]   # by id
 ----
 
-A non-ID reference (a name or path) is a 400. In practice this is no burden:
-anything that knows a layer's name fetched it from the API and already holds its ID,
-so it just passes the ID. To select a layer *by name*, bind it with a layer variable
-and a `*-layer` clause (next section) — the match is then explicit, and you can see
-every layer it binds instead of a name silently resolving to one.
-
 === Layer variables
 
-Instead of a reference, the `layer` slot can hold a **variable** (`"?sl"`), binding
-the entity's layer as a first-class node. This does three things a reference
-cannot.
-
-**Same-layer join**: two entities sharing a layer variable are forced onto the
-same (otherwise unspecified) layer:
+The `layer` slot can also hold a **variable**, such as `"?sl"`.
+Two entities sharing a layer variable must be on the same layer, and putting the variable in `find` returns the layer's id:
 
 [,python]
 ----
@@ -883,12 +647,8 @@ same (otherwise unspecified) layer:
 ["span", "?b", {"layer": "?sl", "value": "VERB"}]
 ----
 
-**Project the layer**: put a layer variable in `find` to get the layer ID back.
-
-**Match by name**: constrain a layer variable with a `*-layer` clause. Since a scalar
-reference is an ID only, this is how you select layers by *name* — and because it
-binds a variable, it transparently matches every same-named layer in your scope
-(across projects), rather than resolving to one:
+To select layers by name, constrain a layer variable with a layer clause.
+It matches every layer of that name in your scope, across projects:
 
 [,python]
 ----
@@ -897,19 +657,11 @@ binds a variable, it transparently matches every same-named layer in your scope
 ["span-layer", "?sl", {"name": "pos"}]
 ----
 
-The layer-constraint clause matches the entity's kind: `span-layer`,
-`token-layer`, `relation-layer`, `vocab-layer`. It constrains by `name`;
-an unconstrained layer variable ranges over every layer of its kind in
-scope. A layer variable used for two different kinds is a 400 kind conflict.
+The layer clauses are `span-layer`, `token-layer`, `relation-layer`, `vocab-layer` and `text-layer`, and each is constrained by `name`.
 
 === Layer structure
 
-A layer clause can also name the layer's immutable **parent layer**: the edge
-the data model records (a token layer's text layer and optional parent token
-layer, a span layer's token layer, a relation layer's span layer). The slot is
-named after the attribute and holds either a layer variable (binding the parent
-as a node you can constrain further or project) or a scalar layer reference
-(resolved to one layer), exactly like the `layer` slot on an entity.
+A layer clause can also name the layer's **parent layer**, by a variable or an id:
 
 [cols="1,2"]
 |===
@@ -920,8 +672,7 @@ as a node you can constrain further or project) or a scalar layer reference
 | `relation-layer` | `span-layer`
 |===
 
-Chain the slots through shared variables to filter an entity by an ancestor
-layer:
+Chaining these through shared variables filters an entity by any layer above it:
 
 [,python]
 ----
@@ -932,19 +683,7 @@ layer:
 ["text-layer",  "?txtl", {"name": "Transcription"}]
 ----
 
-A scalar reference pins the parent in a single clause. Like the `layer` slot on an
-entity, it is a layer **ID** (see <<Layer addressing>>); to pin the parent by name
-instead, bind it as a variable and name it with a `*-layer` clause (the chained form
-above):
-
-[,python]
-----
-# the token layer's text layer, pinned by id
-["token-layer", "?tl", {"text-layer": "98ef7a32-...-1327101afee3"}]
-----
-
-Token-layer nesting (sentence > word) uses `parent-token-layer`; the inverse
-direction (a text layer's token layers) is written from the child side:
+Nested token layers, such as words under sentences, are related with `parent-token-layer`:
 
 [,python]
 ----
@@ -953,37 +692,24 @@ direction (a text layer's token layers) is written from the child side:
 ["token-layer", "?s", {"name": "sentences"}]
 ----
 
-Unlike the other layer kinds, `text-layer` has no parent slot of its own — its
-parent is the project, which `scope` already confines. It is otherwise an ordinary
-layer variable (match it by `name`, project it in `find`); and like any
-layer variable, a structural join only ever reaches layers in projects you can read.
-
 == Scope and access control
 
-A query only ever sees data in projects you can read; access control is
-applied server-side from your authenticated identity and cannot be widened by
-the request. By default the scope is all your readable projects.
-
-Narrow it with `scope`, by project **ID** (projects, like layers, are identified by
-id only — project names are non-unique):
+A query sees only projects you can read, and nothing in the request can widen that.
+By default it searches all of them.
+To narrow it, give `scope` a list of project ids:
 
 [,python]
 ----
 "scope": {"project_ids": ["<uuid>", "<uuid>"]}
 ----
 
-The requested scope is intersected with what you can read, so you can only ever
-narrow, never widen. If that intersection is empty (you scoped only to projects you
-cannot read, or you can read none), the query is a 400, not an empty result. Vocab
-layers are global; a vocab item is visible when some project in your scope has been
-granted its layer.
+If none of the projects in `scope` is one you can read, the query is an error rather than an empty result.
+A vocabulary's entries are visible when a project in your scope uses that vocabulary.
 
 == Ordering
 
-Without `order-by`, rows come back in an unspecified order. `order-by` is a list of
-entries applied left to right; each entry is a <<Field access,dot path>>
-(`["?t.begin"]`, or `["?t.begin", "desc"]`) — or, equivalently, the longer
-`[variable, attribute]` / `[variable, attribute, "desc"]` form:
+Without `order-by`, rows come back in no particular order.
+`order-by` is a list of fields to sort by, in turn, each a <<Field access (dot paths),dot path>> optionally followed by `"desc"`:
 
 [,python]
 ----
@@ -993,28 +719,22 @@ client.query({
     "where": [["token", "?t", {"layer": "Words"}],
               ["span",  "?s", {"layer": "POS", "value": "NOUN"}],
               ["covers", "?s", "?t"]],
-    "order_by": [["?t", "doc"], ["?t", "begin"]],
+    "order_by": [["?t.doc"], ["?t.begin"]],
 })
 ----
 
-* The variable must be one you `find` (you can only sort by a returned column).
-* You can sort by any of that variable's fields — see the <<Field access>> table
-  for the full list per kind (e.g. a document by `name`, a text by `body`) —
-  including a `metadata` / `config` path, which is only expressible with the
-  dotted form (`["?s.metadata.score", "desc"]`).
-* Direction is `"asc"` (default) or `"desc"`. Missing values (e.g. a null
-  `precedence`) always sort last, either direction.
-* Ordering applies across the whole result, including `or` / `seq` queries (which
-  Plaid merges into one result). It is not allowed with an aggregate `return`.
+You can sort only by a variable you `find`, but by any of its fields, metadata included.
+Missing values sort last in either direction.
+Ordering cannot be combined with an aggregate `return`.
 
 == Return shapes
 
-Set `return` to choose the result shape.
+Set `return` to choose the shape of the result.
 
 === IDs
 
-The default. `results` is a list of rows, one ID per `find` variable in order;
-`columns` echoes the variable names without `?`.
+This is the default.
+`results` is a list of rows, each holding one id per `find` variable, and `columns` gives the variable names.
 
 [,json]
 ----
@@ -1027,10 +747,8 @@ The default. `results` is a list of rows, one ID per `find` variable in order;
 
 === Entities
 
-The same envelope, but each cell is the full entity object, exactly the shape
-the corresponding `GET` endpoint returns (id, layer, value, and nested data like a
-span's ordered token list or a relation's endpoints). Hydrated in one pass, no
-N+1. A `find` column that holds a layer variable comes back as just `{"id": ...}`.
+The same, but each cell is the full entity, in the shape its `GET` endpoint returns.
+A layer variable comes back as `{"id": ...}`.
 
 [,python]
 ----
@@ -1041,10 +759,8 @@ r["results"][0][0]
 
 === Count
 
-A scalar count of distinct matches. It ignores `limit` and is computed up to
-100,000; a larger result reports `count: 100000, truncated: true`. It counts
-distinct tuples of the `find` variables, so binding extra entities can change the
-number (see the fan-out note under <<Aggregates>>).
+The number of distinct matches, counted up to 100,000.
+A larger result reports `count: 100000, truncated: true`.
 
 [,json]
 ----
@@ -1053,8 +769,7 @@ number (see the fan-out note under <<Aggregates>>).
 
 === Aggregates
 
-Instead of a keyword, `return` can be an **aggregate spec**: group the matches by
-one or more variables and reduce each group.
+`return` can also be an **aggregate spec**, which groups the matches by some variables and summarizes each group:
 
 [,python]
 ----
@@ -1072,96 +787,44 @@ client.query({
 #     "count": 12, "truncated": false}   # count = number of group rows
 ----
 
-* Ops: `count` (counts matches, no source), and `sum` / `avg` / `min` / `max`
-  over a value variable. `sum` / `avg` assume the value is numeric (a `value`
-  is JSON-decoded first); `min` / `max` work on anything comparable.
-* Group keys are bound variables (an entity groups by its ID; a value variable
-  groups by its value). `"group": []` gives one overall row. Result columns are the
-  group variable names followed by one column per aggregate (`op` for `count`,
-  `op_var` otherwise).
-* Groups are not matches, so they are not subject to the 1000/100,000 row cap, but
-  an explicit `limit` is honored (clamped to a backstop of 100,000 group rows);
-  past that the result is `truncated`. The 30-second time limit still applies. The
-  envelope's top-level `count` is the number of group rows returned.
-* `find` and `order-by` are not used with an aggregate `return`.
-* When the pattern uses `or` / `seq`, a match is a binding of the variables
-  EVERY alternative binds, so a row two alternatives both match counts once and
-  a variable only one of them binds does not multiply it.
+The aggregates are `count`, and `sum`, `avg`, `min` and `max` over a value variable.
+`"group": []` gives one row for everything.
+`find` and `order-by` are not used with an aggregate.
 
-Grouping matters. A "match" is a binding of all the query's variables, so a
-one-to-many join repeats the aggregated value once per match. If you bind extra
-entities (e.g. add `["covers", "?s", "?t"]`), a span's value is counted once per
-token it covers: `sum` / `avg` over `?s` inflate, and the aggregate `count`
-reports span×token pairs, not distinct spans. (`min` / `max` are unaffected.) Keep
-the `where` pattern down to the entity you are measuring, plus pure filters, when
-you want faithful `sum` / `avg` / `count`. This is also why a `group: []` `count`
-differs from `return: "count"`: the former counts full matches, the latter counts
-distinct tuples of the `find` variables.
+Be careful what else the pattern binds.
+Each match is counted once, so adding `["covers", "?s", "?t"]` counts a span once per token it covers, which inflates `count`, `sum` and `avg`.
+Keep the pattern to the entity you are measuring and the filters on it.
 
 == Result-size guardrails
 
-`ids` / `entities` queries are paginated by `limit`:
+A query returns at most 1000 rows unless you set `limit`, which goes up to 100,000.
+`truncated: true` means there may be more.
+There is no paging, so to see more of a large result, narrow the pattern or query one project at a time.
 
-* No `limit`: 1000 rows.
-* An explicit `limit` is honored up to a hard cap of 100,000 (a larger value is
-  clamped). `ids` results are cheap; an `entities` result this large is slow, since
-  each row is hydrated with a fetch.
-* `truncated: true` means you hit the effective limit and there may be more.
-
-There is no cursor yet; to page a large result, add more selective clauses or query
-per project. `count` is bounded separately (above).
-
-Every query is also bounded by a 30-second time limit, counted from its arrival: a
-counting query's wait for its turn (below), the wait for a database connection
-and the run itself all count. A query past it is aborted with HTTP 408. If you
-hit it, the pattern is too broad: add a more selective clause or tighten `scope`.
-The clients wait 35 seconds for a query, so the 408 reaches them.
-
-A counting query (`return: "count"` or an aggregate) waits for one of a few turns
-before it runs. One that gets no turn within its time limit is refused with HTTP
-503, and the clients do not retry it.
-
-Two structural limits bound the pattern itself: an `or` / `seq` expansion of more
-than 128 branches is rejected, as is clause nesting deeper than
-64.
+Every query has 30 seconds, after which it is stopped with HTTP 408.
+A query that takes that long is too broad, so add a more selective clause or narrow `scope`.
+A count or aggregate may also be refused with 503 when the server is busy with others.
 
 == Errors
 
-Author errors return HTTP 400 with a message:
+A mistake in a query is answered with HTTP 400 and a message:
 
 [,json]
 ----
 {"error": "No span layer matching \"poss\" is visible in the queried project scope"}
 ----
 
-The clients raise this as an exception (`PlaidAPIError` in Python). Common causes:
-an unbound or duplicate `find` variable, an unknown clause or constraint key, a
-layer reference that does not resolve or is ambiguous, an unbounded `seq`
-quantifier, a value variable in `find`, an empty project scope, or an unsupported
-`return`. Passing an
-`as-of` / time-travel parameter is also a 400: queries run against current state
-only.
-
-A query that runs too long returns 408. Internal failures return 500 with a
-generic message (details are logged server-side, not exposed).
+The clients raise it as an exception (`PlaidAPIError` in Python).
+Common causes are a `find` variable no clause binds, an unknown clause or key, a layer reference that is not an id, or a value variable in `find`.
+Queries always read current data, so a time-travel parameter is an error too.
 
 == Clients and casing
 
-The official clients pass your query body through their normal request/response
-pipeline, which converts naming conventions automatically:
+The clients convert the query's top-level keys to and from your language's casing, so Python's `order_by` and JavaScript's `orderBy` both work.
+Clause names, variables and values are passed through as written, so `"span"`, `"?s1"` and `"NOUN"` are the same in every language.
+Entities in the result come back in your language's casing, like any other read.
 
-* Top-level and `scope` keys are recased to the wire format. Python
-  `order_by` / `project_ids` and JavaScript `orderBy` / `projectIds` both become
-  `order-by` / `project-ids` on the wire.
-* Clause heads, variables, and values are plain string values, and pass
-  through untouched: write `"span"`, `"?s1"`, `"vocab-link"`, `"NOUN"` literally in
-  every language. Constraint keys inside a clause (`layer`, `value`, `begin`, …)
-  are single lowercase words and are identical across languages.
-* Response entity objects are recased and namespace-stripped, so a span comes
-  back as `{"value": "NOUN", "tokens": [...]}` (Python `snake_case` / JavaScript
-  `camelCase`), not `{"span/value": ...}`.
-
-The same query in JavaScript; only the language idiom differs:
+The same query in JavaScript:
 
 [,javascript]
 ----
@@ -1182,12 +845,8 @@ const result = await client.query({
 
 == Worked examples
 
-These run against a Universal Dependencies project with a token hierarchy
-`Sentences › Words › Morphemes`, a `UPOS` span layer, and a `Dependency Relations`
-relation layer. Unlike the short examples above, these carry real layer ids, the
-only form the engine accepts (see <<Layer addressing>>). Read them off the
-project: `client.projects.get(project_id)` returns the layer tree with an `id` on
-every layer.
+These run against a Universal Dependencies project with the token layers `Sentences › Words › Morphemes`, a `UPOS` span layer, and a `Dependency Relations` relation layer.
+Unlike the short examples above, they carry real layer ids, which you can read from `client.projects.get(project_id)`.
 
 [,python]
 ----
