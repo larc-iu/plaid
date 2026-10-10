@@ -1,3 +1,4 @@
+import re
 import sys
 
 import pytest
@@ -34,6 +35,30 @@ def fresh_document_cache():
 
 def pytest_configure(config):
     config.addinivalue_line('markers', 'isolates: keep the bidi isolates in plan lines (see plain_isolates)')
+
+
+# An import of a module through which a test may read the session's core:
+# the igt fixtures (their fake client sends its queries there), the live
+# helpers, and the sweeps that build igt workspaces.
+READS_CORE = re.compile(r'^\s*(?:from|import)\s+(?:fixtures|fixtures_ext|multi_fixtures|live|test_read_tools_smoke)\b',
+                        re.M)
+
+
+def pytest_collection_modifyitems(session, config, items):
+    """The tests of modules that may read through the core run last, in their
+    own order, so it boots while the others run: it takes about twenty
+    seconds from source, and the first of them asked for it four seconds in."""
+    seen = {}
+
+    def reads_core(item):
+        path = getattr(item, 'path', None)
+        if path not in seen:
+            try:
+                seen[path] = bool(READS_CORE.search(path.read_text()))
+            except (OSError, AttributeError):
+                seen[path] = False
+        return seen[path]
+    items.sort(key=reads_core)
 
 
 def pytest_collection_finish(session):

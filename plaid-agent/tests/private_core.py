@@ -110,6 +110,15 @@ def answers(url: str) -> bool:
     return True
 
 
+def _die_with_parent() -> None:
+    """In the child, on Linux: be sent SIGTERM when the process that started
+    it ends, however it ends, so a test run that is killed takes its core with
+    it. The Clojure CLI execs the JVM, which keeps the request."""
+    if sys.platform.startswith('linux'):
+        import ctypes
+        ctypes.CDLL(None).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
+
+
 class PrivateCore:
     """One core process and its directory. :meth:`stop` ends both."""
 
@@ -130,7 +139,7 @@ class PrivateCore:
         # Its own process group, so stopping it reaches the JVM the Clojure
         # CLI starts and nothing else.
         self.proc = subprocess.Popen(cmd, cwd=CORE_DIR, env=env, stdin=subprocess.DEVNULL, stdout=self.log,
-                                     stderr=subprocess.STDOUT, start_new_session=True)
+                                     stderr=subprocess.STDOUT, start_new_session=True, preexec_fn=_die_with_parent)
 
     def wait(self, timeout: float = BOOT_TIMEOUT) -> None:
         deadline = time.monotonic() + timeout

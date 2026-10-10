@@ -594,16 +594,12 @@ def test_prompt_teaches_cite_tags_and_the_old_braces_still_resolve():
 
 
 def test_list_documents_pages_and_filters_and_overview_caps():
-    from fixtures import document_raw
     from plaid_agent.core.limits import OVERVIEW_DOCS
-    docs = {}
     total = 105   # more than the overview names, and enough for a "Text 10x" page
-    for i in range(total):
-        raw = document_raw()
-        raw['id'] = f'd{i}'
-        raw['name'] = f'Text {i:03d}'
-        raw['metadata'] = {'Date': '2020' if i % 2 else '2021'}
-        docs[raw['id']] = raw
+    # Documents with no text: the metadata filter asks the core, which is
+    # given a copy of each, and none of these tools reads one.
+    docs = {f'd{i}': {'id': f'd{i}', 'name': f'Text {i:03d}', 'version': 1, 'text_layers': [],
+                      'metadata': {'Date': '2020' if i % 2 else '2021'}} for i in range(total)}
     c = FakeClient(documents=docs)
     w = fake_ws(c)
     ov = call_tool(w, 'project_overview', {})
