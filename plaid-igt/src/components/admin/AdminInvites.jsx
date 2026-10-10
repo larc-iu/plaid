@@ -29,6 +29,7 @@ import { inviteLinkFor, GRANT_ROLES, cap, inviteRevocable } from '@ui/domain/inv
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';
+import { copyText } from '@ui/lib/download.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
 // that project's links; this is the one place an admin can see an admin grant
@@ -46,13 +47,9 @@ const BatchResult = ({ links, onClose }) => {
   const text = links.map((l) => `${l.note}\t${inviteLinkFor(l.code)}`).join('\n');
 
   const copyAll = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      notifyError('Select the links and copy them by hand.', 'Failed to copy');
-    }
+    if (!(await copyText(text, 'Select the links and copy them by hand.'))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
