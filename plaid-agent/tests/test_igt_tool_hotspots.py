@@ -114,9 +114,9 @@ def test_search_on_a_name_two_fields_share_searches_each():
     out = call_tool(w, 'search', {'pattern': 'Ali', 'where': 'Gloss'})
     line = ('s1.w1 Ali-di | seg=Ali-di types=?,suffix | Gloss (Morpheme)=Ali-ERG | Gloss (Word)=Ali | '
             'IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.')
-    assert out == f'Gloss (Word): 1 hits:\n{line}\n\nGloss (Morpheme): 1 hits:\n{line}', out
+    assert out == f'Gloss (Word): 1 hits:\n{line}\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out
     out = call_tool(w, 'search', {'pattern': 'ERG', 'where': 'Gloss'})
-    assert out == f'Gloss (Word): No hits.\n\nGloss (Morpheme): 1 hits:\n{line}', out
+    assert out == f'Gloss (Word): No hits.\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out
 
 
 def test_a_search_of_a_shared_name_notes_one_count():
@@ -136,7 +136,7 @@ def test_a_field_named_with_its_scope_in_words_is_that_field():
                         ('word gloss', 'Word'), ('words_gloss', 'Word')):
         assert p.field(name).scope == scope, name
     out = call_tool(w, 'search', {'pattern': 'ERG', 'where': 'morpheme gloss'})
-    assert out.startswith('1 hits:') and 's1.w1' in out
+    assert out.startswith('1 word hit, holding 1 matching morpheme:') and 's1.w1' in out
     # A write still asks which: setting a value is never a guess.
     out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'x'})
     assert out == 'Error: "Gloss" names several fields; say which: Gloss (Word), Gloss (Morpheme)'

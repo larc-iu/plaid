@@ -27,9 +27,10 @@ def test_search_baseline_morpheme_field_and_lexicon():
     out = call_tool(w, 'search', {'pattern': 'gam'})
     assert out.startswith('2 hits:')
     assert 's1.w2 gam || Ali-di gam akuna.' in out and 's2.w1 Gam-ar | seg=Gam=ar' in out
-    assert '3 hits' in call_tool(w, 'search', {'pattern': 'a', 'where': 'morpheme'})  # Ali, gam, Gam, ar -> words w1,w2,w4
+    # Ali, gam, Gam, ar: four morphemes in three words
+    assert '3 words hit, holding 4 matching morphemes' in call_tool(w, 'search', {'pattern': 'a', 'where': 'morpheme'})
     out = call_tool(w, 'search', {'pattern': 'ERG', 'where': 'Morph Gloss'})
-    assert '1 hits:' in out and 's1.w1' in out
+    assert '1 word hit, holding 1 matching morpheme:' in out and 's1.w1' in out
     out = call_tool(w, 'search', {'pattern': 'fish', 'where': 'Translation'})
     assert 's1 Translation=Ali saw a fish.' in out
     out = call_tool(w, 'search', {'pattern': 'gam', 'where': 'lexicon'})
@@ -967,3 +968,12 @@ def test_a_value_off_a_layers_stored_list_is_refused_while_planning():
     # A gloss rule leaves the other fields alone.
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'ZZ'})
     assert out.startswith('Planned')
+
+
+def test_concordance_tallies_the_hits_own_values():
+    """Asked which glosses a morpheme carries, a model read the word patterns
+    and missed the rare glosses among them. The hit's own values come
+    tallied before the patterns, blanks included."""
+    w = scan_ws(FakeClient())
+    out = call_tool(w, 'concordance', {'pattern': '.*', 'regex': True})
+    assert out.split('\n')[1] == "The hit's own Morph Gloss: (blank) 3, Ali 1, ERG 1.", out

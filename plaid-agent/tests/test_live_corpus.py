@@ -65,6 +65,12 @@ def test_search_matches_the_scan(proj):
         same(proj, 'search', args)
     out = same(proj, 'search', {'pattern': 'gam'})
     assert out.startswith('2 hits:') and 's1.w2 gam || Ali-di gam akuna.' in out
+    # A morpheme search counts the words it hits and, apart, the morphemes:
+    # "N hits" was read as N morphemes where a word held two.
+    out = same(proj, 'search', {'pattern': '.*', 'regex': True, 'where': 'morpheme'})
+    assert out.startswith('3 words hit, holding 5 matching morphemes:'), out
+    out = same(proj, 'search', {'pattern': '.', 'regex': True, 'where': 'Morph Gloss'})
+    assert out.startswith('1 word hit, holding 2 matching morphemes:'), out
 
 
 def strip_examples(text):

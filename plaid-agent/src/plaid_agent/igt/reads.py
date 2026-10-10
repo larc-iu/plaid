@@ -128,9 +128,10 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
     if not ws.use_scan(document):
         from .queries import q_search
-        out, total = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
-        return _finish(ws, out, total, limit, 'hits', 'match')
+        out, total, morphs = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
+        return _finish(ws, out, total, limit, 'hits', 'match', morphs)
     docs = [ws.doc(document)] if document else ws.all_docs()
+    morphs = 0 if where_l == 'morpheme' or (field and field.scope == 'Morpheme') else None
     for doc in docs:
         tag = ws.doc_tag(doc, len(docs) > 1)
         for s in doc.sentences:
@@ -146,17 +147,21 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
                 if where_l == 'baseline':
                     hit = match(w.surface)
                 elif where_l == 'morpheme':
-                    hit = any(match(m.form) for m in stored_morphemes(w))
+                    n = sum(1 for m in stored_morphemes(w) if match(m.form))
+                    morphs += n
+                    hit = n > 0
                 elif field.scope == 'Word':
                     sp = w.fields.get(field.name)
                     hit = bool(sp and match(sp.value))
                 else:
-                    hit = any(match(m.fields[field.name].value) for m in w.morphemes if field.name in m.fields)
+                    n = sum(1 for m in w.morphemes if field.name in m.fields and match(m.fields[field.name].value))
+                    morphs += n
+                    hit = n > 0
                 if hit:
                     total += 1
                     if len(out) < limit:
                         out.append(f'{tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
-    return _finish(ws, out, total, limit, 'hits', 'match')
+    return _finish(ws, out, total, limit, 'hits', 'match', morphs)
 
 
 def _merge_notes(ws, start):
@@ -171,12 +176,17 @@ def _merge_notes(ws, start):
                  of=sum(of) if all(o is not None for o in of) else None)
 
 
-def _finish(ws, out, total, limit, noun, unit):
+def _finish(ws, out, total, limit, noun, unit, morphs=None):
     """The hits found, with the count of those shown out of all found noted
-    for the step's label (`BaseWorkspace.note_read`)."""
+    for the step's label (`BaseWorkspace.note_read`). A morpheme search's
+    hits are words, and ``morphs`` the morphemes in them that match: "14
+    hits" read as 14 morphemes where 23 matched, two in a word."""
     ws.note_read(len(out), unit, of=total)
     if not out:
         return f'No {noun}.'
+    if morphs is not None:
+        noun = (f'word{"s" if total != 1 else ""} hit, holding {morphs} matching '
+                f'morpheme{"s" if morphs != 1 else ""}')
     head = f'{total} {noun}' + (f' (showing {limit})' if total > limit else '') + ':'
     return truncate('\n'.join([head] + out))
 
@@ -317,6 +327,16 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     lines = [f'{total} occurrence{"s" if total != 1 else ""} of "{pattern}" in {where_l if not field else field.name}'
              + (f' (showing {limit})' if total > limit else '') + '.',
              'Word patterns (hit in [brackets]), by frequency' + (f', among the {len(hits)} shown' if total > len(hits) else '') + ':']
+    # The hit's own values, tallied: asked which glosses a morpheme carries,
+    # models read the patterns below and missed the rare ones among them.
+    among = f', among the {len(hits)} shown' if total > len(hits) else ''
+    tallies = []
+    for f in mfields:
+        own = Counter((m.fields[f].value if f in m.fields else '') or '(blank)' for _, _, _, m in hits if m is not None)
+        if own:
+            tallies.append(f'The hit\'s own {f}{among}: ' + ', '.join(f'{v} {n}' for v, n in own.most_common(25))
+                           + (f', and {len(own) - 25} more values' if len(own) > 25 else '') + '.')
+    lines[1:1] = tallies
     for key, n in sorted(patterns.items(), key=lambda kv: (-kv[1], kv[0]))[:25]:
         lines.append(f'  {n}\t{key}')
     if len(patterns) > 25:

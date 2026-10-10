@@ -113,31 +113,33 @@ def _spread_note(shown: List[str], docs: int) -> List[str]:
 
 
 def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
-             case_sensitive: bool = False) -> Tuple[List[str], int]:
-    """Hits for search over the whole project: (lines, total)."""
+             case_sensitive: bool = False) -> Tuple[List[str], int, Optional[int]]:
+    """Hits for search over the whole project: (lines, total, morphemes),
+    where a morpheme search counts the words that hold a match and, apart,
+    the morphemes that match (None for any other search)."""
     c = ws.corpus
     spec = rx(pattern, regex=regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
         where = [c.word('?t', value=spec)]
         total = c.word_count(where)
         rows, per_doc, docs = _spread_fetch(c, where, ['?t'], '?t', limit, 2)
-        return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total
+        return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None
     if where_l == 'morpheme':
         where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         total = c.count(where, ['?w'])  # words, as the scan counts
         rows, per_doc, docs = _spread_fetch(c, where, ['?m', '?w'], '?w', limit, 3)
-        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total
+        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?m'])
     layer = c.scope_layer(field.scope)
     where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
     if field.scope == 'Morpheme':
         where += c.in_word('?t', '?w')
         total = c.count(where, ['?w'])
         rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?w'], '?w', limit, 3)
-        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total
+        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?t'])
     total = c.count(where, ['?t'])
     rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?t'], '?t', limit, 2)
     lines = _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None, per_doc=per_doc)
-    return _spread_note(lines, docs), total
+    return _spread_note(lines, docs), total, None
 
 
 # --- shared tallies --------------------------------------------------------------
