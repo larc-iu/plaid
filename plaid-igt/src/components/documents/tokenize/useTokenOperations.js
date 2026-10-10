@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { cpLength, cpSlice, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
-import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
-import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
+import { useServiceRun } from '@ui/hooks/useServiceRun.js';
 import {
   countAnnotationLossForWord,
   countSubWordAnnotationLoss,
@@ -14,8 +13,6 @@ import {
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
-import { reloadAfterRun } from '@ui/lib/runReload.js';
-import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { hasLoss } from '@ui/domain/annotationLoss.js';
 
 // The rule-based tokenizer is always available and declares no options.
@@ -37,43 +34,47 @@ export const useTokenOperations = () => {
   useDocumentModel(doc);
   const project = doc.project;
 
-  const {
-    availableServices,
-    isDiscovering,
-    discoverServices,
-    isProcessing,
-    requestService,
-    cancelRequest,
-    hasServices,
-    progressPercent,
-    progressMessage,
-  } = useServiceRequest(client);
+  const request = useServiceRequest(client);
+  const { isDiscovering, discoverServices, isProcessing, cancelRequest, hasServices } = request;
 
-  const [isTokenizing, setIsTokenizing] = useState(false);
+  // The built-in run and the two clears, which are not service runs.
+  const [busy, setBusy] = useState(false);
 
   // Discover services on mount.
   useEffect(() => {
     if (project?.id) discoverServices(project.id);
   }, [project?.id, discoverServices]);
 
-  const spot = useServiceSpot({
+  // An NLP tokenization service. Held under the write lock for the whole run:
+  // it rewrites the token layers and ends in a reload, so nothing may be
+  // edited underneath it.
+  const layers = doc.layerInfo;
+  const service = useServiceRun({
+    request,
     task: TASKS.TOKENIZE,
-    project,
-    services: availableServices,
-    builtins: TOKENIZE_BUILTINS,
     storageId: 'tokenize',
+    builtins: TOKENIZE_BUILTINS,
+    project,
+    projectId: project?.id,
+    doc,
+    acquireWriteLock,
+    label: 'Tokenize',
+    args: {
+      textLayerId: layers.primaryTextLayer?.id,
+      primaryTokenLayerId: layers.primaryTokenLayer?.id,
+      sentenceLayerId: layers.sentenceTokenLayer?.id,
+    },
+    copy: {
+      successMessage: 'Tokenization complete',
+      errorTitle: 'Failed to tokenize',
+      stoppedTitle: 'Tokenize',
+    },
   });
-  const tokenizeRun = useRunProgress();
-  useMirroredProgress(tokenizeRun, {
-    percent: progressPercent,
-    message: progressMessage,
-    active: tokenizeRun.running && !!spot.service,
-  });
-  // The banner is the only surface once the user leaves this tab.
-  const lockRef = useRef(null);
-  useEffect(() => {
-    if (progressMessage) lockRef.current?.setStatus(progressMessage);
-  }, [progressMessage]);
+  const { spot, run: tokenizeRun } = service;
+  // `overwrite` is granted only after the user confirms a destructive
+  // re-tokenize (see handleTokenize / pendingTokenize): it lets the run discard
+  // the existing annotations the sentence-partition reset cascade-deletes.
+  const runServiceTokenize = (overwrite) => service.start(overwrite ? { overwrite: true } : {});
 
   // --- Structural ops (delegate to the domain model) ---
   // splitToken / mergeTokens are defined below — both gated by an annotation-loss
@@ -201,81 +202,11 @@ export const useTokenOperations = () => {
     }
   };
 
-  // --- Tokenization (built-in delegates to doc; NLP service stays here) ---
-  // Run an NLP tokenization service. `overwrite` is granted only after the user
-  // confirms a destructive re-tokenize (see handleTokenize / pendingTokenize).
-  const runServiceTokenize = async (serviceId, { overwrite = false } = {}) => {
-    // Held for the whole run: it rewrites the token layers and ends in a
-    // reload, so nothing may be edited underneath it.
-    const lock = acquireWriteLock('Tokenize', { onCancel: cancelRequest });
-    if (!lock) return;
-    lockRef.current = lock;
-    setIsTokenizing(true);
-    tokenizeRun.start(['Tokenize']);
-    let stillOut = false; // the request survived our giving up on it
-    try {
-      const layers = doc.layerInfo;
-      await requestService(
-        project.id,
-        doc.document.id,
-        serviceId,
-        {
-          // User-controlled arguments declared by the service, spread FIRST so
-          // the fixed layer/doc params below always win over any same-named arg.
-          ...spot.params.coerced(),
-          // Granted by the user's confirm — lets the run discard the existing
-          // annotations the sentence-partition reset cascade-deletes.
-          ...(overwrite ? { overwrite: true } : {}),
-          documentId: doc.document.id,
-          textLayerId: layers.primaryTextLayer?.id,
-          primaryTokenLayerId: layers.primaryTokenLayer.id,
-          sentenceLayerId: layers.sentenceTokenLayer?.id,
-        },
-        {
-          successMessage: 'Tokenization complete',
-          errorTitle: 'Failed to tokenize',
-          stoppedTitle: 'Tokenize',
-          // Written down before the request is submitted, so a reload in that
-          // window can still find the run.
-          onRequestId: (requestId) =>
-            writeRunRecord(doc.id, { requestId, projectId: project.id, label: 'Tokenize' }),
-        },
-      );
-      // Re-reading the document after a service run is seconds of work on a
-      // large one, so it is named rather than left as dead air.
-      tokenizeRun.report({ percent: null, message: 'Loading the tokens…' });
-      lock.setStatus('Loading the tokens…');
-      await reloadAfterRun(() => doc._reload());
-    } catch (error) {
-      // useServiceRequest already shows an error toast (errorTitle/errorMessage);
-      // just log here so a failed run doesn't double-toast.
-      console.error('Tokenization failed:', error);
-      // `pending` means the request is still out there. The client stopped
-      // waiting, the service did not stop working, so keep the record and let a
-      // reload rejoin it instead of losing the run.
-      stillOut = error?.pending === true;
-      // A run that failed may still have written (its answer lost, or stopped
-      // partway), so the document is read again while the lock is held. Not
-      // while it is still out: its results are read when it finishes.
-      if (!stillOut) {
-        await doc
-          .reload()
-          .catch((e) => console.error('Reading the document after the failed Tokenize failed:', e));
-      }
-    } finally {
-      if (!stillOut) clearRunRecord(doc.id);
-      setIsTokenizing(false);
-      tokenizeRun.finish();
-      lock.release();
-      lockRef.current = null;
-    }
-  };
-
   // A service re-tokenize of a single-sentence doc resets the sentence partition,
   // cascade-deleting existing word/morpheme/sentence annotations. Surface that as
   // a confirm (pendingTokenize drives the dialog in DocumentTokenize); on approval
   // we re-run granting overwrite. null = nothing destructive / not pending.
-  const [pendingTokenize, setPendingTokenize] = useState(null); // {serviceId, annotations, links}
+  const [pendingTokenize, setPendingTokenize] = useState(null); // {annotations, links, cut}
   const handleTokenize = async () => {
     if (spot.service) {
       // Block on unmet required service arguments before doing any work.
@@ -284,16 +215,15 @@ export const useTokenOperations = () => {
         notifyError(missing[0], 'Missing required option');
         return;
       }
-      const serviceId = spot.service.serviceId;
       const loss = countReTokenizeLoss(doc.layerInfo, doc.vocabularies);
       // The new sentence breaks can also cut relations a layer keeps inside
       // one sentence, which the reset itself leaves (REV-N5-CORE F3).
       const cut = countReTokenizeCut(doc.layerInfo).annotations;
       if (loss.annotations + loss.links + cut > 0) {
-        setPendingTokenize({ serviceId, ...loss, cut });
+        setPendingTokenize({ ...loss, cut });
         return; // the dialog decides
       }
-      return runServiceTokenize(serviceId, { overwrite: false });
+      return runServiceTokenize(false);
     }
 
     // Built-in rule-based tokenizer fills untokenized ranges only — non-destructive.
@@ -301,7 +231,7 @@ export const useTokenOperations = () => {
     // No record: a built-in run is this page's own work, and dies with it.
     const lock = acquireWriteLock('Tokenize');
     if (!lock) return;
-    setIsTokenizing(true);
+    setBusy(true);
     tokenizeRun.start(['Tokenize']);
     try {
       const created = await doc.tokenize(); // built-in rule-based; reloads internally
@@ -314,34 +244,34 @@ export const useTokenOperations = () => {
       console.error('Tokenization failed:', error);
       notifyError(humanizeError(error), 'Failed to tokenize');
     } finally {
-      setIsTokenizing(false);
+      setBusy(false);
       tokenizeRun.finish();
       lock.release();
     }
   };
   const confirmPendingTokenize = async () => {
     if (!pendingTokenize) return;
-    const { serviceId, annotations, links, cut } = pendingTokenize;
+    const { annotations, links, cut } = pendingTokenize;
     setPendingTokenize(null);
     // Overwrite is the service's leave to delete a person's work: what is on
     // the old tokens, and the relations the new breaks cut, which the service
     // refuses to cut without it. The question counted both.
-    return runServiceTokenize(serviceId, { overwrite: annotations + links + (cut || 0) > 0 });
+    return runServiceTokenize(annotations + links + (cut || 0) > 0);
   };
   const cancelPendingTokenize = () => setPendingTokenize(null);
 
   const handleClearTokens = async () => {
-    setIsTokenizing(true);
+    setBusy(true);
     const ok = await doc.clearTokens();
     if (ok) notifySuccess('Tokens cleared');
-    setIsTokenizing(false);
+    setBusy(false);
   };
 
   const handleClearSentences = async () => {
-    setIsTokenizing(true);
+    setBusy(true);
     const ok = await doc.clearSentences();
     if (ok) notifySuccess('Reset to single sentence');
-    setIsTokenizing(false);
+    setBusy(false);
   };
 
   return {
@@ -370,7 +300,7 @@ export const useTokenOperations = () => {
     spot,
     tokenizeRun,
     cancelRequest,
-    isTokenizing,
+    isTokenizing: busy || tokenizeRun.running,
     // service discovery
     isDiscovering,
     discoverServices,
