@@ -31,17 +31,8 @@
 
 **Plaid UD** is a web-based editor for building https://universaldependencies.org/[Universal Dependencies] treebanks.
 This guide is written for **annotators** who will use the editor to do annotation work.
-It walks through the everyday loop (create or import a document, tokenize it, annotate it, and export it as CoNLL-U), and then points you to the more advanced features.
-
-Plaid UD is one of the example apps built on the Plaid platform.
-You don't need to know anything about Plaid itself to use the editor, but if you're curious about the underlying platform, or you want to script against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
-
-[NOTE]
-====
-Plaid UD is a *demonstration app*.
-It covers the core treebank-annotation workflow well, but it deliberately leaves some UD features out of scope (for example empty nodes and the MISC column).
-Those are noted where they come up.
-====
+It walks through the everyday loop (create or import a document, tokenize it, annotate it, and export it as CoNLL-U), and then the more advanced features.
+Two UD features are not supported: empty nodes and the MISC column.
 
 = Getting Started
 
@@ -63,7 +54,8 @@ The editor has three levels you move between:
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Guidelines`, `Assistant`, `Validation`, `Activity`, `Settings` and `Import and export`. `Validation`, `Activity` and `Settings` are for maintainers, and `Assistant` appears only when one is running. Anyone else who opens `Validation`, `Activity`, `General` or `UD settings` by its address is sent back to the project list with `Only a project's maintainers can open this page.` The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Guidelines`, `Assistant`, `Validation`, `Activity`, `Settings` and `Import and export`. `Validation`, `Activity` and `Settings` are for maintainers, and `Assistant` appears only when one is running.
+The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
 
 = Projects
 
@@ -146,7 +138,6 @@ Pasting the text back with words added, removed or changed changes only those to
 A paste with several changes near a repeated word, or in a text written without spaces, can also replace one token beside a change, and that token loses its annotations.
 
 **Ctrl/Cmd+Z** in the editor undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
-An undo the editor cannot place exactly, such as one reaching back past a save that took in someone else's text, does nothing.
 
 A document of more than 15,000 words shows **Long document** at the top of this tab and the Annotate tab.
 Editing slows down past that length. Split such a document into shorter ones.
@@ -247,7 +238,7 @@ A project that never does so exports a DEPS column that restates the tree.
 * **Give a relation a different label in the enhanced graph**: start with **Ctrl** or **Cmd** held and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own relation, which is shown faded. Deleting that label puts the tree's relation back into the enhanced graph.
 * **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The relation is shown faded. Do the same again to put it back.
 
-A change to the tree carries over to the enhanced graph by itself, because only the differences are stored.
+A change to the tree carries over to the enhanced graph by itself.
 Splitting a sentence removes the enhanced relations that would cross the new boundary, as it does the tree's.
 
 On export, DEPS lists every relation of the enhanced graph for each word.
@@ -264,7 +255,7 @@ A treebank records more than annotations. CoNLL-U keeps those notes as comment l
 
 Which fields a project offers is a maintainer's choice, under **Settings → UD settings**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
 
-Fields save as you leave them, and clearing one removes the note rather than storing a blank. A value already stored under a name the project no longer offers is still shown, marked, so it can be read and cleared instead of quietly exporting forever.
+Fields save as you leave them, and clearing one removes the note rather than storing a blank. A value already stored under a name the project no longer offers is still shown, marked, so it can be read and cleared.
 
 Everything here goes out with the document: `# source = ...` above a document, `# sent_id` and `# text_en` above a sentence.
 
@@ -283,8 +274,6 @@ In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values thi
 The lemma cell asks about the **form**, meaning what the project has called this string before. The other two ask about the **lemma**, because once that is settled the tag and the features usually follow, and the same string can be two lemmas.
 
 Pick one with the arrows and **Enter**, or click it. **Escape** goes back to the cell. A word with nothing to compare against simply shows nothing.
-
-This is consistency help for hand annotation. A connected parser writes a first draft of most of this already.
 
 == Moving Between the Text and the Annotations
 
@@ -346,9 +335,8 @@ A value refused because of a change elsewhere in the document stays in its cell,
 The message reads `Changed elsewhere. Your value is in its cell, not saved.`
 Any other edit that is refused says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows the other person's change.
 
-A repair is made when a document that needs one is opened.
-When someone saves while it is being made, it starts again by itself.
-If it fails again, or the server does not answer, a message asks you to reload the page.
+A document that needs a repair is repaired when it is opened.
+If the repair fails, a message asks you to reload the page.
 A document with no sentences to show until then says `The document could not be repaired. Reload the page to try again.`
 
 = Export
@@ -388,14 +376,13 @@ Under each of its replies is a line saying how much of the manual that answer ha
 If somebody else saves a guideline while you have it open, your save is refused rather than overwriting theirs.
 Nothing you have typed is lost: the editor keeps it, and saving a second time overwrites theirs deliberately.
 
-Guidelines are not part of a project export here, which is a ZIP of CoNLL-U files and has nowhere to put them.
-A project shared with plaid-igt, whose archive does carry them, keeps them that way.
+Guidelines are not part of a project export, which is a ZIP of CoNLL-U files.
 
 The Assistant can draft a guideline as well as read one.
 If you tell it a convention while asking about something else, it will propose writing it down, and you approve or discard it like any other change it proposes.
 It will not do this for a decision about a single word, or for something it worked out from the data on its own.
 When it changes a guideline that already exists, the card shows you the exact passage it is replacing and what with.
-A change that replaces the whole guideline is marked **Rewrite** instead, because there the previous wording is not on the card for you to compare.
+A change that replaces the whole guideline is marked **Rewrite** instead.
 
 Every change to a guideline is recorded in the project's Activity, with who made it and when, including the ones the Assistant drafted.
 
@@ -411,7 +398,6 @@ Four or more document reads in a row are folded into one line that names the sen
 A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: CoNLL-U.
 **Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
 A stopped or failed answer keeps its steps the same way.
-Steps of answers from before October 10, 2026 show their lines only.
 
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
@@ -454,7 +440,6 @@ When some of its changes may already be written, the card says so and offers no 
 
 A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 If the server restarts while the assistant works, the answer appears when it is ready.
-When the assistant itself is restarted, an open tab finds it again within 15 seconds.
 A conversation is worked on in one tab at a time.
 Opened in a second tab, or on another device, it is read-only there: the line above the message box reads `Open in another tab.`, and a turn or a plan under way shows as it happens.
 **Continue here** moves the conversation to that tab, and the first one turns read-only.
@@ -515,8 +500,8 @@ The PDF is kept with the conversation and shown under the reply, linked to where
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
 It is there wherever there is a project for it to be about, and on the general screens, where it asks which project to use.
 The screens for making a project and for importing one have neither, so it is not offered there.
-A handle on the right edge of the window, halfway down, opens it too: it widens under the pointer to show the assistant's mark.
-The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
+A handle on the right edge of the window, halfway down, opens it too.
+The panel stays where it is as you move around.
 The page narrows to make room for it.
 The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
 It starts closed until you first open it.
@@ -558,9 +543,9 @@ A plan of more than 200 changes keeps its first 200 once it is approved or disca
 Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
 The storage limit is set by the server's operator.
 
-== Without an assistant
+== Assistant availability
 
-The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from a checkout of the source tree).
+The assistant is a service that your server's operator runs and picks the model for.
 When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
 Conversations already saved are unaffected and open from their own links.
 
@@ -588,7 +573,6 @@ A relation that the enhanced graph adds to the tree carries Grew's `E:` prefix: 
 * `V -> S`, `V -[1=nsubj]-> S` and `V -[^det]-> S` read both. Add `enhanced=yes` or `!enhanced` to a feature label to read one.
 * `V -[nsubj|E:nsubj]-> S` reads each label where it belongs.
 
-This is how Grew itself reads a CoNLL-U file: a DEPS entry that repeats the tree is the tree's relation, and only the others are marked enhanced.
 A relation of the tree that the enhanced graph leaves out or relabels is still a relation of the tree, so a pattern finds it under its plain label.
 `is_tree`, `is_projective` and an unlabelled `X ->> Y` are about the tree and ignore the added relations.
 
@@ -605,7 +589,7 @@ It does not run a search of its own: it writes the Grew pattern and hands it to 
 
 A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the feature's value, where `^` and `$` mark its start and end.
 
-In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. In a pattern, `re"..."` takes the regular expression exactly as written, so `re"\w"` and `re"\p{IsArabic}"` work as typed and `re"\."` is a full stop. Write `\"` for a quote inside it. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it. A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
+In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. In a pattern, `re"..."` takes the regular expression exactly as written, so `re"\w"` and `re"\p{IsArabic}"` work as typed and `re"\."` is a full stop. Write `\"` for a quote inside it. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it.
 A token another app added is not searched until someone with Writer access opens its document.
 
 A value or a regular expression finds text however its accents are typed: `lemma="á"` finds an á typed as one character and one stored as a and an accent. An accent searched for on its own finds it where it is stored as a character of its own after its letter.
@@ -615,9 +599,7 @@ A value or a regular expression finds text however its accents are typed: `lemma
 After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, `V.FEATS`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
 Counting by `FEATS` counts each `Key=Value` pair.
 
-The matches themselves are never fetched for this, because the server does the counting, so it stays fast on a corpus too large to page through.
-
-Clicking a value narrows the search to it. The clause goes into the pattern in the box, where you can see it and edit it, and the search re-runs. A named edge's label is the exception: it belongs in the arc rather than on a node, so those rows are not clickable.
+Clicking a value narrows the search to it. The clause goes into the pattern in the box, where you can see it and edit it, and the search re-runs. A named edge's label is the exception, and those rows are not clickable.
 
 === Changing many sentences at once
 
@@ -726,7 +708,7 @@ A project's maintainers can tailor the annotation scheme from the project's **Se
 
 === Suggestions or rules
 
-A vocabulary offers its values and accepts anything else. That is the default, and for most projects it is the right one: a value nobody expected is usually worth seeing rather than refusing.
+A vocabulary offers its values and accepts anything else. That is the default.
 
 Where a project wants the list to be binding, the switch beneath it makes it so. It reads **Refuse tags outside this list** for UPOS and XPOS, **Refuse relations outside this list** for dependency relations, and **Refuse features outside this list** for the feature inventory. What refusing means differs by field:
 
@@ -734,7 +716,7 @@ Where a project wants the list to be binding, the switch beneath it makes it so.
 * **Dependency relations**: the BASE relation must be on the list. A subtype is judged by its base, so `nsubj:pass` is allowed wherever `nsubj` is, and a project does not have to list every subtype its language uses.
 * **Features**: the key must be in the inventory and the value in that key's list. A key listed with no values accepts any value.
 
-A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. A closed UPOS, XPOS or relation list is also enforced by the server, on every write. A value off the list is refused, even from a page opened before the list was closed, and the cell shows the stored value again with a message naming the value. An approved assistant plan and a script are refused the same way. Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a parser's predictions nobody has accepted yet. An import names the values it brought in that are off a closed list. **Accept predictions** leaves a prediction that is off the list unreviewed, names it, and accepts the rest. Off-list machine output is a signal, and refusing it at the door would hide it. A closed feature inventory is enforced only where a person types. Spaces at either end of a value, no-break spaces included, are ignored when it is checked.
+A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. A closed UPOS, XPOS or relation list is also enforced by the server, on every write. A value off the list is refused, even from a page opened before the list was closed, and the cell shows the stored value again with a message naming the value. An approved assistant plan and a script are refused the same way. Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a parser's predictions nobody has accepted yet. An import names the values it brought in that are off a closed list. **Accept predictions** leaves a prediction that is off the list unreviewed, names it, and accepts the rest. A closed feature inventory is enforced only where a person types. Spaces at either end of a value are ignored when it is checked.
 
 Closing a list, or removing a value from a closed one, is refused while any other value in the project's annotations is off it, and the message names one of them. Change them first, or add them to the list.
 
@@ -742,7 +724,7 @@ Closing a list, or removing a value from a closed one, is refused while any othe
 
 Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs. Edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
 
-Features are described on the whole pair, `Number=Plur` rather than `Plur`, since that is what the picker offers and what a word stores. A key with no values listed accepts anything, so it has no pairs to describe.
+Features are described on the whole pair, `Number=Plur` rather than `Plur`. A key with no values listed has no pairs to describe.
 
 == Comments
 
@@ -750,7 +732,7 @@ A document has a **Comments** tab: every thread on it, the document's own first,
 
 Comments are for talking about the work, not annotating it. They are not part of the data: they never change a document, they do not appear in an export, and they are not in its history.
 
-Where they can be attached is deliberately limited to a **sentence** and the **document**. There are no per-word threads, and a note about one word belongs in the sentence's thread where the context is.
+They can be attached to a **sentence** or the **document**. There are no per-word threads, and a note about one word belongs in the sentence's thread where the context is.
 
 From the **Annotate** view, each sentence carries a small badge under its grid: the number of comments on it, or an invitation to write the first. It opens the thread in place, so a remark can be made without leaving the text.
 
@@ -766,13 +748,13 @@ While a thread is open, comments from other people appear as they are written.
 
 Maintainers get a **Validation** tab: every value the project has stored that its own vocabularies do not list, with how many times it occurs.
 
-It exists because an open list takes any value, and a closed one still keeps values from an import, a copy or a restore, and a parser's predictions nobody has accepted (see <<_suggestions_or_rules>>). A closed feature inventory holds only where a person types. This is where you see what got in.
+An open list takes any value, and a closed one still keeps values from an import, a copy or a restore, and a parser's predictions nobody has accepted (see <<_suggestions_or_rules>>). This is where you see them.
 
 Each value opens to the sentences it occurs in, and each of those is a link straight to that sentence in the editor. Features open the same way, on the whole `Key=Value` pair.
 
-Where the list is simply incomplete rather than the values wrong, **Add N values** puts them on it. That is offered, never done for you: a project may well want the list as it is and the values changed instead.
+Where the list is incomplete rather than the values wrong, **Add N values** puts them on it.
 
-Two things it deliberately does not report: a relation subtype whose base is listed, since `nsubj:pass` is already legal wherever `nsubj` is, and a feature value under a key listed with no values, since such a key accepts any value.
+Two things it does not report: a relation subtype whose base is listed, since `nsubj:pass` is already legal wherever `nsubj` is, and a feature value under a key listed with no values, since such a key accepts any value.
 
 == Activity
 
@@ -782,7 +764,7 @@ It shows a tally per person over a window (7, 30 or 90 days, or all time) with t
 
 == Administration
 
-The server administers itself through one area, and it lives in Plaid IGT: the release bundles both apps together, so a second one here would be a second answer to the same questions. Administrators reach it from **Admin** in the header.
+Server administration lives in one area, in Plaid IGT. Administrators reach it from **Admin** in the header.
 
 It covers accounts (creating people, deactivating them, issuing password-reset links), invitations, every project on the server and who is on each, the services connected, and server-wide activity. A project set up for Universal Dependencies is labelled **UD** in its project list, and its name opens it back here.
 
@@ -797,7 +779,7 @@ Both of them work the same way.
 A button names the run, and it opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
 A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
 
-A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running: a run ends by re-reading the document, which would discard anything typed underneath it.
+A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running.
 Only one run goes at a time.
 
 A run outlives the page that started it.
