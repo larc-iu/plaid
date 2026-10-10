@@ -78,7 +78,7 @@ def test_summary_counts_documents_searches_and_changes():
     assert summarize_steps([]) == '0 steps'
 
 
-def test_a_run_of_code_that_saved_files_counts_as_saving_not_as_a_search():
+def test_a_run_of_code_that_saved_files_counts_as_saving_not_as_a_read():
     # H8-AGENT polish: two run_code calls, one of which saved two files, read
     # "2 searches". A file saved again (code run after a fix) is one file.
     steps = [trace_step(TRACER, 'a', 'run_code', {'code': 'x'}),
@@ -86,7 +86,18 @@ def test_a_run_of_code_that_saved_files_counts_as_saving_not_as_a_search():
              trace_step(TRACER, 'c', 'run_code', {'code': 'z'}, saved=['Words.csv']),
              trace_step(TRACER, 'd', 'run_code', {'code': 'w'}, failed=True, saved=['other.csv'])]
     assert 'saved' not in steps[3]
-    assert summarize_steps(steps) == '1 search · saved 2 files · 4 steps'
+    assert summarize_steps(steps) == '1 read · saved 2 files · 4 steps'
+
+
+def test_the_summary_counts_searches_apart_from_other_reads():
+    # H13-PANEL: "7 searches" for 3 concordances, 2 worklists, a corpus count
+    # and a consistency check. A run of code is a read, as its label says.
+    steps = [trace_step(TRACER, 'a', 'concordance', {'pattern': 'di'}),
+             trace_step(TRACER, 'b', 'search', {'pattern': 'di'}),
+             trace_step(TRACER, 'c', 'worklist', {}),
+             trace_step(TRACER, 'd', 'corpus_stats', {}),
+             trace_step(TRACER, 'e', 'run_code', {'code': 'x'})]
+    assert summarize_steps(steps) == '2 searches · 3 reads · 5 steps'
 
 
 def test_the_summary_counts_the_changes_planned_not_the_calls():

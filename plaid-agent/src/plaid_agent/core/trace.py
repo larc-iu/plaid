@@ -48,6 +48,10 @@ class Tracer:
 META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'query_help',
                         'discard_plan', 'drop_planned', 'read_guideline'})
 
+# The reads the summary calls searches: a look for a pattern across the data.
+# Every other READ (a count, a worklist, a check, a run of code) is a read.
+SEARCH_TOOLS = frozenset({'search', 'sequence_search', 'concordance', 'find_nodes', 'query'})
+
 
 def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], str],
                progress: Dict[str, Callable[[Dict[str, Any]], str]]) -> Tracer:
@@ -376,11 +380,16 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
         parts.append(f'read {plural(sentences, "sentence")} in {plural(len(docs), "document")}')
     elif docs:
         parts.append(f'read {plural(len(docs), "document")}')
-    # A run of code that saved a file is counted as the saving, not as a
-    # search, and a file saved twice (code run again after a fix) is one file.
-    reads = sum(1 for s in steps if s['kind'] == READ and not s.get('saved'))
-    if reads:
-        parts.append(plural(reads, 'search', 'searches'))
+    # A search is a search and any other look at the data a read, as their
+    # labels say ("Searched ...", "Read across the corpus"). A run of code that
+    # saved a file is counted as the saving, not as a read, and a file saved
+    # twice (code run again after a fix) is one file.
+    looks = [s for s in steps if s['kind'] == READ and not s.get('saved')]
+    searches = sum(1 for s in looks if s.get('name') in SEARCH_TOOLS)
+    if searches:
+        parts.append(plural(searches, 'search', 'searches'))
+    if len(looks) > searches:
+        parts.append(plural(len(looks) - searches, 'read'))
     saved = {n.casefold() for s in steps for n in s.get('saved') or ()}
     if saved:
         parts.append('saved ' + plural(len(saved), 'file'))

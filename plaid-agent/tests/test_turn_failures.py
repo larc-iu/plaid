@@ -410,4 +410,4 @@ def test_a_step_names_the_files_its_call_saved(monkeypatch):
                     _resp('Done.'))
     result = _turn(monkeypatch, script, tool, ws=ws)
     assert [s.get('saved') for s in result.steps] == [['words.csv'], None]
-    assert result.summary == '1 search · saved 1 file · 2 steps'
+    assert result.summary == '1 read · saved 1 file · 2 steps'
