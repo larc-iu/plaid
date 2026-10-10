@@ -120,8 +120,6 @@ export const IGT_ASSISTANT = {
   citationHref: sentenceHref,
   ExampleCard,
   citationToMarkdown,
-  changeHref,
-  changeTitle,
   changePlace,
   groupOf,
   parseCitationHref,
