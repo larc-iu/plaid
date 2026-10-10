@@ -419,3 +419,21 @@ def test_every_occurrence_of_a_form_folds_case_as_the_server_does():
     assert changes(w)[-1]['token_id'] == 'w-3'
     assert 's1.w3' not in call_tool(w, 'analyses_of', {'form': 'strass', 'document': 'd1'})
     assert 's1.w3' in call_tool(w, 'analyses_of', {'form': 'STRAß', 'document': 'd1'})
+
+
+def test_a_gap_morpheme_is_no_form_in_corpus_stats_or_the_worklist():
+    """A formless morpheme beside others is shown ?, not under its word's
+    surface: corpus_stats counts it as a morpheme but not as a form, and the
+    morpheme-level worklist does not list the surface for it (DEBT-AGENT-15,
+    the frequency_list fix carried to the other two)."""
+    c = FakeClient()
+    doc = c._documents['d1']
+    doc['text_layers'][0]['token_layers'][2]['tokens'].append({'id': 'm-2b', 'text': 'text1', 'begin': 7, 'end': 10, 'precedence': 2})
+    w = ws(c)
+    out = call_tool(w, 'corpus_stats', {})
+    # gam is now one form token, not three: the gap word's two morphemes are no form.
+    assert '6 morphemes (4 distinct, 4 hapax)' in out, out
+    unglossed = call_tool(ws(c), 'worklist', {'kind': 'unglossed', 'field': 'Morph Gloss'})
+    unlinked = call_tool(ws(c), 'worklist', {'kind': 'unlinked', 'level': 'morpheme'})
+    for listing in (unglossed, unlinked):
+        assert listing.startswith('3 morphemes') and '  1\tgam\t' in listing, listing

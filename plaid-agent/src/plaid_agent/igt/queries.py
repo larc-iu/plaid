@@ -311,10 +311,13 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         by_doc = c.group(where, ['?w.value', at('?w')])
     else:
         if kind == 'unlinked':
-            where = c.in_word('?m', '?w') + [['not', ['vocab-link', '?m', '?v']], ['not', ['vocab-link', '?w', '?v2']]]
+            # A formless morpheme beside others is a gap (shown_morph), not
+            # one under its word's surface.
+            where = c.in_word('?m', '?w') + c.shown_morph('?m') + [
+                ['not', ['vocab-link', '?m', '?v']], ['not', ['vocab-link', '?w', '?v2']]]
             bare = c.bare_word('?w') + [['not', ['vocab-link', '?w', '?v2']]]
         else:
-            where = [c.morph('?m'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
+            where = c.shown_morph('?m') + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
             bare = c.bare_word('?w')
         rows = c.group(where, ['?m.metadata.form', '?m.value', at('?m')])
         # A word nobody has segmented has the derived morpheme the editor
@@ -379,15 +382,22 @@ def q_corpus_numbers(ws: Workspace, per_doc: bool):
     if c.M:
         mforms: Dict[str, Counter] = defaultdict(Counter)
         group = ['?m.doc', '?m.metadata.form', '?m.value'] if per_doc else ['?m.metadata.form', '?m.value']
-        for row in c.group([c.morph('?m')], group):
+        # A formless morpheme beside others is a gap, not a form (shown_morph).
+        for row in c.group(c.shown_morph('?m'), group):
             doc = row[0] if per_doc else '*'
             if c.ignored(row[-2]):
                 continue
             mforms[doc][Corpus.morph_key(row[-3], row[-2])] += row[-1]
+        # Every morpheme counts, a gap among them.
+        totals: Counter = Counter()
+        for doc, value, n in c.group([c.morph('?m')], ['?m.doc', '?m.value']):
+            if not c.ignored(value):
+                totals[doc if per_doc else '*'] += n
+        for k in totals:
+            rows[k]['morphemes'] = totals[k]
         for k, tally in mforms.items():
             r = rows[k]
             r['_mforms'] = tally
-            r['morphemes'] = sum(tally.values())
             r['morpheme_forms'] = len([f for f in tally if f])
             r['morpheme_hapax'] = sum(1 for f, n in tally.items() if f and n == 1)
     # analyzed = words - unanalyzed
