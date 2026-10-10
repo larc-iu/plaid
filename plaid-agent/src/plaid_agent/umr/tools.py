@@ -629,6 +629,57 @@ def _later_end(a: Optional[GNode], b: Optional[GNode]) -> Optional[GNode]:
     return max(ends, key=lambda n: n.sentence or 0) if ends else None
 
 
+# The constants a sentence node may stand above. have-condition-91 is
+# conceived by an event in real data, (s61e :unspecified have-condition-91).
+_PARENT_ONLY = tuple(c for c in DOC_CONSTANTS if c != 'have-condition-91')
+
+
+def _reversed_triple_problem(ws: Workspace, doc: UmrDoc, source: Dict[str, Any], target: Dict[str, Any],
+                             rel: str, group: str) -> Optional[str]:
+    """Why (a rel b) has its ends the wrong way round, or None.
+
+    A document-level triple puts the reference (the parent) first. Models
+    write the English order instead, (s6r :before document-creation-time) for
+    "s6r happened before the document was made", which UMR writes
+    (document-creation-time :before s6r). Two cases are certain: a constant
+    such as the document creation time or the author under a sentence node,
+    and a node that already stands above the other in this group (so the new
+    triple would close a loop). Anything else is the model's call."""
+    if group not in ('temporal', 'modal'):
+        return None
+    a, b = source['var'], target['var']
+    right = f'({b} {rel} {a})'
+    if target.get('constant') and b in _PARENT_ONLY and not source.get('constant'):
+        return (f'({a} {rel} {b}) is the wrong way round: {b} is a reference and comes first. '
+                f'Write {right}, which says {a} stands in {rel} to {b}.')
+    # The group's parent-to-child links as variables: the document's own,
+    # less the plan's removals, plus the plan's additions.
+    var_of = {nid: n.var for nid, n in doc.nodes_by_id.items()}
+    var_of.update({c.id: c.var for c in doc.constants})
+    gone = {op.get('relation_id') for op in ws.ops
+            if op.get('kind') == 'delete_triple' and op.get('document_id') == doc.id}
+    down: Dict[str, set] = {}
+    for n in list(doc.nodes_by_id.values()) + list(doc.constants):
+        for t in n.doc_out:
+            if t.group == group and t.id not in gone and t.source in var_of and t.target in var_of:
+                down.setdefault(var_of[t.source], set()).add(var_of[t.target])
+    for op in ws.ops:
+        if (op.get('kind') == 'create_triple' and op.get('document_id') == doc.id
+                and op.get('group') == group):
+            down.setdefault(op['source_var'], set()).add(op['target_var'])
+    seen, todo = set(), [b]
+    while todo:
+        x = todo.pop()
+        if x == a:
+            return (f'({a} {rel} {b}) is the wrong way round: {b} already stands above {a} in the '
+                    f'{group} graph, and the reference comes first. Write {right}, which says {a} '
+                    f'stands in {rel} to {b}.')
+        if x not in seen:
+            seen.add(x)
+            todo.extend(down.get(x, ()))
+    return None
+
+
 def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = None,
                  b: str = None, group: str = None, sentence=None) -> str:
     doc = ws.doc(document)
@@ -650,6 +701,9 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     target = _end(ws, doc, b, 'target')
     if source['var'] == target['var']:
         raise ToolError('A triple joins two different nodes.')
+    why = _reversed_triple_problem(ws, doc, source, target, rel, group)
+    if why:
+        raise ToolError(why)
     existing = source['node']
     if existing is not None and target['node'] is not None:
         for t in existing.doc_out:

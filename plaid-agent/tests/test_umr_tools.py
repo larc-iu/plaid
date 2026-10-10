@@ -168,6 +168,28 @@ def test_a_triple_between_two_constants_says_whose_block_writes_it(ws):
     assert 'sentences' not in op
 
 
+def test_a_constant_under_a_sentence_node_is_refused_with_the_right_order(ws):
+    """Models write the English order, (s2r :before document-creation-time),
+    where UMR puts the reference first. The refusal names the triple to write."""
+    out = run(ws, 'add_triple', document='Story', a='s2r', rel=':before', b='document-creation-time')
+    assert 'wrong way round' in out and '(document-creation-time :before s2r)' in out, out
+    out = run(ws, 'add_triple', document='Story', a='s1b', rel=':full-affirmative', b='author')
+    assert '(author :full-affirmative s1b)' in out, out
+    assert ws.ops == []
+    assert 'Planned' in run(ws, 'add_triple', document='Story', a='document-creation-time', rel=':before',
+                            b='s2r')
+
+
+def test_a_triple_that_reverses_one_in_the_plan_is_refused(ws):
+    run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='s2r')
+    out = run(ws, 'add_triple', document='Story', a='s2r', rel=':after', b='s1b')
+    assert 'wrong way round' in out and '(s1b :after s2r)' in out, out
+    assert len(ws.ops) == 1
+    # A coreference triple has no reference to come first.
+    assert 'wrong way round' not in run(ws, 'add_triple', document='Story', a='s1d', rel=':same-entity',
+                                        b='s2t')
+
+
 def test_a_triple_that_is_already_there_plans_nothing(ws):
     out = run(ws, 'add_triple', document='Story', a='s2t', rel=':same-entity', b='s1d')
     assert 'Nothing to change' in out

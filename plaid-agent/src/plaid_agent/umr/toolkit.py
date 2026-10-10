@@ -81,7 +81,8 @@ TOOLS = [
         ['document']),
     _fn('document_graph',
         'The whole document-level graph of one document: every temporal, modal and coreference '
-        'triple, by group, with the sentence each end belongs to, and the constants in use.',
+        'triple, by group, with the sentence each end belongs to, and the constants in use. A triple '
+        'reads (reference rel node): (document-creation-time :before s6r) says s6r came before the document.',
         {'document': _DOC}, ['document']),
     _fn('find_nodes',
         'Nodes across the project, by the concept they carry, by a relation hanging off them, or '
@@ -182,11 +183,13 @@ TOOLS = [
         'PLAN: add one document-level relation between two nodes, or between a node and one of the '
         'format\'s constants. The group (' + ', '.join(GROUPS) + ') follows from the relation '
         'unless you say otherwise. A constant no triple has used yet is created with it. The '
-        'triple reads (a rel b): b stands in relation rel to a, which is its reference, so '
-        '(document-creation-time :before e) says e happened before the document was made, '
+        'triple reads (a rel b): b stands in relation rel to a, which is its reference, so the '
+        'reference always comes first. (document-creation-time :before s6r) says s6r happened before '
+        'the document was made (never (s6r :before document-creation-time)), '
         '(s4e :before s2e) between two events says s2e happened before s4e, and '
-        '(author :full-affirmative e) says the author is sure e happened. A relation outside '
-        'its group\'s closed set is refused.',
+        '(author :full-affirmative e) says the author is sure e happened. A constant under a '
+        'sentence node, or a triple that reverses one already there, is refused, as is a relation '
+        'outside its group\'s closed set.',
         {'document': _DOC, 'a': _END,
          'rel': {'type': 'string',
                  'description': 'The relation, starting with a colon. temporal: '

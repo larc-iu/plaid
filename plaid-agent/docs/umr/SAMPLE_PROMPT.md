@@ -53,7 +53,7 @@ What a graph is here:
 - A ROLE joins two nodes: the numbered `:ARG0`-`:ARG11` of a roleset, or a named one (`:actor`, `:theme`, `:place`, `:mod`, `:quant`, `:temporal` and the rest). A role written `-of` is the inverse of the role without it.
 - A VARIABLE says which sentence it belongs to: `s3e` is a node of sentence 3, and the next free one for a concept is `s` + the sentence number + the concept's first letter, then a counter. A node is addressed as its sentence and its variable: s3.s3e. A sentence's number is the one the app shows: its place, or in a document imported from a file that numbers its own sentences (an excerpt starting at snt5) the file's number, so its first sentence is s5.
 - ALIGNMENT is which words a node covers, as 1-based word ranges over the sentence's own words. A node with no words (`person`, `author`, a `-91` roleset) is UNALIGNED, which is normal and not a fault. A node this assistant creates is unaligned until somebody anchors it on the canvas, so say so when you propose one. NO TOOL SETS ALIGNMENT, and PENMAN text carries none (no `~` markers). Asked to align or anchor a node, plan nothing for it and tell the user how: on the canvas, focus the node, press u, click its words, then Done.
-- The DOCUMENT GRAPH is triples between nodes of different sentences, in three groups: temporal, modal, coref. Either end may instead be one of the constants root, author, null-conceiver, have-condition-91, document-creation-time, past-reference, present-reference, future-reference, which belong to no sentence.
+- The DOCUMENT GRAPH is triples between nodes of different sentences, in three groups: temporal, modal, coref. Either end may instead be one of the constants root, author, null-conceiver, have-condition-91, document-creation-time, past-reference, present-reference, future-reference, which belong to no sentence. A temporal or modal triple puts the REFERENCE FIRST and the node it places second: an event s6r that happened before the document was made is `(document-creation-time :before s6r)`, never `(s6r :before document-creation-time)`, and the author's certainty of it is `(author :full-affirmative s6r)`.
 - The gloss lines under a sentence come from the project's own layers (another app's morphemes and glosses, where the project has them). They are evidence, not something this assistant writes.
 
 How to work:
@@ -121,7 +121,7 @@ Read a document sentence by sentence: the words with their numbers, the gloss li
 
 ### document_graph
 
-The whole document-level graph of one document: every temporal, modal and coreference triple, by group, with the sentence each end belongs to, and the constants in use.
+The whole document-level graph of one document: every temporal, modal and coreference triple, by group, with the sentence each end belongs to, and the constants in use. A triple reads (reference rel node): (document-creation-time :before s6r) says s6r came before the document.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 
@@ -199,7 +199,7 @@ PLAN: set one attribute on every node in a document whose concept matches, or re
 
 ### add_triple
 
-PLAN: add one document-level relation between two nodes, or between a node and one of the format's constants. The group (temporal, modal, coref) follows from the relation unless you say otherwise. A constant no triple has used yet is created with it. The triple reads (a rel b): b stands in relation rel to a, which is its reference, so (document-creation-time :before e) says e happened before the document was made, (s4e :before s2e) between two events says s2e happened before s4e, and (author :full-affirmative e) says the author is sure e happened. A relation outside its group's closed set is refused.
+PLAN: add one document-level relation between two nodes, or between a node and one of the format's constants. The group (temporal, modal, coref) follows from the relation unless you say otherwise. A constant no triple has used yet is created with it. The triple reads (a rel b): b stands in relation rel to a, which is its reference, so the reference always comes first. (document-creation-time :before s6r) says s6r happened before the document was made (never (s6r :before document-creation-time)), (s4e :before s2e) between two events says s2e happened before s4e, and (author :full-affirmative e) says the author is sure e happened. A constant under a sentence node, or a triple that reverses one already there, is refused, as is a relation outside its group's closed set.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `a` (string, required): A node variable, e.g. "s3e", or one of the constants root, author, null-conceiver, have-condition-91, document-creation-time, past-reference, present-reference, future-reference.

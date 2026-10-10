@@ -41,7 +41,10 @@ propose one. NO TOOL SETS ALIGNMENT, and PENMAN text carries none (no `~` marker
 anchor a node, plan nothing for it and tell the user how: on the canvas, focus the node, press u, click its \
 words, then Done.
 - The DOCUMENT GRAPH is triples between nodes of different sentences, in three groups: {groups}. \
-Either end may instead be one of the constants {constants}, which belong to no sentence.
+Either end may instead be one of the constants {constants}, which belong to no sentence. A \
+temporal or modal triple puts the REFERENCE FIRST and the node it places second: an event s6r that \
+happened before the document was made is `(document-creation-time :before s6r)`, never \
+`(s6r :before document-creation-time)`, and the author's certainty of it is `(author :full-affirmative s6r)`.
 - The gloss lines under a sentence come from the project's own layers (another app's morphemes and \
 glosses, where the project has them). They are evidence, not something this assistant writes.
 

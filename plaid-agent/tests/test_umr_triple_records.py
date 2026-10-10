@@ -84,7 +84,7 @@ def test_a_sentence_with_no_record_gets_one_over_the_sentence():
 def test_a_triple_with_a_node_at_one_end_is_listed_in_no_record():
     client = umr_client()
     ws = umr_ws(client)
-    call_tool(ws, 'add_triple', {'document': 'Story', 'a': 's2r', 'rel': ':before',
-                                 'b': 'document-creation-time'})
+    call_tool(ws, 'add_triple', {'document': 'Story', 'a': 'document-creation-time', 'rel': ':before',
+                                 'b': 's2r'})
     _apply(client, ws)
     assert client.patches('tokens') == []
