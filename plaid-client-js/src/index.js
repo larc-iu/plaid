@@ -145,6 +145,23 @@ import {
 /** @typedef {UserDataEntry & {userId: string}} AdminUserDataEntry */
 
 /**
+ * One user's activity over a scope and window (`audit.tally`).
+ * @typedef {object} ActivityTallyRow
+ * @property {{id: string, displayName?: string}} user
+ * @property {number} operations
+ * @property {number} changes
+ * @property {number} documents
+ * @property {string} firstTs
+ * @property {string} lastTs
+ * @property {Array<{date: string, changes: number}>} [byDay]
+ */
+
+/**
+ * What a constraint repair did in one document.
+ * @typedef {{document: string, constraint: string, deleted: number, joined: number}} ConstraintRepair
+ */
+
+/**
  * Entities that can carry a comment.
  * @typedef {"document" | "text" | "token" | "span" | "relation" | "vocab-item"} CommentableType
  */
@@ -572,6 +589,7 @@ class PlaidClient {
   constructor(baseUrl, token, options = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
+    /** @type {number | null} */
     this.timeout =
       options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS;
     // Batch submissions get a longer budget than a single request. Aborting a
@@ -579,6 +597,7 @@ class PlaidClient {
     // holding the single SQLite write lock, so a client that gives up early
     // just adds a retry on top of a write that is still in progress. Falls
     // back to an explicit `timeout` when one was given.
+    /** @type {number | null} */
     this.batchTimeout =
       options.batchTimeout !== undefined
         ? options.batchTimeout
@@ -633,12 +652,18 @@ class PlaidClient {
     // the stored token and route back to login. See makeRequest in http.js.
     /** @type {((error: Error) => void) | null} */
     this.onAuthError = options.onAuthError || null;
+    /** @private */
     this._authErrorFired = false;
     // Who hears that a request is being sent again (onRetry).
+    /** @private */
     this._retryListeners = new Set();
     // GET /info as last read (`server.info()`), and whether a stream of this
     // client dropped since.
+    /** @private */
     this._serverFacts = { info: null, stale: false };
+    // The key frame the last beginOperation opened, or null (withOperation).
+    /** @private @type {object | null} */
+    this._openedFrame = null;
 
     this._installResources();
   }
@@ -646,6 +671,7 @@ class PlaidClient {
   /**
    * A stream of this client ended without being closed here: the server may
    * have restarted, with other limits.
+   * @private
    */
   _noteStreamDropped() {
     this._serverFacts.stale = true;
@@ -654,6 +680,7 @@ class PlaidClient {
   /**
    * A stream of this client is open. After a drop the limits are read again,
    * once however many streams reopen.
+   * @private
    */
   _noteStreamOpened() {
     if (!this._serverFacts.stale) return;
@@ -677,7 +704,10 @@ class PlaidClient {
     return () => this._retryListeners.delete(listener);
   }
 
-  /** Tell every `onRetry` listener. A listener that throws is passed over. */
+  /**
+   * Tell every `onRetry` listener. A listener that throws is passed over.
+   * @private
+   */
   _noteRetry(info) {
     for (const listener of this._retryListeners) {
       try {
@@ -704,6 +734,7 @@ class PlaidClient {
    * the client, and again on every batch it opens (see `batch()`): a batch is
    * a view of the client with its own `_request`, so the same bundles built
    * on it queue instead of sending.
+   * @private
    */
   _installResources() {
     this.vocabLinks = {
@@ -1739,6 +1770,7 @@ class PlaidClient {
        * Read one private data entry ({key, updatedAt, version, value}); 404 if absent.
        * @param {string} userId
        * @param {string} key
+       * @returns {Promise<UserDataEntry & {value: any}>}
        */
       get: (userId, key) =>
         this._request(
@@ -2220,7 +2252,7 @@ class PlaidClient {
        * @param {boolean} [opts.daily] - Also return `byDay`, a list of
        *   `{date, changes}` per user, oldest first, at the cost of a second
        *   grouped scan
-       * @returns {Promise<Array<{user: object, operations: number, changes: number, documents: number, firstTs: string, lastTs: string, byDay?: object}>>}
+       * @returns {Promise<ActivityTallyRow[]>}
        */
       tally: async ({ projectId, startTime, endTime, daily } = {}) => {
         const path = projectId
@@ -3829,6 +3861,7 @@ class PlaidClient {
 
   // --- Core methods ---
 
+  /** @private */
   async _request(method, path, options = {}) {
     return makeRequest(this, method, path, options);
   }
@@ -4066,6 +4099,7 @@ class PlaidClient {
    * recased: the headers keep the server's spelling. `key` is the request's
    * Idempotency-Key: a batch whose answer is lost (no response, 502, 504) is
    * sent again under it, and answered from the first send if that landed.
+   * @private
    */
   async _postBatch(url, body, { key = uuidv7() } = {}) {
     const fetchOptions = {
@@ -4364,6 +4398,8 @@ function configRequest(auditMessage, value, options, isDelete = false) {
 /**
  * The three metadata methods of a bundle whose entities carry metadata, on
  * `/api/v1/<kind>/<id>/metadata`. Metadata is opaque, so no body is re-cased.
+ * @param {PlaidClient} client
+ * @param {string} kind
  */
 function metadataMethods(client, kind) {
   const path = (id) => `/api/v1/${kind}/${id}/metadata`;
@@ -4396,6 +4432,8 @@ function metadataMethods(client, kind) {
 /**
  * The two config methods of a bundle whose records carry editor config, on
  * `/api/v1/<kind>/<id>/config/<namespace>/<key>`.
+ * @param {PlaidClient} client
+ * @param {string} kind
  */
 function configMethods(client, kind) {
   const path = (id, namespace, configKey) => `/api/v1/${kind}/${id}/config/${namespace}/${configKey}`;
@@ -4436,6 +4474,8 @@ function configMethods(client, kind) {
 /**
  * The get, delete, update and shift methods of the four layer bundles, on
  * `/api/v1/<kind>/<layerId>`.
+ * @param {PlaidClient} client
+ * @param {string} kind
  */
 function layerMethods(client, kind) {
   const path = (layerId) => `/api/v1/${kind}/${layerId}`;
@@ -4476,6 +4516,8 @@ function layerMethods(client, kind) {
 /**
  * The four layer-constraint methods of a layer bundle, on `/api/v1/<kind>`.
  * See constraints.js and the core manual, "Layer constraints".
+ * @param {PlaidClient} client
+ * @param {string} kind
  */
 function constraintMethods(client, kind) {
   const base = (layerId) => `/api/v1/${kind}/${layerId}/constraints`;
@@ -4486,12 +4528,12 @@ function constraintMethods(client, kind) {
      * stored data breaks them (see violationsOf).
      * @param {string} layerId - The layer ID
      * @param {string} namespace - The declaring app's namespace, e.g. "igt"
-     * @param {Array<object>} constraints - e.g. [{type: "single-span"}, {type: "value-set", values: ["N"]}]
+     * @param {LayerConstraint[]} constraints - e.g. [{type: "single-span"}, {type: "value-set", values: ["N"]}]
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{expected?: Array<object>|null}} [options] - `expected`: the list read for this
      *   namespace (null when it was absent). The write is then refused with a 409 when the stored
      *   list differs.
-     * @returns {Promise<{constraints: object}>} the layer's whole constraint map
+     * @returns {Promise<{constraints: Record<string, LayerConstraint[]>}>} the layer's whole constraint map
      */
     setConstraints: (layerId, namespace, constraints, auditMessage, options) =>
       client._request("PUT", `${base(layerId)}/${namespace}`, {
@@ -4516,8 +4558,8 @@ function constraintMethods(client, kind) {
      * The violations the given constraints would meet in this layer's stored
      * data. Writes nothing.
      * @param {string} layerId - The layer ID
-     * @param {Array<object>} constraints - The list to check
-     * @returns {Promise<{violations: Array<object>, violationCount: number}>}
+     * @param {LayerConstraint[]} constraints - The list to check
+     * @returns {Promise<{violations: ConstraintViolation[], violationCount: number}>}
      */
     checkConstraints: (layerId, constraints) =>
       client._request("POST", `${base(layerId)}/check`, { body: { constraints } }),
@@ -4529,10 +4571,10 @@ function constraintMethods(client, kind) {
      * ask. A document another user holds the lock on is left as it is and
      * listed under `locked`.
      * @param {string} layerId - The layer ID
-     * @param {Array<object>} constraints - The list to repair for
+     * @param {LayerConstraint[]} constraints - The list to repair for
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{document?: string}} [options]
-     * @returns {Promise<{repaired: Array<object>, locked: Array<{document: string, lockedBy: string}>, violations: Array<object>, violationCount: number}>}
+     * @returns {Promise<{repaired: ConstraintRepair[], locked: Array<{document: string, lockedBy: string}>, violations: ConstraintViolation[], violationCount: number}>}
      */
     repairConstraints: (layerId, constraints, auditMessage, options) =>
       client._request("POST", `${base(layerId)}/repair`, {
