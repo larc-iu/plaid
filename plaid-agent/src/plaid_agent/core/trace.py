@@ -441,7 +441,7 @@ SHARED_DESCRIBE: Dict[str, Callable[[Dict[str, Any]], str]] = {
     'query': lambda a: 'Ran a query',
     'recent_changes': lambda a: f'Read the change history{in_doc(a)}',
     'comments': lambda a: f'Read the comments{_on_ref(a)}{in_doc(a)}',
-    'add_comment': lambda a: f'Planned a comment{_on_ref(a)}{in_doc(a)}',
+    'add_comment': lambda a: f'Planned a comment on {a.get("ref") or "the document"}{in_doc(a)}',
     'restore_document': lambda a: f'Planned restoring {q(a.get("document"))} to {a.get("as_of", "")}',
     'run_code': lambda a: 'Read across the corpus',
     'code_help': lambda a: 'Looked up how to read across the corpus',

@@ -11,6 +11,7 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit, read_int, sentence_number
+from .java_regex import matcher
 from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET, note_cut
 from .trace import ranges
 
@@ -188,13 +189,18 @@ def documents_page(ws, pattern: str = None, limit: int = None, offset: int = 0, 
     narrowed = docs is not None
     docs = sorted(ws.documents() if docs is None else docs, key=lambda d: (d.get('name') or '').casefold())
     if pattern:
-        want = pattern.casefold()
-        docs = [d for d in docs if want in (d.get('name') or '').casefold()]
+        # Read as the server's search reads it: literal, case-insensitive, in
+        # NFC on both sides (java_regex), so a name typed decomposed is found.
+        matches = matcher(pattern, literal=True, case_insensitive=True)
+        docs = [d for d in docs if matches(d.get('name'))]
     if not docs:
         return 'No documents matched.' if pattern or narrowed else 'The project has no documents.'
     limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
     offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
+    if not page:
+        return (f'{len(docs)} document{"s" if len(docs) != 1 else ""}'
+                + (' matching' if pattern or narrowed else '') + f', none from {offset + 1}.')
     ws.note_read(len(page), 'document', of=len(docs))
     out = [f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or narrowed else '')
            + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':']
