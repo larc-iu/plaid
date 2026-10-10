@@ -3,7 +3,7 @@ import { renderComponent, byText } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { TokenizeDialog } from './tokenize/TokenizeDialog.jsx';
 import { TranscribeDialog } from './media/TranscribeDialog.jsx';
-import { runHeldNotice } from './runHeld.js';
+import { runHeldNotice } from '@ui/components/services/runHeld.js';
 
 // A run dialog whose Run is disabled because another run holds the document
 // says so, in the words ud's and umr's dialogs use (R2-DEBT-APPS-13).

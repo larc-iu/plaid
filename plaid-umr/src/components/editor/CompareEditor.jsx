@@ -12,6 +12,7 @@ import {
 import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
+import { runHeldNotice } from '@ui/components/services/runHeld.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -349,20 +350,17 @@ function CompareDialog({
   const [open, setOpen] = useState(false);
   const { spot, run, start } = compare;
   const running = run.running;
-  const busyElsewhere = !!writeLockHeld && !running;
 
   // No service online is the method row's to say, and said once.
   const notice = running
     ? null
-    : busyElsewhere
-      ? `${writeLockHeld.label} is running. One run at a time on a document.`
-      : listError
-        ? listError
-        : documents && documents.length === 0
-          ? 'This project has no other document to compare with.'
-          : !chosenId
-            ? 'Choose a document to compare with.'
-            : null;
+    : runHeldNotice(writeLockHeld, running) ||
+      listError ||
+      (documents && documents.length === 0
+        ? 'This project has no other document to compare with.'
+        : !chosenId
+          ? 'Choose a document to compare with.'
+          : null);
 
   return (
     <>

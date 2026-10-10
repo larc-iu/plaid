@@ -14,7 +14,7 @@ import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { runHeldNotice } from '../runHeld.js';
+import { runHeldNotice } from '@ui/components/services/runHeld.js';
 
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 // A whole-document model pass can take a few minutes on a large document.
