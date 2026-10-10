@@ -65,11 +65,12 @@ export const useTimelineOperations = (mediaOps) => {
     timelineContainerRef.current = node;
     setTimelineContainer(node);
   }, []);
-  // A resize in progress: the token, which edge, and the bounds the last move
-  // computed. In a ref because the move and the release are separate native
+  // A resize in progress: the token, which edge, the bounds the last move
+  // computed, and how far the edge sat from where the press landed, so the
+  // edge moves by the pointer's movement rather than jumping to the pointer. In a ref because the move and the release are separate native
   // events, and the release must commit what the last move worked out rather
   // than what the handler was created with.
-  const resizeRef = useRef({ token: null, handle: null, bounds: null });
+  const resizeRef = useRef({ token: null, handle: null, bounds: null, offset: 0 });
   // Pending zoom-to-pointer anchor. Set by the ctrl+wheel handler, consumed by a
   // layout effect once the new pixelsPerSecond (and thus the timeline width) has
   // committed — see the wheel handler below.
@@ -330,26 +331,31 @@ export const useTimelineOperations = (mediaOps) => {
   );
 
   // Resize event handlers (defined first to avoid reference issues)
-  const handleResizeStart = useCallback((event, token, handle) => {
-    event.stopPropagation();
-    event.preventDefault();
+  const handleResizeStart = useCallback(
+    (event, token, handle) => {
+      event.stopPropagation();
+      event.preventDefault();
 
-    const bounds = {
-      start: token.metadata?.timeBegin || 0,
-      end: token.metadata?.timeEnd || 0,
-    };
-    resizeRef.current = { token, handle, bounds };
-    setIsResizing(true);
-    setResizingToken(token);
-    setTempTokenBounds(bounds);
-  }, []);
+      const bounds = {
+        start: token.metadata?.timeBegin || 0,
+        end: token.metadata?.timeEnd || 0,
+      };
+      const edge = handle === 'left' ? bounds.start : bounds.end;
+      const offset = edge - getTimeFromPosition(event.clientX);
+      resizeRef.current = { token, handle, bounds, offset };
+      setIsResizing(true);
+      setResizingToken(token);
+      setTempTokenBounds(bounds);
+    },
+    [getTimeFromPosition],
+  );
 
   const handleResizeMove = useCallback(
     (event) => {
-      const { token, handle, bounds } = resizeRef.current;
+      const { token, handle, bounds, offset } = resizeRef.current;
       if (!token || !bounds) return;
 
-      const currentTime = getTimeFromPosition(event.clientX);
+      const currentTime = getTimeFromPosition(event.clientX) + offset;
 
       // An edge stops at the recording's ends, 0.1 s short of the segment's
       // other edge, and at any segment it may not overlap (alignmentTimes).
@@ -363,7 +369,7 @@ export const useTimelineOperations = (mediaOps) => {
             ? { start: bounds.start, end: clamped }
             : bounds;
 
-      resizeRef.current = { token, handle, bounds: next };
+      resizeRef.current = { token, handle, bounds: next, offset };
       setTempTokenBounds(next);
     },
     [getTimeFromPosition, mediaOps.duration, doc],
@@ -374,7 +380,7 @@ export const useTimelineOperations = (mediaOps) => {
     if (!token || !bounds) return;
     // Taken out of the ref before the write, so a second release during it is
     // a no-op rather than a second write of the same bounds.
-    resizeRef.current = { token: null, handle: null, bounds: null };
+    resizeRef.current = { token: null, handle: null, bounds: null, offset: 0 };
 
     try {
       // The domain method does the optimistic patch + reload-on-error.

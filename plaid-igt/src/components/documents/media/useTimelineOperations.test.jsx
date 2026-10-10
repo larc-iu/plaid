@@ -399,7 +399,9 @@ describe('useTimelineOperations: resizing a segment', () => {
     alignmentTokens: [segment],
     updateAlignmentBounds: vi.fn(async () => true),
   });
-  const grab = () => ({ stopPropagation: vi.fn(), preventDefault: vi.fn() });
+  // A press at clientX, on the edge itself unless a test says otherwise (at
+  // 10 px/s the start is at 10 px and the end at 20 px).
+  const grab = (clientX) => ({ clientX, stopPropagation: vi.fn(), preventDefault: vi.fn() });
   const move = (clientX) =>
     document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX }));
   const release = () => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -407,7 +409,7 @@ describe('useTimelineOperations: resizing a segment', () => {
   it('commits the bounds of its last move, across separate commits', async () => {
     const doc = resizable();
     const h = await mount(makeOps({ doc }));
-    await h.step(() => h.api.handleResizeStart(grab(), segment, 'right'));
+    await h.step(() => h.api.handleResizeStart(grab(20), segment, 'right'));
     expect(h.api.isResizing).toBe(true);
 
     await h.step(() => move(300));
@@ -425,7 +427,7 @@ describe('useTimelineOperations: resizing a segment', () => {
   it('commits the last move even when the release lands in the same commit', async () => {
     const doc = resizable();
     const h = await mount(makeOps({ doc }));
-    await h.step(() => h.api.handleResizeStart(grab(), segment, 'right'));
+    await h.step(() => h.api.handleResizeStart(grab(20), segment, 'right'));
 
     // Both moves and the release before React commits anything: the release
     // must read what the second move worked out, not what it was created with.
@@ -443,7 +445,7 @@ describe('useTimelineOperations: resizing a segment', () => {
   it('a second release writes nothing', async () => {
     const doc = resizable();
     const h = await mount(makeOps({ doc }));
-    await h.step(() => h.api.handleResizeStart(grab(), segment, 'right'));
+    await h.step(() => h.api.handleResizeStart(grab(20), segment, 'right'));
     await h.step(() => {
       move(400);
       release();
@@ -457,11 +459,30 @@ describe('useTimelineOperations: resizing a segment', () => {
   it('the left handle moves the start and leaves the end', async () => {
     const doc = resizable();
     const h = await mount(makeOps({ doc }));
-    await h.step(() => h.api.handleResizeStart(grab(), segment, 'left'));
+    await h.step(() => h.api.handleResizeStart(grab(10), segment, 'left'));
     await h.step(() => move(5));
     await h.step(() => release());
 
     expect(doc.updateAlignmentBounds).toHaveBeenCalledWith('a-1', { timeBegin: 0.5, timeEnd: 2 });
+    await h.unmount();
+  });
+
+  it('an edge pressed inside its grip moves by the pointer, not to it', async () => {
+    // At a millisecond a pixel, a press 3 px inside the end jumped the edge
+    // 3 ms back on the first move.
+    const doc = resizable();
+    const h = await mount(makeOps({ doc, pixelsPerSecond: 1000 }));
+    await h.step(() => h.api.handleResizeStart(grab(1997), segment, 'right'));
+    await h.step(() => move(1997));
+    expect(h.api.tempTokenBounds).toEqual({ start: 1, end: 2 });
+    await h.step(() => move(2047));
+    expect(h.api.tempTokenBounds.end).toBeCloseTo(2.05, 9);
+    await h.step(() => release());
+
+    await h.step(() => h.api.handleResizeStart(grab(1003), segment, 'left'));
+    await h.step(() => move(1003));
+    expect(h.api.tempTokenBounds.start).toBeCloseTo(1, 9);
+    await h.step(() => release());
     await h.unmount();
   });
 });
