@@ -3,11 +3,11 @@
 // regardless of which language client is reading. Only the envelope around it
 // is API surface subject to camelCase recasing.
 //
-// See the manual's Real-time Messaging > Event Reference.
+// See the manual's Real-time Messaging > Event Reference. What sendMessage
+// sends is in fixtures/requests.json.
 
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { PlaidClient } from '../src/index.js';
 import { eventPayload } from '../src/sse.js';
 
 const PAYLOAD = {
@@ -16,18 +16,6 @@ const PAYLOAD = {
   snake_case_key: 2,
   nested: { 'another-key': [1, { 'deep-key': 'v' }] },
 };
-
-test('sendMessage puts the payload on the wire verbatim', async () => {
-  // A batch captures the fully prepared request body without any network.
-  const client = new PlaidClient('http://localhost:0', 'dummy-token');
-  const b = client.batch();
-  b.messages.sendMessage('11111111-2222-3333-4444-555555555555', PAYLOAD);
-  const [op] = b.operations;
-  b.abort();
-
-  assert.strictEqual(op.method, 'POST');
-  assert.deepStrictEqual(op.body, { body: PAYLOAD });
-});
 
 test('a message event hands the payload to the callback verbatim', () => {
   const wire = {

@@ -1,0 +1,385 @@
+[
+  {
+    "name": "setConfig without expected sends the value as the body",
+    "each": [["projects", "projects"], ["textLayers", "text-layers"], ["tokenLayers", "token-layers"], ["spanLayers", "span-layers"], ["relationLayers", "relation-layers"], ["vocabLayers", "vocab-layers"]],
+    "js": ["<bundle>.setConfig", "L1", "igt", "tagsets", {"a-b": 1}],
+    "sends": [{"method": "PUT", "path": "/api/v1/<kind>/L1/config/igt/tagsets", "body": {"a-b": 1}}]
+  },
+  {
+    "name": "setConfig with expected sends the compare-and-set envelope",
+    "each": [["projects", "projects"], ["textLayers", "text-layers"], ["tokenLayers", "token-layers"], ["spanLayers", "span-layers"], ["relationLayers", "relation-layers"], ["vocabLayers", "vocab-layers"]],
+    "js": ["<bundle>.setConfig", "L1", "igt", "tagsets", {"new-key": 2}, "$undefined", {"expected": {"old-key": 1}}],
+    "py": ["<bundle>.set_config", "L1", "igt", "tagsets", {"new-key": 2}],
+    "py_kw": {"expected": {"old-key": 1}},
+    "sends": [{"method": "PUT", "path": "/api/v1/<kind>/L1/config/igt/tagsets", "query": {"if-unchanged": "true"},
+               "body": {"expected": {"old-key": 1}, "value": {"new-key": 2}}}]
+  },
+  {
+    "name": "deleteConfig with expected sends it",
+    "each": [["projects", "projects"], ["textLayers", "text-layers"], ["tokenLayers", "token-layers"], ["spanLayers", "span-layers"], ["relationLayers", "relation-layers"], ["vocabLayers", "vocab-layers"]],
+    "js": ["<bundle>.deleteConfig", "L1", "ud", "language", "Clear it", {"expected": "en"}],
+    "py": ["<bundle>.delete_config", "L1", "ud", "language", "Clear it"],
+    "py_kw": {"expected": "en"},
+    "sends": [{"method": "DELETE", "path": "/api/v1/<kind>/L1/config/ud/language",
+               "query": {"audit-message": "Clear it", "if-unchanged": "true"}, "body": {"expected": "en"}}]
+  },
+  {
+    "name": "an expected of null means the key was absent",
+    "js": ["projects.setConfig", "P1", "igt", "languages", {"object": "Lezgian"}, "$undefined", {"expected": null}],
+    "py": ["projects.set_config", "P1", "igt", "languages", {"object": "Lezgian"}],
+    "py_kw": {"expected": null},
+    "sends": [{"method": "PUT", "path": "/api/v1/projects/P1/config/igt/languages", "query": {"if-unchanged": "true"},
+               "body": {"expected": null, "value": {"object": "Lezgian"}}}]
+  },
+  {
+    "name": "options with no expected key write without a check",
+    "js": ["projects.setConfig", "P1", "igt", "x", 1, "$undefined", {}],
+    "py": ["projects.set_config", "P1", "igt", "x", 1],
+    "sends": [{"method": "PUT", "path": "/api/v1/projects/P1/config/igt/x", "body": 1}]
+  },
+  {
+    "name": "deleteConfig without expected sends no body",
+    "js": ["projects.deleteConfig", "P1", "ud", "language"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/config/ud/language"}]
+  },
+  {
+    "name": "a per-call audit message rides on that write",
+    "js": ["spans.setMetadata", "S1", {"a": 1}, "Approve {spanId}"],
+    "sends": [{"method": "PUT", "path": "/api/v1/spans/S1/metadata", "query": {"audit-message": "Approve {spanId}"}, "body": {"a": 1}}]
+  },
+  {
+    "name": "a write with no audit message sends none",
+    "js": ["spans.setMetadata", "S2", {"b": 2}],
+    "sends": [{"method": "PUT", "path": "/api/v1/spans/S2/metadata", "body": {"b": 2}}]
+  },
+  {
+    "name": "an audit message's special characters are URL-encoded",
+    "js": ["spans.setMetadata", "S1", {"a": 1}, "a & b = c"],
+    "sends": [{"method": "PUT", "path": "/api/v1/spans/S1/metadata", "query": {"audit-message": "a & b = c"}, "body": {"a": 1}}]
+  },
+  {
+    "name": "a read carries no audit message",
+    "js": ["spans.get", "S1"],
+    "sends": [{"method": "GET", "path": "/api/v1/spans/S1"}]
+  },
+  {
+    "name": "copy posts the new name to the document",
+    "js": ["documents.copy", "D1", "Doc, copy"],
+    "sends": [{"method": "POST", "path": "/api/v1/documents/D1/copy", "body": {"name": "Doc, copy"}}]
+  },
+  {
+    "name": "a copy leaving the media behind says so, and the audit message rides along",
+    "js": ["documents.copy", "D1", "Doc, copy", {"includeMedia": false}, "Copy for the class"],
+    "py": ["documents.copy", "D1", "Doc, copy"],
+    "py_kw": {"include_media": false, "audit_message": "Copy for the class"},
+    "sends": [{"method": "POST", "path": "/api/v1/documents/D1/copy", "query": {"audit-message": "Copy for the class"},
+               "body": {"name": "Doc, copy", "include-media": false}}]
+  },
+  {
+    "name": "restore posts the moment to go back to",
+    "js": ["documents.restore", "D1", "2026-06-01T12:00:00Z"],
+    "sends": [{"method": "POST", "path": "/api/v1/documents/D1/restore", "query": {"as-of": "2026-06-01T12:00:00Z"}}]
+  },
+  {
+    "name": "a dry-run restore says so, and the audit message rides along",
+    "js": ["documents.restore", "D1", "2026-06-01T12:00:00Z", {"dryRun": true}, "Restore to yesterday"],
+    "py": ["documents.restore", "D1", "2026-06-01T12:00:00Z"],
+    "py_kw": {"dry_run": true, "audit_message": "Restore to yesterday"},
+    "sends": [{"method": "POST", "path": "/api/v1/documents/D1/restore",
+               "query": {"as-of": "2026-06-01T12:00:00Z", "dry-run": "true", "audit-message": "Restore to yesterday"}}]
+  },
+  {
+    "name": "deleteMedia sends the recording it means as media-version",
+    "js": ["documents.deleteMedia", "d1", "$undefined", {"mediaVersion": "1700000000000-5"}],
+    "py": ["documents.delete_media", "d1"],
+    "py_kw": {"media_version": "1700000000000-5"},
+    "sends": [{"method": "DELETE", "path": "/api/v1/documents/d1/media", "query": {"media-version": "1700000000000-5"}}]
+  },
+  {
+    "name": "deleteMedia naming no recording sends no media-version",
+    "js": ["documents.deleteMedia", "d2"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/documents/d2/media"}]
+  },
+  {
+    "name": "merge posts the losers to the survivor's merge route",
+    "js": ["vocabItems.merge", "S", ["L1", "L2"], "Merge"],
+    "sends": [{"method": "POST", "path": "/api/v1/vocab-items/S/merge", "query": {"audit-message": "Merge"}, "body": {"losers": ["L1", "L2"]}}]
+  },
+  {
+    "name": "a vocab item delete sends no expected-link-count it was not given",
+    "js": ["vocabItems.delete", "I"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/vocab-items/I"}]
+  },
+  {
+    "name": "a vocab item delete sends an expected-link-count of zero",
+    "js": ["vocabItems.delete", "I", "$undefined", {"expectedLinkCount": 0}],
+    "py": ["vocab_items.delete", "I"],
+    "py_kw": {"expected_link_count": 0},
+    "sends": [{"method": "DELETE", "path": "/api/v1/vocab-items/I", "query": {"expected-link-count": "0"}}]
+  },
+  {
+    "name": "a vocab item delete sends an expected-link-count of two",
+    "js": ["vocabItems.delete", "I", "$undefined", {"expectedLinkCount": 2}],
+    "py": ["vocab_items.delete", "I"],
+    "py_kw": {"expected_link_count": 2},
+    "sends": [{"method": "DELETE", "path": "/api/v1/vocab-items/I", "query": {"expected-link-count": "2"}}]
+  },
+  {
+    "name": "a user create without a display name leaves it out",
+    "js": ["users.create", "ana@example.com", "pw", false],
+    "sends": [{"method": "POST", "path": "/api/v1/users", "body": {"email": "ana@example.com", "password": "pw", "is-admin": false}}]
+  },
+  {
+    "name": "a user create with a null display name leaves it out too",
+    "js": ["users.create", "ana@example.com", "pw", false, null],
+    "sends": [{"method": "POST", "path": "/api/v1/users", "body": {"email": "ana@example.com", "password": "pw", "is-admin": false}}]
+  },
+  {
+    "name": "a user create with a display name sends it",
+    "js": ["users.create", "ana@example.com", "pw", false, "Ana"],
+    "sends": [{"method": "POST", "path": "/api/v1/users",
+               "body": {"email": "ana@example.com", "password": "pw", "is-admin": false, "display-name": "Ana"}}]
+  },
+  {
+    "name": "a guideline create sends only the fields it was given",
+    "js": ["guidelines.create", "p1", "Glossing"],
+    "sends": [{"method": "POST", "path": "/api/v1/projects/p1/guidelines", "body": {"title": "Glossing"}}]
+  },
+  {
+    "name": "a guideline create passes body, pinned and the audit message through",
+    "js": ["guidelines.create", "p1", "Glossing", {"body": "Loanwords are **not** segmented.", "pinned": true}, "seeding the manual"],
+    "py": ["guidelines.create", "p1", "Glossing"],
+    "py_kw": {"body": "Loanwords are **not** segmented.", "pinned": true, "audit_message": "seeding the manual"},
+    "sends": [{"method": "POST", "path": "/api/v1/projects/p1/guidelines", "query": {"audit-message": "seeding the manual"},
+               "body": {"title": "Glossing", "body": "Loanwords are **not** segmented.", "pinned": true}}]
+  },
+  {
+    "name": "a guideline update sends only what changed, so a body edit cannot blank the title",
+    "js": ["guidelines.update", "g1", {"body": "New text."}],
+    "py": ["guidelines.update", "g1"],
+    "py_kw": {"body": "New text."},
+    "sends": [{"method": "PATCH", "path": "/api/v1/guidelines/g1", "body": {"body": "New text."}}]
+  },
+  {
+    "name": "a guideline update can unpin, since false is a value and not an omission",
+    "js": ["guidelines.update", "g1", {"pinned": false}],
+    "py": ["guidelines.update", "g1"],
+    "py_kw": {"pinned": false},
+    "sends": [{"method": "PATCH", "path": "/api/v1/guidelines/g1", "body": {"pinned": false}}]
+  },
+  {
+    "name": "a guideline update sends the expected updated-at",
+    "js": ["guidelines.update", "g1", {"body": "New text.", "expectedUpdatedAt": "2026-09-01T00:00:00Z"}],
+    "py": ["guidelines.update", "g1"],
+    "py_kw": {"body": "New text.", "expected_updated_at": "2026-09-01T00:00:00Z"},
+    "sends": [{"method": "PATCH", "path": "/api/v1/guidelines/g1", "query": {"updated-at": "2026-09-01T00:00:00Z"}, "body": {"body": "New text."}}]
+  },
+  {
+    "name": "a guideline list sends no include-bodies it was not asked for",
+    "js": ["guidelines.list", "p1"],
+    "sends": [{"method": "GET", "path": "/api/v1/projects/p1/guidelines", "query": {"limit": "1000"}}]
+  },
+  {
+    "name": "a guideline list sends include-bodies kebab-cased",
+    "js": ["guidelines.list", "p1", {"includeBodies": true}],
+    "py": ["guidelines.list", "p1"],
+    "py_kw": {"include_bodies": true},
+    "sends": [{"method": "GET", "path": "/api/v1/projects/p1/guidelines", "query": {"limit": "1000", "include-bodies": "true"}}]
+  },
+  {
+    "name": "a guideline listPage threads limit and cursor",
+    "js": ["guidelines.listPage", "p1", {"limit": 2, "cursor": "c1"}],
+    "py": ["guidelines.list_page", "p1"],
+    "py_kw": {"limit": 2, "cursor": "c1"},
+    "sends": [{"method": "GET", "path": "/api/v1/projects/p1/guidelines", "query": {"limit": "2", "cursor": "c1"}}]
+  },
+  {
+    "name": "a guideline get addresses one guideline by id",
+    "js": ["guidelines.get", "g1"],
+    "sends": [{"method": "GET", "path": "/api/v1/guidelines/g1"}]
+  },
+  {
+    "name": "a guideline delete addresses one guideline by id",
+    "js": ["guidelines.delete", "g1", "tidying up"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/guidelines/g1", "query": {"audit-message": "tidying up"}}]
+  },
+  {
+    "name": "a document audit read sends kinds",
+    "js": ["documents.audit", "d1", "$undefined", "$undefined", "$undefined", ["review", "guess-adoption"]],
+    "py": ["documents.audit", "d1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/documents/d1/audit", "query": {"limit": "1000", "kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a document audit page sends kinds",
+    "js": ["documents.auditPage", "d1", {"kinds": ["review", "guess-adoption"]}],
+    "py": ["documents.audit_page", "d1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/documents/d1/audit", "query": {"kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a project audit read sends kinds",
+    "js": ["projects.audit", "p1", "$undefined", "$undefined", "$undefined", ["review", "guess-adoption"]],
+    "py": ["projects.audit", "p1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/projects/p1/audit", "query": {"limit": "1000", "kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a project audit page sends kinds",
+    "js": ["projects.auditPage", "p1", {"kinds": ["review", "guess-adoption"]}],
+    "py": ["projects.audit_page", "p1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/projects/p1/audit", "query": {"kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a project audit page with an empty kinds list sends none",
+    "js": ["projects.auditPage", "p1", {"kinds": []}],
+    "py": ["projects.audit_page", "p1"],
+    "py_kw": {"kinds": []},
+    "sends": [{"method": "GET", "path": "/api/v1/projects/p1/audit"}]
+  },
+  {
+    "name": "a user audit read sends kinds",
+    "js": ["users.audit", "u1", "$undefined", "$undefined", "$undefined", ["review", "guess-adoption"]],
+    "py": ["users.audit", "u1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/users/u1/audit", "query": {"limit": "1000", "kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a user audit page sends kinds",
+    "js": ["users.auditPage", "u1", {"kinds": ["review", "guess-adoption"]}],
+    "py": ["users.audit_page", "u1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/users/u1/audit", "query": {"kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a vocabulary audit read sends kinds",
+    "js": ["vocabLayers.audit", "v1", "$undefined", "$undefined", "$undefined", "$undefined", ["review", "guess-adoption"]],
+    "py": ["vocab_layers.audit", "v1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit", "query": {"limit": "1000", "kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a vocabulary audit page sends kinds",
+    "js": ["vocabLayers.auditPage", "v1", {"kinds": ["review", "guess-adoption"]}],
+    "py": ["vocab_layers.audit_page", "v1"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit", "query": {"kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "the audit log read sends kinds",
+    "js": ["audit.list", {"kinds": ["review", "guess-adoption"]}],
+    "py": ["audit.list"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/audit", "query": {"limit": "1000", "kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "the audit log page takes kinds as a string",
+    "js": ["audit.listPage", {"kinds": "review,guess-adoption"}],
+    "py": ["audit.list_page"],
+    "py_kw": {"kinds": "review,guess-adoption"},
+    "sends": [{"method": "GET", "path": "/api/v1/audit", "query": {"kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "the audit log pages send kinds",
+    "js": ["audit.iterPages", {"kinds": ["review", "guess-adoption"]}],
+    "py": ["audit.iter_pages"],
+    "py_kw": {"kinds": ["review", "guess-adoption"]},
+    "sends": [{"method": "GET", "path": "/api/v1/audit", "query": {"limit": "1000", "kinds": "review,guess-adoption"}}]
+  },
+  {
+    "name": "a document audit read with no kinds sends none",
+    "js": ["documents.audit", "d1"],
+    "sends": [{"method": "GET", "path": "/api/v1/documents/d1/audit", "query": {"limit": "1000"}}]
+  },
+  {
+    "name": "the vocabulary read takes a time, with its entries",
+    "js": ["vocabLayers.get", "v1", true, "2026-06-01T12:00:00Z"],
+    "py": ["vocab_layers.get", "v1"],
+    "py_kw": {"include_items": true, "as_of": "2026-06-01T12:00:00Z"},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1", "query": {"include-items": "true", "as-of": "2026-06-01T12:00:00Z"}}]
+  },
+  {
+    "name": "a live vocabulary read sends no as-of",
+    "js": ["vocabLayers.get", "v1"],
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1"}]
+  },
+  {
+    "name": "one vocabulary entry at a time is read under its vocabulary",
+    "js": ["vocabLayers.getItemAt", "v1", "i1", "2026-06-01T12:00:00Z"],
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/items/i1", "query": {"as-of": "2026-06-01T12:00:00Z"}}]
+  },
+  {
+    "name": "the vocabulary log takes the times and op types",
+    "js": ["vocabLayers.audit", "v1", "S", "E", ["vocab-item/delete", "vocab-item/restore"]],
+    "py": ["vocab_layers.audit", "v1"],
+    "py_kw": {"start_time": "S", "end_time": "E", "op_types": ["vocab-item/delete", "vocab-item/restore"]},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit",
+               "query": {"limit": "1000", "start-time": "S", "end-time": "E", "op-types": "vocab-item/delete,vocab-item/restore"}}]
+  },
+  {
+    "name": "a vocabulary log page takes order, limit and op types",
+    "js": ["vocabLayers.auditPage", "v1", {"order": "desc", "limit": 1, "opTypes": "vocab-item/delete"}],
+    "py": ["vocab_layers.audit_page", "v1"],
+    "py_kw": {"order": "desc", "limit": 1, "op_types": "vocab-item/delete"},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit", "query": {"order": "desc", "limit": "1", "op-types": "vocab-item/delete"}}]
+  },
+  {
+    "name": "one vocabulary entry's log names the entry",
+    "js": ["vocabLayers.audit", "v1", "$undefined", "$undefined", "$undefined", "i1"],
+    "py": ["vocab_layers.audit", "v1"],
+    "py_kw": {"item_id": "i1"},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit", "query": {"limit": "1000", "item-id": "i1"}}]
+  },
+  {
+    "name": "one vocabulary entry's log page names the entry",
+    "js": ["vocabLayers.auditPage", "v1", {"order": "desc", "itemId": "i1"}],
+    "py": ["vocab_layers.audit_page", "v1"],
+    "py_kw": {"order": "desc", "item_id": "i1"},
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit", "query": {"order": "desc", "item-id": "i1"}}]
+  },
+  {
+    "name": "the whole vocabulary log names no entry",
+    "js": ["vocabLayers.audit", "v1"],
+    "sends": [{"method": "GET", "path": "/api/v1/vocab-layers/v1/audit", "query": {"limit": "1000"}}]
+  },
+  {
+    "name": "an entry restore posts the time",
+    "js": ["vocabLayers.restoreItem", "v1", "i1", "2026-06-01T12:00:00Z"],
+    "sends": [{"method": "POST", "path": "/api/v1/vocab-layers/v1/items/i1/restore", "query": {"as-of": "2026-06-01T12:00:00Z"}}]
+  },
+  {
+    "name": "a dry-run entry restore says so, and the message rides along",
+    "js": ["vocabLayers.restoreItem", "v1", "i1", "2026-06-01T12:00:00Z", {"dryRun": true}, "Put kai back"],
+    "py": ["vocab_layers.restore_item", "v1", "i1", "2026-06-01T12:00:00Z"],
+    "py_kw": {"dry_run": true, "audit_message": "Put kai back"},
+    "sends": [{"method": "POST", "path": "/api/v1/vocab-layers/v1/items/i1/restore",
+               "query": {"as-of": "2026-06-01T12:00:00Z", "dry-run": "true", "audit-message": "Put kai back"}}]
+  },
+  {
+    "name": "a span bulk update is one PATCH carrying the entries as sent, metadata keys never re-cased",
+    "js": ["spans.bulkUpdate", [{"id": "s1", "value": "NOUN", "metadata": [{"op": "set", "path": ["prov"], "value": "inferred"},
+                                                                          {"op": "set", "path": ["provDetail", "valueProbs"], "value": {"someLabel": 0.9}}]},
+                                {"id": "s2", "value": null}]],
+    "sends": [{"method": "PATCH", "path": "/api/v1/spans/bulk",
+               "body": [{"id": "s1", "value": "NOUN", "metadata": [{"op": "set", "path": ["prov"], "value": "inferred"},
+                                                                  {"op": "set", "path": ["provDetail", "valueProbs"], "value": {"someLabel": 0.9}}]},
+                        {"id": "s2", "value": null}]}]
+  },
+  {
+    "name": "a relation bulk update is one PATCH",
+    "js": ["relations.bulkUpdate", [{"id": "r1", "value": "nsubj"}]],
+    "sends": [{"method": "PATCH", "path": "/api/v1/relations/bulk", "body": [{"id": "r1", "value": "nsubj"}]}]
+  },
+  {
+    "name": "a token bulk update is one PATCH",
+    "js": ["tokens.bulkUpdate", [{"id": "t1", "metadata": [{"op": "set", "path": ["form"], "value": "cd"}]}]],
+    "sends": [{"method": "PATCH", "path": "/api/v1/tokens/bulk", "body": [{"id": "t1", "metadata": [{"op": "set", "path": ["form"], "value": "cd"}]}]}]
+  },
+  {
+    "name": "sendMessage puts the payload on the wire verbatim",
+    "js": ["messages.sendMessage", "p1", {"case-marker": "ERG", "camelCaseKey": 1, "snake_case_key": 2, "nested": {"another-key": [1, {"deep-key": "v"}]}}],
+    "sends": [{"method": "POST", "path": "/api/v1/projects/p1/message",
+               "body": {"body": {"case-marker": "ERG", "camelCaseKey": 1, "snake_case_key": 2, "nested": {"another-key": [1, {"deep-key": "v"}]}}}}]
+  }
+]

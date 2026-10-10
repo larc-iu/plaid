@@ -3,7 +3,8 @@
 them, regardless of which language client is reading. Only the envelope around
 it is API surface subject to snake_case recasing.
 
-See the manual's Real-time Messaging > Event Reference.
+See the manual's Real-time Messaging > Event Reference. What ``send_message``
+sends is in the shared request table (``test_requests.py``).
 
 Run with::
 
@@ -15,7 +16,6 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client import PlaidClient
 from plaid_client.sse import event_payload
 
 
@@ -25,19 +25,6 @@ PAYLOAD = {
     'snake_case_key': 2,
     'nested': {'another-key': [1, {'deep-key': 'v'}]},
 }
-
-
-def test_send_message_puts_the_payload_on_the_wire_verbatim():
-    # A batch captures the fully prepared request body without any network.
-    c = PlaidClient('http://localhost:0', 'dummy-token')
-    b = c.batch()
-    b.messages.send_message('11111111-2222-3333-4444-555555555555', PAYLOAD)
-    ops = list(b.operations)
-    b.abort()
-
-    assert len(ops) == 1
-    assert ops[0]['method'] == 'POST'
-    assert ops[0]['body'] == {'body': PAYLOAD}
 
 
 def test_message_event_hands_the_payload_to_the_callback_verbatim():

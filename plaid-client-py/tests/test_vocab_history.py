@@ -2,7 +2,8 @@
 time (also after it was deleted), its audit log, and putting one entry back.
 The restore bumps every document linking the entry when it sets the form
 back, so its X-Document-Versions (or the omitted marker) is taken up like any
-write's."""
+write's. What each read sends is in the shared request table
+(``test_requests.py``). Here: what the answers become."""
 
 import json
 import os
@@ -48,24 +49,15 @@ def _stub(client, answer):
     return sent
 
 
-def test_the_vocabulary_read_takes_a_time_with_or_without_its_entries():
+def test_the_vocabulary_read_and_one_entrys_read_are_recased():
     c = PlaidClient('http://x', 'tok')
-    sent = _stub(c, lambda path, q: _Resp({
-        'vocab/id': 'v1', 'vocab/name': 'Lex',
-        'vocab/items': [{'vocab-item/id': 'i1', 'vocab-item/form': 'kai'}]}))
+    _stub(c, lambda path, q: _Resp(
+        {'vocab-item/id': 'i1', 'vocab-item/form': 'kai'} if '/items/' in path else
+        {'vocab/id': 'v1', 'vocab/name': 'Lex',
+         'vocab/items': [{'vocab-item/id': 'i1', 'vocab-item/form': 'kai'}]}))
     at = c.vocab_layers.get('v1', include_items=True, as_of=T)
     assert at['name'] == 'Lex' and at['items'] == [{'id': 'i1', 'form': 'kai'}]
-    c.vocab_layers.get('v1')
-    assert sent[0][1] == '/api/v1/vocab-layers/v1'
-    assert sent[0][2] == {'as-of': T, 'include-items': 'true'}
-    assert sent[1][2] == {}
-
-
-def test_one_entry_at_a_time_is_read_under_its_vocabulary():
-    c = PlaidClient('http://x', 'tok')
-    sent = _stub(c, lambda path, q: _Resp({'vocab-item/id': 'i1', 'vocab-item/form': 'kai'}))
     assert c.vocab_layers.get_item_at('v1', 'i1', T) == {'id': 'i1', 'form': 'kai'}
-    assert sent == [('GET', '/api/v1/vocab-layers/v1/items/i1', {'as-of': T})]
 
 
 def test_the_vocabulary_log_pages_as_the_document_log_does():
@@ -77,44 +69,10 @@ def test_the_vocabulary_log_pages_as_the_document_log_does():
         return _Resp({'entries': [{'audit/id': 'a1'}], 'next-cursor': 'k'})
 
     sent = _stub(c, answer)
-    all_entries = c.vocab_layers.audit('v1', start_time='S', end_time='E',
-                                       op_types=['vocab-item/delete', 'vocab-item/restore'])
-    assert [e['id'] for e in all_entries] == ['a1', 'a2']
-    method, path, q = sent[0]
-    assert path == '/api/v1/vocab-layers/v1/audit'
-    assert q['start-time'] == 'S' and q['end-time'] == 'E'
-    assert q['op-types'] == 'vocab-item/delete,vocab-item/restore'
+    assert [e['id'] for e in c.vocab_layers.audit('v1')] == ['a1', 'a2']
     assert sent[1][2]['cursor'] == 'k'
-    page = c.vocab_layers.audit_page('v1', order='desc', limit=1, op_types='vocab-item/delete')
+    page = c.vocab_layers.audit_page('v1', limit=1)
     assert page == {'entries': [{'id': 'a1'}], 'next_cursor': 'k'}
-    q = sent[2][2]
-    assert q['order'] == 'desc' and q['limit'] == '1' and q['op-types'] == 'vocab-item/delete'
-
-
-def test_one_entrys_log_names_the_entry():
-    c = PlaidClient('http://x', 'tok')
-    sent = _stub(c, lambda path, q: _Resp({'entries': [{'audit/id': 'a1'}], 'next-cursor': None}))
-    c.vocab_layers.audit('v1', item_id='i1')
-    c.vocab_layers.audit_page('v1', order='desc', item_id='i1')
-    c.vocab_layers.audit('v1')
-    assert sent[0][2]['item-id'] == 'i1'
-    assert sent[1][2]['item-id'] == 'i1' and sent[1][2]['order'] == 'desc'
-    assert 'item-id' not in sent[2][2]
-
-
-def test_an_entry_restore_posts_the_time_a_dry_run_says_so_and_the_message_rides_along():
-    c = PlaidClient('http://localhost:0', 'tok')
-    b = c.batch()
-    b.vocab_layers.restore_item('v1', 'i1', T)
-    b.vocab_layers.restore_item('v1', 'i1', T, dry_run=True, audit_message='Put kai back')
-    plain, dry = list(b.operations)
-    b.abort()
-    assert plain['method'] == 'POST'
-    assert plain['path'].startswith('/api/v1/vocab-layers/v1/items/i1/restore?')
-    assert 'as-of=2026-06-01T12%3A00%3A00Z' in plain['path']
-    assert 'dry-run' not in plain['path']
-    assert 'dry-run=true' in dry['path']
-    assert 'audit-message=Put%20kai%20back' in dry['path']
 
 
 def test_an_entry_restore_takes_up_the_linking_documents_new_versions():
