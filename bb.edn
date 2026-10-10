@@ -4,7 +4,7 @@
  :paths ["bb"]
  :tasks
  {test
-  {:doc "Run every test suite — the same gate release.yml runs before building: plaid-core (Clojure), the plaid-ud / plaid-igt / plaid-dict / plaid-umr SPAs and the shared plaid-ui package (npm test and npm run lint, with an npm install first), and the Python assistant and bundled services (pytest, live suites excluded). Prereqs: Node >= 24 active (e.g. `nvm use 24.1.0`) and `mamba activate plaid-agent` (base lacks the assistant itself). That env also needs `ancast`, which plaid-umr's comparison tests run for real (`pip install ancast`), the way release.yml installs it."
+  {:doc "Run every test suite — the same gate release.yml runs before building: plaid-core (Clojure), the plaid-ud / plaid-igt / plaid-dict / plaid-umr SPAs and the shared plaid-ui package (npm test and npm run lint, with an npm install first), and the Python assistant and bundled services (pytest, the assistant's suite booting a private plaid-core from source for its query engine, on its own port and database). Prereqs: Node >= 24 active (e.g. `nvm use 24.1.0`) and `mamba activate plaid-agent` (base lacks the assistant itself). That env also needs `ancast`, which plaid-umr's comparison tests run for real (`pip install ancast`), the way release.yml installs it."
    :requires ([pipeline :as pl])
    :task (pl/run-tests!)}
 

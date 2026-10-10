@@ -9,28 +9,31 @@ service's own functions (`plaid_agent.core.conversation`, `core.trace`) and
 stored through the client, so the store holds them exactly as it holds a
 real one. The extractor then reads the core's database file read-only.
 
-Needs a core at PLAID_TEST_URL (dev account) and its database file at
-PLAID_TEST_DB, else skipped (PLAID_AGENT_REQUIRE_LIVE makes that a failure).
+Runs on the session's core (``live.py``) and reads its database file, which
+is the private core's own, or the file PLAID_TEST_DB names for a core
+PLAID_TEST_URL names. Skipped without one (PLAID_AGENT_REQUIRE_LIVE makes that
+a failure).
 """
 
 import json
-import os
 import uuid
 from pathlib import Path
 
 import pytest
 
-from live import URL, _skip_or_fail, login, reachable
+from live import _skip_or_fail, core_db, core_url, core_user, login
 
-DB = os.environ.get('PLAID_TEST_DB')
+# The session core's address and database file, once `world` has met it.
+URL = DB = None
 
 
 @pytest.fixture(scope='module')
 def world(tmp_path_factory):
+    global DB, URL
+    admin = login()
+    URL, DB = core_url(), core_db()
     if not DB or not Path(DB).is_file():
         _skip_or_fail('PLAID_TEST_DB does not name the database file of the core under test')
-    if not reachable():
-        _skip_or_fail(f'no Plaid server at {URL}')
     from plaid_client import PlaidClient
     from plaid_client.ids import uuid7
     from plaid_client.provenance import confirmed_inferred, stamp_inferred as inferred
@@ -42,8 +45,7 @@ def world(tmp_path_factory):
     from plaid_agent.core.trace import tracer_for, trace_step
     from plaid_agent.research.records import proposed_keys
 
-    admin = login()
-    me = admin.users.get('a@b.com')['id']
+    me = admin.users.get(core_user())['id']
     other_email = f'r1-{uuid.uuid4().hex[:8]}@example.org'
     admin.users.create(other_email, 'r1-password-1', False)
     other = PlaidClient.login(URL, other_email, 'r1-password-1')

@@ -132,10 +132,12 @@
   ;; node_modules are missing, which would make it pass by not running.
   (let [py (agent-python-exe)]
     (step "Run the Python test suite (plaid-agent)")
-    ;; The live suites talk to a running server, which a gate does not have.
-    (p/shell {:dir "plaid-agent"} py "-m" "pytest" "-q"
-             "--ignore=tests/test_live_corpus.py"
-             "--ignore=tests/test_live_dictionary.py")
+    ;; igt's corpus tools ask a real core's query engine, so the suite boots a
+    ;; private one from plaid-core's source (its own port and database, stopped
+    ;; when the suite ends: tests/private_core.py). PLAID_AGENT_REQUIRE_LIVE
+    ;; makes a core that cannot start a failure here, where a skip would pass
+    ;; the gate having run none of those tests.
+    (p/shell {:dir "plaid-agent" :extra-env {"PLAID_AGENT_REQUIRE_LIVE" "1"}} py "-m" "pytest" "-q")
     (step "Run the Python test suite (plaid-igt services)")
     ;; The bundled services are plain plaid-client code and run from base.
     (p/shell {:dir "plaid-igt"} (python-exe) "-m" "pytest" "-q" "services/tests")

@@ -89,7 +89,9 @@ jobs:
           pip install ancast
       # `bb test` is every suite: the Clojure core, all three SPAs, and the
       # Python assistant and services. Shared with release.yml and local dev
-      # (bb/pipeline.clj), so the gate can't drift.
+      # (bb/pipeline.clj), so the gate can't drift. The assistant's suite boots
+      # a private plaid-core from source (the Java and Clojure set up above)
+      # for igt's corpus tools, and fails if it cannot.
       - name: Run tests
         run: bb test
       # The fidelity round trips: the kitchen sink built on a core of their
