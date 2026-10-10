@@ -38,6 +38,7 @@ def world(tmp_path_factory):
     from plaid_agent.core.conversation import (assistant_item, conv_key, error_item, meta_key, build_meta,
                                                proposed_changes, replace_undecided, settle_plan, user_item,
                                                DROPPED)
+    from plaid_agent.core.rounds import call_record, new_round, round_key
     from plaid_agent.core.trace import tracer_for, trace_step
     from plaid_agent.research.records import proposed_keys
 
@@ -166,11 +167,15 @@ def world(tmp_path_factory):
                 {'role': 'tool', 'tool_call_id': 'c2', 'content': '3 rows'},
                 {'role': 'tool', 'tool_call_id': 'c3', 'content': DROPPED},
                 {'role': 'tool', 'tool_call_id': 'c4', 'content': 'Planned.'}]
-    failed_steps = [trace_step(tracer, 'f1', 'search', {'query_text': 'kai'}),
-                    trace_step(tracer, 'f2', 'lexicon_entry', {'form': 'kai'}, failed=True)]
-    failed_calls = [{'id': 'f1', 'name': 'search', 'arguments': '{"query_text": "kai"}', 'result': '3 words'},
-                    {'id': 'f2', 'name': 'lexicon_entry', 'arguments': '{"form": "kai"}',
-                     'result': 'Error: lexicon_entry cannot be called with those arguments.'}]
+    # A failed turn's calls are kept in their round, which its steps name.
+    failed_round = new_round(1, 'stub-model')
+    failed_round['calls'] = [
+        call_record('f1', 'search', '{"query_text": "kai"}', '3 words'),
+        call_record('f2', 'lexicon_entry', '{"form": "kai"}',
+                    'Error: lexicon_entry cannot be called with those arguments.')]
+    failed_steps = [trace_step(tracer, 'f1', 'search', {'query_text': 'kai'}, round_id=failed_round['id']),
+                    trace_step(tracer, 'f2', 'lexicon_entry', {'form': 'kai'}, failed=True,
+                               round_id=failed_round['id'])]
     conv = {'messages': messages, 'display': [
         {**user_item('please gloss'), 'where': {'kind': 'document', 'id': doc, 'name': 'Doc'}},
         item(with_proposed(plan_payload(plan_id, ops)), steps1),
@@ -190,7 +195,7 @@ def world(tmp_path_factory):
         error_item('Stopped.', stopped=True, model='stub-model', service=service),
         user_item('fail'),
         error_item('The model did not answer.', model='stub-model', service=service,
-                   steps=failed_steps, calls=failed_calls),
+                   steps=failed_steps),
         {'kind': 'user', 'text': 'loop'},
         item(None, [trace_step(tracer, 'c5', 'lexicon_entry', {}, failed=True)] * 3,
              text='Found some.\n\n*(Stopped after the same step failed 3 times.)*'),
@@ -211,6 +216,7 @@ def world(tmp_path_factory):
     meta = build_meta(None, conv_id, conv, service, 'stub-model', version='0.0.0+feedface')
     admin.user_data.put(me, conv_key('igt', pid, conv_id), conv)
     admin.user_data.put(me, meta_key('igt', pid, conv_id), meta)
+    admin.user_data.put(me, round_key('igt', pid, conv_id, failed_round['id']), failed_round)
 
     admin.events.create(pid, [{'type': 'plan.opened', 'data': {'conversation': conv_id}},
                               {'type': 'suggestion.adopted', 'document_id': doc, 'target_id': toks[12],
