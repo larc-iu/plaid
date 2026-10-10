@@ -1,10 +1,4 @@
-import {
-  applyMetadataOps,
-  isReviewed,
-  mergeMetadata,
-  metadataOps,
-  writerPolicy,
-} from '@larc-iu/plaid-client';
+import { applyMetadataOps, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
 import { followIds, pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -99,7 +93,6 @@ export class IgtDocument extends DocumentModel {
   }) {
     super({ raw, client, projectId, project, user, asOf });
     this._bareIgnored = bareIgnored;
-    this._writer = null;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
     // separately-loaded vocabularies: `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
@@ -196,29 +189,8 @@ export class IgtDocument extends DocumentModel {
   }
 
   // ----- who is writing (provenance) -----
-  // The provenance convention tells a VERIFIER from a CONTRIBUTOR: a
-  // verifier's work stands as human-made and their edits confirm machine or
-  // contributed material; a contributor's work is stamped contributed until a
-  // verifier confirms it. Whose work is reviewed is the project's call, under
-  // the cross-app `plaid.review` config (isReviewed); a document with no user
-  // (scripts, imports, tests) writes as a verifier. The policy itself, what
-  // each writer's creates, edits and confirms carry and what their review
-  // gestures act on, is the client's writerPolicy; the mutations and the
-  // editor read it through the accessors below.
-
-  /** The contributor's user id, or null when the writer is a verifier. */
-  get contributorId() {
-    const user = this._user;
-    if (!user?.id || !this._project) return null;
-    return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
-  }
-
-  /** The writer's policy (see plaid-client's writerPolicy), for the current user. */
-  get writer() {
-    const id = this.contributorId;
-    if (!this._writer || this._writer.contributorId !== id) this._writer = writerPolicy(id);
-    return this._writer;
-  }
+  // DocumentModel's `writer` is the policy. The mutations and the editor read
+  // it through the accessors below.
 
   get isContributor() {
     return this.writer.isContributor;
