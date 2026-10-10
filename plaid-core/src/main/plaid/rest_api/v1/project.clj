@@ -89,54 +89,27 @@
    ;; Access management endpoints
    ["/:id"
     {:middleware [[pra/wrap-maintainer-required get-project-id]]}
-    ["/readers/:user-id"
-     {:post {:summary "Set a user's access level to read-only for this project."
-             :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-reader db id user-id actor-user-id)]
-                          (if success
-                            {:status 204}
-                            {:status (or code 500) :body {:error error}})))}
-
-      :delete {:summary "Remove a user's reader privileges for this project."
-               :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-reader db id user-id actor-user-id)]
-                            (if success
-                              {:status 204}
-                              {:status (or code 500) :body {:error error}})))}}]
-    ["/writers/:user-id"
-     {:post {:summary "Set a user's access level to read and write for this project."
-             :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-writer db id user-id actor-user-id)]
-                          (if success
-                            {:status 204}
-                            {:status (or code 500) :body {:error error}})))}
-
-      :delete {:summary "Remove a user's writer privileges for this project."
-               :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-writer db id user-id actor-user-id)]
-                            (if success
-                              {:status 204}
-                              {:status (or code 500) :body {:error error}})))}}]
-    ["/maintainers/:user-id"
-     {:post {:summary "Assign a user as a maintainer for this project."
-             :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-maintainer db id user-id actor-user-id)]
-                          (if success
-                            {:status 204}
-                            {:status (or code 500) :body {:error error}})))}
-
-      :delete {:summary "Remove a user's maintainer privileges for this project."
-               :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-maintainer db id user-id actor-user-id)]
-                            (if success
-                              {:status 204}
-                              {:status (or code 500) :body {:error error}})))}}]]
+    (for [[role grant-summary revoke-summary]
+          [["reader" "Set a user's access level to read-only for this project."
+            "Remove a user's reader privileges for this project."]
+           ["writer" "Set a user's access level to read and write for this project."
+            "Remove a user's writer privileges for this project."]
+           ["maintainer" "Assign a user as a maintainer for this project."
+            "Remove a user's maintainer privileges for this project."]]
+          :let [handler (fn [f]
+                          (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id}]
+                            (let [{:keys [success code error]} (f db id user-id role actor-user-id)]
+                              (if success
+                                {:status 204}
+                                {:status (or code 500) :body {:error error}}))))
+                parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}]]
+      [(str "/" role "s/:user-id")
+       {:post {:summary grant-summary
+               :parameters parameters
+               :handler (handler prj/grant-role)}
+        :delete {:summary revoke-summary
+                 :parameters parameters
+                 :handler (handler prj/revoke-role)}}])]
 
    ;; Vocabs
    ["/:id"

@@ -920,53 +920,31 @@
                         :role role})
     (audit-project-acl-change! tx project-id pre-acl)))
 
-(defn add-reader [db project-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :project/add-reader
-                             :project project-id
-                             :document nil
-                             :description (str "Add reader " user-id " to project " project-id)
-                             :user actor-user-id}]
-                     (add-role! tx project-id user-id "reader")))
+(def ^:private role-op-types
+  {"reader" [:project/add-reader :project/remove-reader]
+   "writer" [:project/add-writer :project/remove-writer]
+   "maintainer" [:project/add-maintainer :project/remove-maintainer]})
 
-(defn remove-reader [db project-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :project/remove-reader
+(defn grant-role
+  "Give `user-id` `role` (\"reader\", \"writer\" or \"maintainer\") in the
+  project, in one operation."
+  [db project-id user-id role actor-user-id]
+  (submit-operation! [tx db {:type (first (role-op-types role))
                              :project project-id
                              :document nil
-                             :description (str "Remove reader " user-id " from project " project-id)
+                             :description (str "Add " role " " user-id " to project " project-id)
                              :user actor-user-id}]
-                     (remove-role! tx project-id user-id "reader")))
+                     (add-role! tx project-id user-id role)))
 
-(defn add-writer [db project-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :project/add-writer
+(defn revoke-role
+  "Take `role` away from `user-id` in the project, in one operation."
+  [db project-id user-id role actor-user-id]
+  (submit-operation! [tx db {:type (second (role-op-types role))
                              :project project-id
                              :document nil
-                             :description (str "Add writer " user-id " to project " project-id)
+                             :description (str "Remove " role " " user-id " from project " project-id)
                              :user actor-user-id}]
-                     (add-role! tx project-id user-id "writer")))
-
-(defn remove-writer [db project-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :project/remove-writer
-                             :project project-id
-                             :document nil
-                             :description (str "Remove writer " user-id " from project " project-id)
-                             :user actor-user-id}]
-                     (remove-role! tx project-id user-id "writer")))
-
-(defn add-maintainer [db project-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :project/add-maintainer
-                             :project project-id
-                             :document nil
-                             :description (str "Add maintainer " user-id " to project " project-id)
-                             :user actor-user-id}]
-                     (add-role! tx project-id user-id "maintainer")))
-
-(defn remove-maintainer [db project-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :project/remove-maintainer
-                             :project project-id
-                             :document nil
-                             :description (str "Remove maintainer " user-id " from project " project-id)
-                             :user actor-user-id}]
-                     (remove-role! tx project-id user-id "maintainer")))
+                     (remove-role! tx project-id user-id role)))
 
 ;; ============================================================
 ;; Editor config
