@@ -187,9 +187,7 @@
   (ensure-repo-root!)
   (let [py (agent-python-exe)]
     (step "Regenerate the assistant prompt snapshots")
-    (p/shell {:dir "plaid-agent"} py "tests/sample_prompt.py")
-    (p/shell {:dir "plaid-agent"} py "tests/ud_sample_prompt.py")
-    (p/shell {:dir "plaid-agent"} py "tests/umr_sample_prompt.py")))
+    (p/shell {:dir "plaid-agent"} py "tests/sample_prompt.py")))
 
 ;; Boot the jar unattended and assert /health reports the release version
 ;; (proves version.edn + the SPAs/services were bundled). Runs in a throwaway

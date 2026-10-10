@@ -14,31 +14,25 @@ import io
 import os
 
 import sample_prompt
-import ud_sample_prompt
-import umr_sample_prompt
 
 REGENERATE = ('The {} prompt snapshot is out of date. Run `bb sample-prompts` (from the repo root, '
               'with the assistant importable) in the same change as the tool or prompt edit.')
 
 
-def _current(module) -> str:
-    with io.open(module.OUT, encoding='utf-8') as fh:
-        return fh.read()
+def _check(app: str) -> None:
+    path = sample_prompt.out(app)
+    assert os.path.exists(path)
+    with io.open(path, encoding='utf-8') as fh:
+        assert fh.read() == sample_prompt.render(app), REGENERATE.format(app.upper())
 
 
 def test_the_ud_snapshot_is_current():
-    assert os.path.exists(ud_sample_prompt.OUT)
-    assert _current(ud_sample_prompt) == ud_sample_prompt.render(), \
-        REGENERATE.format('UD')
+    _check('ud')
 
 
 def test_the_igt_snapshot_is_current():
-    assert os.path.exists(sample_prompt.OUT)
-    assert _current(sample_prompt) == sample_prompt.render(), \
-        REGENERATE.format('IGT')
+    _check('igt')
 
 
 def test_the_umr_snapshot_is_current():
-    assert os.path.exists(umr_sample_prompt.OUT)
-    assert _current(umr_sample_prompt) == umr_sample_prompt.render(), \
-        REGENERATE.format('UMR')
+    _check('umr')
