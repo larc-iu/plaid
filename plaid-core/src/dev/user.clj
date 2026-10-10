@@ -87,7 +87,7 @@
   (txtl/get db txtl-id-1)
   (tokl/get db tokl-id-1)
 
-  (txtl/shift-text-layer db txtl-id-2 false nil)
+  (txtl/shift db txtl-id-2 false nil)
   (txtl/delete db txtl-id-1 nil)
   (tokl/delete db tokl-id-1 nil)
   (prj/delete db prj-id nil)

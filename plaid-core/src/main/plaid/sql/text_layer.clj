@@ -84,34 +84,6 @@
                                       :config (psc/serialize-config config)})
                        new-id)))
 
-(defn merge
-  "Update mutable fields. Currently supports :text-layer/name."
-  [db eid m user-id]
-  (submit-operation! [tx db {:type :text-layer/update
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Update text layer " eid)
-                             :user user-id}]
-                     (when-let [n (:text-layer/name m)]
-                       (psc/assert-valid-name! n))
-                     (let [existing (psc/fetch-by-id tx :text_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Text layer" eid) {:code 404 :id eid})))
-                       (let [attrs (cond-> {}
-                                     (some? (:text-layer/name m))
-                                     (assoc :name (:text-layer/name m)))]
-                         (when (seq attrs)
-                           (crud/update-by-id! tx :text_layers eid attrs))
-                         eid))))
-
-(defn shift-text-layer [db txtl-id up? user-id]
-  (submit-operation! [tx db {:type :text-layer/shift
-                             :project (project-id db txtl-id)
-                             :document nil
-                             :description (str "Shift text layer " txtl-id " " (if up? "up" "down"))
-                             :user user-id}]
-                     (layer/shift-layer! tx :text_layers "Text layer" txtl-id :project_id up?)))
-
 (defn cascade-delete!
   "Tx-level cascade for a text_layer. Audits every descendant entity
   (token_layers and their full subtree of spans/relations/tokens/
@@ -160,20 +132,9 @@
                          [:= :entity_id eid]]})
   (crud/delete-by-id! tx :text_layers eid))
 
-(defn delete
-  "Delete a text layer. Walks the descendant subtree (token_layers →
-  span_layers → relation_layers, plus tokens/spans/relations/
-  vocab_links/texts that point at them) and audits each row deletion
-  through the audited helpers so audit_writes captures every change —
-  FK ON DELETE CASCADE would otherwise silently sweep them."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :text-layer/delete
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Delete text layer " eid)
-                             :user user-id}]
-                     (let [existing (psc/fetch-by-id tx :text_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Text layer" eid) {:code 404 :id eid})))
-                       (cascade-delete! tx eid)
-                       eid)))
+(def ^:private spec
+  {:table :text_layers :kind "text-layer" :noun "text layer" :parent-col :project_id :cascade! cascade-delete!})
+
+(def merge "Rename a text layer (see `layer/rename`)." (partial layer/rename spec))
+(def shift "Move a text layer one place (see `layer/shift`)." (partial layer/shift spec))
+(def delete "Delete a text layer and everything under it (see `layer/delete`)." (partial layer/delete spec))

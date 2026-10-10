@@ -85,33 +85,6 @@
                                         :config (psc/serialize-config config)})
                          new-id))))
 
-(defn merge
-  [db eid m user-id]
-  (submit-operation! [tx db {:type :span-layer/update
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Update span layer " eid)
-                             :user user-id}]
-                     (when-let [n (:span-layer/name m)]
-                       (psc/assert-valid-name! n))
-                     (let [existing (psc/fetch-by-id tx :span_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Span layer" eid) {:code 404 :id eid})))
-                       (let [attrs (cond-> {}
-                                     (some? (:span-layer/name m))
-                                     (assoc :name (:span-layer/name m)))]
-                         (when (seq attrs)
-                           (crud/update-by-id! tx :span_layers eid attrs))
-                         eid))))
-
-(defn shift-span-layer [db sl-id up? user-id]
-  (submit-operation! [tx db {:type :span-layer/shift
-                             :project (project-id db sl-id)
-                             :document nil
-                             :description (str "Shift span layer " sl-id " " (if up? "up" "down"))
-                             :user user-id}]
-                     (layer/shift-layer! tx :span_layers "Span layer" sl-id :token_layer_id up?)))
-
 (defn cascade-delete!
   "Tx-level cascade for a span_layer: audit every descendant entity
   (relations and their entity_metadata, relation_layers, spans and their
@@ -177,20 +150,9 @@
                          [:= :entity_id eid]]})
   (crud/delete-by-id! tx :span_layers eid))
 
-(defn delete
-  "Delete a span layer. Walks the descendant subtree (relation_layers,
-  relations, spans) deleting each through the audited helpers so
-  audit_writes captures the change — FK ON DELETE CASCADE would
-  otherwise silently sweep them. Entity_metadata rows (no FK) are also
-  cleaned up explicitly."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :span-layer/delete
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Delete span layer " eid)
-                             :user user-id}]
-                     (let [existing (psc/fetch-by-id tx :span_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Span layer" eid) {:code 404 :id eid})))
-                       (cascade-delete! tx eid)
-                       eid)))
+(def ^:private spec
+  {:table :span_layers :kind "span-layer" :noun "span layer" :parent-col :token_layer_id :cascade! cascade-delete!})
+
+(def merge "Rename a span layer (see `layer/rename`)." (partial layer/rename spec))
+(def shift "Move a span layer one place (see `layer/shift`)." (partial layer/shift spec))
+(def delete "Delete a span layer and everything under it (see `layer/delete`)." (partial layer/delete spec))

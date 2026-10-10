@@ -28,7 +28,7 @@
     :merge-fn tokl/merge
     :name-key :token-layer/name
     :delete-fn tokl/delete
-    :shift-fn tokl/shift-token-layer
+    :shift-fn tokl/shift
     :shift-summary "Shift a token layer's order."
     :post {:summary (str "Create a new token layer. The optional <body>overlap-mode</body> sets a per-layer "
                          "invariant on the layer's tokens and is immutable after creation:"

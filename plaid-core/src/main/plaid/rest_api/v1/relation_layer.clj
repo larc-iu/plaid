@@ -27,7 +27,7 @@
     :merge-fn rl/merge
     :name-key :relation-layer/name
     :delete-fn rl/delete
-    :shift-fn rl/shift-relation-layer
+    :shift-fn rl/shift
     :shift-summary "Shift a relation layer's order."
     :post {:summary (str "Create a new relation layer. "
                          "<body>id</body>, optional, is the new relation layer's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>.")

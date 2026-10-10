@@ -28,7 +28,7 @@
     :merge-fn sl/merge
     :name-key :span-layer/name
     :delete-fn sl/delete
-    :shift-fn sl/shift-span-layer
+    :shift-fn sl/shift
     :shift-summary "Shift a span layer's order."
     :post {:summary (str "Create a new span layer. "
                          "<body>id</body>, optional, is the new span layer's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>.")

@@ -27,7 +27,7 @@
     :merge-fn txtl/merge
     :name-key :text-layer/name
     :delete-fn txtl/delete
-    :shift-fn txtl/shift-text-layer
+    :shift-fn txtl/shift
     :shift-summary "Shift a text layer's order within the project."
     :post {:summary (str "Create a new text layer for a project. "
                          "<body>id</body>, optional, is the new text layer's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>.")

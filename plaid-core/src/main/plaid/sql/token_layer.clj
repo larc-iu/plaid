@@ -181,35 +181,6 @@
                                         :config (psc/serialize-config config)})
                          new-id))))
 
-(defn merge
-  "Update mutable fields. Only :token-layer/name is mutable;
-  parent_token_layer_id and overlap_mode are immutable post-create."
-  [db eid m user-id]
-  (submit-operation! [tx db {:type :token-layer/update
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Update token layer " eid)
-                             :user user-id}]
-                     (when-let [n (:token-layer/name m)]
-                       (psc/assert-valid-name! n))
-                     (let [existing (psc/fetch-by-id tx :token_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Token layer" eid) {:code 404 :id eid})))
-                       (let [attrs (cond-> {}
-                                     (some? (:token-layer/name m))
-                                     (assoc :name (:token-layer/name m)))]
-                         (when (seq attrs)
-                           (crud/update-by-id! tx :token_layers eid attrs))
-                         eid))))
-
-(defn shift-token-layer [db tokl-id up? user-id]
-  (submit-operation! [tx db {:type :token-layer/shift
-                             :project (project-id db tokl-id)
-                             :document nil
-                             :description (str "Shift token layer " tokl-id " " (if up? "up" "down"))
-                             :user user-id}]
-                     (layer/shift-layer! tx :token_layers "Token layer" tokl-id :text_layer_id up?)))
-
 (defn- descendant-token-layer-ids
   "Vector of descendant token_layer ids (transitive over
   parent_token_layer_id), INCLUDING `root-id` itself, ordered from
@@ -330,21 +301,9 @@
       (crud/delete-by-id! tx :token_layers tl-id))
     (drop-constraints-naming! tx project-id layer-ids)))
 
-(defn delete
-  "Delete a token layer. Walks the descendant subtree (child
-  token_layers via parent_token_layer_id, plus span_layers →
-  relation_layers and the tokens/spans/relations/vocab_links they
-  reach) and audits each row deletion through the audited helpers so
-  audit_writes captures every change — FK ON DELETE CASCADE would
-  otherwise silently sweep them."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :token-layer/delete
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Delete token layer " eid)
-                             :user user-id}]
-                     (let [existing (psc/fetch-by-id tx :token_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Token layer" eid) {:code 404 :id eid})))
-                       (cascade-delete! tx eid)
-                       eid)))
+(def ^:private spec
+  {:table :token_layers :kind "token-layer" :noun "token layer" :parent-col :text_layer_id :cascade! cascade-delete!})
+
+(def merge "Rename a token layer (see `layer/rename`)." (partial layer/rename spec))
+(def shift "Move a token layer one place (see `layer/shift`)." (partial layer/shift spec))
+(def delete "Delete a token layer and everything under it (see `layer/delete`)." (partial layer/delete spec))

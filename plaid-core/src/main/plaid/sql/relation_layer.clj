@@ -84,63 +84,34 @@
                                         :config (psc/serialize-config config)})
                          new-id))))
 
-(defn merge
-  [db eid m user-id]
-  (submit-operation! [tx db {:type :relation-layer/update
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Update relation layer " eid)
-                             :user user-id}]
-                     (when-let [n (:relation-layer/name m)]
-                       (psc/assert-valid-name! n))
-                     (let [existing (psc/fetch-by-id tx :relation_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Relation layer" eid) {:code 404 :id eid})))
-                       (let [attrs (cond-> {}
-                                     (some? (:relation-layer/name m))
-                                     (assoc :name (:relation-layer/name m)))]
-                         (when (seq attrs)
-                           (crud/update-by-id! tx :relation_layers eid attrs))
-                         eid))))
-
-(defn shift-relation-layer [db rl-id up? user-id]
-  (submit-operation! [tx db {:type :relation-layer/shift
-                             :project (project-id db rl-id)
-                             :document nil
-                             :description (str "Shift relation layer " rl-id " " (if up? "up" "down"))
-                             :user user-id}]
-                     (layer/shift-layer! tx :relation_layers "Relation layer" rl-id :span_layer_id up?)))
-
-(defn delete
+(defn- cascade-delete!
   "Delete a relation layer. FK ON DELETE CASCADE would remove its
   relations at the DB layer, but FK cascades bypass audit_writes. We
   audit each child relation explicitly (relations are leaves; they have
   their own entity_metadata cleaned up here too), then drop the
   relation_layer row. The layer's own entity_metadata rows are also
   swept (no FK there)."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :relation-layer/delete
-                             :project (project-id db eid)
-                             :document nil
-                             :description (str "Delete relation layer " eid)
-                             :user user-id}]
-                     (let [existing (psc/fetch-by-id tx :relation_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Relation layer" eid) {:code 404 :id eid})))
-                       ;; Audited per-relation delete before the FK cascade fires,
-                       ;; read by the layer's index and deleted in chunks by id
-                       ;; (per-id audits via delete-ids!).
-                       (cascade-stats/prepare! tx)
-                       (let [rel-ids (mapv :id (crud/select-in tx :relations "id" :relation_layer_id
-                                                               "idx_relations_layer_doc" [eid]))]
-                         (crud/delete-ids! tx :relations rel-ids)
-                         (crud/delete-entity-metadata! tx "relation" rel-ids))
-                       ;; Sweep entity_metadata for the relation-layer itself
-                       ;; (no FK; no auto-cascade).
-                       (psc/execute! tx
-                                     {:delete-from :entity_metadata
-                                      :where [:and
-                                              [:= :entity_type "relation-layer"]
-                                              [:= :entity_id eid]]})
-                       (crud/delete-by-id! tx :relation_layers eid)
-                       eid)))
+  [tx eid]
+  ;; Audited per-relation delete before the FK cascade fires, read by the
+  ;; layer's index and deleted in chunks by id (per-id audits via
+  ;; delete-ids!).
+  (cascade-stats/prepare! tx)
+  (let [rel-ids (mapv :id (crud/select-in tx :relations "id" :relation_layer_id
+                                          "idx_relations_layer_doc" [eid]))]
+    (crud/delete-ids! tx :relations rel-ids)
+    (crud/delete-entity-metadata! tx "relation" rel-ids))
+  ;; Sweep entity_metadata for the relation-layer itself (no FK; no
+  ;; auto-cascade).
+  (psc/execute! tx
+                {:delete-from :entity_metadata
+                 :where [:and
+                         [:= :entity_type "relation-layer"]
+                         [:= :entity_id eid]]})
+  (crud/delete-by-id! tx :relation_layers eid))
+
+(def ^:private spec
+  {:table :relation_layers :kind "relation-layer" :noun "relation layer" :parent-col :span_layer_id :cascade! cascade-delete!})
+
+(def merge "Rename a relation layer (see `layer/rename`)." (partial layer/rename spec))
+(def shift "Move a relation layer one place (see `layer/shift`)." (partial layer/shift spec))
+(def delete "Delete a relation layer and everything under it (see `layer/delete`)." (partial layer/delete spec))
