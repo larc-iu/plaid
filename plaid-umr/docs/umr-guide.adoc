@@ -133,7 +133,7 @@ A long document is split into pages, and the page you are on is kept in the addr
 
 A node shows its variable, its concept, and its attributes (`aspect performance · polarity -`).
 A node anchored to words sits above them, and focusing or hovering it underlines and lights those words.
-A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow above its parent.
+A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow under its parent.
 The root's concept is underlined.
 
 A node drafted by a service has a dashed violet border, and one made by a member whose work the project reviews has a dashed amber border.
@@ -288,7 +288,7 @@ They are made on the same canvas as the sentence graphs, by dragging or from the
 * **t** starts a temporal relation: pick the reference time, a constant or a node, then the relation.
 * **o** starts a modal relation: pick the conceiver, then the relation.
 
-Each relation is listed with what it says, so `:before` on `s9p` with `document-creation-time` reads "s9p before document-creation-time".
+Each temporal relation is listed with what it says, so `:before` on `s9p` with `document-creation-time` reads "s9p before document-creation-time".
 Click a tag to change the relation, or press Shift+Backspace in the editor to delete it.
 **d** lists the focused node's document relations.
 A relation between two constants, such as `(root :modal author)`, is listed in the margin under the constants.
@@ -364,7 +364,7 @@ A line above each answer sums up the work behind it, such as "read 87 sentences 
 Open it to see each step, what the step read, and what the assistant was given back.
 
 When you ask for a change, the assistant does not touch the data.
-It proposes a **plan**, which you **Approve** or **Discard**.
+It proposes a **plan**, which you **Approve and apply** or **Discard**.
 The plan lists every change under its document, and each node links to its place on the canvas.
 A change to work a person made or accepted is marked **Accepted**.
 
