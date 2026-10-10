@@ -28,594 +28,405 @@
 
 = Introduction
 
-**Plaid UMR** is a web-based editor for https://umr4nlp.github.io/web/[Uniform Meaning Representation] annotation.
-This guide is written for annotators.
-It covers the everyday loop (import a `.umr` file or open a document another Plaid app glossed, annotate its sentence graphs and its document graph on the canvas, export it as `.umr`) and then the rest of the editor.
+**Plaid UMR** is an editor for https://umr4nlp.github.io/web/[Uniform Meaning Representation] (UMR) annotation.
+It runs in a web browser and works on the same projects as Plaid IGT and Plaid UD, so a text glossed in Plaid IGT can be annotated for UMR with its glosses shown under the words.
 
-Plaid UMR is one of the apps built on the Plaid platform, beside Plaid IGT and Plaid UD.
-It shares a project's text, sentences and words with them: a document glossed in Plaid IGT can be annotated for UMR in this app, with its glosses shown under the words.
+Key features include:
 
-[NOTE]
-====
+* **Graph canvas.** Each sentence's graph is drawn above its words and edited in place, from the keyboard or with the mouse.
+* **Document graph.** Temporal, modal and coreference relations are made on the same canvas as the sentence graphs.
+* **Vocabulary linking.** A vocabulary linked to the project in Plaid IGT supplies concepts and rolesets, including for a language with no frame file of its own.
+* **Import and export.** Documents are imported from and exported to `.umr` files in the UMR release format.
+* **Validation.** The official UMR checks run as you edit, and a project-wide report lists every problem.
+* **AI assistance.** A language model can draft sentence graphs for you to correct, and an assistant answers questions about the project and proposes changes.
+* **Comparison.** Two annotations of one text are scored against each other with the AnCast metric.
+* **Audit log and time travel.** Every change is recorded with its author, and any document can be viewed or restored as it was at an earlier time.
+
 Text and tokenization are not edited in Plaid UMR.
-A project's text, sentences and words are made and changed in Plaid IGT or Plaid UD, or come from a `.umr` import.
-This app annotates over them.
-====
+A project's text, sentences and words come from a `.umr` import or are made in Plaid IGT or Plaid UD.
 
 = Getting Started
 
 Plaid UMR is served by your Plaid server.
 Open it in your browser at the `/umr/` path on that server.
-Running Plaid locally with the default settings, that is:
+If you are running Plaid locally with the default settings, that is:
 
 ----
 http://localhost:8080/umr/
 ----
 
 Sign in with the email address and password your project administrator gave you.
-Your name at the top right opens your account, with your **Profile** (where the keyboard shortcuts are rebound) and **Sign out**.
+Your name at the top right opens your **Profile**, where keyboard shortcuts are rebound, and **Sign out**.
 
 The editor has three levels:
 
 * **Projects**: the list of projects you can open.
-* **Documents**: a project's documents, with the project's tabs (Guidelines, Assistant, Validation, Activity, Settings, Import and export). Validation, Activity and Settings are shown only to maintainers.
-* **A document**: its Annotate, Details, Comments and Export tabs.
+* **Documents**: a project's documents, beside the project's tabs. **Guidelines**, **Assistant** and **Import and export** are for everyone, and **Validation**, **Activity** and **Settings** for maintainers.
+* **A document**: its **Annotate**, **Compare**, **Comments**, **Export** and **Details** tabs.
 
 = Projects
 
 == Creating a project
 
-**New UMR project** on the Projects page makes a project with a text layer, a sentence layer, a word layer, and the four layers UMR annotation lives in.
-Documents come in through **Import and export**.
+**New UMR project** on the Projects page makes an empty project ready for UMR annotation.
+Documents are then added under **Import and export**.
 
 == A project from Plaid IGT or Plaid UD
 
-A project made in another Plaid app opens here once a maintainer has set it up for UMR: opening its documents sends a maintainer to the setup page, where **Set up for UMR** adds the UMR layers beside the existing ones.
-Nothing already in the project changes.
-Everyone else sees a notice asking for a maintainer.
-
-A project with no text at all is set up in Plaid IGT or Plaid UD first.
+A project made in Plaid IGT or Plaid UD must be set up for UMR before it opens here.
+When a maintainer opens its documents, the setup page offers **Set up for UMR**, which adds what UMR annotation needs and leaves everything already in the project as it is.
+Other members see a notice asking for a maintainer.
 
 == Language
 
 **Settings → General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
-It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled).
-An exported gloss header carries the language of its own gloss line, not the project's.
-The page names the file the saved language gets and how many rolesets are in it.
-A language with no bundled file is the ordinary case for a language being documented, and its rolesets come from the project's vocabulary instead (see <<Vocabulary>>).
+It selects the frame file the concept picker offers senses from. English, Chinese, Arabic and Portuguese are bundled.
+For any other language, rolesets come from the project's vocabulary instead (see <<Vocabulary>>).
 
 == Vocabulary
 
-A vocabulary linked to the project in Plaid IGT is a lexicon here.
-A word that IGT has linked to an entry offers that entry's headword as its concept, with the entry's gloss beside it, and typing in the concept picker finds any entry by its form.
-An entry can also stand for a roleset, which is how a language with no bundled frame file gets one.
-Write it in Plaid IGT, in the entry editor: the **UMR** band takes the roleset the entry offers as its concept (`lunch-01`) and a description per argument (`ARG0`, `the one eating`), and the band appears once a UMR project is linked to that vocabulary.
-A name that is not an ARG, or that another row already has, is marked under its row there, and the entry cannot be saved until it is mended.
-The concept picker then offers the roleset in place of the headword, and the argument descriptions show beside the roles when you attach one.
+A vocabulary linked to the project in Plaid IGT works as a lexicon here.
+A word linked to an entry in Plaid IGT offers that entry's headword as its concept, with its gloss beside it, and the concept picker finds any entry by its form.
 
-A node whose concept was picked from an entry remembers the entry.
-When the entry's roleset or headword is changed in Plaid IGT, the node gets a warning (`s2v was picked from ver, now ver-02.`), counted in its sentence's header and listed on the Validation tab.
-**Take entry value** on the node's menu, or **e**, takes the entry's new concept for that node.
-**Take entry value for all 5 nodes**, or **Shift+E**, takes it for every node of the document picked from that entry, and the row names how many there are.
-A concept typed over, on the canvas or in Text mode, no longer follows its entry.
-A node forgets its entry when the entry is deleted from its vocabulary.
-Unlinking the vocabulary from the project does not count: link it again and the nodes still follow their entries.
+An entry can also stand for a roleset.
+In Plaid IGT's entry editor, the **UMR** band takes the roleset (`lunch-01`) and a description of each argument (`ARG0`, `the one eating`).
+The concept picker then offers the roleset in place of the headword, and the argument descriptions appear beside the roles.
+
+A node whose concept was picked from an entry follows that entry.
+When the entry's roleset or headword changes, the node gets a warning such as `s2v was picked from ver, now ver-02.`
+Press **e**, or choose **Take entry value** on the node's menu, to take the new concept, or **Shift+E** to take it for every node picked from that entry.
+A concept typed over by hand no longer follows its entry.
 
 = Importing and Exporting
 
 == Importing a `.umr` file
 
-**Import and export** takes `.umr` files (the UMR 2.0 release format, one file per document) by drop or picker, and **Import** reads them.
-Tab reaches the drop zone, and Enter or Space opens the file picker.
+**Import and export** takes `.umr` files in the UMR release format, one file per document.
+Drop the files or pick them, then click **Import**.
 Each file becomes a document named after the file, with its sentences, words, graphs, alignments, gloss lines and document-level annotation.
 
-When the project already has a document of the file's name whose words match the file's, sentence by sentence, and which has no graph yet, the file's graphs land on that document's words instead.
-This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
-A document-level relation between constants, such as `(root :modal author)`, that the document already has and the file leaves out is kept.
-One the file puts under another sentence is exported under that sentence only.
-A document of the file's name that already has a graph, or a graph kept as text, refuses the file: `"Okul" already has a graph.`
-When that document's words differ from the file's, or it has none, the file becomes a new document of that name, and the report says why: `Imported as a new document: ...`.
-A file whose name two documents of the project already share is refused.
+A file can also bring annotation to a document already in the project, such as one glossed in Plaid IGT.
+If a document has the file's name, has no graph yet, and has the same words sentence by sentence, the file's graphs are put on that document's words.
+If its words differ, the file becomes a new document of that name instead, and the report says so.
+A document that already has a graph refuses the file.
 
-A `Sentence:` line is read as the sentence's text.
-Onto a document from Plaid IGT, the document's own text stays the sentence's text.
-
-The report lists each note under its file, with its sentence number.
-A file that numbers its sentences otherwise than 1, 2, 3, such as an excerpt that starts at `snt5` or a file that skips a number, keeps its numbers: the editor, the report and the assistant call its first sentence 5, a new node there is named `s5…`, and the export writes `snt5` again.
-A note that recurs across sentences is one line with the count (`5 sentences: No sentence id line. ...`).
-
-A sentence whose graph the parser cannot read is kept as text and written back unchanged on export, and the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
-Mending such a graph in Text mode keeps the alignment the file gave each node.
-The document-level relations that name a node of such a sentence are kept with the sentence whose block wrote them and written back there on export, and the report counts them (`Sentence 38: 3 document-level relations are held until sentence 37 is mended.`).
-Mending the graph in Text mode makes them relations again, in the same change.
-A node named like a document-level block (`s8s0`) is imported with a note to rename it.
-Older files are read as they are: an obsolete gloss header is written back in its current form, and `-1--1` is read as unaligned.
+The import report lists notes under each file, by sentence.
+A sentence whose graph cannot be read is kept as text, its header says so, and the export writes it back unchanged.
+**Text** on that sentence opens the kept text so it can be mended and applied.
 
 == Exporting
 
-A document's **Export** tab shows it as `.umr`, to copy or download.
+A document's **Export** tab shows it as a `.umr` file, to copy or download.
 **Import and export** exports every document of the project as a zip.
 
-The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node, in the order the graph writes them (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
-Each sentence starts with a bare `# :: snt1` line.
-The sentence's text is written on a `Sentence:` line after the gloss lines of the words and morphemes, only when it is not the words joined by spaces (`Sentence: Ali, eve gitti.` under `Words: Ali eve gitti`).
-A sentence whose text has more items than its words, such as punctuation standing apart (`Tu viens ?`) or a word holding a space, has no `Sentence:` line.
-The whole file is written in Unicode NFC.
-The export numbers the sentences 1, 2, 3 in order, except in a document imported from a file that numbers them otherwise.
-There each sentence keeps its file's number, and a sentence added in Plaid IGT takes its position, or the next number past the highest when that one is taken. No number is written twice. The sentence's header shows the same number, and such a file imported again reads back as it was exported.
-A triple between nodes of two sentences is written in the block of the later one.
-A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
-The file holds one graph a sentence, the root's. A part of the sentence the root does not reach (a node made with no parent, or what a deleted edge cut off) is shown on the canvas and marked as an error, and the export leaves it out, with its alignment and its document-level relations.
-The Words line is split on spaces, so a word holding one (two words merged in IGT) is written with `_` in its place.
-A document the file cannot hold, such as one with two nodes of a sentence under one variable, is not exported, and the page lists each problem.
+Each sentence is written with its words and gloss lines, its graph in PENMAN, an alignment line for every node, and its document-level block.
+Sentences are numbered 1, 2, 3, unless the document came from a file that numbered them otherwise, in which case they keep the file's numbers.
+A part of a sentence that the root does not reach, such as a node made with no parent, is left out of the file.
+A document the file format cannot hold is not exported, and the tab lists each problem.
 
 = The Canvas
 
-The **Annotate** tab draws every sentence of the document as a block: the graph above, the words below.
-A long document is paged.
-The page is in the address, a document opens on the page you left it at, and Back and Forward step through the pages you turned.
+The **Annotate** tab draws every sentence of the document as a block, with the graph above and the words below.
+A long document is split into pages, and the page you are on is kept in the address.
 
 == Nodes
 
-A node shows its variable, its concept, and its attributes as a line of text (`aspect performance · polarity -`).
-A node anchored to words sits above them. The anchored words are underlined, and hovering or focusing a node lights them.
-A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
-A node a service drafted has a dashed violet border, and one made by a member whose work the project reviews a dashed amber one. The mark goes when you edit the node, which records it as yours, or when you accept it.
-A relation's label and a document-level tag carry the same dashed violet or amber border while the relation is unreviewed. The edge's line does not change.
-Hovering a marked node or label shows where it came from (`Machine-made, unverified`), and an accepted one still says so (`Machine-made, confirmed`).
-To accept a node as it stands, choose **Accept** on its menu or press Ctrl+Enter (Cmd+Enter). That accepts the node and its relation to its parent. **Accept graph** beside a sentence accepts every node and relation of it.
-A sentence with anything a person made or accepted is kept whole when a draft overwrites.
-**Discard graph** beside it deletes the drafted nodes and relations of the sentence that nobody has accepted, after asking.
-It keeps what a person made, what a member whose work the project reviews made, and what was accepted, and a drafted node that one of those relations hangs from or points to.
-A drafted relation between two nodes that stay is deleted, unless it leads to a node a person made or corrected. That one stays, still drafted, and so does the node it hangs from.
-A relation another sentence has onto a deleted node is deleted too. The question says how many of those other sentences lose.
-History lists it as one change.
+A node shows its variable, its concept, and its attributes (`aspect performance · polarity -`).
+A node anchored to words sits above them, and focusing or hovering it underlines and lights those words.
+A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow above its parent.
 The root's concept is underlined.
+
+A node drafted by a service has a dashed violet border, and one made by a member whose work the project reviews has a dashed amber border.
+Hovering it shows where it came from.
+Editing the node makes it yours, and **Accept** on its menu, or Ctrl+Enter (Cmd+Enter), accepts it as it stands with its relation to its parent.
+
+**Accept graph** beside a sentence accepts the whole graph.
+**Discard graph** deletes the sentence's drafted nodes and relations that nobody has accepted, after asking, and keeps what a person made or accepted.
 
 == Edges
 
-Tree edges run down from a parent to its children, the relation floating above the child, straight down when the child is under its parent.
-Every edge carries a head at the end it points to, which is the only thing that says which way a re-entrant or a document-level relation runs.
-A node with a second way in (a re-entrancy) shows the second edge as a dashed curve, the only dashed line on the canvas, with its relation beside it where it covers no node and no other label.
-Between rows it leaves and arrives at the same side of the two nodes, and between two nodes of one row it dips under the row.
-The children of one parent that lie beyond its box share one line across the gap between rows, with a drop to each.
+Edges run down from a parent to its children, with the relation above the child and an arrowhead at the end the edge points to.
+A node with a second parent (a re-entrancy) shows the second edge as a dashed curve.
 
 == Words and glosses
 
-The words carry their number.
-Under them, the project's gloss lines: the morphemes and their glosses grouped under the word they belong to, a part of speech per word, and a translation as a row.
-Each line is named to its left.
-A node aligns to whole words. A word's morphemes are shown as plain text under it and stand for their word.
-A word nobody has segmented in Plaid IGT shows as itself on the Morphemes line, as IGT shows it, and its morpheme gloss is `_`.
-The lines of an imported file go under the words wherever the file lets that be told: a line with one item per word, a line whose hyphens and equals signs join its items into as many words as the sentence has (`’a- ní- dz- oo- d- záa =go` is one word), or a gloss line that pairs item for item with such a Morphemes line.
-Any other line, and a translation, runs as a row of its own.
-Which layers feed which lines is set in **Settings → UMR settings** (see <<Gloss lines>>).
+The words are numbered, and the project's gloss lines run under them: morphemes and their glosses under each word, a part of speech per word, and a translation for the sentence.
+Each line is named on its left.
+A node aligns to whole words, never to a morpheme.
+**Settings → UMR settings** chooses which lines are shown (see <<Gloss lines>>).
 
 == The margin
 
-The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
-Only the ones the sentence uses are shown. The rest appear while a node is focused or while you are dragging, which is when you would aim at one.
-A document-level relation reads on each node it joins as a tag, in this sentence or another: modal relations in dark blue-grey, temporal ones in teal, coreference in brown.
-The tag reads the triple in its own order, with a dot where the node itself stands: `(s3d :before s3b)` is `● :before s3b` on `s3d` and `s3d :before ●` on `s3b`. A temporal relation says how the second node stands to the first, its reference time, so here `s3b` is before `s3d`.
-The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
-`author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
-A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked. A click on a tag changes its relation.
-Focusing or hovering a node draws its own relations, each in its tag's color: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
+The margin to the left of each graph holds the document graph's constants that the sentence uses: `author`, `root`, `document-creation-time` and any others.
+A document-level relation appears as a tag on each node it joins, in this sentence or another, colored by kind: modal in dark blue-grey, temporal in teal, coreference in brown.
+The common `author :full-affirmative` is grey.
+
+A tag reads the triple in its own order, with a dot for the node itself, so `(s3d :before s3b)` is `● :before s3b` on `s3d`.
+Click a tag to change its relation.
+Focusing or hovering a node draws lines to everything its relations join.
 
 == Coreference
 
 Nodes in one coreference chain wear a numbered chip in the chain's color.
-Clicking the chip goes to the next mention of the chain, in this sentence or another.
+Clicking the chip goes to the next mention in the chain, in this sentence or another.
 
 == Validation marks
 
 The official UMR checks run as you edit.
-A sentence's header counts its errors and warnings, except unaligned words, which the Validation tab lists. Clicking the count lists them.
-A node a check names wears a dot and a ring in red for an error or magenta for a warning, with the message on hover.
-Besides the official checks, an edge whose two nodes are in different sentences is an error on the node it leaves, and the export leaves it out.
+A sentence's header counts its errors and warnings, and clicking the count lists them.
+A node a check names wears a red mark for an error or a magenta one for a warning, with the message on hover.
 The project's **Validation** tab lists every problem in every document.
 
 == Text changes under an annotation
 
-The text, the sentences and the words belong to the whole project, and someone can edit them in Plaid IGT or Plaid UD after the UMR annotation is made.
-Opening the document here puts right what such an edit left behind, in one entry in the history, named for what it did.
+The text, sentences and words can still be edited in Plaid IGT or Plaid UD after UMR annotation has begun.
+Each node follows the words it is anchored to.
+When those words are deleted, the node stays in its sentence without an anchor.
 
-A node anchored to words follows its words.
-Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
-A word split in two (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, vowel signs and other marks counted with them, the first half on a tie, from the next opening here.
-A node aligned to several words with no space between them (`do` and `n't`, or the words of a text written without spaces) keeps all of them. Only a word split after the node was aligned is cut.
-A node made with no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
-A node whose words are all taken off its anchor (**u**) stands over the text they had, as one whose words are deleted does, so a sentence split elsewhere leaves it, with its edges, on the side of that text.
-Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
-Splitting it again where they were joined gives each sentence its own nodes back, with their edges, and its own imported lines: its number, its gloss and metadata lines, a graph kept as text with the relations held for it, and its document-level relations between constants such as `(root :modal author)`.
-While the two are one sentence, the export writes the first one's lines.
-**Clear sentences** in Plaid IGT, then splitting the text again where the sentences were, gives every sentence its lines back in the same way.
-A sentence split in Plaid IGT or UD deletes the edges that would join nodes of the two new sentences, in the same step.
-A sentence's text deleted takes that sentence's nodes with it, and its history keeps them.
+When a sentence is split, its relations that would cross the split are deleted.
+When two sentences are joined, their graphs stay separate until you join them, and the header counts the extra graph.
+Splitting them again at the same place gives each sentence its own nodes back.
 
-A node whose words are deleted (deleting a word in Plaid IGT keeps its text) becomes a node anchored to no word, drawn hollow, and the history entry names it (`1 node lost its word (s3y2)`).
-Tokenizing the text again does not anchor it again.
-A sentence with no words at all (after **Clear tokens** in Plaid IGT) is left as it is until it is tokenized again, and its nodes keep their anchors.
-Its graph is still drawn, with every node unaligned, and can be edited as usual except for **Change anchor**, which needs a word.
-A document with no sentences at all keeps every node and edge, and shows `No sentences.` until it is tokenized again.
-Tokenizing it again puts each node back in its sentence.
-
-When sentences are added or removed before a sentence, its variables take its new number and keep the rest of the name (`s2v` in what is now sentence 1 is `s1v`).
-Variables are not renumbered in a document imported from a file that numbers its sentences otherwise than 1, 2, 3, such as an excerpt that starts at `snt5`. Its variables stay as the file named them.
-A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, its variables take the sentence's number.
-
-When a sentence is typed in before an existing one in Plaid IGT, the existing sentence keeps its imported lines: its number, its gloss and metadata lines, and its document-level relations.
-
-A node picked from a vocabulary entry that has since been deleted no longer names it.
-If a repair fails, a message asks you to reload the page.
+Variable names follow their sentence's number, so `s2v` becomes `s1v` when a sentence before it is removed.
+A node losing its words and a variable taking a new number are put right when the document is next opened here, as one entry in its history.
 
 = Editing
 
-Every edit is written as it happens and lands in the document's history. There is no save button.
-An edit that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
-Meanwhile the page reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
-An edit that reached the server before its answer was lost is not saved twice.
-An edit made while the document is locked, by another user's script or a service, is not refused.
-The page reads **In use elsewhere, waiting**, the edit is saved by itself once the lock is gone, and closing the tab meanwhile asks first.
-Focus a node by clicking it or with the arrows, then the keys below act on it.
-The default shortcuts are listed here. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
-**? Keys and marks** over the sentences lists every key, with any you have rebound.
+Every edit is saved as it happens, and there is no save button.
+If the connection drops, the page reads **Offline, retrying** and your edits are sent once the server answers.
+If a script or service has locked the document, the page reads **In use elsewhere, waiting** and saves once the lock is gone.
+
+Focus a node by clicking it or with the arrows, and the keys below act on it.
+Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
+**? Keys and marks** above the sentences lists every key, with your own bindings.
 
 == Mouse actions
 
-Every one of the actions below can be reached without the keyboard.
-
-A click on a node focuses it, and a double-click on one of its parts edits that part: the concept, the variable, or an attribute chip.
-A second single click only keeps the node focused.
-A document-level tag, the `+N` count, a relation's label and the chain chip act on a single click.
+Every action can be done with the mouse.
+Click a node to focus it, and double-click its concept, variable or an attribute to edit that part.
 Click a relation's label to change the relation, or drag it onto another node to move the subtree there.
 
-Everything else is on the node's own menu, which opens on a right-click anywhere on the node or with the **⋯** button at its top right, and from the keyboard with the Menu key or Shift+F10.
-The menu lists every action with the key that does the same thing, and greys out the ones that do not apply (a root has no relation to a parent).
-**Add a child** on the menu waits for the next click: the child's word, an existing node to make the child, or empty space for a child with no word. **Cancel** in the sentence header leaves it.
+Everything else is on the node's menu.
+Open it by right-clicking the node, with the **⋯** button at its top right, or with the Menu key or Shift+F10.
+**Add a child** on the menu waits for a click on a word, an existing node, or empty space for a child with no word.
 
 == Moving around
 
-* Arrows move between nodes: up to the parent, down to the first child in reading order, left and right between the nodes of a row.
-* Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order the export and text mode use. The canvas keeps drawing children over their words.
-A node with two parents is written in full and drawn under the parent the written order reaches first. Moving it past a sibling whose subtree also holds it moves it into that subtree, on the canvas and in the file, and the graph stays the same.
-In a right-to-left document the arrows follow the screen, so Alt+Right moves earlier.
-* Shift+Tab leaves the block. Escape, then Tab, goes on to the next sentence's root.
-* PageDown and PageUp go to the root of the next or previous sentence, turning the page when needed, in a read-only view too. They can be rebound, to a plain letter as well.
-* A sentence with no graph is a stop of its own for Tab.
+* The arrows move between nodes: up to the parent, down to the first child, and left and right along a row. In a right-to-left document they follow the screen.
+* Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order used by the export and Text mode.
+* PageDown and PageUp go to the next or previous sentence's root, turning the page when needed.
+* Shift+Tab leaves the block.
 
 == Making nodes and edges
 
-* **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word, then pick its concept from the word's senses (Enter keeps the word as typed), or type a concept for an abstract node. Then the relation.
-* Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
-* **n** makes a node with no parent, from a focused node, the sentence, or an empty sentence's graph. A double-click on a word or on empty space does the same. Either way the concept picker opens, prefilled with the word when there is one.
-* Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.
-* **r** adds a second parent to the focused node: pick the parent from the list of the sentence's nodes (the node itself included), or click it, then give the relation.
+* **Tab** starts a child of the focused node. Type a word's number to anchor it there and pick a concept from the word's senses, or type a concept for a node with no word. Then pick the relation.
+* **n** makes a node with no parent. A double-click on a word or on empty space does the same.
+* **r** adds a second parent to the focused node: pick it from the list or click it, then give the relation.
+* Drag the grip on a node's lower edge onto another node for an edge, onto a word for a new child anchored there, or onto empty space for a child with no word. The relation is asked at the drop.
 
-A relation that takes a value does not take a node: `:aspect` and the other attributes with a set of values, `:li`, `:list-item`, `:wiki`, a name's `:op1`, `:op2` and so on, and `:ARG2` of `have-polarity-91`.
-A new edge there, made, moved or relabeled, is refused with `':aspect' takes a value, not a node.`
-So is a concept change that would put a node there, such as `and` with a node under `:op1` changed to `name`.
-The assistant and **Draft** refuse it too.
-An edge an imported file brought there is kept, and the Validation tab lists it.
-
-An edge that would close a cycle is refused, except through `:quote` or `:modal-predicate`, whether it is drawn or relabelled. An edge from a node to itself takes only `:quote` or `:modal-predicate`.
-The assistant and **Draft** refuse such a sentence too.
-A relation a draft states in both directions is written once.
-
-While **u** or **Add a child** waits for its click, the arrows still move and Escape leaves it.
-Other keys do nothing until it ends, except the digits, Backspace and Enter of **u**.
-The list of **m** and **r** closes on Escape, and ends the wait with it.
+Some relations take a value and never a node: the attributes, `:li`, `:wiki`, and a name's `:op1`, `:op2` and so on.
+An edge with one of these relations is refused, and so is an edge that would close a cycle, except through `:quote` or `:modal-predicate`.
 
 == Changing a node
 
-* **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the vocabulary entries the word is linked to, then the word itself, then the abstract concepts, rolesets and discourse concepts.
-Typing searches the bundled frame file too, on any node, so `buy` finds `buy-01` for bought.
-In Arabic a word also finds its roleset with one proclitic (و ف ب ل ك ال) and a suffix taken off, so وقالت offers `قال-01`, and the word's own roleset comes first.
-A hamza on the alif and a tatweel make no difference: اعلن finds `أعلن-01`, and قـال finds `قال-01`.
-A verb that drops its last letter before a suffix finds its roleset too, after the word's other senses: نمت lists `نما-01`, and رموا lists `رمى-01`.
-A roleset whose lemma is written as the word writes it comes first: الأم lists `أم-01` before `ألام-01`, and أعلن lists `أعلن-01` before `اعلن-01`.
-A second verb of a root that the Arabic file keys with a doubled hyphen (`أثر--01`) is listed after the lemma's other senses.
-* **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
-* **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. A time is written bare, `:time 15:30`. A list item is `:li` with the item's place as a number (`:li 1`, and `:li -1` for the last) or its label in quotes (`:li "(a)"`). `:list-item` is the same relation and takes the same values. `:modal-strength` is last and marked deprecated, since modality belongs in the document graph. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
-A value the official validator cannot read (`Imperative`, `.5`, `""`) is refused with the reason. One an imported file carried is kept, exported as it came, and listed on the Validation tab.
-* **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document. A variable cannot be `s8s0` and the like, which the file uses for sentence 8's document-level block. A name that is taken or malformed is refused with the reason under the box, which stays open to correct it.
-A new node's variable is made from its concept's first letter, from a to z: an accented letter gives its base letter (`ébrio` gives `s4e`), and anything else gives `x`.
-A variable typed by hand may hold an accented letter, but the official validator then refuses a document-level relation that names it.
-* **u** changes the anchor: click words, or type a word's number and press Enter, to add or remove them, then **Done** in the sentence's header, or Escape.
-* **m** moves the node under another parent: pick the new parent from the list, or click it. The list leaves out the node's parent and the nodes under it. Dragging an edge's label onto a node does the same.
-* **e** takes the new concept of the vocabulary entry the node was picked from, and **Shift+E** takes it for every node picked from that entry (see <<Vocabulary>>).
+* **Enter** edits the concept.
+* **:** (colon) edits the relation to the parent. The parent roleset's own arguments come first, with what each means.
+* **a** opens the attribute picker.
+* **v** renames the variable.
+* **u** changes the anchor: click words, or type a word's number and press Enter, to add or remove them, then press Escape or click **Done**.
+* **m** moves the node under another parent: pick it from the list or click it.
 * **Ctrl+Shift+R** (Cmd+Shift+R) makes the focused node the sentence's root.
+
+The concept picker lists the frame file's senses of the anchored word first, with their arguments, then the vocabulary entries the word is linked to, the word itself, and the abstract concepts.
+Typing searches the whole frame file, so `buy` finds `buy-01` on a node anchored to "bought".
+In Arabic a word also finds its roleset with a proclitic and a suffix removed, so وقالت offers `قال-01`, and a hamza on the alif or a tatweel makes no difference.
+
+In the attribute picker, aspect, person and number are lattices.
+Pick the most specific value you are sure of, and the finer values under it appear.
+The other attributes are lists, and free values such as `:quant` and `:wiki` go in the text line at the bottom.
+
+A variable is `s`, the sentence number, then letters and an optional number, such as `s3e` or `s3e2`, and it must be unique in the document.
+A new node's variable is made from the first letter of its concept.
+A name that is taken or malformed is refused, and the box stays open to correct it.
 
 == Deleting
 
-* **Shift+Backspace** deletes the edge into the focused node, and with it whatever only that edge reached. More than one node going asks first. A leaf goes without a question, since history keeps it.
+* **Shift+Backspace** deletes the edge into the focused node, with whatever only that edge reached. Deleting more than one node asks first.
 * **Ctrl+Shift+Backspace** (Cmd+Shift+Backspace) deletes the node and everything under it.
 * In a relation editor, Shift+Backspace before anything is typed deletes that edge or triple.
 
 == The pickers
 
-Enter commits what was typed. An option is taken instead only when the arrows moved to it, it was clicked, or its value is exactly what was typed. The option under the pointer is shaded lighter than the one the arrows moved to, and is not a choice.
-The list also shows options whose description holds the typed text, so an argument can be found by what it means, but Enter never takes one of those on its own: typing `place` gives `:place`, not the `:ARG1` described as "place or thing escaped".
-In the relation pickers, the start of a relation is enough (`ARG` gives `:ARG0`, the colon optional). A concept is any word, so it is never finished for you: `rat` stays `rat`.
+Enter takes what you typed, unless you moved to an option with the arrows or clicked one.
+In the relation pickers the start of a name is enough, so `ARG` gives `:ARG0`, and the colon is optional.
+Options whose description contains what you typed are listed too, so an argument can be found by its meaning.
 Escape cancels.
 
 == Text mode
 
-**Text** in a sentence's header shows the sentence's graph as PENMAN in place of the canvas.
-Every node of the sentence is in the text: the root's graph first, then each part the root does not reach as a graph of its own below it.
-The text is parsed as you type, and the first problem shows under it.
-Tab indents by four spaces, every line of a selection, and Shift+Tab takes up to four off.
-Ctrl+Enter (Cmd+Enter) applies, as **Apply** does.
-Escape cancels, as **Cancel** does.
-**Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
-An empty text deletes every node of the sentence.
-Apply writes the whole text at once: if it fails, nothing of it is applied.
-An apply too large to write in one step that fails partway says what was saved and what was not.
-The line under the text names every concept Apply changes, by variable (`s9x changes from sleep-01 to cat, s9y from cat to sleep-01.`). Nodes are matched by variable, so exchanging two variables exchanges their concepts, and each node keeps its words and document-level relations.
-Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, a relation UMR does not have, a new edge that closes a cycle except through `:quote` or `:modal-predicate`, a new node under a relation that takes a value (`s1a: ':li' takes a value, not a node.`), and a value the official validator cannot read, with the reason. A value a node already has from an import is kept as it is.
-A variable typed over is read as a rename when one variable goes and one arrives and they are plainly the same node: the same concept, under the same parents by the same relations, or both the sentence's root. The node keeps its anchor, its edges and its document-level relations, and the line under the text says which name changed.
-Anything less clear-cut, two variables typed over at once or a concept changed along with the name, is a node deleted and a node made, and the line names what Apply would delete that way.
-Cancel, or **Text** again, with unapplied changes asks first.
+**Text** in a sentence's header replaces the canvas with the sentence's graph written in PENMAN.
+The text is checked as you type, and the first problem shows under it.
+Tab indents and Shift+Tab takes the indent off.
+
+**Apply**, or Ctrl+Enter (Cmd+Enter), writes the difference between the text and the graph as one change.
+A node new in the text is made without an anchor, to anchor on the canvas afterwards, and a node missing from the text is deleted.
+Nodes are matched by variable, and the line under the text names every concept that Apply would change.
+Changing a variable's name, with nothing else about the node changed, renames it.
+
+Apply refuses what the canvas refuses, with the reason.
+**Cancel**, or Escape, discards the text, and asks first if anything was changed.
 
 = The Document Graph
 
-Temporal, modal and coreference relations are UMR's document-level annotation.
-In this editor they are made from the same canvas as the sentence graph.
+Temporal, modal and coreference relations make up UMR's document-level annotation.
+They are made on the same canvas as the sentence graphs, by dragging or from the keyboard.
 
-* Drag a node's grip onto a constant in the margin: a modal relation for `author`, `root` or `null-conceiver`, a temporal one for `document-creation-time` and the reference constants. The relation is asked at the drop and appears as a tag on the node.
-* Hold Ctrl (Cmd) while dragging from an event onto another node for a temporal relation: the node dropped on is the event's reference time.
-* Drag onto a node of another sentence for a coreference (without Ctrl) or a temporal relation (with Ctrl).
-* **c** on the focused node starts a coreference: pick the other node by its variable, then the relation (`:same-entity`, `:same-event`, `:subset-of`).
-* **t** starts a temporal relation: pick the event's reference time (a constant or another node's variable), then the relation. Each relation is listed with what it says, so `:before` on `s9p` with `document-creation-time` reads "s9p before document-creation-time" and is written `(document-creation-time :before s9p)`.
-* **o** starts a modal relation: pick the conceiver (`author`, `root`, `null-conceiver`, or a node), then the relation.
+* Drag a node's grip onto a constant in the margin for a modal relation (`author`, `root`, `null-conceiver`) or a temporal one (`document-creation-time` and the other reference times).
+* Hold Ctrl (Cmd) while dragging from an event onto another node for a temporal relation, with the node dropped on as the event's reference time.
+* Drag onto a node of another sentence for a coreference.
+* **c** starts a coreference: pick the other node, then the relation.
+* **t** starts a temporal relation: pick the reference time, a constant or a node, then the relation.
+* **o** starts a modal relation: pick the conceiver, then the relation.
 
-A tag on a node opens its relation to change it, at either end, and the trash button or Shift+Backspace there deletes it.
-**d** lists the focused node's document relations. Pick one to change it, or press Shift+Backspace in the relation editor to delete it. The node menu has the same row.
-The one kind of triple no node wears, one between two constants (`root :modal author`), is listed in the margin, under the constants, and opens the same way.
+Each relation is listed with what it says, so `:before` on `s9p` with `document-creation-time` reads "s9p before document-creation-time".
+Click a tag to change the relation, or press Shift+Backspace in the editor to delete it.
+**d** lists the focused node's document relations.
+A relation between two constants, such as `(root :modal author)`, is listed in the margin under the constants.
 
 = Gloss lines
 
-**Settings → UMR settings** holds the gloss lines: which of the project's layers feed the lines under the words and in an exported file, in what order.
-A line's source is the morpheme layer (written as `Morphemes`), one of the substrate's annotation layers (Plaid IGT's fields, which say their scope: a morpheme-scoped field is written as `Morpheme Gloss` or `Morpheme Category`, a word-scoped one as `Word Gloss` or `Part of Speech`, a sentence-scoped one as `Sentence Gloss`), or the lines an import stored that nothing else covers.
-**Propose lines** fills the list from the layers' names and scopes.
+**Settings → UMR settings** chooses the gloss lines shown under the words and written to an exported file.
+**Propose lines** fills the list from the project's fields, and each line can then be moved or removed.
+The lines are kept in order of scope: word lines, then morpheme lines, then sentence lines.
 `Index` and `Words` are always written.
-
-The lines are kept in scope order, word lines first, then morpheme lines, then sentence lines.
-The arrows order the lines of one scope against each other, so a line cannot be moved out of its group.
 
 = History
 
-**History** at the end of a document's tab row, on any tab, opens the document's history: every operation, who made it and when.
-**Escape** closes it, and focus goes back to **History**.
-A service's run is recorded under the service's account, and its entry names the person who ran it: `UMR draft of sentence 3, requested by second`.
-Selecting an entry shows the document as it was then, read-only, on Annotate, Export and Details.
-Compare and Comments are not shown at a past state.
-**Restore** returns the document to that state as a new operation, so nothing is lost.
-Its dialog lists the changes under **Removed** (made since that moment), **Brought back** (deleted since) and **Changed back**.
+**History**, at the end of a document's tabs, lists every change to the document, who made it and when.
+Select an entry to see the document as it was then, read-only.
+**Restore** returns the document to that state as a new change, so nothing is lost.
 
-An entry that is one of these kinds is marked with it:
-
-* **Import**: a `.umr` file brought in.
-* **Automatic**: a **Draft** run, or another service's.
-* **Assistant**: an approved assistant plan.
-* **Review**: a node, or a whole graph, accepted as it stands.
-* **Repair**: a repair made when the document was opened.
-
+Entries are marked by kind: **Import** for a `.umr` file, **Automatic** for a service run such as **Draft**, **Assistant** for an approved plan, **Review** for an accepted node or graph, and **Repair** for changes made on opening after the text was edited elsewhere.
+A service run names the person who ran it.
 The Activity tab marks its entries the same way.
-An assistant plan that stopped partway is listed as `Assistant, partly applied:` followed by the changes it wrote.
 
 = Validation
 
-The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, a bare value that starts like a variable such as `s1x-b`, an empty string or a quote inside one), a variable, concept or value not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, temporal relations that contradict each other once what follows from them is counted (`s1x :before s2y` with `s2y :before s1x`), a list item that is neither a number nor a quoted label (`:li first`), a node under a relation that takes a value, a node whose vocabulary entry now reads another concept, and the rest.
-The contradictions one temporal relation sets off in a sentence are one row, with their count (`26 contradictions follow from the temporal relation (s4y :before s1x).`). **Show list** under it lists them, and **Hide list** folds them again.
-A graph kept as text is one error, with what the parser found.
-Two nodes of one sentence under the same variable are an error, and the export refuses the document until one is renamed.
-The same checks mark the canvas as you edit.
-
+The **Validation** tab lists what the official UMR checks find in every document of the project.
+These include unknown relations, values outside their set, an event without `:aspect`, alignment problems, and temporal relations that contradict each other.
 Each row links to its sentence, at the node it names.
-The table's page is in the address, so Back from a row's sentence returns to that page.
 
-The value sets the pickers offer and the checks accept are the official validator's.
-The one exception is `:li`: the official validator refuses every value under it, the guidelines' own `:li "(a)"` included, and takes the same values under `:list-item`.
+The values the pickers offer and the checks accept are the official validator's.
+The one exception is `:li`, which takes a number (`:li 1`) or a quoted label (`:li "(a)"`) as the UMR guidelines do, though the official validator refuses every value there.
+`:list-item` takes the same values.
 
 = Comments, Activity, Sharing
 
 A document's **Comments** tab holds comments on the document and on its sentences.
-Threads on things this editor does not show, such as a word's gloss written in another app, are listed under **On other layers** while what they are about still exists.
-**Outdated** holds only threads whose subject was deleted.
 **Activity** shows who has been working on the project and on what.
+**Settings → Access** manages the project's members, invitation links and named tokens for scripts.
 
-Two people can have one document open, and neither page shows the other's edits as they are made.
-An edit is refused when, since the page last read the document, another person changed the graph of the same sentence (its nodes, edges, document-level relations or imported lines) or the text.
-A change to another sentence's graph, or annotation this edit does not touch such as a gloss in Plaid IGT, is no conflict: the edit is saved, and the page shows both.
-Two people adding the same constant (`author`) for the first time at once conflict, while relations to a constant that is there already from two sentences do not.
-A refused edit says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
-While you are still in that sentence, a concept or relation typed for it opens again in its editor with what was typed, a concept with the vocabulary entry it was picked from, a new child with its relation, and Enter saves it.
-When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
-A member who was removed is told `You no longer have access to this project.`
-When someone deletes a document you have open, your next edit on it is not saved, and the page turns read-only for every role, administrators included, with `This document was deleted.`
-
-**Settings → Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
-A link whose maker no longer has the access it grants reads **inactive** and does not work until they get that access back. Revoking it ends it for good.
-A named token cannot change a password, create or revoke API tokens, make an invitation link of any kind or a password-reset link, or create an account. Do these signed in.
+Two people can work on one document at once, but neither sees the other's edits as they are made.
+An edit to a sentence that another person changed in the meantime is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`
+The page then shows their change, and what you typed opens again in its editor.
 
 = Services
 
-A project's **Services** settings name which service each task runs with by default.
-The **Draft** button on the Annotate tab runs a drafting service over the document or one sentence: a language model proposes a sentence graph from the words and their glosses, written as machine annotation for you to correct.
+A project's **Services** settings choose which service runs each task by default.
+**Draft** on the Annotate tab drafts graphs for the document or for one sentence, marked as machine annotation for you to correct.
+The usual drafting service is a language model working from the words and their glosses.
+**UMR skeleton from glosses** needs no model and writes one node per glossed or linked word, with no relations.
+
 Sentences that already have a graph are skipped.
-**Overwrite existing graphs** redrafts the ones a service wrote. A sentence with anything a person made or accepted is kept whole, and so is one that another sentence's graph links into. The run's report counts what it kept.
-A sentence the draft could not do is named in the report with its reason, and the report stays until it is closed.
-A draft stops early when the model gives no answer for two sentences in a row. It keeps what it drafted, and its report names those two sentences and counts the sentences it did not reach.
-**Stop** ends a draft within about a second, even while the model has not answered.
-A draft writes each sentence's graph whole. If it fails partway, the message says how many sentences were drafted.
-A draft that cannot read the project fails and writes nothing.
-A sentence someone changes while the draft runs is not drafted, and the report names it. An edit to another sentence does not stop the draft.
-A reply that stops for too long is asked for once more, then its sentence is reported as not drafted.
-A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
-It fails and writes nothing when it cannot read the project or one of its vocabularies.
-Like **Draft**, it leaves out a sentence someone changes while it runs, and names it.
+**Overwrite existing graphs** redrafts only graphs a service wrote, and keeps any sentence with work a person made or accepted.
+The report names each sentence that could not be drafted and why, and **Stop** ends a run early.
 
 == Compare
 
-A document's **Compare** tab scores its graphs against another document of the same text, two annotators' copies or a draft against its corrected version, with the AnCast metric.
+A document's **Compare** tab scores its graphs against another document of the same text with the AnCast metric, for two annotators' copies or a draft against its corrected version.
 Pick the other document and run Compare.
-The report is written on the document and the tab shows it: the document scores (sentence graphs, modal, temporal, coreference and the comprehensive score), and sentence by sentence both graphs side by side.
-The report names the person who ran the comparison.
-A group neither document annotates has no score and reads n/a.
-The sentence number and each marked variable open Annotate on that sentence or node.
-A sentence edited on either side since the comparison is marked **Changed since this comparison**. Run Compare again to rescore it.
+The tab shows the document scores, then each sentence's two graphs side by side.
 
-AnCast pairs each node with a node of the other graph where it can.
-In the graphs, a node with no counterpart has a dashed blue outline, and a node paired with a node of another concept (`leave-11` against `leave-02`, `meal` against `lunch`) a solid rose one.
-Under the graphs the pairs are listed, those of different concepts first with both concepts.
-A pair marked _left over_ was made only because both nodes were left once the rest were paired, and says nothing about whether they are the same node.
+In the graphs, a node with no counterpart has a dashed blue outline, and a node paired with a node of another concept has a solid rose one.
+Each sentence number and marked variable opens that place on the Annotate tab.
+A sentence edited since the comparison is marked **Changed since this comparison**.
 
-A copy of a document for a second annotator is made on the document's Details tab with **Copy document**, choosing **Text only**.
-The copy has the words and glosses and no UMR graphs, and History lists it as one entry.
-If the graphs cannot be taken off the copy, the copy is not made.
-**Text and UMR graphs** copies everything.
-Everyone in the project can open both copies.
+To make a copy for a second annotator, use **Copy document** on the document's Details tab and choose **Text only**.
+The copy has the words and glosses but no UMR graphs.
 
 = The Assistant
 
 The **Assistant** tab is a chat with a language model that knows your project.
-Ask it which events still lack `:aspect`, what the document graph says about a sentence, or to summarize the concepts used across the corpus.
-It reads the documents and their graphs, the search results, the project's guidelines, the comments and the history to answer, and it shows what it read.
-A sentence holding more than one graph is read whole, as Text mode shows it.
-A graph the assistant rewrites as text is the root's, and the parts the root does not reach stay as they are.
-Steps it could not make are shown in red and are not counted.
+Ask it which events still lack `:aspect`, what the document graph says about a sentence, or which concepts are used across the corpus.
+It reads the documents and their graphs, search results, the project's guidelines, comments and history, and shows what it read.
 
-A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches · 52 steps".
-Opened, it lists the steps in the order they happened, with the text the assistant wrote between them, and each step says what it read, such as "sentences 3–7 of 120".
-Four or more document reads in a row are folded into one line that names the sentences and documents read.
-A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: each sentence's words and gloss lines with its graph in PENMAN.
-**Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
-A stopped or failed answer keeps its steps the same way.
+A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches".
+Open it to see each step, what the step read, and what the assistant was given back.
 
-When you ask it to change something, it does not touch the data.
+When you ask for a change, the assistant does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
-The plan lists every change under the document it lands in. Each node is a link to its place on the canvas, so a change can be checked before it is approved.
-A long group of like changes is folded into one line that names what it does and each node with its concept (`remove 20 nodes: (s3a2 / about), (s3d / date-entity), …`).
-A document-level relation is listed under the later of its two sentences.
-A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
-Asked to set an attribute on every node of a concept, the assistant leaves a node that already has that attribute as it is, unless you ask it to replace existing values. The card then says what it replaces: `:aspect performance on 9 node(s) with concept "eat-01" in "Lunch", replacing process on 5`.
-Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
-Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
-Reading needs Reader access, and applying a plan needs Writer.
-Asking for a new plan replaces one still waiting.
-The older card then reads **Replaced** and can no longer be approved, and the new plan restates whatever from it should still happen.
-One plan makes at most 20,000 changes and reaches at most 500 documents.
+The plan lists every change under its document, and each node links to its place on the canvas.
+A change to work a person made or accepted is marked **Accepted**.
 
-Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
-When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
-Otherwise, ask the site's administrators.
+Approved changes are recorded as the assistant's work accepted by you.
+Tick **Record as human-made** before approving to record them as your own work instead.
+Reading needs Reader access, and approving a plan needs Writer.
 
-The assistant picker names who runs each assistant.
-An assistant run by a maintainer of the project or by an administrator answers every member.
-One run by anyone else answers only the person who runs it, and is not offered to others.
-
-Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
-An edit to another sentence does not stop it, even one that adds or removes letters before the plan's sentences, and an edit to a sentence's glosses counts as an edit to that sentence.
-A change to every node of a concept, and a plan that adds a document-level constant such as `author`, are refused after any edit to their document.
-An out-of-date plan can still be discarded, which removes its buttons and leaves it marked **Out of date**.
+A plan can no longer be approved once a sentence it changes has been edited, and its card reads **Out of date**.
 Ask again to have it planned on the current text.
-Approving a plan on a document that another run (Draft, a parser) is writing to is refused with nothing written. Approve again once the run has finished.
+A plan that stops partway reads **Partly applied**, and the assistant can be asked to finish it.
 
-A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
-Ask the assistant to finish it.
-A plan whose applying was cut off reads **Not finished**, with **Apply again**, which finishes it.
-When some of its changes may already be written, the card says so and offers no **Discard**. History can undo what was written.
+A reply is saved as it arrives, so it is there when the conversation is next opened, even if you closed the tab.
+**Stop** ends a turn early, and **Retry** asks the question again.
+A conversation is open for writing in one tab at a time, and **Continue here** in another tab moves it there.
 
-A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
-If the server restarts while the assistant works, the answer appears when it is ready.
-A conversation is worked on in one tab at a time.
-Opened in a second tab, or on another device, it is read-only there: the line above the message box reads `Open in another tab.`, and a turn or a plan under way shows as it happens.
-**Continue here** moves the conversation to that tab, and the first one turns read-only.
-A tab that is closed lets go at once for the other tabs of the same browser, and a tab hidden or closed for five minutes lets go for every device.
-A message sent while a plan is being applied stays in the message box, and the line above it reads `The changes are being applied.`
-**Stop** ends a turn early, even while the model is still working on its answer.
-The conversation then reads `You stopped this turn.` with **Retry**.
-A turn the model does not finish ends with the reason and **Retry**.
-Retry sends the question again below it. The attempt that did not finish stays in the conversation.
-Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
-The Markdown names the files attached to each question and the PDFs a reply fetched.
-**Download as web page** saves the conversation as one HTML file that looks like the Assistant tab and opens in any browser, offline. It shows a table the assistant made when it is small, names every other file with its size, and leaves out the cited examples, tool outputs and made tables from a project you can no longer open, saying so at the top.
-Your server's administrator can read them.
-Deleting a conversation asks first, and cannot be undone. What its plans applied stays.
-A conversation can be deleted while no assistant is online.
-The pencil beside a conversation in the list renames it.
-A conversation deleted in another tab or on another device says so when you send, approve or discard in it, and **New conversation** there takes your message along.
+Conversations are private to you and kept per project, though your server's administrator can read them.
+A conversation can be downloaded as Markdown or as a web page, renamed with the pencil beside it, and deleted.
+Deleting a conversation cannot be undone, but what its plans applied stays.
+
+The people who run the assistant decide where its model runs and where what you send goes.
+If they have said, **About this assistant** in the panel's header shows their statement.
 
 == Other projects
 
-Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other UMR projects you can open, to compare or to look something up there.
-A project joins only where the person who runs the assistant is a maintainer or an administrator.
-Each project added is shown above the message box, and each question shows the projects it was sent with.
-The assistant only reads them.
-It plans changes in the conversation's own project, and a change asked for in another project is not planned: the assistant says it can plan changes in this project only.
-In such a conversation, a plan names the project it changes.
+**Add project**, beside the paperclip, lets a question read other UMR projects you can open.
+Each project added is shown above the message box.
+The assistant only reads those projects, and plans changes in the conversation's own project only.
 
 == Files and PDFs
 
-The paperclip in the message box attaches files to a question, up to five at a time.
-Dropping a file on the message box or pasting one into it does the same.
-The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.umr` files, and PDFs.
-A file can hold up to 4 MB of text.
-A `.umr` file is read as text. To bring it into the project, import it.
-Files are kept with the conversation and deleted with it.
-A reply can also give you a file the assistant made, such as a cleaned table: click it under the reply to download it.
+The paperclip attaches up to five files to a question, and a file can also be dropped or pasted into the message box.
+The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.umr` files and PDFs with text in them.
+An attached `.umr` file is only read, so use **Import and export** to bring it into the project.
 
-A PDF must have text in it, so a scan is refused.
-The assistant reads a PDF by section and by page: ask about "§9" or "page 41" and it reads that part.
-Examples set in columns keep their columns.
-Text taken from a PDF can come out wrong where the PDF's fonts are old, so check a form against the PDF before relying on it.
-
-Where the assistant can look things up on the web, it also reads a PDF from a link or a DOI pasted into a question.
-The PDF is kept with the conversation and shown under the reply, linked to where it came from.
+The assistant reads a PDF by section and by page, so you can ask about "§9" or "page 41".
+Text taken from a PDF can come out wrong, so check a form against the PDF before relying on it.
+A reply can also give you a file the assistant made, such as a table, to download.
 
 == The panel
 
-The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
-A handle on the right edge of the window, halfway down, opens it too.
-The panel stays where it is as you move around, and the page narrows to make room for it.
-It can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
-A narrow window has no room for it, and neither the button, the handle nor the panel is offered there.
+The **Assistant** button in the header opens the assistant in a panel beside whatever you are looking at.
+The panel keeps the project's last conversation as you move between documents, and a question asked on a document is about that document.
+**Ask** on a sentence puts that sentence into your question.
 
-One conversation runs per project.
-The panel picks up the last one you had in the project you are in and keeps it as you move from document to document.
-A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it.
-**Ask**, beside **Text** and **Comment** on a sentence, puts that sentence into the question, and you can take it out again before sending.
-
-Typing **@** in the message box names something without leaving the message: the sentences of the document you have open (`s3`), and the documents of the project.
-Sentences are matched on what they say, so **@** followed by a word finds the sentence that contains it.
-Arrow keys move through the list, Enter takes the one that is highlighted, and Escape closes the list and leaves what you typed.
-
-A plan approved in the panel re-reads the document, so the canvas shows the result without losing your place.
+Typing **@** in the message box names a sentence of the open document (`s3`) or a document of the project.
+Arrow keys move through the list, Enter takes the highlighted item, and Escape closes it.
 
 == Conversation size
 
-The panel's header shows how full the conversation is against two limits, the model's limit on what one turn can send and the size a conversation can be stored at, and the bar follows whichever is closer.
-Hovering over it gives both, with the counts behind them.
-A conversation fills up as it grows, because every turn sends the whole thread again and every answer is kept.
-Past 85 percent of either limit the bar turns amber and the panel says which limit is close, and a new conversation starts with room again.
-A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
-A message too long for the room left is not sent, and says so.
-A plan waiting in it can still be approved or discarded.
-An answer too large to store is shown once, without its plan, and marked as not saved.
-A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had.
-Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
-The storage limit is set by the server's operator.
+The bar in the panel's header shows how full the conversation is.
+Past 85 percent the bar turns amber, and a full conversation sends nothing more.
+**New conversation** starts a new one with what you had typed.
 
 == Assistant availability
 
-The assistant is a service that your server's operator runs and picks the model for.
-When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
-Conversations already saved are unaffected and open from their own links.
+The assistant is a service that your server's operator runs.
+When none is connected, the Assistant tab, the button and **Ask** are not shown.
+Saved conversations still open from their links.
 
 = Keyboard reference
 
-The defaults. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile, Keyboard.
+The defaults. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
 
 [cols="1,3"]
 |===
