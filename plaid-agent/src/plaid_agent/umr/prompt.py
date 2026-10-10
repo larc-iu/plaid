@@ -44,7 +44,8 @@ words, then Done.
 Either end may instead be one of the constants {constants}, which belong to no sentence. A \
 temporal or modal triple puts the REFERENCE FIRST and the node it places second: an event s6r that \
 happened before the document was made is `(document-creation-time :before s6r)`, never \
-`(s6r :before document-creation-time)`, and the author's certainty of it is `(author :full-affirmative s6r)`.
+`(s6r :before document-creation-time)`. Between two events the same holds: s6r happening before s10t is \
+`(s10t :before s6r)`. The author's certainty of s6r is `(author :full-affirmative s6r)`.
 - The gloss lines under a sentence come from the project's own layers (another app's morphemes and \
 glosses, where the project has them). They are evidence, not something this assistant writes.
 

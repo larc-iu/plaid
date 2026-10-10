@@ -772,8 +772,14 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
             op['ref'] = f's{doc.number_of(anchor.sentence)}.{anchor.var}'
     staged.append(op)
     ws.add_ops(_staged(staged))
+    # Said in words, so a triple written in the English order reads back
+    # wrong to the model that wrote it.
+    reading = ''
+    if group == 'temporal' and rel in (':before', ':after'):
+        reading = (f' It says {target["var"]} happened {rel[1:]} {source["var"]}. If the user meant '
+                   f'the opposite, write ({target["var"]} {rel} {source["var"]}) instead.')
     return (f'Planned the document-level relation ({source["var"]} {rel} {target["var"]}) '
-            f'[{group}] in "{doc.name}".')
+            f'[{group}] in "{doc.name}".' + reading)
 
 
 def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str = None,

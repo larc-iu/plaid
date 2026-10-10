@@ -440,3 +440,11 @@ def test_apply_penman_says_the_nodes_and_roles_it_adds(ws):
     out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
     assert 'It adds: add (s1h / house); s1b :place s1h.' in out, out
     assert 'roles and concepts against any the user named' in out
+
+
+def test_a_temporal_triple_says_what_it_means_in_words(ws):
+    """Models wrote (s6r :before s10t) for "s6r happened before s10t". The
+    answer says what the triple means, so the model can see the reversal."""
+    out = run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='s2r')
+    assert 'It says s2r happened before s1b.' in out, out
+    assert '(s2r :before s1b)' in out
