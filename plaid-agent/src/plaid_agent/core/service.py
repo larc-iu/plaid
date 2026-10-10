@@ -1085,6 +1085,7 @@ class BaseAssistantService(BaseService):
             # What read_url fetches is stored beside the conversation as a file.
             ws.keeper = FileKeeper(store, conv_id)
             last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
+            ws.asked = str((last_user or {}).get('text') or '')
             transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
             # The other projects the user added to the conversation, read from their
             # own message and nowhere else, and only those the requester's token

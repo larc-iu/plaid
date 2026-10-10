@@ -152,6 +152,10 @@ class BaseWorkspace:
         self.reach = None
         self.home = True
         self.writable = True
+        # The text of the user's message this turn answers, set by the
+        # service, so a tool can hold what it plans against values the user
+        # wrote out. '' where there is none.
+        self.asked = ''
 
     def close(self) -> None:
         """Release what the turn held: the code worker and any reads still

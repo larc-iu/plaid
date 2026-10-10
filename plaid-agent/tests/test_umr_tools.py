@@ -459,3 +459,66 @@ def test_a_temporal_triple_says_what_it_means_in_words(ws):
     out = run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='s2r')
     assert 'It says s2r happened before s1b.' in out, out
     assert '(s2r :before s1b)' in out
+
+
+def test_apply_penman_points_out_a_plain_value_where_a_node_may_be_meant(ws):
+    """Asked for "kay has a :mod ikian", a model wrote :mod "ikian" or
+    :mod ikian, a value where the user meant a node. The result says so. A
+    name's :op, a :polarity, a closed attribute and a number are values by
+    nature and are not mentioned."""
+    for written in ('"big"', 'big'):
+        ws.ops.clear()
+        text = SENTENCE_1_PENMAN.replace(':aspect performance)',
+                                         f':aspect performance\n    :place (s1h / house :mod {written}))')
+        out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
+        assert out.endswith(f' A plain value, not a node: s1h :mod {written}. Where the user meant a concept, it is '
+                            'a node with a new variable of its own: :mod (<variable> / big).'), out
+    for child in ('(s1n / name :op1 "Rome")', '(s1h / house :polarity - :refer-number plural :quant 3)'):
+        ws.ops.clear()
+        text = SENTENCE_1_PENMAN.replace(':aspect performance)', f':aspect performance\n    :place {child})')
+        assert 'plain value' not in run(ws, 'apply_penman', document='Story', sentence=1, text=text)
+
+
+def test_a_closed_attribute_takes_only_its_listed_values(ws):
+    """A model wrote :modal-strength "full-affirmative", quoted, on 33 nodes,
+    and the plan was applied. A new value of :aspect, :modal-strength,
+    :refer-person or :refer-number outside the list is refused, with the
+    nearest listed one, by every tool that writes attributes."""
+    out = run(ws, 'set_attributes', document='Story', sentence=1, var='s1b',
+              line=':aspect performance :modal-strength "full-affirmative"')
+    assert out.startswith('Error: s1b: \'"full-affirmative"\' is not a value of :modal-strength.'), out
+    assert 'Did you mean full-affirmative?' in out and not ws.ops
+    out = run(ws, 'set_attribute_for_concept', document='Story', concept='bark-01', rel=':aspect',
+              value='proces', overwrite=True)
+    assert "'proces' is not a value of :aspect" in out and not ws.ops
+    text = SENTENCE_1_PENMAN.replace(':aspect performance)', ':aspect performance :polarity -)')
+    assert run(ws, 'apply_penman', document='Story', sentence=1, text=text).startswith('Planned')
+
+
+
+def test_apply_penman_says_which_roles_the_user_wrote_out_are_missing(ws):
+    """Told to use :experiencer and :stimulus, models drafted :ARG0 and :ARG1,
+    and the general reminder to check the roles did not stop them. The result
+    names the roles the user's message writes out that the graph lacks."""
+    ws.asked = 'Give it a :place, the house, with :refer-number plural.'
+    text = SENTENCE_1_PENMAN.replace(':aspect performance)',
+                                     ':aspect performance\n    :ARG2 (s1h / house :refer-number plural))')
+    out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
+    assert " The user's message names :place, and this graph has no such role. If it is meant for this " \
+           "graph, drop this change" in out, out
+    ws.ops.clear()
+    out = run(ws, 'apply_penman', document='Story', sentence=1, text=text.replace(':ARG2', ':place'))
+    assert "user's message" not in out, out
+
+
+def test_set_attributes_says_plainly_what_a_line_leaves_out(ws):
+    """Asked to change :aspect, models wrote a line of :aspect alone, and the
+    removal of :modal-strength, said inside the change's summary, went
+    unread. A line that leaves an attribute out says it removes it."""
+    out = run(ws, 'set_attributes', document='Story', sentence=1, var='s1d', line=':polarity -')
+    assert out.endswith(' The line leaves out :refer-number singular, so this REMOVES it. Unless the '
+                        'user asked for that, plan the line again with it in it.'), out
+    ws.ops.clear()
+    out = run(ws, 'set_attributes', document='Story', sentence=1, var='s1d',
+              line=':refer-number plural :polarity -')
+    assert 'REMOVES' not in out, out

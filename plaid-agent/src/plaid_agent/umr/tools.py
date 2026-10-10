@@ -24,7 +24,8 @@ from plaid_client.workflows.umr import (concept_problem, is_variable,
                                         unknown_doc_relation_problem,
                                         unknown_relation_problem, variable_form_problem,
                                         written_value_problem)
-from plaid_client.workflows.umr.inventory import edge_only, node_under_attribute_problem
+from plaid_client.workflows.umr.inventory import (ATTRIBUTE_RELATIONS, ATTRIBUTE_VALUES, attribute_value_problem,
+                                                  edge_only, is_known_relation, node_under_attribute_problem)
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -43,6 +44,18 @@ PLAN_NOTE = ('Replacing a sentence graph counts as one change per node, relation
 # Parsed documents, shared across turns and users of this process. See
 # plaid_agent.core.docload for what the key covers and what it does not.
 _DOC_CACHE = docload.DocCache()
+
+
+def _closed_value_problem(rel, value) -> Optional[str]:
+    """Why a NEW value of an attribute with a closed set of values (:aspect,
+    :modal-strength, :refer-person, :refer-number) is not one of them, or
+    None. An approved plan is confirmed work, so it writes listed values only,
+    as ud's tools do. A model wrote :modal-strength "full-affirmative", quoted,
+    on 33 nodes, and the plan was applied."""
+    rel = str(rel or '').strip()
+    if rel not in ATTRIBUTE_VALUES:
+        return None
+    return attribute_value_problem(rel, value)
 
 
 class Workspace(BaseWorkspace):
@@ -178,11 +191,13 @@ class Workspace(BaseWorkspace):
                 if (a.get('rel'), a.get('value')) in stored:
                     continue
                 problems += [relation_form_problem(a.get('rel')),
-                             written_value_problem(a.get('value'), a.get('rel'))]
+                             written_value_problem(a.get('value'), a.get('rel')),
+                             _closed_value_problem(a.get('rel'), a.get('value'))]
         if kind == 'attrs_scope':
             problems.append(relation_form_problem(op.get('rel')))
             if op.get('value'):
-                problems.append(written_value_problem(op.get('value'), op.get('rel')))
+                problems += [written_value_problem(op.get('value'), op.get('rel')),
+                             _closed_value_problem(op.get('rel'), op.get('value'))]
         why = next((p for p in problems if p), None)
         if why:
             var = op.get('var') or op.get('source_var')
@@ -465,7 +480,30 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
     return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.number} in "{doc.name}" '
-            f'({what}).' + _additions(diff.ops) + _removals(diff.ops) + kept)
+            f'({what}).' + _additions(diff.ops) + _removals(diff.ops) + kept
+            + _named_roles_missing(getattr(ws, 'asked', ''), text))
+
+
+# A relation written out with its colon, in a message or a graph.
+_WRITTEN_RELATION = re.compile(r'(?<![\w:-])(:[A-Za-z][A-Za-z0-9-]*)')
+
+
+def _named_roles_missing(asked: str, text: str) -> str:
+    """The roles the user's message writes out (":experiencer") that the
+    graph does not have, said after the plan. Told to use :experiencer and
+    :stimulus, models drafted :ARG0 and :ARG1, and a reminder to check the
+    roles in general did not stop them."""
+    named = [r for r in dict.fromkeys(_WRITTEN_RELATION.findall(asked or ''))
+             if is_known_relation(r) and not unknown_relation_problem(r) and r not in ATTRIBUTE_RELATIONS]
+    written = set(_WRITTEN_RELATION.findall(text or ''))
+    missing = [r for r in named if r not in written and f'{r}-of' not in written]
+    if not missing:
+        return ''
+    listed = ', '.join(missing[:-1]) + (' and ' if len(missing) > 1 else '') + missing[-1]
+    return (f' The user\'s message names {listed}, and this graph has no '
+            f'{"such role" if len(missing) == 1 else "such roles"}. If {"it is" if len(missing) == 1 else "they are"} '
+            f'meant for this graph, drop this change (drop_planned, or discard_plan when it is all the plan '
+            f'holds) and plan the graph again with {"it" if len(missing) == 1 else "them"}.')
 
 
 def _additions(ops: List[Dict[str, Any]]) -> str:
@@ -487,7 +525,33 @@ def _additions(ops: List[Dict[str, Any]]) -> str:
     shown = made[:REMOVALS_SHOWN]
     more = len(made) - len(shown)
     return (' It adds: ' + '; '.join(shown) + (f'; and {more} more' if more else '')
-            + '. Check these roles and concepts against any the user named.')
+            + '. Check these roles and concepts against any the user named.' + _quoted(ops))
+
+
+# Relations whose value is text by nature (a name's parts, a wiki id, a list
+# item's label), or a fixed word the guidelines give (:polarity -, :mode
+# imperative, :degree intensifier).
+_TEXT_VALUED = re.compile(r'^:(op[1-9][0-9]*|wiki|li|list-item|value|polarity|mode|polite|degree|'
+                          r'refer-definiteness)$')
+
+
+def _quoted(ops: List[Dict[str, Any]]) -> str:
+    """The plain values a new node carries under a relation that can hold a
+    node and has no list of values of its own: a quoted string, or a bare
+    word. A model asked for "kay has a :mod ikian" wrote :mod "ikian" or
+    :mod ikian, a value where the user meant a node, and its report took the
+    one for the other. A number is a value and is not mentioned."""
+    found = [(op.get('var'), a.get('rel'), str(a.get('value')))
+             for op in ops if op.get('kind') == 'create_node'
+             for a in op.get('attrs') or []
+             if not _TEXT_VALUED.match(str(a.get('rel'))) and str(a.get('rel')) not in ATTRIBUTE_VALUES
+             and re.fullmatch(r'"?[^\W\d_][\w.-]*"?', str(a.get('value') or ''))]
+    if not found:
+        return ''
+    _, rel, value = found[0]
+    rows = '; '.join(f'{v} {r} {x}' for v, r, x in found[:REMOVALS_SHOWN])
+    return (f' A plain value, not a node: {rows}. Where the user meant a concept, it is a node with a '
+            f'new variable of its own: {rel} (<variable> / {value.strip(chr(34))}).')
 
 
 def _sets_attrs(op: Dict[str, Any]) -> bool:
@@ -555,7 +619,22 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     # What changes, as the card says it, so a line that drops an attribute the
     # model did not write says so.
     return (f'Planned the attributes of {node.var} in s{s.number}: {shown} '
-            f'({attrs_change(node.attrs, placed)}).')
+            f'({attrs_change(node.attrs, placed)}).' + _dropped(node.attrs, placed))
+
+
+def _dropped(before: List[Dict[str, Any]], after: List[Dict[str, Any]]) -> str:
+    """The attributes a whole-line write removes because the line left them
+    out, said plainly. Asked to change :aspect, models wrote a line of :aspect
+    alone, and "removes :modal-strength" inside the change's summary went
+    unread."""
+    kept = {a.get('rel') for a in after}
+    gone = [f'{a.get("rel")} {a.get("value")}' for a in before if a.get('rel') not in kept]
+    if not gone:
+        return ''
+    return (f' The line leaves out {", ".join(gone)}, so this REMOVES '
+            f'{"it" if len(gone) == 1 else "them"}. Unless the user asked for that, plan the line again '
+            f'with {"it" if len(gone) == 1 else "them"} in it.')
+
 
 
 def _role_in_attribute_line(line: str, concept: Optional[str]) -> Optional[str]:
