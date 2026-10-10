@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
+import { buildRawDoc, makeFakeClient, makeIgtDoc, mountIsland } from '@/domain/test-helpers.js';
 
 // What a screen reader calls the grid's small buttons. A button's text wins
 // over its title, so the pager's arrows were read as "«" and "‹", and every
@@ -37,16 +36,13 @@ function mount() {
   });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
     client,
-    projectId: 'proj-1',
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  new IgtEditor(host, doc, {});
+  ({ host } = mountIsland(doc));
 }
 
 describe('grid button names', () => {

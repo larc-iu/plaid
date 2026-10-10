@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // What the island does after it is taken down. The shell builds one per
 // document, so stepping through history or moving to the next document
@@ -22,23 +27,15 @@ let editor;
 const mount = ({ query } = {}) => {
   const client = makeFakeClient();
   client.query = query ?? (async () => ({ results: [] }));
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc({}),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
-};
-
-const settle = async (n = 4) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => {
@@ -65,7 +62,7 @@ describe('an island that has been taken down', () => {
 
     expect(answers.length).toBeGreaterThan(0);
     answers.forEach((resolve) => resolve({ results: [] }));
-    await settle();
+    await settle(4);
     expect(host.innerHTML).toBe(emptied);
   });
 
@@ -75,7 +72,7 @@ describe('an island that has been taken down', () => {
     const emptied = host.innerHTML;
 
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'cat');
-    await settle();
+    await settle(4);
     expect(host.innerHTML).toBe(emptied);
     expect(host.querySelector('.igt-sentence')).toBeNull();
   });

@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // The save-status pill says "Saved ✓" only for a save the server took. A cell
 // edit that lost to another user (Luke's ruling Q1: "b changed this to …"
@@ -33,17 +38,13 @@ function mount() {
     entries: [{ user: { id: 'b@x.com', displayName: 'b' }, ops: [] }],
     nextCursor: null,
   });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc({}),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -53,9 +54,6 @@ const type = (el, value) => {
   el.value = value;
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
-};
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => resetIds());
@@ -73,7 +71,7 @@ describe('the save-status pill', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     expect(status()).toBe('Saved ✓');
   });
 
@@ -87,7 +85,7 @@ describe('the save-status pill', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     // The conflict is shown in the cell.
     expect(c.closest('.igt-cell__face')?.querySelector('.igt-field-conflict')?.textContent).toBe(
       'Yours: hound · Enter to keep yours',

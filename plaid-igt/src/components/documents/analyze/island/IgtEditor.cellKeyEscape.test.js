@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // A cell key carries its field's name, which is whatever a maintainer typed.
 // Put into a selector unescaped, a quote in the name made querySelector
@@ -22,25 +27,18 @@ let editor;
 function mount() {
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc({ morphFields: [FIELD] }),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
 const cellOf = (key) =>
   [...host.querySelectorAll('[data-cell-key]')].find((el) => el.dataset.cellKey === key);
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 
 beforeEach(() => resetIds());
 afterEach(() => {
@@ -74,7 +72,7 @@ describe('a field whose name holds a quote', () => {
       (el) => el.dataset.cellKey !== key && el.tagName === 'INPUT',
     );
     other.focus();
-    await settle();
+    await settle(30);
     window.removeEventListener('error', onError);
     const now = cellOf(key);
     expect(now.value).toBe('AAA');

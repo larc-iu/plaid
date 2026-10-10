@@ -1,7 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
+import { buildRawDoc, makeFakeClient, makeIgtDoc, mountIsland } from '@/domain/test-helpers.js';
 
 // What the popover writes under an entry: the vocabulary's inline fields. A
 // field of type `item` holds entry ids, which say nothing to a reader, so it
@@ -38,16 +36,15 @@ let host;
 const mount = (rawOpts) => {
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc(rawOpts),
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {}, igt: {} } },
     vocabularies: { v1: structuredClone(VOCAB) },
     client,
-    projectId: 'proj-1',
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  return { editor: new IgtEditor(host, doc, {}), doc };
+  let editor;
+  ({ host, editor } = mountIsland(doc));
+  return { editor, doc };
 };
 
 afterEach(() => {

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
+import { buildRawDoc, makeFakeClient, makeIgtDoc } from '@/domain/test-helpers.js';
 
 // Tab inside the grid walks every cell of the document, so Escape in a cell
 // with nothing typed, then Tab, leaves the grid. Escape over typing still only
@@ -37,12 +36,9 @@ function mount() {
   });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
   });
   page = document.createElement('div');
   page.innerHTML =

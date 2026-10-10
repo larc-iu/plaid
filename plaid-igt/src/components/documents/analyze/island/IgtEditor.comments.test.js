@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
@@ -43,17 +48,13 @@ const mount = (opts = {}, rawOpts = {}) => {
   resetIds();
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc(rawOpts),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: [], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, { canComment: true, ...opts });
+  ({ host, editor } = mountIsland(doc, { canComment: true, ...opts }));
   return doc;
 };
 
@@ -118,9 +119,6 @@ describe('a comment the server refuses, from the grid', () => {
     el.value = v;
     el.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  const settle = async () => {
-    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-  };
 
   it('comes back into the composer, and leaving asks until then', async () => {
     const store = seededStore();
@@ -135,11 +133,11 @@ describe('a comment the server refuses, from the grid', () => {
     typeInto(composer(), 'first thought');
     expect(hasUnsavedDraft()).toBe('The comment you have typed');
     host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
-    await settle();
+    await settle(5);
     expect(composer().value).toBe('');
     expect(hasUnsavedDraft()).toBe('The comment you have typed');
     refuse();
-    await settle();
+    await settle(5);
     expect(composer().value).toBe('first thought');
     // Closing the popover keeps it, and so does reopening.
     editor._closePopover();
@@ -164,14 +162,14 @@ describe('a comment the server refuses, from the grid', () => {
     };
     const doc = mount({ comments: store });
     await doc.updateMorphemeSpan('m-2', 'Gloss', 'CAT');
-    await settle();
+    await settle(5);
     host.querySelector('[title="Comment on Gloss of morpheme cat"]').click();
     typeInto(composer(), 'is this CAT or FELINE?');
     host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
-    await settle();
+    await settle(5);
     // Someone clears the value, and the post is refused for the gone anchor.
     await doc.updateMorphemeSpan('m-2', 'Gloss', '');
-    await settle();
+    await settle(5);
     refuse(
       Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
         status: 403,
@@ -179,7 +177,7 @@ describe('a comment the server refuses, from the grid', () => {
         responseData: { unresolved: true },
       }),
     );
-    await settle();
+    await settle(5);
     const pop = host.querySelector('.igt-cmt-pop');
     expect(pop?.getAttribute('aria-label')).toBe('Comments on morpheme cat');
     expect(composer().value).toBe('is this CAT or FELINE?');
@@ -201,16 +199,16 @@ describe('a comment the server refuses, from the grid', () => {
     };
     const doc = mount({ comments: store });
     await doc.updateMorphemeSpan('m-2', 'Gloss', 'CAT');
-    await settle();
+    await settle(5);
     host.querySelector('[title="Comment on Gloss of morpheme cat"]').click();
     typeInto(composer(), 'second thought');
     host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
-    await settle();
+    await settle(5);
     // Refused while the page still shows the value: the text is back in it.
     expect(composer().value).toBe('second thought');
     // The read after the refusal finds it gone.
     await doc.updateMorphemeSpan('m-2', 'Gloss', '');
-    await settle();
+    await settle(5);
     expect(host.querySelector('.igt-cmt-pop')?.getAttribute('aria-label')).toBe(
       'Comments on morpheme cat',
     );

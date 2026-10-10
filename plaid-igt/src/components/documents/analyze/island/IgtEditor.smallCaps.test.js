@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // A gloss cell draws its tags in small caps at rest, as the LaTeX export sets
 // them: the cell is marked when every capital in its value is a tag
@@ -32,16 +36,13 @@ function mount(values) {
   layer.spans = values.map((value, i) => ({ id: `s-${i}`, tokens: [`w-${i + 1}`], value }));
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', config: { plaid: {} } },
     client,
-    projectId: 'proj-1',
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
 }
 
 const wordCell = (id) => host.querySelector(`[data-cell-key^="wa:${id}:"]`);

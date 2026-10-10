@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // Which way the grid lays out, and what that does and does not reach.
 //
@@ -30,18 +34,14 @@ let editor;
 const mount = (docOpts = {}) => {
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc(docOpts),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: [], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return doc;
 };
 

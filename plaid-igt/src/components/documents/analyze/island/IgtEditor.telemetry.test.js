@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlaidClient } from '@larc-iu/plaid-client';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // Research telemetry on the guesses (plaid-core sql/client_event.clj): a
 // guess drawn in a cell is `suggestion.shown` once per page session however
@@ -59,7 +64,7 @@ function mount({ telemetry = true, readOnly = false, tagset = null, w3 = null } 
   real.events.setEnabled('proj-1', telemetry);
   client.events = real.events;
   vi.spyOn(client.events, 'record');
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: {
       id: 'proj-1',
@@ -75,12 +80,9 @@ function mount({ telemetry = true, readOnly = false, tagset = null, w3 = null } 
       },
     },
     client,
-    projectId: 'proj-1',
   });
   client.documents.get = async () => structuredClone(stored);
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, { readOnly });
+  ({ host, editor } = mountIsland(doc, { readOnly }));
   return { doc, client };
 }
 
@@ -89,9 +91,6 @@ const key = (el, k, init = {}) =>
   el.dispatchEvent(
     new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }),
   );
-const settle = async (n = 10) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 const typeInto = (el, value) => {
   el.value = value;
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -150,7 +149,7 @@ describe('suggestion.shown', () => {
     const { client } = mount();
     editor._render(true);
     editor._render(true);
-    await settle();
+    await settle(10);
     const calls = client.events.record.mock.calls.filter(
       ([type, f]) => type === 'suggestion.shown' && f.targetId === 'w-3' && f.data.field === 'POS',
     );
@@ -168,7 +167,7 @@ describe('suggestion.shown', () => {
     const c = cell('wa:w-2:POS');
     c.focus();
     key(c, 'Enter');
-    await settle();
+    await settle(10);
     expect(await sent(client)).toEqual([]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -185,7 +184,7 @@ describe('suggestion.adopted and suggestion.dismissed', () => {
     const c = cell('wa:w-2:POS');
     c.focus();
     key(c, 'Enter');
-    await settle();
+    await settle(10);
     const adopted = (await sent(client)).filter((e) => e.type === 'suggestion.adopted');
     expect(adopted).toEqual([
       expect.objectContaining({
@@ -201,7 +200,7 @@ describe('suggestion.adopted and suggestion.dismissed', () => {
     c.focus();
     typeInto(c, 'PRON');
     c.blur();
-    await settle();
+    await settle(10);
     const events = await sent(client);
     expect(events.filter((e) => e.type === 'suggestion.adopted')).toEqual([]);
     expect(events.filter((e) => e.type === 'suggestion.dismissed')).toEqual([
@@ -218,7 +217,7 @@ describe('suggestion.adopted and suggestion.dismissed', () => {
     c.focus();
     typeInto(c, 'DET');
     c.blur();
-    await settle();
+    await settle(10);
     const events = await sent(client);
     expect(events.filter((e) => e.type === 'suggestion.adopted')).toHaveLength(1);
     expect(events.filter((e) => e.type === 'suggestion.dismissed')).toEqual([]);
@@ -233,7 +232,7 @@ describe('suggestion.adopted and suggestion.dismissed', () => {
     key(c, 'Enter', { shiftKey: true });
     c.focus();
     c.blur();
-    await settle();
+    await settle(10);
     const events = await sent(client);
     expect(events.filter((e) => e.type !== 'suggestion.shown')).toEqual([]);
   });
@@ -263,7 +262,7 @@ describe('suggestion.adopted and suggestion.dismissed', () => {
     c.focus();
     typeInto(c, 'PRON');
     c.blur();
-    await settle();
+    await settle(10);
     const events = await sent(client);
     expect(events.filter((e) => e.type !== 'suggestion.shown')).toEqual([]);
   });
@@ -302,7 +301,7 @@ describe('an answer waits for its save', () => {
     const c = cell('wa:w-2:POS');
     c.focus();
     key(c, 'Enter');
-    await settle();
+    await settle(10);
     // On screen already.
     expect(cell('wa:w-2:POS').value).toBe('N');
     expect(answers(await sent(client))).toEqual([]);

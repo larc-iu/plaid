@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { KEPT_IN_CELL } from '@ui/lib/cellConflict.js';
@@ -37,17 +42,13 @@ function mount() {
     ],
     nextCursor: null,
   });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc({}),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -102,9 +103,6 @@ const type = (el, value) => {
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
 };
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 const writes = (client) =>
   client.calls.filter((c) => /^spans\.(create|update|delete)/.test(c.kind)).map((c) => c.args);
 
@@ -134,7 +132,7 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
       c.focus();
       type(c, 'THE');
       c.blur();
-      await settle();
+      await settle(30);
       restore();
 
       const after = cell('ma:m-1:Gloss');
@@ -142,7 +140,7 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
       expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Enter to keep yours');
       after.focus();
       after.blur();
-      await settle();
+      await settle(30);
       expect(writes(client)).toEqual([]);
       expect(hasUnsavedDraft()).toBe(null);
       expect(notifyWarning).toHaveBeenCalledWith(`b changed this word to ${now}.`);
@@ -168,7 +166,7 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
     c.focus();
     type(c, 'THE');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
 
     const after = cell('ma:m-1:Gloss');
@@ -176,7 +174,7 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
     expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Enter to keep yours');
     after.focus();
     after.blur();
-    await settle();
+    await settle(30);
     expect(writes(client)).toEqual([]);
     expect(notifyWarning).toHaveBeenCalledWith('b changed this morpheme to th.');
     expect(notifyError).not.toHaveBeenCalledWith(KEPT_IN_CELL, expect.anything());
@@ -189,7 +187,7 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
     c.focus();
     type(c, 'THE');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
     expect(cell('ma:m-1:Gloss').value).toBe('THE');
     expect(note('ma:m-1:Gloss')).toBeNull();

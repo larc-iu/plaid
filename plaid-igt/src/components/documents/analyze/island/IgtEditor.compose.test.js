@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // Backslash codes and the zero morph, in the grid. The interesting part is not
 // the table (domain/compose.test.js covers that) but the two places the grid
@@ -22,17 +27,13 @@ function mount() {
   const raw = buildRawDoc();
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [], config: { plaid: {}, igt: {} } },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -62,10 +63,6 @@ const press = (el, ch, init = {}) => {
 
 const typeAll = (el, s) => {
   for (const ch of s) press(el, ch);
-};
-
-const settle = async (n = 6) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => resetIds());
@@ -117,7 +114,7 @@ describe('a code that ends in a split key', () => {
     c.value = '';
     c.setSelectionRange(0, 0);
     typeAll(c, 't\\i-');
-    await settle();
+    await settle(6);
     expect(c.value).toBe('tɨ');
     expect(formsOf(doc)).toHaveLength(1); // no split happened
   });
@@ -129,7 +126,7 @@ describe('a code that ends in a split key', () => {
     c.value = 'the';
     c.setSelectionRange(3, 3);
     press(c, '-');
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['the', '']);
   });
 
@@ -142,7 +139,7 @@ describe('a code that ends in a split key', () => {
     typeAll(c, '\\i-');
     expect(c.value).toBe('ɨ');
     press(c, '-'); // nothing pending now, so this one is a boundary
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['ɨ', '']);
   });
 });
@@ -187,7 +184,7 @@ describe('the zero morph', () => {
     c.setSelectionRange(0, 0);
     press(c, '0', { altKey: true });
     c.blur();
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['∅']);
   });
 });
@@ -201,7 +198,7 @@ describe('a literal hyphen or equals sign', () => {
     c.setSelectionRange(0, 0);
     press(c, '-', { altKey: true, code: 'Minus' });
     press(c, '=', { altKey: true, code: 'Equal' });
-    await settle();
+    await settle(6);
     expect(c.value).toBe('-=');
     expect(doc.sentences[0].tokens[0].morphemes).toHaveLength(1);
   });
@@ -214,7 +211,7 @@ describe('a literal hyphen or equals sign', () => {
     c.setSelectionRange(0, 0);
     press(c, '–', { altKey: true, code: 'Minus' });
     press(c, '≠', { altKey: true, code: 'Equal' });
-    await settle();
+    await settle(6);
     expect(c.value).toBe('-=');
     expect(doc.sentences[0].tokens[0].morphemes).toHaveLength(1);
   });

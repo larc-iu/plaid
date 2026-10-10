@@ -1,9 +1,12 @@
 // Test helpers for the IgtDocument domain layer: an in-memory fake plaid-client
 // and a builder for the raw document shape that `client.documents.get(id, true)`
 // returns (camelCased layers; substrate bound by config.plaid.role, private
-// config under config.igt.*). Not imported by app code.
+// config under config.igt.*), plus the document, the waits and the island
+// mount most tests repeat. Not imported by app code.
 
 import { ROLES, applyMetadataOps } from '@larc-iu/plaid-client';
+import { IgtDocument } from './IgtDocument.js';
+import { IgtEditor } from '@/components/documents/analyze/island/IgtEditor.js';
 
 let idCounter = 0;
 export const resetIds = () => {
@@ -410,4 +413,42 @@ export function makeFakeClient(opts = {}) {
     },
   };
   return client;
+}
+
+// ---- a document, the waits, an island ----------------------------------
+
+// An IgtDocument on `raw` in project proj-1, with no vocabularies and a fake
+// client unless the test passes its own. Anything else the constructor takes
+// (user, asOf, bareIgnored) passes through.
+export function makeIgtDoc({
+  raw = buildRawDoc(),
+  project = { id: 'proj-1', vocabs: [], config: { plaid: {} } },
+  vocabularies = {},
+  client = makeFakeClient(),
+  projectId = 'proj-1',
+  ...rest
+} = {}) {
+  return new IgtDocument({ raw, project, vocabularies, client, projectId, ...rest });
+}
+
+// Wait out `n` macrotask turns, so the promises a write or a render chains up
+// settle before the test looks.
+export const settle = async (n = 1) => {
+  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
+};
+
+// The Analyze island on `doc`, mounted in a fresh div on the page. `destroy`
+// takes the island down and removes the div.
+export function mountIsland(doc, opts = {}) {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const editor = new IgtEditor(host, doc, opts);
+  return {
+    editor,
+    host,
+    destroy: () => {
+      editor.destroy();
+      host.remove();
+    },
+  };
 }

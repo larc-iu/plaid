@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
 import { keys } from '@/lib/keymap.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
+import { buildRawDoc, makeFakeClient, makeIgtDoc, mountIsland } from '@/domain/test-helpers.js';
 
 // jsdom, not the happy-dom the rest of the suite runs in. Its HTML parser
 // follows the spec, as a browser's does, and happy-dom's does not: a stray
@@ -37,16 +35,13 @@ describe('the popover entry list', () => {
   it('indents a sense under the headword it is listed with', () => {
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: buildRawDoc({ body: 'the kat' }),
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {}, igt: {} } },
       vocabularies: { v1: structuredClone(VOCAB) },
       client,
-      projectId: 'proj-1',
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    new IgtEditor(host, doc, {});
+    ({ host } = mountIsland(doc));
     const opener = [...host.querySelectorAll('.igt-vocab__opener')].at(-1);
     opener.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     const rows = [...host.querySelectorAll('.igt-vocab-pop__item')];
@@ -66,7 +61,7 @@ describe('taking every same-form token along with the first link', () => {
   const open = (body) => {
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: buildRawDoc({
         body,
         words: body.split(' ').map((w, i) => ({ id: `w-${i + 1}`, begin: i * 4, end: i * 4 + 3 })),
@@ -74,11 +69,8 @@ describe('taking every same-form token along with the first link', () => {
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {}, igt: {} } },
       vocabularies: { v1: structuredClone(VOCAB) },
       client,
-      projectId: 'proj-1',
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    new IgtEditor(host, doc, {});
+    ({ host } = mountIsland(doc));
     // The first WORD-level opener, on the first "kat".
     host
       .querySelector('.igt-vocab__opener')
@@ -171,7 +163,7 @@ describe('switching lexicons in the popover', () => {
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
     const other = { id: 'v2', name: 'Other', config: {}, items: [{ id: 'o', form: 'kat' }] };
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw: buildRawDoc({ body: 'the kat' }),
       project: {
         id: 'proj-1',
@@ -180,11 +172,8 @@ describe('switching lexicons in the popover', () => {
       },
       vocabularies: { v1: structuredClone(VOCAB), v2: other },
       client,
-      projectId: 'proj-1',
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    new IgtEditor(host, doc, {});
+    ({ host } = mountIsland(doc));
     [...host.querySelectorAll('.igt-vocab__opener')]
       .at(-1)
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

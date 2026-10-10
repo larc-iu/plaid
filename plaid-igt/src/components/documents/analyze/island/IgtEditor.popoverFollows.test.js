@@ -5,9 +5,14 @@
 // (REV-W-IGT2 O1).
 import { isPendingId } from '@ui/domain/pendingIds.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 vi.mock('@/utils/feedback', () => ({
   notifyWarning: vi.fn(),
@@ -36,27 +41,21 @@ function mount() {
     };
     return b;
   };
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: {
       v1: { id: 'v1', name: 'Lexicon', maintainers: [], items: [], vocabLinks: [] },
     },
     client,
-    projectId: 'proj-1',
     user: { id: 'wren@example.com' },
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, { canManageVocab: () => true });
+  ({ host, editor } = mountIsland(doc, { canManageVocab: () => true }));
   return { doc, release };
 }
 
 const popover = () => host.querySelector('.igt-vocab-pop');
-const settle = async (n = 6) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 const morphemeOf = (doc) => doc.sentences[0].tokens[1].morphemes[0];
 
 beforeEach(() => resetIds());
@@ -70,9 +69,9 @@ afterEach(() => {
 describe('the lexicon popover on a word whose first gloss is being saved', () => {
   it('stays open when the save lands and the morpheme takes its server id', async () => {
     const { doc, release } = mount();
-    await settle();
+    await settle(6);
     const saving = doc.updateMorphemeSpan('virtual:w-2', 'Gloss', 'CAT');
-    await settle();
+    await settle(6);
     const pending = morphemeOf(doc).id;
     expect(isPendingId(pending)).toBe(true);
     host
@@ -82,7 +81,7 @@ describe('the lexicon popover on a word whose first gloss is being saved', () =>
 
     release();
     await saving;
-    await settle();
+    await settle(6);
     const real = morphemeOf(doc).id;
     expect(isPendingId(real)).toBe(false);
     expect(real).not.toMatch(/^virtual:/);
@@ -92,17 +91,17 @@ describe('the lexicon popover on a word whose first gloss is being saved', () =>
 
   it('stays open when it was opened on the word before its morpheme was made', async () => {
     const { doc, release } = mount();
-    await settle();
+    await settle(6);
     host
       .querySelector('button[data-vocab-opener="virtual:w-2"]')
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(popover()).not.toBeNull();
     const saving = doc.updateMorphemeSpan('virtual:w-2', 'Gloss', 'CAT');
-    await settle();
+    await settle(6);
     expect(popover()).not.toBeNull();
     release();
     await saving;
-    await settle();
+    await settle(6);
     expect(popover()).not.toBeNull();
   });
 });

@@ -4,9 +4,13 @@
 // grid swaps the word in the shared tooltip, so a token whose own text is
 // "machine-made" must keep its text.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 vi.mock('@/utils/feedback', () => ({
   notifyWarning: vi.fn(),
@@ -32,17 +36,13 @@ function mount() {
   });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: [], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
 }
 
 afterEach(() => {

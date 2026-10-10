@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyInfo } from '@/utils/feedback';
 
 // The everyday editing paths of the interlinear editor: what a commit writes
@@ -54,7 +59,7 @@ function mount({ tagset = null, contributor = false, morphemes = undefined } = {
       .find((sl) => sl.id === 'msl-0');
     morphLayer.config.igt.tagset = 'Leipzig';
   }
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: {
       id: 'proj-1',
@@ -63,17 +68,13 @@ function mount({ tagset = null, contributor = false, morphemes = undefined } = {
       maintainers: ['lead@x.com'],
       writers: [ANN.id],
     },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: contributor ? ANN : null,
   });
   // A reload (what a failed save does) hands back the document as it stands,
   // as a server would, rather than the pristine fixture.
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -94,11 +95,8 @@ const key = (el, k, init = {}) => {
   el.dispatchEvent(e);
   return e;
 };
-// Commits and structural edits run through the op chain; a few ticks settle
-// even a chained split.
-const settle = async (n = 6) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
+// Commits and structural edits run through the op chain. Six ticks (settle(6))
+// settle even a chained split.
 
 beforeEach(() => {
   resetIds();
@@ -119,7 +117,7 @@ describe('a value picked from the list', () => {
     const c = cell('ma:m-1:Gloss');
     focus(c);
     editor._pickAlt(c, { value: 'cat', source: 'gloss:precedent' });
-    await settle();
+    await settle(6);
     expect(glossOf(doc).value).toBe('cat');
     expect(glossOf(doc).metadata).toEqual({
       prov: 'inferred',
@@ -138,11 +136,11 @@ describe('a value picked from the list', () => {
     const c = cell('ma:m-1:Gloss');
     focus(c);
     editor._pickAlt(c, { value: 'cat', source: 'gloss:precedent' });
-    await settle();
+    await settle(6);
     expect(document.activeElement).toBe(c);
     type(c, '');
     key(c, 'Enter');
-    await settle();
+    await settle(6);
     expect(glossOf(doc)).toBeNull();
     expect(cell('ma:m-1:Gloss').value).toBe('');
   });
@@ -154,12 +152,12 @@ describe('a value picked from the list', () => {
     // choosing a different value for a model's span is an ordinary edit of it.
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     expect(c.classList.contains('igt-field--machine')).toBe(true);
     focus(c);
     editor._pickAlt(c, { value: 'NOM', source: 'gloss:precedent' });
-    await settle();
+    await settle(6);
     const span = glossOf(doc);
     expect(span.value).toBe('NOM');
     expect(span.metadata).toEqual({ ...MACHINE, provConfirmed: true });
@@ -174,7 +172,7 @@ describe('as a contributor', () => {
     focus(c);
     type(c, 'cat');
     key(c, 'Enter');
-    await settle();
+    await settle(6);
     expect(glossOf(doc).value).toBe('cat');
     expect(glossOf(doc).metadata).toEqual(CONTRIBUTED);
     expect(cell('ma:m-1:Gloss').classList.contains('igt-field--contributed')).toBe(true);
@@ -186,7 +184,7 @@ describe('as a contributor', () => {
     const c = cell('ma:m-1:Gloss');
     focus(c);
     editor._pickAlt(c, { value: 'cat', source: 'gloss:precedent' });
-    await settle();
+    await settle(6);
     expect(glossOf(doc).metadata).toEqual({
       ...CONTRIBUTED,
       provDetail: { value: 'cat', guess: 'gloss:precedent' },
@@ -196,13 +194,13 @@ describe('as a contributor', () => {
   it('editing a machine value marks it contributed and keeps the prediction as history', async () => {
     const { doc } = mount({ contributor: true });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     expect(c.classList.contains('igt-field--machine')).toBe(true);
     focus(c);
     type(c, 'NOM');
     key(c, 'Enter');
-    await settle();
+    await settle(6);
     const span = glossOf(doc);
     expect(span.value).toBe('NOM');
     expect(span.metadata).toEqual({
@@ -216,13 +214,13 @@ describe('as a contributor', () => {
   it('editing a confirmed value takes its confirmation away', async () => {
     const { doc } = mount({ contributor: true });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', { ...MACHINE, provConfirmed: true });
-    await settle();
+    await settle(6);
     expect(cell('ma:m-1:Gloss').classList.contains('igt-field--verified')).toBe(true);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     type(c, 'NOM');
     key(c, 'Enter');
-    await settle();
+    await settle(6);
     expect(glossOf(doc).metadata.provConfirmed).toBeUndefined();
     expect(glossOf(doc).metadata.prov).toBe('contributed');
     expect(cell('ma:m-1:Gloss').classList.contains('igt-field--contributed')).toBe(true);
@@ -231,11 +229,11 @@ describe('as a contributor', () => {
   it('Ctrl+Enter takes a machine proposal as a contribution, and has nothing to take on contributed work', async () => {
     const { doc } = mount({ contributor: true });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     key(c, 'Enter', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(glossOf(doc).metadata.prov).toBe('contributed');
     expect(glossOf(doc).metadata.provSource).toBe('user:ann@x.com');
     expect(glossOf(doc).metadata.provConfirmed).toBeUndefined();
@@ -243,7 +241,7 @@ describe('as a contributor', () => {
     expect(editor._wordHasUnverified('w-1')).toBe(false);
     focus(cell('ma:m-1:Gloss'));
     key(cell('ma:m-1:Gloss'), 'Enter', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(notifyInfo).toHaveBeenCalled();
   });
 });
@@ -252,7 +250,7 @@ describe('as a verifier over contributed work', () => {
   it('sees it as a review stop, and editing it confirms it with the contributor kept as its source', async () => {
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     expect(c.classList.contains('igt-field--contributed')).toBe(true);
     expect(c.title).toBe(
@@ -262,7 +260,7 @@ describe('as a verifier over contributed work', () => {
     focus(c);
     type(c, 'NOM');
     key(c, 'Enter');
-    await settle();
+    await settle(6);
     expect(glossOf(doc).metadata).toEqual({ ...CONTRIBUTED, provConfirmed: true });
     expect(cell('ma:m-1:Gloss').classList.contains('igt-field--verified')).toBe(true);
     expect(cell('ma:m-1:Gloss').title).toBe('NOM: contributed, confirmed');
@@ -271,11 +269,11 @@ describe('as a verifier over contributed work', () => {
   it('Ctrl+Enter accepts it as is', async () => {
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     key(c, 'Enter', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(glossOf(doc).metadata).toEqual({ ...CONTRIBUTED, provConfirmed: true });
   });
 
@@ -291,11 +289,11 @@ describe('as a verifier over contributed work', () => {
       try {
         const { doc } = mount();
         await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
-        await settle();
+        await settle(6);
         const c = wordCell('ma:m-1:Gloss');
         focus(c);
         key(c, 'Enter', { ctrlKey: true });
-        await settle();
+        await settle(6);
 
         // The word says it took it, and the caret has NOT moved yet.
         const col = host.querySelector('[data-word-col="w-1"]');
@@ -303,7 +301,7 @@ describe('as a verifier over contributed work', () => {
         expect(document.activeElement).toBe(c);
 
         vi.advanceTimersByTime(250);
-        await settle();
+        await settle(6);
         expect(document.activeElement).not.toBe(c);
       } finally {
         vi.useRealTimers();
@@ -317,17 +315,17 @@ describe('as a verifier over contributed work', () => {
       try {
         const { doc } = mount();
         await doc.updateSentenceSpan('s-1', 'Translation', 'the dog', MACHINE);
-        await settle();
+        await settle(6);
         const t = cell('sa:s-1:Translation');
         focus(t);
         key(t, 'Enter', { ctrlKey: true });
-        await settle();
+        await settle(6);
 
         expect(t.closest('.igt-sentence-anno').classList.contains('igt-confirmed')).toBe(true);
         expect(document.activeElement).toBe(t);
 
         vi.advanceTimersByTime(250);
-        await settle();
+        await settle(6);
         expect(document.activeElement).not.toBe(t);
       } finally {
         vi.useRealTimers();
@@ -339,14 +337,14 @@ describe('as a verifier over contributed work', () => {
     it('does not pulse or wait when the sentence value was edited instead', async () => {
       const { doc } = mount();
       await doc.updateSentenceSpan('s-1', 'Translation', 'the dog', MACHINE);
-      await settle();
+      await settle(6);
       const t = cell('sa:s-1:Translation');
       focus(t);
       type(t, 'the cat');
       key(t, 'Enter', { ctrlKey: true });
       expect(t.closest('.igt-sentence-anno').classList.contains('igt-confirmed')).toBe(false);
       expect(document.activeElement).not.toBe(t);
-      await settle();
+      await settle(6);
     });
 
     it('flushes the beat the moment anything else is typed', async () => {
@@ -354,17 +352,17 @@ describe('as a verifier over contributed work', () => {
       try {
         const { doc } = mount();
         await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
-        await settle();
+        await settle(6);
         const c = wordCell('ma:m-1:Gloss');
         focus(c);
         key(c, 'Enter', { ctrlKey: true });
-        await settle();
+        await settle(6);
         expect(document.activeElement).toBe(c);
 
         // Without waiting out the beat: the next keystroke moves focus first,
         // so the character lands where the reader is looking.
         key(c, 'x');
-        await settle();
+        await settle(6);
         expect(document.activeElement).not.toBe(c);
       } finally {
         vi.useRealTimers();
@@ -378,12 +376,12 @@ describe('as a verifier over contributed work', () => {
     // cannot show the deletion, so the call is what is asserted here.
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
-    await settle();
+    await settle(6);
     const spy = vi.spyOn(doc, 'discardWordAnalysis').mockResolvedValue(true);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     const e = key(c, 'Backspace', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(e.defaultPrevented).toBe(true);
     expect(spy).toHaveBeenCalledWith('w-1');
   });
@@ -401,7 +399,7 @@ describe('splitting a morpheme form', () => {
     focus(f);
     f.setSelectionRange(2, 2);
     key(f, '-');
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['th', 'e']);
     expect(spy).not.toHaveBeenCalled();
   });
@@ -416,7 +414,7 @@ describe('splitting a morpheme form', () => {
     focus(f);
     f.setSelectionRange(3, 3);
     key(f, '-');
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['the', '']);
     expect(formCells()).toEqual(['the', '']);
     expect(document.activeElement.dataset.prec).toBe('2');
@@ -439,7 +437,7 @@ describe('splitting a morpheme form', () => {
     expect(document.activeElement.dataset.prec).toBe('3');
     expect(document.activeElement.value).toBe('mi');
     key(document.activeElement, 'Enter');
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['the', 'ko', 'mi']);
   });
 
@@ -469,7 +467,7 @@ describe('splitting a morpheme form', () => {
     expect(document.activeElement.dataset.prec).toBe('2');
     expect(document.activeElement.value).toBe('kom');
     key(document.activeElement, 'Enter');
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['the', 'kom']);
   });
 });
@@ -481,14 +479,14 @@ describe('a word nobody has analyzed', () => {
   // cell of the same column by then.
   it('keeps the caret where the user put it when the first commit writes the morpheme', async () => {
     const { doc } = mount({ morphemes: [] });
-    await settle();
+    await settle(6);
     const form = cell('mf:virtual:w-1');
     focus(form);
     type(form, 'ngo');
     // Down into the gloss of the same morpheme, which commits the form behind it.
     const gloss = cell('ma:virtual:w-1:Gloss');
     focus(gloss);
-    await settle();
+    await settle(6);
 
     const m = doc.sentences[0].tokens[0].morphemes[0];
     expect(m.virtual).toBeUndefined();
@@ -511,12 +509,12 @@ describe('a word nobody has analyzed', () => {
         morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: {} }],
       });
       await doc.updateMorphemeSpan('m-1', 'Gloss', 'DEF', MACHINE);
-      await settle();
+      await settle(6);
       const c = cell('ma:m-1:Gloss');
       focus(c);
       key(c, 'Enter', { ctrlKey: true });
       vi.advanceTimersByTime(250);
-      await settle();
+      await settle(6);
       expect(document.activeElement).toBe(cell('ma:virtual:w-2:Gloss'));
     } finally {
       vi.useRealTimers();
@@ -525,12 +523,12 @@ describe('a word nobody has analyzed', () => {
 
   it('writes the gloss typed into it against the morpheme it just became', async () => {
     const { doc, client } = mount({ morphemes: [] });
-    await settle();
+    await settle(6);
     const gloss = cell('ma:virtual:w-1:Gloss');
     focus(gloss);
     type(gloss, 'dog');
     gloss.blur();
-    await settle();
+    await settle(6);
 
     const m = doc.sentences[0].tokens[0].morphemes[0];
     expect(m.annotations.Gloss?.value).toBe('dog');
@@ -555,7 +553,7 @@ describe('pasting a morpheme chain', () => {
     const paste = new Event('paste', { bubbles: true, cancelable: true });
     paste.clipboardData = { getData: () => 'a-b' };
     f.dispatchEvent(paste);
-    await settle();
+    await settle(6);
     expect(formsOf(doc)).toEqual(['a', 'b']);
     expect(document.activeElement.dataset.prec).toBe('2');
     expect(spy).not.toHaveBeenCalled();
@@ -582,7 +580,7 @@ describe('pasting a morpheme chain', () => {
 
     editor.setReadOnly(true);
     finish(true);
-    await settle();
+    await settle(6);
 
     expect(cell('mf:m-1').disabled).toBe(true);
   });
@@ -594,12 +592,12 @@ describe('a refused value', () => {
     // nothing took it away when the text went back to a value that is fine.
     const { doc } = mount({ tagset: LEIPZIG });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     type(c, 'XYZ');
     c.dispatchEvent(new Event('blur', { bubbles: true }));
-    await settle();
+    await settle(6);
     expect(c.classList.contains('igt-field--invalid')).toBe(true);
     key(c, 'Escape');
     expect(c.value).toBe('PL');
@@ -609,15 +607,15 @@ describe('a refused value', () => {
   it('loses it when corrected to a legal value too', async () => {
     const { doc } = mount({ tagset: LEIPZIG });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     type(c, 'XYZ');
     c.dispatchEvent(new Event('blur', { bubbles: true }));
-    await settle();
+    await settle(6);
     type(c, 'NOM');
     c.dispatchEvent(new Event('blur', { bubbles: true }));
-    await settle();
+    await settle(6);
     expect(glossOf(doc).value).toBe('NOM');
     expect(cell('ma:m-1:Gloss').classList.contains('igt-field--invalid')).toBe(false);
   });
@@ -655,7 +653,7 @@ describe('while an IME composition is open', () => {
       const e = key(c, k, composing);
       expect(e.defaultPrevented).toBe(false);
     }
-    await settle();
+    await settle(6);
     expect(document.activeElement).toBe(c);
     expect(c.value).toBe('ni');
     expect(spy).not.toHaveBeenCalled();
@@ -668,7 +666,7 @@ describe('while an IME composition is open', () => {
     type(f, 'ni');
     key(f, 'Enter', composing);
     key(f, 'Escape', composing);
-    await settle();
+    await settle(6);
     expect(document.activeElement).toBe(f);
     expect(f.value).toBe('ni');
   });
@@ -679,7 +677,7 @@ describe('while an IME composition is open', () => {
     focus(t);
     type(t, 'ni');
     key(t, 'Enter', composing);
-    await settle();
+    await settle(6);
     expect(document.activeElement).toBe(t);
     expect(t.value).toBe('ni');
   });
@@ -691,12 +689,12 @@ describe('Ctrl+Backspace on a word', () => {
     // with no proposal it silently dropped whatever the cell held.
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     const spy = vi.spyOn(doc, 'discardWordAnalysis');
     const c = cell('ma:m-1:Gloss');
     focus(c);
     const e = key(c, 'Backspace', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(e.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(c);
     expect(c.value).toBe('PL');
@@ -707,13 +705,13 @@ describe('Ctrl+Backspace on a word', () => {
   it('with text typed and not yet saved is left to the browser, and the text is kept', async () => {
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     const spy = vi.spyOn(doc, 'discardWordAnalysis');
     const c = cell('ma:m-1:Gloss');
     focus(c);
     type(c, 'PLX');
     const e = key(c, 'Backspace', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(e.defaultPrevented).toBe(false);
     expect(document.activeElement).toBe(c);
     expect(c.value).toBe('PLX');
@@ -723,12 +721,12 @@ describe('Ctrl+Backspace on a word', () => {
   it('over an untouched cell of a word with a proposal discards it', async () => {
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     const spy = vi.spyOn(doc, 'discardWordAnalysis').mockResolvedValue(true);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     const e = key(c, 'Backspace', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(e.defaultPrevented).toBe(true);
     expect(spy).toHaveBeenCalledWith('w-1');
   });
@@ -738,7 +736,7 @@ describe('a failed save', () => {
   it('puts the typed value back with the SAVED value as what Escape reverts to', async () => {
     const { doc, client } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     // The server holds PL: the refetch after the refusal reads that.
     const before = JSON.parse(JSON.stringify(doc.raw));
     client.documents.get = async () => JSON.parse(JSON.stringify(before));
@@ -750,7 +748,7 @@ describe('a failed save', () => {
     focus(c);
     type(c, 'NOM');
     c.blur();
-    await settle();
+    await settle(6);
     client.spans.update = update;
     expect(document.activeElement).toBe(c);
     expect(c.value).toBe('NOM');
@@ -778,7 +776,7 @@ describe('a save refused after the user moved on to the next cell', () => {
     type(a, 'DOG');
     // Enter's move: into the next word's cell, nothing typed there yet.
     focus(b);
-    await settle();
+    await settle(6);
     hold();
     await settle(30);
     client.spans.create = create;
@@ -789,7 +787,7 @@ describe('a save refused after the user moved on to the next cell', () => {
     expect(editor._cells.unsentOf(a.dataset.cellKey)).toBeTruthy();
     type(b, 'CHASE');
     b.blur();
-    await settle();
+    await settle(6);
     const sent = client.calls
       .filter((c) => c.kind === 'spans.create')
       .map((c) => [c.args[1], c.args[2]]);
@@ -860,7 +858,7 @@ describe('an edit made behind a refused one', () => {
     type(b, 'BBB');
     focus(c);
     type(c, 'CCC');
-    await settle();
+    await settle(6);
     hold();
     await settle(30);
     client.spans.create = create;
@@ -883,7 +881,7 @@ describe('a cell that is focused but untouched', () => {
     const c = cell('ma:m-1:Gloss');
     focus(c);
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     expect(document.activeElement).toBe(c);
     expect(c.value).toBe('PL');
     expect(c.dataset.orig).toBe('PL');
@@ -895,7 +893,7 @@ describe('a cell that is focused but untouched', () => {
     focus(c);
     type(c, 'x');
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     expect(c.value).toBe('x');
     expect(c.dataset.orig).toBe('');
   });
@@ -905,12 +903,12 @@ describe('Ctrl+Backspace on the last word of the page', () => {
   it('keeps focus in the grid rather than dropping it to the body', async () => {
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-2', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     vi.spyOn(doc, 'discardWordAnalysis').mockResolvedValue(true);
     const c = cell('ma:m-2:Gloss');
     focus(c);
     key(c, 'Backspace', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(host.contains(document.activeElement)).toBe(true);
     expect(document.activeElement.dataset.confirmWord).toBe('w-2');
   });
@@ -920,12 +918,12 @@ describe('Ctrl+Enter while the picker is open', () => {
   it('is the whole-word accept even after arrowing through the list', async () => {
     const { doc } = mount({ tagset: LEIPZIG });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-1:Gloss');
     focus(c);
     key(c, 'ArrowDown');
     key(c, 'Enter', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(c.value).toBe('PL');
     expect(glossOf(doc).value).toBe('PL');
     // A human-made word: nothing to accept, and it says so.
@@ -943,7 +941,7 @@ describe('Escape on a list opened with Alt+Down', () => {
     await doc.updateMorphemeForm('m-1', 'xx');
     await doc.updateMorphemeForm('m-2', 'xx');
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     const c = cell('ma:m-2:Gloss');
     focus(c);
     expect(document.querySelector('.igt-alts')).toBeNull();
@@ -979,13 +977,13 @@ describe('the whole-word chords in an orthography cell', () => {
     // chord, so Ctrl+Enter there degraded to a plain Enter.
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
-    await settle();
+    await settle(6);
     const spy = vi.spyOn(doc, 'confirmWordAnalysis').mockResolvedValue(true);
     const c = cell('or:w-1:IPA');
     expect(c).toBeTruthy();
     focus(c);
     const e = key(c, 'Enter', { ctrlKey: true });
-    await settle();
+    await settle(6);
     expect(e.defaultPrevented).toBe(true);
     expect(spy).toHaveBeenCalledWith('w-1', expect.any(Array));
   });
@@ -1005,7 +1003,7 @@ describe('Backspace at the start of a morpheme form', () => {
     focus(c);
     c.setSelectionRange(0, 0);
     const e = key(c, 'Backspace');
-    await settle();
+    await settle(6);
     expect(e.defaultPrevented).toBe(true);
     expect(spy).toHaveBeenCalledWith('m-2');
   });
@@ -1021,7 +1019,7 @@ describe('Backspace at the start of a morpheme form', () => {
     c.setSelectionRange(0, 0);
     for (const init of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
       const e = key(c, 'Backspace', init);
-      await settle();
+      await settle(6);
       expect(e.defaultPrevented).toBe(false);
     }
     expect(spy).not.toHaveBeenCalled();

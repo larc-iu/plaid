@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+} from '@/domain/test-helpers.js';
 import { openPrecedent, precedentBase } from '@/domain/precedentCache.js';
 import { precedentCounts } from '@/domain/precedent.js';
 
@@ -24,10 +29,9 @@ const makeDoc = (id, client, asOf = null) => {
   const raw = buildRawDoc({ body: 'the cat', wordFields: ['POS'], morphFields: [] });
   raw.id = id;
   raw.version = 1;
-  return new IgtDocument({
+  return makeIgtDoc({
     raw,
     project: { id: 'proj-p', vocabs: [], config: {}, maintainers: [], writers: [] },
-    vocabularies: {},
     client,
     projectId: 'proj-p',
     user: null,
@@ -45,8 +49,6 @@ const tagThe = (doc) =>
       metadata: {},
     });
   });
-
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 async function run(between) {
   resetIds();

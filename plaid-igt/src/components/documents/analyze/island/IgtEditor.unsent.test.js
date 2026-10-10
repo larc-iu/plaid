@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // Values put back into their cells after they were not saved: what keeps them
@@ -22,17 +28,13 @@ function mount() {
   const raw = buildRawDoc({});
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -42,9 +44,6 @@ const type = (el, value) => {
   el.value = value;
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
-};
-const settle = async (n = 6) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 // Gloss a (refused once released), then the edits `more` makes while a is on
@@ -76,7 +75,7 @@ async function refuseFirst(doc, client, more) {
   );
   focus(c);
   type(c, 'CCC');
-  await settle();
+  await settle(6);
   hold();
   await settle(30);
   refusing = false;
@@ -108,7 +107,7 @@ describe('a cell edited twice behind a refused edit', () => {
     expect(b.value).toBe('xy');
     // Another edit re-renders the grid.
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     expect(b.value).toBe('xy');
     // Escape takes it back to what the server holds.
     focus(b);
@@ -146,11 +145,11 @@ describe('an in-app way out asks', () => {
     expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     // A later render with the stored value unchanged keeps the question.
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
+    await settle(6);
     expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     // Taken up again, leaving the cell sends it, so there is nothing to ask.
     focus(b);
-    await settle();
+    await settle(6);
     expect(hasUnsavedDraft()).toBe(null);
   });
 
@@ -192,7 +191,7 @@ describe('a cell typed in again while its earlier edit waits behind a refusal', 
     focus(a);
     focus(b);
     type(b, 'xyz');
-    await settle();
+    await settle(6);
     hold();
     await settle(30);
     client.spans.create = create;
@@ -237,7 +236,7 @@ describe('a cell edited twice, both edits refused, with focus nowhere', () => {
     type(a, 'AAA2');
     focus(b);
     b.blur();
-    await settle();
+    await settle(6);
     hold();
     await settle(30);
     Object.assign(client.spans, spans);
@@ -265,17 +264,13 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     });
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-      vocabularies: {},
       client,
-      projectId: 'proj-1',
       user: null,
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    editor = new IgtEditor(host, doc, {});
+    ({ host, editor } = mountIsland(doc));
     const before = JSON.parse(JSON.stringify(doc.raw));
     client.documents.get = async () => JSON.parse(JSON.stringify(before));
     const create = client.spans.create;
@@ -286,7 +281,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
       throw new Error('refused');
     };
     const refuse = async () => {
-      await settle();
+      await settle(6);
       release();
     };
     return { doc, refuse };
@@ -309,17 +304,17 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     // The pager's click takes focus off the cell first.
     other.blur();
     editor._setPage(1);
-    await settle();
+    await settle(6);
     expect(cell('ma:m-1:Gloss')).toBe(null);
     expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     editor._setPage(0);
-    await settle();
+    await settle(6);
     const back = cell('ma:m-1:Gloss');
     expect(back.value).toBe('AAA');
     expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     // Taken up again, it is measured against what the server holds.
     focus(back);
-    await settle();
+    await settle(6);
     expect(back.dataset.orig).toBe('');
     expect(hasUnsavedDraft()).toBe(null);
   });
@@ -331,7 +326,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     type(a, 'AAA');
     a.blur();
     editor._setPage(1);
-    await settle();
+    await settle(6);
     await refuse();
     await settle(30);
     expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
@@ -339,7 +334,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     window.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
     editor._setPage(0);
-    await settle();
+    await settle(6);
     expect(cell('ma:m-1:Gloss').value).toBe('AAA');
   });
 
@@ -350,7 +345,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     type(a, 'AAA');
     a.blur();
     editor._setPage(1);
-    await settle();
+    await settle(6);
     // The server's copy has other morphemes under the first word.
     const gone = JSON.parse(JSON.stringify(doc.raw).replaceAll('"m-1"', '"m-9"'));
     doc.client.documents.get = async () => JSON.parse(JSON.stringify(gone));
@@ -370,7 +365,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     type(a, 'AAA');
     a.blur();
     editor._setPage(1);
-    await settle();
+    await settle(6);
     const split = buildRawDoc({
       sentences: [
         { id: 's-1', begin: 0, end: 3 },
@@ -396,7 +391,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
       recut: { unit: 'word', text: 'th' },
     });
     editor._setPage(0);
-    await settle();
+    await settle(6);
     const back = cell('ma:m-1:Gloss');
     expect(back.value).toBe('');
     expect(back.closest('.igt-cell__face')?.querySelector('.igt-field-conflict')?.textContent).toBe(
@@ -415,11 +410,11 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     await settle(30);
     other.blur();
     editor._setPage(1);
-    await settle();
+    await settle(6);
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'OTHER', null);
-    await settle();
+    await settle(6);
     editor._setPage(0);
-    await settle();
+    await settle(6);
     expect(cell('ma:m-1:Gloss').value).toBe('OTHER');
     expect(hasUnsavedDraft()).toBe(null);
   });

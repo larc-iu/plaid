@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
@@ -43,17 +48,13 @@ function mount() {
     ],
     nextCursor: null,
   });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc({}),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -82,9 +83,6 @@ const key = (el, k, init = {}) =>
   el.dispatchEvent(
     new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }),
   );
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 const writes = (client) =>
   client.calls.filter((c) => /^spans\.(create|update|delete)/.test(c.kind)).map((c) => c.args);
 
@@ -110,7 +108,7 @@ describe('a cell edit that lost to another user', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
 
     expect(c.value).toBe('dog.PL');
@@ -119,7 +117,7 @@ describe('a cell edit that lost to another user', () => {
     // Focus was nowhere, so the cell has it, to take Enter.
     expect(document.activeElement).toBe(c);
     c.blur();
-    await settle();
+    await settle(30);
     expect(writes(client)).toEqual([]);
     expect(notifyWarning).toHaveBeenCalledWith('b changed this to dog.PL.');
     // Nothing is asked on leaving.
@@ -133,12 +131,12 @@ describe('a cell edit that lost to another user', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
 
     c.focus();
     key(c, 'Enter');
-    await settle();
+    await settle(30);
     expect(writes(client)).toEqual([['span-b', 'hound']]);
     expect(note('ma:m-1:Gloss')).toBeNull();
   });
@@ -150,11 +148,11 @@ describe('a cell edit that lost to another user', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
     c.focus();
     key(c, 'Escape');
-    await settle();
+    await settle(30);
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(c.value).toBe('dog.PL');
     expect(writes(client)).toEqual([]);
@@ -163,12 +161,12 @@ describe('a cell edit that lost to another user', () => {
     c.focus();
     type(c, 'cur');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
     expect(note('ma:m-1:Gloss')?.textContent).toContain('Yours: cur');
     c.focus();
     type(c, 'hound');
-    await settle();
+    await settle(30);
     expect(note('ma:m-1:Gloss')).toBeNull();
   });
 
@@ -184,7 +182,7 @@ describe('a cell edit that lost to another user', () => {
     type(c, '');
     const other = cell('ma:m-2:Gloss');
     other.focus();
-    await settle();
+    await settle(30);
     restore();
     expect(document.activeElement).toBe(other);
     // Typed '' over '': nothing was sent for it.
@@ -198,12 +196,12 @@ describe('a cell edit that lost to another user', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
     expect(note('ma:m-1:Gloss')).not.toBeNull();
     client.documents.get = async () => theirs('dog.PL2');
     await doc.reload();
-    await settle();
+    await settle(30);
     expect(c.value).toBe('dog.PL2');
     expect(note('ma:m-1:Gloss')).toBeNull();
   });
@@ -216,7 +214,7 @@ describe('a cell edit that lost to another user', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
     expect(notifyWarning).toHaveBeenCalledWith('Someone changed this to dog.PL.');
   });
@@ -232,7 +230,7 @@ describe('who reports a conflict', () => {
     c.focus();
     type(c, 'hound');
     c.blur();
-    await settle();
+    await settle(30);
     restore();
     expect(errors).toEqual([]);
     expect(doc.error).toBe('');
@@ -248,7 +246,7 @@ describe('who reports a conflict', () => {
     c.focus();
     type(c, 'hound');
     other.focus();
-    await settle();
+    await settle(30);
     restore();
     expect(notifyWarning).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledTimes(1);
@@ -266,7 +264,7 @@ describe('a cell edit refused where sending again cannot mend it', () => {
     c.focus();
     type(c, 'hound');
     other.focus();
-    await settle();
+    await settle(30);
     restore();
     expect(c.value).toBe('');
     expect(editor._cells.unsentOf('ma:m-1:Gloss')).toBeNull();
@@ -284,7 +282,7 @@ describe('a value put back unsent (nobody else changed the cell)', () => {
     c.focus();
     type(c, 'hound');
     other.focus();
-    await settle();
+    await settle(30);
     restore();
     expect(c.value).toBe('hound');
     expect(c.classList.contains('igt-field--unsent')).toBe(true);
@@ -302,12 +300,12 @@ describe('a value put back unsent (nobody else changed the cell)', () => {
     c.focus();
     type(c, 'hound');
     other.focus();
-    await settle();
+    await settle(30);
     restore();
     expect(editor._cells.unsentOf('ma:m-1:Gloss')).toBeTruthy();
     client.documents.get = async () => theirs('dog.PL');
     await doc.reload();
-    await settle();
+    await settle(30);
     expect(c.value).toBe('dog.PL');
     expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: hound · Enter to keep yours');
     expect(document.activeElement).toBe(other);

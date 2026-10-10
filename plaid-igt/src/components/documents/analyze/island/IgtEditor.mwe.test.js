@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // Multi-word expressions in the interlinear editor: how a linked one draws,
 // how words are gathered (Shift+click, Shift+arrows), what the popover does in
@@ -31,7 +36,7 @@ function mount({ links = [] } = {}) {
   });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: {
@@ -47,12 +52,9 @@ function mount({ links = [] } = {}) {
       },
     },
     client,
-    projectId: 'proj-1',
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -79,9 +81,6 @@ const key = (el, k, init = {}) => {
   const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init });
   el.dispatchEvent(e);
   return e;
-};
-const settle = async (n = 4) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => resetIds());
@@ -134,7 +133,7 @@ describe('a linked multi-word expression', () => {
     expect(lbl.classList.contains('igt-mwe__label--machine')).toBe(true);
     lbl.focus();
     key(lbl, 'Enter');
-    await settle();
+    await settle(4);
     expect(client.calls.some((c) => c.kind === 'vocabLinks.patchMetadata')).toBe(true);
     expect(doc.sentences[0].mwes[0].prov).toBe('verified');
     expect(label('mwe:lk-1').classList.contains('igt-mwe__label--verified')).toBe(true);
@@ -153,7 +152,7 @@ describe('a linked multi-word expression', () => {
     const linkedRow = pop.querySelector('.igt-vocab-pop__item.is-linked');
     expect(linkedRow.textContent).toContain('sit down');
     click(linkedRow.querySelector('.igt-vocab-pop__x'));
-    await settle();
+    await settle(4);
     expect(client.calls.map((c) => c.kind)).toContain('vocabLinks.delete');
     expect(doc.sentences[0].mwes).toEqual([]);
     expect(pieces('mwe:lk-1')).toEqual([]);
@@ -166,7 +165,7 @@ describe('a linked multi-word expression', () => {
       r.textContent.includes('cat'),
     );
     click(row);
-    await settle();
+    await settle(4);
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
     expect(create.args.slice(0, 2)).toEqual(['i-cat', ['w-3', 'w-4']]);
     // A verifier's link carries no stamp.
@@ -279,7 +278,7 @@ describe('gathering words into a multi-word expression', () => {
       r.textContent.includes('sit down'),
     );
     click(row);
-    await settle();
+    await settle(4);
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
     expect(create.args[0]).toBe('i-sit');
     expect(create.args[1]).toEqual(['w-3', 'w-4']);
@@ -297,7 +296,7 @@ describe('gathering words into a multi-word expression', () => {
     const create = popover().querySelector('.igt-vocab-pop__create');
     click(create);
     click(create);
-    await settle();
+    await settle(4);
     const item = client.calls.find((c) => c.kind === 'vocabItems.create');
     expect(item.args.slice(0, 3)).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
     expect(doc.sentences[0].mwes[0].item.form).toBe('cat down');
@@ -321,7 +320,7 @@ describe('gathering words into a multi-word expression', () => {
     const { doc, client } = mount({ links: [linkOver('lk-1', ['w-3', 'w-4'])] });
     click(label('mwe:lk-1'));
     click(form('w-2'), { shiftKey: true });
-    await settle();
+    await settle(4);
     expect(popover()).toBeNull();
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
     expect(create.args[1]).toEqual(['w-2', 'w-3', 'w-4']);
@@ -340,7 +339,7 @@ describe('punctuation inside a multi-word expression', () => {
     }
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: {
@@ -354,11 +353,8 @@ describe('punctuation inside a multi-word expression', () => {
         },
       },
       client,
-      projectId: 'proj-1',
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    editor = new IgtEditor(host, doc, {});
+    ({ host, editor } = mountIsland(doc));
     return doc;
   }
 

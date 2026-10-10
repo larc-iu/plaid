@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { KEPT_IN_CELL } from '@ui/lib/cellConflict.js';
 
@@ -27,17 +33,13 @@ function mount(raw = buildRawDoc({})) {
     entries: [{ user: { id: 'b@x.com', displayName: 'b' }, ops: [{ description: 'x' }] }],
     nextCursor: null,
   });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -67,9 +69,6 @@ const type = (el, value) => {
   el.value = value;
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
-};
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 const writes = (client) =>
   client.calls.filter((c) => /^spans\.(create|update|delete)/.test(c.kind)).map((c) => c.args);
@@ -103,7 +102,7 @@ describe('a waiting value that turns into a conflict as its morpheme column shif
     c.focus();
     type(c, 'hound');
     cell('ma:m-2:Gloss').focus();
-    await settle();
+    await settle(30);
     restore();
     expect(editor._cells.unsentOf('ma:m-5:Gloss')).toBeTruthy();
     document.activeElement.blur();
@@ -122,14 +121,14 @@ describe('a waiting value that turns into a conflict as its morpheme column shif
     );
     client.documents.get = async () => JSON.parse(JSON.stringify(served));
     await doc.reload();
-    await settle();
+    await settle(30);
     expect(note('ma:m-5:Gloss')?.textContent).toBe('Yours: hound · Enter to keep yours');
     const active = document.activeElement;
     expect(active?.dataset?.cellKey).toBe('ma:m-5:Gloss');
     expect(active.value).toBe('CAT');
     type(active, 'zzz');
     active.blur();
-    await settle();
+    await settle(30);
     expect(writes(client).filter(([, tokens]) => tokens?.[0] === 'm-8')).toEqual([]);
   });
 });
@@ -142,18 +141,18 @@ describe('a value taken up by focus when another user stores the cell', () => {
     c.focus();
     type(c, 'hound');
     cell('ma:m-2:Gloss').focus();
-    await settle();
+    await settle(30);
     restore();
     c.focus();
     expect(c.value).toBe('hound');
     client.documents.get = async () => withGloss(buildRawDoc({}), 'm-1', 'dog.PL');
     await doc.reload();
-    await settle();
+    await settle(30);
     expect(c.value).toBe('dog.PL');
     expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: hound · Enter to keep yours');
     const before = writes(client).length;
     c.blur();
-    await settle();
+    await settle(30);
     expect(writes(client).slice(before)).toEqual([]);
   });
 
@@ -164,16 +163,16 @@ describe('a value taken up by focus when another user stores the cell', () => {
     c.focus();
     type(c, 'hound');
     cell('ma:m-2:Gloss').focus();
-    await settle();
+    await settle(30);
     restore();
     c.focus();
     type(c, 'hounds');
     client.documents.get = async () => withGloss(buildRawDoc({}), 'm-1', 'dog.PL');
     await doc.reload();
-    await settle();
+    await settle(30);
     expect(c.value).toBe('hounds');
     c.blur();
-    await settle();
+    await settle(30);
     expect(writes(client).at(-1)).toEqual(['span-b', 'hounds']);
   });
 });
@@ -210,9 +209,9 @@ describe('a value refused while its page is not drawn', () => {
     type(a, 'AAA');
     a.blur();
     editor._setPage(1);
-    await settle();
+    await settle(30);
     release();
-    await settle();
+    await settle(30);
     expect(editor._cells.unsentOf('ma:m-1:Gloss')).toBeTruthy();
     expect(notifyError).toHaveBeenCalledWith(KEPT_IN_CELL, 'Failed to update Gloss');
     expect(KEPT_IN_CELL).toBe('Changed elsewhere. Your value is in its cell, not saved.');

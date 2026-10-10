@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 
 // A sentence field (Translation) refused because someone else wrote a value
@@ -68,17 +73,13 @@ function mount(served) {
     }
     return create(...args);
   };
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: shape(),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, sent };
 }
 
@@ -87,9 +88,6 @@ const type = (el, value) => {
   el.value = value;
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
-};
-const settle = async (n = 40) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 const translations = (doc) =>
   doc.raw.textLayers[0].tokenLayers[0].spanLayers[0].spans.map((s) => [s.tokens[0], s.value]);
@@ -113,7 +111,7 @@ describe('a translation refused because another sentence was translated meanwhil
     c.focus();
     type(c, 'A dog.');
     c.blur();
-    await settle();
+    await settle(40);
 
     expect(sent).toEqual([
       { version: 1, value: 'A dog.' },
@@ -134,7 +132,7 @@ describe('a translation refused because another sentence was translated meanwhil
     c.focus();
     type(c, 'A dog.');
     c.blur();
-    await settle();
+    await settle(40);
 
     expect(sent).toEqual([{ version: 1, value: 'A dog.' }]);
     expect(translations(doc)).toEqual([['s-2', 'One dog.']]);

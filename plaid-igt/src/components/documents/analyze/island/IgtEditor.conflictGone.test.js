@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError } from '@/utils/feedback';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
@@ -24,17 +29,13 @@ function mount() {
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   client.documents.auditPage = async () => ({ entries: [], nextCursor: null });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: buildRawDoc({}),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return { doc, client };
 }
 
@@ -43,9 +44,6 @@ const type = (el, value) => {
   el.value = value;
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
-};
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => {
@@ -75,7 +73,7 @@ describe('a cell edit refused after another user removed its word', () => {
     c.focus();
     type(c, 'CAT');
     c.blur();
-    await settle();
+    await settle(30);
 
     expect(cell('ma:m-2:Gloss')).toBeNull();
     expect(notifyError).toHaveBeenCalledWith('Not saved: CAT', 'Changed elsewhere');

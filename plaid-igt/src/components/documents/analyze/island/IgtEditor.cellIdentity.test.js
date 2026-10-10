@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError } from '@/utils/feedback';
 
 // A morpheme column is drawn by its position in the word, so a refetch that
@@ -34,17 +39,13 @@ function mount(morphemes) {
   const raw = buildRawDoc({ morphemes });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: null,
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   const serve = (ms) => {
     client.documents.get = async () => buildRawDoc({ morphemes: ms });
   };
@@ -59,9 +60,6 @@ const type = (el, value) => {
 };
 const key = (el, k) =>
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
-const settle = async (n = 10) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 const writes = (client) =>
   client.calls.filter((c) => /^(spans|tokens)\.(create|update|patchMetadata)/.test(c.kind));
 
@@ -87,7 +85,7 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     // Meanwhile m-2 was merged away and the word split again elsewhere.
     serve([morph('m-1', 1, 'th'), morph('m-9', 2, 'he')]);
     await doc.reload();
-    await settle();
+    await settle(10);
 
     expect(c.dataset.cellKey).toBe('ma:m-9:Gloss');
     expect(c.value).toBe('');
@@ -95,7 +93,7 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     expect(document.activeElement).not.toBe(c);
     c.focus();
     c.blur();
-    await settle();
+    await settle(10);
     expect(writes(client)).toHaveLength(0);
     // Its morpheme is gone, so what was typed has nowhere to go: said, once.
     expect(notifyError).toHaveBeenCalledTimes(1);
@@ -110,7 +108,7 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     // Another writer put a morpheme in front of m-2.
     serve([morph('m-1', 1, 't'), morph('m-9', 2, 'h'), morph('m-2', 3, 'e')]);
     await doc.reload();
-    await settle();
+    await settle(10);
 
     expect(c.dataset.cellKey).toBe('ma:m-9:Gloss');
     expect(c.value).toBe('');
@@ -123,7 +121,7 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     expect(notifyError).not.toHaveBeenCalled();
     type(own, 'PSTX');
     own.blur();
-    await settle();
+    await settle(10);
     expect(writes(client).map((w) => [w.kind, w.args[1], w.args[2]])).toEqual([
       ['spans.create', ['m-2'], 'PSTX'],
     ]);
@@ -136,18 +134,18 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     cell('ma:m-1:Gloss').focus();
     const ticket = editor._cells.sending('ma:m-2:Gloss', { saved: '', typed: 'PST' });
     editor._cells.settle(ticket, { landed: false, status: 500, readBack: true });
-    await settle();
+    await settle(10);
     expect(c.value).toBe('PST');
     // m-2 gone, a morpheme with the same (empty) gloss in its place.
     serve([morph('m-1', 1, 'th'), morph('m-9', 2, 'he')]);
     await doc.reload();
-    await settle();
+    await settle(10);
 
     expect(c.dataset.cellKey).toBe('ma:m-9:Gloss');
     expect(c.value).toBe('');
     c.focus();
     c.blur();
-    await settle();
+    await settle(10);
     expect(writes(client)).toHaveLength(0);
   });
 });
@@ -167,7 +165,7 @@ describe('a split refused by the server', () => {
     f.focus();
     f.setSelectionRange(2, 2);
     key(f, '-');
-    await settle();
+    await settle(10);
     // The new cell took focus; the letters typed into it.
     const fresh = document.activeElement;
     expect(fresh.dataset.prec).toBe('2');
@@ -180,7 +178,7 @@ describe('a split refused by the server', () => {
     expect(document.activeElement).not.toBe(fresh);
     fresh.focus();
     fresh.blur();
-    await settle();
+    await settle(10);
     expect(writes(client)).toHaveLength(0);
     // The refusal is the message: the cell it made is gone with it.
     expect(notifyError).not.toHaveBeenCalled();
@@ -195,11 +193,11 @@ describe('a cell whose morpheme this page makes', () => {
     type(gloss, 'D');
     // The form committed from elsewhere makes the morpheme under the gloss.
     await doc.updateMorphemeForm('virtual:w-1', 'the');
-    await settle();
+    await settle(10);
     expect(gloss.dataset.cellKey).not.toBe('ma:virtual:w-1:Gloss');
     expect(gloss.value).toBe('D');
     gloss.blur();
-    await settle();
+    await settle(10);
     const spans = client.calls.filter((c) => c.kind === 'spans.create');
     expect(spans).toHaveLength(1);
     expect(spans[0].args[1]).toEqual([doc.sentences[0].tokens[0].morphemes[0].id]);

@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError } from '@/utils/feedback';
 
 // The tagset behaviours of the interlinear editor.
@@ -48,12 +52,10 @@ function docWith(tagset, rawOpts = {}, { sentence = false } = {}) {
       .flatMap((tl) => tl.spanLayers || [])
       .find((sl) => sl.id === 'ssl-0').config.igt.tagset = 'Leipzig';
   }
-  return new IgtDocument({
+  return makeIgtDoc({
     raw,
     project: projectWith(tagset),
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
   });
 }
 
@@ -62,9 +64,7 @@ let editor;
 
 const mount = (tagset = LEIPZIG, rawOpts = {}, opts = {}) => {
   const doc = docWith(tagset, rawOpts, opts);
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return doc;
 };
 
@@ -689,16 +689,12 @@ describe('a governed sentence field', () => {
       .flatMap((tl) => tl.spanLayers || [])
       .find((sl) => sl.id === 'ssl-0');
     sentenceLayer.config.igt.tagset = 'Leipzig';
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: projectWith({ ...LEIPZIG, delimiters: '' }),
-      vocabularies: {},
       client,
-      projectId: 'proj-1',
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    editor = new IgtEditor(host, doc, {});
+    ({ host, editor } = mountIsland(doc));
     const ta = host.querySelector('textarea[data-has-tagset]');
     expect(ta).not.toBeNull();
     expect(ta.dataset.tagsetEnforces).toBe('1');

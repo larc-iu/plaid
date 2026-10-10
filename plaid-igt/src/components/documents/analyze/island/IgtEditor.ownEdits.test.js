@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
 import { expectIndexMatchesDom } from './editor/cellParity.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 
 // A cell edited twice by one person while the first edit's save was still
@@ -51,17 +56,13 @@ function mount(answers) {
     const status = answer === 'lost' ? 0 : answer;
     throw Object.assign(new Error(`HTTP ${status}`), { status });
   };
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw: withGloss('dog'),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
-    vocabularies: {},
     client,
-    projectId: 'proj-1',
     user: { id: 'c@x.com' },
   });
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   const release = async () => {
     for (let i = 0; i < 40; i++) {
       gates.splice(0).forEach((r) => r());
@@ -81,9 +82,6 @@ const type = (el, value) => {
 };
 const key = (el, k) =>
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
-const settle = async (n = 30) => {
-  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-};
 
 // Edit the gloss of m-1 to A, move on, come back and edit it to B, move on.
 const editTwice = async () => {
@@ -123,7 +121,7 @@ describe('a cell edited again while its first save was out', () => {
       const { server, release } = mount([first, 'land']);
       const c = await editTwice();
       await release();
-      await settle();
+      await settle(30);
 
       expect(server.value).toBe('B');
       expect(c.value).toBe('B');
@@ -133,7 +131,7 @@ describe('a cell edited again while its first save was out', () => {
       c.focus();
       key(c, 'Enter');
       await release();
-      await settle();
+      await settle(30);
       expect(server.value).toBe('B');
     });
   }
@@ -143,7 +141,7 @@ describe('a cell edited again while its first save was out', () => {
     const c = await editTwice();
     server.value = 'theirs';
     await release();
-    await settle();
+    await settle(30);
 
     expect(c.value).toBe('theirs');
     expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: B · Enter to keep yours');
@@ -160,7 +158,7 @@ describe('the conflict note', () => {
     cell('ma:m-2:Gloss').focus();
     server.value = 'theirs';
     await release();
-    await settle();
+    await settle(30);
 
     const n = note('ma:m-1:Gloss');
     expect(n).not.toBeNull();
@@ -174,7 +172,7 @@ describe('the conflict note', () => {
 
     c.focus();
     key(c, 'Escape');
-    await settle();
+    await settle(30);
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(c.hasAttribute('aria-describedby')).toBe(false);
   });
@@ -198,7 +196,7 @@ describe('an edit that landed with its answer lost', () => {
     const { server, release } = mount(['lost']);
     const c = await editOnce('A');
     await release();
-    await settle();
+    await settle(30);
 
     expect(server.value).toBe('A');
     expect(c.value).toBe('A');
@@ -211,14 +209,14 @@ describe('an edit that landed with its answer lost', () => {
     const { server, release } = mount(['lost', 500]);
     const c = await editOnce('A');
     await release();
-    await settle();
+    await settle(30);
     const c2 = cell('ma:m-1:Gloss');
     c2.focus();
     type(c2, 'B');
     cell('ma:m-2:Gloss').focus();
     await settle(5);
     await release();
-    await settle();
+    await settle(30);
 
     expect(server.value).toBe('A');
     expect(note('ma:m-1:Gloss')).toBeNull();
@@ -239,7 +237,7 @@ describe('an edit that landed with its answer lost', () => {
     };
     const c = await editOnce('A');
     await release();
-    await settle();
+    await settle(30);
 
     expect(server.value).toBe('dog');
     expect(c.value).toBe('A');
@@ -257,7 +255,7 @@ describe('a conflict that is not the cell’s own', () => {
     type(c, 'hound');
     cell('ma:m-2:Gloss').focus();
     await release();
-    await settle();
+    await settle(30);
 
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(c.value).toBe('hound');

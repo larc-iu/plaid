@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IgtEditor } from './IgtEditor.js';
-import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  settle,
+  mountIsland,
+} from '@/domain/test-helpers.js';
 
 // Where a placeholder suggestion came from, as the grid shows it: a lexicon
 // entry reached through a link wears a teal wash and names the entry, project
@@ -39,7 +44,7 @@ function mount({ linkProv = null } = {}) {
 
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = new IgtDocument({
+  const doc = makeIgtDoc({
     raw,
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: {
@@ -58,12 +63,9 @@ function mount({ linkProv = null } = {}) {
       },
     },
     client,
-    projectId: 'proj-1',
   });
   client.documents.get = async () => doc.raw;
-  host = document.createElement('div');
-  document.body.appendChild(host);
-  editor = new IgtEditor(host, doc, {});
+  ({ host, editor } = mountIsland(doc));
   return doc;
 }
 
@@ -145,7 +147,7 @@ describe('an entry guess in a field of another name', () => {
     const entry = { id: 'i-1', form: 'kucing', metadata: { gloss: 'kucing', 'gloss (en)': 'cat' } };
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: {
@@ -158,12 +160,9 @@ describe('an entry guess in a field of another name', () => {
         },
       },
       client,
-      projectId: 'proj-1',
     });
     client.documents.get = async () => doc.raw;
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    editor = new IgtEditor(host, doc, {});
+    ({ host, editor } = mountIsland(doc));
   }
 
   it('pairs each field with the entry field in its language', () => {
@@ -203,15 +202,14 @@ describe('a morpheme carries no fill of its own', () => {
     if (linkStem) links.push({ id: 'l-r', tokens: ['m-2'], vocabItem: ROA });
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [A, ROA], vocabLinks: links } },
       client,
+      projectId: null,
     });
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    editor = new IgtEditor(host, doc);
+    ({ host, editor } = mountIsland(doc));
     await new Promise((r) => setTimeout(r, 0));
     return host;
   }
@@ -283,9 +281,6 @@ describe('the pulse on a single accept', () => {
     el.dispatchEvent(
       new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }),
     );
-  const settle = async (n = 6) => {
-    for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
-  };
 
   it('washes the one cell that adopted a guess, and does not hold focus', async () => {
     mount();
@@ -295,7 +290,7 @@ describe('the pulse on a single accept', () => {
     expect(c.closest('.igt-cell').classList.contains('igt-confirmed')).toBe(true);
     // No beat here: the caret has already moved on, unlike Ctrl+Enter's hop.
     expect(document.activeElement).not.toBe(c);
-    await settle();
+    await settle(6);
   });
 
   it('Shift+Enter moves back and adopts nothing', async () => {
@@ -311,28 +306,28 @@ describe('the pulse on a single accept', () => {
     expect(c.dataset.guessConfirmed).toBeUndefined();
     expect(c.closest('.igt-cell').classList.contains('igt-confirmed')).toBe(false);
     expect(document.activeElement).not.toBe(c);
-    await settle();
+    await settle(6);
   });
 
   it('leaves a cell alone when Enter had no guess to adopt', async () => {
     const doc = mount();
     await doc.updateTokenSpan('w-2', 'POS', 'V', {});
-    await settle();
+    await settle(6);
     const c = cell('wa:w-2:POS');
     c.focus();
     key(c, 'Enter');
     expect(c.closest('.igt-cell').classList.contains('igt-confirmed')).toBe(false);
-    await settle();
+    await settle(6);
   });
 
   it('washes the one link confirmed from its chip', async () => {
     mount({ linkProv: { prov: 'inferred', provSource: 'service:x' } });
-    await settle();
+    await settle(6);
     const chip = host.querySelector('.igt-vocab__hint');
     chip.focus();
     key(chip, 'Enter');
     expect(chip.closest('.igt-vocab').classList.contains('igt-confirmed')).toBe(true);
-    await settle();
+    await settle(6);
   });
 });
 
@@ -362,17 +357,12 @@ describe('Ctrl+Enter on a word nobody has segmented', () => {
       .find((sl) => sl.id === 'msl-0').spans = [{ id: 'g-1', tokens: ['m-1'], value: 'DEF' }];
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
-    const doc = new IgtDocument({
+    const doc = makeIgtDoc({
       raw,
-      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
-      vocabularies: {},
       client,
-      projectId: 'proj-1',
     });
     client.documents.get = async () => doc.raw;
-    host = document.createElement('div');
-    document.body.appendChild(host);
-    editor = new IgtEditor(host, doc, {});
+    ({ host, editor } = mountIsland(doc));
     return client;
   }
 
