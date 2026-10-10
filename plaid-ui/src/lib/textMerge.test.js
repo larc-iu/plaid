@@ -168,33 +168,6 @@ describe('rebaseEdits', () => {
     expect(checked).toBeGreaterThan(2000);
   });
 
-  // Random keystroke streams over random texts, both sides.
-  const randomOps = (r, body) => {
-    const ops = [];
-    let len = [...body].length;
-    const n = 1 + Math.floor(r() * 4);
-    for (let i = 0; i < n; i += 1) {
-      const index = Math.floor(r() * (len + 1));
-      const kind = r();
-      if (kind < 0.4) {
-        const w = WORDS[Math.floor(r() * WORDS.length)];
-        const value = r() < 0.5 ? w : SEPS[Math.floor(r() * SEPS.length)] + w;
-        ops.push({ type: 'insert', index, value });
-        len += [...value].length;
-      } else if (kind < 0.8) {
-        const value = Math.min(len - index, Math.floor(r() * 5));
-        ops.push({ type: 'delete', index, value });
-        len -= value;
-      } else {
-        const length = Math.min(len - index, Math.floor(r() * 4));
-        const value = WORDS[Math.floor(r() * WORDS.length)];
-        ops.push({ type: 'replace', index, length, value });
-        len += [...value].length - length;
-      }
-    }
-    return ops;
-  };
-
   it('refuses a change the other side made too beside an identical word', () => {
     // A deleted one `the` of `the the`, B deleted the other and changed `ran`
     const base = 'I saw the the dog. It ran.';
