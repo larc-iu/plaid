@@ -15,6 +15,7 @@ import { PLAID_NAMESPACE, ROLES, createdIds } from '@larc-iu/plaid-client';
 import { bulkInChunks } from '../../domain/bulk.js';
 import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstraints.js';
 import { humanizeError } from '../../../../plaid-ui/src/lib/errors.js';
+import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import {
   UNCARRIED_PLAID_KEYS,
@@ -24,16 +25,6 @@ import {
 } from '../../domain/otherLayers.js';
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
-
-// Key order is not a difference between two config values.
-const canonical = (v) => {
-  if (!isMap(v)) return Array.isArray(v) ? `[${v.map(canonical).join(',')}]` : JSON.stringify(v);
-  return `{${Object.keys(v)
-    .sort()
-    .map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`)
-    .join(',')}}`;
-};
-const sameValue = (a, b) => a !== undefined && canonical(a) === canonical(b);
 
 const plural = (n, noun, nouns = `${noun}s`) => `${n} ${n === 1 ? noun : nouns}`;
 
@@ -82,7 +73,7 @@ async function writeConfig(setConfig, id, current, config, skip = [], skipKeys =
     if (skip.includes(ns) || !isMap(keys)) continue;
     for (const [key, value] of Object.entries(keys)) {
       if (skipKeys[ns]?.includes(key)) continue;
-      if (sameValue(current?.[ns]?.[key], value)) continue;
+      if (sameConfig(current?.[ns]?.[key], value)) continue;
       await setConfig(id, ns, key, value);
     }
   }
