@@ -1,6 +1,6 @@
 import React from 'react';
 import { cpSlice } from '@larc-iu/plaid-client';
-import { ZoomIn, ZoomOut, Play, Pause } from 'lucide-react';
+import { ZoomIn, ZoomOut, Play, Pause, Scissors, FoldHorizontal } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import {
   Tooltip,
@@ -14,8 +14,11 @@ import { drawWaveform } from './useWaveform.js';
 import { TIMELINE_HEIGHT as TRACK_HEIGHT } from './waveform.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
+import { TimeRuler, RULER_BAND } from './TimeRuler.jsx';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
+import { keys } from '@/lib/keymap.js';
+import { caretInRow } from './segmentCaret.js';
 
 // One colour per speaker, the same on every segment and in every document of
 // the project: the speaker's place in the (sorted) speaker list, stepped round
@@ -109,7 +112,14 @@ const SelectionReadout = ({
   laneCount,
   playing,
   onPlay,
+  segmentId = null,
+  onSplit = null,
+  onMerge = null,
 }) => {
+  // Where the caret was in the segment's row when a button was pressed: the
+  // press takes focus from the row before the click, and a split cuts the
+  // text there.
+  const caretRef = React.useRef(null);
   const left = selection.start * pixelsPerSecond - RING_OUTSET;
   const width = (selection.end - selection.start) * pixelsPerSecond + 2 * RING_OUTSET;
   const mid = left + width / 2;
@@ -210,6 +220,46 @@ const SelectionReadout = ({
           <span className="px-1 text-muted-foreground">–</span>
           {formatTime(selection.end)}
         </span>
+        {segmentId != null && onSplit && (
+          <>
+            <span aria-hidden="true" className="ml-1 h-4 w-px bg-border" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  aria-label="Split segment"
+                  onMouseDown={() => {
+                    caretRef.current = caretInRow(document.activeElement, segmentId);
+                  }}
+                  onClick={() => {
+                    const offset = caretRef.current;
+                    caretRef.current = null;
+                    onSplit(segmentId, offset);
+                  }}
+                >
+                  <Scissors className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Split at playback · {keys.words('media.split')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="-ml-1 h-6 w-6"
+                  aria-label="Merge with next segment"
+                  onClick={() => onMerge(segmentId)}
+                >
+                  <FoldHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Merge with next · {keys.words('media.merge')}</TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
     </div>
   );
@@ -250,13 +300,15 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
   // The lane of the segment the selection is, when there are lanes and the
   // selection is exactly one segment: its ring then goes round that lane
   // only, not the other speaker's.
-  const selectionLane = React.useMemo(() => {
-    if (!selection || laneCount < 2) return null;
+  const selectedSegment = React.useMemo(() => {
+    if (!selection) return null;
     const hits = (doc.alignmentTokens || []).filter(
       (t) => t.metadata?.timeBegin === selection.start && t.metadata?.timeEnd === selection.end,
     );
-    return hits.length === 1 ? (lanes.get(hits[0].id) ?? null) : null;
-  }, [selection, doc.alignmentTokens, lanes, laneCount]);
+    return hits.length === 1 ? hits[0] : null;
+  }, [selection, doc.alignmentTokens]);
+  const selectionLane =
+    selectedSegment && laneCount > 1 ? (lanes.get(selectedSegment.id) ?? null) : null;
 
   // Use timeline operations hook directly
   const timelineOps = useTimelineOperations(mediaOps);
@@ -411,7 +463,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               overflowX: 'auto',
               border: '1px solid hsl(var(--border))',
               borderRadius: '4px',
-              paddingTop: '50px',
+              paddingTop: `${RULER_BAND}px`,
             }}
             onScroll={handleTimelineScroll}
           >
@@ -432,6 +484,14 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               onMouseUp={canCreateSelection ? handleMouseUp : undefined}
               onMouseLeave={handleMouseUp} // End drag if mouse leaves timeline
             >
+              <TimeRuler
+                from={drawn.from}
+                to={drawn.to}
+                duration={duration}
+                pixelsPerSecond={pixelsPerSecond}
+                clear={selection}
+              />
+
               {/* Waveform, for the drawn stretch only, so it stays sharp at
                   every zoom on a recording of any length. */}
               {waveformEnvelope && duration > 0 && (
@@ -499,6 +559,9 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   laneCount={laneCount}
                   playing={selectionPlaying}
                   onPlay={onPlaySelection}
+                  segmentId={readOnly ? null : (selectedSegment?.id ?? null)}
+                  onSplit={(id, offset) => mediaOps.handleSplitSegment(id, { offset })}
+                  onMerge={mediaOps.handleMergeSegment}
                 />
               )}
 

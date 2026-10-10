@@ -226,6 +226,48 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
+  it('Alt+Enter in a row saves it, then splits its segment between the words at the caret; Alt+M merges it with the next', async () => {
+    const doc = makeDoc({
+      body: 'the big cat',
+      tokens: [
+        { id: 'a', begin: 0, end: 7, metadata: { timeBegin: 0, timeEnd: 1.5 } },
+        { id: 'b', begin: 8, end: 11, metadata: { timeBegin: 1.5, timeEnd: 3 } },
+      ],
+    });
+    const ops = makeOps({
+      autoPlayOnFocus: false,
+      handleSplitSegment: vi.fn(async () => true),
+      handleMergeSegment: vi.fn(async () => true),
+    });
+    const r = await renderComponent(element(doc, ops));
+    const first = rowTextareas(r.container)[0];
+    await r.step(() => first.focus());
+    // A change not saved yet, and the caret after its first word, past the
+    // spaces the save trims off the front.
+    await r.step(() => setValue(first, '  the bog'));
+    await r.step(() => first.setSelectionRange(6, 6));
+    let split;
+    await r.step(async () => {
+      split = press(first, 'Enter', { altKey: true });
+      await settle();
+    });
+    expect(split.defaultPrevented).toBe(true);
+    expect(doc.editAlignment).toHaveBeenCalledTimes(1);
+    expect(ops.handleSplitSegment).toHaveBeenCalledWith('a', { offset: 4 });
+    expect(doc.editAlignment.mock.invocationCallOrder[0]).toBeLessThan(
+      ops.handleSplitSegment.mock.invocationCallOrder[0],
+    );
+    // Enter's own job, the move to the next row, is not done.
+    expect(document.activeElement).toBe(first);
+
+    await r.step(async () => {
+      press(first, 'm', { altKey: true, code: 'KeyM' });
+      await settle();
+    });
+    expect(ops.handleMergeSegment).toHaveBeenCalledWith('a');
+    await r.unmount();
+  });
+
   it('Enter saves a changed row with its times and speaker, then moves to the next row', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, makeOps()));

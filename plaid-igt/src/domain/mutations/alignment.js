@@ -48,6 +48,7 @@ import {
   createdId,
   createdIds,
   wasReplayed,
+  PROVENANCE_KEYS,
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/errors.js';
@@ -56,9 +57,11 @@ import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { newWordsOf, reshapeVocabLinks, wordsOverlap } from './document.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
-import { overlapProblem, rangeProblem } from '../alignmentTimes.js';
+import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { countTextDeleteLoss } from '@ui/domain/annotationLoss.js';
+import { countSplitLoss, countTextDeleteLoss, dropRelations } from '@ui/domain/annotationLoss.js';
+import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
+import { reparentSpans, reparentVocabLinks } from './reparent.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -460,6 +463,39 @@ const recordingOf = (raw) => raw?.mediaUrl ?? null;
 
 // Whether a row edit's metadata patch sets a time.
 const setsTimes = (patch) => 'timeBegin' in patch || 'timeEnd' in patch;
+
+const isSpace = (c) => /\s/u.test(c ?? '');
+
+/**
+ * Where `segment`'s text may be cut in two, as code points of `body`: where a
+ * word begins after whitespace, or right after another word (a script written
+ * without spaces), never inside one of `words` (the word tokens), and with
+ * text left on both sides. Each cut is `{ at, leftEnd }`: the right half
+ * begins at `at`, and the left half ends at `leftEnd`, before the whitespace
+ * between them, as a new segment's text has none at its ends.
+ */
+export const segmentCuts = (body, segment, words = []) => {
+  const cps = Array.from(cpSlice(body, segment.begin, segment.end));
+  const at = new Set();
+  for (let i = 1; i < cps.length; i++) {
+    if (!isSpace(cps[i]) && isSpace(cps[i - 1])) at.add(segment.begin + i);
+  }
+  for (const w of words) {
+    if (w.begin > segment.begin && w.begin < segment.end) at.add(w.begin);
+  }
+  const cuts = [];
+  for (const p of [...at].sort((a, b) => a - b)) {
+    if (words.some((w) => w.begin < p && p < w.end)) continue;
+    let leftEnd = p;
+    while (leftEnd > segment.begin && isSpace(cps[leftEnd - 1 - segment.begin])) leftEnd -= 1;
+    if (leftEnd > segment.begin) cuts.push({ at: p, leftEnd });
+  }
+  return cuts;
+};
+
+// The metadata keys a merge settles itself: the times and the speaker are
+// planned, provenance follows tokenReshape.js.
+const MERGE_SETTLED = new Set(['timeBegin', 'timeEnd', 'speaker', ...PROVENANCE_KEYS]);
 
 export const alignmentMutations = {
   // Create a new alignment by inserting `text` into the body at a position
@@ -925,6 +961,213 @@ export const alignmentMutations = {
       await this._client.tokens.patchMetadata(settledId(alignmentId), metadataOps(patch));
       await this._rememberSpeaker(value);
     });
+  },
+
+  // SPLIT AND MERGE. A segment is a token on the alignment layer, beside the
+  // sentences and the words, so cutting or joining segments changes no
+  // character of the baseline and no sentence, word, morpheme or value on
+  // them: each word keeps its place in the text and goes with the half its
+  // text is in. Sentences stay as they are, since a sentence break is the
+  // Tokenize tab's (its Split at segments makes them from the segments).
+  // What the segment itself carries goes as a split or merge of any token in
+  // the app goes (tokenReshape.js, sentences.js): the left half keeps the
+  // segment and what is on it, the right half is new with the provenance, and
+  // a merge keeps the earlier segment, with the later one's annotations moved
+  // onto it by the server. Only a relation another layer keeps inside one
+  // segment can be lost, by a split, and the speaker or a value of the later
+  // segment by a merge: the plan says so, for the screen to ask.
+
+  /**
+   * How splitting segment `alignmentId` at `time` (seconds) would go, or
+   * `{ error }`. `at` is where in its text (a code point of the body) the cut
+   * is wanted, as a caret puts it: the cut between words nearest it is taken.
+   * Without one, the cut nearest the time's share of the segment. Answers
+   * `{ segment, time, at, leftEnd, loss }`, `loss` as countSplitLoss counts.
+   */
+  segmentSplitPlan(alignmentId, { time, at = null } = {}) {
+    const info = this.layerInfo;
+    const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    if (!segment) return { error: 'Segment not found' };
+    const timeBegin = segment.metadata?.timeBegin ?? 0;
+    const timeEnd = segment.metadata?.timeEnd ?? timeBegin;
+    if (!Number.isFinite(time) || time < timeBegin + MIN_SEGMENT || time > timeEnd - MIN_SEGMENT) {
+      return { error: 'Playback must be inside the segment.' };
+    }
+    const words = (info.primaryTokenLayer?.tokens || []).filter(
+      (w) => w.end > segment.begin && w.begin < segment.end,
+    );
+    const cuts = segmentCuts(this.body, segment, words);
+    if (!cuts.length) return { error: 'This segment has one word.' };
+    const wanted = Number.isFinite(at)
+      ? at
+      : segment.begin +
+        ((segment.end - segment.begin) * (time - timeBegin)) / (timeEnd - timeBegin);
+    const cut = cuts.reduce((best, c) =>
+      Math.abs(c.at - wanted) < Math.abs(best.at - wanted) ? c : best,
+    );
+    const loss = countSplitLoss(info.primaryTextLayer?.tokenLayers || [], segment.id, cut.at);
+    return { segment, time, at: cut.at, leftEnd: cut.leftEnd, loss };
+  },
+
+  // Split a segment in two at `time`, its text between words (see
+  // `segmentSplitPlan`). The left half keeps the segment, ending at `time`,
+  // and the right half is new, from `time`, with the same speaker. Shown at
+  // once, the right half under a pending id, and sent as one batch.
+  async splitSegment(alignmentId, { time, at = null } = {}) {
+    const plan = this.segmentSplitPlan(alignmentId, { time, at });
+    if (plan.error) {
+      this.setError(plan.error);
+      return false;
+    }
+    const textId = this.layerInfo.primaryTextLayer?.text?.id;
+    if (!textId) {
+      this.setError(notSetUp('Text layer not found'));
+      return false;
+    }
+    const label = 'Failed to split segment';
+    if (!this._canWrite(label)) return false;
+    const { segment, leftEnd } = plan;
+    const cutAt = plan.at;
+    const was = segment.metadata || {};
+    const timeEnd = was.timeEnd ?? was.timeBegin ?? 0;
+    const stamp = (m) => this.editStamp(m);
+    const leftPatch = { timeEnd: time, ...(survivorPatch(was, {}, stamp) || {}) };
+    const rightMetadata = {
+      ...alignmentMeta(time, timeEnd, was.speaker),
+      ...(newHalfMetadata(was, stamp) || {}),
+    };
+    const rightId = pendingId();
+    this._applyRawPatch((next, infoNext) => {
+      // The relations the split cuts go in its own transaction, so they
+      // leave this copy with it, as a sentence split's do.
+      const layers = infoNext.primaryTextLayer?.tokenLayers || [];
+      dropRelations(layers, countSplitLoss(layers, segment.id, cutAt).relationIds);
+      const left = (infoNext.alignmentTokenLayer?.tokens || []).find((t) => t.id === segment.id);
+      if (left) {
+        left.end = leftEnd;
+        left.metadata = mergeMetadata(left.metadata || {}, leftPatch);
+      }
+      pushAlignmentToken(infoNext, {
+        id: rightId,
+        text: textId,
+        begin: cutAt,
+        end: segment.end,
+        metadata: { ...rightMetadata },
+      });
+    });
+    const recheck = this._sameRecording(recordingOf(this._raw), 'Segment split');
+    return this._queueWrite(
+      label,
+      async () => {
+        const id = settledId(segment.id);
+        await this._client.batched(async (b) => {
+          b.tokens.split(id, cutAt, undefined, { id: rightId });
+          if (leftEnd < cutAt) b.tokens.update(id, undefined, leftEnd);
+          b.tokens.patchMetadata(id, metadataOps(leftPatch));
+          b.tokens.patchMetadata(rightId, metadataOps(rightMetadata));
+        });
+        this._settle(new Map([[rightId, rightId]]));
+      },
+      undefined,
+      { recheck },
+    );
+  },
+
+  /**
+   * How merging segment `alignmentId` with the next one in the text would go,
+   * or `{ error }`. The next one is the segment after it in time, unless that
+   * one is cross-talk, which is refused. Answers `{ segment, next, times,
+   * speaker, loss }`: the merged times and speaker, and in `loss` the next
+   * segment's speaker when the two differ (`speaker`) and the keys of its
+   * metadata with another value than this one's (`keys`), which the merge
+   * drops.
+   */
+  segmentMergePlan(alignmentId) {
+    const info = this.layerInfo;
+    const tokens = [...(info.alignmentTokenLayer?.tokens || [])].sort(sortByBegin);
+    const i = tokens.findIndex((t) => t.id === alignmentId);
+    if (i < 0) return { error: 'Segment not found' };
+    const segment = tokens[i];
+    const next = tokens[i + 1];
+    if (!next) return { error: 'This is the last segment.' };
+    const a = segment.metadata || {};
+    const b = next.metadata || {};
+    const aBegin = a.timeBegin ?? 0;
+    const aEnd = a.timeEnd ?? aBegin;
+    const bBegin = b.timeBegin ?? 0;
+    const bEnd = b.timeEnd ?? bBegin;
+    if (bBegin < aEnd && bEnd > aBegin) return { error: 'The next segment overlaps this one.' };
+    const own = (a.speaker || '').trim();
+    const theirs = (b.speaker || '').trim();
+    const speaker = own || theirs;
+    const times = { timeBegin: Math.min(aBegin, bBegin), timeEnd: Math.max(aEnd, bEnd) };
+    const problem = overlapProblem(
+      tokens.filter((t) => t.id !== next.id),
+      { id: segment.id, metadata: alignmentMeta(times.timeBegin, times.timeEnd, speaker) },
+      { format: seconds },
+    );
+    if (problem) return { error: problem };
+    const keys = Object.keys(b).filter(
+      (k) => !MERGE_SETTLED.has(k) && JSON.stringify(b[k]) !== JSON.stringify(a[k]),
+    );
+    return {
+      segment,
+      next,
+      times,
+      speaker,
+      loss: { speaker: own && theirs && own !== theirs ? theirs : null, keys },
+    };
+  },
+
+  // Merge a segment with the next one (see `segmentMergePlan`): the earlier
+  // segment survives over both texts, and the text between them, with both
+  // stretches of time, and the later one goes, its annotations moved onto the
+  // survivor. Shown at once and sent as one batch.
+  async mergeSegment(alignmentId) {
+    const plan = this.segmentMergePlan(alignmentId);
+    if (plan.error) {
+      this.setError(plan.error);
+      return false;
+    }
+    const label = 'Failed to merge segments';
+    if (!this._canWrite(label)) return false;
+    const { segment, next, times, speaker } = plan;
+    const was = segment.metadata || {};
+    const inherited = survivingProvenance([was, next.metadata]);
+    const patch = {
+      ...(survivorPatch(was, inherited, (m) => this.editStamp(m)) || {}),
+    };
+    if (times.timeBegin !== was.timeBegin) patch.timeBegin = times.timeBegin;
+    if (times.timeEnd !== was.timeEnd) patch.timeEnd = times.timeEnd;
+    if (speaker && speaker !== (was.speaker || '').trim()) patch.speaker = speaker;
+    const gone = new Set([next.id]);
+    this._applyRawPatch((n, infoNext, vocabs) => {
+      const layer = infoNext.alignmentTokenLayer;
+      if (!Array.isArray(layer?.tokens)) return;
+      const survivor = layer.tokens.find((t) => t.id === segment.id);
+      if (survivor) {
+        survivor.end = Math.max(survivor.end, next.end);
+        survivor.metadata = mergeMetadata(survivor.metadata || {}, patch);
+      }
+      layer.tokens = layer.tokens.filter((t) => !gone.has(t.id));
+      // The server moves the later segment's spans and links onto the
+      // survivor (token.clj merge-tokens): mirrored here.
+      reparentSpans(layer.spanLayers, gone, segment.id);
+      reparentVocabLinks(vocabs, gone, segment.id);
+    });
+    const recheck = this._sameRecording(recordingOf(this._raw), 'Segment merge');
+    return this._queueWrite(
+      label,
+      () =>
+        this._client.batched(async (b) => {
+          b.tokens.merge(settledId(segment.id), settledId(next.id));
+          if (Object.keys(patch).length) {
+            b.tokens.patchMetadata(settledId(segment.id), metadataOps(patch));
+          }
+        }),
+      undefined,
+      { recheck },
+    );
   },
 
   // Delete every alignment token. No text edit; alignments live on their own

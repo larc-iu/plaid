@@ -900,3 +900,117 @@ describe('useMediaOperations: the recording changed elsewhere', () => {
     await h.unmount();
   });
 });
+
+// Split and merge from the timeline's card and the keys outside a text box:
+// the segment is the selected one or the one playback is in, the time is the
+// recording's own clock, and a question comes only when something would go.
+describe('useMediaOperations: split and merge', () => {
+  const SEGMENTS = [
+    { id: 's1', begin: 0, end: 9, metadata: { timeBegin: 0, timeEnd: 4, speaker: 'Tom' } },
+    { id: 's2', begin: 10, end: 14, metadata: { timeBegin: 4, timeEnd: 6, speaker: 'Ana' } },
+  ];
+  const NO_LOSS = { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
+  const mountWith = async (over) => {
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
+      alignmentTokens: SEGMENTS,
+      segmentSplitPlan: vi.fn((id) => ({ segment: SEGMENTS[0], at: 5, loss: NO_LOSS, id })),
+      splitSegment: vi.fn(async () => true),
+      segmentMergePlan: vi.fn(() => ({
+        speaker: 'Tom',
+        times: { timeBegin: 0, timeEnd: 6 },
+        loss: { speaker: null, keys: [] },
+      })),
+      mergeSegment: vi.fn(async () => true),
+      ...over,
+    });
+    const h = await mountMedia({ doc });
+    const el = fakeMediaElement([], { currentTime: 2.5 });
+    await loadRecording(h, el);
+    return h;
+  };
+  const dialog = () => document.querySelector('[role="alertdialog"]');
+  const answer = async (h, label) => {
+    const button = [...dialog().querySelectorAll('button')].find((b) => b.textContent === label);
+    await h.step(async () => {
+      button.click();
+      await settle();
+    });
+  };
+
+  it('Alt+Enter splits the segment playback is in at the clock, asking nothing, and selects the left half', async () => {
+    const h = await mountWith();
+    await h.step(async () => {
+      press({ key: 'Enter', code: 'Enter', altKey: true });
+      await settle();
+    });
+    expect(dialog()).toBeNull();
+    expect(h.doc.segmentSplitPlan).toHaveBeenCalledWith('s1', { time: 2.5, at: null });
+    expect(h.doc.splitSegment).toHaveBeenCalledWith('s1', { time: 2.5, at: 5 });
+    expect(h.api.selection).toEqual({ start: 0, end: 2.5 });
+    await h.unmount();
+  });
+
+  it('a caret in the row says where the text is cut', async () => {
+    const h = await mountWith();
+    await h.step(async () => {
+      await h.api.handleSplitSegment('s1', { offset: 4 });
+    });
+    expect(h.doc.segmentSplitPlan).toHaveBeenCalledWith('s1', { time: 2.5, at: 4 });
+    await h.unmount();
+  });
+
+  it('asks before a split that deletes annotations, and splits nothing on Cancel', async () => {
+    const h = await mountWith({
+      segmentSplitPlan: vi.fn(() => ({
+        segment: SEGMENTS[0],
+        at: 5,
+        loss: { ...NO_LOSS, annotations: 2 },
+      })),
+    });
+    let done;
+    await h.step(async () => {
+      done = h.api.handleSplitSegment();
+      await settle();
+    });
+    expect(dialog().textContent).toContain('Deletes 2 annotations that cross the split.');
+    await answer(h, 'Cancel');
+    expect(await done).toBe(false);
+    expect(h.doc.splitSegment).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+
+  it('merges the selected segment with the next, asking when its speaker would go', async () => {
+    const h = await mountWith({
+      segmentMergePlan: vi.fn(() => ({
+        speaker: 'Tom',
+        times: { timeBegin: 0, timeEnd: 6 },
+        loss: { speaker: 'Ana', keys: [] },
+      })),
+    });
+    await h.step(() => h.api.setSelection({ start: 0, end: 4 }));
+    await h.step(async () => {
+      press({ key: 'm', code: 'KeyM', altKey: true });
+      await settle();
+    });
+    expect(h.doc.segmentMergePlan).toHaveBeenCalledWith('s1');
+    expect(dialog().textContent).toContain("Removes speaker Ana. The merged segment is Tom's.");
+    await answer(h, 'Merge');
+    expect(h.doc.mergeSegment).toHaveBeenCalledWith('s1');
+    expect(h.api.selection).toEqual({ start: 0, end: 6 });
+    await h.unmount();
+  });
+
+  it('says why when a merge is refused, and writes nothing', async () => {
+    const h = await mountWith({
+      segmentMergePlan: vi.fn(() => ({ error: 'This is the last segment.' })),
+    });
+    let ok;
+    await h.step(async () => {
+      ok = await h.api.handleMergeSegment('s2');
+    });
+    expect(ok).toBe(false);
+    expect(dialog()).toBeNull();
+    expect(h.doc.mergeSegment).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+});

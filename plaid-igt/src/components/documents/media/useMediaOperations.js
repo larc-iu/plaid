@@ -16,6 +16,8 @@ import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { hasLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { shownOrRefused } from './shownOrRefused.js';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
@@ -110,7 +112,7 @@ const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : un
 // write in flight, with a toast and a reload on error). The returned object is the
 // single source the timeline + player read from.
 export const useMediaOperations = () => {
-  const { doc, client, acquireWriteLock, canWrite } = useDocumentCtx();
+  const { doc, client, acquireWriteLock, canWrite, readOnly } = useDocumentCtx();
   useDocumentModel(doc);
   const confirm = useConfirm();
 
@@ -1019,6 +1021,109 @@ export const useMediaOperations = () => {
     [doc],
   );
 
+  // The segment a split or a merge acts on when none is named. A split is at
+  // playback, so it takes the segment playback is in, and of two (cross-talk)
+  // the selected one. A merge takes the selected segment, else the one
+  // playback is in. Null when there is none to take.
+  const segmentAtHand = useCallback(
+    (which) => {
+      const tokens = doc.alignmentTokens || [];
+      const timeOf = (t) => [t.metadata?.timeBegin ?? 0, t.metadata?.timeEnd ?? 0];
+      const isSelected = (t) => {
+        const [b, e] = timeOf(t);
+        return !!selection && b === selection.start && e === selection.end;
+      };
+      const at = getCurrentTime() ?? currentTime;
+      const under = tokens.filter((t) => {
+        const [b, e] = timeOf(t);
+        return b <= at && at < e;
+      });
+      const selected = (which === 'split' ? under : tokens).find(isSelected);
+      if (selected) return selected.id;
+      return under.length === 1 ? under[0].id : null;
+    },
+    [doc, selection, getCurrentTime, currentTime],
+  );
+
+  // Split a segment at playback, from the timeline's card, the keyboard or a
+  // row. `offset` is the caret in the segment's text (code points), where the
+  // text is cut, between words; without one the text is cut in proportion to
+  // the time. Asks first only when the split would delete annotations. The
+  // left half stays selected.
+  const handleSplitSegment = useCallback(
+    async (id = null, { offset = null } = {}) => {
+      const target = id ?? segmentAtHand('split');
+      if (!target) {
+        notifyError('Playback must be inside a segment.', 'Not split');
+        return false;
+      }
+      const time = getCurrentTime() ?? currentTime;
+      const token = (doc.alignmentTokens || []).find((t) => t.id === target);
+      const length = token ? token.end - token.begin : 0;
+      const at = token && offset > 0 && offset < length ? token.begin + offset : null;
+      const plan = doc.segmentSplitPlan(target, { time, at });
+      if (plan.error) {
+        notifyError(plan.error, 'Not split');
+        return false;
+      }
+      if (
+        hasLoss(plan.loss) &&
+        !(await confirm({
+          title: 'Split segment?',
+          description: `Deletes ${lossPhrase(plan.loss)} that cross the split.`,
+          confirmLabel: 'Split',
+          destructive: true,
+        }))
+      ) {
+        return false;
+      }
+      const begin = plan.segment.metadata?.timeBegin ?? 0;
+      const ok = await shownOrRefused(doc, () => doc.splitSegment(target, { time, at: plan.at }));
+      if (ok) setSelection({ start: begin, end: time });
+      return ok;
+    },
+    [doc, confirm, segmentAtHand, getCurrentTime, currentTime],
+  );
+
+  // Merge a segment with the next one. Asks first only when the next one's
+  // speaker or another of its values would go. The merged segment is
+  // selected.
+  const handleMergeSegment = useCallback(
+    async (id = null) => {
+      const target = id ?? segmentAtHand('merge');
+      if (!target) {
+        notifyError('Select a segment.', 'Not merged');
+        return false;
+      }
+      const plan = doc.segmentMergePlan(target);
+      if (plan.error) {
+        notifyError(plan.error, 'Not merged');
+        return false;
+      }
+      const { speaker, keys: dropped } = plan.loss;
+      const lost = [
+        speaker && `Removes speaker ${speaker}. The merged segment is ${plan.speaker}'s.`,
+        dropped.length &&
+          `Removes ${dropped.length === 1 ? '1 value' : `${dropped.length} values`} of the next segment.`,
+      ].filter(Boolean);
+      if (
+        lost.length &&
+        !(await confirm({
+          title: 'Merge segments?',
+          description: lost.join(' '),
+          confirmLabel: 'Merge',
+          destructive: true,
+        }))
+      ) {
+        return false;
+      }
+      const ok = await shownOrRefused(doc, () => doc.mergeSegment(target));
+      if (ok) setSelection({ start: plan.times.timeBegin, end: plan.times.timeEnd });
+      return ok;
+    },
+    [doc, confirm, segmentAtHand],
+  );
+
   // Keep the DOM media element's volume in sync with `volume`. Covers the
   // initial 0.8, any volume set before the element mounted, and element swaps.
   useEffect(() => {
@@ -1067,6 +1172,15 @@ export const useMediaOperations = () => {
         return;
       }
       if (isTextTarget(e.target) || isActivatable(e.target)) return;
+      // Split and merge, of the selected segment or the one playback is in.
+      // A transcript row takes them itself, with its caret.
+      const reshape = keys.which(['media.split', 'media.merge'], e);
+      if (reshape && !readOnly) {
+        e.preventDefault();
+        if (reshape === 'media.split') handleSplitSegment();
+        else handleMergeSegment();
+        return;
+      }
       // Chords match their modifiers exactly, so one carrying a modifier that
       // is somebody else's (Ctrl+Space is input-source switching on a Mac,
       // Alt+Space a window menu) never toggles playback on the way through.
@@ -1093,7 +1207,16 @@ export const useMediaOperations = () => {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selection, isPlaying, playRangeFromHere, seekBy, playableElement]);
+  }, [
+    selection,
+    isPlaying,
+    playRangeFromHere,
+    seekBy,
+    playableElement,
+    readOnly,
+    handleSplitSegment,
+    handleMergeSegment,
+  ]);
 
   // Trigger service discovery on component mount
   useEffect(() => {
@@ -1185,6 +1308,8 @@ export const useMediaOperations = () => {
 
     // Segment operations
     handleDeleteAlignment,
+    handleSplitSegment,
+    handleMergeSegment,
 
     // Speech detection (proposals, not data)
     vad,

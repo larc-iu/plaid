@@ -174,6 +174,7 @@ Every segment is a row you can edit:
 * **Shift+Space** pauses and resumes the segment you are in without leaving the row.
 * **Shift+←** and **Shift+→** move playback one second.
 * **Space** plays and pauses the whole recording when you are not typing in a box.
+* **Alt+Enter** splits the segment at playback, its text between the words at the caret, and **Alt+M** merges it with the next segment. The words, their annotations and the sentences are unchanged.
 
 A change to a row's text is saved as it is on the Baseline tab, and the words in it keep their analysis.
 When someone else changed the same segment's text while you were editing it, the row shows their text with yours under it.
@@ -201,6 +202,8 @@ To transcribe from scratch, clear the text on the Baseline tab first.
 The timeline shows the same segments against the waveform.
 Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click a segment to hear it and edit its row.
 **Ctrl/Cmd+wheel** zooms the timeline, and the wheel alone pans it.
+The ruler above it shows the time, and a click on it moves playback there.
+The card over a selected segment has buttons to split it at playback and to merge it with the next one.
 
 A dragged stretch takes either new text or text already in the baseline.
 Under **Existing text**, select the words the segment covers.
@@ -1099,6 +1102,8 @@ The arrow button above a sentence merges it with the previous one.
 | **↑** / **↓** (transcript row) | Move to the row above or below, from the start or end of the text.
 | **Enter** (proposed row) | Make a segment of the proposal, with the text you typed. Moving on saves it too.
 | **Tab** (transcript row) | Move to the next field in the row.
+| **Alt+Enter** | Split the segment at playback, its text between the words at the caret. Outside a row, the segment playback is in.
+| **Alt+M** | Merge the segment with the next one.
 | **↑** / **↓** (segment time) | Step the digit box under the caret: milliseconds by 10, or 100 with Shift. **←** / **→** move between boxes, **Backspace** zeroes the box.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.
 | **Esc** (timeline) | Clear the selected stretch.

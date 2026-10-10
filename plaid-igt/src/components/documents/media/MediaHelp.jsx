@@ -70,8 +70,10 @@ export function MediaHelp() {
         the row above or below, from the start or end of the text · <Chord id="media.prevRow" />{' '}
         <Chord id="media.nextRow" /> the same from anywhere in the row · <Kbd>Esc</Kbd> to put the
         row back · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the
-        previous one to playback at <Kbd>Enter</Kbd> · the bin deletes a segment and its text,
-        asking first when the text has annotations
+        previous one to playback at <Kbd>Enter</Kbd> · <Chord id="media.split" /> to split the
+        segment at playback, its text between the words at the caret · <Chord id="media.merge" /> to
+        merge it with the next · the bin deletes a segment and its text, asking first when the text
+        has annotations
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
@@ -83,9 +85,10 @@ export function MediaHelp() {
       <Row label="Timeline">
         drag an empty stretch to add a segment, typed fresh or by selecting words already in the
         baseline (<Kbd>⇧</Kbd>+arrows select there) · drag an edge to trim · click a segment to hear
-        it and edit its row · in the new-segment popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
-        <Kbd>Enter</Kbd> to save, <Kbd>Esc</Kbd> to cancel · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel to
-        zoom, wheel to pan
+        it and edit its row · click the ruler to move playback · the selected segment's card splits
+        it at playback and merges it with the next, also outside a text box by the same keys · in
+        the new-segment popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+<Kbd>Enter</Kbd> to save,{' '}
+        <Kbd>Esc</Kbd> to cancel · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel to zoom, wheel to pan
       </Row>
       <Row label="Detection">
         the waveform button in the Recording header proposes where the utterances are, in the

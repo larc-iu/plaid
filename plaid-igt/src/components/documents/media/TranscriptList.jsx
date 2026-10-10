@@ -26,6 +26,7 @@ import { keys } from '@/lib/keymap.js';
 import { settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { shownOrRefused } from './shownOrRefused.js';
+import { caretInRow } from './segmentCaret.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -111,6 +112,9 @@ const rateStepOf = (e) => (keys.is('media.faster', e) ? 1 : keys.is('media.slowe
 // -1 up, 1 down, 0 to leave the key alone.
 const unitStepOf = (e) => (keys.is('media.prevRow', e) ? -1 : keys.is('media.nextRow', e) ? 1 : 0);
 
+// Split or merge of the row's segment: 'media.split', 'media.merge' or null.
+const reshapeOf = (e) => keys.which(['media.split', 'media.merge'], e);
+
 // A textarea that grows with its content, so a long utterance is never a
 // one-line slot you scroll inside.
 //
@@ -160,6 +164,8 @@ const SegmentRow = memo(function SegmentRow({
   onAdvance,
   onStep,
   onDelete,
+  onSplit,
+  onMerge,
   lossFor,
   onPlayToggle,
   registerText,
@@ -292,11 +298,24 @@ const SegmentRow = memo(function SegmentRow({
 
   const playToggle = () => onPlayToggle(token);
 
+  // Split at playback, the text cut between the words at the caret (taken
+  // before the save, which may trim the text), or merge with the next row.
+  // The row is saved first, so what is split is what it shows.
+  const reshape = async (which, caret = null) => {
+    if (!(await commit())) return;
+    if (which === 'media.split') onSplit(token.id, caret);
+    else onMerge(token.id);
+  };
+
   const onTextKeyDown = async (e) => {
     const step = leavingBy(e) || unitStepOf(e);
+    const which = reshapeOf(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       playToggle();
+    } else if (which) {
+      e.preventDefault();
+      reshape(which, which === 'media.split' ? caretInRow(e.target) : null);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       // Enter on a row whose edit lost, with nothing typed since, sends that
@@ -323,9 +342,13 @@ const SegmentRow = memo(function SegmentRow({
 
   const onSpeakerKeyDown = async (e) => {
     const step = unitStepOf(e);
+    const which = reshapeOf(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       playToggle();
+    } else if (which) {
+      e.preventDefault();
+      reshape(which);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (await commit()) textRef.current?.focus({ preventScroll: true });
@@ -1094,6 +1117,11 @@ export function TranscriptList({
     [],
   );
   const lossFor = useCallback((t) => doc.segmentDeleteLoss(t.id), [doc]);
+  const handleSplit = useCallback(
+    (id, offset) => opsRef.current.handleSplitSegment(id, { offset }),
+    [],
+  );
+  const handleMerge = useCallback((id) => opsRef.current.handleMergeSegment(id), []);
 
   // Entering a proposal selects and (by preference) plays its stretch, the
   // same as entering a segment row.
@@ -1218,6 +1246,8 @@ export function TranscriptList({
             onAdvance={handleAdvance}
             onStep={handleStep}
             onDelete={handleDelete}
+            onSplit={handleSplit}
+            onMerge={handleMerge}
             lossFor={lossFor}
             onPlayToggle={handlePlayToggle}
             registerText={registerText}
@@ -1255,6 +1285,8 @@ export function TranscriptList({
       handleAdvance,
       handleStep,
       handleDelete,
+      handleSplit,
+      handleMerge,
       lossFor,
       handlePlayToggle,
       registerText,

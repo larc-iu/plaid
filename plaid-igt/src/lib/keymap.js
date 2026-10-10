@@ -251,6 +251,22 @@ export const KEY_ACTIONS = [
     label: 'Next segment',
     keys: ['Alt+ArrowDown'],
   },
+  {
+    // Alt, not Mod: Ctrl/Cmd+Enter saves the timeline's new-segment popover.
+    id: 'media.split',
+    scope: 'media',
+    group: 'media',
+    label: 'Split the segment at playback, between the words at the caret',
+    keys: ['Alt+Enter'],
+  },
+  {
+    // On a Mac this is the key that types µ, in a transcript row only.
+    id: 'media.merge',
+    scope: 'media',
+    group: 'media',
+    label: 'Merge the segment with the next one',
+    keys: ['Alt+m'],
+  },
   ...fixed(
     'media',
     'Enter',
