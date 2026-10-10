@@ -1,6 +1,6 @@
 import React from 'react';
 import { cpSlice } from '@larc-iu/plaid-client';
-import { ZoomIn, ZoomOut, Play } from 'lucide-react';
+import { ZoomIn, ZoomOut, Play, Pause } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import {
   Tooltip,
@@ -29,7 +29,7 @@ const segmentColors = (speaker, speakers, resizing) => {
   if (!speaker) {
     return {
       fill: `hsl(var(--primary) / ${resizing ? 0.25 : 0.15})`,
-      stroke: 'hsl(var(--primary))',
+      stroke: 'hsl(var(--primary) / 0.45)',
     };
   }
   const hue = speakerHue(speaker, speakers);
@@ -84,6 +84,91 @@ const WaveformCanvas = ({ envelope, from, to, duration, pixelsPerSecond }) => {
   );
 };
 
+// How far the selection's ring stands outside its box (a 1px gap and a 2px
+// ring), so the bracket above meets the ring and not the box inside it.
+const RING_OUTSET = 3;
+
+// The selection's times and its play button, in the strip above the track.
+// One small card centred over the selection, tied to it by a stem and a
+// bracket the selection's width, so it reads as the selection's at any width:
+// over a sliver the bracket closes to a single tick under the stem. The card
+// slides to stay inside the recording near either end, and the stem stays put.
+const SelectionReadout = ({ selection, pixelsPerSecond, trackWidth, playing, onPlay }) => {
+  const left = selection.start * pixelsPerSecond - RING_OUTSET;
+  const width = (selection.end - selection.start) * pixelsPerSecond + 2 * RING_OUTSET;
+  const mid = left + width / 2;
+  const line = 'hsl(var(--ring))';
+  return (
+    <div
+      data-selection-readout=""
+      // Part of the track's box but not of its gestures: a press here is
+      // never the start of a drag.
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: `${left}px`,
+          width: `${width}px`,
+          top: '-7px',
+          height: '7px',
+          borderTop: `1px solid ${line}`,
+          borderLeft: `1px solid ${line}`,
+          borderRight: `1px solid ${line}`,
+          pointerEvents: 'none',
+          zIndex: 15,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: `${Math.round(mid)}px`,
+          width: '1px',
+          top: '-14px',
+          height: '7px',
+          backgroundColor: line,
+          pointerEvents: 'none',
+          zIndex: 15,
+        }}
+      />
+      <div
+        className="flex h-7 items-center gap-1 whitespace-nowrap rounded-md border bg-card pl-0.5 pr-2 shadow-sm"
+        style={{
+          position: 'absolute',
+          top: '-42px',
+          left: `${mid}px`,
+          transform: `translateX(clamp(${-mid}px, -50%, calc(${trackWidth - mid}px - 100%)))`,
+          zIndex: 16,
+        }}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              aria-label={playing ? 'Pause selection' : 'Play selection'}
+              onClick={onPlay}
+            >
+              {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{playing ? 'Pause' : 'Play selection'}</TooltipContent>
+        </Tooltip>
+        <span className="font-mono text-[11px] tabular-nums text-foreground">
+          {formatTime(selection.start)}
+          <span className="px-1 text-muted-foreground">–</span>
+          {formatTime(selection.end)}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export const Timeline = ({ mediaOps, readOnly = false }) => {
   const { doc } = useDocumentCtx();
 
@@ -99,7 +184,14 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     popoverOpened,
     setPopoverOpened,
     pixelsPerSecond,
+    isPlaying,
+    playingSelection,
   } = mediaOps;
+  const selectionPlaying =
+    !!selection &&
+    isPlaying &&
+    playingSelection?.start === selection.start &&
+    playingSelection?.end === selection.end;
 
   const speakers = doc.knownSpeakers;
 
@@ -327,11 +419,13 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                       style={{
                         position: 'absolute',
                         left: `${selection.start * pixelsPerSecond}px`,
-                        width: `${(selection.end - selection.start) * pixelsPerSecond}px`,
+                        width: `${Math.max(1, (selection.end - selection.start) * pixelsPerSecond)}px`,
                         top: 0,
                         bottom: 0,
-                        backgroundColor: 'hsl(var(--primary) / 0.15)',
-                        border: '2px solid hsl(var(--primary))',
+                        backgroundColor: 'hsl(var(--primary) / 0.08)',
+                        // A ring outside the box, clear of the segment borders
+                        // it sits on, as a focus ring stands clear of a field.
+                        boxShadow: `0 0 0 1px hsl(var(--card)), 0 0 0 ${RING_OUTSET}px hsl(var(--ring))`,
                         pointerEvents: 'none',
                         zIndex: 4,
                       }}
@@ -340,49 +434,14 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 />
               )}
 
-              {/* Selection time labels and controls */}
               {selection && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: `${selection.start * pixelsPerSecond}px`,
-                    width: `${(selection.end - selection.start) * pixelsPerSecond}px`,
-                    top: '-35px',
-                    height: '30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    pointerEvents: 'auto',
-                    zIndex: 15,
-                  }}
-                >
-                  <span
-                    style={{
-                      color: 'hsl(var(--primary))',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {formatTime(selection.start)}
-                  </span>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={onPlaySelection} size="icon" className="h-7 w-7">
-                        <Play className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Play selected region</TooltipContent>
-                  </Tooltip>
-
-                  <span
-                    style={{
-                      color: 'hsl(var(--primary))',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {formatTime(selection.end)}
-                  </span>
-                </div>
+                <SelectionReadout
+                  selection={selection}
+                  pixelsPerSecond={pixelsPerSecond}
+                  trackWidth={timelineWidth}
+                  playing={selectionPlaying}
+                  onPlay={onPlaySelection}
+                />
               )}
 
               {/* Temporary selection highlight */}
@@ -441,10 +500,21 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 const speaker = token.metadata?.speaker || '';
                 const colors = segmentColors(speaker, speakers, isBeingResized);
                 const lane = lanes.get(token.id) ?? 0;
+                // The edges are drawn only under the pointer or mid-drag: drawn
+                // on every segment they were a heavy bar between every pair,
+                // and the pointer's resize cursor finds them anyway. Never on a
+                // sliver, where they would cover it.
+                const handleClass =
+                  tokenWidth <= 20
+                    ? 'opacity-0'
+                    : isBeingResized
+                      ? ''
+                      : 'opacity-0 transition-opacity group-hover:opacity-100';
 
                 return (
                   <div
                     key={stableKey(token.id)}
+                    className="group"
                     style={{
                       position: 'absolute',
                       left: `${displayStart * pixelsPerSecond}px`,
@@ -505,6 +575,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     {!readOnly && (
                       <div
                         onMouseDown={(e) => handleResizeStart(e, token, 'left')}
+                        className={handleClass}
                         style={{
                           position: 'absolute',
                           left: '-2px',
@@ -514,19 +585,24 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                           backgroundColor: colors.stroke,
                           cursor: 'ew-resize',
                           zIndex: 5,
-                          opacity: tokenWidth > 20 ? 1 : 0, // Hide on very small tokens
                         }}
                       />
                     )}
 
                     {/* Token content */}
                     <div
+                      dir="auto"
+                      className="font-text"
                       style={{
                         height: '100%',
                         display: 'flex',
                         alignItems: 'center',
                         paddingLeft: tokenWidth > 20 ? '6px' : '2px',
                         paddingRight: tokenWidth > 20 ? '6px' : '2px',
+                        // A halo in the card's colour, so the words read over
+                        // the waveform drawn behind them.
+                        textShadow:
+                          '0 0 2px hsl(var(--card)), 0 0 2px hsl(var(--card)), 0 0 1px hsl(var(--card))',
                       }}
                     >
                       {cpSlice(doc.body || '', token.begin, token.end) || ''}
@@ -536,6 +612,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     {!readOnly && (
                       <div
                         onMouseDown={(e) => handleResizeStart(e, token, 'right')}
+                        className={handleClass}
                         style={{
                           position: 'absolute',
                           right: '-2px',
@@ -545,7 +622,6 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                           backgroundColor: colors.stroke,
                           cursor: 'ew-resize',
                           zIndex: 5,
-                          opacity: tokenWidth > 20 ? 1 : 0, // Hide on very small tokens
                         }}
                       />
                     )}

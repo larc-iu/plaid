@@ -713,6 +713,30 @@ describe('useMediaOperations: playing before the recording has loaded', () => {
     await h.unmount();
   });
 
+  it("the timeline's play button pauses the selection, then plays on from where it stopped", async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await h.step(() => h.api.setMediaElement(el));
+    await arrive(h, 'a');
+    await h.step(() => h.api.handleMediaLoaded('link:a'));
+    await h.step(() => h.api.setSelection({ start: 5, end: 9 }));
+
+    await h.step(() => h.api.handlePlaySelection());
+    expect(el.currentTime).toBe(5);
+    expect(el.play).toHaveBeenCalledTimes(1);
+    await h.step(() => h.api.handlePlayingChange(true));
+
+    await h.step(() => h.api.handlePlaySelection());
+    expect(el.pause).toHaveBeenCalledTimes(1);
+    await h.step(() => h.api.handlePlayingChange(false));
+
+    el.currentTime = 7;
+    await h.step(() => h.api.handlePlaySelection());
+    expect(el.currentTime).toBe(7);
+    expect(el.play).toHaveBeenCalledTimes(2);
+    await h.unmount();
+  });
+
   it('waits again while a new recording loads in place of the old one', async () => {
     const h = await mountMedia();
     const el = fakeMediaElement([]);

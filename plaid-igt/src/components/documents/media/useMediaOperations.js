@@ -630,13 +630,22 @@ export const useMediaOperations = () => {
     [playableElement, setCurrentTime],
   );
 
-  const handlePlaySelection = useCallback(() => {
-    if (selection) playRange(selection);
-  }, [selection, playRange]);
-
   const pausePlayback = useCallback(() => {
     mediaElementRef.current?.pause();
   }, []);
+
+  // The timeline's play button for the selection: pause while it plays,
+  // otherwise play on from where it stopped, as a transcript row's button and
+  // Shift+Space do.
+  const handlePlaySelection = useCallback(() => {
+    if (!selection) return;
+    const isThis =
+      playingSelection &&
+      playingSelection.start === selection.start &&
+      playingSelection.end === selection.end;
+    if (isPlaying && isThis) pausePlayback();
+    else playRangeFromHere(selection);
+  }, [selection, playingSelection, isPlaying, pausePlayback, playRangeFromHere]);
 
   // Play from the playhead, or pause. Free playback (no range) never auto-stops.
   const togglePlayback = useCallback(() => {
