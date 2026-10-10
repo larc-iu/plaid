@@ -14,13 +14,6 @@
             [plaid.media.storage :as media])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:document/id
-                :document/name
-                :document/time-created
-                :document/time-modified
-                :document/version
-                :document/project])
-
 ;; ============================================================
 ;; Row mapper
 ;; ============================================================

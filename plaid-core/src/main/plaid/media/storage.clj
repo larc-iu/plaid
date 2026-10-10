@@ -247,11 +247,6 @@
       (log/warn "Could not read a WAV header:" (.getMessage e))
       nil)))
 
-(defn wav-format
-  "The format tag of a WAV (see `wav-coding`), or nil when `file` is not one."
-  [^File file]
-  (:tag (wav-coding file)))
-
 (defn unplayable-wav-error
   "The refusal for a WAV whose samples browsers cannot decode, or nil when
   `file` is not a WAV or is one they play. Tika names every WAV audio/wav

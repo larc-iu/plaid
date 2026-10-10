@@ -9,7 +9,7 @@
             [plaid.sql.common :as psc]))
 
 (deftest ids-minted-together-sort-in-order
-  (let [ids (mapv (fn [_] (psc/uuid-str (psc/new-uuid))) (range 5000))]
+  (let [ids (mapv (fn [_] (str (psc/new-uuid))) (range 5000))]
     (is (= ids (sort ids)) "ids must sort in the order they were minted")
     (is (= (count ids) (count (distinct ids))) "and must not repeat")))
 

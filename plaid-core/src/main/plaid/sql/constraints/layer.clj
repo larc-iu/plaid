@@ -916,11 +916,6 @@
                                    (split-parts v delimiters)))]
                 (when (seq bad) {:parts bad}))))))
 
-(defn value-allowed?
-  "Whether the value-set constraint `params` (string keys) allows `v`."
-  [params v]
-  (nil? ((value-checker params) v)))
-
 (defn- machine-unverified-ids
   "The ids among `ids` whose metadata marks an unverified machine value:
   `prov` present and not \"contributed\", and no `provConfirmed: true`."

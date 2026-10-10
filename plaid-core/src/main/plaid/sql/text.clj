@@ -22,11 +22,6 @@
             [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get]))
 
-(def attr-keys [:text/id
-                :text/document
-                :text/layer
-                :text/body])
-
 ;; ============================================================
 ;; Row mapper
 ;; ============================================================

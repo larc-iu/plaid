@@ -232,7 +232,12 @@
 (def ^:private cases
   (json/read-str (slurp (io/file "src/test/plaid/sql/constraints/value_set_cases.json"))))
 
+(defn- value-allowed?
+  "Whether the value-set constraint `params` (string keys) allows `v`."
+  [params v]
+  (nil? ((#'lc/value-checker params) v)))
+
 (deftest value-set-trims-what-javascript-trims
   (doseq [{:strs [constraint value allowed]} (get cases "cases")]
-    (is (= allowed (lc/value-allowed? (get-in cases ["constraints" constraint]) value))
+    (is (= allowed (value-allowed? (get-in cases ["constraints" constraint]) value))
         (str constraint " " (pr-str value)))))

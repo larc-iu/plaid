@@ -19,14 +19,6 @@
             [plaid.sql.pagination :as pagination])
   (:refer-clojure :exclude [get list]))
 
-(def attr-keys
-  [:api-token/id
-   :api-token/user-id
-   :api-token/name
-   :api-token/created-at
-   :api-token/last-used-at
-   :api-token/revoked-at])
-
 (defn- row->api-token
   "Translate an `api_tokens` row (snake_case column keys) to the namespaced
   shape the rest of the system expects. Returns nil on nil input. NEVER

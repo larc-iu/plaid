@@ -1838,22 +1838,6 @@
               (and (= begin end) (= end ei)) (shift t delta)
               :else (some-> t del ins))))))))
 
-(defn- apply-text-edits-in-turn
-  "`apply-text-edits` one op after another, each over the whole text and
-  every token."
-  [ops text tokens]
-  (loop [accum {:deleted [] :text text :tokens tokens}
-         op (first ops)
-         ops (rest ops)]
-    (if (nil? op)
-      accum
-      (let [result (apply-text-edit op (:text accum) (:tokens accum))
-            new-accum (-> accum
-                          (assoc :text (:text result))
-                          (assoc :tokens (:tokens result))
-                          (update :deleted into (:deleted result)))]
-        (recur new-accum (first ops) (rest ops))))))
-
 (defn apply-text-edits
   "Apply `ops` one after another to `text` and `tokens`, as `apply-text-edit`
   does each (same result, same 400s). Returns {:text :tokens :deleted}, as

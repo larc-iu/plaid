@@ -123,12 +123,6 @@
       (let [doc-uuid (if (uuid? doc-id) doc-id (java.util.UUID/fromString doc-id))]
         (-> (doc/get db doc-uuid) :document/project)))))
 
-(defn get-document-id
-  "Extract document ID from request parameters"
-  [{params :parameters :as request}]
-  (or (-> params :path :document-id)
-      (-> request :path-params (get "document-id"))))
-
 (defn- parse-byte-range [range-header size]
   (when-let [[_ start-str end-str]
              (and (not (str/includes? range-header ","))

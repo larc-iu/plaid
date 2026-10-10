@@ -997,6 +997,18 @@
                       (ta/normalize-deletes body tokens))))]
     [body tokens ops]))
 
+(defn- apply-text-edits-in-turn
+  "`apply-text-edits` one op after another, each over the whole text and
+  every token: the plain way, which the one-pass way must agree with."
+  [ops text tokens]
+  (reduce (fn [accum op]
+            (let [result (ta/apply-text-edit op (:text accum) (:tokens accum))]
+              (-> accum
+                  (assoc :text (:text result) :tokens (:tokens result))
+                  (update :deleted into (:deleted result)))))
+          {:deleted [] :text text :tokens tokens}
+          (take-while some? ops)))
+
 (defn- edit-outcome [f ops body tokens]
   (try (let [{:keys [text tokens deleted]} (f ops {:text/body body} tokens)]
          [:ok text (set tokens) (set deleted)])
@@ -1007,14 +1019,14 @@
     (let [body (cps "ab cd" 0x10330 "e")
           tokens [(tok :ab 0 2) (tok :z 6 6)]
           ops [(ta/delete-op 2 4) (ta/insert-op 2 (cps acute))]]
-      (is (= (edit-outcome #'ta/apply-text-edits-in-turn ops body tokens)
+      (is (= (edit-outcome apply-text-edits-in-turn ops body tokens)
              (edit-outcome ta/apply-text-edits ops body tokens)))
       (is (= #{[:ab 0 3] [:z 3 3]} (extents (:tokens (ta/apply-text-edits ops {:text/body body} tokens)))))))
   (doseq [seed (range 1 11)]
     (let [r (java.util.Random. seed)]
       (dotimes [case-n 1000]
         (let [[body tokens ops] (random-edit-case r)]
-          (is (= (edit-outcome #'ta/apply-text-edits-in-turn ops body tokens)
+          (is (= (edit-outcome apply-text-edits-in-turn ops body tokens)
                  (edit-outcome ta/apply-text-edits ops body tokens))
               (str "seed " seed " case " case-n ": " (pr-str body) " " (pr-str ops))))))))
 
@@ -1290,7 +1302,7 @@
         t0 (System/nanoTime)
         result (ta/apply-text-edits ops {:text/body old} tokens)
         ms (/ (- (System/nanoTime) t0) 1e6)]
-    (is (= (edit-outcome #'ta/apply-text-edits-in-turn ops old tokens)
+    (is (= (edit-outcome apply-text-edits-in-turn ops old tokens)
            (edit-outcome ta/apply-text-edits ops old tokens)))
     (is (= 50000 (count (:tokens result))))
     (is (< ms 1000) (str ms " ms"))))

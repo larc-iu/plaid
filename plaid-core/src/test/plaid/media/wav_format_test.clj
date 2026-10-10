@@ -67,15 +67,17 @@
 (defn- wav [tag & opts]
   (wav-file (wav-bytes ["fmt " (apply fmt-body tag opts)] ["data" (byte-array 512)])))
 
+(defn- wav-format [file] (:tag (media/wav-coding file)))
+
 (deftest wav-format-reads-the-coding
-  (is (= 1 (media/wav-format (wav 1))))
-  (is (= 3 (media/wav-format (wav 3))))
-  (is (= 0x11 (media/wav-format (wav 0x11))))
+  (is (= 1 (wav-format (wav 1))))
+  (is (= 3 (wav-format (wav 3))))
+  (is (= 0x11 (wav-format (wav 0x11))))
   (testing "WAVE_FORMAT_EXTENSIBLE is its subformat"
-    (is (= 1 (media/wav-format (wav 0xFFFE :subformat 1))))
-    (is (= 0x11 (media/wav-format (wav 0xFFFE :subformat 0x11)))))
+    (is (= 1 (wav-format (wav 0xFFFE :subformat 1))))
+    (is (= 0x11 (wav-format (wav 0xFFFE :subformat 0x11)))))
   (testing "fmt behind another chunk, of odd length"
-    (is (= 0x11 (media/wav-format
+    (is (= 0x11 (wav-format
                  (wav-file (wav-bytes ["LIST" (byte-array 5)]
                                       ["fmt " (fmt-body 0x11)]
                                       ["data" (byte-array 512)]))))))
@@ -83,8 +85,8 @@
     (let [f (File/createTempFile "plaid-wav-" ".mp3")]
       (spit f "ID3 and then some")
       (.deleteOnExit f)
-      (is (nil? (media/wav-format f))))
-    (is (nil? (media/wav-format (wav-file (java.util.Arrays/copyOf (wav-bytes ["fmt " (fmt-body 1)]) 14)))))))
+      (is (nil? (wav-format f))))
+    (is (nil? (wav-format (wav-file (java.util.Arrays/copyOf (wav-bytes ["fmt " (fmt-body 1)]) 14)))))))
 
 (deftest unplayable-wav-error-names-the-coding
   (is (nil? (media/unplayable-wav-error (wav 1))))

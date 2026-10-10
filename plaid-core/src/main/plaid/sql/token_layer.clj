@@ -20,14 +20,6 @@
             [plaid.sql.token :as token])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:token-layer/id
-                :token-layer/name
-                :token-layer/text-layer
-                :token-layer/project
-                :token-layer/overlap-mode
-                :token-layer/parent-token-layer
-                :config])
-
 (def valid-overlap-modes #{:any :non-overlapping :partitioning})
 
 ;; ============================================================

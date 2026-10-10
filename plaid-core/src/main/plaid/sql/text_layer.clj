@@ -12,11 +12,6 @@
             [plaid.sql.token-layer :as token-layer])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:text-layer/id
-                :text-layer/name
-                :text-layer/project
-                :config])
-
 ;; ============================================================
 ;; Row mapper
 ;; ============================================================

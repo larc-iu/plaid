@@ -24,14 +24,6 @@
             [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get list merge]))
 
-(def attr-keys [:guideline/id
-                :guideline/project
-                :guideline/title
-                :guideline/body
-                :guideline/pinned
-                :guideline/created-at
-                :guideline/updated-at])
-
 (def ^:const max-title-length
   "Ceiling on a title. A title is a handle and a list row, not a sentence."
   100)

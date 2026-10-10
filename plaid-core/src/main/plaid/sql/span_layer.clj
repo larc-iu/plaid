@@ -10,12 +10,6 @@
             [plaid.sql.operation :as op :refer [submit-operation!]])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:span-layer/id
-                :span-layer/name
-                :span-layer/token-layer
-                :span-layer/project
-                :config])
-
 ;; ============================================================
 ;; Row mapper
 ;; ============================================================

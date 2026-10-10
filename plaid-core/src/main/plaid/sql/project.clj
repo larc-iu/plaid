@@ -17,15 +17,6 @@
             [plaid.sql.user :as user])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:project/id
-                :project/name
-                :project/readers
-                :project/writers
-                :project/maintainers
-                :project/text-layers
-                :project/vocabs
-                :config])
-
 ;; ============================================================
 ;; Row mappers
 ;; ============================================================

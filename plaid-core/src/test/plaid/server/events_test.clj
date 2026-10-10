@@ -10,7 +10,7 @@
       (with-redefs [events/event-bus bus]
         (is (true? (#'events/offer-event! {:n 1} :test)))
         (is (false? (#'events/offer-event! {:n 2} :test)))
-        (is (= 1 (events/get-drop-count)))
+        (is (= 1 @events/event-bus-drop-count))
         (is (= {:n 1} (async/poll! bus))
             "The full fixed buffer retains the queued event"))
       (finally

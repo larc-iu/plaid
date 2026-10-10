@@ -12,10 +12,6 @@
             [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:vocab-item/id
-                :vocab-item/layer
-                :vocab-item/form])
-
 ;; ============================================================
 ;; Linked documents
 ;;

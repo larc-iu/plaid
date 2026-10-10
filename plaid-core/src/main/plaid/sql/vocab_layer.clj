@@ -14,13 +14,6 @@
             [plaid.sql.user :as user])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:vocab/id
-                :vocab/name
-                :vocab/maintainers
-                :vocab/time-created
-                :vocab/time-modified
-                :config])
-
 ;; ============================================================
 ;; Row mapper + enrichment
 ;; ============================================================

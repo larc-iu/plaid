@@ -32,14 +32,6 @@
     (string? x) (UUID/fromString x)
     :else (throw (ex-info "Cannot coerce to UUID" {:value x :code 400}))))
 
-(defn uuid-str
-  "Render a UUID (or already-string form) as the canonical lowercase string the schema uses."
-  ^String [x]
-  (cond
-    (instance? UUID x) (.toString ^UUID x)
-    (string? x) (str/lower-case x)
-    :else (throw (ex-info "Cannot render UUID" {:value x :code 400}))))
-
 (def ^:private ^SecureRandom secure-random
   "Shared CSPRNG for id generation. SecureRandom#nextLong is thread-safe
   (internally synchronized), so one instance suffices. Using a CSPRNG keeps

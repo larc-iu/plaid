@@ -13,15 +13,6 @@
   (:refer-clojure :exclude [get merge])
   (:import [java.sql SQLException]))
 
-(def attr-keys
-  [:user/id
-   :user/display-name
-   :user/password-hash
-   :user/password-changes
-   :user/is-admin
-   :user/deactivated-at
-   :user/avatar-hash])
-
 (def public-keys
   "The externally visible projection of a user record (no password
   fields). `:user/deactivated-at` is included deliberately: deactivated

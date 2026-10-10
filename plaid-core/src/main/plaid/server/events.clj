@@ -580,13 +580,6 @@
 ;; Public so /health (and tests / future metrics surfaces) can read it.
 (defonce event-bus-drop-count (atom 0))
 
-(defn get-drop-count
-  "Return the current count of events dropped because the event bus buffer
-  was full. Exposed for the /health endpoint + metrics surfaces; callers
-  that want the atom itself can still deref `event-bus-drop-count` directly."
-  []
-  @event-bus-drop-count)
-
 ;; Global event bus that receives all audit log events.
 ;;
 ;; Uses a fixed buffer so overflow is explicitly visible to publishers:
