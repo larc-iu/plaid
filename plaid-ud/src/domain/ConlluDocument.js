@@ -168,8 +168,9 @@ export class ConlluDocument extends DocumentModel {
   }
 
   // Write one document metadata field. An empty value DELETES the key rather
-  // than storing a blank, so a field cleared in the UI stops exporting instead
-  // of exporting an empty `# key =` line.
+  // than storing a blank. The CoNLL-U export writes no document fields at all
+  // (only `# newdoc id`, from the document's name, and sentence fields), so a
+  // document field is never in an exported file, set or cleared.
   //
   // A PATCH, not a replace: another app sharing this document may keep its own
   // keys here, and a full setMetadata would take them with it.

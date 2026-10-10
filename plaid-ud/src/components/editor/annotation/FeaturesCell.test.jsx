@@ -157,3 +157,42 @@ describe('FeaturesCell and the machine value re-typed', () => {
     await unmount();
   });
 });
+
+describe('FeaturesCell and Alt+Down', () => {
+  const ROWS = [
+    { value: 'Number=Sing', count: 5 },
+    { value: 'Gender=Fem', count: 2 },
+  ];
+
+  it('lists the pairs the project has given, and adds the one picked', async () => {
+    const onPrecedent = vi.fn(() => Promise.resolve(ROWS));
+    const { container, step, onAnnotationUpdate, unmount } = await mount({ onPrecedent });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => press(input, 'ArrowDown', { altKey: true }));
+    expect(onPrecedent).toHaveBeenCalledWith('feats');
+    const options = all(document, '[role="option"]').map((o) => o.textContent);
+    expect(options).toEqual(['Number=Sing5', 'Gender=Fem2']);
+
+    await step(async () => press(input, 'ArrowDown'));
+    await step(async () => press(input, 'Enter'));
+    expect(onAnnotationUpdate).toHaveBeenCalledWith('t1', 'features', 'Number=Sing');
+    await unmount();
+  });
+
+  it('Escape leaves the list and writes nothing', async () => {
+    const onPrecedent = vi.fn(() => Promise.resolve(ROWS));
+    const { container, step, onAnnotationUpdate, unmount } = await mount({ onPrecedent });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => press(input, 'ArrowDown', { altKey: true }));
+    await step(async () => press(input, 'Escape'));
+    const options = all(document, '[role="option"]').map((o) => o.textContent);
+    expect(options).not.toContain('Number=Sing5');
+    await step(async () => blur(input));
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
+    await unmount();
+  });
+});

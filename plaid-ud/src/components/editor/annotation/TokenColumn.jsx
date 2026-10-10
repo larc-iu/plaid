@@ -29,9 +29,7 @@ const Column = React.memo(
     // be a new prop every time, and the cells below are memoized on theirs.
     // LEMMA, XPOS and FEATS each have a precedent question of their own
     // (domain/precedent.js). UPOS has none, so it is given no gesture rather
-    // than one that answers nothing. Of the three, only the two plain cells
-    // offer it: the FEATS chip input holds a list of values rather than one,
-    // and has nowhere to put a list of whole feature sets.
+    // than one that answers nothing.
     const askPrecedent = useMemo(
       () => (onPrecedent ? (field) => onPrecedent(field, data) : undefined),
       [onPrecedent, data],
@@ -219,6 +217,7 @@ const Column = React.memo(
               tabOrder={getTabIndex(index, 'feats')}
               columnWidth={columnWidth}
               onNavigate={onNavigate}
+              onPrecedent={askPrecedent}
             />
           </div>
         ) : (

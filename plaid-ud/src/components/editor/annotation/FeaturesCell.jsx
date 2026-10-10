@@ -18,9 +18,21 @@ import { useEditorSession } from './editorSession.js';
 // chip-input gesture: Backspace at an empty input selects the last pill,
 // Left/Right move the selection, Backspace/Delete remove it, typing or Escape
 // clears it. Left/Right at an empty input with no selection fall through to
-// grid column navigation, like every other cell.
+// grid column navigation, like every other cell. Alt+Down swaps the
+// suggestions for the pairs this project has given words with the same lemma,
+// with counts (domain/precedent.js), and picking one adds it like any other.
 export const FeaturesCell = React.memo(
-  ({ feats, spanIds, tokenId, tokenIndex, tokenForm, tabOrder, columnWidth, onNavigate }) => {
+  ({
+    feats,
+    spanIds,
+    tokenId,
+    tokenIndex,
+    tokenForm,
+    tabOrder,
+    columnWidth,
+    onNavigate,
+    onPrecedent,
+  }) => {
     const session = useEditorSession();
     const { isReadOnly, onAnnotationUpdate, onFeatureDelete } = session;
     const validate = session.validators?.feats;
@@ -35,6 +47,9 @@ export const FeaturesCell = React.memo(
     const [selectedPill, setSelectedPill] = useState(null); // index into features, or null
     const [isEditing, setIsEditing] = useState(false);
     const [hoveredFeatureIndex, setHoveredFeatureIndex] = useState(null);
+    // The pairs Alt+Down found, `[{value, count}]`, or null for the ordinary
+    // suggestions. Each FEATS span holds one pair, so each row is one chip.
+    const [precedent, setPrecedent] = useState(null);
     const inputRef = useRef(null);
     // As in EditableCell: Escape cancels, and the blur it fires reads the text
     // React has committed, not the text Escape just cleared.
@@ -44,8 +59,9 @@ export const FeaturesCell = React.memo(
 
     // Two-stage suggestions: keys (as "Key=") until '=' is typed, then values.
     const eqIdx = text.indexOf('=');
-    const suggestions =
-      eqIdx === -1
+    const suggestions = precedent
+      ? precedent.map((row) => row.value)
+      : eqIdx === -1
         ? inv.list.map((e) => `${e.key}=`)
         : (inv.map.get(text.slice(0, eqIdx).trim()) || []).map(
             (v) => `${text.slice(0, eqIdx)}=${v}`,
@@ -99,7 +115,18 @@ export const FeaturesCell = React.memo(
     // value), a full "Key=Value" commits. Shared by the click and by Enter.
     const takeOption = (option) => {
       if (option.endsWith('=')) setText(option);
-      else commit(option);
+      else {
+        setPrecedent(null);
+        commit(option);
+      }
+    };
+
+    // Asked on the gesture, never on focus. An empty answer leaves the
+    // ordinary suggestions in place.
+    const askPrecedent = async () => {
+      if (!onPrecedent) return;
+      const rows = await onPrecedent('feats');
+      if (rows?.length) setPrecedent(rows);
     };
 
     const handleKeyDown = (e, combo) => {
@@ -118,7 +145,14 @@ export const FeaturesCell = React.memo(
       // list, not to the grid. An EMPTY input counts as closed: focusing opens
       // the key list, but arrows on an untouched cell should keep moving through
       // the grid, like the UPOS/XPOS cells; typing is what hands them over.
-      const dropdownOpen = !empty && combo.open;
+      // The precedent list is asked for, so it takes the arrows at once.
+      const dropdownOpen = (!empty || !!precedent) && combo.open;
+
+      if (e.key === 'ArrowDown' && e.altKey && onPrecedent) {
+        e.preventDefault();
+        askPrecedent();
+        return;
+      }
 
       if (e.key === 'Enter') {
         // Ctrl/Cmd+Enter confirms the whole token, handled by the one onKeyDown
@@ -138,6 +172,11 @@ export const FeaturesCell = React.memo(
         return;
       }
       if (e.key === 'Escape') {
+        if (precedent) {
+          e.preventDefault();
+          setPrecedent(null);
+          return;
+        }
         if (selectedPill != null) {
           e.preventDefault();
           setSelectedPill(null);
@@ -253,12 +292,14 @@ export const FeaturesCell = React.memo(
             onChange={(val) => {
               setText(val);
               setSelectedPill(null);
+              setPrecedent(null);
             }}
             onFocus={() => setIsEditing(true)}
             onBlur={() => {
               // Commit a complete Key=Value on the way out; discard fragments.
               setIsEditing(false);
               setSelectedPill(null);
+              setPrecedent(null);
               if (cancelledRef.current) {
                 cancelledRef.current = false;
                 setText('');
@@ -271,21 +312,35 @@ export const FeaturesCell = React.memo(
             // What the pair MEANS, beside it, the same way the tag pickers do
             // it. Keyed by the whole `Key=Value`, which is what a span stores.
             renderOption={
-              featureDescriptions
+              precedent
                 ? ({ option }) => {
-                    const gloss = featureDescriptions[option.value];
+                    const row = precedent.find((r) => r.value === option.value);
                     return (
                       <span>
                         {option.value}
-                        {gloss && (
-                          <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>
-                            {gloss}
+                        {row && (
+                          <span style={{ opacity: 0.55, marginLeft: 8, fontSize: '0.85em' }}>
+                            {row.count}
                           </span>
                         )}
                       </span>
                     );
                   }
-                : undefined
+                : featureDescriptions
+                  ? ({ option }) => {
+                      const gloss = featureDescriptions[option.value];
+                      return (
+                        <span>
+                          {option.value}
+                          {gloss && (
+                            <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>
+                              {gloss}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    }
+                  : undefined
             }
             // Auto-highlight the best match once typing starts, so Enter takes
             // it. Gated on input so Enter on an EMPTY cell doesn't insert the

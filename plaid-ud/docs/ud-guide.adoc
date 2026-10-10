@@ -237,9 +237,9 @@ Arrow keys follow the words: in a right-to-left sentence the left arrow moves fo
 
 == Earlier Values in This Project
 
-In a **Lemma** or **XPOS** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
-The lemma cell looks up the word's form. The XPOS cell looks up its lemma.
-Pick a value with the arrows and **Enter**, or click it. **Escape** goes back to the cell.
+In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
+The lemma cell looks up the word's form. The XPOS and Features cells look up its lemma.
+Pick a value with the arrows and **Enter**, or click it. In Features the pick is added to the word's features. **Escape** goes back to the cell.
 
 == Moving Between the Text and the Annotations
 
@@ -617,7 +617,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **Enter** | Commit the cell, taking the highlighted suggestion if the list is open.
 | **Esc** | Cancel the edit, or close an open list or panel.
 | **Backspace** (Features) | On the empty input, select the last feature, so a second press removes it.
-| **Alt+↓** | In a lemma or XPOS cell, list what the project has given words like this one, with counts, and pick one. See <<_earlier_values_in_this_project>>.
+| **Alt+↓** | In a lemma, XPOS or Features cell, list what the project has given words like this one, with counts, and pick one. See <<_earlier_values_in_this_project>>.
 | **Ctrl/Cmd+Enter** | Accept everything proposed on the current word, then move to the next word.
 | **Ctrl/Cmd+Backspace** | Discard the machine's unconfirmed work on the current word, then move to the next word. Anything a person entered or confirmed stays.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word that still needs a look.
