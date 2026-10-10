@@ -175,8 +175,8 @@ describe('a rule that matches differently at approval', () => {
       'Gloss "VASP" → "ASP" now matches 1,180 places in 17 documents, not the 1,171 shown when it was planned (9 more in "Text 4")';
     const view = await mount(plan([ruleRow()]), { status: 'stale', reason });
     const said = view.container.querySelector('[data-testid=stale-reason]');
-    expect(said.textContent).toBe(`${reason}. Nothing was changed.`);
-    expect(byText(view.container, 'p', 'Ask again to plan on the current version.')).not.toBeNull();
+    expect(said.textContent).toBe(`${reason}. Nothing was written.`);
+    expect(byText(view.container, 'p', 'Ask the assistant to plan again.')).not.toBeNull();
     expect(byText(view.container, 'p', 'Changed since this plan was made')).toBeNull();
     await view.unmount();
   });

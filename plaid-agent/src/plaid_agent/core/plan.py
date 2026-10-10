@@ -212,10 +212,13 @@ class PlanMovedOn(ValueError):
 
 
 def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], mark, run: Any = True,
-            ops: Optional[List[Dict[str, Any]]] = None) -> None:
+            ops: Optional[List[Dict[str, Any]]] = None, stamp: Optional[str] = None,
+            contributor: Optional[str] = None) -> None:
     """Before the first change of a run is sent: the plan says that it may
-    have written (:data:`WRITING`, naming the run ``run``, and whether every
-    one of ``ops`` lands only in documents the run holds) and which versions
+    have written (:data:`WRITING`, naming the run ``run``, whether every
+    one of ``ops`` lands only in documents the run holds, and how its writes
+    are stamped, ``stamp`` with its ``contributor``, which a run again sends
+    the same under the same keys) and which versions
     the run holds its documents at (:func:`held_from`), in one write of the
     record, ``mark()``. Every run makes it, a run again too, and it is made
     only on a plan the record still has undecided (``mark`` answers False
@@ -227,13 +230,27 @@ def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], mark,
         held_from(client, documents, lambda: None)
         held = {d.get('id') for d in documents or [] if isinstance(d, dict) and d.get(HELD_FROM) is not None}
         reach = [docs_of_op(op) for op in expand_ops(ops or [])]
-        plan[WRITING] = {'run': run, 'inside': bool(reach) and all(r and r <= held for r in reach)}
+        plan[WRITING] = {'run': run, 'inside': bool(reach) and all(r and r <= held for r in reach),
+                         **({'stamp': stamp} if stamp else {}),
+                         **({'contributor': contributor} if contributor else {})}
         if not mark():
             raise PlanMovedOn('the plan was decided elsewhere')
     except PlaidAPIError as e:
         if getattr(e, 'status', 0) == 413:
             raise RecordFull() from e
         raise
+
+
+def stamp_of(mark: Any) -> Optional[tuple]:
+    """How the run a writing mark names stamped its writes, ``(stamp_mode,
+    contributor)``, or None when the mark says nothing of it."""
+    stamp = mark.get('stamp') if isinstance(mark, dict) else None
+    if stamp not in STAMP_MODES:
+        return None
+    contributor = mark.get('contributor') if stamp == 'contributed' else None
+    if stamp == 'contributed' and not contributor:
+        return None
+    return stamp, contributor
 
 
 #: The key on a plan holding what each of its scopes resolved to on the first

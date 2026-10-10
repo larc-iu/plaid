@@ -468,6 +468,26 @@ def test_a_dead_apply_marker_interrupts_its_plan_so_the_card_offers_apply_again(
     assert meta['pending'] is None
 
 
+def test_an_interrupted_plan_keeps_how_it_was_approved(monkeypatch):
+    """The card shows the box as the first run had it (H14-APPROVE-1): the
+    stamp its run began writing with, else what the approval asked."""
+    for writing, asked, shown in (({'run': 'r-dead', 'inside': True, 'stamp': 'human'}, False, True),
+                                  ({'run': 'r-dead', 'inside': True, 'stamp': 'verified'}, True, False),
+                                  (None, True, True)):
+        client = FakeClient()
+        store = _seed_plan(client, request_id='r-dead')
+        if writing:
+            conv, meta = store.load('c1')
+            conv['display'][1]['plan']['writing'] = writing
+            store.save('c1', conv, meta)
+        _set_meta(client, pending={'kind': 'apply', 'request_id': 'r-dead', 'service_id': 'igt:assist:fake',
+                                   'plan_id': PLAN1, 'as_human': asked})
+        _service().process_request(_req(client, 'hold'), Helper(request_id='h1'))
+        conv, _ = store.load('c1')
+        assert conv['display'][1]['interrupted'] is True
+        assert conv['display'][1]['as_human'] is shown, (writing, asked)
+
+
 def test_an_old_page_marker_with_no_service_is_cleared(monkeypatch):
     client = FakeClient()
     _answering(monkeypatch)
@@ -576,7 +596,7 @@ def test_delete_during_an_approval_is_refused():
         return real(*a, **k)
     svc.execute_plan = execute
     svc.process_request(_req(client, 'approve', plan_id=PLAN1), Helper(request_id='r9'))
-    assert said['delete']['message'] == 'That conversation is still applying changes.'
+    assert said['delete']['message'] == 'That conversation is still applying changes. Delete it once they finish.'
 
 
 def test_a_sweep_deletes_files_whose_conversation_never_came(monkeypatch):

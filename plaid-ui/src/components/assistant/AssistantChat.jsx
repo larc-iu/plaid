@@ -1018,6 +1018,15 @@ export const AssistantChat = ({
   const noticeHere = notice && notice.convId === active?.id ? notice : null;
   const stoppedHere = stoppedIn(stopped, active?.id);
   const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
+  // The plan the record says is being applied, with nothing here following
+  // it: another tab's approval, or one whose assistant stopped and has not
+  // yet been told so. Never offered as undecided meanwhile.
+  const markedPlanId =
+    activeMeta?.pending?.kind === 'apply' ? activeMeta.pending.planId || null : null;
+  const applyingHere = (d) =>
+    !!d.plan &&
+    (applyingPlanId === d.plan.id ||
+      (markedPlanId === d.plan.id && d.status == null && !d.interrupted));
   // What the surface's own chrome is drawn from.
   const chrome = {
     conversation: active,
@@ -1126,10 +1135,10 @@ export const AssistantChat = ({
                   canWrite={canWrite && !readOnly}
                   readOnly={readOnly}
                   contributor={contributor}
-                  busy={!!busy}
+                  busy={!!busy || applyingHere(d)}
                   interrupted={!!d.interrupted}
                   nothingWritten={!!d.plan && unwritten.has(d.plan.id)}
-                  applying={!!d.plan && applyingPlanId === d.plan.id}
+                  applying={applyingHere(d)}
                   onDownloadFile={downloadFile}
                   onApprove={(opts) => approve(d.plan, opts)}
                   onDiscard={() => discard(i)}

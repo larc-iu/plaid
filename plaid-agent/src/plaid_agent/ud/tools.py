@@ -577,10 +577,14 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     staged = []
     for w in words:
         sp = w.fields.get(field)
+        old = sp.value if sp else ''
+        # The value it replaces, as igt's card says it: lemma "run" → "ran".
+        label = (f'{field} {qv(old)} → {qv(value)}' if old and value else f'{field} = {qv(value)}' if value
+                 else f'clear {field} {qv(old)}' if old else f'clear {field}')
         staged.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
                        'span_id': sp.id if sp else None, 'value': value,
                        'field': field, 'document_id': doc.id,
-                       'label': f'{field} = {qv(value)}' if value else f'clear {field}',
+                       'label': label,
                        'ref': word_ref(ws.sentence_of(doc, w), w)})
     ws.add_ops(staged)
     what = f'{field} = "{value}"' if value else f'{field} cleared'

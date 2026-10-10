@@ -58,7 +58,7 @@ REFUSALS = {
     'held': 'This conversation is open in another tab.',
     'busy-turn': 'A message is being answered.',
     'busy-apply': 'The changes are being applied.',
-    'delete-applying': 'That conversation is still applying changes.',
+    'delete-applying': 'That conversation is still applying changes. Delete it once they finish.',
     'gone': 'This conversation was deleted.',
     'decided': 'This plan was already decided.',
     'written': 'Some of its changes may be written. Apply again to finish them.',

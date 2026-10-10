@@ -45,7 +45,7 @@ describe('a plan refused as out of date', () => {
       },
     });
     expect(byText(view.container, 'span, div', 'Out of date')).not.toBeNull();
-    expect(byText(view.container, 'p', 'Ask again to plan on the current version.')).not.toBeNull();
+    expect(byText(view.container, 'p', 'Ask the assistant to plan again.')).not.toBeNull();
     const buttons = all(view.container, 'button');
     expect(buttons.map((b) => b.textContent.trim())).toEqual(['Approve and apply', 'Discard']);
     expect(buttons[0].disabled).toBe(true);
@@ -62,7 +62,7 @@ describe('a plan refused as out of date', () => {
     const view = await mount(plan([{ label: 'a' }]), { status: 'stale', dismissed: true });
     expect(byText(view.container, 'span, div', 'Out of date')).not.toBeNull();
     expect(all(view.container, 'button').map((b) => b.textContent.trim())).toEqual([]);
-    expect(byText(view.container, 'p', 'Ask again to plan on the current version.')).toBeNull();
+    expect(byText(view.container, 'p', 'Ask the assistant to plan again.')).toBeNull();
     await view.unmount();
   });
 
@@ -278,6 +278,17 @@ describe('expanding a long plan', () => {
 
 // REV-FX3-AGENT-4: a reviewed contributor's confirmation verifies nothing,
 // and what it did is on the card, not only in the model's record.
+describe('an applied plan recorded as human-made', () => {
+  it('says so', async () => {
+    const view = await mount(plan([{ label: 'a' }]), { status: 'applied', recordedAsHuman: true });
+    expect(byText(view.container, 'p', 'Recorded as human-made.')).not.toBeNull();
+    await view.unmount();
+    const verified = await mount(plan([{ label: 'a' }]), { status: 'applied' });
+    expect(byText(verified.container, 'p', 'Recorded as human-made.')).toBeNull();
+    await verified.unmount();
+  });
+});
+
 describe('an applied plan with notes and rows that wrote nothing', () => {
   it('shows the notes and marks the rows that wrote nothing', async () => {
     const p = plan([{ label: 's9.w1: confirm 1 value' }, { label: 's19.w1: confirm 2 values' }]);
@@ -365,6 +376,40 @@ describe('an approval interrupted after its run began writing (H10-RECORD-3)', (
       ),
     ).not.toBeNull();
     await view.unmount();
+  });
+
+  // H14-APPROVE-1: applying again sends what the first run sent, so the box
+  // shows how that run was approved and is not a choice, also after a reload.
+  it('shows the box as the first run had it, read-only, and applies again with it', async () => {
+    const approvals = [];
+    const p = { ...plan([{ label: 'Gloss = "house"' }]), writing: { run: 'r1', stamp: 'human' } };
+    const view = await mount(p, { interrupted: true, onApprove: (o) => approvals.push(o) });
+    const box = view.container.querySelector('input[type=checkbox]');
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(true);
+    const again = all(view.container, 'button').find((b) => b.textContent.trim() === 'Apply again');
+    await view.step(() => again.click());
+    expect(approvals).toEqual([{ asHuman: true }]);
+    await view.unmount();
+  });
+
+  it('shows no box when the first run was a contribution, whatever the setting is now', async () => {
+    const p = {
+      ...plan([{ label: 'Gloss = "house"' }]),
+      writing: { run: 'r1', stamp: 'verified' },
+    };
+    const view = await mount(p, { interrupted: true, contributor: true });
+    const box = view.container.querySelector('input[type=checkbox]');
+    expect(box.checked).toBe(false);
+    expect(box.disabled).toBe(true);
+    await view.unmount();
+    const q = {
+      ...plan([{ label: 'Gloss = "house"' }]),
+      writing: { run: 'r1', stamp: 'contributed', contributor: 'u@x' },
+    };
+    const other = await mount(q, { interrupted: true });
+    expect(other.container.querySelector('input[type=checkbox]')).toBeNull();
+    await other.unmount();
   });
 
   it('keeps Discard when the run certainly wrote nothing', async () => {

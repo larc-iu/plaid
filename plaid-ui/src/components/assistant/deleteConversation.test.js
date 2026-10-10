@@ -55,11 +55,11 @@ describe('deleteConversation', () => {
       refused: {
         kind: 'refused',
         why: 'busy',
-        message: 'That conversation is still applying changes.',
+        message: 'That conversation is still applying changes. Delete it once they finish.',
       },
     });
     await expect(deleteConversation(s, { id: 'c1', projectId: 'here' })).rejects.toThrow(
-      'That conversation is still applying changes.',
+      'That conversation is still applying changes. Delete it once they finish.',
     );
   });
 

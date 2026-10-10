@@ -450,15 +450,18 @@ def test_a_plans_summary_names_every_rule_and_separates_thousands():
     assert opkind.summarize(KIND, many, opkind.stored_count) == '10,777 field values'
 
 
-def test_the_audit_label_of_a_long_plan_is_cut_with_its_isolates_closed():
-    from plaid_agent.core.bidi import FSI, PDI
+def test_the_audit_label_of_a_long_plan_is_cut_and_holds_no_isolates():
+    # The summary as the card has it, isolates and all (the suite's fixture
+    # takes them out of the bidi module's own).
+    FSI, PDI = '\u2068', '\u2069'
     from plaid_agent.core.service import AUDIT_LABEL_MAX, audit_label
     assert audit_label('2 field values') == 'Assistant: 2 field values'
     long = ', '.join(f'Gloss "{FSI}كتاب{i}{PDI}" → "{FSI}كتب{i}{PDI}" (1,000 values)' for i in range(40))
     label = audit_label(long)
     assert label.startswith('Assistant: Gloss') and label.endswith('…')
     assert len(label) <= AUDIT_LABEL_MAX + 2
-    assert label.count(FSI) == label.count(PDI)
+    # Plain text, so a search of History for "كتاب0" finds it (H14-APPROVE).
+    assert FSI not in label and PDI not in label and '"كتاب0"' in label
 
 
 def test_other_case_is_said_of_the_exceptions_whatever_case_the_pattern_is_typed_in():

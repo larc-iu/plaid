@@ -93,7 +93,7 @@ from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
                    PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, drawable, expanding,
-                   forget_held, holding, may_have_written, nothing_landed, outcome_unknown, writing)
+                   forget_held, holding, may_have_written, nothing_landed, outcome_unknown, stamp_of, writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -313,9 +313,10 @@ class BaseAssistantService(BaseService):
         written in full (card rows ``written``), or, when none was, the plan
         it was part of."""
         done = [ops[i] for i in written if 0 <= i < len(ops)]
+        from .bidi import for_model
         if done:
-            return f'Assistant, partly applied: {self.summarize(done)}'
-        return f'Assistant, partly applied: part of {summary}'
+            return for_model(f'Assistant, partly applied: {self.summarize(done)}')
+        return for_model(f'Assistant, partly applied: part of {summary}')
 
     def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
         """The documents an approval holds locked from its staleness check to
@@ -551,7 +552,12 @@ class BaseAssistantService(BaseService):
             if item is None or item.get('status') is not None or item.get('interrupted'):
                 return stored
             display = list(stored['display'])
-            display[index] = {**item, 'interrupted': True}
+            # How it was approved, so the card shows the box as it was: the
+            # stamp its run wrote with when it began writing, which a run again
+            # keeps, else what the approval asked.
+            stamp = stamp_of((item.get('plan') or {}).get(WRITING))
+            as_human = stamp[0] == 'human' if stamp else bool(pending.get('as_human'))
+            display[index] = {**item, 'interrupted': True, 'as_human': as_human}
             return {'messages': stored['messages'], 'display': display}
         out = {}
 
@@ -1375,15 +1381,24 @@ class BaseAssistantService(BaseService):
         # Whose work is reviewed is the project's setting as it is NOW, read
         # here rather than taken from the page: a page loaded before a
         # maintainer changed it would stamp the plan by the old setting.
-        try:
-            contributor = store.user_id if self._reviewed(client, store.project_id, store.user_id) else None
-        except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
-            settled()
-            response_helper.error(f'Nothing was written. The project\'s review settings could not be '
-                                  f'read: {" ".join(str(e).split())[:200]}')
-            return
-        as_human = bool(approve.get('as_human'))
-        stamp_mode = 'contributed' if contributor else 'human' if as_human else 'verified'
+        # A run again stamps as its first run did, whatever this request asks
+        # and whatever the setting is now: it resends that run's batches under
+        # the same keys, and the server refuses a used key with another body
+        # (422 idempotency-key-reused), so a changed stamp could never finish.
+        earlier = stamp_of(plan.get(WRITING))
+        if earlier:
+            stamp_mode, contributor = earlier
+        else:
+            try:
+                contributor = store.user_id if self._reviewed(client, store.project_id, store.user_id) else None
+            except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
+                settled()
+                response_helper.error(f'Nothing was written. The project\'s review settings could not be '
+                                      f'read: {" ".join(str(e).split())[:200]}')
+                return
+            stamp_mode = ('contributed' if contributor else 'human' if approve.get('as_human')
+                          else 'verified')
+        as_human = stamp_mode == 'human'
         documents = plan.get('documents') or []
         summary = plan.get('summary') or self.summarize(ops)
         # The plan is written in several requests, and a document opened in
@@ -1513,7 +1528,8 @@ class BaseAssistantService(BaseService):
                 expansion.forget()
             plan.pop(WRITING, None)
         try:
-            writing(client, plan, documents, lambda: remember(undecided=True), run=run, ops=ops)
+            writing(client, plan, documents, lambda: remember(undecided=True), run=run, ops=ops,
+                    stamp=stamp_mode, contributor=contributor)
         except (RecordFull, PlanMovedOn) as e:
             def stopped(e=e):
                 nothing_written()
@@ -1581,7 +1597,11 @@ class BaseAssistantService(BaseService):
                     # Nothing landed on this run.
                     nothing_written()
                     settled()
-                    response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
+                    if why == KEY_REUSED:
+                        response_helper.error(f'Failed to apply the plan: {why}. Check those changes in '
+                                              f'History, then ask the assistant to plan again.')
+                    else:
+                        response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
                     return
                 # Settled as partly applied (Luke's ruling Q4): no Approve that
                 # cannot work, the card marks the changes written in full, and
@@ -1844,17 +1864,16 @@ AUDIT_LABEL_MAX = 400
 
 def audit_label(summary: str) -> str:
     """The label of a plan's operation, which History and the audit feed
-    show: ``Assistant: <the plan's summary>``, cut short with an ellipsis
-    past :data:`AUDIT_LABEL_MAX`, and every isolate the cut leaves open
-    closed."""
-    from .bidi import PDI
+    show: ``Assistant: <the plan's summary>`` as plain text, cut short with
+    an ellipsis past :data:`AUDIT_LABEL_MAX`."""
+    from .bidi import for_model
     from .plan import clip_caption
-    label = f'Assistant: {summary}'
+    # Plain text: the card's summary isolates each value for display, and
+    # the marks left in the label kept a search for the value from finding it.
+    label = for_model(f'Assistant: {summary}')
     if len(label) <= AUDIT_LABEL_MAX:
         return label
-    cut = clip_caption(label, AUDIT_LABEL_MAX - 1)
-    opened = sum(cut.count(c) for c in '\u2066\u2067\u2068') - cut.count(PDI)
-    return cut + PDI * max(0, opened) + '…'
+    return clip_caption(label, AUDIT_LABEL_MAX - 1) + '…'
 
 
 def _sentence(text: str) -> str:
@@ -1909,6 +1928,25 @@ def _relabel(client, group_id: str, label: str) -> None:
             raise
 
 
+#: A run again whose request differs from the one its first run sent under
+#: the same key (422 ``idempotency-key-reused``): that run wrote some of the
+#: plan, and this one can never finish it.
+KEY_REUSED = 'an earlier run of this plan wrote some of it differently'
+
+
+def _key_reused(e: BaseException) -> bool:
+    """Whether the server refused a request of ``e``'s run as a used key with
+    another body."""
+    cause = e
+    while cause is not None:
+        if (isinstance(cause, PlaidAPIError) and cause.status == 422
+                and isinstance(cause.response_data, dict)
+                and cause.response_data.get('error') == 'idempotency-key-reused'):
+            return True
+        cause = cause.__cause__
+    return False
+
+
 def _failure(client, documents: list, e: PlanError) -> str:
     """Why a plan stopped, as the clause after "Failed to apply the plan:".
     A lock that lapsed names its document as the reader knows it. Anything
@@ -1919,6 +1957,8 @@ def _failure(client, documents: list, e: PlanError) -> str:
         cause = cause.__cause__
     if cause is not None:
         return f'the lock on {_named(_document_name(client, documents, cause.document_id))} lapsed'
+    if _key_reused(e):
+        return KEY_REUSED
     said = str(e).rstrip()
     return said[:-1] if said.endswith('.') and not said.endswith('..') else said
 

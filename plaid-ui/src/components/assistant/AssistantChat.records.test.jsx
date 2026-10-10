@@ -199,6 +199,45 @@ describe('a message sent while an approval runs (H10-RECORD-2)', () => {
   });
 });
 
+describe('an approval whose assistant stopped, before the service says so (H14-APPROVE)', () => {
+  it('reads as applying, never as undecided', async () => {
+    const pending = {
+      kind: 'apply',
+      requestId: 'r-dead',
+      serviceId: SERVICE.serviceId,
+      planId: 'plan-1',
+      startedAt: new Date().toISOString(),
+    };
+    const client = fakeClient({
+      meta: { ...META, pending },
+      conv: {
+        ...CONV,
+        display: [
+          ...CONV.display,
+          {
+            kind: 'assistant',
+            text: 'A plan.',
+            plan: { id: 'plan-1', summary: '1 change', labels: ['Set a gloss'] },
+            status: null,
+          },
+        ],
+      },
+    });
+    // The request is gone, and no assistant has settled its marker yet.
+    client.messages.attachServiceRequest.mockImplementation(async () => {
+      throw Object.assign(new Error('gone'), { status: 404 });
+    });
+    const m = await mount(client);
+    await flush(m, 12);
+    expect(m.container.textContent).toContain('Applying…');
+    const approve = button(m, 'Approve and apply');
+    expect(!approve || approve.disabled).toBe(true);
+    const discard = button(m, 'Discard');
+    expect(!discard || discard.disabled).toBe(true);
+    await m.unmount();
+  });
+});
+
 describe('a turn as it runs', () => {
   // The text the model wrote before a tool call used to vanish when the next
   // call began (TRANSPARENCY, item 1 of the request).

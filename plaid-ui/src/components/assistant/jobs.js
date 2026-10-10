@@ -225,6 +225,25 @@ const deleteOffline = async (store, id) => {
 // --- turns and approvals -----------------------------------------------------------
 
 // A marker naming a request a page can rejoin (a turn or an approval).
+// The channel the tabs of this browser talk on (hold.js).
+export const TABS_CHANNEL = 'plaid-assistant';
+
+// Say to the other tabs of this browser that work began on a conversation, so
+// one showing it looks at its entry now rather than at its next check.
+const tellTabs = (conv) => {
+  try {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const c = new BroadcastChannel(TABS_CHANNEL);
+    try {
+      c.postMessage({ work: conv });
+    } finally {
+      c.close();
+    }
+  } catch {
+    // Tabs that cannot hear it look at their next check.
+  }
+};
+
 export const followable = (p) => (p?.requestId && p.kind !== 'discard' ? p : null);
 
 // A turn's progress event carries the turn so far, whole each time: its steps
@@ -570,7 +589,15 @@ export const startApply = ({ store, service, conv, plan, asHuman, docked = false
         service.serviceId,
         { projectId, conversationId: conv.id, tab, op: 'approve', planId: plan.id, asHuman },
         REQUEST_TIMEOUT_MS,
-        progressOf(j),
+        // The first word from the service comes once the record names the
+        // approval, which the other tabs then read.
+        (p) => {
+          if (!j.told) {
+            j.told = true;
+            tellTabs(conv.id);
+          }
+          progressOf(j)(p);
+        },
         undefined,
         // Approving is its own action, applied as one assistant-plan
         // operation the service opens.

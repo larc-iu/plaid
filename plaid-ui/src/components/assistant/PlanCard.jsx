@@ -121,6 +121,10 @@ export const PlanCard = ({
   // undoes them, and it is not discarded as if nothing had happened. Unless
   // its documents show that nothing was written after all.
   const maybeWritten = lost && !!plan.writing && !nothingWritten;
+  // How its run stamped what it began writing (`stamp` in the writing mark).
+  // Applying again sends the same, so the box shows it and is not a choice.
+  const firstStamp = lost ? plan.writing?.stamp || null : null;
+  const shownAsHuman = firstStamp ? firstStamp === 'human' : asHuman;
   // Stopped partway, and settled so: finishing it is a new plan.
   const partial = status === 'partial';
   const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);
@@ -210,6 +214,9 @@ export const PlanCard = ({
           {outcome}
           {unknown && ' The server did not answer for the rest.'}
         </p>
+      )}
+      {applied && recordedAsHuman && (
+        <p className="mt-2 text-xs text-muted-foreground">Recorded as human-made.</p>
       )}
       {applied && notes?.length > 0 && (
         <div className="mt-2 text-xs text-muted-foreground" data-testid="apply-notes">
@@ -322,8 +329,8 @@ export const PlanCard = ({
         <>
           <p className="mt-2 text-xs text-muted-foreground">
             {reason
-              ? 'Ask again to plan on the current version.'
-              : 'Changed since this plan was made. Ask again to plan on the current version.'}
+              ? 'Ask the assistant to plan again.'
+              : 'Changed since this plan was made. Ask the assistant to plan again.'}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" disabled>
@@ -338,7 +345,12 @@ export const PlanCard = ({
       {undecided && !readOnly && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {canWrite ? (
-            <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onApprove({ asHuman: shownAsHuman })}
+              disabled={busy}
+            >
               {lost ? (
                 <>
                   <RotateCcw className="h-4 w-4" /> Apply again
@@ -357,18 +369,25 @@ export const PlanCard = ({
               <X className="h-4 w-4" /> Discard
             </Button>
           )}
-          {canWrite && !contributor && (
+          {canWrite && (firstStamp ? firstStamp !== 'contributed' : !contributor) && (
             <label
               htmlFor={humanId}
-              className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground"
-              title="By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance)."
+              className={cn(
+                'ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground',
+                firstStamp ? 'cursor-default' : 'cursor-pointer',
+              )}
+              title={
+                firstStamp
+                  ? 'As first approved.'
+                  : 'By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance).'
+              }
             >
               <input
                 id={humanId}
                 type="checkbox"
                 className="h-3.5 w-3.5"
-                checked={asHuman}
-                disabled={busy}
+                checked={shownAsHuman}
+                disabled={busy || !!firstStamp}
                 onChange={(e) => setAsHuman(e.target.checked)}
               />
               Record as human-made

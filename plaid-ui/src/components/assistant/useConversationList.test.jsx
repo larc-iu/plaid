@@ -144,7 +144,9 @@ describe('useConversationList', () => {
     jobs.set('a', { id: 'a', kind: 'apply', done: false });
     await step(() => box.list.remove({ id: 'a', projectId: 'here' }));
     expect(client.userData.delete).not.toHaveBeenCalled();
-    expect(notifyError).toHaveBeenCalledWith('That conversation is still applying changes.');
+    expect(notifyError).toHaveBeenCalledWith(
+      'That conversation is still applying changes. Delete it once they finish.',
+    );
     expect(read()).toBe('a@here');
     expect(onRemoved).not.toHaveBeenCalled();
     await unmount();

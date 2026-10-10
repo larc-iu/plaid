@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LEASE_MS, announce, closedHere, heldElsewhere, shownHolder } from './hold.js';
+import { jobs, startApply } from './jobs.js';
 
 // One tab acts on a conversation at a time (Luke's ruling, 2026-10-09). The
 // service decides with its own clock; the page reads the hold the same way,
@@ -83,6 +84,49 @@ describe('announce', () => {
     expect(posted[0][0]).toBe('plaid-assistant');
     expect(posted[0][1].conv).toBe('c1');
     expect(posted[0][1].tab).toBeTruthy();
+  });
+});
+
+describe('an approval', () => {
+  // A watching tab of this browser read the entry only every 15 s, and showed
+  // the plan undecided meanwhile (H14-APPROVE polish).
+  it('tells the other tabs of this browser once the service took it', async () => {
+    const posted = [];
+    const Real = globalThis.BroadcastChannel;
+    globalThis.BroadcastChannel = class {
+      constructor(name) {
+        this.name = name;
+      }
+      postMessage(m) {
+        posted.push([this.name, m]);
+      }
+      close() {}
+    };
+    let progress;
+    const client = {
+      messages: {
+        requestService: vi.fn((pid, sid, data, timeout, onProgress) => {
+          progress = onProgress;
+          return new Promise(() => {});
+        }),
+      },
+    };
+    try {
+      startApply({
+        store: { client, userId: 'u1', app: 'igt', projectId: 'p1' },
+        service: { serviceId: 'igt:assist:one' },
+        conv: { id: 'c-work', display: [] },
+        plan: { id: 'plan-1', summary: '1 change' },
+        asHuman: false,
+      });
+      expect(posted).toEqual([]);
+      progress({ message: 'Applying changes…' });
+      progress({ message: 'Applying changes…' });
+    } finally {
+      globalThis.BroadcastChannel = Real;
+      jobs.clear();
+    }
+    expect(posted).toEqual([['plaid-assistant', { work: 'c-work' }]]);
   });
 });
 

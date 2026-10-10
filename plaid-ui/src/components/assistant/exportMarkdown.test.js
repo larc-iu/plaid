@@ -64,7 +64,7 @@ describe('conversationToMarkdown', () => {
     ]);
     expect(out).toContain('(Out of date.)');
     expect(out).toContain(
-      'not the 6 shown when it was planned \\(1 more in "Tale"). Nothing was changed.',
+      'not the 6 shown when it was planned \\(1 more in "Tale"). Nothing was written.',
     );
   });
 });

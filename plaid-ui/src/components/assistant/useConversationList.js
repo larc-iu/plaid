@@ -83,7 +83,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
     async (m, { tab = null } = {}) => {
       const j = jobFor(m.id);
       if (j && j.kind === 'apply') {
-        notifyError('That conversation is still applying changes.');
+        notifyError('That conversation is still applying changes. Delete it once they finish.');
         return;
       }
       setRows((prev) => prev.filter((row) => row.id !== m.id));

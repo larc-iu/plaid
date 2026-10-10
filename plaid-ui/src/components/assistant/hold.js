@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ask, attachJob, followable, jobFor, metaOf, readConv, readMeta } from './jobs.js';
+import {
+  TABS_CHANNEL,
+  ask,
+  attachJob,
+  followable,
+  jobFor,
+  metaOf,
+  readConv,
+  readMeta,
+} from './jobs.js';
 
 // One open tab acts on a conversation at a time (Luke's ruling, 2026-10-09).
 // Any other tab or device shows it read-only with Continue here.
@@ -32,7 +41,7 @@ const TAB_KEY = 'plaid-assistant-tab';
 const TABS_KEY = 'plaid-assistant-tabs';
 const TABS_KEPT = 50;
 const LOCK_PREFIX = 'plaid-assistant-tab:';
-const CHANNEL = 'plaid-assistant';
+const CHANNEL = TABS_CHANNEL;
 
 const storage = (kind) => {
   try {
@@ -209,6 +218,8 @@ export const useHold = ({
   const [takenBy, setTakenBy] = useState(null);
   const metaRef = useRef(meta);
   metaRef.current = meta;
+  const convIdRef = useRef(convId);
+  convIdRef.current = convId;
   const cbs = useRef({ applyMeta, onChanged, onGone });
   cbs.current = { applyMeta, onChanged, onGone };
 
@@ -300,7 +311,9 @@ export const useHold = ({
     };
   }, [mine, service, hold]);
 
-  // Look at the entry: every 15 s while visible, and on focus.
+  // Look at the entry: every 15 s while visible, on focus, and when another
+  // tab of this browser began work on it.
+  const checkRef = useRef(null);
   useEffect(() => {
     if (!saved || !convId) return undefined;
     let live = true;
@@ -332,11 +345,13 @@ export const useHold = ({
           .catch(() => {});
       }
     };
+    checkRef.current = check;
     const timer = setInterval(check, CHECK_EVERY_MS);
     window.addEventListener('focus', check);
     document.addEventListener('visibilitychange', check);
     return () => {
       live = false;
+      if (checkRef.current === check) checkRef.current = null;
       clearInterval(timer);
       window.removeEventListener('focus', check);
       document.removeEventListener('visibilitychange', check);
@@ -348,7 +363,8 @@ export const useHold = ({
     const c = channel();
     if (!c) return undefined;
     c.onmessage = (e) => {
-      const { conv, tab: other, left } = e.data || {};
+      const { conv, tab: other, left, work } = e.data || {};
+      if (work && work === convIdRef.current) checkRef.current?.();
       if (conv && other && other !== state.id)
         setTakenBy({ conv, tab: other, at: serverNow(store.client) });
       setNow(serverNow(store.client));

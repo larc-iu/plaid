@@ -157,6 +157,14 @@ def test_set_field_plans_one_op_per_word(ws):
     assert ws.ops[0]['value'] == 'correr' and ws.ops[0]['ref'] == 's2.w1'
 
 
+def test_a_planned_value_names_the_one_it_replaces(ws):
+    """The card reads lemma "ir" → "andar", as igt's does (H14-APPROVE polish)."""
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='lemma', value='andar')
+    assert ws.ops[0]['label'] == 'lemma "ir" → "andar"'
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='lemma', value='')
+    assert ws.ops[-1]['label'] == 'clear lemma "ir"'
+
+
 def test_setting_the_same_field_twice_replaces_the_first_plan_and_says_so(ws):
     """The model asked for two changes and is getting one, so the reply says
     which. The count is a watermark: it is reported once and not again, and a
