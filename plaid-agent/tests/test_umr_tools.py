@@ -443,6 +443,16 @@ def test_apply_penman_says_the_nodes_and_roles_it_adds(ws):
     assert 'roles and concepts against any the user named' in out
 
 
+def test_apply_penman_says_the_attributes_it_sets_on_nodes_already_there(ws):
+    """An attribute added to or changed on a node the graph already holds is
+    named with the rest of what the plan adds."""
+    text = (SENTENCE_1_PENMAN.replace(':aspect performance)', ':aspect process\n    :polarity -)')
+            .replace(':refer-number singular)', ':refer-number plural)'))
+    out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
+    assert 'It adds: s1b: :aspect performance becomes process, adds :polarity -; ' \
+           's1d: :refer-number singular becomes plural.' in out, out
+
+
 def test_a_temporal_triple_says_what_it_means_in_words(ws):
     """Models wrote (s6r :before s10t) for "s6r happened before s10t". The
     answer says what the triple means, so the model can see the reversal."""

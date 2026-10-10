@@ -469,8 +469,9 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
 
 
 def _additions(ops: List[Dict[str, Any]]) -> str:
-    """The nodes and relations the staged changes make, so the roles and
-    concepts the plan writes are in front of the model when it reports. A
+    """The nodes and relations the staged changes make, and the attributes
+    they set on nodes already there, so the roles, concepts and values the plan
+    writes are in front of the model when it reports. A
     count alone let a draft with :ARG0 pass for the :experiencer the user
     asked for."""
     def said(op):
@@ -479,13 +480,22 @@ def _additions(ops: List[Dict[str, Any]]) -> str:
         line = attr_line(op.get('attrs')) if op.get('kind') == 'create_node' else ''
         label = str(op.get('label'))
         return label.replace(f'/ {op.get("concept")})', f'/ {op.get("concept")} {line})', 1) if line else label
-    made = [said(op) for op in ops if op.get('label') and op.get('kind') in ('create_node', 'create_edge')]
+    made = [said(op) for op in ops if op.get('label') and (op.get('kind') in ('create_node', 'create_edge')
+                                                            or _sets_attrs(op))]
     if not made:
         return ''
     shown = made[:REMOVALS_SHOWN]
     more = len(made) - len(shown)
     return (' It adds: ' + '; '.join(shown) + (f'; and {more} more' if more else '')
             + '. Check these roles and concepts against any the user named.')
+
+
+def _sets_attrs(op: Dict[str, Any]) -> bool:
+    """Whether a staged change gives a node already there an attribute or a
+    new value for one (``attrs_change`` says "adds :rel" or "becomes"). Its
+    whole label is shown, as a removal shows it."""
+    label = str(op.get('label'))
+    return op.get('kind') == 'set_attrs' and ('adds :' in label or ' becomes ' in label)
 
 
 def _removes(op: Dict[str, Any]) -> bool:
