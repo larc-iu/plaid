@@ -292,7 +292,7 @@ TRANSITIONS = 'transitions'
 TRANSITIONS_MORE = 'transitions_more'
 
 #: The key on a rule's card naming what the rest count (``[one, many]``,
-#: ``['morpheme form', 'morpheme forms']``).
+#: ``['value', 'values']``).
 UNIT = 'unit'
 
 #: Why a change is listed first: the match is part of a longer word, or it

@@ -63,8 +63,8 @@ class PlanFull(Exception):
     """Staging these ops would push the plan past :data:`PLAN_MAX_OPS`."""
 
 
-# Ops that stand for many values: a rule (its `matched` list), igt's
-# corpus-wide scope and ud's replacement. Each is one row on the card.
+# Ops that stand for many values: a rule (its `matched` list) and the
+# apps' corpus-wide scope ops. Each is one row on the card.
 _MANY_KINDS = frozenset({'bulk_scope', 'replace_scope'})
 
 
