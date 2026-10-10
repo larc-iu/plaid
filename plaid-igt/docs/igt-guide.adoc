@@ -1047,7 +1047,7 @@ Before you have opened a project at all it asks which one to use, because the as
 
 A plan approved in the panel re-reads what is on screen, so the grid or the entry list shows the result without losing your place.
 
-== How full a conversation is
+== Conversation size
 
 The panel's header shows how full the conversation is against two limits, the model's limit on what one turn can send and the size a conversation can be stored at, and the bar follows whichever is closer.
 Hovering over it gives both, with the counts behind them.
@@ -1061,7 +1061,7 @@ A plan of more than 200 changes keeps its first 200 once it is approved or disca
 Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
 The storage limit is set by the server's operator.
 
-== When no assistant is connected
+== Without an assistant
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-igt-agent`, installed from a checkout of the source tree).
 When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.

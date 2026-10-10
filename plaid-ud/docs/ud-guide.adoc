@@ -276,7 +276,7 @@ It is set to **Automatic**, which reads the document's own text. A treebank in A
 
 Direction affects the way tokens are laid out, not the values in them. Every field decides for itself, so a UPOS tag or an English lemma reads left to right in a column standing under an Arabic word. Arrow keys follow the words: in a right-to-left sentence the next token is the one to the left, so it is the left arrow that moves forward through the sentence.
 
-== What This Project Has Said Before
+== Earlier Values in This Project
 
 In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
 
@@ -544,7 +544,7 @@ Before you have opened a project at all it asks which one to use, because the as
 
 A plan approved in the panel re-reads the document, so the annotation shows the result without losing your place.
 
-== How full a conversation is
+== Conversation size
 
 The panel's header shows how full the conversation is against two limits, the model's limit on what one turn can send and the size a conversation can be stored at, and the bar follows whichever is closer.
 Hovering over it gives both, with the counts behind them.
@@ -558,7 +558,7 @@ A plan of more than 200 changes keeps its first 200 once it is approved or disca
 Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
 The storage limit is set by the server's operator.
 
-== When no assistant is connected
+== Without an assistant
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from a checkout of the source tree).
 When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
@@ -738,7 +738,7 @@ A closed list is enforced where a person types: the annotation cells and the Gre
 
 Closing a list, or removing a value from a closed one, is refused while any other value in the project's annotations is off it, and the message names one of them. Change them first, or add them to the list.
 
-=== What a value is for
+=== Value definitions
 
 Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs. Edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
 
@@ -849,7 +849,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **Enter** | Commit the cell, taking the highlighted suggestion if the list is open.
 | **Esc** | Cancel the edit, or close an open list or panel.
 | **Backspace** (Features) | On the empty input, select the last feature, so a second press removes it.
-| **Alt+↓** | In a lemma, XPOS or Features cell, list what the project has given words like this one, with counts, and pick one. See <<_what_this_project_has_said_before>>.
+| **Alt+↓** | In a lemma, XPOS or Features cell, list what the project has given words like this one, with counts, and pick one. See <<_earlier_values_in_this_project>>.
 | **Ctrl/Cmd+Enter** | Accept everything proposed on the current word, then move to the next word.
 | **Ctrl/Cmd+Backspace** | Discard the machine's unconfirmed work on the current word, then move to the next word. Anything a person entered or confirmed stays.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word that still needs a look.

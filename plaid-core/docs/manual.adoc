@@ -225,7 +225,7 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 # Luke G, 2025-07-09T20:27:59.611Z: Merge morphemes (4 writes)
 ----
 
-=== Which credential made a change
+=== Credentials in the audit log
 
 Each entry names the user who made it (`user`) and, when the write was signed with a named API token, that token's id and name (`api_token`, `apiToken` in JavaScript).
 It also says what kind of credential signed the write, as `credential` on the entry (its first write) and on each operation in `ops`:
@@ -433,7 +433,7 @@ const more = await c.documents.auditPage(documentId, {
 });
 ----
 
-=== When you last touched each document
+=== Your last edit in each document
 
 `my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project.
 It returns a `{document id: timestamp}` map, and a document the caller has never written to is simply absent.
@@ -1795,7 +1795,7 @@ The key is refused with 400 on the routes a batch cannot carry, or whose answer 
 A write to one of them is refused inside a batch too, and inside a batch carried by a batch, so a batch's stored answer never holds a secret.
 A GET ignores it.
 
-=== What the clients do
+=== Idempotency keys in the clients
 
 Both clients send a key on every write that is not a signal (`outOfBand`) or a call a batch cannot carry (`noBatch`: an upload, private user data, or a call that mints a secret).
 Redeeming and looking up an invite (`redeemInvite`, `lookupInvite`, `redeem_invite`, `lookup_invite`) are made before there is a client, carry no key and are never batched.
@@ -2136,7 +2136,7 @@ Passing `document` (`repair_constraints(layer_id, constraints, document=doc_id)`
 A document of another project, or an id no document has, is refused as any id the caller cannot see is (see <<Users and Permissions>>).
 An app uses this when a writer opens a document on a layer that holds none of its rules yet.
 
-=== When a write breaks a rule
+=== Rule violations
 
 Rules are checked once, at the end of the write's transaction: after a single write, or after the last operation of a batch.
 A batch may pass through a state that breaks a rule, as long as its end does not.
@@ -2340,7 +2340,7 @@ This section is for whoever runs Plaid for other people: a course, a research gr
 It assumes nothing beyond the <<_configuration>> section above.
 Plaid is one process with one SQLite database, so a small machine that stays on is enough: a departmental virtual machine or the smallest cloud instance will serve a class.
 
-== What you need
+== Requirements
 
 * A machine that stays on, reachable by your users, running Linux (the notes below are for Linux; the jar itself runs anywhere Java does).
 * https://www.oracle.com/java/technologies/downloads/[JDK 21 or later].

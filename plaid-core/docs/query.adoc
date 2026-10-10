@@ -333,7 +333,7 @@ literal, so a real value like `"?x"` is never mistaken for a variable. Value
 variables are join / comparison helpers only; they bind a value, not an entity, so
 they cannot appear in `find`.
 
-=== How JSON types compare
+=== Comparing JSON types
 
 A `value` and a metadata value are stored as JSON, so each has a type: string,
 number, boolean, null, array or object. Matching keeps to the type, with these
