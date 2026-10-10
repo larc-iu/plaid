@@ -6,10 +6,10 @@
 // beside the live document. What a document MEANS (its layers, rows, and every
 // mutation) is the subclass's.
 //
-// Imports siblings with no imports but each other's and lib/errors.js,
-// which has none, and nothing else: plaid-ud's node suite reaches this file by
-// relative path, where no alias and no package resolves. Errors leave through
-// `onError`.
+// Imports siblings with no imports but each other's, lib/errors.js, which has
+// none, and plaid-client's provenance.js by path, which has none either, and
+// nothing else: plaid-ud's node suite reaches this file by relative path,
+// where no alias and no package resolves. Errors leave through `onError`.
 
 import {
   isChangedElsewhere,
@@ -28,6 +28,7 @@ import {
   withTextDirection,
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
+import { isReviewed, writerPolicy } from '../../../plaid-client-js/src/provenance.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
 import { sameConfig } from './configCells.js';
 import { DOCUMENT_DELETED, asDeletedDocument } from './permissions.js';
@@ -155,6 +156,8 @@ export class DocumentModel {
     // verifier: scripts, imports, tests.
     this._project = project;
     this._user = user;
+    // The policy `writer` last built, kept while the writer is the same.
+    this._writer = null;
     // Which snapshot this document was read at (null = live). `_reload` reads
     // at it, so a resync during time travel stays on the snapshot instead of
     // silently jumping to live data.
@@ -1396,11 +1399,48 @@ export class DocumentModel {
     return next;
   }
 
-  // Build the instance `atAsOf` returns, from a raw document read at `asOf`.
+  // Build the instance `atAsOf` returns, from a raw document read at `asOf`:
+  // one of the subclass's own kind, made as this one was, with what the
+  // subclass keeps beside the raw document (`_own`).
   _snapshot(raw, asOf) {
-    void raw;
-    void asOf;
-    throw new Error(`${this.constructor.name} does not build snapshots`);
+    return new this.constructor({
+      raw,
+      client: this._client,
+      projectId: this._projectId,
+      project: this._project,
+      user: this._user,
+      asOf,
+      ...this._own(),
+    });
+  }
+
+  // What a subclass's constructor takes beyond the shared arguments, as this
+  // document holds it, for `_snapshot`.
+  _own() {
+    return {};
+  }
+
+  // ----- who is writing (provenance) -----
+  // Whose work is reviewed is the project's call, under the cross-app
+  // `plaid.review` config (isReviewed). A reviewed person is a CONTRIBUTOR,
+  // whose creates and edits are stamped contributed until a verifier confirms
+  // them. Everyone else, and a document with no user (scripts, imports,
+  // tests), is a VERIFIER, whose edits and confirmations settle machine or
+  // contributed material. The policy is plaid-client's writerPolicy, and every
+  // human write of a subclass reads it.
+
+  /** The contributor's user id, or null when the writer is a verifier. */
+  get contributorId() {
+    const user = this._user;
+    if (!user?.id || !this._project) return null;
+    return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
+  }
+
+  /** The writer's policy (plaid-client's writerPolicy) for the current user. */
+  get writer() {
+    const id = this.contributorId;
+    if (!this._writer || this._writer.contributorId !== id) this._writer = writerPolicy(id);
+    return this._writer;
   }
 
   // ----- reconcile on open -----

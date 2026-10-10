@@ -8,13 +8,11 @@ import {
   applyMetadataOps,
   createdId,
   createdIds,
-  isReviewed,
   MAX_BATCH_OPS,
   mergeMetadata,
   metadataOps,
   provState,
   PROV_STATES,
-  writerPolicy,
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
@@ -177,7 +175,6 @@ export class UmrDocument extends DocumentModel {
     lexicon = null,
   }) {
     super({ raw, client, projectId, project, user, asOf });
-    this._writer = null;
     // The project's vocabularies (readEntryLexicon), once read: what the
     // entry check compares a node picked from an entry with.
     this._lexicon = lexicon;
@@ -195,16 +192,8 @@ export class UmrDocument extends DocumentModel {
     return new UmrDocument({ raw, client, projectId, project, user });
   }
 
-  _snapshot(raw, asOf) {
-    return new UmrDocument({
-      raw,
-      client: this._client,
-      projectId: this._projectId,
-      project: this._project,
-      user: this._user,
-      asOf,
-      lexicon: this._lexicon,
-    });
+  _own() {
+    return { lexicon: this._lexicon };
   }
 
   // ----- the vocabulary the nodes were picked from -----
@@ -327,32 +316,14 @@ export class UmrDocument extends DocumentModel {
   }
 
   // ----- who is writing (provenance) -----
-  // The cross-app convention, as plaid-ud's ConlluDocument has it. Whose work
-  // is reviewed is the project's call, under the `plaid.review` config
-  // (isReviewed). A reviewed person is a CONTRIBUTOR, whose creates and edits
-  // are stamped contributed until a verifier confirms them; everyone else,
-  // and a document with no user, is a VERIFIER, whose edits and confirmations
-  // settle machine or contributed material. Every mutation below reads the
-  // policy: a create carries `createStamp`, an edit merges `editStamp`.
+  // `contributorId` and `writer` are DocumentModel's. Every mutation below
+  // reads the writer's policy: a create carries `createStamp`, an edit merges
+  // `editStamp`.
   //
   // It matters most in this app, where the Draft button writes whole
   // sentences a person then corrects node by node: without the stamp a
   // corrected graph still reads as machine output to the query language and
   // to the review sweep, and the canvas goes on tinting it.
-
-  /** The contributor's user id, or null when the writer is a verifier. */
-  get contributorId() {
-    const user = this._user;
-    if (!user?.id || !this._project) return null;
-    return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
-  }
-
-  /** The writer's policy (plaid-client's writerPolicy) for the current user. */
-  get writer() {
-    const id = this.contributorId;
-    if (!this._writer || this._writer.contributorId !== id) this._writer = writerPolicy(id);
-    return this._writer;
-  }
 
   // The metadata ops that carry the writer's edit stamp onto a node, edge or
   // relation holding `metadata`, empty when the edit leaves who made it as it

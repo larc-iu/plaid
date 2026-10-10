@@ -6,7 +6,6 @@ import {
   cpSlicer,
   isMachine,
   isProtected,
-  isReviewed,
   mergeMetadata,
   metadataOps,
   PROV,
@@ -16,7 +15,6 @@ import {
   gapsToOps,
   stampInferred,
   wasReplayed,
-  writerPolicy,
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import {
@@ -72,49 +70,11 @@ const TEXT_UNREAD = 'The saved text could not be read. Try again.';
 const gapsBody = (base, gaps) => applyTextOps(base, gapsToOps(gaps));
 
 export class ConlluDocument extends DocumentModel {
-  constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
-    super({ raw, client, projectId, project, user, asOf });
-    this._writer = null;
-  }
-
   // Convenience factory: fetch a document by id and wrap it. `project` and
   // `user`, when given, make the document write as that person (see `writer`).
   static async load(client, projectId, documentId, { project = null, user = null } = {}) {
     const raw = await client.documents.get(documentId, true);
     return new ConlluDocument({ raw, client, projectId, project, user });
-  }
-
-  _snapshot(raw, asOf) {
-    return new ConlluDocument({
-      raw,
-      client: this._client,
-      projectId: this._projectId,
-      project: this._project,
-      user: this._user,
-      asOf,
-    });
-  }
-
-  // ----- who is writing (provenance) -----
-  // Whose work is reviewed is the project's call, under the cross-app
-  // `plaid.review` config (isReviewed). A reviewed person is a CONTRIBUTOR,
-  // whose creates and edits are stamped contributed until a verifier confirms
-  // them; everyone else, and a document with no user, is a VERIFIER, whose
-  // edits and confirmations settle machine or contributed material. The
-  // policy is the client's writerPolicy; every human write below reads it.
-
-  /** The contributor's user id, or null when the writer is a verifier. */
-  get contributorId() {
-    const user = this._user;
-    if (!user?.id || !this._project) return null;
-    return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
-  }
-
-  /** The writer's policy (plaid-client's writerPolicy) for the current user. */
-  get writer() {
-    const id = this.contributorId;
-    if (!this._writer || this._writer.contributorId !== id) this._writer = writerPolicy(id);
-    return this._writer;
   }
 
   // Import a CoNLL-U text into a new document in the given project. The work
