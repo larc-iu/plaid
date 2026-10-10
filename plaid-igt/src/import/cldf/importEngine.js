@@ -14,13 +14,17 @@
 import { createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
-import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
+import { CHUNK } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
-import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
+import {
+  createDocumentShell,
+  finishDocument,
+  resolveIgtTargets,
+  setupDataFor,
+  writeDocumentLayers,
+} from '../project.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
-import { mediaUploadFailure } from '../mediaUpload.js';
-import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
 import { sameName } from '@ui/lib/nameKey.js';
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
@@ -266,124 +270,51 @@ async function importDocument({
   });
 
   if (textId) {
-    check();
-    progress('Creating words');
-    const wordIds = await bulkInChunks(
-      doc.words.map((w) => {
-        // Orthography values ride in token metadata under the orthog: prefix,
-        // the same convention the editor and the other importers use.
-        const metadata = {};
-        for (const [key, value] of Object.entries(w.fields)) {
-          if (key.startsWith('orthog:')) metadata[key] = value;
-        }
-        return {
-          tokenLayerId: targets.wordLayerId,
-          text: textId,
-          begin: w.begin,
-          end: w.end,
-          ...(Object.keys(metadata).length ? { metadata } : {}),
-        };
-      }),
-      check,
-      (specs) => client.tokens.bulkCreate(specs),
-    );
-
-    // Morphemes span the whole word with a 1-based precedence. A word the
-    // source never segmented gets NO row: its morpheme is the word, which
-    // derive synthesizes without storing it (domain/virtualMorpheme.js). The
-    // empty-form row this used to write said less than that, since it showed an
-    // empty cell where the word belongs.
-    check();
-    progress('Creating morphemes');
-    const morphSpecs = [];
-    doc.words.forEach((w, wi) => {
-      (w.morphemes || []).forEach((m, mi) => {
-        const metadata = { form: m.form ?? '' };
-        if (m.morphType) metadata.morphType = m.morphType;
-        morphSpecs.push({
-          wordIndex: wi,
-          morpheme: m,
-          req: {
-            tokenLayerId: targets.morphemeLayerId,
-            text: textId,
-            begin: w.begin,
-            end: w.end,
-            precedence: mi + 1,
-            metadata,
+    // Orthography values ride in token metadata under the orthog: prefix,
+    // the same convention the editor and the other importers use. Every other
+    // field is a span on its layer.
+    const spansOf = (scope, fields) =>
+      Object.entries(fields || {})
+        .filter(([name, value]) => value && !name.startsWith('orthog:'))
+        .map(([name, value]) => ({ layerId: spanLayerFor(scope, name), value }));
+    await writeDocumentLayers({
+      client,
+      targets,
+      textId,
+      sentenceIds,
+      sentenceSpans: doc.sentences.map((s) => spansOf('Sentence', s.fields)),
+      words: doc.words.map((w) => ({
+        begin: w.begin,
+        end: w.end,
+        metadata: Object.fromEntries(
+          Object.entries(w.fields).filter(([key]) => key.startsWith('orthog:')),
+        ),
+        spans: spansOf('Word', w.fields),
+        morphemes: (w.morphemes || []).map((m) => ({
+          metadata: {
+            ...(m.form != null ? { form: m.form } : {}),
+            ...(m.morphType ? { morphType: m.morphType } : {}),
           },
-        });
-      });
-    });
-    const morphIds = await bulkInChunks(
-      morphSpecs.map((s) => s.req),
+          spans: spansOf('Morpheme', m.fields),
+        })),
+      })),
       check,
-      (specs) => client.tokens.bulkCreate(specs),
-    );
-
-    check();
-    progress('Creating annotations');
-    const spanSpecs = [];
-    const addSpan = (scope, name, tokenId, value) => {
-      if (!value || !tokenId) return;
-      const spanLayerId = spanLayerFor(scope, name);
-      if (!spanLayerId) return;
-      spanSpecs.push({ spanLayerId, tokens: [tokenId], value });
-    };
-    doc.sentences.forEach((s, si) => {
-      for (const [name, value] of Object.entries(s.fields)) {
-        addSpan('Sentence', name, sentenceIds[si], value);
-      }
+      progress,
     });
-    doc.words.forEach((w, wi) => {
-      for (const [name, value] of Object.entries(w.fields)) {
-        if (name.startsWith('orthog:')) continue; // already token metadata
-        addSpan('Word', name, wordIds[wi], value);
-      }
-    });
-    morphSpecs.forEach((s, i) => {
-      for (const [name, value] of Object.entries(s.morpheme.fields || {})) {
-        addSpan('Morpheme', name, morphIds[i], value);
-      }
-    });
-    // The bulk endpoint requires every span in one call to share a layer.
-    const byLayer = new Map();
-    for (const s of spanSpecs) {
-      if (!byLayer.has(s.spanLayerId)) byLayer.set(s.spanLayerId, []);
-      byLayer.get(s.spanLayerId).push(s);
-    }
-    for (const specs of byLayer.values()) {
-      await bulkInChunks(specs, check, (part) => client.spans.bulkCreate(part));
-    }
   }
 
-  let mediaFailed = false;
-  if (doc.mediaBytes) {
-    check();
-    progress('Uploading media');
-    try {
-      // An ADPCM WAV goes up as PCM, and one no browser plays not at all.
-      const ready = await prepareRecording(new File([doc.mediaBytes], doc.mediaName || 'media'));
-      if (ready.refused) warnings?.push(`"${doc.name}": ${ready.refused} Not uploaded.`);
-      else {
-        if (ready.convertedFrom) {
-          warnings?.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
-        }
-        await client.documents.uploadMedia(docId, ready.file);
-      }
-    } catch (err) {
-      mediaFailed = true;
-      warnings?.push(
-        `"${doc.name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
-          "Upload the recording on the document's Media tab.",
-      );
-    }
-  }
-
-  // Marked LAST: resume treats an unmarked document as partial and redoes it,
-  // which is also how a failed media upload gets another chance.
-  if (!mediaFailed) {
-    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, docId, true));
-  }
+  await finishDocument({
+    client,
+    documentId: docId,
+    name: doc.name,
+    media: doc.mediaBytes ? new File([doc.mediaBytes], doc.mediaName || 'media') : null,
+    prepare: true,
+    stamp: { metadata: doc.metadata, sourceId: doc.id },
+    onProgress,
+    progress,
+    check,
+    warnings,
+  });
   return docId;
 }
 

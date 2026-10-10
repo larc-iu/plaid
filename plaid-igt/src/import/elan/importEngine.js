@@ -24,16 +24,22 @@
 // rather than as plain text.
 
 import {
-  IMPORT_STAMP_KEYS,
+  withoutStamps,
   ImportCancelled,
   importStamp,
   priorImports,
   settlePrior,
   unusedName,
 } from '../resume.js';
-import { bulkInChunks } from '../../domain/bulk.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
-import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
+import {
+  createDocumentShell,
+  finishDocument,
+  resolveIgtTargets,
+  setupDataFor,
+  writeAlignments,
+  writeDocumentLayers,
+} from '../project.js';
 import { mediaUploadFailure } from '../mediaUpload.js';
 
 export { ImportCancelled };
@@ -49,14 +55,6 @@ export function deriveSetupData(build, projectName) {
     documentMetadata: build.schema.documentMetadata.map((m) => m.name),
   });
 }
-
-// A copy's metadata: the file's own, less any key named like one of the
-// import's marks (an .eaf header property may be), which would let a later run
-// take the copy for a document it made.
-const withoutStamps = (metadata) =>
-  Object.fromEntries(
-    Object.entries(metadata || {}).filter(([k]) => !IMPORT_STAMP_KEYS.includes(k)),
-  );
 
 /** Resolve engine write targets. Throws when setup did not produce them. */
 export function resolveTargets(project, build) {
@@ -97,6 +95,9 @@ export async function importDocument({
     projectId,
     targets,
     name: copyName ?? doc.name,
+    // A copy's metadata is the file's own less any key named like one of the
+    // import's marks (an .eaf header property may be), which would let a later
+    // run take the copy for a document it made.
     metadata: copyName
       ? withoutStamps(doc.metadata)
       : (id) => importStamp(doc.metadata, doc.id, id),
@@ -109,148 +110,68 @@ export async function importDocument({
   });
 
   if (textId) {
-    // Time alignment. Seconds in metadata, matching the editor's own writes.
-    if (doc.alignments.length && targets.alignmentLayerId) {
-      check();
-      progress('Creating time alignment');
-      await bulkInChunks(
-        doc.alignments.map((a) => {
-          const metadata = { timeBegin: a.timeBegin, timeEnd: a.timeEnd };
-          if (a.speaker) metadata.speaker = a.speaker;
-          return {
-            tokenLayerId: targets.alignmentLayerId,
-            text: textId,
-            begin: a.begin,
-            end: a.end,
-            metadata,
-          };
-        }),
-        check,
-        (specs) => client.tokens.bulkCreate(specs),
-      );
-    } else if (doc.alignments.length) {
+    const aligned = await writeAlignments({
+      client,
+      targets,
+      textId,
+      alignments: doc.alignments,
+      check,
+      progress,
+    });
+    if (!aligned) {
       warnings?.push(
         `"${doc.name}": ${doc.alignments.length} aligned segments were skipped. This project is not set up for time alignment.`,
       );
     }
 
-    check();
-    progress('Creating words');
-    const wordIds = await bulkInChunks(
-      doc.words.map((w) => {
-        // Orthography values ride in token metadata under the orthog: prefix,
-        // the same convention the editor and the other importers use.
-        const metadata = {};
-        for (const [key, value] of Object.entries(w.fields)) {
-          if (key.startsWith('orthog:')) metadata[key] = value;
-        }
-        return {
-          tokenLayerId: targets.wordLayerId,
-          text: textId,
-          begin: w.begin,
-          end: w.end,
-          metadata,
-        };
-      }),
-      check,
-      (specs) => client.tokens.bulkCreate(specs),
-    );
-
-    // Morphemes span the whole word with a 1-based precedence. A word the
-    // source never segmented gets NO row: its morpheme is the word, which
-    // derive synthesizes without storing it (domain/virtualMorpheme.js). The
-    // empty-form row this used to write said less than that, since it showed an
-    // empty cell where the word belongs.
-    check();
-    progress('Creating morphemes');
-    const morphSpecs = [];
-    for (const w of doc.words) {
-      (w.morphemes || []).forEach((m, mi) => {
-        const metadata = m.form != null ? { form: m.form } : {};
-        if (m.morphType) metadata.morphType = m.morphType;
-        morphSpecs.push({
-          morpheme: m,
-          req: {
-            tokenLayerId: targets.morphemeLayerId,
-            text: textId,
-            begin: w.begin,
-            end: w.end,
-            precedence: mi + 1,
-            metadata,
+    // Orthography values ride in token metadata under the orthog: prefix,
+    // the same convention the editor and the other importers use. Every other
+    // field is a span on its layer.
+    const spansOf = (scope, fields) =>
+      Object.entries(fields || {})
+        .filter(([name, value]) => value && !name.startsWith('orthog:'))
+        .map(([name, value]) => ({ layerId: spanLayerFor(scope, name), value }));
+    await writeDocumentLayers({
+      client,
+      targets,
+      textId,
+      sentenceIds,
+      sentenceSpans: doc.sentences.map((s) => spansOf('Sentence', s.fields)),
+      words: doc.words.map((w) => ({
+        begin: w.begin,
+        end: w.end,
+        metadata: Object.fromEntries(
+          Object.entries(w.fields).filter(([key]) => key.startsWith('orthog:')),
+        ),
+        spans: spansOf('Word', w.fields),
+        morphemes: (w.morphemes || []).map((m) => ({
+          metadata: {
+            ...(m.form != null ? { form: m.form } : {}),
+            ...(m.morphType ? { morphType: m.morphType } : {}),
           },
-        });
-      });
-    }
-    const morphIds = await bulkInChunks(
-      morphSpecs.map((s) => s.req),
+          spans: spansOf('Morpheme', m.fields),
+        })),
+      })),
       check,
-      (specs) => client.tokens.bulkCreate(specs),
-    );
-
-    check();
-    progress('Creating annotations');
-    const spanSpecs = [];
-    const addSpan = (scope, name, tokenId, value) => {
-      if (!value || !tokenId) return;
-      const spanLayerId = spanLayerFor(scope, name);
-      if (!spanLayerId) return;
-      spanSpecs.push({ spanLayerId, tokens: [tokenId], value });
-    };
-    doc.sentences.forEach((s, si) => {
-      for (const [name, value] of Object.entries(s.fields)) {
-        addSpan('Sentence', name, sentenceIds[si], value);
-      }
+      progress,
     });
-    doc.words.forEach((w, wi) => {
-      for (const [name, value] of Object.entries(w.fields)) {
-        if (name.startsWith('orthog:')) continue; // already token metadata
-        addSpan('Word', name, wordIds[wi], value);
-      }
-    });
-    morphSpecs.forEach((s, i) => {
-      for (const [name, value] of Object.entries(s.morpheme.fields || {})) {
-        addSpan('Morpheme', name, morphIds[i], value);
-      }
-    });
-    // The bulk endpoint requires every span in one call to share a layer.
-    const byLayer = new Map();
-    for (const s of spanSpecs) {
-      if (!byLayer.has(s.spanLayerId)) byLayer.set(s.spanLayerId, []);
-      byLayer.get(s.spanLayerId).push(s);
-    }
-    for (const specs of byLayer.values()) {
-      await bulkInChunks(specs, check, (part) => client.spans.bulkCreate(part));
-    }
   }
 
-  // The recording the .eaf names, when the user supplied it. Same contract as
-  // the CLDF importer: a failure is a warning and the document is left
-  // unfinished, so a resume of a new project's import retries the upload. Into
-  // an open project the document is kept, and importing the file again with
-  // its recording adds the recording to it (addRecordingToExisting).
-  let mediaFailed = false;
-  if (doc.mediaFile) {
-    check();
-    try {
-      await client.documents.uploadMedia(docId, doc.mediaFile, `Import media for ${doc.name}`, {
-        onProgress: (bytes) =>
-          onProgress?.({ phase: 'document', doc: doc.name, step: 'Uploading media', bytes }),
-      });
-    } catch (err) {
-      mediaFailed = true;
-      warnings?.push(
-        `"${doc.name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
-          "Upload the recording on the document's Media tab.",
-      );
-    }
-  }
-
-  // Marked LAST: resume treats an unmarked document as partial and redoes it,
-  // which is also how a failed media upload gets another chance. A copy is
-  // never resumed, so it is never marked.
-  if (!mediaFailed && !copyName) {
-    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, docId, true));
-  }
+  // The recording the .eaf names, when the user supplied it. Into an open
+  // project a document whose upload failed is kept, and importing the file
+  // again with its recording adds the recording to it
+  // (addRecordingToExisting). A copy is never resumed, so it is never marked.
+  await finishDocument({
+    client,
+    documentId: docId,
+    name: doc.name,
+    media: doc.mediaFile,
+    stamp: copyName ? null : { metadata: doc.metadata, sourceId: doc.id },
+    onProgress,
+    progress,
+    check,
+    warnings,
+  });
   return docId;
 }
 

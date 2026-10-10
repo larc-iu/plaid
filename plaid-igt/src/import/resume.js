@@ -29,6 +29,12 @@ const DONE_KEY = 'importDone';
 /** Both marks, which are the import's own bookkeeping rather than the source's data. */
 export const IMPORT_STAMP_KEYS = Object.freeze([SOURCE_KEY, DONE_KEY]);
 
+/** A document's metadata less the import's marks: a copy's, or an archive's. */
+export const withoutStamps = (metadata) =>
+  Object.fromEntries(
+    Object.entries(metadata || {}).filter(([k]) => !IMPORT_STAMP_KEYS.includes(k)),
+  );
+
 export class ImportCancelled extends Error {
   constructor() {
     super('Import cancelled');

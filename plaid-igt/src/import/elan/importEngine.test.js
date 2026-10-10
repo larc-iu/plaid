@@ -206,8 +206,9 @@ describe('importDocument', () => {
         metadata: { timeBegin: 0.5, timeEnd: 2.25, speaker: 'Ana' },
       },
     ]);
-    // Orthographies ride in token metadata, not in a span layer.
-    expect(words.map((w) => w.metadata)).toEqual([{}, { 'orthog:IPA': 'ˈpe.ros' }]);
+    // Orthographies ride in token metadata, not in a span layer. A word with
+    // none sends no metadata.
+    expect(words.map((w) => w.metadata)).toEqual([undefined, { 'orthog:IPA': 'ˈpe.ros' }]);
     // Morphemes span the whole word. The word the .eaf never segmented (0-3)
     // gets no row at all: derive gives it one reading as the word.
     expect(morphemes).toEqual([
@@ -290,7 +291,7 @@ describe('importDocument', () => {
       warnings: [],
     });
     expect(tokenCalls(client)[3]).toEqual([
-      { tokenLayerId: 'ml', text: 'text1', begin: 0, end: 3, precedence: 1, metadata: {} },
+      { tokenLayerId: 'ml', text: 'text1', begin: 0, end: 3, precedence: 1 },
     ]);
   });
 });

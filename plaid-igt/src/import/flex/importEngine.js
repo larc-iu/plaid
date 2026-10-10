@@ -19,10 +19,15 @@ import { documentProgress } from '../progress.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { withLangSuffix } from '../../domain/fieldNames.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
-import { createDocumentShell, resolveIgtTargets } from '../project.js';
+import {
+  createDocumentShell,
+  finishDocument,
+  resolveIgtTargets,
+  writeAlignments,
+  writeDocumentLayers,
+} from '../project.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
-import { mediaUploadFailure } from '../mediaUpload.js';
 
 // Everything a word carries comes out of ONE WfiAnalysis: its gloss, its
 // category, and the morph bundles the segmentation is built from. FLEx records
@@ -686,115 +691,58 @@ async function importDocument({
   });
 
   if (textId) {
-    // Word tokens, with orthography metadata
-    check();
-    progress('Creating words');
-    const wordIds =
-      doc.words.length === 0
-        ? []
-        : createdIds(
-            await client.tokens.bulkCreate(
-              doc.words.map((w) => {
-                const metadata = {};
-                for (const [ws, name] of Object.entries(orthographyNames)) {
-                  if (w.forms?.[ws] != null) metadata[`orthog:${name}`] = w.forms[ws];
-                }
-                return {
-                  tokenLayerId: targets.wordLayerId,
-                  text: textId,
-                  begin: w.begin,
-                  end: w.end,
-                  ...(Object.keys(metadata).length ? { metadata } : {}),
-                };
-              }),
-            ),
-          );
-
-    // Morpheme tokens: full word extent, 1-based precedence, metadata.form +
-    // morphType. A word FLEx never analyzed gets NOTHING: its morpheme is the
-    // word, which derive synthesizes without storing (domain/virtualMorpheme.js),
-    // and the row this used to write held no field the word did not already
-    // give it.
-    check();
-    progress('Creating morphemes');
-    const morphSpecs = [];
-    doc.words.forEach((w, wi) => {
-      (w.morphemes || []).forEach((m, mi) => {
-        const metadata = { ...unapprovedStamp(w) };
-        const form = m.forms?.[config.baselineWs] ?? pickEn(m.forms);
-        if (form != null) metadata.form = form;
-        // A morpheme linked to an entry goes by the entry's type, and the
-        // cache holds it (domain/morphTypeCaches.js). The interlinear's own
-        // type is kept for a morpheme whose entry has none.
-        const entryType = m.senseGuid ? senseTypes?.get(m.senseGuid) : null;
-        if (entryType) metadata.morphType = entryType;
-        else if (m.morphType != null) metadata.morphType = m.morphType;
-        morphSpecs.push({
-          wordIndex: wi,
-          morpheme: m,
-          req: {
-            tokenLayerId: targets.morphemeLayerId,
-            text: textId,
-            begin: w.begin,
-            end: w.end,
-            precedence: mi + 1,
-            ...(Object.keys(metadata).length ? { metadata } : {}),
-          },
-        });
-      });
-    });
-    const morphIds = await bulkInChunks(
-      morphSpecs.map((s) => s.req),
-      check,
-      (specs) => client.tokens.bulkCreate(specs),
-    );
-
-    // Annotation spans, all scopes in chunked bulk calls
-    check();
-    progress('Creating annotations');
-    const spanSpecs = [];
-    const addSpan = (field, tokenId, value, word = null) => {
-      if (value == null || tokenId == null) return;
-      const layerId = targets.fieldLayers.get(field);
-      const metadata = word ? unapprovedStamp(word) : null;
-      spanSpecs.push({
-        spanLayerId: layerId,
-        tokens: [tokenId],
-        value,
-        ...(metadata ? { metadata } : {}),
-      });
-    };
+    // Morphemes carry metadata.form and morphType, and a word's analysis only
+    // FLEx's parser guessed is stamped as that machine's on its morphemes and
+    // its spans.
     const fieldsBy = (kind) => config.fields.filter((f) => f.kind === kind);
-    doc.sentences.forEach((s, si) => {
-      for (const f of fieldsBy('freeTranslation'))
-        addSpan(f, sentenceIds[si], s.freeTranslation?.[f.ws]);
-      for (const f of fieldsBy('literalTranslation'))
-        addSpan(f, sentenceIds[si], s.literalTranslation?.[f.ws]);
-      for (const f of fieldsBy('note')) {
-        const notes = s.notes.map((n) => n[f.ws]).filter(Boolean);
-        if (notes.length) addSpan(f, sentenceIds[si], notes.join('\n'));
-      }
+    const span = (f, value, word = null) =>
+      value == null
+        ? []
+        : [{ layerId: targets.fieldLayers.get(f), value, metadata: unapprovedStamp(word) }];
+    const spansOf = (prefix, unit, word) => [
+      ...fieldsBy(`${prefix}Gloss`).flatMap((f) => span(f, unit.gloss?.[f.ws], word)),
+      ...fieldsBy(`${prefix}Pos`).flatMap((f) => span(f, unit.pos?.[f.ws], word)),
+    ];
+    const { morphemeIds } = await writeDocumentLayers({
+      client,
+      targets,
+      textId,
+      sentenceIds,
+      sentenceSpans: doc.sentences.map((s) => [
+        ...fieldsBy('freeTranslation').flatMap((f) => span(f, s.freeTranslation?.[f.ws])),
+        ...fieldsBy('literalTranslation').flatMap((f) => span(f, s.literalTranslation?.[f.ws])),
+        ...fieldsBy('note').flatMap((f) => {
+          const notes = s.notes.map((n) => n[f.ws]).filter(Boolean);
+          return notes.length ? span(f, notes.join('\n')) : [];
+        }),
+      ]),
+      words: doc.words.map((w) => ({
+        begin: w.begin,
+        end: w.end,
+        metadata: Object.fromEntries(
+          Object.entries(orthographyNames)
+            .filter(([ws]) => w.forms?.[ws] != null)
+            .map(([ws, name]) => [`orthog:${name}`, w.forms[ws]]),
+        ),
+        spans: spansOf('word', w, w),
+        // A word FLEx never analyzed gets NO morpheme row (see
+        // writeDocumentLayers).
+        morphemes: (w.morphemes || []).map((m) => {
+          const metadata = { ...unapprovedStamp(w) };
+          const form = m.forms?.[config.baselineWs] ?? pickEn(m.forms);
+          if (form != null) metadata.form = form;
+          // A morpheme linked to an entry goes by the entry's type, and the
+          // cache holds it (domain/morphTypeCaches.js). The interlinear's own
+          // type is kept for a morpheme whose entry has none.
+          const entryType = m.senseGuid ? senseTypes?.get(m.senseGuid) : null;
+          if (entryType) metadata.morphType = entryType;
+          else if (m.morphType != null) metadata.morphType = m.morphType;
+          return { metadata, spans: spansOf('morph', m, w) };
+        }),
+      })),
+      check,
+      progress,
     });
-    doc.words.forEach((w, wi) => {
-      for (const f of fieldsBy('wordGloss')) addSpan(f, wordIds[wi], w.gloss?.[f.ws], w);
-      for (const f of fieldsBy('wordPos')) addSpan(f, wordIds[wi], w.pos?.[f.ws], w);
-    });
-    morphSpecs.forEach((s, i) => {
-      if (!s.morpheme) return;
-      const word = doc.words[s.wordIndex];
-      for (const f of fieldsBy('morphGloss'))
-        addSpan(f, morphIds[i], s.morpheme.gloss?.[f.ws], word);
-      for (const f of fieldsBy('morphPos')) addSpan(f, morphIds[i], s.morpheme.pos?.[f.ws], word);
-    });
-    // The bulk endpoint requires all spans in one call to share a layer.
-    const byLayer = new Map();
-    for (const s of spanSpecs) {
-      if (!byLayer.has(s.spanLayerId)) byLayer.set(s.spanLayerId, []);
-      byLayer.get(s.spanLayerId).push(s);
-    }
-    for (const specs of byLayer.values()) {
-      await bulkInChunks(specs, check, (part) => client.spans.bulkCreate(part));
-    }
 
     // Vocab links morpheme → lexicon item. FLEx's human-approved analyses
     // import as confirmed; analyses only its morphological parser guessed
@@ -802,52 +750,38 @@ async function importDocument({
     // they render in the needs-review style and confirm-on-touch applies.
     // An import with no lexicon (a .flextext) has nothing to link.
     if (senseToItem.size) progress('Linking lexicon');
-    const linkSpecs = [];
-    morphSpecs.forEach((s, i) => {
-      const itemId = s.morpheme?.senseGuid && senseToItem.get(s.morpheme.senseGuid);
-      if (itemId && morphIds[i]) {
-        linkSpecs.push({
-          itemId,
-          tokenId: morphIds[i],
-          approved: doc.words[s.wordIndex]?.approved === true,
-          source: flexSource(doc.words[s.wordIndex]),
-        });
-      }
-    });
-    await bulkInChunks(linkSpecs, check, (part) =>
-      client.vocabLinks.bulkCreate(
-        part.map((l) => ({
-          vocabItem: l.itemId,
-          tokens: [l.tokenId],
-          metadata: l.approved
-            ? // OUR linker made this link, from the sense FLEx names, and
-              // FLEx's own human approval is what confirms it.
-              confirmedInferred('flex-import')
-            : stampInferred(l.source),
-        })),
-      ),
+    const links = doc.words.flatMap((w, wi) =>
+      (w.morphemes || []).flatMap((m, mi) => {
+        const itemId = m.senseGuid && senseToItem.get(m.senseGuid);
+        const tokenId = morphemeIds[wi][mi];
+        if (!itemId || !tokenId) return [];
+        return [
+          {
+            vocabItem: itemId,
+            tokens: [tokenId],
+            metadata:
+              w.approved === true
+                ? // OUR linker made this link, from the sense FLEx names, and
+                  // FLEx's own human approval is what confirms it.
+                  confirmedInferred('flex-import')
+                : stampInferred(flexSource(w)),
+          },
+        ];
+      }),
     );
-  }
+    await bulkInChunks(links, check, (part) => client.vocabLinks.bulkCreate(part));
 
-  // Where each sentence sits in its recording, for a text FLEx kept times
-  // for: one token per timed sentence on the alignment layer, seconds in
-  // metadata, as the ELAN importer and the editor write them.
-  if (textId && doc.alignments?.length) {
-    if (targets.alignmentLayerId) {
-      check();
-      progress('Creating time alignment');
-      await bulkInChunks(
-        doc.alignments.map((a) => ({
-          tokenLayerId: targets.alignmentLayerId,
-          text: textId,
-          begin: a.begin,
-          end: a.end,
-          metadata: { timeBegin: a.timeBegin, timeEnd: a.timeEnd },
-        })),
-        check,
-        (specs) => client.tokens.bulkCreate(specs),
-      );
-    } else {
+    // Where each sentence sits in its recording, for a text FLEx kept times
+    // for: one token per timed sentence.
+    const aligned = await writeAlignments({
+      client,
+      targets,
+      textId,
+      alignments: doc.alignments,
+      check,
+      progress,
+    });
+    if (!aligned) {
       warnings?.push(
         `"${doc.name}": ${doc.alignments.length} timed sentences were left untimed. This project is not set up for time alignment.`,
       );
@@ -855,35 +789,19 @@ async function importDocument({
   }
 
   // The recording the text's sentences point to, when the user picked it. A
-  // failed upload leaves the document unstamped, so a resume (when a later
-  // step of the same run fails) redoes it with its recording. A run that
-  // finishes leaves nothing to resume: its warning sends the user to the
-  // Media tab.
-  let mediaFailed = false;
-  if (doc.mediaFile) {
-    check();
-    progress('Uploading media');
-    try {
-      await client.documents.uploadMedia(docId, doc.mediaFile, `Import media for ${doc.name}`, {
-        onProgress: (bytes) =>
-          onProgress?.({ phase: 'document', doc: doc.name, step: 'Uploading media', bytes }),
-      });
-    } catch (err) {
-      mediaFailed = true;
-      warnings?.push(
-        `"${doc.name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
-          "Upload the recording on the document's Media tab.",
-      );
-    }
-  }
-
-  // Mark complete LAST — resume treats unmarked documents as partial.
-  if (!mediaFailed) {
-    await client.documents.setMetadata(
-      docId,
-      importStamp(documentMetadataOf(doc), doc.guid, docId, true),
-    );
-  }
+  // run that finishes with a failed upload leaves nothing to resume: its
+  // warning sends the user to the Media tab.
+  await finishDocument({
+    client,
+    documentId: docId,
+    name: doc.name,
+    media: doc.mediaFile,
+    stamp: { metadata: documentMetadataOf(doc), sourceId: doc.guid },
+    onProgress,
+    progress,
+    check,
+    warnings,
+  });
   return docId;
 }
 

@@ -9,6 +9,8 @@
 //   resolveIgtTargets   the layers setup made, as the ids the engine writes to
 //   createDocumentShell the document row, its baseline text, and the sentence
 //                       partition over it
+//   writeDocumentLayers its words, morphemes and annotations, and
+//   finishDocument      its recording and the done mark
 //
 // They live here so a project-level fact learned by one importer is learned by
 // all four, and so the rules under them — what `lang` means on a field, what
@@ -17,6 +19,10 @@
 // glosses, lexicons, media) stays in each importer.
 
 import { createdIds, uuidv7 } from '@larc-iu/plaid-client';
+import { bulkInChunks } from '../domain/bulk.js';
+import { convertedNote, prepareRecording } from '../domain/media/playableRecording.js';
+import { mediaUploadFailure } from './mediaUpload.js';
+import { importStamp } from './resume.js';
 import {
   defaultIgnoredTokensSetup,
   findAlignmentTokenLayer,
@@ -212,4 +218,187 @@ export async function createDocumentShell({
       ? await createTokens(specs)
       : createdIds(await client.tokens.bulkCreate(specs));
   return { documentId, textId, sentenceIds };
+}
+
+/**
+ * A document's words, morphemes and annotations, under the text and sentences
+ * `createDocumentShell` made. The importer hands them over in its own reading,
+ * already normalized:
+ *
+ * - `words`: `{begin, end, metadata, spans, morphemes}`, where each morpheme is
+ *   `{metadata, spans}`. A morpheme spans its whole word with a 1-based
+ *   precedence. A word the source never segmented has no morphemes and gets NO
+ *   row: its morpheme is the word, which derive synthesizes without storing it
+ *   (domain/virtualMorpheme.js).
+ * - `sentenceSpans[i]`: the spans on the i-th sentence.
+ * - a span is `{layerId, value, metadata}`. One without a layer is not written.
+ *
+ * Empty metadata is not sent. Answers `{wordIds, morphemeIds}`, where
+ * `morphemeIds[w][m]` is word w's m-th morpheme.
+ */
+export async function writeDocumentLayers({
+  client,
+  targets,
+  textId,
+  sentenceIds,
+  sentenceSpans = [],
+  words,
+  check = () => {},
+  progress = () => {},
+}) {
+  const withMetadata = (spec, metadata) =>
+    metadata && Object.keys(metadata).length ? { ...spec, metadata } : spec;
+  const createTokens = (specs) =>
+    bulkInChunks(specs, check, (part) => client.tokens.bulkCreate(part));
+
+  check();
+  progress('Creating words');
+  const wordIds = await createTokens(
+    words.map((w) =>
+      withMetadata(
+        { tokenLayerId: targets.wordLayerId, text: textId, begin: w.begin, end: w.end },
+        w.metadata,
+      ),
+    ),
+  );
+
+  check();
+  progress('Creating morphemes');
+  const morphemes = words.flatMap((w, wi) =>
+    (w.morphemes || []).map((m, mi) => ({ word: w, wi, mi, morpheme: m })),
+  );
+  const flatIds = await createTokens(
+    morphemes.map(({ word, mi, morpheme }) =>
+      withMetadata(
+        {
+          tokenLayerId: targets.morphemeLayerId,
+          text: textId,
+          begin: word.begin,
+          end: word.end,
+          precedence: mi + 1,
+        },
+        morpheme.metadata,
+      ),
+    ),
+  );
+  const morphemeIds = words.map(() => []);
+  morphemes.forEach(({ wi, mi }, i) => {
+    morphemeIds[wi][mi] = flatIds[i];
+  });
+
+  check();
+  progress('Creating annotations');
+  // The bulk endpoint requires every span in one call to share a layer.
+  const byLayer = new Map();
+  const add = (tokenId, spans) => {
+    for (const { layerId, value, metadata } of spans || []) {
+      if (!layerId || !tokenId) continue;
+      if (!byLayer.has(layerId)) byLayer.set(layerId, []);
+      byLayer
+        .get(layerId)
+        .push(withMetadata({ spanLayerId: layerId, tokens: [tokenId], value }, metadata));
+    }
+  };
+  sentenceSpans.forEach((spans, si) => add(sentenceIds[si], spans));
+  words.forEach((w, wi) => add(wordIds[wi], w.spans));
+  morphemes.forEach(({ wi, mi, morpheme }) => add(morphemeIds[wi][mi], morpheme.spans));
+  for (const specs of byLayer.values()) {
+    await bulkInChunks(specs, check, (part) => client.spans.bulkCreate(part));
+  }
+  return { wordIds, morphemeIds };
+}
+
+/**
+ * Where each segment sits in the recording: a token per segment on the
+ * alignment layer, `{timeBegin, timeEnd, speaker}` in seconds in its metadata,
+ * as the editor writes them. False when the project has no alignment layer,
+ * for the importer to say so in its own words.
+ */
+export async function writeAlignments({
+  client,
+  targets,
+  textId,
+  alignments,
+  check = () => {},
+  progress = () => {},
+}) {
+  if (!alignments?.length) return true;
+  if (!targets.alignmentLayerId) return false;
+  check();
+  progress('Creating time alignment');
+  await bulkInChunks(
+    alignments.map((a) => ({
+      tokenLayerId: targets.alignmentLayerId,
+      text: textId,
+      begin: a.begin,
+      end: a.end,
+      metadata: {
+        timeBegin: a.timeBegin,
+        timeEnd: a.timeEnd,
+        ...(a.speaker ? { speaker: a.speaker } : {}),
+      },
+    })),
+    check,
+    (specs) => client.tokens.bulkCreate(specs),
+  );
+  return true;
+}
+
+/**
+ * A document's last two writes: its recording, if the person supplied one,
+ * then the done mark (`stamp`, the metadata `importStamp` was given, with the
+ * source's id). A failed upload is a warning and leaves the document unmarked,
+ * so a resume redoes it with its recording. Marked LAST: resume treats an
+ * unmarked document as partial. A null `stamp` (a copy, which is never
+ * resumed) leaves it unmarked.
+ *
+ * `prepare` converts a recording no browser plays before it goes up (an ADPCM
+ * WAV goes up as PCM), and refuses one it cannot convert.
+ */
+export async function finishDocument({
+  client,
+  documentId,
+  name,
+  media = null,
+  prepare = false,
+  stamp = null,
+  onProgress,
+  progress = () => {},
+  check = () => {},
+  warnings,
+}) {
+  let mediaFailed = false;
+  if (media) {
+    check();
+    progress('Uploading media');
+    try {
+      let file = media;
+      if (prepare) {
+        const ready = await prepareRecording(file);
+        if (ready.convertedFrom) {
+          warnings?.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
+        }
+        if (ready.refused) warnings?.push(`"${name}": ${ready.refused} Not uploaded.`);
+        file = ready.refused ? null : ready.file;
+      }
+      if (file) {
+        await client.documents.uploadMedia(documentId, file, `Import media for ${name}`, {
+          onProgress: (bytes) =>
+            onProgress?.({ phase: 'document', doc: name, step: 'Uploading media', bytes }),
+        });
+      }
+    } catch (err) {
+      mediaFailed = true;
+      warnings?.push(
+        `"${name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
+          "Upload the recording on the document's Media tab.",
+      );
+    }
+  }
+  if (!mediaFailed && stamp) {
+    await client.documents.setMetadata(
+      documentId,
+      importStamp(stamp.metadata, stamp.sourceId, documentId, true),
+    );
+  }
 }

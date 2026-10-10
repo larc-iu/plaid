@@ -28,7 +28,13 @@
 
 import { ROLES, cpLength, createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
-import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
+import {
+  IMPORT_STAMP_KEYS,
+  ImportCancelled,
+  importStamp,
+  priorImports,
+  withoutStamps,
+} from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
@@ -405,14 +411,6 @@ const keyCount = (v) => {
 };
 const fitsCap = (metadata) => keyCount(metadata) <= MAX_METADATA_KEYS;
 
-// A document's metadata as the archive holds it, less any import's marks: an
-// archive this app writes carries none, and one that did would say the
-// document was finished before this import had made any of it.
-const withoutStamps = (metadata) => {
-  const out = { ...(metadata || {}) };
-  for (const k of IMPORT_STAMP_KEYS) delete out[k];
-  return out;
-};
 // The steps one document goes through, in order, so progress can report how
 // far into a document it is and not just which document.
 const DOCUMENT_STEPS = [
