@@ -1050,8 +1050,10 @@ class BaseAssistantService(BaseService):
             send(msg)
 
         def on_text(text):
+            # '' starts a model call: the line stays "Thinking…" until the
+            # model writes, so it does not say "Writing…" while it reasons.
             keeper.text = text
-            send('Writing…')
+            send('Writing…' if text else state['msg'])
 
         # The loop hands the reasoning to the keeper (`RoundKeeper.think`),
         # which sends it on.

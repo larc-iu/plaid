@@ -259,7 +259,7 @@ class _Logged(flow.Helper):
 
     def progress(self, pct, msg='', **extra):
         super().progress(pct, msg, **extra)
-        self.events.append(extra)
+        self.events.append({**extra, 'message': msg})
 
 
 def test_progress_events_carry_the_turn_so_far(monkeypatch):
@@ -401,6 +401,8 @@ def test_streamed_reasoning_is_kept_streamed_live_and_moves_onto_its_step(monkey
     # Live: the reasoning streams, then the step that holds it says so and
     # the live reasoning is gone, so it is never on screen twice.
     assert ('Pondering kai.', []) in shown
+    # The line says the model is thinking until it writes.
+    assert all(e['message'] != 'Writing…' for e in helper.events if e.get('thinking') and not e.get('text'))
     assert not any(t == 'Pondering kai.' and marks for t, marks in shown), 'the reasoning is on screen once'
     tails = [t for t, _ in shown if t and t.endswith('end')]
     assert tails and all(len(t) == service_mod.THINKING_TAIL for t in tails)
