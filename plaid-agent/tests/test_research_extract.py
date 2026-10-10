@@ -313,3 +313,32 @@ def test_a_turns_calls_are_read_off_its_rounds_with_what_they_read():
     texts.add(user, app, pid, cid, c, meta, nbytes, updated, rounds, rbytes)
     [said] = [r for r in texts.private if r['kind'] == 'said']
     assert said['text'] == 'Looking.' and said['step'] == 0 and said['tool'] == 'read_document'
+
+
+def test_the_models_reasoning_is_exported_only_with_include_rounds():
+    # The reasoning is model text that often quotes the project (Luke's D3):
+    # in PRIVATE_rounds.jsonl with --include-rounds, and nowhere else.
+    import json as _json
+    from plaid_agent.research.records import Conversations, iter_records
+    record = {'messages': [{'role': 'user', 'content': 'q'}], 'display': [
+        {'kind': 'user', 'text': 'q'},
+        {'kind': 'assistant', 'text': 'a', 'reply-round': 'r2', 'reply-thought': True, 'steps': [
+            {'id': 'c1', 'name': 'search', 'kind': 'read', 'round': 'r1', 'thought': True},
+            {'id': 'c2', 'name': 'search', 'kind': 'read', 'round': 'r1'}]}]}
+    r1 = {'id': 'r1', 'n': 1, 'thinking': 'PONDER-ONE', 'calls': [
+        {'id': 'c1', 'name': 'search', 'arguments': '{}', 'result': 'x', 'chars': 1},
+        {'id': 'c2', 'name': 'search', 'arguments': '{}', 'result': 'y', 'chars': 1}]}
+    r2 = {'id': 'r2', 'n': 2, 'thinking': 'PONDER-TWO', 'calls': []}
+    rows = [('u@x', 'igt:assistant:p1:conv:c1', _json.dumps(record), 't'),
+            ('u@x', 'igt:assistant:p1:round:c1:r1', _json.dumps(r1), 't'),
+            ('u@x', 'igt:assistant:p1:round:c1:r2', _json.dumps(r2), 't')]
+    [args] = list(iter_records(rows))
+    plain = Conversations(Pseudonyms(b'k' * 32), include_text=True)
+    plain.add(*args)
+    assert 'PONDER' not in repr([plain.conversations, plain.turns, plain.tool_calls, plain.private,
+                                 plain.round_calls])
+    full = Conversations(Pseudonyms(b'k' * 32), include_rounds=True)
+    full.add(*args)
+    assert [(r['kind'], r['step'], r['thinking']) for r in full.round_calls] == [
+        ('call', 0, 'PONDER-ONE'), ('call', 1, None), ('reply', None, 'PONDER-TWO')]
+    assert 'PONDER' not in repr([full.conversations, full.turns, full.tool_calls, full.private])

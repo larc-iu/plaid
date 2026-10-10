@@ -1035,12 +1035,15 @@ class BaseAssistantService(BaseService):
         # Every progress event carries the turn so far, whole each time, so a
         # watcher (or one that rejoins, which core replays only the last event
         # to) draws it as it grows: the steps as they will be stored
-        # (`RoundKeeper.live_trace`) and the text of the model call under way.
-        state = {'pct': 5}
+        # (`RoundKeeper.live_trace`), the text of the model call under way,
+        # and the end of its reasoning (`THINKING_TAIL`).
+        state = {'pct': 5, 'msg': ''}
         keeper = RoundKeeper(store, conv_id)
 
         def send(msg):
-            response_helper.progress(state['pct'], msg, text=keeper.text, trace=keeper.live_trace())
+            state['msg'] = msg
+            response_helper.progress(state['pct'], msg, text=keeper.text, trace=keeper.live_trace(),
+                                     thinking=keeper.thinking[-THINKING_TAIL:])
 
         def on_progress(pct, msg):
             state['pct'] = max(state['pct'], pct)
@@ -1049,6 +1052,10 @@ class BaseAssistantService(BaseService):
         def on_text(text):
             keeper.text = text
             send('Writing…')
+
+        # The loop hands the reasoning to the keeper (`RoundKeeper.think`),
+        # which sends it on.
+        keeper.on_thinking = lambda: send(state['msg'])
 
         def cancelled() -> bool:
             return bool(getattr(response_helper, 'cancelled', False)) or cancel()
@@ -1167,7 +1174,8 @@ class BaseAssistantService(BaseService):
         item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
-                              version=self.version, service=self.service_id, reply_round=turn.reply_round)
+                              version=self.version, service=self.service_id, reply_round=turn.reply_round,
+                              reply_thought=turn.reply_thought)
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
         if ws.keeper.refs:
             # The files this turn stored, which later turns read as the
@@ -1654,6 +1662,11 @@ class BaseAssistantService(BaseService):
 #: The line that stands in for an answer a full record could not take.
 STANDIN = 'This answer was not saved. This conversation is full.'
 STANDIN_PLAN = 'This answer and its proposed changes were not saved. This conversation is full.'
+
+#: How much of the reasoning of the model call under way a progress event
+#: carries, from its end. Every event carries the turn whole, and the round
+#: keeps the reasoning in full.
+THINKING_TAIL = 2000
 
 #: How long an answer whose write was never answered is kept and tried again:
 #: as long as the request's delegated token lives (core's default, an hour).

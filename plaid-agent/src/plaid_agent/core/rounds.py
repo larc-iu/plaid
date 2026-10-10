@@ -2,9 +2,10 @@
 
 Each model call of a turn (a "round") is stored by the service as one value
 beside the conversation, at ``<app>:assistant:<project>:round:<conv>:<round
-id>``: the question as the model received it (first round only), the text the
-model wrote beside its tool calls, and each call's whole arguments and its
-result exactly as the model was sent it. The record keeps only what draws the
+id>``: the question as the model received it (first round only), the
+reasoning the provider returned for the call (``thinking``, never sent back
+to the model), the text the model wrote beside its tool calls, and each
+call's whole arguments and its result exactly as the model was sent it. The record keeps only what draws the
 work at a glance (a step's ``round``, ``said`` and ``saw``, core/trace.py), so
 what the reader can open does not depend on what the record keeps for the
 model, and the record barely grows.
@@ -71,12 +72,18 @@ def call_record(call_id: str, name: str, arguments: str, result: str) -> Dict[st
 
 
 def fit(rnd: Dict[str, Any], budget: int) -> Dict[str, Any]:
-    """``rnd`` held to ``budget`` stored bytes: the longest results are cut
-    from their middle, each with a line saying how much went, and the round
-    says it was ``fitted``. A round under the budget is returned as it is."""
+    """``rnd`` held to ``budget`` stored bytes: the reasoning is cut from its
+    middle first, then the longest results, each with a line saying how much
+    went, and the round says it was ``fitted``. A round under the budget is
+    returned as it is."""
     over = _bytes(rnd) - budget
     if over <= 0:
         return rnd
+    out = {**rnd}
+    thinking = rnd.get('thinking')
+    if isinstance(thinking, str) and _bytes(thinking) > 200:
+        out['thinking'] = _middle_cut(thinking, over)
+        over -= _bytes(thinking) - _bytes(out['thinking'])
     calls = [dict(c) for c in rnd.get('calls') or []]
     for c in sorted(calls, key=lambda c: -_bytes(c.get('result') or '')):
         if over <= 0:
@@ -85,17 +92,24 @@ def fit(rnd: Dict[str, Any], budget: int) -> Dict[str, Any]:
         size = _bytes(text)
         if size <= 200:
             continue
-        # Characters cost from one to twelve stored bytes: keep a share of the
-        # characters as large as the share of bytes that may stay.
-        keep = max(0, int(len(text) * max(0, size - over - 200) / size))
-        front, back = text[:keep // 2], text[len(text) - keep // 2:] if keep // 2 else ''
-        cut = len(text) - len(front) - len(back)
-        c['result'] = f'{front}\n[{cut} characters cut to fit the store]\n{back}'
+        c['result'] = _middle_cut(text, over)
         over -= size - _bytes(c['result'])
-    out = {**rnd, 'calls': calls, 'fitted': True}
+    out.update(calls=calls, fitted=True)
     if over > 0 and out.get('asked'):
         out['asked'] = out['asked'][:max(0, len(out['asked']) - over)]
     return out
+
+
+def _middle_cut(text: str, over: int) -> str:
+    """``text`` less about ``over`` stored bytes from its middle, with a line
+    saying how many characters went."""
+    size = _bytes(text)
+    # Characters cost from one to twelve stored bytes: keep a share of the
+    # characters as large as the share of bytes that may stay.
+    keep = max(0, int(len(text) * max(0, size - over - 200) / size))
+    front, back = text[:keep // 2], text[len(text) - keep // 2:] if keep // 2 else ''
+    cut = len(text) - len(front) - len(back)
+    return f'{front}\n[{cut} characters cut to fit the store]\n{back}'
 
 
 def prompt_value(system: str, tools: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -114,7 +128,8 @@ class RoundKeeper:
     so far, which every progress event carries.
 
     ``trace`` is the turn's steps so far (the loop's own list), ``text`` the
-    text the model call under way has written, ``stored`` the rounds written.
+    text the model call under way has written, ``thinking`` its reasoning so
+    far, ``stored`` the rounds written.
     A round the store refused does not fail the turn: its steps say
     ``unstored`` and the panel draws them unopenable."""
 
@@ -128,12 +143,22 @@ class RoundKeeper:
         self.conv_id = conv_id
         self.trace: List[Dict[str, Any]] = []
         self.text = ''
+        self.thinking = ''
+        # Called when ``thinking`` grew (the service sends a progress event).
+        self.on_thinking = lambda: None
         self.stored: Set[str] = set()
         self.system = system
         self.tools = tools
 
     def follow(self, trace: List[Dict[str, Any]]) -> None:
         self.trace = trace
+
+    def think(self, text: str) -> None:
+        """The reasoning of the model call under way, whole so far ('' when
+        a call starts)."""
+        self.thinking = text
+        if text:
+            self.on_thinking()
 
     def live_trace(self) -> List[Dict[str, Any]]:
         """The steps so far as a progress event carries them: as they will be

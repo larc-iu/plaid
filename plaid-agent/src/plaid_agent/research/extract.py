@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '6'
+EXTRACTOR_VERSION = '7'
 HERE = Path(__file__).parent
 
 
@@ -495,7 +495,8 @@ def main(argv=None) -> None:
                          "Never share it with the dataset.")
     ap.add_argument('--include-rounds', action='store_true',
                     help="ALSO write PRIVATE_rounds.jsonl: every tool call's whole arguments and the output the model "
-                         "was sent. Project text, several times the dataset's size. Never share it with the dataset.")
+                         "was sent, and the model's reasoning. Project text, several times the dataset's size. "
+                         "Never share it with the dataset.")
     ap.add_argument('--track', action='append', choices=sorted(F.ACTOR),
                     help='a kind of unit whose writes are followed (repeatable), '
                          f'by default {", ".join(F.DEFAULT_TRACK)}')

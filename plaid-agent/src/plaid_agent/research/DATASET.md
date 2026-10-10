@@ -288,7 +288,7 @@ The extractor version, the database file name, the horizon, the options, how pla
 
 ### PRIVATE_rounds.jsonl (only with `--include-rounds`)
 
-Every tool call's whole arguments and the output exactly as the model was sent it, from the rounds stored beside each conversation, keyed like tool_calls.jsonl. Project text, several times the size of the rest. Never share it.
+Every tool call's whole arguments and the output exactly as the model was sent it, from the rounds stored beside each conversation, keyed like tool_calls.jsonl (`kind: call`). `thinking` is the reasoning the provider returned for that model call (`reasoning_content`), on the row of its first call, null elsewhere and for a model that returns none. A reply written with reasoning adds a row `kind: reply` (`step`, `tool`, `arguments` and `result` null) holding it. The reasoning is model text that often quotes the project, so it is in no other file. Project text, several times the size of the rest. Never share it.
 
 ### PRIVATE_text.jsonl (only with `--include-text`)
 

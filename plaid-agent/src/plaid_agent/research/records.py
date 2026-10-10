@@ -198,6 +198,10 @@ def derive_proposed(app: str, ops: List[Dict[str, Any]]) -> Optional[Tuple[List[
     return proposed_changes(ops, *keys)
 
 
+def _text_or_none(v: Any) -> Optional[str]:
+    return v if isinstance(v, str) and v else None
+
+
 class Conversations:
     """Every row the conversation records give, built by :meth:`add`."""
 
@@ -301,9 +305,15 @@ class Conversations:
                     step_results[st.get('id')] = c.get('result')
                     step_arguments[st.get('id')] = c.get('arguments')
             failed_steps = self._steps(base, index, n_user, steps, step_results, step_arguments,
-                                       turn['end'], calls_of)
+                                       turn['end'], calls_of, rounds)
             turn['n_failed_steps'] = failed_steps
             self.turns.append(turn)
+            reply_thinking = _text_or_none((rounds.get(item.get('reply_round')) or {}).get('thinking'))
+            if self.include_rounds and reply_thinking is not None:
+                # The reasoning the reply was written with, in a round of its own.
+                self.round_calls.append({**base, 'item_index': index, 'turn': n_user, 'kind': 'reply',
+                                         'step': None, 'tool': None, 'arguments': None, 'result': None,
+                                         'thinking': reply_thinking})
             if self.include_text:
                 self.private.append({**base, 'item_index': index, 'kind': kind, 'text': item.get('text')})
             if plan:
@@ -330,7 +340,7 @@ class Conversations:
             'rounds': len(rounds), 'rounds_bytes': rounds_bytes,
         })
 
-    def _steps(self, base, index, turn, steps, results, arguments, end, calls_of=None) -> int:
+    def _steps(self, base, index, turn, steps, results, arguments, end, calls_of=None, rounds=None) -> int:
         failed_n = 0
         rows = []
         for i, s in enumerate(steps):
@@ -373,9 +383,14 @@ class Conversations:
                 self.private.append({**base, 'item_index': index, 'kind': 'said', 'step': i,
                                      'tool': s.get('name'), 'text': said})
             if self.include_rounds and call is not None:
-                self.round_calls.append({**base, 'item_index': index, 'turn': turn, 'step': i,
+                # The model's reasoning in that model call, on its first
+                # call's row (Luke's D3: off by default, as the outputs).
+                rnd = (rounds or {}).get(s.get('round')) or {}
+                first = ((rnd.get('calls') or [{}])[0] or {}).get('id') == s.get('id')
+                self.round_calls.append({**base, 'item_index': index, 'turn': turn, 'kind': 'call', 'step': i,
                                          'tool': s.get('name'), 'arguments': call.get('arguments'),
-                                         'result': call.get('result')})
+                                         'result': call.get('result'),
+                                         'thinking': _text_or_none(rnd.get('thinking')) if first else None})
             if self.include_text and failed and kept:
                 self.private.append({**base, 'item_index': index, 'kind': 'tool_error', 'step': i,
                                      'tool': s.get('name'), 'text': text[:500]})

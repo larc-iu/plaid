@@ -245,7 +245,7 @@ def failed_label(label: str) -> str:
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
                failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
-               said: Optional[str] = None) -> Dict[str, Any]:
+               said: Optional[str] = None, thought: bool = False) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
@@ -258,7 +258,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     ``saw`` is what the call read (:func:`note`), said after the label.
     ``round_id`` names the model call it belongs to, whose stored round holds
     its input and output, and ``said`` is the text the model wrote in that
-    call, on the round's first step only."""
+    call, on the round's first step only. ``thought`` says that round holds
+    the model's reasoning, on the same step, so the panel offers it."""
     kind = tracer.kind(name)
     if kind == DOCUMENT and saw and not failed:
         label = f'Read {q(args.get("document"))}'
@@ -282,6 +283,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
         item['round'] = round_id
     if said:
         item['said'] = said
+    if thought:
+        item['thought'] = True
     return item
 
 

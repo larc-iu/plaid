@@ -333,3 +333,104 @@ def test_streamed_text_moves_onto_its_step_and_is_never_shown_twice(monkeypatch)
     assert ('Then again.', ['Looking first.']) in shown
     for text, saids in shown:
         assert not text or text not in saids, 'a text is on screen once'
+
+
+# --- the model's reasoning (design/TRANSPARENCY.md D1) ---------------------------
+
+
+def _thought_chunk(text):
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, reasoning_content=text),
+                                                    finish_reason=None)])
+
+
+def _with_reasoning(resp, reasoning):
+    resp.choices[0].message.reasoning_content = reasoning
+    return resp
+
+
+def test_the_reasoning_is_kept_in_its_round_and_never_sent_back(monkeypatch):
+    client = FakeClient()
+    sent = []
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _with_reasoning(_calls(('c1', 'search', '{"q": "kai"}'), content='Looking.'), 'They asked about kai.'),
+        _with_reasoning(_reply('Three.'), 'Three words came back.'),
+    ], before=lambda kw: sent.append(kw['messages'])))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': '3 words'}), _ws(client), 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    first, reply = _rounds(client)
+    assert first['thinking'] == 'They asked about kai.' and turn.steps[0]['thought'] is True
+    # The reply's reasoning is in a round of its own, which the item names.
+    assert turn.reply_round == reply['id'] and turn.reply_thought is True
+    assert reply['thinking'] == 'Three words came back.' and reply['calls'] == [] and 'asked' not in reply
+    assert not any('reasoning_content' in m or 'thinking' in m for m in sent[1] + turn.messages)
+    assert 'They asked' not in repr(sent[1]) and 'Three words came' not in repr(turn.messages)
+
+
+def test_a_turn_without_reasoning_marks_no_step_and_stores_no_reply_round(monkeypatch):
+    client = FakeClient()
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _calls(('c1', 'search', '{"q": "kai"}')), _reply('ok')]))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': 'a'}), _ws(client), 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    [rnd] = _rounds(client)
+    assert 'thinking' not in rnd and 'thought' not in turn.steps[0]
+    assert turn.reply_round is None and turn.reply_thought is False
+
+
+def test_streamed_reasoning_is_kept_streamed_live_and_moves_onto_its_step(monkeypatch):
+    client = FakeClient()
+    store = flow._seed(client)
+    svc = flow._service()
+    svc.kit = Toolkit(tools_for=lambda ws: [], call_tool=lambda ws, n, a: 'found', tracer=TRACER)
+    svc.cfg = ModelConfig(model='fake/model')
+    long = 'x' * (service_mod.THINKING_TAIL + 500)
+    script = iter([[_thought_chunk('Pondering '), _thought_chunk('kai.'), _chunk('Looking.'),
+                    _tool_chunk('c1', '{"q": "1"}')],
+                   [_thought_chunk(long), _thought_chunk('end'), _chunk('Done.')]])
+    sent = []
+
+    def completion(**kw):
+        sent.append(kw['messages'])
+        return iter(next(script))
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    monkeypatch.setattr(agent.litellm, 'completion', completion)
+    helper = _Logged()
+    svc.process_request(flow._request(client), helper)
+    assert not helper.errors, helper.errors
+    shown = [(e.get('thinking'), [s.get('thought') for s in e.get('trace') or []]) for e in helper.events]
+    # Live: the reasoning streams, then the step that holds it says so and
+    # the live reasoning is gone, so it is never on screen twice.
+    assert ('Pondering kai.', []) in shown
+    assert not any(t == 'Pondering kai.' and marks for t, marks in shown), 'the reasoning is on screen once'
+    tails = [t for t, _ in shown if t and t.endswith('end')]
+    assert tails and all(len(t) == service_mod.THINKING_TAIL for t in tails)
+    first, reply = _rounds(client)
+    assert first['thinking'] == 'Pondering kai.' and reply['thinking'] == long + 'end'
+    assert not any('reasoning_content' in m for m in sent[1])
+    conv, _ = store.load('c1')
+    item = conv['display'][-1]
+    assert item['steps'][0]['thought'] is True
+    assert item['reply_round'] == reply['id'] and item['reply_thought'] is True
+    assert 'Pondering' not in repr(conv['messages'])
+
+
+def test_an_empty_reply_keeps_the_reasoning_of_both_calls(monkeypatch):
+    client = FakeClient()
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _with_reasoning(_reply(''), 'Thought, wrote nothing.'),
+        _with_reasoning(_reply('Here.'), 'Asked again.')]))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), _kit({}), _ws(client), 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    [rnd] = _rounds(client)
+    assert turn.text == 'Here.' and turn.reply_round == rnd['id'] and rnd['asked'] == 'hi'
+    assert rnd['thinking'] == 'Thought, wrote nothing.\n\nAsked again.'
+
+
+def test_a_round_over_the_cap_cuts_the_reasoning_first():
+    rnd = {'id': 'r', 'n': 2, 'thinking': 'y' * 5000,
+           'calls': [{'id': 'c1', 'name': 's', 'arguments': '{}', 'result': 'x' * 3000, 'chars': 3000}]}
+    out = fit(rnd, 4000)
+    from plaid_agent.core.conversation import _bytes
+    assert _bytes(out) <= 4000 and out['fitted'] is True
+    assert 'characters cut to fit the store' in out['thinking']
+    assert out['calls'][0]['result'] == 'x' * 3000

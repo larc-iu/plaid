@@ -156,7 +156,8 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
 
 
 def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
-              cancelled: Callable[[], bool] = lambda: False):
+              cancelled: Callable[[], bool] = lambda: False,
+              on_thinking: Callable[[str], None] = lambda t: None):
     """One model call, tried again as the model services try theirs
     (``plaid_client.workflows.llm.retrying``).
 
@@ -166,7 +167,9 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
     or a provider briefly down is tried up to :data:`RETRIES` more times after
     a jittered wait. ``cancelled`` is read while the call waits, before every
     retry and during the wait, and a stop ends the call with
-    :class:`TurnCancelled`."""
+    :class:`TurnCancelled`. ``on_thinking`` receives the reasoning the
+    provider streams beside the text (``reasoning_content``), as ``on_text``
+    receives the text."""
     def wait(delay: float) -> None:
         end = time.monotonic() + delay
         while True:
@@ -177,8 +180,12 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
                 return
             time.sleep(min(0.5, left))
 
-    return retrying(lambda: _watched(cfg, kwargs, on_text, cancelled), model=cfg.model,
-                    timeout=cfg.timeout, sleep=wait, on_retry=lambda: on_text(''), litellm=litellm)
+    def again() -> None:
+        on_text('')
+        on_thinking('')
+
+    return retrying(lambda: _watched(cfg, kwargs, on_text, cancelled, on_thinking), model=cfg.model,
+                    timeout=cfg.timeout, sleep=wait, on_retry=again, litellm=litellm)
 
 
 #: How often a waiting model call looks for a stop, in seconds.
@@ -186,7 +193,7 @@ STOP_POLL_S = 0.5
 
 
 def _watched(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
-             cancelled: Callable[[], bool]):
+             cancelled: Callable[[], bool], on_thinking: Callable[[str], None] = lambda t: None):
     """One model call on a worker thread, so a stop is seen while the model
     is silent, as the model services see it (``plaid_client.workflows.llm``).
     Without this a stop waited for the call to end, up to two deadlines.
@@ -207,9 +214,14 @@ def _watched(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], 
             if not abandoned.is_set():
                 on_text(t)
 
+    def thinking(t: str) -> None:
+        with gate:
+            if not abandoned.is_set():
+                on_thinking(t)
+
     def work():
         try:
-            box['value'] = _complete_once(cfg, kwargs, text, abandoned)
+            box['value'] = _complete_once(cfg, kwargs, text, abandoned, thinking)
         except BaseException as e:  # handed to the waiting thread as is
             box['error'] = e
         finally:
@@ -227,7 +239,8 @@ def _watched(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], 
 
 
 def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
-                   abandoned: Optional[threading.Event] = None):
+                   abandoned: Optional[threading.Event] = None,
+                   on_thinking: Callable[[str], None] = lambda t: None):
     """One model call. Streamed when configured: the text so far goes to
     ``on_text`` at intervals and the full response is rebuilt from the
     chunks at the end (tool calls included), so the caller reads it as it
@@ -238,13 +251,19 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     litellm's chunk builder joins the content pieces as they came, so two
     text runs with a tool call or a reasoning block between them would read
     as one ("segment those?Here's what I found"). The text is kept here
-    instead, with a blank line at such a seam unless it already breaks."""
+    instead, with a blank line at such a seam unless it already breaks.
+
+    The reasoning a provider streams (``reasoning_content``) goes to
+    ``on_thinking`` the same way, and is put on the message whole at the end,
+    whichever builder put the reply together."""
     if not cfg.stream:
         return litellm.completion(**kwargs)
     chunks: List[Any] = []
     text = ''
+    thought = ''
     seam = False  # a tool call or reasoning came after the last text piece
     last = 0.0
+    last_thought = 0.0
     try:
         # The provider's own count of what it sent, the thinking included, in
         # its last chunk. A provider that has no such option has it dropped
@@ -264,6 +283,13 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
             piece = getattr(delta, 'content', None) if delta is not None else None
             if delta is not None and any(getattr(delta, k, None) for k in _NOT_TEXT_DELTAS):
                 seam = True
+            reasoning = getattr(delta, 'reasoning_content', None) if delta is not None else None
+            if isinstance(reasoning, str) and reasoning:
+                thought += reasoning
+                now = time.monotonic()
+                if now - last_thought >= STREAM_INTERVAL_S:
+                    last_thought = now
+                    on_thinking(thought)
             if piece:
                 if seam and text and not text[-1].isspace() and not piece[0].isspace():
                     text += '\n\n'
@@ -285,6 +311,8 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         if abandoned is not None and abandoned.is_set():
             raise TurnCancelled() from e
         return litellm.completion(**kwargs)
+    if thought:
+        on_thinking(thought)
     if text:
         on_text(text)
     # litellm's builder, for a model litellm knows. For one it does not (a
@@ -302,6 +330,8 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     msg = getattr(choices[0], 'message', None) if choices else None
     if text and msg is not None:
         msg.content = text
+    if thought and msg is not None:
+        msg.reasoning_content = thought
     return resp
 
 
@@ -351,12 +381,26 @@ def _assembled(chunks: List[Any]):
 _NOT_TEXT_DELTAS = ('tool_calls', 'function_call', 'reasoning_content', 'thinking_blocks')
 
 
+def _thinking_of(msg) -> Optional[str]:
+    """The reasoning a provider returned beside the reply
+    (``reasoning_content``), or None when it returned none. Kept in the round
+    for the reader, never in the transcript the model is sent."""
+    t = getattr(msg, 'reasoning_content', None)
+    return t.strip() or None if isinstance(t, str) else None
+
+
+def _joined(*parts: Optional[str]) -> Optional[str]:
+    return '\n\n'.join(p for p in parts if p) or None
+
+
 def planned_progress(n: int) -> str:
     return f'Planned {n} change{"s" if n != 1 else ""}…'
 
 
 def _message_to_dict(msg) -> Dict[str, Any]:
-    """A litellm Message -> the plain dict shape we keep in the transcript."""
+    """A litellm Message -> the plain dict shape we keep in the transcript.
+    The reasoning is never part of it: it is not sent back to the model
+    (:func:`_thinking_of` reads it for the round)."""
     out: Dict[str, Any] = {'role': 'assistant', 'content': msg.content if msg.content is not None else None}
     calls = getattr(msg, 'tool_calls', None) or []
     if calls:
@@ -533,8 +577,10 @@ class TurnResult:
     usage: Optional[Dict[str, Any]] = None
     # The stored round of the model call that wrote the reply, when it holds
     # something the steps' rounds do not (the question as received, on a turn
-    # that called no tool).
+    # that called no tool, or the reasoning the reply was written with).
     reply_round: Optional[str] = None
+    # That round holds the model's reasoning.
+    reply_thought: bool = False
 
     @property
     def summary(self) -> str:
@@ -592,12 +638,16 @@ def turn_trace(e: BaseException):
 def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: List[Dict[str, Any]],
              on_progress: Callable[[int, str], None] = lambda p, m: None,
              cancelled: Callable[[], bool] = lambda: False,
-             on_text: Callable[[str], None] = lambda t: None) -> TurnResult:
+             on_text: Callable[[str], None] = lambda t: None,
+             on_thinking: Optional[Callable[[str], None]] = None) -> TurnResult:
     """Run one turn: model call, tool calls, repeat, final text. ``cancelled``
     is polled before every tool call and while a model call waits; once it answers
     True the turn ends with :class:`TurnCancelled`. ``on_text`` receives the
     text of the reply being written, whole each time, as it grows (and ''
-    when a new model call starts).
+    when a new model call starts). ``on_thinking`` receives the reasoning of
+    the model call under way the same way (by default the round keeper's
+    `RoundKeeper.think`). The reasoning is stored in the call's round
+    (``thinking``) and never sent back to the model.
 
     Each model call is a ROUND (core/rounds.py): when ``ws.rounds`` is set
     (the service's `RoundKeeper`), each round is stored once its tool calls
@@ -614,8 +664,11 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     keeper = getattr(ws, 'rounds', None)
     if keeper is not None:
         keeper.follow(trace)
+    if on_thinking is None:
+        on_thinking = keeper.think if keeper is not None else (lambda t: None)
     try:
-        return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, live, keeper)
+        return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, live, keeper,
+                         on_thinking)
     except (Exception, ServiceCancelled) as e:
         rnd = live['round']
         if keeper is not None and rnd is not None and rnd['calls'] and not keeper.store(rnd):
@@ -647,7 +700,8 @@ def _asked(history: List[Dict[str, Any]]) -> Optional[str]:
 
 
 def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
-              trace: List[Dict[str, Any]], live: Dict[str, Any], keeper) -> TurnResult:
+              trace: List[Dict[str, Any]], live: Dict[str, Any], keeper,
+              on_thinking: Callable[[str], None] = lambda t: None) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
     rounds = 0
@@ -668,16 +722,19 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     made: set = set()
     spend = Spend()
 
-    def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str) -> str:
-        """One more call, without tools, when the model owes the user words."""
+    def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str):
+        """One more call, without tools, when the model owes the user words.
+        ``(text, reasoning)``."""
         kwargs = {**kwargs, 'messages': [{'role': 'system', 'content': system}] + history + new
                   + [{'role': 'user', 'content': nudge}]}
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
         text_seen('')
-        resp = _complete(cfg, kwargs, text_seen, cancelled)
+        on_thinking('')
+        resp = _complete(cfg, kwargs, text_seen, cancelled, on_thinking)
         spend.add(resp)
         choice = resp.choices[0]
+        thinking = _thinking_of(choice.message)
         d = _message_to_dict(choice.message)
         d.pop('tool_calls', None)
         new.append(d)  # the nudge itself never enters the saved transcript
@@ -690,7 +747,21 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # The plan is the substance of this turn and the card shows it,
             # so keep it rather than throw it away with the missing words.
             text = f'({EMPTY_REPLY})'
-        return text + _length_note(choice)
+        return text + _length_note(choice), thinking
+
+    def reply_round_of(n: int, thinking: Optional[str], asked_here: Optional[str] = None):
+        """The reply's own round, stored when it holds something the steps'
+        rounds do not: the question as received (a turn that called no tool)
+        or the reasoning. ``(round id, holds reasoning)``, or ``(None,
+        False)`` when there is nothing to store or it was not stored."""
+        if keeper is None or (asked_here is None and not thinking):
+            return None, False
+        rnd = new_round(n, cfg.model, asked_here)
+        if thinking:
+            rnd['thinking'] = thinking
+        if not keeper.store(rnd):
+            return None, False
+        return rnd['id'], bool(thinking)
 
     while True:
         if cancelled():
@@ -703,27 +774,33 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
         text_seen('')
-        resp = _complete(cfg, kwargs, text_seen, cancelled)
+        on_thinking('')
+        resp = _complete(cfg, kwargs, text_seen, cancelled, on_thinking)
         spend.add(resp)
         choice = resp.choices[0]
+        thinking = _thinking_of(choice.message)
         d = _message_to_dict(choice.message)
         new.append(d)
         calls = d.get('tool_calls') or []
         rnd = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
+        if thinking:
+            rnd['thinking'] = thinking
         if not calls:
             text = (d.get('content') or '').strip()
             if not text:
                 # Some models end a tool-heavy turn with an empty message (or
                 # reasoning only). Ask once, without tools, for the reply.
                 new.pop()
-                text = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
-                                                 'Reply now with your answer to the user.')
+                text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
+                                                       'Reply now with your answer to the user.')
+                thinking = _joined(thinking, more)
             else:
                 text += _length_note(choice)
             # The reply's own round holds something only on a turn that
-            # called no tool: the question as received. Its text is the reply.
-            reply_round = rnd['id'] if keeper is not None and rounds == 0 and keeper.store(rnd) else None
-            return TurnResult(text, new, trace, spend.usage(), reply_round)
+            # called no tool (the question as received) or when the model
+            # reasoned. Its text is the reply.
+            reply_round, thought = reply_round_of(rounds + 1, thinking, asked if rounds == 0 else None)
+            return TurnResult(text, new, trace, spend.usage(), reply_round, thought)
         # The text written beside the calls is the round's, and goes on its
         # first step: it is no longer the call under way's.
         said = (d.get('content') or '').strip()
@@ -782,12 +859,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         result, repeated = ALREADY_PLANNED, True
             failed = str(result).startswith('Error')
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
+            first = not rnd['calls']
             trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned, saved=saved,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
-                                    said=None if rnd['calls'] else rnd.get('said')))
-            if keeper is not None and not rnd['calls']:
-                # The round's text is on its first step now, not the call's.
+                                    said=rnd.get('said') if first else None,
+                                    thought=first and keeper is not None and bool(rnd.get('thinking'))))
+            if keeper is not None and first:
+                # The round's text and reasoning are on its first step now,
+                # not the call's.
                 keeper.text = ''
+                keeper.thinking = ''
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
             rnd['calls'].append(call_record(c['id'], name, raw, result))
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:
@@ -800,18 +881,18 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         live['round'] = None
         if failing['times'] >= REPEATED_FAILURES:
             what = 'been repeated' if failing['repeated'] else 'failed'
-            text = ask_for_the_reply(kwargs, f'(system) The same tool call has {what} '
-                                             f'{REPEATED_FAILURES} times in a row. Do not call it again. '
-                                             'Reply now with what you found and what remains to do.')
+            text, thinking = ask_for_the_reply(kwargs, f'(system) The same tool call has {what} '
+                                                       f'{REPEATED_FAILURES} times in a row. Do not call it again. '
+                                                       'Reply now with what you found and what remains to do.')
             line = 'was repeated' if failing['repeated'] else 'failed'
             return TurnResult(text + f'\n\n*(Stopped after the same step {line} {REPEATED_FAILURES} times.)*',
-                              new, trace, spend.usage())
+                              new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
         if rounds >= cfg.max_steps:
-            text = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
-                                             'Reply now with what you found and what remains to do.')
+            text, thinking = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
+                                                       'Reply now with what you found and what remains to do.')
             # The limit counts model calls, not steps (one call may take
             # several), so the line gives no number the trace would contradict.
             # Raising it is the operator's `--max-steps`, which is not named to
             # the reader.
             return TurnResult(text + '\n\n*(Stopped at the step limit.)*',
-                              new, trace, spend.usage())
+                              new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))

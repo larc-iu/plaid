@@ -448,11 +448,13 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
                    steps: List[Dict[str, Any]], steps_summary: str, model: Optional[str],
                    usage: Optional[Dict[str, int]] = None,
                    context_note: str = '', version: Optional[str] = None,
-                   service: Optional[str] = None, reply_round: Optional[str] = None) -> Dict[str, Any]:
+                   service: Optional[str] = None, reply_round: Optional[str] = None,
+                   reply_thought: bool = False) -> Dict[str, Any]:
     """What the person sees of a reply. A step's own input and output are not
     repeated here: they are in the round the step names (core/rounds.py),
     stored beside the conversation. ``reply_round`` names the round of the
-    model call that wrote the reply, when it was stored.
+    model call that wrote the reply, when it was stored, and
+    ``reply_thought`` says it holds the model's reasoning.
 
     ``usage`` is ``{sent, received, window, total}`` for the turn that
     produced this reply: ``sent`` and ``received`` are its last model call,
@@ -487,6 +489,8 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
         item['context_note'] = context_note
     if reply_round:
         item['reply_round'] = reply_round
+        if reply_thought:
+            item['reply_thought'] = True
     return item
 
 
