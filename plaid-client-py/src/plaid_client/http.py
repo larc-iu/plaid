@@ -540,9 +540,7 @@ def list_all(client, path, *, page_size=1000, query=None):
     """Fetch the full flat list from a paginated collection endpoint.
 
     Transparently follows ``next_cursor`` until exhausted and concatenates
-    every page's ``entries``. An empty first page yields ``[]``. This is the
-    backward-compatible shape the old ``.list()`` methods returned before the
-    server moved to a paginated envelope.
+    every page's ``entries``. An empty first page yields ``[]``.
 
     Every page is a read, so this works while a batch is open on the client:
     each page goes over the wire, in order, against the state the batch has not
@@ -554,24 +552,8 @@ def list_all(client, path, *, page_size=1000, query=None):
         page_size: Page size requested as ``limit`` (1..1000).
         query: Extra query params (e.g. ``{"as-of": ...}``).
     """
-    results = []
-    cursor = None
-    prev_cursor = None
-    while True:
-        page = list_page(client, path, limit=page_size, cursor=cursor, query=query)
-        results.extend(_entries_of(page, path))
-        prev_cursor = cursor
-        cursor = page.get('next_cursor')
-        if cursor is None:
-            break
-        # Guard against a buggy server/proxy that returns a constant non-null
-        # cursor, which would otherwise loop forever.
-        if cursor == prev_cursor:
-            raise RuntimeError(
-                'Pagination cursor did not advance; aborting to avoid an '
-                'infinite loop.'
-            )
-    return results
+    return [entry for page in iter_pages(client, path, page_size=page_size, query=query)
+            for entry in page]
 
 
 class _ProgressBody:

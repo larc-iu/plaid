@@ -39,8 +39,7 @@ function entriesOf(response, path) {
 
 /**
  * Fetch every page and return the full flat array of entries, transparently
- * following `nextCursor` until it is null. This is what `.list()` calls so it
- * stays backward compatible with the pre-pagination (bare-array) contract.
+ * following `nextCursor` until it is null. This is what `.list()` calls.
  *
  * @param {object} client - PlaidClient instance
  * @param {string} path - API path, e.g. '/api/v1/projects'
@@ -51,23 +50,7 @@ function entriesOf(response, path) {
  */
 export async function listAll(client, path, { pageSize = 1000, query = {} } = {}) {
   const all = [];
-  let cursor = null;
-  let prevCursor;
-  do {
-    const response = await client._request('GET', path, {
-      queryParams: buildQueryParams(query, pageSize, cursor),
-    });
-    all.push(...entriesOf(response, path));
-    prevCursor = cursor;
-    cursor = response.nextCursor;
-    // Guard against a buggy server/proxy that returns a constant non-null
-    // cursor, which would otherwise loop forever.
-    if (cursor !== null && cursor !== undefined && cursor === prevCursor) {
-      throw new Error(
-        'Pagination cursor did not advance; aborting to avoid an infinite loop.',
-      );
-    }
-  } while (cursor !== null && cursor !== undefined);
+  for await (const entries of iterPages(client, path, { pageSize, query })) all.push(...entries);
   return all;
 }
 
