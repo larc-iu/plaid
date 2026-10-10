@@ -63,7 +63,6 @@ The editor has a few levels you move between:
 
 * **Projects**: the list of all projects you can access. This is your home screen after signing in.
 * **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
-Anyone else who opens one of these four by its address is shown the documents with `Only a project's maintainers can open this page.`
 * **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
@@ -110,7 +109,6 @@ Every field in a project belongs to exactly one scope, which decides which row o
 The **Documents** tab lists a project's texts with their word counts, when each was last changed by anyone, and when you last changed it yourself.
 Click a column heading to sort by it, and again to reverse it.
 Sorting by **Your last edit** is the quickest way back to what you were working on. A document you have never edited shows a dash.
-Opening a document does not change it.
 Once there are many, the list can be searched and paged.
 How a list is sorted is remembered for next time, and for the document list so is the page you were on, both per project.
 **New document** creates an empty document and opens it on its Baseline tab.
@@ -158,7 +156,6 @@ Pasting the text back with words added, removed or changed changes only those wo
 A paste with several changes near a repeated word, or in a text written without spaces, can also replace one word beside a change, and that word loses its analysis.
 
 **Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
-An undo the box cannot place exactly, such as one reaching back past a save that took in someone else's text, does nothing.
 Text typed right before a sentence's first character joins that sentence, unless it holds a line break: a line added in front of a sentence joins the sentence before, so splitting it off leaves the sentence its translation.
 A line typed in front of the first sentence becomes a sentence of its own. Spaces typed there alone join the first sentence.
 Text typed right after a sentence's last character joins that one. Move a sentence break on the Tokenize tab.
@@ -167,7 +164,6 @@ When someone else saved the baseline after you pressed **Edit text**, **Save cha
 When you both changed the same passage, the save is refused, `Changed elsewhere in the same passage.` shows under the box, and your text stays in the box.
 **Cancel** then shows the saved text, and you make the edit again.
 The save is also refused when the text has passages that read the same and your change could be in either of them.
-When the page turns read-only while you edit, because your access was removed or the document was deleted, your text stays in the box, which no longer takes typing, and **Save changes** is off.
 
 A project may define additional **orthographies**, alternate representations of each word such as a phonetic transcription or a practical spelling.
 These appear as their own rows in the Analyze grid (see <<_text_and_vocab>>).
@@ -183,7 +179,6 @@ A recording has to be one the browser can play.
 A WAV plays when its samples are PCM, 32-bit float, A-law or mu-law, which is what most recorders write.
 A WAV in IMA or Microsoft ADPCM, as ELAN and some recorders write, or in 64-bit float, is converted to 16-bit PCM in the browser when you choose it, and a line says so, as in `Converted story.wav from IMA ADPCM to PCM WAV.`
 The converted file has the same timing and is what is uploaded.
-From ADPCM it is about four times the size.
 Any other recording the browser cannot play is refused when you choose it, as in `story.wav cannot be played in a browser (GSM 6.10 WAV).`
 Convert such a file to MP3 or PCM WAV with an audio editor first.
 The same holds for the recordings an import brings.
@@ -267,8 +262,7 @@ A speaker change or a new segment that would overlap a segment of the same speak
 === Speech detection
 
 The waveform button in the **Recording** header runs speech detection over the recording and proposes where the utterances are.
-It runs in the browser, so it needs no service and no connection once the page has loaded.
-The first run downloads the model, and the browser keeps it for later.
+It runs in the browser and needs no service.
 
 A proposal is not a segment.
 It is a stretch of time with no text: dashed on the timeline, and a dashed row in the transcript in its place in time order.
@@ -290,7 +284,6 @@ The built-in detector's options change what is proposed without running the mode
 Detection leaves any stretch that already has a segment alone, so you can run it again after using some of what it proposed.
 
 Speech detection is a service spot like the others, so a connected detection service appears in the same **Method** list beside the built-in.
-Whichever runs, what comes back is proposals, kept the same way, and no segment exists until you type into one.
 
 Transcription is a separate run, from the **Transcribe** button in the **Transcript** header: it writes segments and their text to the document, where detection only proposes times.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
@@ -368,7 +361,7 @@ Nothing is linked this way unless you ask.
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word, the faint guesses in its cells included, and moves to the next. If a value on the word, or in a sentence field, is not in its closed tagset, nothing is accepted and the caret goes to that cell. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
 * **Show only the rows you need**. Click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
-* **Copy as IGT**. Copy one sentence to the clipboard for a paper or a message, as aligned plain text, tab-separated text for a spreadsheet, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. This keeps the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not. On the LaTeX gloss line, each part written in capitals, such as NOM or 1SG, is set in small caps as `\textsc{nom}`. The rule goes by case alone, so a capital I glossing a pronoun is set in small caps too.
+* **Copy as IGT**. Copy one sentence to the clipboard for a paper or a message, as aligned plain text, tab-separated text for a spreadsheet, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. On the LaTeX gloss line, each part written in capitals, such as NOM or 1SG, is set in small caps as `\textsc{nom}`. The rule goes by case alone, so a capital I glossing a pronoun is set in small caps too.
 
 Move around the grid with **Enter** or **Tab** (next cell, Shift for the previous one), **↑** and **↓** (rows), and **←** and **→** from the ends of a value.
 **Alt+click** a word to open it on the Tokenize tab.
@@ -382,15 +375,10 @@ Four states are distinguished in the grid:
 * A value **you typed** shows plain. So does a marked value once you have edited or confirmed it.
 * A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to accept or discard it.
 * A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to accept or discard it.
-* A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
-The small form beneath a word or morpheme is the lexicon entry it is linked to, and nothing beneath it means it has no link.
+* A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter. A guess on a **pale teal** background comes from the linked lexicon entry, and one on plain background from what the same form was given elsewhere in the project.
 
-Marks say what is still waiting to be looked at, not what has been signed off.
-A value you typed is plain from the moment you type it, and so is one you confirmed, so there is no separate "I have checked this" state and no document-level one either.
-Deciding in advance that someone's work is provisional is what **Review work** on the Access screen does.
-Recording after the fact that a text is settled is a job for a document metadata field of your own, which you can then sort and filter the document list by.
-A guess on a **pale teal** background comes from that entry rather than from elsewhere in the project.
-A guess on plain background comes from what the same form was given elsewhere in the project.
+The small form beneath a word or morpheme is the lexicon entry it is linked to, and nothing beneath it means it has no link.
+Marks say what is still waiting to be looked at. There is no separate "checked" state for a value or a document.
 
 Hover over an annotation to see where it came from.
 Editing a marked value confirms it, so the violet and amber dissolve naturally as you work through a document.
@@ -418,7 +406,6 @@ An edit that reaches the server after someone else changed the document is handl
 * Any other edit is saved only when what the other person changed is a kind of annotation it does not touch. Otherwise it is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows their change.
 
 When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X**, with **Enter to keep yours** after it while the cell has focus.
-A long note is cut short, and shows whole while its cell has focus or under the pointer.
 A message names the change, such as `b changed this to DOG.`
 A change that names no cell, such as a Bulk Edit, a Baseline save or a restore, is named by who made it when that person is the only other one who changed the document since your page last read it.
 When the change cannot be traced to one person, the message says `Someone`, and `You` for your own change from another tab.
@@ -509,8 +496,7 @@ When the entries change between the review and **Import** so that the import wou
 Plain text ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.
 The other two do not.
 A fourth kind, **is empty**, matches the entries that have no value in the field and sets one, which is how a status is given to a lexicon imported without any.
-It has no counterpart in Bulk Edit: an annotation field has no value on a word until something writes one, so filling every blank means visiting every word rather than matching what is there.
-Use **Validation** to find the words a field is missing on, or ask the assistant.
+To find the words an annotation field is missing on, use **Validation**, or ask the assistant.
 Each entry it would change is listed with its old and new value, and only the ticked ones are written.
 A value that changed after the list was drawn is skipped, and the message says how many.
 A value the field's tagset refuses is listed but never written.
@@ -605,7 +591,6 @@ Examples brought in by a FLEx import are shown in the same panel as text.
 Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
 The confirmation counts the entry's links again when you press **Delete entry**.
 When a word was linked to it meanwhile, the entry is not deleted, and the confirmation stays open on the new count with `Its links changed while this was open.`
-Links in projects you cannot open are not in the count you see first. When there are any, the confirmation opens again with the full count and says how many of them are in projects you cannot open.
 Merging entries with **Bulk Edit** points those references at the surviving entry, hands the merged entries' senses to it in their own order, and, when the survivor was a sense under one of them, makes it an entry in that one's place.
 
 A FLEx import keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
@@ -810,7 +795,7 @@ A value outside it is refused, even from a page opened before the tagset was clo
 An approved Assistant plan and a script are refused the same way.
 Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a service's values nobody has confirmed yet.
 Confirming such a value is refused while it is outside the tagset.
-Spaces at either end of a value or of its parts, no-break spaces included, are ignored when it is checked.
+Spaces at either end of a value or of its parts are ignored when it is checked.
 
 Closing a tagset, or removing a value from a closed one, is refused while any other value in the project's annotations is outside it.
 The message says how many values in which fields are not in the tagset, and names them.
@@ -823,7 +808,7 @@ A field under an **Open** tagset is listed as well, with the values closing it w
 Values there not written in capitals are grouped apart, and are not added one by one.
 It also looks for zero morphs spelled some other way than ∅ (see <<_typing_special_characters>>).
 
-NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. A service's proposals are not refused, even outside a closed tagset. A model's off-list output can be a useful signal that the tagset is missing something, and the Validation tab is where you will see it.
+NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. A service's proposals are not refused, even outside a closed tagset. The Validation tab lists them.
 
 = Guidelines
 
@@ -859,7 +844,7 @@ The Assistant can draft a guideline as well as read one.
 If you tell it a convention while asking about something else, it will propose writing it down, and you approve or discard it like any other change it proposes.
 It will not do this for a decision about a single word, or for something it worked out from the data on its own.
 When it changes a guideline that already exists, the card shows you the exact passage it is replacing and what with.
-A change that replaces the whole guideline is marked **Rewrite** instead, because there the previous wording is not on the card for you to compare.
+A change that replaces the whole guideline is marked **Rewrite** instead.
 
 Every change to a guideline is recorded in the project's Activity, with who made it and when, including the ones the Assistant drafted.
 
@@ -909,13 +894,11 @@ Four or more document reads in a row are folded into one line that names the sen
 A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: interlinear text, one line per tier, after a legend naming the tiers.
 **Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
 A stopped or failed answer keeps its steps the same way.
-Steps of answers from before October 10, 2026 show their lines only.
 
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
 The plan lists every change under the document or lexicon it lands in. Each word is a link to its place in the editor, so a change can be checked before it is approved.
 A change that rewrites your baseline text, rather than annotating it, is marked **Rewrite**, counted on a line of its own above the list, and never folded away when the list is long.
-The assistant is told not to propose one unless you asked for it.
 Text the assistant adds is split into words as a Baseline save's is, and gets none when **Tokenize new text** is off.
 A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
 A change over the whole project, such as replacing a gloss everywhere, is one row: the change, how many values it changes in how many documents, and how many of them replace accepted work.
@@ -963,7 +946,6 @@ When some of its changes may already be written, the card says so and offers no 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
 If the server restarts while the assistant works, the answer appears when it is ready.
-When the assistant itself is restarted, an open tab finds it again within 15 seconds.
 A conversation is worked on in one tab at a time.
 Opened in a second tab, or on another device, it is read-only there: the line above the message box reads `Open in another tab.`, and a turn or a plan under way shows as it happens.
 **Continue here** moves the conversation to that tab, and the first one turns read-only.
@@ -1017,8 +999,8 @@ The PDF is kept with the conversation and shown under the reply, linked to where
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
 It is there wherever there is a project for it to be about, and on the general screens, where it asks which project to use.
 The screens for making a project and for importing one have neither, so it is not offered there.
-A handle on the right edge of the window, halfway down, opens it too: it widens under the pointer to show the assistant's mark, and it is the same gesture as the history rail on the left edge of a document.
-The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
+A handle on the right edge of the window, halfway down, opens it too.
+The panel stays where it is as you move around.
 The page narrows to make room for it.
 The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
 It starts closed until you first open it.
@@ -1040,7 +1022,7 @@ Sentences are matched on what they say, so **@** followed by a word finds the se
 Arrow keys move through the list, Enter takes the one that is highlighted, and Escape closes the list and leaves what you typed.
 Two entries spelled alike are told apart by their number, which is what **@** writes for you.
 On a vocabulary's **Entries** screen the vocabulary is what a question is about, and **Ask**, beside the tabs, puts the open entry into it.
-A vocabulary that more than one project links has no one project to file a conversation under, so nothing there is taken as the subject and the project is yours to choose.
+On a vocabulary that more than one project links, choose the project yourself.
 
 On a screen with no project of its own, the panel keeps the conversation it has.
 Before you have opened a project at all it asks which one to use, because the assistant reads one project at a time.
@@ -1061,9 +1043,9 @@ A plan of more than 200 changes keeps its first 200 once it is approved or disca
 Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
 The storage limit is set by the server's operator.
 
-== Without an assistant
+== Assistant availability
 
-The assistant is a service that your server's operator runs and picks the model for (`plaid-igt-agent`, installed from a checkout of the source tree).
+The assistant is a service that your server's operator runs and picks the model for.
 When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
 Conversations already saved are unaffected and open from their own links.
 
@@ -1079,7 +1061,7 @@ Every one of them works the same way.
 A button names the run, in the header of the panel its results land in. It opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
 A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
 
-A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running: a run ends by re-reading the document, which would discard anything typed underneath it.
+A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running.
 Only one such run goes at a time.
 Speech detection is the exception, since it writes nothing: it can run while you work, which is what lets you type into its proposals as they appear.
 
@@ -1181,8 +1163,7 @@ Where two segments still overlap in time with the same speaker, or with none, th
 
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file or files and it carries on, keeping the documents and entries already there and finishing the ones it never reached.
-A document is recognised by the file's own identifier for it, not by its name, so two texts called the same thing are kept apart, and a document you made by hand is never taken for one of the import's.
-A copy of an imported document is never taken for it.
+A document you made by hand, or a copy of an imported one, is never taken for one of the import's.
 A FLEx import writes into the lexicon it started with, and finishes placing every sense an earlier run left flat.
 Importing the same backup afresh into a lexicon you have since arranged places only the entries it adds.
 If what arrived is enough, **Use the project as it is** on that screen puts the project back in your hands.
@@ -1317,7 +1298,6 @@ A regular expression is read the same way in Search, in Bulk Edit, in a vocabula
 A Unicode block such as `\p{InArabic}` is refused.
 `(?i)` at the start ignores case in any script.
 A pattern that cannot be read the same way everywhere, such as `[[:alpha:]]`, is refused with a message saying why.
-A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
 In a replacement in Bulk Edit or a vocabulary's **Replace**, `$1` is the first group and `$&` the whole match.
 
 Results come in two views:
@@ -1396,8 +1376,6 @@ Projects are shared by adding members, each with a role:
 * **Reader**: can view everything but make no edits, comments included.
 * **Writer**: can edit documents and link vocabulary.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
-
-A Reader not being able to comment is the one that catches people out, so the role picker on the Access screen says it too, under each level.
 
 Add and manage members under the project's **Settings**, in **Access**.
 Members are found by name, matched anywhere in it, or by email address, matched from its start. Type `@` to match anywhere in an email address.
