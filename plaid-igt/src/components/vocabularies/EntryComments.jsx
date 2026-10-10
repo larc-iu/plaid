@@ -1,55 +1,31 @@
-import { useEffect, useRef } from 'react';
-import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { EntryThreadIsland } from '@/components/documents/comments/island/EntryThreadIsland.js';
+import { CommentThread } from '@ui/components/shared/CommentThread.jsx';
+import { useCommentStore } from '@ui/domain/useCommentStore.js';
+import { humanizeError } from '@/utils/feedback';
 
-// Thin React shell around the vanilla EntryThreadIsland, the same shape as
-// CommentsTab.jsx: React owns the mount lifecycle and nothing else, and the
-// thread view is the one the document editor renders.
+// One vocabulary entry's thread, for the entry panel on the vocabulary page.
+// Keyed by the entry, so a half-typed comment is never carried into another
+// entry's thread.
 export const EntryComments = ({ store, itemId, caption, canWrite, canDeleteAny }) => {
-  const hostRef = useRef(null);
-  const islandRef = useRef(null);
-
-  // The island is built once, so the confirm it holds reads through a ref and
-  // its identity never has to change. Same dialog the React thread uses: two
-  // renderings of a thread should not ask differently.
-  const confirm = useConfirm();
-  const confirmRef = useRef(confirm);
-  confirmRef.current = confirm;
-
-  useEffect(() => {
-    if (!store || !hostRef.current) return undefined;
-    islandRef.current = new EntryThreadIsland(hostRef.current, {
-      store,
-      entityId: itemId,
-      caption,
-      canWrite,
-      canDeleteAny,
-      confirmDelete: (comment) =>
-        confirmRef.current({
-          title:
-            comment.authorId === store.currentUserId
-              ? 'Delete your comment?'
-              : `Delete ${store.authorName(comment.authorId)}'s comment?`,
-          description: 'This cannot be undone.',
-          confirmLabel: 'Delete',
-          destructive: true,
-        }),
-    });
-    return () => {
-      islandRef.current?.destroy();
-      islandRef.current = null;
-    };
-    // The entry and permissions are synced below without tearing down the island.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store]);
-
-  useEffect(() => {
-    islandRef.current?.setEntry({ entityId: itemId, caption });
-  }, [itemId, caption]);
-
-  useEffect(() => {
-    islandRef.current?.setPermissions({ canWrite, canDeleteAny });
-  }, [canWrite, canDeleteAny]);
-
-  return <div ref={hostRef} className="igt-comments-mount" />;
+  useCommentStore(store);
+  if (!itemId) return null;
+  if (!store.isLoaded) return <p className="text-sm text-muted-foreground">Loading comments…</p>;
+  return (
+    <div className="-mx-3">
+      {store.error && (
+        <p className="px-3 pb-2 text-sm text-destructive" role="alert">
+          {humanizeError(store.error, store.error)}
+        </p>
+      )}
+      <CommentThread
+        key={itemId}
+        store={store}
+        comments={store.threadFor(itemId)}
+        canWrite={canWrite}
+        canDeleteAny={canDeleteAny}
+        entityType="vocab-item"
+        entityId={itemId}
+        anchorLabel={caption}
+      />
+    </div>
+  );
 };

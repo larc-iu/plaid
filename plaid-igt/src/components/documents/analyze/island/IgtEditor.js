@@ -86,10 +86,9 @@ export class IgtEditor {
     this.canComment = canComment;
     this.canDeleteAnyComment = canDeleteAnyComment;
     // Asked before a comment is removed, and it must resolve truthy. REQUIRED
-    // for the popover's delete, on the rule ThreadIslandBase states: a comment
-    // is unaudited, so there is no history entry and no restore, and a
-    // mis-click on a colleague's thread is permanent. A mount that cannot ask
-    // does not get to delete.
+    // for the popover's delete: a comment is unaudited, so there is no history
+    // entry and no restore, and a mis-click on a colleague's thread is
+    // permanent. A mount that cannot ask does not get to delete.
     this.confirmDeleteComment = confirmDeleteComment;
     // Whether a sentence offers "Ask". Discovered after mount, so it also has
     // a setter (see editor/assistant.js).
