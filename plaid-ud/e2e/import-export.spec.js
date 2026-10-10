@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { test, expect, seedAuth } from './fixtures.js';
 import { PlaidClient } from '@larc-iu/plaid-client';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
@@ -109,7 +110,11 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
   expect(download.suggestedFilename()).toMatch(/\.zip$/);
 
   // --- The zip imports again, every document under its exact name ---
-  await page.locator('input[type=file]').setInputFiles(await download.path());
+  await page.locator('input[type=file]').setInputFiles({
+    name: download.suggestedFilename(),
+    mimeType: 'application/zip',
+    buffer: fs.readFileSync(await download.path()),
+  });
   await page.getByRole('button', { name: /^Import/ }).click();
   await expect(page.getByText(/Imported 2 of 2/)).toBeVisible({ timeout: 30_000 });
   const names = (await client.projects.listDocuments(PID)).map((d) => d.name);
