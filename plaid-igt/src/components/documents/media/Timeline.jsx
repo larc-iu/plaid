@@ -418,6 +418,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    aria-label="Zoom out"
                     onClick={() => onPixelsPerSecondChange(clampZoom(pixelsPerSecond / (4 / 3)))}
                     disabled={pixelsPerSecond <= MIN_ZOOM}
                   >
@@ -445,6 +446,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    aria-label="Zoom in"
                     onClick={() => onPixelsPerSecondChange(clampZoom(pixelsPerSecond * (4 / 3)))}
                     disabled={pixelsPerSecond >= MAX_ZOOM}
                   >
