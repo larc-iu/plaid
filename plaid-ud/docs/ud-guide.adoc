@@ -29,10 +29,18 @@
 
 = Introduction
 
-**Plaid UD** is a web-based editor for building https://universaldependencies.org/[Universal Dependencies] treebanks.
-This guide is written for **annotators** who will use the editor to do annotation work.
-It walks through the everyday loop (create or import a document, tokenize it, annotate it, and export it as CoNLL-U), and then the more advanced features.
-Two UD features are not supported: empty nodes and the MISC column.
+**Plaid UD** is an editor for building https://universaldependencies.org/[Universal Dependencies] treebanks.
+It runs in a web browser and covers tokenization, annotation, and the dependency tree in one program.
+
+Key features include:
+
+* **Tokenization.** Split a text into sentences, tokens, and multi-word tokens, by hand or with a tokenizer.
+* **Annotation.** Edit UPOS, XPOS, lemmas, and features in a grid, and draw the dependency tree and the enhanced graph above and below the words.
+* **AI assistance.** A connected parser fills in a first draft of a whole document, and an assistant answers questions about the corpus and proposes changes for you to approve. Machine output is marked until a person confirms it.
+* **Search and bulk edit tools.** Search every document with Grew patterns, count the results, and apply Grew rules to many sentences at once.
+* **Collaboration.** A project is shared with its members, each of whom may have reader, writer, or maintainer privileges, and all of them work on the same data on the server.
+* **Audited edits.** Every change is recorded with its author, and any document can be viewed or restored as it was at an earlier time.
+* **CoNLL-U import and export.** Bring in existing treebanks and export documents or whole projects. Empty nodes and the MISC column are not supported.
 
 = Getting Started
 
@@ -50,12 +58,11 @@ Your name at the top right opens your account, with your **Profile** and **Sign 
 
 The editor has three levels you move between:
 
-* **Projects**: the list of all projects you can access (your home screen after signing in).
-* **Documents**: the texts inside one project.
-* **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
+* **Projects**: the list of all projects you can access. This is your home screen after signing in.
+* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Guidelines**, **Assistant** and **Import and export** for everyone, and **Validation**, **Activity** and **Settings** for maintainers.
+* **A document's tabs**: **Text Editor**, **Annotate**, **Comments**, **Export** and **Details**, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Guidelines`, `Assistant`, `Validation`, `Activity`, `Settings` and `Import and export`. `Validation`, `Activity` and `Settings` are for maintainers, and `Assistant` appears only when one is running.
-The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
+The **Assistant** tab appears only when an assistant is running. The assistant can also be opened in a panel beside any screen (see <<_the_panel>>).
 
 = Projects
 
@@ -93,91 +100,61 @@ A new document starts empty. You give it a name, then add text in the Text Edito
 == Importing CoNLL-U
 
 If you already have annotated data, you can import it instead of typing it in.
-
 Open the project's **Import and export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
 Each `# newdoc` boundary inside a file becomes its own document.
-A document too large for the server is not imported, and its row says `This file is too large to import. Split it into shorter documents.`
-The same tab exports the whole project as a ZIP of `.conllu` files.
+A file too large for the server is not imported, and its row says so.
 
 [WARNING]
 ====
-Import brings in tokens, sentence metadata, and the dependency tree, but two CoNLL-U features are *not* stored and will be dropped on import: **empty nodes** and the **MISC** column.
+Import brings in tokens, sentence metadata, the dependency tree, and the enhanced graph from the DEPS column, but two CoNLL-U features are *not* stored and will be dropped on import: **empty nodes** and the **MISC** column.
 If you need those preserved, Plaid UD is not the right tool for that file.
-A `SpaceAfter=No` is not counted as dropped: the text keeps the spacing, and the export writes it again.
 ====
 
-The DEPS column is read into the enhanced dependency graph (see <<_enhanced_dependencies>>).
-An enhanced dependency whose head is an empty node is dropped along with the node.
-A relation with no HEAD (`_` beside a DEPREL), or whose HEAD or DEPS head is not a row of the sentence or is the word's own row, is dropped, and the import says how many.
-A word whose only enhanced heads were empty nodes keeps the relation its tree gives it, which for a gapped clause is `orphan`.
-A word whose DEPS is empty, in a sentence where other words have one, has no head in the enhanced graph: its tree relation is one the graph leaves out. In a sentence with no DEPS at all, the file simply says nothing about the enhanced graph and every word follows its tree.
+An enhanced relation whose head is an empty node is dropped along with the node.
+A relation with no head, or whose head is not a row of the sentence, is also dropped, and the import says how many.
 
-= Tokenizing Text (Text Editor)
+= Tokenizing Text
 
 The **Text Editor** tab is where raw text becomes tokens.
-In a project not set up for UD it is read-only, as Annotate is, and says `This project is not set up for UD.` A maintainer's **Set it up** link there opens the page with **Set up for UD**.
+In a project not set up for UD it is read-only, as Annotate is, and a maintainer can set the project up from there.
 
 == Entering and Tokenizing Text
 
-Paste or type your text into the editor, one sentence per line.
-Use **Save** to save edits to the raw text without re-tokenizing.
-Each change is saved where you typed it.
+Paste or type your text into the editor, one sentence per line, and press **Save**.
+**Ctrl/Cmd+Z** undoes typing and **Ctrl/Cmd+Shift+Z** redoes it.
+If someone else saved the text after you started editing, your save adds your changes to theirs.
+If you both changed the same passage, the save is refused with `Changed elsewhere in the same passage.`, and **Discard changes** shows the saved text so you can make the edit again.
 
-When someone else saved the text after you started editing it, your save puts your changes onto their text.
-When you both changed the same passage, the save is refused and the editor says `Changed elsewhere in the same passage.` **Discard changes** then shows the saved text, and you make the edit again.
-The save is also refused when the text has passages that read the same and your change could be in either of them.
+There are two ways to turn saved text into tokens:
 
-Tokens already made follow an edit of the saved text.
-A change inside a token, or touching it with no space between, changes that token, and it keeps its words and annotations.
-Typing a space inside a token splits it there: the token and its annotations stay on the part holding most of its letters, and the other part becomes a new token, one word with no annotations.
-In a multi-word token whose words match the parts, such as `can't` typed as `ca n't`, each word keeps its own part. Spaces a token already had do not split it.
-On a project whose tokens are shared with another app, the split holds for that app too.
-Deleting the space between two tokens keeps them two tokens. Merge them to make one.
-A token goes, along with its annotations, only when all its text is deleted.
-Pasting the text back with words added, removed or changed changes only those tokens. Every other token keeps its annotations.
-A paste with several changes near a repeated word, or in a text written without spaces, can also replace one token beside a change, and that token loses its annotations.
+* **Tokenize** splits the text into sentences and tokens, one sentence per line. It uses the project's tokenizer locale, or else its language (see <<_settings,project settings>>). Each word gets its form as a machine-made lemma, and you add the other annotations and the tree yourself in the Annotate tab.
+* **Parse** does the whole job at once. Where your project has a parsing service connected, such as the bundled Stanza parser, it fills in sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand.
 
-**Ctrl/Cmd+Z** in the editor undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
+Each button opens a dialog naming the method it will use and its options (see <<_services>>).
+A document that already has tokens cannot be tokenized again until **Clear tokens** removes them, along with every annotation on them.
+Clearing asks first, with counts, and cannot be undone.
+Tokenize and Parse also ask first when their sentence breaks would delete annotations that cross them.
+
+Tokens follow later edits to the text.
+A change inside a token keeps its annotations, and typing a space inside a token splits it, leaving the new part with no annotations.
+Deleting the space between two tokens does not merge them, and a token is deleted only when all its text is.
 
 A document of more than 15,000 words shows **Long document** at the top of this tab and the Annotate tab.
-Editing slows down past that length. Split such a document into shorter ones.
-Text typed right before a sentence's first character joins that sentence, unless it holds a line break, and text typed right after a sentence's last character joins that one.
-
-There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
-
-* **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_settings,project settings>>, and language-agnostic when neither is set). It makes one sentence of each line of the text. Each word gets a lemma copied from its form, marked as machine-made, which **Parse** replaces. You add the other annotations and the dependency tree yourself in the Annotate tab.
-* **Parse** does the whole job at once. Where your project has a parsing service connected, for example the bundled Stanza parser, it fills in the entire document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
-
-Each button opens a dialog naming the method it will use and the options that method offers.
-While the text has changes not yet saved, both buttons say `Save the text first.`
-A document that already has tokens cannot be tokenized again. **Tokenize** says to clear the tokens first, and **Clear tokens** beside it does that, after asking.
-Clearing takes every annotation on those tokens with them, whoever made it.
-The question counts the sentences, tokens and words, and the annotations and vocabulary links on them. It cannot be undone.
-
-**Tokenize** asks first when the sentences it makes would delete annotations that join two places the new sentences separate, and counts them.
-With a tokenizer service the count is the most its sentence breaks could delete, and answering **Tokenize** lets the service delete them.
-When a tokenizer service makes sentences and tokens only, opening the document in the Annotate tab gives each token one word.
-**Parse** asks the same, with the most it could delete, when it makes the sentences itself because the document has no sentences or no words.
+Editing slows down past that length, so split such a document into shorter ones.
 
 == Working with Tokens
 
-After tokenizing, the text is shown with each token as a clickable chip:
+After tokenizing, the text is shown with each token as a clickable chip.
+A **green** border marks the first token of each sentence, and a **teal** chip marks a multi-word token.
 
-* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries. Removing a boundary joins the sentence to the one above it, with any sentence with no words between them. Splitting a sentence removes the dependency relations that would cross the new boundary, wherever the split is made. When the split would also delete annotations made outside this editor that cross it, it asks first and counts them.
-* A **teal** chip marks a **multi-word token** (a token that contains more than one word).
+Click any token to toggle whether a sentence starts there.
+Removing a boundary joins the sentence to the one above it.
+Splitting a sentence removes the dependency relations that would cross the new boundary, and asks first if other annotations would go too.
 
-Hover over a token to open its panel, where you can:
-
-* toggle **Start of sentence**
-* edit the token's **words**, splitting it into several to make a **multi-word token** or merging them back into one
-* **delete** the token
-
-You can also select a span of text directly to create a new token from it.
-
-Editing a token's words with the same number of words keeps their annotations and relations, and changes only the forms.
-Changing the number of words replaces them, and asks first when annotations would go.
-Deleting a token asks first when anything on it would go, including the split of a multi-word token, a word's changed form, and annotations and vocabulary links made outside this editor.
-A vocabulary link or annotation that also covers a token that stays is shortened, and the question says so apart.
+Hover over a token to open its panel, where you can toggle **Start of sentence**, edit the token's **words**, or **delete** the token.
+Splitting a token into several words makes a multi-word token, and merging them makes it an ordinary token again.
+Changing the forms but not the number of words keeps their annotations. Changing the number replaces the words, and asks first if annotations would be lost.
+You can also select a span of text to make a new token from it.
 
 = Annotation
 
@@ -185,11 +162,8 @@ The **Annotate** tab is where the real work happens.
 It shows each sentence as a row of editable cells above an interactive dependency tree.
 
 Sentences come 25 to a page, with a pager above and below them.
-A document reopens on the page you left it on, and anything that reaches a particular sentence (a search result, a review sweep, a link from the assistant) turns to its page first.
-Sentence numbers belong to the document, not the page, so sentence 40 is sentence 40 wherever it is shown.
-A sentence with no words, such as a line of punctuation another app left untokenized, has no row and no number, and the sentences after it number on.
-
-A token another app added after the document was opened shows only its form, and its cells cannot be edited. An edit on it says `Reopen the document to annotate this word.` Opening the document again makes it a word like the others.
+A document reopens on the page you left it on, and a link to a particular sentence, such as a search result, turns to its page first.
+Sentence numbers belong to the document, so sentence 40 is sentence 40 on any page.
 
 == Tag and Lemma Editing
 
@@ -207,7 +181,7 @@ Each word has cells for:
 
 Click a cell to edit it.
 The UPOS, XPOS and Features cells, and the dependency-relation labels in the tree, offer **autocomplete** from your project's controlled vocabularies.
-By default those lists are suggestions and a value off the list is accepted, but a maintainer can close any one of them so only listed values are (see <<_suggestions_or_rules>>).
+By default any value is accepted, but a maintainer can restrict a list to its own values (see <<_suggestions_or_rules>>).
 
 Move around the grid with **Tab**, **Enter**, **Escape** and the arrow keys.
 **Arrow Up** out of the top row jumps into the dependency tree.
@@ -221,93 +195,75 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
 * **Delete a relation**: click its label, then the bin to the left of the box that opens, or press **Shift+Backspace** before typing anything.
-* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them, and from inside an open label they commit it and open the next. See <<_keyboard_shortcuts>> for the rest.
+* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them. See <<_keyboard_shortcuts>> for the rest.
 
-A word has one head in the tree, and the tree has no cycle.
+A word has one head, and the tree has no cycle.
 Drawing a relation to a word that already has a head moves it to the new head, keeping its label.
-A relation that would close a cycle is refused, and so is a second head from the assistant or a script.
-An import keeps a second head a file gives a word, and restoring an earlier state brings back one the document had.
+A relation that would close a cycle is refused.
 
 == Enhanced Dependencies
 
 Every sentence has an enhanced dependency graph beside its tree.
 The enhanced graph starts out equal to the tree, and you record only where it differs.
-A project that never does so exports a DEPS column that restates the tree.
+The tree is drawn above the words and the enhanced relations below them.
 
-* **Add a relation**: hold **Ctrl** or **Cmd** as you start to draw an arc. It is drawn under the words as you go, and you can let go of it on a word or anywhere beneath one. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The tree is drawn above the words and these relations below them. A label there is edited and deleted like any other.
-* **Give a relation a different label in the enhanced graph**: start with **Ctrl** or **Cmd** held and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own relation, which is shown faded. Deleting that label puts the tree's relation back into the enhanced graph.
+* **Add a relation**: hold **Ctrl** or **Cmd** as you start to draw an arc, and let go on a word or anywhere beneath one. That word keeps its head in the tree and gains a second one in the enhanced graph, as for a subject shared by two coordinated verbs.
+* **Relabel a relation in the enhanced graph**: draw over a relation of the tree with **Ctrl** or **Cmd** held, and type the new label, such as `nmod:of` for `nmod`. The tree's relation is shown faded. Deleting the new label puts it back.
 * **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The relation is shown faded. Do the same again to put it back.
 
-A change to the tree carries over to the enhanced graph by itself.
-Splitting a sentence removes the enhanced relations that would cross the new boundary, as it does the tree's.
-
+Changes to the tree carry over to the enhanced graph.
 On export, DEPS lists every relation of the enhanced graph for each word.
-
 Empty nodes are not supported, so an elided predicate cannot be added, and gapping stays as the tree's `orphan` relation.
 
 == Metadata
 
-A treebank records more than annotations. CoNLL-U keeps those notes as comment lines, and Plaid UD edits them in two places.
+CoNLL-U keeps notes about documents and sentences as comment lines, and Plaid UD edits them in two places.
+Notes **about a document**, such as its source, genre or licence, are on its **Details** tab.
+Notes **about a sentence** are behind **Edit metadata**, in the row of actions below its grid.
 
-**About a document**, on its **Details** tab: where the text came from, its genre, its licence, whatever the project decides to keep.
-
-**About a sentence**, under the sentence in the Annotate view, behind **Edit metadata** in the row of actions below the grid. Every sentence carries `sent_id`, CoNLL-U's own identifier for it, whether the project declares anything else or not. A free translation is conventionally `text_en`, naming the language it is in.
-
-Which fields a project offers is a maintainer's choice, under **Settings → UD settings**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
-
-Fields save as you leave them, and clearing one removes the note rather than storing a blank. A value already stored under a name the project no longer offers is still shown, marked, so it can be read and cleared.
-
-Everything here goes out with the document: `# source = ...` above a document, `# sent_id` and `# text_en` above a sentence.
+Every sentence carries `sent_id`, CoNLL-U's own identifier for it.
+Other fields are a maintainer's choice, under **Settings → UD settings**. A free translation is conventionally `text_en`, naming its language.
+Fields save as you leave them, and clearing one removes it.
+On export they are written as `# source = ...` above a document and `# sent_id = ...` or `# text_en = ...` above a sentence.
 
 == Text Direction
 
 A document's **Details** tab also holds **Text direction**, which says which way its tokens are laid out.
+It is set to **Automatic**, which reads the document's own text, so a treebank in Arabic, Hebrew or another right-to-left script is laid out right to left.
+Set it by hand for a document the text cannot speak for, such as a right-to-left language written in a Latin transliteration.
 
-It is set to **Automatic**, which reads the document's own text. A treebank in Arabic, Hebrew, Thaana, N'Ko or any other right-to-left script lays its tokens out right to left in the annotation grid, with the row labels on the right and the dependency arcs over the words where they now are. Set it by hand for a document the text cannot speak for, such as a right-to-left language written here in a Latin transliteration.
-
-Direction affects the way tokens are laid out, not the values in them. Every field decides for itself, so a UPOS tag or an English lemma reads left to right in a column standing under an Arabic word. Arrow keys follow the words: in a right-to-left sentence the next token is the one to the left, so it is the left arrow that moves forward through the sentence.
+Direction affects the layout of the tokens, not the values in them, so a UPOS tag or an English lemma still reads left to right.
+Arrow keys follow the words: in a right-to-left sentence the left arrow moves forward.
 
 == Earlier Values in This Project
 
 In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
-
-The lemma cell asks about the **form**, meaning what the project has called this string before. The other two ask about the **lemma**, because once that is settled the tag and the features usually follow, and the same string can be two lemmas.
-
-Pick one with the arrows and **Enter**, or click it. **Escape** goes back to the cell. A word with nothing to compare against simply shows nothing.
+The lemma cell looks up the word's form. The XPOS and Features cells look up its lemma.
+Pick a value with the arrows and **Enter**, or click it. **Escape** goes back to the cell.
 
 == Moving Between the Text and the Annotations
 
-Tokenizing and annotating are one job done in two places, so each hands over to the other at the sentence you are looking at.
-
-From **Annotate**: **Edit text** under a sentence, or **Alt+click** any word in it, opens the Text Editor scrolled to that sentence.
-
-From the **Text Editor**: **Alt+click** any token opens Annotate at that token's sentence. A plain click still toggles the sentence boundary.
-In a document you can only read, **Alt+click** is the one thing a token takes.
-
-Either way the sentence you arrived at is briefly outlined, so you can see where you landed.
+The Text Editor and the Annotate tab each open the other at the sentence you are on.
+In Annotate, **Edit text** under a sentence, or **Alt+click** on any word in it, opens the Text Editor at that sentence.
+In the Text Editor, **Alt+click** on a token opens Annotate at its sentence.
+The sentence you arrive at is briefly outlined.
 
 == Machine vs. Human Annotations
 
 Annotations nobody has checked yet are marked, so you can see at a glance what is left to review.
-There are two marks, and they say where the annotation came from:
+A **violet, dashed** mark means an automatic parser produced it.
+An **amber, dashed** mark means a member whose work the project reviews entered it (see <<_sharing_and_permissions>>).
+Hovering a cell or a relation names its state and who produced it.
 
-* **violet, dashed**: an automatic parser produced it.
-* **amber, dashed**: a member whose work the project reviews (see <<_sharing_and_permissions>>) entered it. This mark appears only in projects that review somebody.
-
-Anything a trusted member has entered or confirmed is shown plainly, in its own colour.
-Hovering a cell or a relation names its state and its producer.
-Any edit you make to a marked cell or relation confirms it and clears the mark.
-If your own work is reviewed, the mark stays on what you enter until a maintainer or another trusted member confirms it, and accepting a prediction records it as your contribution rather than confirming it.
-
-Typing a value again is an edit, even where the value does not change.
-In a **Features** cell that means writing the same `Key=Value` pair, which confirms the feature rather than adding a second one.
-Passing through a cell with **Tab** or an arrow key, and leaving one with **Escape**, confirm nothing.
+Any edit you make to a marked cell or relation confirms it and clears the mark, even typing the same value again.
+Moving through a cell with **Tab** or an arrow key, or leaving it with **Escape**, confirms nothing.
+If your own work is reviewed, the mark stays on what you enter or accept until someone else confirms it.
 
 If a prediction is already correct, you don't have to retype it:
 
-* **Ctrl+Enter** (or **Cmd+Enter**) accepts everything proposed on the word and moves to the next word, so a sentence can be reviewed with one hand.
-* **Ctrl+Backspace** throws the parser's work on the word away and moves on, for a proposal that is wrong wholesale rather than worth correcting cell by cell. Work entered by a person is never deleted this way.
-* **Ctrl+Shift+↓** and **Ctrl+Shift+↑** jump to the next and previous word that still needs a look, across sentences.
+* **Ctrl/Cmd+Enter** accepts everything proposed on the word and moves to the next word.
+* **Ctrl/Cmd+Backspace** discards the parser's unconfirmed work on the word and moves to the next word.
+* **Ctrl/Cmd+Shift+↓** and **Ctrl/Cmd+Shift+↑** jump to the next and previous word that still needs a look.
 * **Accept predictions** and **Discard predictions**, under each sentence, do the same for the whole sentence.
 
 **Gestures and marks**, above the first sentence, opens a legend of these marks and every gesture in the editor.
@@ -315,239 +271,122 @@ If a prediction is already correct, you don't have to retype it:
 == Saving
 
 A cell is saved when you leave it, and a relation when you draw or change it. There is no save button.
-A save that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
-Meanwhile the page reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
-A save that reached the server before its answer was lost is not saved twice.
-A save made while the document is locked, by another user's script or a service, is not refused.
-The page reads **In use elsewhere, waiting**, the edit is saved by itself once the lock is gone, and closing the tab meanwhile asks first.
+If the connection drops, saves are retried until the server answers, and the page reads **Offline, retrying** meanwhile.
+While a script or a service has the document locked, the page reads **In use elsewhere, waiting**, and your edits are saved once it is done.
 
-Two people can have one document open, and neither page shows the other's edits as they are made.
-An edit is refused when someone else changed the same kind of annotation in the document since the page loaded (a lemma, a head, the words), even on another word.
-A change to another kind of annotation, on other words, does not refuse it.
-
-When someone else changed the same cell first, the cell shows their value, with yours under it: **Yours: X · Enter to keep yours**.
-A message names the change, such as `b changed this to NOUN.`
-When the change cannot be traced to one person, the message says `Someone`, and `You` for your own change from another tab.
-**Enter** in the cell saves yours, **Escape** or typing another value drops it, and leaving the cell saves nothing.
-The same happens when the word was split or joined by someone else before your value was saved.
-When the word is gone by the time your value is refused, a message says `Not saved:` and the value.
-A value refused because of a change elsewhere in the document stays in its cell, and leaving the cell again sends it.
-The message reads `Changed elsewhere. Your value is in its cell, not saved.`
-Any other edit that is refused says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows the other person's change.
-
-A document that needs a repair is repaired when it is opened.
-If the repair fails, a message asks you to reload the page.
-A document with no sentences to show until then says `The document could not be repaired. Reload the page to try again.`
+Two people can have one document open, but neither sees the other's edits as they are made.
+When someone else changed the same cell first, the cell shows their value with yours under it: **Yours: X · Enter to keep yours**.
+**Enter** saves yours, and **Escape** or typing another value drops it.
+Other conflicting edits are refused with a message, and the page shows the latest version so you can redo your edit.
 
 = Export
 
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
-Each sentence's `# text` is its text as it stands, spaces included, and a multi-word token's row gives its text as it stands. A token followed by no space is marked `SpaceAfter=No` in the MISC column, the one value written there.
-Each sentence ends with a blank line, the last one too, so exported files can be joined end to end.
-
+A token followed by no space is marked `SpaceAfter=No` in the MISC column, the only value written there.
 To export a whole project, use its **Import and export** tab, which packages every document into one ZIP of `.conllu` files.
-
-A token another app added, in a document nobody with Writer access has opened here since, is exported with its form and `_` in every other column. Text in no token, such as punctuation another app left out of its words, is in `# text` and has no row.
 
 = Guidelines
 
-The **Guidelines** tab is the project's own annotation manual: the conventions the people working on it have agreed to, written down where everyone can read them.
-The controlled value lists under UD settings say which tags a column takes.
-Guidelines are for what a list of tags cannot say: which of two analyses this treebank uses for a construction, what belongs in the lemma column, how a hard case was decided and why.
+The **Guidelines** tab is the project's own annotation manual, where the conventions the annotators have agreed on are written down.
+The controlled value lists in the settings say which tags a column takes.
+Guidelines are for what a list cannot say, such as which analysis this treebank uses for a construction, or how a hard case was decided.
 
-Everyone who can open the project can read them, and anyone who can annotate can write them.
+Everyone who can open the project can read the guidelines, and anyone who can annotate can write them.
+Each guideline has a title and a body, written in a rich-text editor or, with **Markdown**, as Markdown source.
+A short title naming the subject, with the rule itself in the body's first line, makes a guideline easy to find for people and for the Assistant.
+If someone else saves a guideline while you have it open, your save is refused, and saving again overwrites theirs.
 
-Each guideline has a title and a body written in a rich-text editor (bold, headings, lists, tables, links).
-The title is the only thing to keep current, and it is how a guideline is referred to, including by the Assistant.
-Name the subject rather than the rule, so that the title still fits after the rule is refined.
-Two guidelines with the same title are worth avoiding. The editor says so while you are typing one that is already in use, and saves it anyway.
-If a title cannot name what a guideline covers, it is two guidelines.
-One topic each is what makes them findable, by a person and by the Assistant.
-
-Open the body with the rule itself.
-When the manual grows too large to send to the Assistant whole, that first line is what it sees beside the title and chooses on.
-
-The editor writes Markdown, and **Markdown** switches to the source if you would rather type it.
-
-Pinning a guideline sends it to the Assistant in full on every question.
-Unpinned guidelines are sent in full too while the manual is small, and the Assistant opens them by name once it is large.
-Under each of its replies is a line saying how much of the manual that answer had in front of it.
-
-If somebody else saves a guideline while you have it open, your save is refused rather than overwriting theirs.
-Nothing you have typed is lost: the editor keeps it, and saving a second time overwrites theirs deliberately.
-
-Guidelines are not part of a project export, which is a ZIP of CoNLL-U files.
-
-The Assistant can draft a guideline as well as read one.
-If you tell it a convention while asking about something else, it will propose writing it down, and you approve or discard it like any other change it proposes.
-It will not do this for a decision about a single word, or for something it worked out from the data on its own.
-When it changes a guideline that already exists, the card shows you the exact passage it is replacing and what with.
-A change that replaces the whole guideline is marked **Rewrite** instead.
-
-Every change to a guideline is recorded in the project's Activity, with who made it and when, including the ones the Assistant drafted.
+The Assistant reads the guidelines when it answers, and a pinned guideline is always sent to it in full.
+It can also draft a guideline, or change one, and you approve or discard the change like any other it proposes.
+Every change to a guideline is recorded in the project's Activity.
+Guidelines are not part of a project export.
 
 = Assistant
 
 The **Assistant** tab is a chat with a language model that knows your project.
 Ask it which words still have no lemma, whether any dependency relations look wrong, or to summarize the parts of speech across the corpus.
-It reads the documents, the search results, the project's guidelines and the history to answer, and it shows what it read.
+It reads the documents, the search results, the project's guidelines and the history to answer.
 
 A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches · 52 steps".
-Opened, it lists the steps in the order they happened, with the text the assistant wrote between them, and each step says what it read, such as "sentences 3–7 of 120".
-Four or more document reads in a row are folded into one line that names the sentences and documents read.
-A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: CoNLL-U.
-**Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
-A stopped or failed answer keeps its steps the same way.
+Opened, it lists each step the assistant took, and a step opens to what the assistant was given and what it got back.
 
-When you ask it to change something, it does not touch the data.
+When you ask the assistant to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
-Every change is listed under the document it lands in, naming the word and its reference, and each one links to that sentence in the annotation editor, so a plan can be checked before it is approved.
-A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
-A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
-Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
-Tick **Record as human-made** before approving to record them as your own work instead.
-If your work is reviewed in this project, what you approve is your own contribution and waits for a reviewer, as anything you enter does.
-A confirmation you approve then makes the machine's values your contribution and leaves other contributors' work for a reviewer, and the applied card says how many of each.
-A confirmation that wrote nothing is faded on the card and marked `(nothing written)`.
-Reading needs Reader access, and applying a plan needs Writer.
-Asking for a new plan replaces one still waiting.
-The older card then reads **Replaced** and can no longer be approved, and the new plan restates whatever from it should still happen.
-One plan makes at most 20,000 changes and reaches at most 500 documents.
+Every change is listed under its document and links to that sentence in the annotation editor, so a plan can be checked before it is approved.
+A change to something a person made or accepted is marked **Accepted** and counted separately.
 
-Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
-When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
-Otherwise, ask the site's administrators.
+Approved changes are written under your account and recorded as the assistant's work accepted by you.
+Tick **Record as human-made** before approving to record them as your own work instead.
+If your work is reviewed in this project, what you approve waits for a reviewer, as anything you enter does.
+Reading needs Reader access, and applying a plan needs Writer.
+
+A plan is **Out of date** once a sentence it changes has been edited, and can then only be discarded. Ask again to have it planned on the current text.
+Asking for a new plan replaces one still waiting, and the older card reads **Replaced**.
+A plan that stops partway reads **Partly applied**, with how many of its changes were written. Ask the assistant to finish it.
+One plan makes at most 20,000 changes in at most 500 documents.
+
+Conversations are private to you and kept per project, though your server's administrator can read them.
+A reply arrives even if you close the tab, and is there when you open the conversation again.
+**Stop** ends a turn early, and **Retry** asks the question again.
+
+A conversation can be downloaded or copied as Markdown, or saved with **Download as web page** as one HTML file that opens in any browser.
+The pencil beside a conversation in the list renames it, and deleting one asks first and cannot be undone.
+A conversation is worked on in one tab at a time. Opened in a second tab it is read-only there, and **Continue here** moves it.
 
 The assistant picker names who runs each assistant.
-An assistant run by a maintainer of the project or by an administrator answers every member.
-One run by anyone else answers only the person who runs it, and is not offered to others.
+An assistant run by a maintainer of the project or by an administrator answers every member, and one run by anyone else answers only that person.
+Where the assistant's model runs, and where what you send it goes, depends on your Plaid site. When the site has said, the panel shows it under **About this assistant**.
 
-The assistant respells a token's words in place: a word whose form changes keeps its lemma, tags, features and relations.
-Its plans leave each sentence one root. Asked to make another word the root, it gives the old root a head in the same plan. Joining two sentences that each have a root, it gives one of the roots a head in the same plan.
+== Other Projects
 
-Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
-An edit to another sentence does not stop it, even one that adds or removes letters before the plan's sentences.
-An out-of-date plan can still be discarded, which removes its buttons and leaves it marked **Out of date**.
-Ask again to have it planned on the current text.
-A replacement across documents is also out of date when a document starts or stops matching it after the plan was made.
-Approving a plan on a document that a parser run is writing to is refused with nothing written. Approve again once the run has finished.
+Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other UD projects you can open.
+Each project added is shown above the message box.
+The assistant only reads other projects, and plans changes in the conversation's own project only.
 
-A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
-Ask the assistant to finish it.
-A parse the assistant started that stops partway reads **Partly applied** too, with the number of sentences parsed. Ask the assistant to parse again to finish.
-A plan whose applying was cut off reads **Not finished**, with **Apply again**, which finishes it.
-When some of its changes may already be written, the card says so and offers no **Discard**. History can undo what was written.
+== Examples in a Reply
 
-A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
-If the server restarts while the assistant works, the answer appears when it is ready.
-A conversation is worked on in one tab at a time.
-Opened in a second tab, or on another device, it is read-only there: the line above the message box reads `Open in another tab.`, and a turn or a plan under way shows as it happens.
-**Continue here** moves the conversation to that tab, and the first one turns read-only.
-A tab that is closed lets go at once for the other tabs of the same browser, and a tab hidden or closed for five minutes lets go for every device.
-A message sent while a plan is being applied stays in the message box, and the line above it reads `The changes are being applied.`
-**Stop** ends a turn early, even while the model is still working on its answer.
-The conversation then reads `You stopped this turn.` with **Retry**.
-Retry sends the question again below it. The attempt that did not finish stays in the conversation.
-Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
-The Markdown names the files attached to each question and the PDFs a reply fetched.
-**Download as web page** saves the conversation as one HTML file that looks like the Assistant tab and opens in any browser, offline. It shows a table the assistant made when it is small, names every other file with its size, and leaves out the cited examples, tool outputs and made tables from a project you can no longer open, saying so at the top.
-Your server's administrator can read them.
-Deleting a conversation asks first, and cannot be undone. What its plans applied stays.
-A conversation can be deleted while no assistant is online.
-The pencil beside a conversation in the list renames it.
-A conversation deleted in another tab or on another device says so when you send, approve or discard in it, and **New conversation** there takes your message along.
-
-== Other projects
-
-Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other UD projects you can open, to compare or to look something up there.
-A project joins only where the person who runs the assistant is a maintainer or an administrator.
-Each project added is shown above the message box, and each question shows the projects it was sent with.
-The assistant only reads them.
-It plans changes in the conversation's own project, and a change asked for in another project is not planned: the assistant says it can plan changes in this project only.
-In such a conversation, a plan names the project it changes.
-
-== Examples in a reply
-
-When a reply rests on a particular sentence, that sentence is shown, and it can be drawn three ways.
-**Tree** gives the dependency arcs over the words, with the relation on each arc and an arrowhead on the word it points at, as the UD documentation draws them.
-**Grid** gives only the columns the point is about.
-**Table** gives every column the sentence fills.
-
-The assistant picks whichever fits what it is saying, and you can switch.
-A sentence nobody has parsed is not offered a tree.
-The heading of each example opens that sentence in the annotation editor.
+When a reply rests on a particular sentence, that sentence is shown, drawn one of three ways.
+**Tree** gives the dependency arcs over the words, **Grid** only the columns the point is about, and **Table** every column the sentence fills.
+The assistant picks whichever fits, and you can switch. The heading of each example opens that sentence in the annotation editor.
 
 == Files and PDFs
 
-The paperclip in the message box attaches files to a question, up to five at a time.
-Dropping a file on the message box or pasting one into it does the same.
-The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.conllu` files, and PDFs.
-A file can hold up to 4 MB of text.
-A `.conllu` file is read as text. To bring it into the project, import it.
-Files are kept with the conversation and deleted with it.
-A reply can also give you a file the assistant made, such as a cleaned table: click it under the reply to download it.
+The paperclip in the message box attaches up to five files to a question, and dropping or pasting a file does the same.
+The assistant reads tables (`.csv`, `.tsv`), text (`.txt`, `.md`), JSON, XML, `.conllu` files, and PDFs, up to 4 MB of text each.
+A `.conllu` file is only read. To bring it into the project, import it.
+A reply can also give you a file the assistant made, such as a cleaned table, to download.
 
 A PDF must have text in it, so a scan is refused.
-The assistant reads a PDF by section and by page: ask about "§9" or "page 41" and it reads that part.
-Examples set in columns keep their columns.
-Text taken from a PDF can come out wrong where the PDF's fonts are old, so check a form against the PDF before relying on it.
-
+Ask about "§9" or "page 41" and the assistant reads that part.
+Text taken from a PDF with old fonts can come out wrong, so check a form against the PDF before relying on it.
 Where the assistant can look things up on the web, it also reads a PDF from a link or a DOI pasted into a question.
-The PDF is kept with the conversation and shown under the reply, linked to where it came from.
 
-== The panel
+== The Panel
 
-The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
-It is there wherever there is a project for it to be about, and on the general screens, where it asks which project to use.
-The screens for making a project and for importing one have neither, so it is not offered there.
-A handle on the right edge of the window, halfway down, opens it too.
-The panel stays where it is as you move around.
-The page narrows to make room for it.
-The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
-It starts closed until you first open it.
-A narrow window has no room for it, and neither the button, the handle nor the panel is offered there.
+The **Assistant** button in the header, or the handle halfway down the right edge of the window, opens the assistant in a panel beside whatever you are looking at.
+The panel stays open as you move around, and can be dragged wider or narrower.
+A narrow window has no room for it.
 
-One conversation runs per project.
-The panel picks up the last one you had in the project you are in and keeps it as you move from document to document.
-Each question records where it was asked from, so a question about "this sentence" still means the right document when the conversation is read again later.
+The panel picks up your last conversation in the project you are in.
+Its history lists your other conversations, and **⤢** moves the open one to the **Assistant** tab.
+On a screen outside any project, it asks which project to use.
 
-The panel's history lists the conversations you have had in the project, with **All projects** to widen the list past it.
-Opening one from there keeps you on the screen you are on.
-**⤢**, beside it, moves the open conversation to the **Assistant** tab and closes the panel.
+A question asked on a document is about that document, unless you name another.
+**Ask**, under a sentence, puts that sentence into the question.
+Typing **@** in the message box names a sentence of the open document, or a document of the project, by what it says.
+Sentences are numbered as in the Annotate tab, and you can also name one by its `sent_id`.
 
-A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
-**Ask**, beside **Edit text** under a sentence, puts that sentence into the question, and you can take it out again before sending.
-The assistant numbers sentences as the Annotate tab does, and shows a sentence's own `sent_id` beside its number, so you can name a sentence by either.
+== Conversation Size
 
-Typing **@** in the message box names something without leaving the message: the sentences of the document you have open, and the documents of the project.
-Sentences are matched on what they say, so **@** followed by a word finds the sentence that contains it.
-Arrow keys move through the list, Enter takes the one that is highlighted, and Escape closes the list and leaves what you typed.
-An example that names a sentence of the open document scrolls the annotation editor to it rather than opening a new tab.
+The bar in the panel's header shows how full the conversation is. It fills as the conversation grows.
+Past 85 percent it turns amber, and a full conversation sends nothing more.
+**New conversation** then starts a new one with what you had typed.
 
-On a screen with no project of its own, the panel keeps the conversation it has.
-Before you have opened a project at all it asks which one to use, because the assistant reads one project at a time.
-
-A plan approved in the panel re-reads the document, so the annotation shows the result without losing your place.
-
-== Conversation size
-
-The panel's header shows how full the conversation is against two limits, the model's limit on what one turn can send and the size a conversation can be stored at, and the bar follows whichever is closer.
-Hovering over it gives both, with the counts behind them.
-A conversation fills up as it grows, because every turn sends the whole thread again and every answer is kept.
-Past 85 percent of either limit the bar turns amber and the panel says which limit is close, and a new conversation starts with room again.
-A conversation with no room for another message says it is full and sends nothing more, and **New conversation** beside the message box starts one with what you had typed.
-A message too long for the room left is not sent, and says so.
-A plan waiting in it can still be approved or discarded.
-An answer too large to store is shown once, without its plan, and marked as not saved.
-A plan of more than 200 changes keeps its first 200 once it is approved or discarded, followed by how many more it had.
-Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
-The storage limit is set by the server's operator.
-
-== Assistant availability
+== Assistant Availability
 
 The assistant is a service that your server's operator runs and picks the model for.
-When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
-Conversations already saved are unaffected and open from their own links.
+When none is connected, the tab, the button, the handle and **Ask** are not shown.
+Saved conversations still open from their own links.
 
 = Additional Features
 
@@ -564,7 +403,17 @@ Type a pattern and run it with the **Search** button or **Ctrl/Cmd+Enter**.
 Results are grouped by document. Click a match to jump straight to that sentence in the Annotate view.
 A built-in syntax reference with more examples is available on the search screen.
 
-=== Searching the enhanced graph
+=== Looking for a Word
+
+The box above the pattern finds a word without writing Grew.
+It looks in one field (form, lemma, UPOS, XPOS, dependency relation or features) for text that **contains**, **is**, or **matches** (as a regular expression) what you type.
+It writes the Grew pattern for you and runs it, so you can then edit the pattern.
+
+In features, each `Key=Value` pair is matched on its own: **contains** `Number` finds every word with a Number feature.
+A value finds text however its accents are typed.
+In a regular expression, `\w`, `\d` and `\s` cover every script, and `\p{IsArabic}` matches any character of the Arabic script, and likewise for other scripts.
+
+=== Searching the Enhanced Graph
 
 A relation that the enhanced graph adds to the tree carries Grew's `E:` prefix: `E:nsubj` is an enhanced `nsubj`.
 
@@ -573,35 +422,15 @@ A relation that the enhanced graph adds to the tree carries Grew's `E:` prefix: 
 * `V -> S`, `V -[1=nsubj]-> S` and `V -[^det]-> S` read both. Add `enhanced=yes` or `!enhanced` to a feature label to read one.
 * `V -[nsubj|E:nsubj]-> S` reads each label where it belongs.
 
-A relation of the tree that the enhanced graph leaves out or relabels is still a relation of the tree, so a pattern finds it under its plain label.
 `is_tree`, `is_projective` and an unlabelled `X ->> Y` are about the tree and ignore the added relations.
 
-A rule writes with the same labels (see <<_changing_many_sentences_at_once>>): `add_edge V2 -[E:nsubj]-> S` adds a relation to the enhanced graph, and `e.enhanced = yes` on a named edge moves it there.
-Added between two words the tree already joins, it replaces the tree's relation in the enhanced graph, exactly as drawing it in the editor does, and the preview says which relation is left out.
+=== Counting Matches
 
-=== Looking for a word
+After a search, **Count by** turns the results into a tally.
+Pick a pattern node and a field (`V.upos`, `S.lemma`, `V.FEATS`, or a named edge's `e.label`) to get a sortable table of values with how many matches each accounts for.
+Clicking a value adds it to the pattern and runs the search again.
 
-Structure needs Grew, and a word does not. The box above the pattern looks in a single field (form, lemma, UPOS, XPOS, dependency relation or features) for text that **contains**, **is**, or **matches** (as a regular expression) what you type.
-
-In features, each `Key=Value` pair is looked in on its own: **contains** `Number` finds every word with a Number feature, and **is** `Number=Sing` only that feature. In a pattern this is `W [FEATS=re"Number"]`.
-
-It does not run a search of its own: it writes the Grew pattern and hands it to the box below. So a quick lookup is the first draft of a real one. Run it, then edit the pattern it wrote.
-
-A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the feature's value, where `^` and `$` mark its start and end.
-
-In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. In a pattern, `re"..."` takes the regular expression exactly as written, so `re"\w"` and `re"\p{IsArabic}"` work as typed and `re"\."` is a full stop. Write `\"` for a quote inside it. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it.
-A token another app added is not searched until someone with Writer access opens its document.
-
-A value or a regular expression finds text however its accents are typed: `lemma="á"` finds an á typed as one character and one stored as a and an accent. An accent searched for on its own finds it where it is stored as a character of its own after its letter.
-
-=== Counting instead of reading
-
-After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, `V.FEATS`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
-Counting by `FEATS` counts each `Key=Value` pair.
-
-Clicking a value narrows the search to it. The clause goes into the pattern in the box, where you can see it and edit it, and the search re-runs. A named edge's label is the exception, and those rows are not clickable.
-
-=== Changing many sentences at once
+=== Changing Many Sentences at Once
 
 A pattern followed by a `commands` block is a rule, and the Search screen previews what it would change instead of listing matches.
 This one retags _that_ wherever it was tagged as a subordinator:
@@ -613,12 +442,10 @@ commands { X.upos = PRON }
 
 With a rule in the box the button reads **Preview changes**. A preview writes nothing.
 It lists every sentence the rule would change, grouped by document, with one line per change such as `that: upos SCONJ → PRON`.
-A sentence the rule applied to more than once shows the number of times. Click a sentence to open it in the Annotate view.
+Tick the sentences or documents you want, or use **Select all**, then press **Apply**. Anyone who can search can preview, and applying is for maintainers.
 
-Tick the sentences or whole documents you want, or use **Select all**, then press **Apply**. Applying is for maintainers. Anyone who can search can preview.
-
-A rule is applied to a sentence again and again until it no longer matches, as in Grew.
-So a rule has to stop matching what it has just changed. The rule above does, because the word is no longer `SCONJ`. A rule that adds something usually needs a `without` block that names what it adds:
+As in Grew, a rule is applied to a sentence again and again until it no longer matches.
+So a rule has to stop matching what it has just changed. One that adds something usually needs a `without` block naming what it adds:
 
 ----
 pattern { V1 -[conj]-> V2; V1 -[nsubj]-> S }
@@ -626,60 +453,45 @@ without { V2 -[E:nsubj]-> S }
 commands { add_edge V2 -[E:nsubj]-> S }
 ----
 
-A rule that matches and changes nothing, or that is still matching after 1000 applications in one sentence, stops with an error on that sentence. A sentence with an error cannot be selected, and the rest of the preview is unaffected.
+A rule that changes nothing, or is still matching after 1000 applications in one sentence, stops with an error on that sentence.
 
-The commands cover features (`X.upos = VERB`, `X.Number = D.Number`, `del_feat X.Number`), relations (`add_edge`, `del_edge`, `e.label = "obj"`, `shift`), and deleting a word (`del_node`). Words cannot be added or reordered, since they come from the text.
-A deleted word whose token carries other annotations says so on its line, for example `loudly: word deleted, with 3 annotations and 2 vocabulary links`, and **Apply** counts them before it runs.
-A rule that deletes several words counts what they share once, and a link or annotation that also covers a word that stays is counted apart as shortened.
-Several rules can be written as `rule name { ... }` blocks, which are tried in order unless a `strat main { ... }` says otherwise. The syntax reference on the Search screen lists every command with examples.
+The commands cover features (`X.upos = VERB`, `X.Number = D.Number`, `del_feat X.Number`), relations (`add_edge`, `del_edge`, `e.label = "obj"`, `shift`), and deleting a word (`del_node`).
+Words cannot be added or reordered, since they come from the text.
+Several rules can be written as `rule name { ... }` blocks. The syntax reference on the Search screen lists every command with examples.
 
 Some things to know before applying:
 
 * The changes count as yours. A rule that changes a value a parser wrote confirms it, the same as editing it by hand.
-* Grew does not require a tree, but a UD project does: one head a word, the root included, and no cycle. A sentence the rule would leave with a word of 2 heads, or with a cycle, is an error in the preview, and Apply changes the other sentences.
-* Where a vocabulary is closed (see <<_suggestions_or_rules>>), a sentence in which the rule writes a value off the list is refused, and the preview shows which value.
-* Each document is changed in one step, recorded in its history as **Rewrite:** followed by the rule names. To undo a rewrite, restore the document to the entry before it (see <<_restoring_an_earlier_state>>).
-* If someone else changes a document between your preview and your apply, that document is left untouched and the run stops there. Documents already done stay changed. The preview then runs again, so you can apply the rest.
-
-After an apply the preview runs again by itself. **No sentences to change** means the rule has nothing left to do.
+* A sentence the rule would leave with a word of two heads, or with a cycle, is an error in the preview and is not changed.
+* Where a vocabulary is closed (see <<_suggestions_or_rules>>), a sentence in which the rule writes a value off the list is refused.
+* Each document's changes are one entry in its history. To undo a rewrite, restore the document to the entry before it (see <<_restoring_an_earlier_state>>).
+* A document someone else changes between your preview and your apply is left untouched, and the preview runs again so you can apply the rest.
 
 == History
 
 Every change is recorded.
-**History** at the end of a document's tab row, on any tab, opens its **history**, where you can select an earlier point to view the document exactly as it was then.
-**Escape** closes it, and focus goes back to **History**.
-Each entry is one action as you performed it (for example "Update upos", "Create relation", or a parser run), even when it was made up of several underlying changes.
-A parser run is listed under the service's name and names the person who ran it: `Stanza UD parse (en), requested by Ana`.
-Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change. An entry of more than 100 changes lists its first 100, and **Show later actions** above them lists the next 100.
-Historical views are **read-only**, on every tab that can show them: Annotate, Export and Details.
-The Text Editor and Comments are not shown at a past state.
-**Return to current** goes back to the live document.
+**History**, at the end of a document's tab row, lists the actions taken on it, such as "Update upos", "Create relation", or a parser run with the name of the person who ran it.
+Selecting an entry shows the document as it was right after that action, and an entry made of several changes can be expanded to select each one.
+Past states are **read-only**, and **Return to current** goes back to the live document.
 
-An entry that is one of these kinds is marked with it:
+Entries of these kinds are marked with it, here and in the Activity tab:
 
 * **Import**: a file brought in.
 * **Automatic**: a parser's run, or another service's.
 * **Assistant**: an approved assistant plan.
 * **Bulk edit**: a Grew rewrite (see <<_changing_many_sentences_at_once>>).
 * **Review**: a prediction accepted as it stands.
-* **Repair**: a repair made when the document was opened.
+* **Repair**: a correction made when the document was opened.
 
-The Activity tab marks its entries the same way.
-An assistant plan that stopped partway is listed as `Assistant, partly applied:` followed by the changes it wrote.
-
-=== Restoring an earlier state
+=== Restoring an Earlier State
 
 Maintainers can put a document back the way it was.
-While viewing a historical state, choose **Restore**.
-Before anything is written, the dialog lists what would change: sentences, tokens, words, annotations in each field, and dependency relations.
-It lists them under **Removed** (made since that moment), **Brought back** (deleted since) and **Changed back**.
+While viewing a past state, choose **Restore**, and the dialog lists what would be removed, brought back, and changed back.
+Anything that comes back keeps its comments.
+A few things cannot come back, such as links to vocabulary entries that no longer exist, and the dialog names them.
 
-Restoring is one entry in the history, so the state from just before it stays available.
-The toast that confirms a restore also offers **Undo** for fifteen seconds.
-
-Whatever was deleted since the chosen moment comes back under its original identity, so comments attached to it stay attached.
-Two things cannot come back: annotations whose layer has since been deleted, and links to vocabulary entries that no longer exist.
-The dialog names these before you commit, and the toast repeats them afterwards.
+A restore is one entry in the history, so it can itself be undone the same way.
+The toast that confirms it also offers **Undo** for fifteen seconds.
 
 == Sharing and Permissions
 
@@ -689,128 +501,102 @@ Projects are shared by adding members with a role:
 * **Writer**: can edit documents and annotations.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
-Add members from the project's **Access** settings by searching for a name, matched anywhere in it, or an email address, matched from its start. Type `@` to match anywhere in an email address.
+Add members from the project's **Access** settings by searching for a name or an email address.
 When you only have Reader access, the editor shows everything but its controls are inert.
-When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
-A member who was removed is told `You no longer have access to this project.`
-When someone deletes a document you have open, your next edit on it is not saved, and the page turns read-only for every role, administrators included, with `This document was deleted.`
+If a maintainer makes you a Reader or removes you while you have a document open, the page turns read-only within a minute.
 
 Each member also has a **Review work** checkbox, independent of their role.
 Tick it and everything that person enters is marked as needing review until someone else confirms it (see <<_machine_vs_human_annotations>>).
-The mark is shared with every Plaid app on the project.
 
 == Settings
 
-A project's maintainers can tailor the annotation scheme from the project's **Settings** tab:
+A project's maintainers tailor the annotation scheme from the project's **Settings** tab.
 
-* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Save** writes only the settings you changed. If another maintainer changed one of them since you opened the tab, nothing is saved. The settings changed there show what is stored, the message names them, and your other changes stay on the tab for the next **Save**. Leaving the tab with a change not saved asks first.
-* **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
+**UD settings** holds the controlled vocabularies (UPOS, XPOS and dependency relations), their **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** for <<_metadata>>.
+Every vocabulary starts from the standard universal set and can be extended or replaced.
+**Save** writes only what you changed. If another maintainer changed the same setting since you opened the tab, nothing is saved and the message names the setting.
 
-=== Suggestions or rules
+**General** holds the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion.
+The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. A connected parser starts on it, and **Tokenize** uses it unless a more specific tokenizer locale is set.
 
-A vocabulary offers its values and accepts anything else. That is the default.
+=== Suggestions or Rules
 
-Where a project wants the list to be binding, the switch beneath it makes it so. It reads **Refuse tags outside this list** for UPOS and XPOS, **Refuse relations outside this list** for dependency relations, and **Refuse features outside this list** for the feature inventory. What refusing means differs by field:
+A vocabulary suggests its values and accepts anything else.
+To make a list binding, turn on the switch beneath it: **Refuse tags outside this list** for UPOS and XPOS, **Refuse relations outside this list** for dependency relations, or **Refuse features outside this list** for features.
 
 * **UPOS** and **XPOS**: the tag must be on the list.
-* **Dependency relations**: the BASE relation must be on the list. A subtype is judged by its base, so `nsubj:pass` is allowed wherever `nsubj` is, and a project does not have to list every subtype its language uses.
+* **Dependency relations**: the base relation must be on the list, so `nsubj:pass` is allowed wherever `nsubj` is.
 * **Features**: the key must be in the inventory and the value in that key's list. A key listed with no values accepts any value.
 
-A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. A closed UPOS, XPOS or relation list is also enforced by the server, on every write. A value off the list is refused, even from a page opened before the list was closed, and the cell shows the stored value again with a message naming the value. An approved assistant plan and a script are refused the same way. Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a parser's predictions nobody has accepted yet. An import names the values it brought in that are off a closed list. **Accept predictions** leaves a prediction that is off the list unreviewed, names it, and accepts the rest. A closed feature inventory is enforced only where a person types. Spaces at either end of a value are ignored when it is checked.
+A value off a closed list is refused where you type it, and from an assistant plan or a script.
+Values from an import, a copy or a restore, and a parser's unconfirmed predictions, are kept anyway, and the **Validation** tab lists them.
+**Accept predictions** skips a prediction that is off the list and names it.
 
-Closing a list, or removing a value from a closed one, is refused while any other value in the project's annotations is off it, and the message names one of them. Change them first, or add them to the list.
+A list cannot be closed, or a value removed from a closed one, while the project's annotations still use a value off it.
+The message names one such value. Change those values first, or add them to the list.
 
-=== Value definitions
+=== Value Definitions
 
-Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs. Edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
-
-Features are described on the whole pair, `Number=Plur` rather than `Plur`. A key with no values listed has no pairs to describe.
+Each value can carry a one-line definition, shown beside it while you pick one.
+The 17 UPOS tags and the 37 universal relations come with theirs, and you can edit them or describe your own values under the list.
+Features are described as whole pairs, such as `Number=Plur`.
 
 == Comments
 
-A document has a **Comments** tab: every thread on it, the document's own first, then one per sentence.
+A document's **Comments** tab shows every thread on it, the document's own first, then one per sentence.
+Comments are for discussing the work. They are not part of the data, so they do not appear in an export or in the history.
+A comment can be attached to a **sentence** or to the **document**, and a note about one word belongs in its sentence's thread.
 
-Comments are for talking about the work, not annotating it. They are not part of the data: they never change a document, they do not appear in an export, and they are not in its history.
+In the **Annotate** view, a badge under each sentence's grid shows how many comments it has and opens the thread in place.
+Bodies are Markdown. You may edit and delete your own comments, a maintainer may delete anyone's, and Readers can read but not write.
+Comments from other people appear as they are written.
 
-They can be attached to a **sentence** or the **document**. There are no per-word threads, and a note about one word belongs in the sentence's thread where the context is.
-
-From the **Annotate** view, each sentence carries a small badge under its grid: the number of comments on it, or an invitation to write the first. It opens the thread in place, so a remark can be made without leaving the text.
-
-A thread is collapsed to its latest comment, and opens on click. Bodies are Markdown. You may edit and delete your own, and a maintainer may delete anyone's. Readers can read comments but not write them.
-
-A comment **outlives what it is about**. If the sentence it hangs on is merged away or re-segmented, the comment stays, marked **Outdated**, under the caption it was posted with. Those are shown separately from the current ones.
-
-A project shared with another app can hold threads on things this editor does not show, such as a word's gloss. They are listed under **On other layers** while what they are about still exists. **Outdated** holds only threads whose subject was deleted.
-
-While a thread is open, comments from other people appear as they are written.
+When the sentence a comment is on is merged away or re-segmented, the comment is kept and marked **Outdated**.
+A project shared with another app can hold threads on things this editor does not show. They are listed under **On other layers**.
 
 == Validation
 
-Maintainers get a **Validation** tab: every value the project has stored that its own vocabularies do not list, with how many times it occurs.
-
-An open list takes any value, and a closed one still keeps values from an import, a copy or a restore, and a parser's predictions nobody has accepted (see <<_suggestions_or_rules>>). This is where you see them.
-
-Each value opens to the sentences it occurs in, and each of those is a link straight to that sentence in the editor. Features open the same way, on the whole `Key=Value` pair.
-
+Maintainers get a **Validation** tab listing every value the project uses that its vocabularies do not list, with how many times each occurs.
+Each value opens to the sentences it occurs in, each a link to that sentence in the editor.
 Where the list is incomplete rather than the values wrong, **Add N values** puts them on it.
 
-Two things it does not report: a relation subtype whose base is listed, since `nsubj:pass` is already legal wherever `nsubj` is, and a feature value under a key listed with no values, since such a key accepts any value.
+A relation subtype whose base is listed is not reported, nor is a feature value under a key listed with no values.
 
 == Activity
 
-A project's maintainers get an **Activity** tab: who has been working on it, and on what.
-
-It shows a tally per person over a window (7, 30 or 90 days, or all time) with the changes they made, the documents they touched, and when they were last seen, alongside the members who have not appeared in that window at all. Below it is the project's own history, newest first, with each entry linking to the document it changed.
+A project's maintainers get an **Activity** tab showing who has been working on it, and on what.
+It tallies each person's changes and documents over the last 7, 30 or 90 days, or all time, with when they were last seen.
+Below that is the project's history, newest first, each entry linking to the document it changed.
 
 == Administration
 
-Server administration lives in one area, in Plaid IGT. Administrators reach it from **Admin** in the header.
-
-It covers accounts (creating people, deactivating them, issuing password-reset links), invitations, every project on the server and who is on each, the services connected, and server-wide activity. A project set up for Universal Dependencies is labelled **UD** in its project list, and its name opens it back here.
+Server administration lives in Plaid IGT, and administrators reach it from **Admin** in the header.
+It covers accounts, invitations, every project on the server and its members, the connected services, and server-wide activity.
+A project set up for Universal Dependencies is labelled **UD** there, and its name opens it in Plaid UD.
 
 == Services
 
-Plaid UD can call external **services** for certain tasks.
-A service is a small program, often a Python script wrapping a model, that connects to your project when it starts and advertises which task it handles.
-Once connected, it appears wherever its task is offered, and a maintainer can make it the default for that task under **Settings → Services**.
-Some tasks ship with a built-in method that needs no service at all.
+Plaid UD can call external **services** for two tasks, tokenizing and parsing.
+A service is a small program, often a Python script wrapping a model, that connects to your project and appears wherever its task is offered.
+A maintainer can make one the default for its task under **Settings → Services**.
 
-Both of them work the same way.
-A button names the run, and it opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
-A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
+* **Tokenization** splits the saved text into sentences, tokens and words. The built-in method uses the browser's own segmentation and is always available.
+* **Parsing** fills in lemmas, parts of speech, features and dependency relations. There is no built-in method, so it needs a connected service, such as the bundled Stanza parser. Sentences a person has annotated are left alone unless you say otherwise.
 
-A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running.
-Only one run goes at a time.
+**Tokenize** and **Parse** each open a dialog with the **Method** to use and its options.
+While a run writes to a document, the document is read-only and says so at the top.
+A run keeps going if you close the dialog or the tab, and reopening the document picks it up.
+**Stop** ends a run, and whatever it wrote stays. A parse that stops partway can be run again to finish.
 
-A run outlives the page that started it.
-Close the tab or reload it and the service carries on. Reopen the document and the run is picked up where it got to, editing still paused, and its result lands as usual.
-A run that has been finished and collected, or that is more than fifteen minutes past, is gone, and the document simply opens with whatever it wrote.
-**Stop**, on the banner or in the dialog, ends a run.
-It takes effect at the next point the work reports progress, and a run part-way through writing always finishes writing, so a stop never leaves half a document.
-Whatever it wrote stays.
-
-If the page loses contact with a service, because the connection dropped or the service went quiet for a long time, it says so rather than reporting the run as failed.
-The service is still working. Reload the document to pick the run back up.
-When the server does not answer one of a run's writes, the run says that the change may or may not have been saved.
-
-There are two integration points, both in the Text Editor (see <<_entering_and_tokenizing_text>>), and Parse is also in the Annotate toolbar:
-
-* **Tokenization**: splits the saved text into sentences, tokens and words. The built-in uses the browser's own segmentation and is always available. A service can replace it with segmentation of its own.
-* **Parsing**: fills in lemmas, parts of speech, features and dependency relations. There is no built-in, so this needs a connected service. The bundled example wraps Stanza. Where the service offers a language option, it opens on the project's language, and sentences a person has annotated are left alone unless you say otherwise. A parse writes the document a group of sentences at a time. If it stops partway, each sentence has its previous annotation or its whole new one, and the message says what was written. Parse again to finish: a sentence with no words yet is tokenized and parsed then.
-
-Every annotation and relation a service produces is stamped unverified, in the same violet state as any other machine value (see <<_machine_vs_human_annotations>>), so you stay in control of what gets confirmed.
-Where a service draws the sentence and token boundaries, those are not marked. History names the run that drew them.
-A service reports what it could not do, and a run that changed nothing says so rather than reporting success.
-
-Writing a service of your own is not hard.
-The link:manual.html#_services[Services chapter of the Plaid manual] explains how.
+Everything a service produces is marked in violet until a person confirms it (see <<_machine_vs_human_annotations>>).
+A run that changed nothing says so.
+The link:manual.html#_services[Services chapter of the Plaid manual] explains how to write a service of your own.
 
 == Scripting
 
 From the project's **Access** settings, and from your user profile, you can create named **API tokens** for scripts and services.
 A token carries your permissions and does not expire, and actions taken with one are attributed to it in the history.
-A token cannot change a password, create or revoke API tokens, make an invitation link of any kind or a password-reset link, or create an account.
-Do these signed in.
+A token cannot change a password, create an account, create or revoke tokens, or make an invitation or password-reset link. Do these signed in.
 
 For writing your own scripts against a project, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.
 
@@ -820,7 +606,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 The shortcuts below are fixed and cannot be rebound.
 The editor carries a short version of this under **Gestures and marks**, above the first sentence.
 
-== Annotation grid
+== Annotation Grid
 
 [cols="1,3"]
 |===
@@ -839,7 +625,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **↑** out of the top row | Jump to this word's relation label in the tree.
 |===
 
-== Dependency tree
+== Dependency Tree
 
 [cols="1,3"]
 |===
