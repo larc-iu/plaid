@@ -8,6 +8,11 @@
 import { PLAID_NAMESPACE } from './roles.js';
 import { PROVENANCE_KEYS } from './provenance.js';
 
+/**
+ * One metadata edit: the body of a metadata PATCH is a list of these.
+ * @typedef {{op: "set", path: string[], value: any} | {op: "delete", path: string[]}} MetadataOp
+ */
+
 const RESERVED_KEYS = new Set([PLAID_NAMESPACE, ...PROVENANCE_KEYS]);
 
 /**
@@ -49,8 +54,8 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
  * The ops that set each top-level key of `fragment`, deleting a key whose
  * value is null. This is how a provenance fragment (verifyOnEdit,
  * contributeOnEdit, ...) is sent as a patch.
- * @param {Object|null|undefined} fragment
- * @returns {Array<{op: string, path: string[], value?: any}>}
+ * @param {object|null|undefined} fragment
+ * @returns {MetadataOp[]}
  */
 export const metadataOps = (fragment) =>
   Object.entries(fragment || {}).map(([k, v]) =>
@@ -84,9 +89,9 @@ const applyOp = (node, path, depth, o) => {
  * set or delete, a path through a non-object, or a first key that is blank,
  * over 200 characters or holds a control character. The server's caps on
  * depth, key count, string length and size are not checked here.
- * @param {Object|null|undefined} metadata
- * @param {Array<{op: string, path: string[], value?: any}>} ops
- * @returns {Object}
+ * @param {object|null|undefined} metadata
+ * @param {MetadataOp[]} ops
+ * @returns {Record<string, any>}
  */
 export const applyMetadataOps = (metadata, ops) =>
   (ops || []).reduce((m, o) => {
@@ -111,9 +116,9 @@ export const applyMetadataOps = (metadata, ops) =>
  * sending those ops, refused where the server would refuse them. How an app
  * mirrors a provenance stamp (verifyOnEdit, contributeOnEdit, ...) on the row
  * it shows. Returns a new object.
- * @param {Object|null|undefined} metadata
- * @param {Object|null|undefined} fragment
- * @returns {Object}
+ * @param {object|null|undefined} metadata
+ * @param {object|null|undefined} fragment
+ * @returns {Record<string, any>}
  */
 export const mergeMetadata = (metadata, fragment) =>
   applyMetadataOps(metadata, metadataOps(fragment));

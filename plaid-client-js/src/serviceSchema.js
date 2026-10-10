@@ -93,6 +93,72 @@ export const TASKS = Object.freeze({
 });
 
 /**
+ * One choice for an `enum` or `multiselect` service parameter.
+ * @typedef {{value: string, label: string}} ServiceParamOption
+ */
+
+/**
+ * A single user-controllable argument a service advertises.
+ * @typedef {object} ServiceParam
+ * @property {string} key Key the value is sent under in the request payload.
+ * @property {string} label
+ * @property {"string" | "number" | "boolean" | "enum" | "multiselect" | "field"} type
+ * @property {string} [description]
+ * @property {any} [default]
+ * @property {boolean} [required]
+ * @property {ServiceParamOption[]} [options] Required for `enum` and `multiselect`.
+ * @property {number} [min] `number` only.
+ * @property {number} [max] `number` only.
+ * @property {number} [step] `number` only.
+ * @property {boolean} [slider] `number` only: render as a slider to drag
+ *   rather than a box to type in.
+ * @property {string} [placeholder] `string` only.
+ * @property {boolean} [multiline] `string` only.
+ * @property {"Sentence" | "Word" | "Morpheme"} [scope] `field` only: the
+ *   scope of the project's annotation fields the value names one of. A
+ *   `field` value is a string everywhere else.
+ */
+
+/**
+ * A service's standardized self-description (lives in `extras`).
+ * @typedef {object} ServiceExtras
+ * @property {number} [schemaVersion]
+ * @property {string[]} [tasks] Tasks this service serves, from the TASKS vocabulary.
+ * @property {string} [summary] Rich human description (Markdown), beyond the
+ *   short `description`.
+ * @property {ServiceParam[]} [parameters] Ordered parameter schema, rendered
+ *   into a form by the UI.
+ */
+
+/**
+ * What a service says about itself when it registers.
+ * @typedef {object} ServiceInfo
+ * @property {string} serviceId
+ * @property {string} serviceName
+ * @property {string} description
+ * @property {ServiceExtras & Record<string, any>} [extras]
+ */
+
+/**
+ * A service as `messages.discoverServices` lists it.
+ * @typedef {object} DiscoveredService
+ * @property {string} serviceId
+ * @property {string} serviceName
+ * @property {string} description
+ * @property {ServiceExtras & Record<string, any>} extras
+ * @property {boolean} online True while the service holds an open request
+ *   channel, false for a previously seen offline service.
+ * @property {string | null} [lastSeenAt] ISO-8601 stamp of when the service
+ *   was last seen alive, or null when never stored.
+ * @property {string} [runnerName] Online services only: the display name of
+ *   the account that runs the service.
+ * @property {boolean} [runByYou] Online services only: the caller runs it.
+ * @property {boolean} [servesYou] Online services only: it would take the
+ *   caller's requests on this project. A delegating service serves members
+ *   other than its runner only where the runner is a maintainer or an admin.
+ */
+
+/**
  * Does `service` serve `task`, as its declared `extras.tasks` says?
  * @param {{serviceId?: string, extras?: {tasks?: string[]}}} service
  * @param {string} task one of TASKS
@@ -105,9 +171,9 @@ export function servesTask(service, task) {
 
 /**
  * The discovered services that serve `task`.
- * @param {Array} services result of client.messages.discoverServices()
+ * @param {DiscoveredService[] | undefined} services result of client.messages.discoverServices()
  * @param {string} task one of TASKS
- * @returns {Array}
+ * @returns {DiscoveredService[]}
  */
 export function filterServicesByTask(services, task) {
   return (services || []).filter((s) => servesTask(s, task));
@@ -115,8 +181,8 @@ export function filterServicesByTask(services, task) {
 
 /**
  * The parameter schema a service declares (ordered array), or [].
- * @param {{extras?: {parameters?: Array}}} service
- * @returns {Array}
+ * @param {{extras?: {parameters?: ServiceParam[]}}} service
+ * @returns {ServiceParam[]}
  */
 export function getParamSchema(service) {
   const params = service?.extras?.parameters;
@@ -169,8 +235,8 @@ function defaultForParam(param) {
 
 /**
  * Default values keyed by param key — the initial form state.
- * @param {Array} schema getParamSchema(service)
- * @returns {Object} { [key]: defaultValue }
+ * @param {ServiceParam[]} schema getParamSchema(service)
+ * @returns {Record<string, any>} { [key]: defaultValue }
  */
 export function buildDefaultValues(schema) {
   const out = {};
@@ -185,9 +251,9 @@ export function buildDefaultValues(schema) {
  * Coerce/validate raw form values against the schema. Returns the cleaned
  * values (keyed by param key, ready to merge into the request payload) plus any
  * validation errors keyed by param key. Unknown keys in `raw` are dropped.
- * @param {Array} schema getParamSchema(service)
- * @param {Object} raw current form values
- * @returns {{values: Object, errors: Object}}
+ * @param {ServiceParam[]} schema getParamSchema(service)
+ * @param {Record<string, any>} raw current form values
+ * @returns {{values: Record<string, any>, errors: Record<string, string>}}
  */
 export function coerceParamValues(schema, raw) {
   const values = {};

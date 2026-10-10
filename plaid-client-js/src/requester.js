@@ -15,12 +15,29 @@
 // read. When it cannot be read the id stands in for it, and with no requester
 // at all the label is left as it was and nothing is stored.
 
+/**
+ * The person who asked for one service run. Both fields are null when nobody
+ * asked.
+ * @typedef {object} Requester
+ * @property {string | null} id
+ * @property {string | null} name
+ * @property {(text: string) => string} label `"<text>, requested by <name>"`,
+ *   or `text` when nobody asked.
+ * @property {() => ({id: string, name: string | null} | null)} record
+ *   `{ id, name }` for a stored report, or null when nobody asked.
+ * @property {(detail?: Record<string, any>) => Record<string, any>} detail A
+ *   machine stamp's `provDetail` with `requestedBy: <id>` added.
+ */
+
 /** The key a run's stored record names its requester under. */
-export const REQUESTED_BY = "requestedBy";
+export const REQUESTED_BY = /** @type {const} */ ("requestedBy");
 
 /**
  * The person who asked for one run: `id` is their account (their email),
  * `name` how they are shown. Both are null when nobody asked.
+ * @param {string | null} [id]
+ * @param {string | null} [name]
+ * @returns {Requester}
  */
 export function makeRequester(id = null, name = null) {
   return {
@@ -38,8 +55,9 @@ export function makeRequester(id = null, name = null) {
 /**
  * The requester of one request, from the `requesterId` core put in its data,
  * with their display name read through `client`.
- * @param {object} client - A PlaidClient (only `users.get` is used)
- * @param {object} data - The request data a `serve` handler receives
+ * @param {{users: {get(id: string): Promise<any>}}} client - A PlaidClient (only `users.get` is used)
+ * @param {any} data - The request data a `serve` handler receives
+ * @returns {Promise<Requester>}
  */
 export async function requesterOf(client, data) {
   const id = data && typeof data === "object" ? data.requesterId || null : null;

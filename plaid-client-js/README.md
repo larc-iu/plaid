@@ -33,3 +33,7 @@ A page served by Plaid, for example from the folder set as `static_resources_pat
 
 - [Manual](https://larc-iu.github.io/plaid/manual.html), which covers the API and its concepts.
 - [API reference](https://larc-iu.github.io/plaid/api-js.html) for this client.
+
+## Types
+
+The type declarations are generated from the JSDoc in `src/` by `npm run types` (TypeScript's `tsc`), which `npm pack` runs. The JSDoc is their only source.

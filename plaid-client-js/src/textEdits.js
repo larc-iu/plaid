@@ -18,6 +18,19 @@
  * `plaid_client.text_edits` is the twin of this module.
  */
 
+/**
+ * One op as `PATCH /texts/:id` takes it. Each index is in the body the ops
+ * before it left.
+ * @typedef {{type: "insert", index: number, value: string}
+ *   | {type: "delete", index: number, value: number}
+ *   | {type: "replace", index: number, length: number, value: string}} TextEditOp
+ */
+
+/**
+ * Old-body code points [start, end) give way to `value`.
+ * @typedef {{start: number, end: number, value: string}} TextGap
+ */
+
 const codePoints = (s) => [...s];
 
 // The last body split into code points, kept: an edit log composes the same
@@ -27,7 +40,11 @@ const codePoints = (s) => [...s];
 let lastBody = null;
 let lastPoints = Object.freeze([]);
 
-/** The code points of `body`, as a frozen array shared with other callers. */
+/**
+ * The code points of `body`, as a frozen array shared with other callers.
+ * @param {string} body
+ * @returns {readonly string[]}
+ */
 export function bodyCodePoints(body) {
   if (body !== lastBody) {
     lastPoints = Object.freeze(codePoints(body));
@@ -112,6 +129,9 @@ function cutAt(segs, at) {
  * is kept between two gaps). Old text deleted and typed back is typed text,
  * and a gap whose value is the old text it removes is dropped. Throws on a
  * malformed or out-of-bounds op.
+ * @param {string} body
+ * @param {TextEditOp[]} ops
+ * @returns {TextGap[]}
  */
 export function composeTextEdits(body, ops) {
   const old = bodyCodePoints(body);
@@ -171,6 +191,8 @@ function mergeTyped(segs) {
  * Gaps (old-body coordinates, sorted, not overlapping) as running ops: an
  * insert where a gap removes nothing, a delete where it types nothing, and a
  * replace otherwise.
+ * @param {TextGap[]} gaps
+ * @returns {TextEditOp[]}
  */
 export function gapsToOps(gaps) {
   const ops = [];
@@ -193,6 +215,9 @@ export function gapsToOps(gaps) {
 /**
  * `body` with `ops` applied in turn (running coordinates, code points).
  * Throws on a malformed or out-of-bounds op.
+ * @param {string} body
+ * @param {TextEditOp[]} ops
+ * @returns {string}
  */
 export function applyTextOps(body, ops) {
   let chars = codePoints(body);

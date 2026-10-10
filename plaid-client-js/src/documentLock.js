@@ -39,10 +39,18 @@ import { uuidv4 } from "./ids.js";
  * landed while the lock was gone.
  */
 export class DocumentLockLost extends Error {
+  /**
+   * @param {string} message
+   * @param {string} documentId
+   * @param {unknown} [cause]
+   */
   constructor(message, documentId, cause) {
     super(message);
+    /** @type {"DocumentLockLost"} */
     this.name = "DocumentLockLost";
+    /** @type {string} */
     this.documentId = documentId;
+    /** @type {unknown} */
     this.cause = cause;
   }
 }
@@ -101,7 +109,10 @@ export class LockKeeper {
     this._stopped = false;
     this._wake = null;
     this._running = null;
-    /** The `DocumentLockLost` this keeper raised, or null. */
+    /**
+     * The `DocumentLockLost` this keeper raised, or null.
+     * @type {DocumentLockLost | null}
+     */
     this.lost = null;
   }
 
@@ -193,18 +204,31 @@ export class LockKeeper {
  * between steps of work that has not written anything yet.
  */
 export class DocumentLock {
+  /**
+   * @param {string} documentId
+   * @param {LockKeeper | null} keeper
+   * @param {string | null} [lockId]
+   */
   constructor(documentId, keeper, lockId = null) {
+    /** @type {string} */
     this.documentId = documentId;
-    /** The holder id the acquire answered with. */
+    /**
+     * The holder id the acquire answered with.
+     * @type {string | null}
+     */
     this.lockId = lockId;
     this._keeper = keeper;
   }
 
-  /** The `DocumentLockLost` if the lock lapsed, else null. */
+  /**
+   * The `DocumentLockLost` if the lock lapsed, else null.
+   * @returns {DocumentLockLost | null}
+   */
   get lost() {
     return this._keeper ? this._keeper.lost : null;
   }
 
+  /** Throw if the lock lapsed. Call it between steps that have not written. */
   raiseIfLost() {
     if (this.lost) throw this.lost;
   }

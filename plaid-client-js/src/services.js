@@ -198,6 +198,49 @@ export function reportRequestEvent(client, projectId, requestId, body) {
 const PERMANENT_STATUSES = new Set([400, 401, 403, 404, 405, 422]);
 
 /**
+ * The cancellation half of a responseHelper, on its own.
+ * @typedef {object} CancelScope
+ * @property {boolean} cancelled True once the requester has asked this request
+ *   to stop.
+ * @property {() => void} raiseIfCancelled Stop here if the requester has asked
+ *   the request to stop.
+ * @property {<T>(fn: () => T | Promise<T>) => Promise<T>} critical Run `fn` as
+ *   a stretch that must finish once begun, usually the writes.
+ */
+
+/**
+ * What a `serve` handler gets for each request.
+ * @typedef {CancelScope & {
+ *   requestId: string,
+ *   requesterId: string | null,
+ *   progress(percent: number, message: string, extra?: Record<string, any>): void,
+ *   complete(data: any): void,
+ *   stopped(data?: any): void,
+ *   error(error: string | Error): void,
+ * }} ResponseHelper `progress` is also a cancellation checkpoint: it throws
+ *   `ServiceCancelled` once a stop has been asked for. `stopped` ends the
+ *   request because it was asked to stop, and its result carries `stopped: true`.
+ */
+
+/**
+ * A connection-state transition of a service registration. "stopped": the
+ * server refused the channel for a reason retrying cannot fix (a revoked
+ * token, no write access, no such project), which ends the registration.
+ * @typedef {"registered" | "reconnected" | "disconnected" | "stopped"} ServiceStatusEvent
+ */
+
+/**
+ * What `serve` returns.
+ * @typedef {object} ServiceRegistration
+ * @property {() => void} stop
+ * @property {() => boolean} isRunning Still serving, including while retrying
+ *   a channel through a server restart.
+ * @property {() => boolean} isConnected Channel open right now, so the server
+ *   sees this service as online.
+ * @property {import("./serviceSchema.js").ServiceInfo & {extras: any}} serviceInfo
+ */
+
+/**
  * Register a service and handle incoming work requests.
  *
  * Opens the service's dedicated request channel — which registers it for
@@ -207,16 +250,15 @@ const PERMANENT_STATUSES = new Set([400, 401, 403, 404, 405, 422]);
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
- * @param {Object} serviceInfo - {serviceId, serviceName, description}
- * @param {function} onServiceRequest - Handler callback (data, responseHelper)
- * @param {Object} extras - Optional additional metadata
- * @param {function} [onStatus] - Optional callback (event, projectId, detail) for
+ * @param {import("./serviceSchema.js").ServiceInfo} serviceInfo - {serviceId, serviceName, description}
+ * @param {(data: any, responseHelper: ResponseHelper) => void} onServiceRequest - Handler callback (data, responseHelper)
+ * @param {Object} [extras] - Optional additional metadata
+ * @param {((event: ServiceStatusEvent, projectId: string, detail?: string) => void) | null} [onStatus] - Optional callback (event, projectId, detail) for
  *   connection-state transitions: 'registered', 'reconnected', 'disconnected',
  *   and 'stopped' when the server refuses the channel for a reason retrying
  *   cannot fix (see PERMANENT_STATUSES), which ends the registration.
  *   Called once per transition, not once per retry.
- * @returns {Object} ServiceRegistration with .stop(), .isRunning(), .isConnected(),
- *   .serviceInfo
+ * @returns {ServiceRegistration}
  */
 export function serve(client, projectId, serviceInfo, onServiceRequest, extras = {}, onStatus = null) {
   const { serviceId, serviceName, description = '' } = serviceInfo;
@@ -577,6 +619,8 @@ export class ServiceCancelled extends Error {
  * The cancellation half of a responseHelper: a flag, a depth counter, and one
  * rule about when a checkpoint may raise. Split from the transport so it can
  * be reasoned about on its own. Mirrors `CancelScope` in the Python client.
+ * @param {() => boolean} isCancelled
+ * @returns {CancelScope}
  */
 export function createCancelScope(isCancelled) {
   // Depth of nested `critical()` blocks; while non-zero, a checkpoint will

@@ -13,16 +13,18 @@
 (defn- body-str [{:keys [body]}]
   (when (some? body) (slurp body)))
 
-(defn- with-client-handler [f]
-  (let [prop middleware/client-js-dir-property
-        before (System/getProperty prop)]
-    (System/setProperty prop client-dir)
-    (try
-      (f (middleware/wrap-client-js (constantly {:status 404 :body "fallthrough"})))
-      (finally
-        (if before
-          (System/setProperty prop before)
-          (System/clearProperty prop))))))
+(defn- with-client-handler
+  ([f] (with-client-handler client-dir f))
+  ([dir f]
+   (let [prop middleware/client-js-dir-property
+         before (System/getProperty prop)]
+     (System/setProperty prop dir)
+     (try
+       (f (middleware/wrap-client-js (constantly {:status 404 :body "fallthrough"})))
+       (finally
+         (if before
+           (System/setProperty prop before)
+           (System/clearProperty prop)))))))
 
 (defn- get-uri [handler uri]
   (handler {:request-method :get :uri uri}))
@@ -36,11 +38,33 @@
             "a module script needs a JavaScript type or the browser refuses it")
         (is (= "no-cache" (get-in r [:headers "Cache-Control"])))
         (is (= (slurp (io/file client-dir "src/index.js")) (body-str r))
-            "the entry is the package's src/index.js as it is"))
-      (let [r (get-uri handler "/client/plaid-client.d.ts")]
-        (is (= 200 (:status r)))
-        (is (= "text/plain; charset=utf-8" (get-in r [:headers "Content-Type"])))
-        (is (= (slurp (io/file client-dir "index.d.ts")) (body-str r)))))))
+            "the entry is the package's src/index.js as it is")))))
+
+(deftest serves-the-generated-declarations
+  ;; The declarations are generated from the JSDoc when the package is built,
+  ;; beside each module in src/, so a checkout has none: a package dir made
+  ;; here stands in for a built one.
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory
+                      "client-js" (make-array java.nio.file.attribute.FileAttribute 0)))
+        src (io/file dir "src")]
+    (try
+      (.mkdirs src)
+      (spit (io/file src "index.js") "export {};\n")
+      (spit (io/file src "index.d.ts") "export declare const entry: 1;\n")
+      (spit (io/file src "http.d.ts") "export declare const http: 2;\n")
+      (with-client-handler (str dir)
+        (fn [handler]
+          (let [r (get-uri handler "/client/plaid-client.d.ts")]
+            (is (= 200 (:status r)))
+            (is (= "text/plain; charset=utf-8" (get-in r [:headers "Content-Type"])))
+            (is (= "export declare const entry: 1;\n" (body-str r))))
+          (is (= "export declare const http: 2;\n"
+                 (body-str (get-uri handler "/client/http.d.ts")))
+              "a module's types are served beside it, for the entry's imports")
+          (doseq [uri ["/client/index.d.ts" "/client/nope.d.ts" "/client/src/index.d.ts"]]
+            (is (= "fallthrough" (:body (get-uri handler uri))) uri))))
+      (finally
+        (doseq [f (reverse (file-seq dir))] (.delete ^java.io.File f))))))
 
 (deftest every-relative-import-resolves
   (testing "each module a client module imports is served beside the entry"

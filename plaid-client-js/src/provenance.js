@@ -151,6 +151,8 @@ export const stampInferred = (source, { prob, detail } = {}) => ({
  * import carrying upstream human approval, or a guess written only on
  * explicit user confirmation). Takes the same optional prediction extras
  * as stampInferred.
+ * @param {string} source
+ * @param {{prob?: number, detail?: Record<string, any>}} [extras]
  */
 export const confirmedInferred = (source, extras = {}) => ({
   ...stampInferred(source, extras),
@@ -179,7 +181,7 @@ export const stampContributed = (userId) => ({
 
 /**
  * Classify an entity's metadata into one of PROV_STATES.
- * @param {Object|null|undefined} metadata
+ * @param {object|null|undefined} metadata
  * @returns {'human'|'machine'|'contributed'|'verified'}
  */
 export const provState = (metadata) => {
@@ -193,6 +195,7 @@ export const provState = (metadata) => {
  * work, PROV.INFERRED for a machine's, PROV.CONTRIBUTED for a contributor's.
  * What a verified entity's tooltip needs, since provState folds both
  * origins into 'verified'.
+ * @param {object|null|undefined} metadata
  * @returns {null|'inferred'|'contributed'}
  */
 export const provOrigin = (metadata) => {
@@ -203,12 +206,16 @@ export const provOrigin = (metadata) => {
 /**
  * Whether this entity is machine-made and not yet verified — the material
  * machine writers may replace. Complement of isProtected.
+ * @param {object|null|undefined} metadata
+ * @returns {boolean}
  */
 export const isMachine = (metadata) => provState(metadata) === PROV_STATES.MACHINE;
 
 /**
  * Whether a machine writer must leave this entity alone (write-contract
  * rule 2): true for human-made, contributed and verified material.
+ * @param {object|null|undefined} metadata
+ * @returns {boolean}
  */
 export const isProtected = (metadata) => !isMachine(metadata);
 
@@ -216,6 +223,8 @@ export const isProtected = (metadata) => !isMachine(metadata);
  * Whether a verifier still has to look at this entity: machine-made or
  * contributed, and not yet confirmed. What review UIs mark and sweep, and
  * what a verifier's confirmation gesture acts on.
+ * @param {object|null|undefined} metadata
+ * @returns {boolean}
  */
 export const needsReview = (metadata) => {
   const s = provState(metadata);
@@ -226,6 +235,7 @@ export const needsReview = (metadata) => {
  * The metadata fragment a VERIFIER's edit of this entity should merge in
  * (write-contract rule 3): PROV_CONFIRMED when the entity needs review,
  * else null (nothing to do).
+ * @param {object|null|undefined} metadata
  */
 export const verifyOnEdit = (metadata) => (needsReview(metadata) ? PROV_CONFIRMED : null);
 
@@ -235,10 +245,11 @@ export const verifyOnEdit = (metadata) => (needsReview(metadata) ? PROV_CONFIRME
  * so an earlier confirmation is dropped (send it with metadataOps, which
  * turns a null into a delete, or apply it locally with mergeMetadata). Prediction extras a machine
  * recorded stay, as history.
- * @param {Object|null|undefined} metadata - unused today; the fragment is
+ * @param {object|null|undefined} metadata - unused today; the fragment is
  *   the same whatever the entity was, and the parameter keeps the shape of
  *   verifyOnEdit so callers can swap one for the other
  * @param {string} userId
+ * @returns {{prov: "contributed", provSource: string, provConfirmed: null}}
  */
 // eslint-disable-next-line no-unused-vars
 export const contributeOnEdit = (metadata, userId) => ({
@@ -246,10 +257,18 @@ export const contributeOnEdit = (metadata, userId) => ({
   [PROV.confirmedKey]: null,
 });
 
-/** Canonical provSource for a service: 'service:<serviceId>'. */
+/**
+ * Canonical provSource for a service: 'service:<serviceId>'.
+ * @param {string} serviceId
+ * @returns {string}
+ */
 export const serviceSource = (serviceId) => `service:${serviceId}`;
 
-/** Canonical provSource for a contributor: 'user:<userId>'. */
+/**
+ * Canonical provSource for a contributor: 'user:<userId>'.
+ * @param {string} userId
+ * @returns {string}
+ */
 export const userSource = (userId) => `user:${userId}`;
 
 // ---- review: whose work is reviewed (a project-config norm) ----
@@ -259,7 +278,8 @@ export const REVIEW_KEY = 'review';
 
 /**
  * The project's review lists, normalized: { users: string[], roles: string[] }.
- * @param {Object|null|undefined} config - a project's `config`
+ * @param {object|null} [config] - a project's `config`
+ * @returns {{users: string[], roles: string[]}}
  */
 export const readReview = (config) => {
   const raw = config?.plaid?.[REVIEW_KEY];
@@ -271,7 +291,7 @@ export const readReview = (config) => {
  * A person's role in a project from its ACL lists: 'maintainer' | 'writer' |
  * 'reader' | null. An admin with no explicit entry is a maintainer, as the
  * permission model treats them.
- * @param {Object} project - with `maintainers`, `writers`, `readers`
+ * @param {object} project - with `maintainers`, `writers`, `readers`
  * @param {string} userId
  * @param {Object} [opts]
  * @param {boolean} [opts.isAdmin]
@@ -287,6 +307,10 @@ export const projectRole = (project, userId, { isAdmin = false } = {}) => {
 /**
  * Whether this person's work is reviewed in this project: named in
  * review.users, or holding a role named in review.roles.
+ * @param {object|null|undefined} project
+ * @param {string|null|undefined} userId
+ * @param {{isAdmin?: boolean}} [opts]
+ * @returns {boolean}
  */
 export const isReviewed = (project, userId, { isAdmin = false } = {}) => {
   if (!project || userId == null) return false;
@@ -300,6 +324,10 @@ export const isReviewed = (project, userId, { isAdmin = false } = {}) => {
  * The review lists with one person added to or removed from `users`
  * (`roles` untouched). Pure; write the result with
  * projects.setConfig(id, 'plaid', REVIEW_KEY, next).
+ * @param {{users?: string[], roles?: string[]} | null | undefined} review
+ * @param {string} userId
+ * @param {boolean} reviewed
+ * @returns {{users: string[], roles: string[]}}
  */
 export const withReviewedUser = (review, userId, reviewed) => {
   const { users, roles } = readReview({ plaid: { [REVIEW_KEY]: review } });

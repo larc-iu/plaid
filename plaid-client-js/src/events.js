@@ -92,6 +92,10 @@ export class EventRecorder {
   /**
    * Record one event. Returns true when it was buffered, false when it was
    * not (switch off, a repeat "shown", an unknown type, no project).
+   * @param {any} client
+   * @param {string} type
+   * @param {{projectId?: string, documentId?: string, targetId?: string, data?: Record<string, any>}} [fields]
+   * @returns {boolean}
    */
   record(client, type, { projectId, documentId, targetId, data } = {}) {
     try {

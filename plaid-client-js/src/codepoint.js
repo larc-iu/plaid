@@ -13,7 +13,11 @@
  * points, which is what makes this work.
  */
 
-/** Number of Unicode code points in `s` (not `s.length`, which is UTF-16). */
+/**
+ * Number of Unicode code points in `s` (not `s.length`, which is UTF-16).
+ * @param {string} s
+ * @returns {number}
+ */
 export function cpLength(s) {
   return [...s].length;
 }
@@ -21,6 +25,10 @@ export function cpLength(s) {
 /**
  * Substring of `s` by CODE-POINT indices [begin, end) (end optional = to end).
  * Mirrors `String.prototype.slice` semantics but in code points.
+ * @param {string} s
+ * @param {number} begin
+ * @param {number} [end]
+ * @returns {string}
  */
 export function cpSlice(s, begin, end) {
   return [...s].slice(begin, end).join('');
@@ -32,6 +40,8 @@ export function cpSlice(s, begin, end) {
  * `cpSlice` spreads the whole string per call, which turns quadratic when a
  * caller slices every token of a large text. Mirror of the server's
  * `plaid.util.codepoint/cp-slicer`.
+ * @param {string} s
+ * @returns {(begin: number, end?: number) => string}
  */
 export function cpSlicer(s) {
   const chars = [...(s ?? '')];
@@ -42,6 +52,9 @@ export function cpSlicer(s) {
  * Convert a UTF-16 index `u` into `s` to a code-point index — i.e. how many
  * code points precede `u`. Inverse of `cpToUtf16`. Useful for converting a
  * DOM/`indexOf`/`Intl.Segmenter` (UTF-16) position into a code-point offset.
+ * @param {string} s
+ * @param {number} u
+ * @returns {number}
  */
 export function utf16ToCp(s, u) {
   return [...s.slice(0, u)].length;
@@ -50,6 +63,9 @@ export function utf16ToCp(s, u) {
 /**
  * Convert a code-point index `cp` into `s` to a UTF-16 index. Clamps to
  * `s.length` when `cp` is past the end. Inverse of `utf16ToCp`.
+ * @param {string} s
+ * @param {number} cp
+ * @returns {number}
  */
 export function cpToUtf16(s, cp) {
   if (cp <= 0) return 0;
@@ -66,6 +82,10 @@ export function cpToUtf16(s, cp) {
 /**
  * Like `String.prototype.indexOf`, but the returned index and `fromCp` are
  * CODE-POINT indices. Returns -1 when `sub` is not found.
+ * @param {string} s
+ * @param {string} sub
+ * @param {number} [fromCp]
+ * @returns {number}
  */
 export function cpIndexOf(s, sub, fromCp = 0) {
   const u = s.indexOf(sub, cpToUtf16(s, fromCp));
@@ -118,6 +138,9 @@ function refineInside(at, cps, b, e, out, c, len) {
  * two cuts, so a character whose letter and mark belong to two tokens stays
  * decomposed, each token keeps its own characters, and none is left with no
  * text. The server composes every body with its tokens' edges.
+ * @param {string} s
+ * @param {Iterable<number> | null} [cuts]
+ * @returns {{text: string, at: (p: number) => number}}
  */
 export function composeText(s, cuts = null) {
   const text0 = s ?? '';

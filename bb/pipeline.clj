@@ -234,7 +234,8 @@
                 (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
           (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
           ;; The JavaScript client: the entry, its types, and every module the
-          ;; entry reaches by relative import, each byte for byte the source.
+          ;; entry reaches by relative import, each byte for byte the source
+          ;; (the types, as the build generated them).
           (let [body  (str (fs/path tmp "client-body"))
                 fetch (fn [path src]
                         (let [r (p/sh ["curl" "-sf" "-o" body "-w" "%{content_type}" (str base path)])]
@@ -247,10 +248,14 @@
                                                                   (fs/read-all-bytes src)))
                             (throw (ex-info (str path " did not serve " src " from the jar") {:path path})))))]
             (fetch "/client/plaid-client.js" "plaid-client-js/src/index.js")
-            (fetch "/client/plaid-client.d.ts" "plaid-client-js/index.d.ts")
+            (fetch "/client/plaid-client.d.ts" "plaid-core/resources/client/src/index.d.ts")
             (doseq [f (fs/glob "plaid-client-js/src" "*.js")
                     :let [n (str (fs/file-name f))]
                     :when (not= n "index.js")]
+              (fetch (str "/client/" n) (str f)))
+            (doseq [f (fs/glob "plaid-core/resources/client/src" "*.d.ts")
+                    :let [n (str (fs/file-name f))]
+                    :when (not= n "index.d.ts")]
               (fetch (str "/client/" n) (str f))))
           (println "  JavaScript client served at /client/plaid-client.js")
           ;; First boot must also have extracted the bundled services next to data/.
@@ -313,10 +318,11 @@
         pep      (->pep440 version)
         jar-name (str "plaid-" version ".jar")
         js-pkg   "plaid-client-js/package.json"
+        js-lock  "plaid-client-js/package-lock.json"
         py-tomls (python-pyprojects)
         ;; npm version + the pyproject stamps mutate TRACKED files; snapshot
         ;; them and restore in `finally` so the build leaves the tree clean.
-        js-bak   (when clients? (slurp js-pkg))
+        js-bak   (when clients? [(slurp js-pkg) (slurp js-lock)])
         py-baks  (when clients? (mapv slurp py-tomls))]
     (println (str "\nBuilding Plaid release artifacts  (version=" version "  pep440=" pep ")"))
     (fs/create-dirs art)
@@ -343,9 +349,13 @@
       ;; import it instead of bundling their own (see wrap-client-js). The
       ;; package's own files in its own layout, unbundled: its modules import
       ;; each other by relative path, so a browser loads them as they are.
+      ;; Its type declarations are generated from the JSDoc by tsc, one beside
+      ;; each module. `npm pack` makes them again for the npm tarball.
       (rm-rf "plaid-core/resources/client")
       (fs/copy-tree "plaid-client-js/src" "plaid-core/resources/client/src")
-      (fs/copy "plaid-client-js/index.d.ts" "plaid-core/resources/client/index.d.ts")
+      (step "Generate the JavaScript client's type declarations")
+      (p/shell {:dir "plaid-client-js"} "npm" "ci")
+      (p/shell {:dir "plaid-client-js"} "npx" "tsc" "-p" "." "--outDir" "../plaid-core/resources/client/src")
 
       ;; Each app's services/*.py rides the jar and is extracted next to data/
       ;; on boot. manifest.edn maps filename -> sha256 (the extractor enumerates
@@ -397,7 +407,7 @@
       (println "\nNote: the built SPAs/services + version.edn now live in plaid-core/resources/")
       (println "      (gitignored). Run `bb clean` to drop them before plain `clojure -M:dev`.")
       (finally
-        (when js-bak (spit js-pkg js-bak))
+        (when js-bak (spit js-pkg (first js-bak)) (spit js-lock (second js-bak)))
         (when py-baks (doseq [[toml bak] (map vector py-tomls py-baks)] (spit toml bak)))))))
 
 (defn parse-build-args [cli-args]
@@ -464,4 +474,6 @@
     (rm-rf pth))
   (doseq [j (fs/glob "plaid-core/target" "plaid-*.jar")]
     (fs/delete j))
+  (doseq [d (fs/glob "plaid-client-js/src" "*.d.ts")]
+    (fs/delete d))
   (println "✓ cleaned local build outputs"))

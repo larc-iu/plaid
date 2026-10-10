@@ -67,3 +67,6 @@ playwright-report/
 /dev.kdl
 
 # Agent-facing plan, kept out of history (see the agent-doc convention)
+
+# The client's type declarations, generated from its JSDoc by `npm run types`
+/plaid-client-js/src/*.d.ts

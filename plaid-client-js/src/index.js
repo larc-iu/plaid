@@ -39,6 +39,277 @@ import {
   cancelServiceRequest,
 } from "./services.js";
 
+// ---- Types --------------------------------------------------------------
+// The shapes the API answers with and takes, for editors and for the
+// declarations `npm run types` generates from this JSDoc (index.d.ts).
+
+/**
+ * @typedef {import("./textEdits.js").TextEditOp} TextEditOp
+ * @typedef {import("./textEdits.js").TextGap} TextGap
+ * @typedef {import("./metadataOps.js").MetadataOp} MetadataOp
+ * @typedef {import("./constraints.js").LayerConstraint} LayerConstraint
+ * @typedef {import("./constraints.js").ConstraintWriteOptions} ConstraintWriteOptions
+ * @typedef {import("./constraints.js").ConstraintViolation} ConstraintViolation
+ * @typedef {import("./requester.js").Requester} Requester
+ * @typedef {import("./batchRef.js").BatchRef} BatchRef
+ * @typedef {import("./serviceSchema.js").ServiceParam} ServiceParam
+ * @typedef {import("./serviceSchema.js").ServiceInfo} ServiceInfo
+ * @typedef {import("./serviceSchema.js").DiscoveredService} DiscoveredService
+ * @typedef {import("./services.js").ResponseHelper} ResponseHelper
+ * @typedef {import("./services.js").ServiceRegistration} ServiceRegistration
+ * @typedef {import("./services.js").ServiceStatusEvent} ServiceStatusEvent
+ * @typedef {PlaidClient["operationGroups"]} OperationGroupsBundle
+ */
+
+/**
+ * A single page of a cursor-paginated collection.
+ * @template [T=any]
+ * @typedef {{entries: T[], nextCursor: string | null}} Page
+ */
+
+/**
+ * Client options.
+ * @typedef {object} PlaidClientOptions
+ * @property {number | null} [timeout] Per-request timeout in ms (default
+ *   30000, 0 or null disables it).
+ * @property {number | null} [batchTimeout] Timeout for batch submissions in
+ *   ms (default 180000, 0 or null disables it). Aborting a batch does NOT
+ *   stop the server, which keeps running the transaction and holding the
+ *   write lock. Defaults to `timeout` when that is given and this is not.
+ * @property {number[]} [retryDelaysMs] Delays in ms before sending a keyed
+ *   write again when its answer was lost (no response, 502 or 504). Default
+ *   [1000, 3000, 9000].
+ * @property {((error: Error) => void) | null} [onAuthError] Fired once when
+ *   a request returns HTTP 401 (missing, expired or invalid token). 403 does
+ *   NOT trigger it.
+ */
+
+/**
+ * What kind of operation a logical-operation group is (`?group-kind=`).
+ * @typedef {"assistant-plan" | "service-run" | "import" | "bulk-edit"
+ *   | "guess-adoption" | "repair" | "review"} OperationKind
+ */
+
+/**
+ * Idempotency-Key seed for an operation run more than once (`client.keySeed()`).
+ * @typedef {{seed: string, stamps: Map<number, number | null>}} KeySeed
+ */
+
+/**
+ * A batch: the client's bundles, on which every write of project data queues
+ * until `submit()`. See `PlaidClient.batch()`. `submit()` resolves to one
+ * result per operation, in order. `ref(opIndex, index)` stands for the id a
+ * queued operation will create, in the body of a later write on this batch.
+ * @typedef {PlaidClient & {
+ *   readonly client: PlaidClient,
+ *   readonly operations: Array<{path: string, method: string, body?: any}>,
+ *   submit(): Promise<any[]>,
+ *   abort(): void,
+ *   ref(opIndex?: number, index?: number): BatchRef,
+ * }} PlaidBatch
+ */
+
+/**
+ * Options for a single page of any audit log. `kinds` keeps only the entries
+ * of operations of these kinds, each whole. `order: "desc"` pages newest
+ * first, and a cursor belongs to the direction that made it. `opsLimit` keeps
+ * only each entry's oldest N operations in `ops` (1..1000), and every entry
+ * has `opCount`. `entryId` reads only that entry rather than a page.
+ * @typedef {object} AuditPageOptions
+ * @property {string} [startTime]
+ * @property {string} [endTime]
+ * @property {string[] | string} [opTypes]
+ * @property {OperationKind[] | string} [kinds]
+ * @property {"asc" | "desc"} [order]
+ * @property {number} [limit]
+ * @property {string} [cursor]
+ * @property {number} [opsLimit]
+ * @property {string} [entryId]
+ */
+
+/**
+ * What `vocabLayers.restoreItem` did, or with `dryRun` would do.
+ * @typedef {object} VocabItemRestoreSummary
+ * @property {boolean} inserted The entry was gone and came back under its old id.
+ * @property {boolean} form A living entry's form was set back.
+ * @property {boolean} metadata A living entry's fields were set back.
+ * @property {number} total 0 when nothing changes.
+ */
+
+/**
+ * One private data entry. `version` is raised by one on every write of the
+ * entry, and a new entry is 1.
+ * @typedef {{key: string, updatedAt: string, version: number, value?: any}} UserDataEntry
+ */
+
+/** @typedef {UserDataEntry & {userId: string}} AdminUserDataEntry */
+
+/**
+ * Entities that can carry a comment.
+ * @typedef {"document" | "text" | "token" | "span" | "relation" | "vocab-item"} CommentableType
+ */
+
+/**
+ * One comment. `projectId` and `documentId` are null for a comment on a
+ * vocabulary entry, and `vocabLayerId` is set only for one. `anchorLabel` is
+ * what the comment is about, in words, captured when it was posted: a
+ * comment outlives its anchor. `edited` is true once the body has been
+ * rewritten since it was posted.
+ * @typedef {object} Comment
+ * @property {string} id
+ * @property {string | null} projectId
+ * @property {string | null} documentId
+ * @property {string | null} vocabLayerId
+ * @property {CommentableType} entityType
+ * @property {string} entityId
+ * @property {string | null} anchorLabel
+ * @property {string} authorId
+ * @property {string} body
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ * @property {boolean} edited
+ */
+
+/**
+ * One entry in a project's annotation manual. `body` is present on a single
+ * read and on a list made with `includeBodies`, `bodyChars` on a list made
+ * without. `pinned`: the assistant is given this one in full on every turn.
+ * @typedef {object} Guideline
+ * @property {string} id
+ * @property {string} projectId
+ * @property {string} title
+ * @property {string} [body]
+ * @property {number} [bodyChars]
+ * @property {boolean} pinned
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
+
+/**
+ * A research-telemetry event type.
+ * @typedef {"suggestion.shown" | "suggestion.adopted" | "suggestion.dismissed" | "plan.opened"} ClientEventType
+ */
+
+/**
+ * One research-telemetry event as the server stores it.
+ * @typedef {object} ClientEvent
+ * @property {number} id
+ * @property {string} projectId
+ * @property {string | null} documentId
+ * @property {string} userId
+ * @property {ClientEventType} type
+ * @property {string | null} targetId
+ * @property {Record<string, any> | null} data
+ * @property {string | null} clientTs
+ * @property {string} ts
+ */
+
+/**
+ * An invite. `kind` is "signup" or "password-reset", `status` "active",
+ * "used", "expired", "revoked" or "inactive".
+ * @typedef {object} Invite
+ * @property {string} id
+ * @property {string} kind
+ * @property {string} status
+ * @property {string} createdBy
+ * @property {string} createdAt
+ * @property {string} expiresAt
+ * @property {number} maxUses
+ * @property {number} uses
+ * @property {string | null} revokedAt
+ * @property {string | null} note
+ * @property {string | null} targetUserId
+ * @property {boolean} grantAdmin
+ * @property {string | null} projectId
+ * @property {string | null} projectRole
+ */
+
+/**
+ * Server limits, as reported by /api/v1/info. An unset limit is absent.
+ * `passwordMinLength` is the shortest password the server accepts on any
+ * path, `lockExpirationMs` how long a document lock is held before it lapses.
+ * @typedef {object} ServerLimits
+ * @property {number} [mediaFileBytes]
+ * @property {number} [jsonBodyBytes]
+ * @property {number} [batchOperations]
+ * @property {number} [metadataDepth]
+ * @property {number} [metadataKeyCount]
+ * @property {number} [metadataStringLength]
+ * @property {number} [metadataTotalBytes]
+ * @property {number} [userDataValueBytes]
+ * @property {number} [guidelineTitleLength]
+ * @property {number} [guidelineBodyLength]
+ * @property {number} [passwordMinLength]
+ * @property {number} [lockExpirationMs]
+ */
+
+/**
+ * @typedef {object} ServerHealth
+ * @property {boolean} ok
+ * @property {string} version
+ * @property {number} uptimeMs
+ * @property {{dbSizeMb?: number, auditRows?: number, error?: string}} audit
+ */
+
+/**
+ * @typedef {{ip: string, userId?: string, failures: number, limit: number, blocked: boolean}} RateLimitBucket
+ */
+
+/**
+ * @typedef {object} RateLimitSnapshot
+ * @property {number} windowMs
+ * @property {RateLimitBucket[]} logins
+ * @property {RateLimitBucket[]} ips
+ * @property {RateLimitBucket[]} invites
+ */
+
+/**
+ * @typedef {object} BackupStatus
+ * @property {boolean} enabled
+ * @property {string} directory
+ * @property {number} retention
+ * @property {string} time
+ * @property {Array<{name: string, bytes: number, modified: string}>} backups
+ * @property {boolean} [ok]
+ */
+
+/**
+ * @typedef {object} ServerReport
+ * @property {string} version
+ * @property {{uptimeMs: number, startedAt: string, java: string, heapUsed: number, heapMax: number}} jvm
+ * @property {{path: string | null, bytes: number | null, walBytes: number | null,
+ *   slowQueryThresholdMs?: number, journalMode?: string, maxPoolSize?: number,
+ *   tables: Record<string, number | null>}} database
+ * @property {{directory: string, files: number, bytes: number, orphans: number, orphanBytes: number}} media
+ * @property {BackupStatus} backup
+ * @property {Record<string, any>} settings
+ */
+
+/**
+ * The live log. Requests and events are buffered separately, so a burst of
+ * requests cannot evict an error. In each, `matched` is how many passed the
+ * filters (which may exceed what `entries` holds) and `held` how many are
+ * buffered in total. `file` is the configured log file's absolute path, or
+ * null when logging to stdout.
+ * @typedef {object} LiveLog
+ * @property {{entries: object[], matched: number, held: number, capacity: number,
+ *   stats: Record<string, number | null>}} requests
+ * @property {{entries: object[], matched: number, held: number, capacity: number,
+ *   byLevel: Record<string, number>}} events
+ * @property {string | null} file
+ */
+
+/**
+ * An open server-sent-events stream. Once CLOSED, `error` says why: null when
+ * this side closed it. A refused stream's error carries the HTTP `status`,
+ * and one the server ended is named "StreamClosed".
+ * @typedef {object} SSEConnection
+ * @property {() => void} close
+ * @property {() => any} getStats
+ * @property {number} readyState
+ * @property {(Error & {status?: number}) | null} error
+ */
+
 // Helper: normalize a document-read `layers` filter to the wire's
 // comma-separated form. Accepts an array of layer ids or a ready-made string;
 // anything empty becomes undefined so no `?layers=` is sent at all.
@@ -296,9 +567,7 @@ class PlaidClient {
    * Create a new PlaidClient instance
    * @param {string} baseUrl - The base URL for the API
    * @param {string} token - The authentication token
-   * @param {object} [options] - Client options
-   * @param {number} [options.timeout=30000] - Per-request timeout in ms (0 or null disables it)
-   * @param {number} [options.batchTimeout=180000] - Timeout for batch submissions in ms (0 or null disables it)
+   * @param {PlaidClientOptions} [options] - Client options
    */
   constructor(baseUrl, token, options = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -318,25 +587,51 @@ class PlaidClient {
           : DEFAULT_BATCH_TIMEOUT_MS;
     // Delays (ms) before sending a keyed write again when its answer was lost
     // (no response, 502, 504). See the Idempotency-Key note in http.js.
+    /** @type {number[] | undefined} */
     this.retryDelaysMs = options.retryDelaysMs;
+    /**
+     * The latest version seen for each document written through this client,
+     * keyed by document id.
+     * @type {Record<string, number>}
+     */
     this.documentVersions = {};
+    /**
+     * True once a response left its version list out
+     * (X-Document-Versions-Omitted, past fifty documents). Every version held
+     * was then forgotten, and the strict-mode document's is read again before
+     * the next write.
+     * @type {boolean | undefined}
+     */
+    this.documentVersionsOmitted = undefined;
     // The server's clock minus this machine's, in ms, from the last response
     // with a Date header (null before one). See serverNow().
+    /** @type {number | null} */
     this.serverClockOffsetMs = null;
+    /**
+     * The document strict mode is entered for, or null.
+     * @type {string | null}
+     */
     this.strictModeDocumentId = null;
     // Set to a DocumentLockLost while a `documents.locked()` block's keep-alive
     // has failed. Every write throws it until the block exits; see
     // documentLock.js.
+    /** @type {import("./documentLock.js").DocumentLockLost | null} */
     this.documentLockLost = null;
     // The open logical operation (audit-log group), or null. While set, every
     // write is stamped with `?group-id=` (+ `group-message`) so the audit log
     // folds them into ONE expandable entry. See beginOperation / withOperation.
     // Shape: { id, message, depth, written, refined, frames }, where each of
     // `frames` is { keys, count, minted, depth, owned } and the last numbers.
+    /**
+     * @type {{id: string, message: string | null, kind: OperationKind | null,
+     *   ref: string | null, depth: number, written: boolean, refined: any,
+     *   frames: object[]} | null}
+     */
     this.operationGroup = null;
     // Optional callback fired once (per client) when any request returns HTTP
     // 401 — i.e. the token is missing/expired/invalid. Apps use it to discard
     // the stored token and route back to login. See makeRequest in http.js.
+    /** @type {((error: Error) => void) | null} */
     this.onAuthError = options.onAuthError || null;
     this._authErrorFired = false;
     // Who hears that a request is being sent again (onRetry).
@@ -417,6 +712,9 @@ class PlaidClient {
        * @param {string} vocabItem - The vocab item to link
        * @param {Array} tokens - The tokens to link
        * @param {any} [metadata] - Metadata for the link. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (vocabItem, tokens, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-links", {
@@ -428,6 +726,7 @@ class PlaidClient {
        * reference different vocab items, but all tokens across the call must
        * belong to one document.
        * @param {Array<{vocabItem: string, tokens: string[], metadata?: any}>} body - The vocab links to create
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
@@ -438,6 +737,8 @@ class PlaidClient {
       /**
        * Delete multiple vocab links in a single operation. Provide an array of IDs.
        * @param {string[]} body - The vocab link IDs to delete
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/vocab-links/bulk", {
@@ -454,6 +755,7 @@ class PlaidClient {
       /**
        * Delete a vocab link
        * @param {string} id - The resource ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-links/${id}`, { auditMessage }),
@@ -517,6 +819,10 @@ class PlaidClient {
        * that may be long: audit() walks every page before it resolves.
        * @param {string} id - The vocabulary ID
        * @param {object} [opts]
+       * @param {string} [opts.startTime] - Only entries at or after this instant
+       * @param {string} [opts.endTime] - Only entries at or before this instant
+       * @param {string[]|string} [opts.opTypes] - Only these op types
+       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
@@ -562,9 +868,10 @@ class PlaidClient {
        * @param {string} itemId - The entry ID
        * @param {string} asOf - The moment to go back to (ISO-8601 instant),
        *   typically a history entry's `endTime`
-       * @param {object} [options] - `{ dryRun }`: with `dryRun` true nothing
+       * @param {{dryRun?: boolean}} [options] - `{ dryRun }`: with `dryRun` true nothing
        *   is written and the summary says what would change
        * @param {string} [auditMessage] - Custom audit message for this operation
+       * @returns {Promise<VocabItemRestoreSummary>}
        */
       restoreItem: (id, itemId, asOf, { dryRun } = {}, auditMessage) =>
         this._request(
@@ -581,6 +888,7 @@ class PlaidClient {
       /**
        * Delete a vocab layer.
        * @param {string} id - The resource ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage }),
@@ -588,6 +896,7 @@ class PlaidClient {
        * Update a vocab layer's name.
        * @param {string} id - The resource ID
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (id, name, auditMessage) =>
         this._request("PATCH", `/api/v1/vocab-layers/${id}`, {
@@ -625,6 +934,9 @@ class PlaidClient {
       /**
        * Create a new vocab layer. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-layers", {
@@ -635,6 +947,7 @@ class PlaidClient {
        * Assign a user as a maintainer for this vocab layer.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       addMaintainer: (id, userId, auditMessage) =>
         this._request(
@@ -646,6 +959,7 @@ class PlaidClient {
        * Remove a user's maintainer privileges for this vocab layer.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       removeMaintainer: (id, userId, auditMessage) =>
         this._request(
@@ -661,6 +975,7 @@ class PlaidClient {
        * Update the target span of a relation.
        * @param {string} relationId - The relation ID
        * @param {string} spanId - The span ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       setTarget: (relationId, spanId, auditMessage) =>
         this._request("PUT", `/api/v1/relations/${relationId}/target`, {
@@ -676,6 +991,7 @@ class PlaidClient {
       /**
        * Delete a relation.
        * @param {string} relationId - The relation ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (relationId, auditMessage) =>
         this._request("DELETE", `/api/v1/relations/${relationId}`, {
@@ -685,6 +1001,7 @@ class PlaidClient {
        * Update a relation's value.
        * @param {string} relationId - The relation ID
        * @param {any} value - The value
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (relationId, value, auditMessage) =>
         this._request("PATCH", `/api/v1/relations/${relationId}`, {
@@ -695,6 +1012,7 @@ class PlaidClient {
        * Update the source span of a relation.
        * @param {string} relationId - The relation ID
        * @param {string} spanId - The span ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       setSource: (relationId, spanId, auditMessage) =>
         this._request("PUT", `/api/v1/relations/${relationId}/source`, {
@@ -710,6 +1028,9 @@ class PlaidClient {
        * @param {string} targetId - The target span ID
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (
         layerId,
@@ -734,6 +1055,7 @@ class PlaidClient {
       /**
        * Create multiple relations in a single operation.
        * @param {Array} body - The request body
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
@@ -741,6 +1063,8 @@ class PlaidClient {
       /**
        * Delete multiple relations in a single operation. Provide an array of IDs.
        * @param {Array} body - The request body
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/relations/bulk", {
@@ -750,6 +1074,7 @@ class PlaidClient {
       /**
        * Update many relations in a single operation: set values and/or patch metadata.
        * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The relations may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{count: number}>} How many relations were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -767,6 +1092,9 @@ class PlaidClient {
        * Create a new span layer.
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (tokenLayerId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/span-layers", {
@@ -780,6 +1108,7 @@ class PlaidClient {
        * Replace tokens for a span.
        * @param {string} spanId - The span ID
        * @param {Array} tokens - The tokens
+       * @param {string} [auditMessage] - Audit message for this write
        */
       setTokens: (spanId, tokens, auditMessage) =>
         this._request("PUT", `/api/v1/spans/${spanId}/tokens`, {
@@ -793,6 +1122,9 @@ class PlaidClient {
        * @param {Array} tokens - The tokens
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (spanLayerId, tokens, value, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/spans", {
@@ -814,6 +1146,7 @@ class PlaidClient {
       /**
        * Delete a span.
        * @param {string} spanId - The span ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (spanId, auditMessage) =>
         this._request("DELETE", `/api/v1/spans/${spanId}`, { auditMessage }),
@@ -821,6 +1154,7 @@ class PlaidClient {
        * Update a span's value.
        * @param {string} spanId - The span ID
        * @param {any} value - The value
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (spanId, value, auditMessage) =>
         this._request("PATCH", `/api/v1/spans/${spanId}`, {
@@ -830,6 +1164,7 @@ class PlaidClient {
       /**
        * Create multiple spans in a single operation.
        * @param {Array} body - The request body
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
@@ -837,12 +1172,15 @@ class PlaidClient {
       /**
        * Delete multiple spans in a single operation. Provide an array of IDs.
        * @param {Array} body - The request body
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/spans/bulk", { auditMessage, body }),
       /**
        * Update many spans in a single operation: set values and/or patch metadata.
        * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The spans may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{count: number}>} How many spans were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -865,6 +1203,7 @@ class PlaidClient {
        * This server's version and the limits it enforces, e.g.
        * `{ limits: { mediaFileBytes, jsonBodyBytes, batchOperations, … } }`.
        * Sizes are in bytes. Unauthenticated.
+       * @returns {Promise<{limits: ServerLimits}>}
        */
       info: () => {
         const facts = this._serverFacts;
@@ -883,6 +1222,7 @@ class PlaidClient {
        * Read `GET /info` again and resolve to it. Until it answers, a reader
        * waits for it. The facts known before are kept when the server does
        * not answer, and the error is thrown.
+       * @returns {Promise<{limits: ServerLimits}>}
        */
       refresh: () => {
         const facts = this._serverFacts;
@@ -898,13 +1238,21 @@ class PlaidClient {
         facts.info = held;
         return fresh;
       },
-      /** Just the limits, which is what a caller almost always wants. */
-      limits: async () => (await this.server.info()).limits,
+      /**
+       * Just the limits, which is what a caller almost always wants.
+       * @returns {Promise<ServerLimits>}
+       */
+      limits: async () => {
+        // Through `self`: tsc types a bundle that names itself as
+        // `this.server` in its own methods `any` in the declarations.
+        const self = this;
+        return (await self.server.info()).limits;
+      },
       /**
        * Liveness, version and database size. Unauthenticated, and served
        * outside the REST router at /health, so it answers even while the API
        * is refusing requests. Never cached — the point is that it is current.
-       * @returns {Promise<{ok: boolean, version: string, uptimeMs: number, audit: object}>}
+       * @returns {Promise<ServerHealth>}
        */
       health: () => PlaidClient.health(this.baseUrl, { timeout: this.timeout }),
     };
@@ -970,6 +1318,7 @@ class PlaidClient {
       /**
        * Delete a text and all dependent data.
        * @param {string} textId - The text ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (textId, auditMessage) =>
         this._request("DELETE", `/api/v1/texts/${textId}`, { auditMessage }),
@@ -1029,14 +1378,14 @@ class PlaidClient {
        * List (or search) users. Transparently follows pagination cursors and
        * returns the full flat array. Admin-or-maintainer only.
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
+       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text holds an at sign), case-insensitive
        */
       list: ({ q } = {}) =>
         listAll(this, "/api/v1/users", { query: { q } }),
       /**
        * Fetch a single page of users (optionally filtered by `q`).
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
+       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text holds an at sign), case-insensitive
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
@@ -1050,7 +1399,7 @@ class PlaidClient {
       /**
        * Async-iterate users page by page; yields each page's entries array.
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
+       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text holds an at sign), case-insensitive
        * @param {number} [opts.pageSize] - Per-request page size
        * @returns {AsyncGenerator<Array>}
        */
@@ -1068,6 +1417,7 @@ class PlaidClient {
        * @param {boolean} isAdmin - Whether the user is an admin
        * @param {string} [displayName] - How the user is shown in the UI.
        *   Defaults to the local part of the email.
+       * @param {string} [auditMessage] - Audit message for this write
        */
       create: (email, password, isAdmin, displayName, auditMessage) =>
         this._request("POST", "/api/v1/users", {
@@ -1109,6 +1459,10 @@ class PlaidClient {
        * that may be long: audit() walks every page before it resolves.
        * @param {string} userId - The user ID
        * @param {object} [opts]
+       * @param {string} [opts.startTime] - Only entries at or after this instant
+       * @param {string} [opts.endTime] - Only entries at or before this instant
+       * @param {string[]|string} [opts.opTypes] - Only these op types
+       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
@@ -1148,6 +1502,7 @@ class PlaidClient {
        * stays visible in listings with a deactivated-at timestamp.
        * Reversible via activate(), which restores login only.
        * @param {string} id - The resource ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/users/${id}`, { auditMessage }),
@@ -1156,6 +1511,7 @@ class PlaidClient {
        * Project memberships, vocab maintainerships, and API tokens removed
        * at deactivation are NOT restored — re-grant them deliberately.
        * @param {string} id - The resource ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       activate: (id, auditMessage) =>
         this._request("POST", `/api/v1/users/${id}/activate`, { auditMessage }),
@@ -1171,6 +1527,7 @@ class PlaidClient {
        * @param {string} [password] - New password
        * @param {string} [displayName] - New display name
        * @param {boolean} [isAdmin] - New admin status
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (id, password, displayName, isAdmin, auditMessage) =>
         this._request("PATCH", `/api/v1/users/${id}`, {
@@ -1261,7 +1618,9 @@ class PlaidClient {
        */
       avatarUrl: async (id, avatarHash, { renew = false } = {}) => {
         if (avatarHash === null) return null;
-        const { token } = await this.users.avatarToken({ renew });
+        // Through `self`, as in server.limits.
+        const self = this;
+        const { token } = await self.users.avatarToken({ renew });
         const params = new URLSearchParams({ "avatar-token": token });
         if (avatarHash) params.set("v", avatarHash);
         return `${this.baseUrl}/api/v1/users/${id}/avatar?${params}`;
@@ -1282,6 +1641,7 @@ class PlaidClient {
        * PNG, JPEG, WebP, and GIF. Resolves to the updated user record.
        * @param {string} id - The user ID
        * @param {File} file - The image to upload
+       * @param {string} [auditMessage] - Audit message for this write
        */
       setAvatar: (id, file, auditMessage) => {
         const fd = new FormData();
@@ -1296,6 +1656,7 @@ class PlaidClient {
       /**
        * Remove a profile picture. Your own, or anyone's if you are an admin.
        * @param {string} id - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       // No flag: the upload beside this one is multipart and cannot be
       // batched, but a DELETE carries no blob, so the batch transport takes
@@ -1329,6 +1690,7 @@ class PlaidClient {
        * @param {string} [opts.pattern] - Only keys matching this GLOB
        * @param {boolean} [opts.includeValues] - Also return each entry's value
        * @param {number} [opts.pageSize=100] - Entries per request (1..1000)
+       * @returns {Promise<UserDataEntry[]>}
        */
       list: (userId, { prefix, pattern, includeValues, pageSize = 100 } = {}) =>
         listAll(this, `/api/v1/users/${userId}/data`, {
@@ -1344,7 +1706,7 @@ class PlaidClient {
        * @param {boolean} [opts.includeValues] - Also return each entry's value
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<UserDataEntry>>}
        */
       listPage: (
         userId,
@@ -1363,6 +1725,7 @@ class PlaidClient {
        * @param {string} [opts.pattern] - Only keys matching this GLOB
        * @param {boolean} [opts.includeValues] - Also return each entry's value
        * @param {number} [opts.pageSize=100] - Entries per request (1..1000)
+       * @returns {AsyncGenerator<UserDataEntry[]>}
        */
       iterPages: (
         userId,
@@ -1479,6 +1842,7 @@ class PlaidClient {
        * needs a sign-in token.
        * @param {string} userId - The user ID who will own the token
        * @param {string} name - A human label, e.g. "Stanza parser"
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{id: string, name: string, token: string}>}
        */
       create: (userId, name, auditMessage) =>
@@ -1495,6 +1859,7 @@ class PlaidClient {
        * needs a sign-in token.
        * @param {string} userId - The user ID who owns the token
        * @param {string} tokenId - The token ID to revoke
+       * @param {string} [auditMessage] - Audit message for this write
        */
       revoke: (userId, tokenId, auditMessage) =>
         this._request("DELETE", `/api/v1/users/${userId}/tokens/${tokenId}`, {
@@ -1512,6 +1877,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.projectId] - List this project's invites instead of your own
        * @param {boolean} [opts.all] - List every invite on the server (admin only)
+       * @returns {Promise<Invite[]>}
        */
       list: ({ projectId, all } = {}) =>
         listAll(this, "/api/v1/invites", {
@@ -1524,7 +1890,7 @@ class PlaidClient {
        * @param {boolean} [opts.all] - List every invite on the server (admin only)
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<Invite>>}
        */
       listPage: ({ projectId, all, limit, cursor } = {}) =>
         listPage(this, "/api/v1/invites", {
@@ -1538,7 +1904,7 @@ class PlaidClient {
        * @param {string} [opts.projectId] - List this project's invites instead of your own
        * @param {boolean} [opts.all] - List every invite on the server (admin only)
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<Invite[]>}
        */
       iterPages: ({ projectId, all, pageSize } = {}) =>
         iterPages(this, "/api/v1/invites", {
@@ -1571,7 +1937,8 @@ class PlaidClient {
        * @param {number} [opts.maxUses] - How many accounts this link may create (default 1)
        * @param {number} [opts.ttlDays] - Days until it expires (default 14, max 365)
        * @param {string} [opts.note] - Human label shown in your invite list
-       * @returns {Promise<{id: string, code: string, kind: string, status: string}>}
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Invite & {code: string}>}
        */
       create: (
         {
@@ -1604,6 +1971,7 @@ class PlaidClient {
        * Revoke an invite, killing the link immediately. Idempotent. Allowed for
        * the creator, an admin, or a maintainer of the invite's project.
        * @param {string} id - The invite ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       revoke: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/invites/${id}`, { auditMessage }),
@@ -1616,7 +1984,7 @@ class PlaidClient {
        * configuration and the backups on disk, and the settings an operator
        * gets asked to confirm. Carries no secrets. Runs a count per table and
        * walks the media directory, so open it, do not poll it. Admin only.
-       * @returns {Promise<{version: string, jvm: object, database: object, media: object, backup: object, settings: object}>}
+       * @returns {Promise<ServerReport>}
        */
       server: () => this._request("GET", "/api/v1/admin/server"),
       /**
@@ -1630,7 +1998,7 @@ class PlaidClient {
        * rather than the client's usual timeout. A proxy in front of the server
        * may still give up first (a 504): the backup goes on, and its file
        * shows in `server().backup.backups` once it is written.
-       * @returns {Promise<{ok: boolean, directory: string, backups: Array}>}
+       * @returns {Promise<BackupStatus>}
        *
        * outOfBand, as every admin action on the server itself is: none of them
        * writes project data (see the note at the top of http.js).
@@ -1650,6 +2018,7 @@ class PlaidClient {
        * Drop the lock on a document whoever holds it. Idempotent. For a client
        * that went away without releasing one. Admin only.
        * @param {string} documentId - The document ID
+       * @returns {Promise<{result: string}>}
        */
       releaseLock: (documentId) =>
         this._request("DELETE", `/api/v1/admin/locks/${documentId}`, {
@@ -1659,7 +2028,7 @@ class PlaidClient {
        * Live login and invite rate-limit buckets: the address, the account
        * where there is one, failures inside the window, the limit, and whether
        * it is currently blocking. Admin only.
-       * @returns {Promise<{windowMs: number, logins: Array, ips: Array, invites: Array}>}
+       * @returns {Promise<RateLimitSnapshot>}
        */
       rateLimits: () => this._request("GET", "/api/v1/admin/rate-limits"),
       /**
@@ -1669,6 +2038,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.ip] - Clear only this address
        * @param {string} [opts.userId] - Narrow to one account on that address
+       * @returns {Promise<{result: string}>}
        */
       clearRateLimits: ({ ip, userId } = {}) =>
         this._request("DELETE", "/api/v1/admin/rate-limits", {
@@ -1692,7 +2062,7 @@ class PlaidClient {
        * @param {string} [opts.status] - "2xx".."5xx", an exact code, or "failures"
        * @param {string} [opts.user] - Only requests made by this account
        * @param {string} [opts.method] - Only requests with this HTTP method
-       * @returns {Promise<{requests: object, events: object, file: (string|null)}>}
+       * @returns {Promise<LiveLog>}
        */
       logs: ({ limit, q, level, status, user, method } = {}) =>
         this._request("GET", "/api/v1/admin/logs", {
@@ -1726,7 +2096,7 @@ class PlaidClient {
        * @param {string} [opts.prefix] - Only keys starting with this
        * @param {string} [opts.pattern] - Only keys matching this GLOB
        * @param {boolean} [opts.includeValues] - Also return each entry's value
-       * @returns {Promise<Array<{userId: string, key: string, updatedAt: string, value?: *}>>}
+       * @returns {Promise<AdminUserDataEntry[]>}
        */
       userData: ({ prefix, pattern, includeValues } = {}) =>
         listAll(this, "/api/v1/admin/user-data", {
@@ -1745,7 +2115,7 @@ class PlaidClient {
        * @param {boolean} [opts.includeValues] - Also return each entry's value
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<AdminUserDataEntry>>}
        */
       userDataPage: ({ prefix, pattern, includeValues, limit, cursor } = {}) =>
         listPage(this, "/api/v1/admin/user-data", {
@@ -1786,6 +2156,10 @@ class PlaidClient {
       /**
        * Fetch a single page of the instance-wide audit log. Admin only.
        * @param {object} [opts]
+       * @param {string} [opts.startTime] - Only entries at or after this instant
+       * @param {string} [opts.endTime] - Only entries at or before this instant
+       * @param {string[]|string} [opts.opTypes] - Only these op types
+       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first, which
        *   is what a feed wants. A cursor belongs to the direction that made it.
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
@@ -1812,6 +2186,12 @@ class PlaidClient {
         }),
       /**
        * Async-iterate the instance-wide audit log page by page. Admin only.
+       * @param {object} [opts]
+       * @param {string} [opts.startTime] - Only entries at or after this instant
+       * @param {string} [opts.endTime] - Only entries at or before this instant
+       * @param {string[]|string} [opts.opTypes] - Only these op types
+       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
+       * @param {number} [opts.pageSize] - Per-request page size
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: ({ startTime, endTime, opTypes, kinds, pageSize } = {}) =>
@@ -1865,6 +2245,9 @@ class PlaidClient {
        * @param {string} name - The name
        * @param {string} [overlapMode] - Per-layer, immutable token invariant: "any" (default), "non-overlapping", or "partitioning". On partitioning layers, single token create/update/delete are rejected; use bulkCreate plus split/merge/shift.
        * @param {string} [parentTokenLayerId] - Optional immutable parent token layer. Tokens in this layer must nest within a parent-layer token; the parent layer must be in the same text layer and be "non-overlapping" or "partitioning" (an "any" parent is rejected). A nested layer may be "any" or "non-overlapping" but not "partitioning" (partitioning is only for root layers), e.g. words (non-overlapping, parent=sentences) within sentences (partitioning).
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (
         textLayerId,
@@ -1932,6 +2315,7 @@ class PlaidClient {
        * outOfBand, for the same reason as acquireLock.
        * @param {string} documentId - The document ID
        * @param {string} lockId - The `lockId` acquireLock answered with
+       * @param {string} [auditMessage] - Audit message for this write
        */
       renewLock: (documentId, lockId, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/lock`, {
@@ -1946,6 +2330,7 @@ class PlaidClient {
        * and not released at all if it aborts.
        * @param {string} documentId - The document ID
        * @param {string} lockId - The `lockId` acquireLock answered with
+       * @param {string} [auditMessage] - Audit message for this write
        */
       releaseLock: (documentId, lockId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/lock`, {
@@ -1989,9 +2374,11 @@ class PlaidClient {
        * lost lock is recorded on the CLIENT, like strict mode, so it stops
        * every write the client makes (on any batch of it too) and not only the
        * ones this block makes.
+       * @template T
        * @param {string} documentId - The document ID
-       * @param {(lock: DocumentLock) => any} fn - The work to run while holding it
-       * @param {object} [options] - `{ keepAlive }`: renew on a timer (default true)
+       * @param {(lock: import("./documentLock.js").DocumentLock) => T | Promise<T>} fn - The work to run while holding it
+       * @param {{keepAlive?: boolean}} [options] - `{ keepAlive }`: renew on a timer (default true)
+       * @returns {Promise<T>}
        */
       locked: (documentId, fn, options) =>
         withDocumentLock(this, documentId, fn, options),
@@ -2000,6 +2387,7 @@ class PlaidClient {
        * no as-of form: the route refuses the parameter. Prefer the document's
        * own `mediaUrl`, which carries the file's version for caching.
        * @param {string} documentId - The document ID
+       * @returns {Promise<ArrayBuffer>}
        */
       getMedia: (documentId) =>
         this._request("GET", `/api/v1/documents/${documentId}/media`, {
@@ -2037,7 +2425,7 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {File} file - The file to upload
        * @param {string} [auditMessage] - Custom audit-log message for this write
-       * @param {object} [options] - `{ onProgress }`: called with `{ loaded, total }` (bytes) as the file goes up. In a browser the upload then travels by XMLHttpRequest, and the request timeout only fires when the upload stalls, not on total time.
+       * @param {{onProgress?: (progress: {loaded: number, total: number | null}) => void}} [options] - `{ onProgress }`: called with `{ loaded, total }` (bytes) as the file goes up. In a browser the upload then travels by XMLHttpRequest, and the request timeout only fires when the upload stalls, not on total time.
        */
       uploadMedia: (documentId, file, auditMessage, { onProgress } = {}) => {
         const fd = new FormData();
@@ -2102,6 +2490,10 @@ class PlaidClient {
        * that may be long: audit() walks every page before it resolves.
        * @param {string} documentId - The document ID
        * @param {object} [opts]
+       * @param {string} [opts.startTime] - Only entries at or after this instant
+       * @param {string} [opts.endTime] - Only entries at or before this instant
+       * @param {string[]|string} [opts.opTypes] - Only these op types
+       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
@@ -2138,7 +2530,7 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} asOf - The moment to go back to (ISO-8601 instant),
        *   typically a history entry's `endTime`
-       * @param {object} [options] - `{ dryRun }`: with `dryRun` true nothing
+       * @param {{dryRun?: boolean}} [options] - `{ dryRun }`: with `dryRun` true nothing
        *   is written and the summary says what would change
        * @param {string} [auditMessage] - Custom audit message for this operation
        */
@@ -2176,6 +2568,7 @@ class PlaidClient {
       /**
        * Delete a document and all data contained.
        * @param {string} documentId - The document ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (documentId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}`, {
@@ -2185,6 +2578,7 @@ class PlaidClient {
        * Update a document's name.
        * @param {string} documentId - The document ID
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (documentId, name, auditMessage) =>
         this._request("PATCH", `/api/v1/documents/${documentId}`, {
@@ -2196,6 +2590,9 @@ class PlaidClient {
        * @param {string} projectId - The project ID
        * @param {string} name - The name
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (projectId, name, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/documents", {
@@ -2212,9 +2609,10 @@ class PlaidClient {
        * the source had media the copy could not take with it.
        * @param {string} documentId - The document to copy
        * @param {string} name - The new document's name
-       * @param {object} [options] - `{ includeMedia }`: false leaves the media
+       * @param {{includeMedia?: boolean, id?: string}} [options] - `{ includeMedia }`: false leaves the media
        *   file behind
        * @param {string} [auditMessage] - Custom audit message for this operation
+       * @returns {Promise<{id: string, mediaError?: string}>}
        */
       copy: (documentId, name, { includeMedia, id } = {}, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/copy`, {
@@ -2228,6 +2626,7 @@ class PlaidClient {
        * Set a user's access level to read and write for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       addWriter: (id, userId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/writers/${userId}`, {
@@ -2237,6 +2636,7 @@ class PlaidClient {
        * Remove a user's writer privileges for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       removeWriter: (id, userId, auditMessage) =>
         this._request("DELETE", `/api/v1/projects/${id}/writers/${userId}`, {
@@ -2246,6 +2646,7 @@ class PlaidClient {
        * Set a user's access level to read-only for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       addReader: (id, userId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/readers/${userId}`, {
@@ -2255,6 +2656,7 @@ class PlaidClient {
        * Remove a user's reader privileges for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       removeReader: (id, userId, auditMessage) =>
         this._request("DELETE", `/api/v1/projects/${id}/readers/${userId}`, {
@@ -2265,6 +2667,7 @@ class PlaidClient {
        * Assign a user as a maintainer for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       addMaintainer: (id, userId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/maintainers/${userId}`, {
@@ -2274,6 +2677,7 @@ class PlaidClient {
        * Remove a user's maintainer privileges for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       removeMaintainer: (id, userId, auditMessage) =>
         this._request(
@@ -2313,6 +2717,10 @@ class PlaidClient {
        * that may be long: audit() walks every page before it resolves.
        * @param {string} projectId - The project ID
        * @param {object} [opts]
+       * @param {string} [opts.startTime] - Only entries at or after this instant
+       * @param {string} [opts.endTime] - Only entries at or before this instant
+       * @param {string[]|string} [opts.opTypes] - Only these op types
+       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
@@ -2357,6 +2765,7 @@ class PlaidClient {
        * Link a vocabulary to a project.
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       linkVocab: (id, vocabId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
@@ -2366,6 +2775,7 @@ class PlaidClient {
        * Unlink a vocabulary from a project.
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       unlinkVocab: (id, vocabId, auditMessage) =>
         this._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
@@ -2431,6 +2841,7 @@ class PlaidClient {
        * Update a project's name.
        * @param {string} id - The resource ID
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (id, name, auditMessage) =>
         this._request("PATCH", `/api/v1/projects/${id}`, {
@@ -2467,6 +2878,9 @@ class PlaidClient {
       /**
        * Create a new project. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/projects", {
@@ -2482,6 +2896,9 @@ class PlaidClient {
        * Create a new text layer for a project.
        * @param {string} projectId - The project ID
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (projectId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/text-layers", {
@@ -2497,6 +2914,9 @@ class PlaidClient {
        * @param {string} vocabLayerId - The vocab layer ID
        * @param {string} form - The vocab item form
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (vocabLayerId, form, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-items", {
@@ -2507,6 +2927,8 @@ class PlaidClient {
        * Create multiple vocab items in a single operation. Entries may target
        * different vocab layers; the user must have write access to each.
        * @param {Array<{vocabLayerId: string, form: string, metadata?: any}>} body - The vocab items to create
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<{ids: string[]}>}
        */
       bulkCreate: (body, auditMessage) =>
         this._request("POST", "/api/v1/vocab-items/bulk", {
@@ -2517,6 +2939,7 @@ class PlaidClient {
        * Update many vocab items in a single operation: set forms and/or patch
        * metadata.
        * @param {Array<{id: string, form?: string, metadata?: Array<object>}>} body - `form` is set only when the key is present; `metadata` is a list of metadata ops, as for patchMetadata. The entries may lie in several vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. Only an entry whose form really changes restates the documents linking it, and a strict-mode client picks up their new versions from the response.
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{count: number}>} How many vocab items were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -2531,6 +2954,8 @@ class PlaidClient {
        * Every document holding one of those links has its version bumped, and
        * a strict-mode client picks up their new versions from the response.
        * @param {string[]} body - The vocab item IDs to delete
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/vocab-items/bulk", {
@@ -2573,6 +2998,7 @@ class PlaidClient {
        * Needs maintainer rights on the vocabulary.
        * @param {string} survivorId - The entry that stays
        * @param {string[]} loserIds - The entries merged into it
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{moved: number, duplicates: number, removed: string[]}>}
        */
       merge: (survivorId, loserIds, auditMessage) =>
@@ -2587,6 +3013,7 @@ class PlaidClient {
        * from the response.
        * @param {string} id - The resource ID
        * @param {string} form - The vocab item form
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (id, form, auditMessage) =>
         this._request("PATCH", `/api/v1/vocab-items/${id}`, {
@@ -2601,6 +3028,9 @@ class PlaidClient {
        * Create a new relation layer.
        * @param {string} spanLayerId - The span layer ID
        * @param {string} name - The name
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (spanLayerId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/relation-layers", {
@@ -2629,6 +3059,9 @@ class PlaidClient {
        * @param {number} end - End offset, exclusive (Unicode code points)
        * @param {number} [precedence] - Ordering precedence
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {object} [opts]
+       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (
         tokenLayerId,
@@ -2662,6 +3095,7 @@ class PlaidClient {
        * Delete a token and remove it from any spans. If this causes a span to
        * have no remaining tokens, the span will also be deleted.
        * @param {string} tokenId - The token ID
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (tokenId, auditMessage) =>
         this._request("DELETE", `/api/v1/tokens/${tokenId}`, { auditMessage }),
@@ -2674,6 +3108,7 @@ class PlaidClient {
        *   to leave unchanged; pass a number to set; pass null explicitly to
        *   CLEAR it (revert to no explicit ordering). bodyOf keeps null but
        *   drops undefined, so the three cases map correctly to the server.
+       * @param {string} [auditMessage] - Audit message for this write
        */
       update: (tokenId, begin, end, precedence, auditMessage) =>
         this._request("PATCH", `/api/v1/tokens/${tokenId}`, {
@@ -2683,6 +3118,7 @@ class PlaidClient {
       /**
        * Create multiple tokens in a single operation.
        * @param {Array} body - The request body
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
@@ -2690,12 +3126,15 @@ class PlaidClient {
       /**
        * Delete multiple tokens in a single operation. Provide an array of IDs.
        * @param {Array} body - The request body
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/tokens/bulk", { auditMessage, body }),
       /**
        * Update many tokens in a single operation: patch metadata.
        * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a list of metadata ops, as for patchMetadata. The tokens may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<{count: number}>} How many tokens were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -2734,6 +3173,7 @@ class PlaidClient {
        * merged extent must not engulf a third token.
        * @param {string} tokenId - The anchor token ID
        * @param {string} otherTokenId - The other token to merge in
+       * @param {string} [auditMessage] - Audit message for this write
        */
       merge: (tokenId, otherTokenId, auditMessage) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/merge`, {
@@ -2747,6 +3187,7 @@ class PlaidClient {
        * @param {string} tokenId - The token ID
        * @param {number} [begin] - New start offset, inclusive (Unicode code points)
        * @param {number} [end] - New end offset, exclusive (Unicode code points)
+       * @param {string} [auditMessage] - Audit message for this write
        */
       shift: (tokenId, begin, end, auditMessage) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/shift`, {
@@ -2760,9 +3201,9 @@ class PlaidClient {
       /**
        * Open a Server-Sent Events stream for a project.
        * @param {string} projectId - The UUID of the project to listen to
-       * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
+       * @param {(eventType: string, data: any) => void | boolean} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
        * @param {string} [path] - Stream path under baseUrl (defaults to the project /listen bus; service channels pass their own).
-       * @returns {Object} SSE connection object with .close() and .getStats() methods
+       * @returns {SSEConnection} SSE connection object with .close() and .getStats() methods
        */
       listen: (projectId, onEvent, path) =>
         createSSEConnection(this, projectId, onEvent, path),
@@ -2795,7 +3236,7 @@ class PlaidClient {
        * connected services carry `online: true`; previously-seen offline ones
        * carry `online: false` plus a `lastSeenAt` stamp.
        * @param {string} projectId - The UUID of the project to query
-       * @returns {Promise<Array>} Array of discovered service information
+       * @returns {Promise<DiscoveredService[]>} Array of discovered service information
        */
       discoverServices: (projectId) => discoverServices(this, projectId),
 
@@ -2815,14 +3256,14 @@ class PlaidClient {
        * The registration reopens its channel whenever it drops, so a server
        * restart needs no service restart.
        * @param {string} projectId - The UUID of the project to serve
-       * @param {Object} serviceInfo - Service information {serviceId, serviceName, description}
-       * @param {function} onServiceRequest - Callback (data, responseHelper)
+       * @param {ServiceInfo} serviceInfo - Service information {serviceId, serviceName, description}
+       * @param {(data: any, responseHelper: ResponseHelper) => void} onServiceRequest - Callback (data, responseHelper)
        * @param {Object} [extras] - Optional additional service metadata
-       * @param {function} [onStatus] - Optional callback (event, projectId, detail) for
+       * @param {(event: ServiceStatusEvent, projectId: string, detail?: string) => void} [onStatus] - Optional callback (event, projectId, detail) for
        *   connection transitions: 'registered', 'reconnected', 'disconnected',
        *   and 'stopped' when the server refuses the channel for good, which
        *   ends the registration
-       * @returns {Object} Service registration with .stop(), .isRunning(), .isConnected()
+       * @returns {ServiceRegistration} Service registration with .stop(), .isRunning(), .isConnected()
        */
       serve: (projectId, serviceInfo, onServiceRequest, extras, onStatus) =>
         serve(this, projectId, serviceInfo, onServiceRequest, extras, onStatus),
@@ -2843,7 +3284,7 @@ class PlaidClient {
        * @param {number} [timeout=10000] - Timeout in ms
        * @param {function} [onProgress] - Called with each progress payload {percent, message}
        * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
-       * @param {Object} [opts] - {requestId, onAccepted, projectIds, noOperation}
+       * @param {{requestId?: string, onAccepted?: (requestId: string) => void, projectIds?: string[], noOperation?: boolean}} [opts] - {requestId, onAccepted, projectIds, noOperation}
        * @returns {Promise<any>} The service's result
        */
       requestService: (
@@ -2988,11 +3429,13 @@ class PlaidClient {
        * A comment outlives its anchor: deleting the entity does not delete
        * the comment. `anchorLabel` is the caption shown once that happens
        * ("Gloss of ktab, sentence 4"), so pass what the comment is about.
-       * @param {'document'|'text'|'token'|'span'|'relation'|'vocab-item'} entityType - What kind of thing is being commented on
+       * @param {CommentableType} entityType - What kind of thing is being commented on
        * @param {string} entityId - The commented entity's id
        * @param {string} body - The comment text (1..10000 characters)
        * @param {object} [opts]
        * @param {string} [opts.anchorLabel] - What the comment is about, in words (at most 200 characters)
+       * @param {string} [opts.id] - The new comment's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Comment>}
        */
       create: (entityType, entityId, body, { anchorLabel, id } = {}) =>
         this._request("POST", "/api/v1/comments", {
@@ -3010,6 +3453,7 @@ class PlaidClient {
       /**
        * Read one comment.
        * @param {string} id - The comment id
+       * @returns {Promise<Comment>}
        */
       get: (id) => this._request("GET", `/api/v1/comments/${id}`),
       /**
@@ -3017,6 +3461,7 @@ class PlaidClient {
        * maintainers, not admins. Sets `edited` on the comment.
        * @param {string} id - The comment id
        * @param {string} body - The replacement text
+       * @returns {Promise<Comment>}
        */
       update: (id, body) =>
         this._request("PATCH", `/api/v1/comments/${id}`, {
@@ -3038,6 +3483,7 @@ class PlaidClient {
        * @param {string} [filters.documentId] - Every comment anywhere in one document
        * @param {string} [filters.entityType] - With entityId, one entity's thread
        * @param {string} [filters.entityId] - With entityType, one entity's thread
+       * @returns {Promise<Comment[]>}
        */
       list: (projectId, { documentId, entityType, entityId } = {}) =>
         listAll(this, `/api/v1/projects/${projectId}/comments`, {
@@ -3056,7 +3502,7 @@ class PlaidClient {
        * @param {string} [opts.documentId] - Every comment anywhere in one document
        * @param {string} [opts.entityType] - With entityId, one entity's thread
        * @param {string} [opts.entityId] - With entityType, one entity's thread
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<Comment>>}
        */
       listPage: (
         projectId,
@@ -3079,7 +3525,7 @@ class PlaidClient {
        * @param {string} [opts.documentId] - Every comment anywhere in one document
        * @param {string} [opts.entityType] - With entityId, one entity's thread
        * @param {string} [opts.entityId] - With entityType, one entity's thread
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<Comment[]>}
        */
       iterPages: (
         projectId,
@@ -3102,7 +3548,7 @@ class PlaidClient {
        * The response is NOT key-transformed: its keys are entity ids, and
        * camelCasing would mangle the hyphens in a UUID.
        * @param {string} projectId - The project to read
-       * @param {object} [filters] - Same filters as list()
+       * @param {{documentId?: string, entityType?: CommentableType, entityId?: string}} [filters] - Same filters as list()
        * @returns {Promise<Object<string, number>>}
        */
       counts: (projectId, { documentId, entityType, entityId } = {}) =>
@@ -3121,6 +3567,7 @@ class PlaidClient {
        * @param {string} vocabId - The vocab layer to read
        * @param {object} [filters]
        * @param {string} [filters.entityId] - One entry's thread
+       * @returns {Promise<Comment[]>}
        */
       listInVocab: (vocabId, { entityId } = {}) =>
         listAll(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
@@ -3133,7 +3580,7 @@ class PlaidClient {
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @param {string} [opts.entityId] - One entry's thread
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<Comment>>}
        */
       listInVocabPage: (vocabId, { limit, cursor, entityId } = {}) =>
         listPage(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
@@ -3148,7 +3595,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.entityId] - One entry's thread
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<Comment[]>}
        */
       iterInVocabPages: (vocabId, { entityId, pageSize } = {}) =>
         iterPages(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
@@ -3184,7 +3631,7 @@ class PlaidClient {
        * (`config.plaid.research.telemetry`) is off, which it reads from the
        * project itself. `suggestion.shown` is recorded once per target,
        * field and value in a page session.
-       * @param {'suggestion.shown'|'suggestion.adopted'|'suggestion.dismissed'|'plan.opened'} type - The event type
+       * @param {ClientEventType} type - The event type
        * @param {object} fields
        * @param {string} fields.projectId - The project it happened in
        * @param {string} [fields.documentId] - The document it happened in
@@ -3195,6 +3642,7 @@ class PlaidClient {
       record: (type, fields) => recorderFor(this).record(this, type, fields),
       /**
        * Send what the recorder holds now, rather than at its next interval.
+       * @returns {void}
        */
       flush: () => recorderFor(this).flush(),
       /**
@@ -3202,6 +3650,7 @@ class PlaidClient {
        * maintainer changed it. Turning it off drops what is buffered.
        * @param {string} projectId - The project
        * @param {boolean} on - Whether telemetry is on
+       * @returns {void}
        */
       setEnabled: (projectId, on) => recorderFor(this).setEnabled(projectId, on),
       /**
@@ -3226,6 +3675,7 @@ class PlaidClient {
        * @param {string|string[]} [filters.types] - Only these types
        * @param {string} [filters.startTime] - Only events the server stamped at or after this instant
        * @param {string} [filters.endTime] - Only events the server stamped at or before this instant
+       * @returns {Promise<ClientEvent[]>}
        */
       list: (projectId, { types, startTime, endTime } = {}) =>
         listAll(this, `/api/v1/projects/${projectId}/events`, {
@@ -3240,7 +3690,7 @@ class PlaidClient {
        * @param {string|string[]} [opts.types] - Only these types
        * @param {string} [opts.startTime] - Only events at or after this instant
        * @param {string} [opts.endTime] - Only events at or before this instant
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<ClientEvent>>}
        */
       listPage: (
         projectId,
@@ -3259,7 +3709,7 @@ class PlaidClient {
        * @param {string|string[]} [opts.types] - Only these types
        * @param {string} [opts.startTime] - Only events at or after this instant
        * @param {string} [opts.endTime] - Only events at or before this instant
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<ClientEvent[]>}
        */
       iterPages: (projectId, { pageSize, types, startTime, endTime } = {}) =>
         iterPages(this, `/api/v1/projects/${projectId}/events`, {
@@ -3280,6 +3730,9 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
        * @param {boolean} [opts.pinned] - Send this one to the assistant in full on every turn
+       * @param {string} [opts.id] - The new guideline's id, minted by the caller (see uuidv7)
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<{id: string}>}
        */
       create: (projectId, title, { body, pinned, id } = {}, auditMessage) =>
         this._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
@@ -3289,6 +3742,7 @@ class PlaidClient {
       /**
        * Read one guideline, Markdown body included.
        * @param {string} id - The guideline id
+       * @returns {Promise<Guideline>}
        */
       get: (id) => this._request("GET", `/api/v1/guidelines/${id}`),
       /**
@@ -3305,6 +3759,8 @@ class PlaidClient {
        * @param {string} [changes.body] - The new Markdown text
        * @param {boolean} [changes.pinned] - Whether the assistant always gets it in full
        * @param {string} [changes.expectedUpdatedAt] - Write only if this is still the stored updatedAt
+       * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Guideline>}
        */
       update: (
         id,
@@ -3319,6 +3775,7 @@ class PlaidClient {
       /**
        * Delete a guideline.
        * @param {string} id - The guideline id
+       * @param {string} [auditMessage] - Audit message for this write
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/guidelines/${id}`, { auditMessage }),
@@ -3333,6 +3790,7 @@ class PlaidClient {
        * @param {string} projectId - The project to read
        * @param {object} [opts]
        * @param {boolean} [opts.includeBodies] - Return each body instead of its length
+       * @returns {Promise<Guideline[]>}
        */
       list: (projectId, { includeBodies } = {}) =>
         listAll(this, `/api/v1/projects/${projectId}/guidelines`, {
@@ -3345,7 +3803,7 @@ class PlaidClient {
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @param {boolean} [opts.includeBodies] - Return each body instead of its length
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<Guideline>>}
        */
       listPage: (projectId, { limit, cursor, includeBodies } = {}) =>
         listPage(this, `/api/v1/projects/${projectId}/guidelines`, {
@@ -3359,7 +3817,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
        * @param {boolean} [opts.includeBodies] - Return each body instead of its length
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<Guideline[]>}
        */
       iterPages: (projectId, { pageSize, includeBodies } = {}) =>
         iterPages(this, `/api/v1/projects/${projectId}/guidelines`, {
@@ -3433,7 +3891,7 @@ class PlaidClient {
    * matching end, and the outer numbering resumes after it.
    *
    * @param {string} message - Human label for the operation.
-   * @param {object} [opts] - Optional `{ groupId, kind, ref, keys, minted }`. `groupId` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). Python's is `group_id`. `kind`, `ref` and `keys` are described above. `minted` is the ids the operation mints for what it creates: a create refused 409 id-taken for one of them was made by an earlier send of the operation, and answers as made.
+   * @param {{groupId?: string, kind?: OperationKind, ref?: string, keys?: KeySeed, minted?: Iterable<string>}} [opts] - Optional `{ groupId, kind, ref, keys, minted }`. `groupId` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). Python's is `group_id`. `kind`, `ref` and `keys` are described above. `minted` is the ids the operation mints for what it creates: a create refused 409 id-taken for one of them was made by an earlier send of the operation, and answers as made.
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { groupId, kind, ref, keys, minted } = {}) {
@@ -3482,7 +3940,7 @@ class PlaidClient {
    * A seed for the Idempotency-Keys of a logical operation that may be run
    * again from the top (see beginOperation's `keys`). Keep it with the work
    * it belongs to and pass it to every run.
-   * @returns {{seed: string, stamps: Map<number, number|null>}}
+   * @returns {KeySeed}
    */
   keySeed() {
     return { seed: uuidv7(), stamps: new Map() };
@@ -3537,10 +3995,11 @@ class PlaidClient {
    *
    *   await client.withOperation('Import ELAN corpus', run, { kind: 'import', ref: 'format:elan' });
    *
+   * @template T
    * @param {string} message - Human label for the operation.
-   * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
-   * @param {object} [opts] - Optional `{ kind, ref, groupId, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
-   * @returns {Promise<any>} Whatever `fn` resolves to.
+   * @param {(setMessage: (msg: string) => void) => T | Promise<T>} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
+   * @param {{kind?: OperationKind, ref?: string, groupId?: string, keys?: KeySeed, minted?: Iterable<string>}} [opts] - Optional `{ kind, ref, groupId, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
+   * @returns {Promise<T>} Whatever `fn` resolves to.
    */
   async withOperation(message, fn, { kind, ref, groupId, keys, minted } = {}) {
     this.beginOperation(message, { kind, ref, groupId, keys, minted });
@@ -3595,7 +4054,7 @@ class PlaidClient {
    * parents created earlier in the same batch, and any op's failure rolls the
    * whole batch back. A batch is not nestable. Prefer `batched()`, which
    * submits or aborts for you.
-   * @returns {PlaidClient} the batch view
+   * @returns {PlaidBatch} the batch view
    */
   batch() {
     return openBatch(this);
@@ -3739,8 +4198,8 @@ class PlaidClient {
    *
    * A write made on `client` inside `fn` is not part of the batch: it goes
    * over the wire at once, as it would anywhere else. See `batch()`.
-   * @param {(batch: PlaidClient) => (void | Promise<void>)} fn
-   * @returns {Promise<Array>}
+   * @param {(batch: PlaidBatch) => (void | Promise<void>)} fn
+   * @returns {Promise<any[]>}
    */
   async batched(fn) {
     const batch = this.batch();
@@ -3758,7 +4217,8 @@ class PlaidClient {
    * instance — for a launcher or status page checking whether a server is up
    * before anyone logs in.
    * @param {string} baseUrl - The API base URL
-   * @param {object} [options]
+   * @param {{timeout?: number | null}} [options]
+   * @returns {Promise<ServerHealth>}
    */
   static async health(baseUrl, options = {}) {
     return anonymousRequest("GET", baseUrl, "/health", undefined, options);
@@ -3768,7 +4228,8 @@ class PlaidClient {
    * The limits this server enforces, with NO authentication and no client
    * instance. See the instance method for the shape.
    * @param {string} baseUrl - The API base URL
-   * @param {object} [options]
+   * @param {{timeout?: number | null}} [options]
+   * @returns {Promise<{limits: ServerLimits}>}
    */
   static async info(baseUrl, options = {}) {
     return anonymousRequest("GET", baseUrl, "/api/v1/info", undefined, options);
@@ -3924,7 +4385,7 @@ function metadataMethods(client, kind) {
     /**
      * Edit an entity's metadata with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
      * @param {string} id - The entity's ID
-     * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
+     * @param {MetadataOp[]} body - The metadata ops
      * @param {string} [auditMessage] - Audit message for this write
      */
     patchMetadata: (id, body, auditMessage) =>

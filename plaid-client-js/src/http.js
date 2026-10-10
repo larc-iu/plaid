@@ -239,6 +239,8 @@ export const BUSY_BACKOFF_MS = 250;
  *
  * `attempt` must perform the whole request, not just await a prepared one:
  * a fetch body and an AbortSignal.timeout are both single-use.
+ * @param {() => Promise<any>} attempt
+ * @param {{retries?: number, baseDelayMs?: number, onRetry?: (info: object) => void}} [options]
  */
 export async function retryWhileBusy(
   attempt,
@@ -315,6 +317,8 @@ export function mintedTaken(status, data, minted) {
  * answered from the first send when that one landed. Not when the browser
  * says it is offline: then the request never left, and the caller waits for
  * the network instead. Full jitter, as retryWhileBusy.
+ * @param {() => Promise<any>} attempt
+ * @param {{delaysMs?: number[], onRetry?: (info: object) => void}} [options]
  */
 export async function retryUnknown(
   attempt,
@@ -381,6 +385,9 @@ export function timeoutSignal(timeout) {
  * cut off while it is still moving, only once nothing has moved for `timeout`
  * ms. Rejects the way fetch does: a TypeError for a network failure, an error
  * named TimeoutError for a stall.
+ * @param {string} url
+ * @param {{method: string, headers: Record<string, string>, body: any}} request
+ * @param {{onUploadProgress?: (progress: {loaded: number, total: number | null}) => void, timeout?: number | null}} [options]
  */
 export function xhrSend(
   url,

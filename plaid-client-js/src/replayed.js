@@ -19,7 +19,11 @@ export function markReplayed(value) {
   return value;
 }
 
-/** Whether a client answer was replayed from its key's first send. */
+/**
+ * Whether a client answer was replayed from its key's first send.
+ * @param {unknown} answer
+ * @returns {boolean}
+ */
 export const wasReplayed = (answer) =>
   answer !== null &&
   typeof answer === "object" &&

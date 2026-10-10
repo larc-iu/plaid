@@ -224,8 +224,9 @@
 
 ;; The JavaScript client, for pages served from static_resources_path (or from
 ;; anywhere else) to import instead of bundling their own copy. `bb build`
-;; copies plaid-client-js/src and its index.d.ts into resources/client/, so the
-;; jar holds the package's files byte for byte, in the package's own layout.
+;; copies plaid-client-js/src into resources/client/, with the type
+;; declarations it generates from the JSDoc beside each module, so the jar holds
+;; the package's files byte for byte, in the package's own layout.
 ;; They are served as they are, unbundled: every module imports its siblings
 ;; by relative path, so the entry at /client/plaid-client.js pulls the rest
 ;; from /client/<module>.js with no build step in between.
@@ -241,16 +242,17 @@
 (defn- client-js-file
   "The client file `uri` names, relative to the package root, or nil.
   /client/plaid-client.js is the entry (src/index.js), /client/plaid-client.d.ts
-  its types, and /client/<module>.js any other module, for the entry's relative
-  imports. A name is letters, digits, `-` and `_` only, so no path segment or
-  `..` can reach past the package's src/."
+  its types (src/index.d.ts), and /client/<module>.js and /client/<module>.d.ts
+  any other module and its types, for the entry's relative imports. A name is
+  letters, digits, `-` and `_` only, so no path segment or `..` can reach past
+  the package's src/."
   [uri]
   (cond
     (= uri "/client/plaid-client.js") "src/index.js"
-    (= uri "/client/plaid-client.d.ts") "index.d.ts"
-    :else (when-let [[_ module] (re-matches #"/client/([A-Za-z0-9_-]+)\.js" uri)]
+    (= uri "/client/plaid-client.d.ts") "src/index.d.ts"
+    :else (when-let [[_ module ext] (re-matches #"/client/([A-Za-z0-9_-]+)(\.js|\.d\.ts)" uri)]
             (when-not (= module "index")
-              (str "src/" module ".js")))))
+              (str "src/" module ext)))))
 
 (defn- client-js-entry
   "The bytes of the client file `rel` and an ETag that is their SHA-256, read

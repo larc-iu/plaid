@@ -8,12 +8,37 @@
 import { transformResponse } from "./transforms.js";
 
 /**
+ * A constraint an app declares on a layer, e.g. `{type: "value-set", values: ["N"]}`.
+ * @typedef {{type: "max-in-degree" | "acyclic" | "same-ancestor" | "single-span"
+ *   | "value-set" | "coextensive" | "single-link"} & Record<string, any>} LayerConstraint
+ */
+
+/**
+ * `expected`: the list read for the namespace, null when it was absent.
+ * @typedef {{expected?: LayerConstraint[] | null}} ConstraintWriteOptions
+ */
+
+/**
+ * One violation a 422 lists.
+ * @typedef {object} ConstraintViolation
+ * @property {string} constraint
+ * @property {string | null} namespace
+ * @property {string} layer
+ * @property {string} layerName
+ * @property {string | null} document
+ * @property {string | null} at
+ * @property {string[]} ids
+ * @property {any} [value]
+ * @property {string[]} [parts]
+ */
+
+/**
  * The violations of a write refused by a layer constraint, camelCased
  * ({constraint, namespace, layer, layerName, document, at, ids, value?,
  * parts?}), or null for any other error. The answer lists at most 100, and
  * `err.responseData["violation-count"]` is the total.
  * @param {any} err
- * @returns {Array<object>|null}
+ * @returns {ConstraintViolation[] | null}
  */
 export function violationsOf(err) {
   const vs = err?.status === 422 ? err?.responseData?.violations : undefined;

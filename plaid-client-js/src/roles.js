@@ -65,9 +65,10 @@ export function readRole(config) {
  * The first layer in `layers` carrying the given role, or null. The single
  * "find a layer by its role" primitive — apps build their named finders
  * (findWordTokenLayer, etc.) on top of this.
- * @param {Array<{config?: object}>} [layers]
+ * @template {{config?: object}} T
+ * @param {T[] | undefined} layers
  * @param {string} role
- * @returns {object|null}
+ * @returns {T | null}
  */
 export function findByRole(layers, role) {
   return (layers || []).find(l => readRole(l?.config) === role) || null;

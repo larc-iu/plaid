@@ -17,10 +17,16 @@
     ".": "./src/index.js"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "types": "npm run clean-types && tsc -p .",
+    "clean-types": "node -e \"const fs = require('fs'); for (const f of fs.readdirSync('src')) if (f.endsWith('.d.ts')) fs.rmSync('src/' + f)\"",
+    "prepack": "npm run types",
+    "postpack": "npm run clean-types"
   },
   "files": [
-    "src/",
-    "index.d.ts"
-  ]
+    "src/"
+  ],
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }
