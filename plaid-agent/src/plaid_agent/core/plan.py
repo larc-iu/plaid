@@ -160,14 +160,6 @@ class Minter:
             raise
 
 
-def drawable(plan_id) -> bool:
-    """Whether a plan's id is one its ids can be drawn from (a UUIDv7)."""
-    try:
-        return uuid.UUID(str(plan_id)).version == 7
-    except ValueError:
-        return False
-
-
 # The version a document had when the first run of a plan took hold of it,
 # kept on the plan's record of that document.
 HELD_FROM = 'held_from'

@@ -10,6 +10,7 @@ whole-value pattern can still be written back.
 import pytest
 
 from plaid_agent.core.replace import replacer
+from plaid_agent.core.tools import ToolError
 
 
 def r(pattern, replacement, **kw):
@@ -42,13 +43,13 @@ def test_case_is_ignored_unless_asked_so_that_search_and_replace_agree():
 
 
 def test_what_cannot_be_built_is_said_in_words():
-    with pytest.raises(ValueError, match='Give a pattern'):
+    with pytest.raises(ToolError, match='Give a pattern'):
         r('', 'x')
-    with pytest.raises(ValueError, match='cannot be used: Unclosed group'):
+    with pytest.raises(ToolError, match='cannot be used: Unclosed group'):
         r('(unclosed', 'x', regex=True)
     # A backreference to a group the pattern does not have fails on the value.
     apply = r('(a)', r'\2', regex=True)
-    with pytest.raises(ValueError, match='not valid for that pattern'):
+    with pytest.raises(ToolError, match='not valid for that pattern'):
         apply('a')
 
 

@@ -137,7 +137,8 @@ def _failing_with(exc, steps, partial):
     return fake_run_turn
 
 
-STEPS = [{'id': 'c1', 'name': 'search', 'kind': 'read', 'label': 'Searched', 'round': 'r1', 'said': 'First.'},
+STEPS = [{'id': 'c1', 'name': 'search', 'kind': 'read', 'label': 'Searched', 'round': 'r1', 'said': 'First.',
+          'search': True},
          {'id': 'c2', 'name': 'lexicon_entry', 'kind': 'read', 'label': 'Looked up kai', 'failed': True,
           'round': 'r1'}]
 

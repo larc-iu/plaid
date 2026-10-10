@@ -12,7 +12,7 @@ from ..core import rules, work
 from ..core.bidi import qv
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
-from ..core.replace import replacer as core_replacer
+from ..core.replace import replacer as _replacer
 from ..core.provenance import unmark
 from .plan import KIND, SCOPES, analysed_morphemes, move_phrase, settle_merges
 from .project import join_morphemes, word_ref
@@ -25,11 +25,6 @@ from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
-
-def _replacer(pattern: str, replacement: str, regex: bool, whole: bool, case_sensitive: bool = False):
-    """The substitution, in the tools' own words when it cannot be built."""
-    return core_replacer(pattern, replacement, regex, whole, case_sensitive, ToolError)
-
 
 def _bulk_note(ws: Workspace, ops: List[Dict[str, Any]], what: str) -> str:
     """What a bulk tool says back: the count, how many land in each

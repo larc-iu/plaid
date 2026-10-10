@@ -81,5 +81,5 @@ _PROGRESS = {
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('find_nodes',))
 describe_step = TRACER.describe

@@ -180,5 +180,5 @@ _PROGRESS = {
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'))
 describe_step = TRACER.describe

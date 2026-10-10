@@ -452,27 +452,6 @@ def test_a_run_that_wrote_nothing_leaves_the_next_to_hold_the_versions_then(monk
     assert {v for _, _, v in client.stamps[at:]} == {now}
 
 
-def test_a_plan_whose_id_is_not_a_uuidv7_is_settled_as_out_of_date():
-    """A plan staged before its id was a UUIDv7 has no ids to draw. It is
-    settled as out of date with a plain word, never left pending."""
-    spec = sbs.APPS['igt']()
-    client = spec['client']()
-    plan, store = sbs._plan(spec, client)
-    conv, meta = store.load('c1')
-    old = uuid.uuid4().hex
-    conv['display'][1]['plan']['id'] = old
-    meta['pending']['plan_id'] = old
-    store.save('c1', conv, meta)
-    helper = sbs._approve(spec, client, {**plan, 'id': old})
-    assert helper.errors == ['Nothing was written. This plan was made by an earlier version of the '
-                             'assistant. Ask the assistant to plan again.']
-    conv, meta = store.load('c1')
-    assert conv['display'][1]['status'] == 'stale' and not meta.get('pending')
-    # The card says why, after a reload too (H13-UPGRADE-3).
-    assert conv['display'][1]['reason'] == 'This plan was made by an earlier version of the assistant.'
-    assert not client.writes
-
-
 def _user_data(client):
     """The fake's stored user data, which a test rewinds to stand for a
     record the settle never reached."""

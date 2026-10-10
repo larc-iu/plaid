@@ -23,6 +23,8 @@ import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from plaid_client.provenance import prov_state
+
 from .pseudo import Pseudonyms, clip
 from .records import seconds_between
 
@@ -70,20 +72,6 @@ WHERE {where} AND w.change_type != 'doc-version-bump'
   AND w.target_table IN ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items')
 ORDER BY w.ts, w.seq
 """
-
-
-def prov_state(meta: Optional[Dict[str, Any]]) -> str:
-    """The four provenance states (plaid_client.provenance), read off an
-    image's metadata."""
-    meta = meta or {}
-    prov = meta.get('prov')
-    if prov is None:
-        return 'human'
-    if meta.get('provConfirmed') is True:
-        return 'verified'
-    if prov == 'contributed':
-        return 'contributed'
-    return 'machine'
 
 
 def decoded(v):

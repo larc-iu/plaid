@@ -173,12 +173,14 @@ class Corpus(Clipping):
 
     def group(self, where: List[Any], group: List[str], aggregates=None,
               limit: int = GROUP_LIMIT) -> List[list]:
-        """Grouped rows ``[key..., count]``. Whether the read was cut short is
-        remembered on the instance for callers that have to say so."""
+        """Grouped rows ``[key..., count]``, largest count first, sorted here
+        because the engine will not order an aggregate. Whether the read was
+        cut short is remembered on the instance for callers that have to say
+        so."""
         res = self.run({'where': where, 'limit': limit,
                         'return': {'group': group, 'aggregates': aggregates or [['count']]}})
         self.note_truncation(res)
-        return res.get('results') or []
+        return sorted(res.get('results') or [], key=lambda r: -r[-1])
 
     # --- documents --------------------------------------------------------
 

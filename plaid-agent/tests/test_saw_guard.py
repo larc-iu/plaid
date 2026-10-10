@@ -121,7 +121,8 @@ def test_a_long_read_notes_the_sentences_shown_not_asked(monkeypatch):
 
 
 TRACER = Tracer(kind=lambda n: DOCUMENT if n == 'read_document' else READ,
-                describe=lambda n, a: f'Searched for {a.get("pattern")}', progress=lambda n, a: '')
+                describe=lambda n, a: f'Searched for {a.get("pattern")}', progress=lambda n, a: '',
+                search=lambda n: n == 'search')
 
 
 def test_a_document_read_says_the_sentences_it_showed():

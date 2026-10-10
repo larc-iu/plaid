@@ -5,7 +5,7 @@ from fixtures import FakeClient
 
 from plaid_agent.core.conversation import (
     CONVERSATION_BUDGET, DROPPED, ConversationStore, MissingConversation, assistant_item, build_meta,
-    conv_key, conversation_bytes, error_item, find_plan, meta_key, prune, settle_plan, title_from, user_item,
+    _owns, conv_key, conversation_bytes, error_item, find_plan, meta_key, prune, settle_plan, title_from, user_item,
 )
 
 
@@ -151,13 +151,15 @@ def test_store_round_trip_and_ownership():
     assert got_conv == conv and got_meta == meta
     assert set(c.user_data.store) == {('u@x', conv_key('igt', 'p1', 'c1')), ('u@x', meta_key('igt', 'p1', 'c1'))}
     # Ownership: the pending marker names the request that may write.
-    assert store.owned_by('c1', 'r1')
-    assert not store.owned_by('c1', 'r2'), 'another request has taken the conversation'
-    assert store.owned_by('c1', None), 'a caller without a request id (a script) may write'
+    def owned_by(request_id):
+        return _owns(store.meta('c1'), request_id)
+    assert owned_by('r1')
+    assert not owned_by('r2'), 'another request has taken the conversation'
+    assert owned_by(None), 'a caller without a request id (a script) may write'
     store.save('c1', conv, build_meta(meta, 'c1', conv, 's', 'm'))
-    assert store.owned_by('c1', 'r2'), 'nothing pending: anyone may write'
+    assert owned_by('r2'), 'nothing pending: anyone may write'
     c.user_data.delete('u@x', meta_key('igt', 'p1', 'c1'))
-    assert not store.owned_by('c1', 'r1'), 'a deleted conversation is not resurrected'
+    assert not owned_by('r1'), 'a deleted conversation is not resurrected'
 
 
 def test_prune_can_actually_reach_its_budget():

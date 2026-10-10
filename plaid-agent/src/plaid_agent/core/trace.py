@@ -39,6 +39,8 @@ class Tracer:
     kind: Callable[[str], str]
     describe: Callable[[str, Dict[str, Any]], str]
     progress: Callable[[str, Dict[str, Any]], str]
+    #: Whether a read is a search: a look for a pattern across the data.
+    search: Callable[[str], bool] = lambda name: False
 
 
 # Bookkeeping rather than a look at the data: the overview, the plan so far,
@@ -49,12 +51,13 @@ META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'qu
                         'discard_plan', 'drop_planned', 'read_guideline'})
 
 # The reads the summary calls searches: a look for a pattern across the data.
-# Every other READ (a count, a worklist, a check, a run of code) is a read.
-SEARCH_TOOLS = frozenset({'search', 'sequence_search', 'concordance', 'find_nodes', 'query'})
+# Every other READ (a count, a worklist, a check, a run of code) is a read. An
+# app names its own (``tracer_for``'s ``searches``), and these are every app's.
+SEARCH_TOOLS = frozenset({'search', 'query'})
 
 
 def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], Optional[str]],
-               progress: Dict[str, Callable[[Dict[str, Any]], str]]) -> Tracer:
+               progress: Dict[str, Callable[[Dict[str, Any]], str]], searches=()) -> Tracer:
     """One app's tracer. What KIND a call was is read off the app's own tool
     tables. The lines are the app's for its own tools (``describe`` answers
     None for a tool it has no line for) and :data:`SHARED_DESCRIBE` and
@@ -88,7 +91,8 @@ def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]],
             return 'Planning changes…'
         return f'{name}…'
 
-    return Tracer(kind=kind, describe=line, progress=label)
+    searching = SEARCH_TOOLS | frozenset(searches)
+    return Tracer(kind=kind, describe=line, progress=label, search=lambda name: name in searching)
 
 
 # --- the words an app's descriptions are built from -----------------------------
@@ -324,6 +328,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
         item['nothing'] = True
     elif kind == DOCUMENT and args.get('document'):
         item['document'] = str(args['document'])
+    elif kind == READ and tracer.search(name):
+        item['search'] = True
     if planned:
         item['planned'] = planned
     if saved and not failed:
@@ -394,7 +400,7 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     # saved a file is counted as the saving, not as a read, and a file saved
     # twice (code run again after a fix) is one file.
     looks = [s for s in steps if s['kind'] == READ and not s.get('saved')]
-    searches = sum(1 for s in looks if s.get('name') in SEARCH_TOOLS)
+    searches = sum(1 for s in looks if s.get('search'))
     if searches:
         parts.append(plural(searches, 'search', 'searches'))
     if len(looks) > searches:

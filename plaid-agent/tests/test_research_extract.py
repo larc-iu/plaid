@@ -5,7 +5,8 @@ The whole extractor runs against a real core in test_research_extract_live.py.""
 import pytest
 
 from plaid_agent.core.conversation import PROPOSED_VALUE_MAX
-from plaid_agent.research.fates import change_category, prov_state, value_of
+from plaid_agent.research.fates import change_category, value_of
+from plaid_client.provenance import prov_state
 from plaid_agent.research.pseudo import VALUE_MAX, Pseudonyms, clip, load_salt
 from plaid_agent.research.records import error_class, snake, turn_end, uuid7_time
 

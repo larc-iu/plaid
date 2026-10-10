@@ -31,9 +31,6 @@ from typing import Any, Dict, Optional
 #: Every op a page may send.
 OPS = ('send', 'retry', 'approve', 'discard', 'attach', 'delete', 'rename', 'hold')
 
-#: The ops that act inside a conversation, held to the one-tab rule.
-HELD_OPS = ('send', 'retry', 'approve', 'discard', 'attach', 'hold')
-
 #: How long a tab's hold lasts without a renewal, in seconds. A tab renews it
 #: every two minutes while it is visible (plaid-ui hold.js).
 LEASE_S = 5 * 60

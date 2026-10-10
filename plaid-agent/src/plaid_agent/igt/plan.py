@@ -88,6 +88,7 @@ from typing import Any, Dict, List, Optional
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core import rules
+from ..core.limits import ROW_LIMIT
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
 
@@ -1562,7 +1563,7 @@ def linked_morphemes_query(project_id: str, item_ids: List[str]) -> Dict[str, An
                       ['token-layer', '?tl', {}],
                       ['=', '?tl.config.plaid.role', 'morpheme']],
             'return': {'group': ['?t', '?v', '?t.metadata.morphType'], 'aggregates': [['count']]},
-            'limit': 100000}
+            'limit': ROW_LIMIT}
 
 
 def _cache_project_ids(client, project, vocab_id: str, requester: Optional[str]) -> List[str]:

@@ -10,7 +10,7 @@ import copy
 import pytest
 
 from plaid_agent.ud.plan import execute_plan, validate_ops
-from plaid_agent.ud.sentences import crossing_relations
+from plaid_agent.ud.sentences import _crossing_extras, _crossing_words
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.tools import Workspace
 from plaid_agent.ud.toolkit import call_tool
@@ -21,6 +21,14 @@ from ud_fixtures import PID, suppressor, ud_client, with_enhanced
 def ws():
     client = ud_client()
     return Workspace(client, load_project(client, PID))
+
+
+def crossing_relations(sentence, char_pos):
+    """Every dependency relation a boundary at ``char_pos`` would leave
+    spanning two sentences: the tree's, then the enhanced layer's EXTRA edges,
+    as split_sentence counts what goes."""
+    return ([w.relation_id for w in _crossing_words(sentence, char_pos)]
+            + _crossing_extras(sentence, char_pos))
 
 
 def run(ws, name, **args):

@@ -15,11 +15,11 @@ are fetched only to render the hits a tool shows, so the cost follows what is
 displayed rather than the size of the corpus.
 """
 
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from ..core.corpus import Corpus as BaseCorpus, rx, spread
 from ..core.java_regex import PatternError, matcher
-from ..core.limits import GROUP_LIMIT, READ_LIMITS
+from ..core.limits import READ_LIMITS
 from ..core.args import clamp_limit
 from ..core.tools import ToolError, truncate
 from .project import UmrProject, reachable_from_root
@@ -49,13 +49,6 @@ class Corpus(BaseCorpus):
     def __init__(self, ws: Workspace):
         super().__init__(ws)
         self.p: UmrProject = ws.project
-
-    def group(self, where: List[Any], group: List[str], aggregates=None,
-              limit: int = GROUP_LIMIT) -> List[list]:
-        """Grouped rows, sorted here by count descending because the engine
-        will not order an aggregate."""
-        rows = super().group(where, group, aggregates, limit)
-        return sorted(rows, key=lambda r: -r[-1])
 
     # --- clauses ----------------------------------------------------------
 

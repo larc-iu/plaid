@@ -207,5 +207,5 @@ def test_search_and_replace_read_a_pattern_alike():
     assert replacer('ka', 'ga', False, False)('KAlamang') == 'galamang'
     with pytest.raises(ToolError, match='Nested'):
         rx('[[:alpha:]]', regex=True)
-    with pytest.raises(ValueError, match='cannot be used: Nested'):
+    with pytest.raises(ToolError, match='cannot be used: Nested'):
         replacer('[[:alpha:]]', 'x', True, False)

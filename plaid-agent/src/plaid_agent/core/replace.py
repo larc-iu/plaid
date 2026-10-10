@@ -84,13 +84,15 @@ def _mapper(s: str):
 
 
 def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
-             case_sensitive: bool = False, error=ValueError) -> Callable[[str], str]:
+             case_sensitive: bool = False, error=None) -> Callable[[str], str]:
     """A function from a stored value to its replacement.
 
     Case-insensitive by default, like search, so what search found is what the
-    replacement hits. ``error`` is the exception class the app reports to the
-    model with; the message is the whole of what it says.
+    replacement hits. A pattern that cannot be built raises ``error``, by
+    default :class:`core.tools.ToolError`, whose message reaches the model.
     """
+    if error is None:
+        from .tools import ToolError as error
     if not pattern:
         raise error('Give a pattern.')
     replacement = '' if replacement is None else str(replacement)

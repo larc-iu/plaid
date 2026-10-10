@@ -170,12 +170,6 @@ class ConversationStore:
     def meta(self, conv_id: str) -> Optional[Dict[str, Any]]:
         return self._get(meta_key(self.app, self.project_id, conv_id))
 
-    def owned_by(self, conv_id: str, request_id: Optional[str]) -> bool:
-        """Whether this request may still write the conversation: its meta
-        exists (the conversation was not deleted meanwhile) and its pending
-        marker names this request or none (the user did not move on)."""
-        return _owns(self.meta(conv_id), request_id)
-
     def save(self, conv_id: str, conv: Dict[str, Any], meta: Dict[str, Any]) -> None:
         """The transcript first, then the sidebar entry: a reader takes the
         entry as the signal that the transcript is complete. Written whatever
@@ -816,10 +810,6 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
 
 #: What the model is told of a plan the user discarded.
 DISCARDED_NOTE = '(note) The user discarded the plan; nothing was changed.'
-
-#: Why a plan staged before turns recorded their service (or with an id the
-#: ids it creates cannot be drawn from) is refused, on its card.
-EARLIER_VERSION = 'This plan was made by an earlier version of the assistant.'
 
 # The outcomes of a plan that wrote to the project.
 WROTE = ('applied', 'partial')

@@ -72,22 +72,6 @@ def _crossing_words(sentence: Sentence, char_pos: int):
             yield w
 
 
-def crossing_relations(sentence: Sentence, char_pos: int) -> List[str]:
-    """Every dependency relation in ``sentence`` that a boundary at
-    ``char_pos`` would leave spanning two sentences: the tree's, then the
-    enhanced layer's EXTRA edges.
-
-    Both layers, because an edge across two sentences is invalid data whichever
-    one holds it, and the editor asks the same question of both (its
-    `relationsCrossing` reads `allDependencyRelations`, plaid-ud
-    ``utils/udReconcile.js``). An extra edge is an arc of its own, so it is
-    counted in what the card says goes, unlike a suppressor
-    (``crossing_suppressors``).
-    """
-    return ([w.relation_id for w in _crossing_words(sentence, char_pos)]
-            + _crossing_extras(sentence, char_pos))
-
-
 def _crossing_extras(sentence: Sentence, char_pos: int) -> List[str]:
     """The enhanced layer's extra edges a boundary at ``char_pos`` would leave
     spanning two sentences.

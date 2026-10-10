@@ -22,7 +22,7 @@ from ..core.limits import SAMPLE_LINES
 from ..core.provenance import unmark
 from ..core.history import doc_label
 from ..core.plan import by_document
-from ..core.replace import replacer as core_replacer
+from ..core.replace import replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
 from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
@@ -30,12 +30,6 @@ from .tools import FIELDS, ToolError, Workspace, _check_feature
 
 REPLACE_FIELDS = FIELDS + ('deprel',)
 REPLACE_MAX = 5000   # changes one plan may make; past it, narrow and go in passes
-
-
-def replacer(pattern: str, replacement: str, regex: bool, whole: bool,
-             case_sensitive: bool) -> Callable[[str], str]:
-    """The substitution, in the tools' own words when it cannot be built."""
-    return core_replacer(pattern, replacement, regex, whole, case_sensitive, ToolError)
 
 
 def _where(c: Corpus, field: str, spec: Dict[str, Any], document_id: Optional[str]) -> Tuple[List[Any], List[str]]:

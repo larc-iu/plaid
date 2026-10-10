@@ -16,7 +16,6 @@ Two things about the engine (v0) that shape everything here:
 from typing import Any, Dict, List
 
 from ..core.corpus import Corpus as BaseCorpus, rx  # noqa: F401 - rx is re-exported
-from ..core.limits import GROUP_LIMIT
 from .project import UdProject
 from .tools import Workspace
 
@@ -32,13 +31,6 @@ class Corpus(BaseCorpus):
     def __init__(self, ws: Workspace):
         super().__init__(ws)
         self.p: UdProject = ws.project
-
-    def group(self, where: List[Any], group: List[str], aggregates=None,
-              limit: int = GROUP_LIMIT) -> List[list]:
-        """Grouped rows, sorted here by count descending because the engine
-        will not order an aggregate."""
-        rows = super().group(where, group, aggregates, limit)
-        return sorted(rows, key=lambda r: -r[-1])
 
     # --- clauses ----------------------------------------------------------
 

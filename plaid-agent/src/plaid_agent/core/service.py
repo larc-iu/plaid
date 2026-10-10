@@ -80,7 +80,7 @@ from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCanc
 from .files import Attachments, FileKeeper
 from .garble import seed
 from .guidelines import in_context as guidelines_in_context
-from .conversation import (DISCARDED_NOTE, EARLIER_VERSION, MESSAGE_ROOM, ConversationStore, MissingConversation, answered_last,
+from .conversation import (DISCARDED_NOTE, MESSAGE_ROOM, ConversationStore, MissingConversation, answered_last,
                            assistant_item, build_meta, conversation_bytes, error_item, find_plan, kept_meta,
                            held_transcript, now_iso, partial_note, partial_tally, pending_kept, plan_settling, proposed_changes,
                            prune, record_budget, rewind_for_retry, settle_plan, title_from, turn_ending,
@@ -92,7 +92,7 @@ from .ops import (ANOTHER_PROJECT, CONVERSATION_FULL, MESSAGE_TOO_LONG, OPS, REC
 from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
-                   PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, drawable, expanding,
+                   PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, expanding,
                    forget_held, holding, may_have_written, nothing_landed, outcome_unknown, stamp_of, writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
@@ -1367,18 +1367,6 @@ class BaseAssistantService(BaseService):
         if item.get('status') == 'stale':
             settled()
             response_helper.error('The plan is out of date. Ask the assistant to plan again.')
-            return
-        # A plan's writes name the service that proposed it, which its turn
-        # records. A plan staged before turns recorded it cannot say, so it is
-        # settled as out of date, not written under the wrong name. Asked here,
-        # before the locks, or the lookup failed inside them as a KeyError and
-        # the card kept offering an Approve that failed the same way.
-        # Nor can a plan whose id is not a UUIDv7, which the ids of what it
-        # creates are drawn from (`core.plan.Minter`).
-        if not item.get('service') or not drawable(plan_id):
-            said = EARLIER_VERSION
-            settled('stale', f'(note) The plan was not applied: {said} Nothing was written.', reason=said)
-            response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return
         ops = plan.get('ops') or []
         if not ops:
