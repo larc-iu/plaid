@@ -19,10 +19,6 @@ export const VocabularySettings = ({ projectId, client }) => {
     try {
       setHasError(false);
 
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
       // Get all available vocabularies
       const allVocabs = await client.vocabLayers.list();
 
@@ -58,7 +54,6 @@ export const VocabularySettings = ({ projectId, client }) => {
   // The send asks the project first, so a send whose premise an earlier one
   // already settled (a refused link, then an untick) does nothing.
   const handleSaveChanges = async ({ change }) => {
-    if (!client) throw new Error('Not authenticated');
     if (!change) return;
     const project = await client.projects.get(projectId);
     const linked = (project.vocabs || []).some((v) => v.id === change.id);

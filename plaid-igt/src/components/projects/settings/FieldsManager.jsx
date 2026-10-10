@@ -2,7 +2,7 @@ import { fieldKey } from '@/domain/fieldNames';
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
-import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -25,6 +25,9 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { countOf } from '@ui/lib/plural.js';
 import { nameKey } from '@ui/lib/nameKey.js';
+import { sameNameIgnoringCase } from '@/domain/nameMatch';
+import { RowControls } from '@/components/shared/RowControls';
+import { moveItem } from './useListManager';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
@@ -191,7 +194,6 @@ export const FieldsManager = ({
     { value: 'Sentence', label: 'Sentence' },
   ];
 
-  // Initialize data on mount
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -323,13 +325,7 @@ export const FieldsManager = ({
       return;
     }
 
-    // Check for duplicate names at the SAME scope (case insensitive)
-    const isDuplicate = fields.some(
-      (field) =>
-        field.scope === newFieldScope && field.name.toLowerCase() === trimmedName.toLowerCase(),
-    );
-
-    if (isDuplicate) {
+    if (wouldBeDuplicate()) {
       notifyError(`A ${newFieldScope} field with this name already exists`, 'Duplicate field');
       return;
     }
@@ -437,9 +433,8 @@ export const FieldsManager = ({
     const newIndex = neighborInScope(key, direction);
     if (currentIndex === -1 || newIndex === -1) return;
 
-    const newFields = [...fields];
-    const [movedField] = newFields.splice(currentIndex, 1);
-    newFields.splice(newIndex, 0, movedField);
+    const newFields = moveItem(fields, currentIndex, newIndex);
+    const movedField = fields[currentIndex];
 
     if (onMoveField) {
       // Shown at once, the server's shift behind it, and put back if refused.
@@ -473,8 +468,7 @@ export const FieldsManager = ({
     const trimmedName = newFieldName.trim();
     if (!trimmedName) return false;
     return fields.some(
-      (field) =>
-        field.scope === newFieldScope && field.name.toLowerCase() === trimmedName.toLowerCase(),
+      (field) => field.scope === newFieldScope && sameNameIgnoringCase(field.name, trimmedName),
     );
   };
 
@@ -570,7 +564,6 @@ export const FieldsManager = ({
     await changeIgnored({ ...shownIgnored, explicitIgnoredTokens: tokens });
   };
 
-  // Don't render until initialized
   if (!isInitialized) {
     return <Loading />;
   }
@@ -685,49 +678,14 @@ export const FieldsManager = ({
                     </td>
                   )}
                   <td className="w-px whitespace-nowrap border-t px-3 py-2 align-middle">
-                    {/* Always visible, not on hover. Hidden until the pointer arrived, a
-    row read as a fixed fact rather than something you could reorder
-    or remove, and a keyboard never found them at all. */}
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveField(record.key, 'up');
-                        }}
-                        disabled={neighborInScope(record.key, 'up') === -1}
-                        title="Move up"
-                      >
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveField(record.key, 'down');
-                        }}
-                        disabled={neighborInScope(record.key, 'down') === -1}
-                        title="Move down"
-                      >
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          requestDeleteField(record.key);
-                        }}
-                        title="Remove"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    <RowControls
+                      name={record.name}
+                      onUp={() => handleMoveField(record.key, 'up')}
+                      onDown={() => handleMoveField(record.key, 'down')}
+                      canUp={neighborInScope(record.key, 'up') !== -1}
+                      canDown={neighborInScope(record.key, 'down') !== -1}
+                      onRemove={() => requestDeleteField(record.key)}
+                    />
                   </td>
                 </tr>
               ))}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, ChevronUp, ChevronDown, Unlink } from 'lucide-react';
+import { Plus, Unlink } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList } from '@ui/hooks/usePagedList';
@@ -7,13 +7,13 @@ import { Button } from '@ui/components/ui/button';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
 import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { countOf } from '@ui/lib/plural.js';
-import { nameKey } from '@ui/lib/nameKey.js';
+import { sameNameIgnoringCase } from '@/domain/nameMatch';
+import { RowControls } from '@/components/shared/RowControls';
 
 // A row the user may not link: an unlinked vocabulary whose row says so
 // (`canLink: false`, set by the screen that loaded it). A linked row is always
@@ -29,13 +29,12 @@ export const VocabularyManager = ({
   onSaveChanges,
   onError,
   showTitle = true,
-  isSettings = false, // New prop to control behavior differences
+  isSettings = false,
   client = null, // reads each vocabulary's entry count, when given
 }) => {
   const [vocabularies, setVocabularies] = useState([]);
   const [newVocabName, setNewVocabName] = useState('');
   const [query, setQuery] = useState('');
-  const [hoveredVocab, setHoveredVocab] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
@@ -51,19 +50,16 @@ export const VocabularyManager = ({
   const openUnlinkModal = () => setUnlinkModalOpened(true);
   const closeUnlinkModal = () => setUnlinkModalOpened(false);
 
-  // Initialize data on mount
   useEffect(() => {
     const initializeData = async () => {
       try {
         setLoading(true);
         let vocabData = initialData;
 
-        // If no initial data provided or if vocabularies array is missing, try loading from callback
         if ((!vocabData || !vocabData.vocabularies) && onLoadData) {
           vocabData = await onLoadData();
         }
 
-        // If still no data, use empty array
         if (!vocabData?.vocabularies) {
           vocabData = { vocabularies: [] };
         }
@@ -146,7 +142,7 @@ export const VocabularyManager = ({
   const handleVocabToggle = (vocabId, enabled) => {
     const row = vocabularies.find((v) => v.id === vocabId);
     if (enabled && row && isLocked(row)) return;
-    // For settings mode, handle unlinking with confirmation
+    // In settings an unlink asks first.
     if (isSettings && !enabled) {
       const vocab = vocabularies.find((v) => v.id === vocabId);
       if (vocab) {
@@ -183,12 +179,7 @@ export const VocabularyManager = ({
       return;
     }
 
-    // Check for duplicate names (case insensitive)
-    const isDuplicate = vocabularies.some(
-      (vocab) => nameKey(vocab.name).toLowerCase() === nameKey(trimmedName).toLowerCase(),
-    );
-
-    if (isDuplicate) {
+    if (vocabularies.some((vocab) => sameNameIgnoringCase(vocab.name, trimmedName))) {
       notifyError('A vocabulary with this name already exists', 'Duplicate vocabulary');
       return;
     }
@@ -196,7 +187,7 @@ export const VocabularyManager = ({
     const newVocab = {
       name: trimmedName,
       id: customVocabId(),
-      enabled: true, // New custom vocabs are enabled by default
+      enabled: true,
       isCustom: true,
     };
 
@@ -221,13 +212,10 @@ export const VocabularyManager = ({
     }
   };
 
-  // Check if new vocab name would be a duplicate
   const wouldBeDuplicate = () => {
     const trimmedName = newVocabName.trim();
     if (!trimmedName) return false;
-    return vocabularies.some(
-      (vocab) => nameKey(vocab.name).toLowerCase() === nameKey(trimmedName).toLowerCase(),
-    );
+    return vocabularies.some((vocab) => sameNameIgnoringCase(vocab.name, trimmedName));
   };
 
   // What the arrows order is the LINKED vocabularies among themselves, since
@@ -262,7 +250,7 @@ export const VocabularyManager = ({
   // so it cannot sit behind a loading branch.
   const tableData = vocabularies.map((vocab, index) => ({
     ...vocab,
-    tableId: `${vocab.name}-${index}`, // Unique ID for table
+    tableId: `${vocab.name}-${index}`,
   }));
   // Searched and paged, as every other browsable list in the app is. Every
   // vocabulary on the server lands here, and on a shared server that is a
@@ -273,7 +261,6 @@ export const VocabularyManager = ({
   const shown = q ? tableData.filter((v) => textIncludes(v.name || '', q)) : tableData;
   const paged = usePagedList(shown, { resetKey: q });
 
-  // Don't render until initialized
   if (!isInitialized || loading) {
     return <Loading />;
   }
@@ -315,8 +302,6 @@ export const VocabularyManager = ({
                     'border-t',
                     isLocked(record) ? 'cursor-default' : 'cursor-pointer hover:bg-muted/50',
                   )}
-                  onMouseEnter={() => setHoveredVocab(record.id)}
-                  onMouseLeave={() => setHoveredVocab(null)}
                   onClick={() => handleVocabToggle(record.id, !record.enabled)}
                 >
                   <td className="px-3 py-2">
@@ -350,84 +335,31 @@ export const VocabularyManager = ({
                           </span>
                         )}
                       </span>
-                      <div className="flex items-center gap-2">
-                        {/* Only show move buttons in setup mode, and only for
-                            vocabs that are actually being linked — ordering an
-                            unlinked row is meaningless. */}
-                        {!isSettings && record.enabled && (
-                          <>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className={cn(
-                                'h-7 w-7 transition-opacity',
-                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
-                              )}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleMoveVocab(record.id, 'up');
-                              }}
-                              disabled={linkedNeighbour(record.id, 'up') === -1}
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className={cn(
-                                'h-7 w-7 transition-opacity',
-                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
-                              )}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleMoveVocab(record.id, 'down');
-                              }}
-                              disabled={linkedNeighbour(record.id, 'down') === -1}
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </Button>
-                          </>
-                        )}
-
-                        {/* Show unlink button for enabled vocabs in settings mode */}
-                        {isSettings && record.enabled && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className={cn(
-                              'h-7 w-7 transition-opacity',
-                              ROW_DELETE_CLASS,
-                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
-                            )}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleVocabToggle(record.id, false);
-                            }}
-                          >
-                            <Unlink className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-
-                        {/* Only show delete button for custom vocabs in setup mode */}
-                        {!isSettings && record.isCustom && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Remove ${record.name}`}
-                            className={cn(
-                              'h-7 w-7 transition-opacity',
-                              ROW_DELETE_CLASS,
-                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
-                            )}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDeleteCustomVocab(record.id);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
+                      {/* Setup orders the linked vocabularies and removes the
+                          ones it made. Settings unlinks. */}
+                      {isSettings ? (
+                        record.enabled && (
+                          <RowControls
+                            name={record.name}
+                            onRemove={() => handleVocabToggle(record.id, false)}
+                            removeLabel="Unlink"
+                            removeIcon={Unlink}
+                          />
+                        )
+                      ) : (
+                        <RowControls
+                          name={record.name}
+                          {...(record.enabled && {
+                            onUp: () => handleMoveVocab(record.id, 'up'),
+                            onDown: () => handleMoveVocab(record.id, 'down'),
+                            canUp: linkedNeighbour(record.id, 'up') !== -1,
+                            canDown: linkedNeighbour(record.id, 'down') !== -1,
+                          })}
+                          {...(record.isCustom && {
+                            onRemove: () => handleDeleteCustomVocab(record.id),
+                          })}
+                        />
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -437,7 +369,6 @@ export const VocabularyManager = ({
           <ListPager {...paged} />
         </div>
 
-        {/* Add Custom Vocab - only in setup mode */}
         {!isSettings && (
           <div className="mt-4">
             <p className="mb-4 text-sm font-medium">New vocabulary</p>
@@ -460,7 +391,6 @@ export const VocabularyManager = ({
         )}
       </div>
 
-      {/* Unlink Confirmation Modal */}
       <ConfirmDeleteDialog
         open={unlinkModalOpened}
         onOpenChange={(o) => {

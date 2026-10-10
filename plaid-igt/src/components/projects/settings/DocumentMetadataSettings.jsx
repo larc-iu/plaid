@@ -55,10 +55,6 @@ export const DocumentMetadataSettings = ({
     try {
       setHasError(false);
 
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
       // Convert to API format (only store enabled fields with just name)
       const enabledFields = data.enabledFields.filter((field) => field.enabled);
       const apiConfig = enabledFields.map((field) => ({

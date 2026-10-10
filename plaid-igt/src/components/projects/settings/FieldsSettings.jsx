@@ -117,10 +117,6 @@ export const FieldsSettings = ({
   // handleError reads the project again so the table shows what landed.
   const handleSaveChanges = (data) => inTurn(() => saveNow(data));
   const saveNow = async (data) => {
-    if (!client) {
-      throw new Error('Not authenticated');
-    }
-
     // Fresh from the server: this creates and deletes layers, so it has to
     // see the ones that exist right now, not the ones the last render saw.
     const fresh = await client.projects.get(projectId);

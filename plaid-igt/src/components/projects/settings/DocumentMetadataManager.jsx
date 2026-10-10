@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { PLAID_NAMESPACE, isReservedMetadataKey } from '@larc-iu/plaid-client';
 import { PREDEFINED_FIELDS } from '@/domain/igtConfig';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, RotateCcw, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Plus, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { nameKey } from '@ui/lib/nameKey.js';
+import { sameNameIgnoringCase } from '@/domain/nameMatch';
+import { RowControls } from '@/components/shared/RowControls';
+import { useListManager } from './useListManager';
 import {
   Select,
   SelectTrigger,
@@ -17,6 +20,9 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
+
+const defaultFields = () =>
+  Object.entries(PREDEFINED_FIELDS).map(([name, enabled]) => ({ name, enabled, isCustom: false }));
 
 export const DocumentMetadataManager = ({
   initialData,
@@ -31,85 +37,26 @@ export const DocumentMetadataManager = ({
   showTitle = true,
   autoSaveDefaults = false, // Only auto-save defaults in setup mode
 }) => {
-  const [enabledFields, setEnabledFields] = useState([]);
+  // The setup wizard saves the predefined fields at once: they are created
+  // even if never touched, and its review would otherwise leave them out.
+  const {
+    items: enabledFields,
+    setItems: setEnabledFields,
+    isInitialized,
+    save: saveChanges,
+    move,
+    report,
+  } = useListManager({
+    listKey: 'enabledFields',
+    noun: 'metadata fields',
+    defaults: defaultFields,
+    initialData,
+    onLoadData,
+    onSaveChanges,
+    onError,
+    autoSaveDefaults,
+  });
   const [newFieldName, setNewFieldName] = useState('');
-  const [hoveredField, setHoveredField] = useState(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Initialize data on mount
-  useEffect(() => {
-    const initializeData = async () => {
-      try {
-        let fieldsData = initialData;
-
-        // If no initial data provided, try loading from callback
-        if (!fieldsData && onLoadData) {
-          fieldsData = await onLoadData();
-        }
-
-        // If still no data, use predefined fields as default
-        let usedDefaults = false;
-        if (!fieldsData?.enabledFields) {
-          fieldsData = {
-            enabledFields: Object.entries(PREDEFINED_FIELDS).map(([name, enabled]) => ({
-              name,
-              enabled,
-              isCustom: false,
-            })),
-          };
-          usedDefaults = true;
-        }
-
-        setEnabledFields(fieldsData.enabledFields);
-        setIsInitialized(true);
-
-        // In setup mode, persist the defaults into the wizard so the Confirmation
-        // review reflects what will actually be created — these predefined fields
-        // ARE created at setup even if the user never toggles them. Without this
-        // the review silently omits the whole Document Metadata category.
-        if (usedDefaults && autoSaveDefaults && onSaveChanges) {
-          await onSaveChanges(fieldsData);
-        }
-      } catch (error) {
-        console.error('Failed to load metadata configuration:', error);
-        // Still set as initialized even on error, so we show the default fields
-        const defaultFields = Object.entries(PREDEFINED_FIELDS).map(([name, enabled]) => ({
-          name,
-          enabled,
-          isCustom: false,
-        }));
-        setEnabledFields(defaultFields);
-        setIsInitialized(true);
-
-        if (onError) {
-          onError(error);
-        } else {
-          notifyError(error, 'Failed to load the metadata fields');
-        }
-      }
-    };
-
-    initializeData();
-    // Runs once per initialData; the callbacks are read fresh and must not
-    // start another load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData]);
-
-  const saveChanges = async (newFields) => {
-    try {
-      if (onSaveChanges) {
-        await onSaveChanges({ enabledFields: newFields });
-      }
-      setEnabledFields(newFields);
-    } catch (error) {
-      console.error('Failed to save metadata configuration:', error);
-      if (onError) {
-        onError(error);
-      } else {
-        notifyError(error, 'Failed to save the metadata fields');
-      }
-    }
-  };
 
   const handleFieldToggle = async (fieldName, enabled) => {
     const updatedFields = enabledFields.map((field) =>
@@ -151,33 +98,19 @@ export const DocumentMetadataManager = ({
       return;
     }
 
-    // Check for duplicate names (case insensitive)
-    const isDuplicate = enabledFields.some(
-      (field) => field.name.toLowerCase() === trimmedName.toLowerCase(),
-    );
-
-    if (isDuplicate) {
+    if (enabledFields.some((field) => sameNameIgnoringCase(field.name, trimmedName))) {
       notifyError('A field with this name already exists', 'Duplicate field');
       return;
     }
 
-    const newField = {
-      name: trimmedName,
-      enabled: true, // New custom fields are enabled by default
-      isCustom: true,
-    };
-
-    const updatedFields = [...enabledFields, newField];
-    await saveChanges(updatedFields);
+    await saveChanges([...enabledFields, { name: trimmedName, enabled: true, isCustom: true }]);
 
     setNewFieldName('');
     notifySuccess(`Field “${trimmedName}” added`);
   };
 
   const handleDeleteCustomField = async (fieldName) => {
-    const updatedFields = enabledFields.filter((field) => field.name !== fieldName);
-    await saveChanges(updatedFields);
-
+    await saveChanges(enabledFields.filter((field) => field.name !== fieldName));
     notifyInfo(`Field “${fieldName}” removed`);
   };
 
@@ -187,33 +120,16 @@ export const DocumentMetadataManager = ({
     }
   };
 
-  // Check if new field name would be a duplicate
   const wouldBeDuplicate = () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) return false;
-    return enabledFields.some((field) => field.name.toLowerCase() === trimmedName.toLowerCase());
+    return enabledFields.some((field) => sameNameIgnoringCase(field.name, trimmedName));
   };
 
-  const handleMoveField = async (fieldName, direction) => {
-    const currentIndex = enabledFields.findIndex((field) => field.name === fieldName);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= enabledFields.length) return;
-
-    const newFields = [...enabledFields];
-    const [movedField] = newFields.splice(currentIndex, 1);
-    newFields.splice(newIndex, 0, movedField);
-
-    await saveChanges(newFields);
-  };
-
-  // Don't render until initialized
   if (!isInitialized) {
     return <div className="rounded-lg border p-4 text-sm text-muted-foreground">Loading…</div>;
   }
 
-  // Prepare data for the table
   // Point a metadata field at a tagset (or at none). Genre, Text type and
   // Region are the fields this is for: closed inventories far more naturally
   // than a gloss ever is.
@@ -226,16 +142,15 @@ export const DocumentMetadataManager = ({
       if (onSaveChanges) await onSaveChanges({ enabledFields: next });
     } catch (error) {
       // Shown at once, put back when refused.
-      console.error('Failed to save metadata configuration:', error);
+      console.error('Failed to save the metadata fields:', error);
       setEnabledFields(before);
-      if (onError) onError(error);
-      else notifyError(error, 'Failed to save the metadata fields');
+      report(error, 'Failed to save the metadata fields');
     }
   };
 
   const tableData = enabledFields.map((field, index) => ({
     ...field,
-    id: `${field.name}-${index}`, // Unique ID for table
+    id: `${field.name}-${index}`,
   }));
 
   return (
@@ -257,13 +172,11 @@ export const DocumentMetadataManager = ({
               </tr>
             </thead>
             <tbody>
-              {tableData.map((record) => (
+              {tableData.map((record, index) => (
                 <tr
                   key={record.id}
                   className="cursor-pointer border-t hover:bg-muted/50"
                   onClick={() => handleFieldToggle(record.name, !record.enabled)}
-                  onMouseEnter={() => setHoveredField(record.name)}
-                  onMouseLeave={() => setHoveredField(null)}
                 >
                   <td className="px-3 py-2">
                     {/* A checkbox, not a tick-or-cross glyph, and the same
@@ -324,60 +237,26 @@ export const DocumentMetadataManager = ({
                     </td>
                   )}
                   <td className="w-px whitespace-nowrap px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        className="h-7 w-7 transition-opacity"
-                        style={{ opacity: hoveredField === record.name ? 1 : 0 }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveField(record.name, 'up');
-                        }}
-                        disabled={tableData.findIndex((item) => item.name === record.name) === 0}
-                      >
-                        <ChevronUp className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        className="h-7 w-7 transition-opacity"
-                        style={{ opacity: hoveredField === record.name ? 1 : 0 }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveField(record.name, 'down');
-                        }}
-                        disabled={
-                          tableData.findIndex((item) => item.name === record.name) ===
-                          tableData.length - 1
-                        }
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant={record.isCustom ? 'destructive' : 'secondary'}
-                        title={record.isCustom ? 'Delete field' : 'Reset to default'}
-                        className="h-7 w-7 transition-opacity"
-                        style={{ opacity: hoveredField === record.name ? 1 : 0 }}
-                        onClick={(event) => {
-                          event.stopPropagation(); // Prevent row click when clicking the action
-                          if (record.isCustom) {
-                            handleDeleteCustomField(record.name);
-                          } else {
-                            // For predefined fields, reset to default value instead of deleting
-                            const defaultEnabled = PREDEFINED_FIELDS[record.name] || false;
-                            handleFieldToggle(record.name, defaultEnabled);
-                          }
-                        }}
-                      >
-                        {record.isCustom ? (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
+                    {/* A predefined field is not deleted but reset to its default. */}
+                    <RowControls
+                      name={record.name}
+                      onUp={() => move(index, index - 1)}
+                      onDown={() => move(index, index + 1)}
+                      canUp={index > 0}
+                      canDown={index < tableData.length - 1}
+                      onRemove={() =>
+                        record.isCustom
+                          ? handleDeleteCustomField(record.name)
+                          : handleFieldToggle(record.name, PREDEFINED_FIELDS[record.name] || false)
+                      }
+                      {...(record.isCustom
+                        ? {}
+                        : {
+                            removeLabel: 'Reset to default',
+                            removeIcon: RotateCcw,
+                            destructive: false,
+                          })}
+                    />
                   </td>
                 </tr>
               ))}

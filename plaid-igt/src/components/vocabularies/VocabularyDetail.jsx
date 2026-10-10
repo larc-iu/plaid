@@ -7,8 +7,6 @@ import {
   Settings,
   Trash2,
   Plus,
-  ChevronUp,
-  ChevronDown,
   AlertTriangle,
   MessageSquare,
   History,
@@ -75,6 +73,8 @@ import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { Loading } from '@ui/components/shared/Loading.jsx';
+import { RowControls } from '@/components/shared/RowControls';
+import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
@@ -459,8 +459,7 @@ export const VocabularyDetail = () => {
       return;
     }
 
-    // Check for duplicate names (case insensitive)
-    if (fields.some((f) => f.name.toLowerCase() === trimmedName.toLowerCase())) {
+    if (fields.some((f) => sameNameIgnoringCase(f.name, trimmedName))) {
       notifyError('A field with this name already exists', 'Duplicate field name');
       return;
     }
@@ -941,34 +940,16 @@ export const VocabularyDetail = () => {
                       </td>
                     )}
                     <td className="px-3 py-1.5">
-                      <div className="flex items-center justify-end gap-0.5 text-muted-foreground">
-                        <button
-                          type="button"
-                          aria-label="Move up"
-                          disabled={!canMoveUp}
-                          onClick={() => handleMoveField(field.name, -1)}
-                          className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Move down"
-                          disabled={!canMoveDown}
-                          onClick={() => handleMoveField(field.name, 1)}
-                          className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${fieldLabel(field)}`}
-                          disabled={field.immutable}
-                          onClick={() => handleRemoveField(field.name)}
-                          className="rounded p-1 hover:text-destructive disabled:opacity-25 disabled:hover:text-muted-foreground"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      <div className="flex justify-end">
+                        <RowControls
+                          name={fieldLabel(field)}
+                          onUp={() => handleMoveField(field.name, -1)}
+                          onDown={() => handleMoveField(field.name, 1)}
+                          canUp={canMoveUp}
+                          canDown={canMoveDown}
+                          onRemove={() => handleRemoveField(field.name)}
+                          canRemove={!field.immutable}
+                        />
                       </div>
                     </td>
                   </tr>

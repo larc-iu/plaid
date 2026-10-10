@@ -36,10 +36,6 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       setIsLoading(true);
       setHasError(false);
 
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
       // Get the project which contains text layers
       const project = await client.projects.get(projectId);
 
@@ -108,10 +104,6 @@ export const OrthographiesSettings = ({ projectId, client }) => {
     try {
       setIsLoading(true);
       setHasError(false);
-
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
 
       // Get the project which contains text layers
       const project = await client.projects.get(projectId);
