@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { sanitizeFilename } from './download.js';
+import { describe, it, expect, vi } from 'vitest';
+import { copyText, sanitizeFilename } from './download.js';
+import { notifyError } from './notify.js';
+
+vi.mock('./notify.js', () => ({ notifyError: vi.fn() }));
 
 describe('sanitizeFilename', () => {
   it('strips path separators and reserved characters', () => {
@@ -20,5 +23,22 @@ describe('sanitizeFilename', () => {
     const astral = sanitizeFilename('𝕒'.repeat(130));
     expect([...astral].length).toBe(120);
     expect(astral.isWellFormed()).toBe(true);
+  });
+});
+
+describe('copyText', () => {
+  it('says the failure when the clipboard refuses', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    try {
+      expect(await copyText('x', 'Copy it by hand.')).toBe(false);
+      expect(notifyError).toHaveBeenCalledWith('Copy it by hand.', 'Failed to copy');
+      writeText.mockResolvedValue(undefined);
+      notifyError.mockClear();
+      expect(await copyText('x', 'Copy it by hand.')).toBe(true);
+      expect(notifyError).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

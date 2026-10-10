@@ -1,7 +1,9 @@
 // Files and text the browser hands the reader: a file name safe on every
 // system, a blob saved as a download, and text put on the clipboard.
-
-import { notifyError } from './notify.js';
+//
+// No static imports: plain node loads this file (igt's runExport, in the
+// fidelity runs), and the toast library is the apps' dependency, not this
+// package's. copyText reaches notify.js when it has something to say.
 
 /**
  * `name` as a file name every system takes (no extension handling): the
@@ -47,6 +49,7 @@ export async function copyText(text, failure, title = 'Failed to copy') {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
+    const { notifyError } = await import('./notify.js');
     notifyError(failure, title);
     return false;
   }
