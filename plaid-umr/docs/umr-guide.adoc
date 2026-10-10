@@ -34,8 +34,6 @@ It covers the everyday loop (import a `.umr` file or open a document another Pla
 
 Plaid UMR is one of the apps built on the Plaid platform, beside Plaid IGT and Plaid UD.
 It shares a project's text, sentences and words with them: a document glossed in Plaid IGT can be annotated for UMR in this app, with its glosses shown under the words.
-You do not need to know anything about Plaid itself to use the editor.
-For the platform, or for scripting against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
 
 [NOTE]
 ====
@@ -61,7 +59,6 @@ The editor has three levels:
 
 * **Projects**: the list of projects you can open.
 * **Documents**: a project's documents, with the project's tabs (Guidelines, Assistant, Validation, Activity, Settings, Import and export). Validation, Activity and Settings are shown only to maintainers.
-Anyone else who opens Validation, Activity, **General** or **UMR settings** by its address is sent back to the project list with `Only a project's maintainers can open this page.`
 * **A document**: its Annotate, Details, Comments and Export tabs.
 
 = Projects
@@ -204,7 +201,6 @@ The relations of one kind and one direction share a tag (`● :overlap s1d s1m`)
 `author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
 A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked. A click on a tag changes its relation.
 Focusing or hovering a node draws its own relations, each in its tag's color: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
-Nothing is drawn for the others, so a long sentence stays readable.
 
 == Coreference
 
@@ -249,14 +245,9 @@ Variables are not renumbered in a document imported from a file that numbers its
 A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, its variables take the sentence's number.
 
 When a sentence is typed in before an existing one in Plaid IGT, the existing sentence keeps its imported lines: its number, its gloss and metadata lines, and its document-level relations.
-If the lines were left on the new sentence, the next opening moves them back, and its history entry names the repair: `moved the stored lines of 1 sentence to the sentence they describe`.
 
-An addition cut off partway (a closed tab, a lost connection) leaves nothing behind.
 A node picked from a vocabulary entry that has since been deleted no longer names it.
-No repair is made while a service run or an approved assistant plan is writing to the document. It is made the next time the document is opened.
-A repair cut off partway is named `Repair on open (interrupted)` in the history, and the next opening finishes it.
-When someone saves while a repair is being made, it starts again by itself.
-If it fails again, or the server does not answer, a message asks you to reload the page.
+If a repair fails, a message asks you to reload the page.
 
 = Editing
 
@@ -270,7 +261,7 @@ Focus a node by clicking it or with the arrows, then the keys below act on it.
 The default shortcuts are listed here. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
 **? Keys and marks** over the sentences lists every key, with any you have rebound.
 
-== With the mouse
+== Mouse actions
 
 Every one of the actions below can be reached without the keyboard.
 
@@ -389,7 +380,7 @@ A line's source is the morpheme layer (written as `Morphemes`), one of the subst
 **Propose lines** fills the list from the layers' names and scopes.
 `Index` and `Words` are always written.
 
-The lines are kept in scope order, word lines first, then morpheme lines, then sentence lines, which is the order an interlinear text is read in and what lets a word's morpheme lines share their columns.
+The lines are kept in scope order, word lines first, then morpheme lines, then sentence lines.
 The arrows order the lines of one scope against each other, so a line cannot be moved out of its group.
 
 = History
@@ -455,20 +446,19 @@ The **Draft** button on the Annotate tab runs a drafting service over the docume
 Sentences that already have a graph are skipped.
 **Overwrite existing graphs** redrafts the ones a service wrote. A sentence with anything a person made or accepted is kept whole, and so is one that another sentence's graph links into. The run's report counts what it kept.
 A sentence the draft could not do is named in the report with its reason, and the report stays until it is closed.
-A reply the model writes as one block per node, linked by variables, is read as one graph. A block that no earlier block uses is refused as a second graph.
 A draft stops early when the model gives no answer for two sentences in a row. It keeps what it drafted, and its report names those two sentences and counts the sentences it did not reach.
 **Stop** ends a draft within about a second, even while the model has not answered.
 A draft writes each sentence's graph whole. If it fails partway, the message says how many sentences were drafted.
 A draft that cannot read the project fails and writes nothing.
 A sentence someone changes while the draft runs is not drafted, and the report names it. An edit to another sentence does not stop the draft.
-The operator sets how long the model may send nothing (`--timeout`, 120 seconds by default). A reply that stops that long is asked for once more, then its sentence is reported as not drafted.
+A reply that stops for too long is asked for once more, then its sentence is reported as not drafted.
 A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
 It fails and writes nothing when it cannot read the project or one of its vocabularies.
 Like **Draft**, it leaves out a sentence someone changes while it runs, and names it.
 
 == Compare
 
-A document's **Compare** tab scores its graphs against another document of the same text, two annotators' copies or a draft against its corrected version, with the AnCast metric (the comparison service, `services/umr_ancast.py`).
+A document's **Compare** tab scores its graphs against another document of the same text, two annotators' copies or a draft against its corrected version, with the AnCast metric.
 Pick the other document and run Compare.
 The report is written on the document and the tab shows it: the document scores (sentence graphs, modal, temporal, coreference and the comprehensive score), and sentence by sentence both graphs side by side.
 The report names the person who ran the comparison.
@@ -502,7 +492,6 @@ Four or more document reads in a row are folded into one line that names the sen
 A step opens to its **Input** and its **Output**, which is exactly what the assistant was given back, in the form it reads: each sentence's words and gloss lines with its graph in PENMAN.
 **Message as received** shows your message as the assistant got it, and **Instructions** the instructions and the list of tools it was given.
 A stopped or failed answer keeps its steps the same way.
-Steps of answers from before October 10, 2026 show their lines only.
 
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
@@ -540,7 +529,6 @@ When some of its changes may already be written, the card says so and offers no 
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 If the server restarts while the assistant works, the answer appears when it is ready.
-When the assistant itself is restarted, an open tab finds it again within 15 seconds.
 A conversation is worked on in one tab at a time.
 Opened in a second tab, or on another device, it is read-only there: the line above the message box reads `Open in another tab.`, and a turn or a plan under way shows as it happens.
 **Continue here** moves the conversation to that tab, and the first one turns read-only.
@@ -619,9 +607,9 @@ A plan of more than 200 changes keeps its first 200 once it is approved or disca
 Where the model's limit is not known, the bar shows storage alone, unless the assistant was started with its limit stated.
 The storage limit is set by the server's operator.
 
-== Without an assistant
+== Assistant availability
 
-The assistant is a service that your server's operator runs and picks the model for (`plaid-umr-agent`, installed from a checkout of the source tree).
+The assistant is a service that your server's operator runs and picks the model for.
 When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
 Conversations already saved are unaffected and open from their own links.
 
