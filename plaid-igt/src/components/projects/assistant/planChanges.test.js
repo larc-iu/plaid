@@ -55,7 +55,6 @@ describe('planRows', () => {
   it('uses the located changes when they line up with the ops', () => {
     const plan = {
       ops: [{}, {}],
-      labels: ['a', 'b'],
       changes: [
         { label: 'a', where: word, change: 'Gloss = "x"' },
         { label: 'b', where: null, change: null },
@@ -83,8 +82,8 @@ describe('planRows', () => {
     ]);
   });
 
-  it('falls back to the labels for a plan without located changes', () => {
-    expect(planRows({ ops: [{}], labels: ['only a label'] })).toEqual([
+  it('falls back to the labels for changes that do not line up with the ops', () => {
+    expect(planRows({ ops: [{}, {}], changes: [{ label: 'only a label' }] })).toEqual([
       {
         index: 0,
         where: null,
@@ -101,7 +100,6 @@ describe('planRows', () => {
   it('carries the mark on a change that rewrites the text', () => {
     const plan = {
       ops: [{}, {}],
-      labels: ['a', 'b'],
       changes: [
         { label: 'a', where: word, change: 'Gloss = "x"' },
         {

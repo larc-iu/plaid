@@ -136,7 +136,10 @@ describe('conversationToMarkdown', () => {
         {
           kind: 'assistant',
           text: 'Planned it.',
-          plan: { summary: '1 field value', labels: ['Text 1 s1.w2 "gam": Gloss = "fish"'] },
+          plan: {
+            summary: '1 field value',
+            changes: [{ label: 'Text 1 s1.w2 "gam": Gloss = "fish"' }],
+          },
           status: 'applied',
           steps: [
             { id: 'a', label: 'Read “Text 1”' },
