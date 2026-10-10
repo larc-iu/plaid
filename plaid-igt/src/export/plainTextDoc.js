@@ -1,12 +1,11 @@
-// Whole-document plain-text serialization with a configurable tier selection.
-// Generalizes domain/igtExport.js (whose fixed copy formats stay untouched):
-// the wizard picks which orthographies / word fields / morpheme fields /
+// Whole-document plain-text serialization with a configurable tier selection,
+// laid out by the Copy as IGT tiers (domain/igtExport.js): the wizard picks which orthographies / word fields / morpheme fields /
 // sentence fields to emit, whether to segment morphemes, number sentences,
 // and include a document header.
 //
 // Pure functions — no DOM, no client.
 
-import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
+import { tiers } from '../domain/igtExport.js';
 // Shared strict alignment→sentence speaker projection (unique exact-or-contains
 // match, else none) — the same one the .flextext export uses, so a sentence
 // gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.
@@ -14,18 +13,6 @@ import { phraseSpeakerFor } from './flextext.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { displayWidth, padToWidth } from '@ui/lib/displayWidth.js';
 
-/**
- * selection: { orthographies: [name], wordFields: [name], morphFields: [name],
- *              sentFields: [name], wordLine: 'segmented'|'surface'|'both',
- *              numberSentences: bool, includeHeader: bool }
- *
- * Returns the ordered tier lines for one sentence:
- *   [{ kind: 'cells', label, cells: [string] } | { kind: 'free', label, text }]
- * Line 1 is the (optionally morpheme-segmented) word forms; then one cells
- * line per selected orthography, morpheme field, and word field (in that
- * order, matching the Copy-as-IGT tier convention); then one free line per
- * selected sentence field with a non-empty value.
- */
 /**
  * Which object line(s) a selection asks for. `wordLine` is 'segmented' (the
  * default), 'surface', or 'both'.
@@ -46,54 +33,21 @@ export const wordLineOf = (selection) => selection?.wordLine || 'segmented';
 export const breaksMorphemeAlignment = (selection) =>
   wordLineOf(selection) === 'surface' && (selection?.morphFields || []).length > 0;
 
+/**
+ * The ordered tier lines for one sentence:
+ *   [{ kind: 'cells', label, cells: [string] } | { kind: 'free', label, text }]
+ * The word line(s) and one cells line per selected orthography, morpheme
+ * field and word field, as Copy as IGT lays them out (igtExport.js tiers),
+ * so text between words (punctuation) has a column of its own. Then one free
+ * line per selected sentence field with a non-empty value.
+ */
 export function sentenceTierLines(sentence, selection) {
-  const tokens = sentence?.tokens || [];
-  const mode = wordLineOf(selection);
-
-  const surface = tokens.map((t) => t.content ?? '');
-  const segmented = tokens.map((t) => {
-    const morphemes = t.morphemes || [];
-    return morphemes.length
-      ? joinMorphemeTexts(morphemes, morphemes.map(morphFormOf))
-      : (t.content ?? '');
-  });
-  const lines = [];
-  if (mode === 'surface' || mode === 'both') {
-    lines.push({ kind: 'cells', label: null, cells: surface });
-  }
-  if (mode === 'segmented' || mode === 'both') {
-    lines.push({ kind: 'cells', label: null, cells: segmented });
-  }
-
-  for (const name of selection?.orthographies || []) {
-    lines.push({
-      kind: 'cells',
-      label: name,
-      cells: tokens.map((t) => t.orthographies?.[name] ?? ''),
-    });
-  }
-  for (const name of selection?.morphFields || []) {
-    lines.push({
-      kind: 'cells',
-      label: name,
-      cells: tokens.map((t) => {
-        const morphemes = t.morphemes || [];
-        return morphemes.length
-          ? joinMorphemeTexts(
-              morphemes,
-              morphemes.map((m) => m.annotations?.[name]?.value ?? ''),
-            )
-          : '';
-      }),
-    });
-  }
-  for (const name of selection?.wordFields || []) {
-    lines.push({
-      kind: 'cells',
-      label: name,
-      cells: tokens.map((t) => t.annotations?.[name]?.value ?? ''),
-    });
-  }
+  const lines = tiers(sentence, {
+    wordLine: wordLineOf(selection),
+    orthographies: selection?.orthographies || [],
+    morphFields: selection?.morphFields || [],
+    wordFields: selection?.wordFields || [],
+  }).map(({ label, cells }) => ({ kind: 'cells', label, cells }));
   for (const name of selection?.sentFields || []) {
     const value = sentence?.annotations?.[name]?.value ?? '';
     if (value !== '') lines.push({ kind: 'free', label: name, text: value });

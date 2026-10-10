@@ -57,11 +57,11 @@ export const joinMorphemeTexts = (morphemes, texts) =>
       )
     : '';
 
-// Per-word cells: segmented form + one joined-gloss string per morph field +
-// one value per word field. morphPieces holds, per morph field, each
+// Per-word cells: surface and segmented form + one value per orthography +
+// one joined-gloss string per morph field + one value per word field. morphPieces holds, per morph field, each
 // morpheme's gloss and whether it can never name the word, which is how the
 // LaTeX small caps read the joined gloss (texGloss).
-export function wordCells(token, { morphFields, wordFields }) {
+export function wordCells(token, { morphFields, wordFields, orthographies = [] }) {
   const morphemes = token.morphemes || [];
   const bound = morphemes.map(
     (m) => !canNameWord(m.morphType ?? m.metadata?.morphType, morphFormOf(m)),
@@ -84,7 +84,8 @@ export function wordCells(token, { morphFields, wordFields }) {
     morphemes.map((m, i) => ({ text: m.annotations?.[f]?.value ?? '', bound: bound[i] })),
   );
   const wordLines = wordFields.map((f) => token.annotations?.[f]?.value ?? '');
-  return { segmented, morphLines, morphPieces, wordLines };
+  const orthLines = orthographies.map((name) => token.orthographies?.[name] ?? '');
+  return { surface: token.content ?? '', segmented, orthLines, morphLines, morphPieces, wordLines };
 }
 
 // One cell column per piece of the sentence in reading order: word tokens plus
@@ -92,8 +93,8 @@ export function wordCells(token, { morphFields, wordFields }) {
 // Analyze grid shows as inert columns and which the built-in tokenizer leaves
 // untokenized on purpose. A gap contributes its text to line 1 and nothing to
 // the gloss/word tiers. Whitespace-only gaps (ordinary spacing) are dropped.
-// Sentences without derived `pieces` (older callers, test fixtures) fall back
-// to their token list.
+// A sentence without derived `pieces` (a test fixture) falls back to its
+// token list.
 function columnCells(sentence, fields) {
   const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
   const cells = [];
@@ -105,7 +106,9 @@ function columnCells(sentence, fields) {
     const text = (piece.content ?? '').trim();
     if (text === '') continue;
     cells.push({
+      surface: text,
       segmented: text,
+      orthLines: (fields.orthographies || []).map(() => ''),
       morphLines: fields.morphFields.map(() => ''),
       morphPieces: fields.morphFields.map(() => null),
       wordLines: fields.wordFields.map(() => ''),
@@ -119,9 +122,26 @@ function columnCells(sentence, fields) {
 // one space here, once for all of them.
 const oneLine = (s) => String(s ?? '').replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/g, ' ');
 
-function tiers(sentence, fields) {
+/**
+ * A sentence's aligned lines, one cell per column: the word line, then one
+ * line per morph field and per word field. `fields.wordLine` asks for the
+ * word as written ('surface'), segmented into its morphemes ('segmented', the
+ * default) or both, and `fields.orthographies` adds a line per orthography
+ * after the word line (the plain-text export's selection).
+ */
+export function tiers(sentence, fields) {
   const cells = columnCells(sentence, fields);
-  const lines = [{ label: null, cells: cells.map((c) => oneLine(c.segmented)) }];
+  const wordLine = fields.wordLine || 'segmented';
+  const lines = [];
+  if (wordLine !== 'segmented') {
+    lines.push({ label: null, cells: cells.map((c) => oneLine(c.surface)) });
+  }
+  if (wordLine !== 'surface') {
+    lines.push({ label: null, cells: cells.map((c) => oneLine(c.segmented)) });
+  }
+  (fields.orthographies || []).forEach((name, i) => {
+    lines.push({ label: name, cells: cells.map((c) => oneLine(c.orthLines[i])) });
+  });
   fields.morphFields.forEach((f, i) => {
     lines.push({
       label: f,

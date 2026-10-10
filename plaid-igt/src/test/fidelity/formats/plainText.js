@@ -178,8 +178,6 @@ export default {
       carried: true,
       where: 'a file holding the header alone',
     },
-    // SUSPECTED BUG: the sentences print "(n)" and nothing else, since the cells come from
-    // sentence.tokens and never from the untokenized text (plainTextDoc.js sentenceTierLines).
     'document.untokenized': {
       carried: true,
       where: "each sentence's text on its word line, as one cell",
@@ -230,8 +228,6 @@ export default {
     'text.blankLine': inherent(
       'The file is laid out one block per sentence. A blank line in the baseline is not written.',
     ),
-    // SUSPECTED BUG for the characters the tokenizer leaves outside words (a comma, quotes):
-    // they are dropped, as in token.untokenizedText.
     'text.markupChars': {
       carried: true,
       where: 'written as is on the word lines, with no escaping',
@@ -254,10 +250,6 @@ export default {
       carried: true,
       where: 'a column of its own on the word lines, empty on the morpheme field lines',
     },
-    // SUSPECTED BUG: plainTextDoc.js builds its columns from sentence.tokens, so text between
-    // words is dropped. The Copy as IGT formats walk sentence.pieces and give such text a
-    // column of its own (igtExport.js columnCells, commit 27ee7c90), and .flextext writes it as
-    // a punct word.
     'token.untokenizedText': {
       carried: true,
       where: 'a column of its own on the word lines, empty on the field lines',

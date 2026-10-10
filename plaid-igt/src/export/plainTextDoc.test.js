@@ -13,10 +13,12 @@ describe('sentenceTierLines', () => {
     const doc = makeFixtureDoc();
     const lines = sentenceTierLines(doc.sortedSentences[0], FULL_SELECTION);
     expect(lines.map((l) => l.label)).toEqual([null, 'Translit', 'Gloss', 'POS', 'Translation']);
-    expect(lines[0].cells).toEqual(['perro=s', 'corren']); // enclitic joint
-    expect(lines[1].cells).toEqual(['perros-translit', '']);
-    expect(lines[2].cells).toEqual(['dog=PL', '']); // no morphemes → empty cell
-    expect(lines[3].cells).toEqual(['NOUN', 'VERB']);
+    // Enclitic joint, and the full stop no word covers has a column of its
+    // own, as in Copy as IGT.
+    expect(lines[0].cells).toEqual(['perro=s', 'corren', '.']);
+    expect(lines[1].cells).toEqual(['perros-translit', '', '']);
+    expect(lines[2].cells).toEqual(['dog=PL', '', '']); // no morphemes → empty cell
+    expect(lines[3].cells).toEqual(['NOUN', 'VERB', '']);
     expect(lines[4]).toEqual({ kind: 'free', label: 'Translation', text: 'The dogs run.' });
     // Note has an empty value → omitted entirely.
   });
@@ -27,7 +29,16 @@ describe('sentenceTierLines', () => {
       ...FULL_SELECTION,
       wordLine: 'surface',
     });
-    expect(lines[0].cells).toEqual(['perros', 'corren']);
+    expect(lines[0].cells).toEqual(['perros', 'corren', '.']);
+  });
+
+  it('writes a value holding a line break or tab on one line, as Copy as IGT does', () => {
+    const s = makeSentence({
+      begin: 0,
+      end: 1,
+      tokens: [{ content: 'x', annotations: { POS: { value: 'a\nb\tc' } }, morphemes: [] }],
+    });
+    expect(sentenceTierLines(s, { wordFields: ['POS'] })[1].cells).toEqual(['a b c']);
   });
 
   it('handles empty selections and tokens without morphemes', () => {
@@ -131,7 +142,7 @@ describe('serializeDocumentPlain', () => {
         'Genre: narrative',
         '',
         '(1)',
-        'perro=s          corren',
+        'perro=s          corren  .',
         'perros-translit',
         'dog=PL',
         'NOUN             VERB',
