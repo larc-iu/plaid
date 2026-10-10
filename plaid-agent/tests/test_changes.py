@@ -1,7 +1,9 @@
 """Every planned change is located for the plan card: the document, the
 sentence and word to link to, and the change without its location."""
 
-from fixtures import FakeClient, scan_ws, VOCAB
+from fixtures import FakeClient, document_raw, scan_ws, VOCAB
+
+from plaid_agent.core.plan import labelled
 
 from plaid_agent.igt.changes import describe_change, describe_changes
 from plaid_agent.igt.toolkit import call_tool
@@ -56,7 +58,7 @@ def test_lexicon_changes_name_the_entry_and_its_lexicon():
 def test_a_document_not_loaded_is_named_alone():
     ws = _plan()
     op = {'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-far', 'span_id': None, 'value': 'x',
-          'doc': 'd9', 'label': '"Far away" "word": Gloss = "x"'}
+          'doc': 'd9', **labelled('"Far away" "word"', 'Gloss = "x"')}
     ws.corpus.doc_name = lambda did: 'Far away'
     ws.corpus.ref_name = lambda did: 'Far away'
     d = describe_change(ws, op)
@@ -77,15 +79,15 @@ def test_the_plan_payload_carries_the_changes():
     assert [c['where']['word'] for c in payload['changes']] == [2, 3]
 
 
-def test_phrase_and_document_comment_labels_split_too():
+def test_phrase_and_document_comment_labels_are_placed_too():
     ws = _plan()
     ws.doc('Text 1')
     phrase = {'kind': 'link_phrase', 'token_ids': ['w-2', 'w-3'], 'item_id': 'vi-gam',
-              'label': 'Text 1 s1 w2+w3 "gam akuna": link phrase "gam akuna"'}
+              **labelled('Text 1 s1 w2+w3 "gam akuna"', 'link phrase "gam akuna"')}
     d = describe_change(ws, phrase)
     assert d['where']['word'] == 2 and d['change'] == 'link phrase "gam akuna"'
     comment = {'kind': 'add_comment', 'entity_type': 'document', 'entity_id': 'd1', 'document_id': 'd1',
-               'label': '"Text 1": comment "nice"'}
+               **labelled('"Text 1"', 'comment "nice"')}
     d = describe_change(ws, comment)
     assert d['where']['kind'] == 'document' and d['change'] == 'comment "nice"'
 
@@ -111,3 +113,15 @@ def test_a_corpus_wide_respell_is_marked_through_its_counts():
     assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 0}}) is False
     # A compacted group keeps the kind of its members.
     assert writes_text({'kind': 'respell', 'compact': True, 'count': 40}) is True
+
+
+def test_a_document_name_holding_a_colon_keeps_its_change_whole():
+    """Each change says where it starts in its label (core.plan.labelled), so
+    a name's own colon is never taken for the end of the place."""
+    ws = scan_ws(FakeClient(documents={'d1': {**document_raw(), 'name': 'Elicited: list'}}))
+    for name, args in (('delete_word', {'document': 'Elicited: list', 'refs': ['s1.w3']}),
+                       ('merge_sentences', {'document': 'Elicited: list', 'ref': 's2'})):
+        call_tool(ws, name, args)
+    words, sentences = describe_changes(ws, ws.ops)
+    assert words['change'].startswith('delete the word token')
+    assert sentences['change'].startswith('merge s2')

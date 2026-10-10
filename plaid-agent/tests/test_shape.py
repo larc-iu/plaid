@@ -66,14 +66,14 @@ def test_delete_word_and_sentence_ops():
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w3', 's1.w1']})
     assert 'Planned 2 changes' in out
     assert w.ops[0] == {'kind': 'delete_word', 'word_id': 'w-3', 'morpheme_ids': ['virtual:w-3'], 'link_ids': [],
-                        'label': 'Text 1 s1.w3 "akuna": delete the word token (the text is unchanged)'}
+                        'label': 'Text 1 s1.w3 "akuna": delete the word token (the text is unchanged)', 'change_at': 22}
     assert w.ops[1]['word_id'] == 'w-1' and w.ops[1]['morpheme_ids'] == ['m-1a', 'm-1b'] and 'analysis, values, and link are deleted' in w.ops[1]['label']
 
     out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
     assert 'Planned 1 change' in out
     assert w.ops[-1] == {'kind': 'split_sentence', 'sentence_id': 's-1', 'position': 7, 'token_at': {'begin': 0, 'end': 17},
                          'label': 'Text 1 s1: split before w2 "gam" → "Ali-di" | "gam akuna." '
-                                  '(sentence values such as the translation stay with the first part)'}
+                                  '(sentence values such as the translation stay with the first part)', 'change_at': 11}
     assert 'between 2 and 3' in call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 1})
     assert 'superseded' in call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 3})
     assert w.ops[-1]['position'] == 11 and sum(o['kind'] == 'split_sentence' for o in w.ops) == 1
@@ -83,7 +83,7 @@ def test_delete_word_and_sentence_ops():
     out = call_tool(w2, 'merge_sentences', {'document': 'd1', 'ref': 's2'})
     assert 'Planned 1 change' in out
     assert w2.ops[0] == {'kind': 'merge_sentences', 'sentence_id': 's-1', 'other_id': 's-2', 'spans': [],
-                         'label': 'Text 1: merge s2 "Gam-ar." into s1 "Ali-di gam akuna."'}
+                         'label': 'Text 1: merge s2 "Gam-ar." into s1 "Ali-di gam akuna."', 'change_at': 8}
     assert 'first sentence' in call_tool(w2, 'merge_sentences', {'document': 'd1', 'ref': 's1'})
     # A translation on both sentences is combined.
     raw = document_raw()

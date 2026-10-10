@@ -52,7 +52,7 @@ def test_set_morpheme_changes_form_or_type_in_place():
     out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'suffix'})
     assert 'Planned 1 change' in out
     assert w.ops[-1] == {'kind': 'set_morph_type', 'morpheme_id': 'm-4b', 'morph_type': 'suffix',
-                         'label': 'Text 1 s2.w1.m2 (in "Gam-ar"): morpheme type "enclitic" → "suffix"'}
+                         'label': 'Text 1 s2.w1.m2 (in "Gam-ar"): morpheme type "enclitic" → "suffix"', 'change_at': 31}
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'är', 'type': ''})
     assert [o['kind'] for o in w.ops] == ['set_morph_type', 'set_morpheme_form']  # the type op was replaced (last wins)
     assert w.ops[0]['morph_type'] is None and '(cleared)' in w.ops[0]['label']

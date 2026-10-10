@@ -113,13 +113,15 @@ def test_orthography_respell_links_entries():
     assert 'id=vi-gam2 form=gam#2 gam | gloss=net' in out
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-gam'})
     assert w.ops[-1] == {'kind': 'link', 'token_id': 'w-2', 'item_id': 'vi-gam', 'new_entry_key': None,
-                         'existing_link_id': None, 'entry_form': 'gam', 'label': 'Text 1 s1.w2 "gam": link "gam₁"'}
+                         'existing_link_id': None, 'entry_form': 'gam', 'label': 'Text 1 s1.w2 "gam": link "gam₁"',
+                         'change_at': 20}
     # relinking replaces the existing link; linking to the same entry is a no-op
     assert call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1'], 'entry_form': 'Ali'}).startswith('Planned 0')
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1'], 'entry_form': '-di'})
     assert w.ops[-1]['existing_link_id'] == 'l-1' and 'link "Ali" → "-di"' in w.ops[-1]['label']
     call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2', 's1.w2']})
-    assert w.ops[-1] == {'kind': 'unlink', 'link_id': 'l-2', 'token_id_hint': 'm-1b', 'label': 'Text 1 s1.w1.m2 "di": unlink "-di"'}
+    assert w.ops[-1] == {'kind': 'unlink', 'link_id': 'l-2', 'token_id_hint': 'm-1b', 'label': 'Text 1 s1.w1.m2 "di": unlink "-di"',
+                         'change_at': 22}
     # new entry, then link to it in the same plan
     out = call_tool(w, 'create_entry', {'form': 'akun', 'fields': {'gloss': 'see'}, 'type': 'stem'})
     key = out.split('entry_id: ')[1].split()[0]
@@ -130,7 +132,7 @@ def test_orthography_respell_links_entries():
     assert w.ops[-2]['metadata'] == {'gloss': 'see', 'morphType': 'stem', 'pos': 'V'}  # folded into the pending create
     call_tool(w, 'set_entry_field', {'entry_id': 'vi-ali', 'field': 'pos', 'value': 'PN'})
     assert w.ops[-1] == {'kind': 'set_entry_field', 'item_id': 'vi-ali', 'field': 'pos', 'value': 'PN',
-                         'label': 'entry "Ali": pos "N" → "PN"'}
+                         'label': 'entry "Ali": pos "N" → "PN"', 'change_at': 13}
     payload = w.plan_payload()
     assert payload['summary'].startswith('1 orthography value, 1 respelling')
     # Each row of `changes` has its label: `labels` is not written.

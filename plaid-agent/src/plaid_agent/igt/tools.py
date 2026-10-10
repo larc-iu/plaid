@@ -228,9 +228,10 @@ def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: s
             gloss_bits.append(f'{f.name} {join_morphemes(list(zip([v or "_" for v in vals], types)))}')
     op = {'kind': 'set_analysis', 'word_id': word_id, 'text_id': text_id, 'begin': begin, 'end': end,
           'morpheme_layer_id': ws.project.morpheme_layer_id, 'existing': existing, 'morphemes': out,
-          'label': f'{head}: ' + (f'{current_seg} → ' if current_seg else '')
-                   + desc + (', ' + ', '.join(gloss_bits) if gloss_bits else '')
-                   + (f' (replaces {had_values} existing morpheme value{"s" if had_values != 1 else ""})' if had_values else '')}
+          **labelled(head, (f'{current_seg} → ' if current_seg else '')
+                     + desc + (', ' + ', '.join(gloss_bits) if gloss_bits else '')
+                     + (f' (replaces {had_values} existing morpheme value{"s" if had_values != 1 else ""})'
+                        if had_values else ''))}
     return op, note
 
 
@@ -382,8 +383,8 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                        'item_id': target['id'] if kind == 'existing' else None,
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None, 'entry_form': form,
-                       'label': f'{ws.doc_label(doc.id)} {ref} {qv(what)}: link '
-                                + (f'{qv(_linked(ws, obj.link))} → ' if obj.link else '') + f'{qv(shown)}'})
+                       **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what)}',
+                                  'link ' + (f'{qv(_linked(ws, obj.link))} → ' if obj.link else '') + qv(shown))})
     with ws.staging():
         taken = _take_out(ws, [key for _, key in back])
         ws.add_ops(staged)
@@ -589,8 +590,8 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
             kept = place.kept
             if kept is not None and kept.link:
                 staged.append({'kind': 'unlink', 'link_id': kept.link.id, 'token_id_hint': kept.id,
-                               'label': f'{ws.doc_label(doc.id)} {ref} {qv(place.morpheme["form"])}: '
-                                        f'unlink {qv(_linked(ws, kept.link))}'})
+                               **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(place.morpheme["form"])}',
+                                          f'unlink {qv(_linked(ws, kept.link))}')})
             else:
                 planned.append((ref, ws.op_target({'kind': 'link', 'token_id': None, 'analysis_word_id': place.word.id,
                                                    'morpheme_index': place.index,
@@ -607,7 +608,7 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
         staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
-                       'label': f'{ws.doc_label(doc.id)} {ref} {qv(what)}: unlink {qv(_linked(ws, obj.link))}'})
+                       **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what)}', f'unlink {qv(_linked(ws, obj.link))}')})
     if only_mwe and not staged and not planned:
         raise ToolError('; '.join(only_mwe))
     with ws.staging():
@@ -658,9 +659,9 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
                    'item_id': target['id'] if kind == 'existing' else None,
                    'new_entry_key': target if kind == 'new' else None,
                    'existing_link_id': existing.id if existing is not None else None, 'entry_form': form,
-                   'label': f'{ws.doc_label(doc.id)} s{s.index} {where} {qv(surfaces)}: link phrase '
-                            + (f'{qv(_linked(ws, existing))} → ' if existing is not None else '')
-                            + '"' + (ws.entry_shown(target['id'], form) if kind == 'existing' else form) + '"'})
+                   **labelled(f'{ws.doc_label(doc.id)} s{s.index} {where} {qv(surfaces)}',
+                              'link phrase ' + (f'{qv(_linked(ws, existing))} → ' if existing is not None else '')
+                              + '"' + (ws.entry_shown(target['id'], form) if kind == 'existing' else form) + '"')})
     return ws.planned_note(1)
 
 
@@ -690,8 +691,8 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
                         + '. Name a member set that belongs to just one of them.')
     l = full[0]
     ws.add_op({'kind': 'unlink', 'link_id': l.id, 'token_id_hint': l.tokens[0], 'token_ids': list(l.tokens),
-               'label': f'{ws.doc_label(doc.id)} s{s.index} {mwe_ref(l, s.index)}: unlink phrase '
-                        f'{qv(_linked(ws, l))}'})
+               **labelled(f'{ws.doc_label(doc.id)} s{s.index} {mwe_ref(l, s.index)}',
+                          f'unlink phrase {qv(_linked(ws, l))}')})
     return ws.planned_note(1)
 
 
@@ -706,7 +707,7 @@ def t_set_document_metadata(ws: Workspace, document: str, field: str, value: str
     if (old or '') == value:
         return ws.planned_note(0)
     ws.add_op({'kind': 'set_doc_metadata', 'document_id': doc.id, 'field': name, 'value': value,
-               'label': f'{ws.doc_label(doc.id)}: {name} ' + (f'{qv(old)} → {qv(value)}' if old else f'= {qv(value)}')})
+               **labelled(ws.doc_label(doc.id), f'{name} ' + (f'{qv(old)} → {qv(value)}' if old else f'= {qv(value)}'))})
     return ws.planned_note(1)
 
 
@@ -845,8 +846,8 @@ def _document_confirm_op(ws: Workspace, doc: IgtDoc, f, left: List[tuple]) -> Op
     if not _has_pieces(pieces):
         return None
     return {'kind': 'confirm', **pieces, 'doc': doc.id,
-            'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')
-                     + _left_label(mine)}
+            **labelled(ws.doc_label(doc.id), f'confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')
+                       + _left_label(mine))}
 
 
 def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: Optional[str] = None,
@@ -914,8 +915,9 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             # is refused as the plan is built. A confirmation of a whole
             # document names nothing and carries no such flag.
             staged.append({'kind': 'confirm', **pieces, 'named': True,
-                           'label': f'{ws.doc_label(doc.id)} {ref} {qv(_what(obj)[:40])}: confirm {_pieces_label(pieces)}'
-                                    + (f' ({f.name})' if f else '') + _left_label(mine)})
+                           **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(_what(obj)[:40])}',
+                                      f'confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')
+                                      + _left_label(mine))})
     else:
         op = _document_confirm_op(ws, ws.doc(document), f, left)
         if op:
@@ -984,7 +986,7 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
             bits = (bits + ', ' if bits else '') + 'the segmentation'
         staged.append({'kind': 'discard_analysis', 'word_id': w.id, 'link_ids': link_ids, 'span_ids': span_ids,
                        'morpheme_ids': morpheme_ids, 'reset_first_id': reset_first, 'renumber': renumber,
-                       'label': f'{ws.doc_label(doc.id)} {ref} {qv(w.surface)}: discard unverified {bits}'})
+                       **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(w.surface)}', f'discard unverified {bits}')})
     ws.add_ops(staged)
     if not staged:
         return 'Nothing to discard: no machine-made, unconfirmed analysis there.'
@@ -1028,8 +1030,9 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     if type is not None:
         if t != (m.morph_type or None):
             staged.append({'kind': 'set_morph_type', 'morpheme_id': m.id, 'morph_type': t,
-                           'label': f'{ws.doc_label(doc.id)} {ref} (in {qv(w.surface)}): morpheme type '
-                                    + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ') + (f'{qv(t)}' if t else '(cleared)')})
+                           **labelled(f'{ws.doc_label(doc.id)} {ref} (in {qv(w.surface)})',
+                                      'morpheme type ' + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ')
+                                      + (qv(t) if t else '(cleared)'))})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -1062,8 +1065,8 @@ def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = 
     refuse_comment_and_text_edit(ws, eid, where, commenting=True)
     ws.add_op({'kind': 'add_comment', 'entity_type': etype, 'entity_id': eid, 'body': body, 'anchor_label': caption,
                'document_id': doc.id,
-               'label': f'{where}: comment "{body[:60]}{"…" if len(body) > 60 else ""}"'
-                        + (f' (on {field})' if field else '')})
+               **labelled(where, f'comment "{body[:60]}{"…" if len(body) > 60 else ""}"'
+                          + (f' (on {field})' if field else ''))})
     return ws.planned_note(1)
 
 

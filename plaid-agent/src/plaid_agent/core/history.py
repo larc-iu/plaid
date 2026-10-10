@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit
 from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
+from .plan import labelled
 from .tools import ToolError, server_refused, truncate
 
 
@@ -273,6 +274,6 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
         return f'Nothing to restore: "{doc.name}" is as it was at {as_of}.'
     said = lines(summary)
     ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, **(extra(doc) if extra else {}),
-               'label': f'{doc_label(ws, doc.id)}: restore to {as_of} ({total} change{"s" if total != 1 else ""}: '
-                        + ', '.join(said) + ')'})
+               **labelled(doc_label(ws, doc.id), f'restore to {as_of} ({total} change{"s" if total != 1 else ""}: '
+                          + ', '.join(said) + ')')})
     return ws.planned_note(1) + '\nWhat changes (from the server\'s dry run): ' + ', '.join(said) + '.'

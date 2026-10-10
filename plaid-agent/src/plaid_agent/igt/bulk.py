@@ -1080,7 +1080,7 @@ def _ref_repair_ops(ws: Workspace, view, planner, *args) -> List[Dict[str, Any]]
         ws.patch_item(patch['id'], after)
         ops.append({'kind': 'set_entry_metadata', 'item_id': patch['id'],
                     'patch': _meta_patch(before, after),
-                    'label': f'entry {view.label(patch["id"])}: ' + _repair_says(before, after, view)})
+                    **labelled(f'entry {view.label(patch["id"])}', _repair_says(before, after, view))})
     return ops
 
 

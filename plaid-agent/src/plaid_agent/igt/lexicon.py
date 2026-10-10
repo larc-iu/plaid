@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 from ..core.bidi import qv
 from ..core.args import whole
+from ..core.plan import change_of, labelled
 from ..core.tools import ToolError
 
 from .project import word_ref
@@ -72,7 +73,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     with ws.staging():
         ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
         ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
-                   'label': f'{v["name"]}: ' + what + entry_line({'form': form, 'metadata': metadata}, view)})
+                   **labelled(v['name'], what + entry_line({'form': form, 'metadata': metadata}, view))})
     return ws.planned_note(1) + f'\nentry_id: {key}  (use it to link this entry in the same plan)'
 
 
@@ -201,7 +202,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
         ws.patch_item(target['id'], meta)
         ws.add_op({'kind': 'set_entry_field', 'item_id': target['id'], 'field': f['name'],
                    'value': new_value if new_value is not None else '',
-                   'label': f'entry {where}: {f["name"]} {shown}'})
+                   **labelled(f'entry {where}', f'{f["name"]} {shown}')})
     return ws.planned_note(1)
 
 
@@ -215,7 +216,8 @@ def _meta_patch(before: dict, after: dict) -> dict:
     return patch
 
 
-def _meta_op(ws: Workspace, item_id: str, before: dict, after: dict, label: str) -> Dict[str, Any]:
+def _meta_op(ws: Workspace, item_id: str, before: dict, after: dict, label: str,
+             place: Optional[str] = None) -> Dict[str, Any]:
     """One entry's metadata change, recorded so later tools in the same turn
     read the tree this plan is building.
 
@@ -226,7 +228,7 @@ def _meta_op(ws: Workspace, item_id: str, before: dict, after: dict, label: str)
     """
     ws.patch_item(item_id, after)
     return {'kind': 'set_entry_metadata', 'item_id': item_id, 'patch': _meta_patch(before, after),
-            'label': label}
+            **labelled(place, label)}
 
 
 def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what: str):
@@ -309,7 +311,7 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     # The entry's own name, not its bare form: two entries can share the form.
     head = view.label(view.tree.root_of.get(target['id']) or target['id'])
     others = len(patches) - 1
-    moved = f'entry {head}: sense {was} becomes sense {landed_shown}'
+    moved = f'sense {was} becomes sense {landed_shown}'
     ops = []
     with ws.staging():
         for x in patches:
@@ -319,14 +321,15 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
                 label = moved + (f' ({others} sibling{"s" if others != 1 else ""} renumbered)'
                                  if others else '')
             else:
-                label = f'entry {head}: sense {view.number(x["id"])} renumbered'
-            ops.append(_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'], label))
+                label = f'sense {view.number(x["id"])} renumbered'
+            ops.append(_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'], label,
+                                place=f'entry {head}'))
         ws.add_ops(ops)
     # A sense already carrying the order it lands on gets no patch of its own,
     # so nothing above would say it moved. It did: the siblings around it are
     # what changed, and the plan has to name the gesture that caused them.
-    if target['id'] not in by_id:
-        ops[0]['label'] = f'{moved} ({ops[0]["label"]})' if ops else moved
+    if target['id'] not in by_id and ops:
+        ops[0].update(labelled(f'entry {head}', f'{moved} ({change_of(ops[0])})'))
     return ws.planned_note(len(ops))
 
 
@@ -418,8 +421,8 @@ def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
             # entry's place in the group, and the write is what puts it there.
             was = homograph_of(item)
             ops.append(_meta_op(ws, x['id'], before, x['metadata'],
-                                f'{view.label(x["id"])}: homograph number {was if was is not None else "none"} → '
-                                f'{x["metadata"]["homograph"]}'))
+                                f'homograph number {was if was is not None else "none"} → '
+                                f'{x["metadata"]["homograph"]}', place=view.label(x['id'])))
         ws.add_ops(ops)
     return ws.planned_note(len(ops))
 
@@ -440,8 +443,8 @@ def t_promote_example(ws: Workspace, document: str, ref: str, entry_form: Option
         return ws.planned_note(0) + f' {view.label(target["id"])} already has that example.'
     with ws.staging():
         ws.add_op(_meta_op(ws, target['id'], before, after,
-                           f'entry {view.label(target["id"])}: usage example '
-                           f'{ws.doc_label(doc.id, quote=True)} {word_ref(sent, word)} {qv(word.surface)}'))
+                           f'usage example {ws.doc_label(doc.id, quote=True)} {word_ref(sent, word)} '
+                           f'{qv(word.surface)}', place=f'entry {view.label(target["id"])}'))
     return ws.planned_note(1)
 
 
@@ -466,7 +469,7 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
                         f'numbered 0 to {len(exs) - 1}. lexicon_entry lists them with their numbers.')
     with ws.staging():
         ws.add_op(_meta_op(ws, target['id'], before, with_example_removed(before, i),
-                           f'entry {view.label(target["id"])}: drop usage example [{i}] '
-                           + _example_line(ws, exs[i])))
+                           f'drop usage example [{i}] ' + _example_line(ws, exs[i]),
+                           place=f'entry {view.label(target["id"])}'))
     return ws.planned_note(1)
 

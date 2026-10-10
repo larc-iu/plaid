@@ -16,15 +16,13 @@ past its loading budget) names the document alone.
     {'kind': 'document', 'document_id', 'document_name'}
     {'kind': 'entry', 'vocab_id', 'vocab_name', 'item_id', 'form'}
     None                     nothing to link to yet (a new document)
-``change`` is the label without its location, or None when the label did
-not have the expected shape (the card then shows the label whole). An op
-built by ``core.plan.labelled`` carries where its change starts; the older
-label shapes are read by ``split_change``.
+``change`` is the label without its location, or None when the label names
+no place (the card then shows the label whole). Every op that has a place is
+built by ``core.plan.labelled``, which records where its change starts.
 ``writes_text`` marks the changes that rewrite the baseline itself, and
 ``replaces_work`` how many of a person's things each one replaces (core/work.py).
 """
 
-import re
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind, work
@@ -61,10 +59,8 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
                 'rule': op['card']}
     where = locate(ws, op)
     # An op built by `labelled` says where its change starts. Nothing to place
-    # it at shows the label whole, as a label of an unexpected shape does.
+    # it at shows the label whole, as a label with no place does.
     change = change_of(op) if where else None
-    if change is None:
-        change = split_change(ws, label, where)
     return {'label': label, 'where': where, 'change': change,
             'writes_text': writes_text(op), 'replaces_work': int(op.get(work.FLAG) or 0)}
 
@@ -217,35 +213,3 @@ def _doc_name(ws, doc_id: str) -> str:
         return ws.corpus.doc_name(doc_id)
     except Exception:  # noqa: BLE001 - a name is a nicety; the id still links
         return doc_id
-
-
-# --- the change without its location -------------------------------------------
-
-_WHAT = r'(?: "[^"]*"| \(in "[^"]*"\))?'
-# A positional reference as the tools print it: `s3`, `s3.w2`, `s3.w2.m1`, and
-# a span of words `s3 w2+w3` (a phrase).
-_REF = r's\d+(?:[. ]w\d+(?:\+w\d+)*)?(?:\.m\d+)?'
-
-
-def split_change(ws, label: str, where: Optional[Dict[str, Any]]) -> Optional[str]:
-    """The label after its location head, in the shapes the planning tools
-    write: ``<doc> <ref>[ "what"|(in "…")]: <change>`` (``<ref>`` a sentence,
-    word, morpheme, or a phrase ``s1 w2+w3``), ``<doc>: <change>``,
-    ``"<doc>"[ "what"]: <change>`` (an unloaded document), ``entry "form":
-    <change>`` and ``<lexicon>: <change>``."""
-    if not label or not where:
-        return None
-    if where['kind'] == 'entry':
-        for head in (f'entry "{where.get("form")}": ', f'{where.get("vocab_name")}: '):
-            if where.get('form') is not None and label.startswith(head):
-                return label[len(head):]
-        return None
-    doc_label = ws.doc_label(where['document_id'])
-    heads = [re.escape(doc_label) + ' ' + _REF + _WHAT + ': ',
-             re.escape(doc_label) + ': ',
-             re.escape(f'"{doc_label}"') + _WHAT + ': ']
-    for head in heads:
-        m = re.match(head, label)
-        if m:
-            return label[m.end():]
-    return None
