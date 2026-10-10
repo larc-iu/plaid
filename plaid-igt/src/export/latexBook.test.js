@@ -166,12 +166,13 @@ describe('formatExample', () => {
     expect(tex.split('\n')).toEqual([
       '\\ex',
       '\\begingl',
-      '\\gla \\PlaidWord{perros} \\PlaidWord{corren} \\PlaidWord{.} //',
-      '\\glb \\PlaidOrthography{perros-translit} {} {} //',
-      '\\glb \\PlaidWordField{\\textsc{noun}} \\PlaidWordField{\\textsc{verb}} {} //',
-      // corren has no morphemes in this fixture, as punctuation the project skips has none.
-      '\\glb \\PlaidMorphemes{perro=s} {} {} //',
-      '\\glb \\PlaidMorphemeField{dog=\\textsc{pl}} {} {} //',
+      // The full stop is set with the word before it, not as a column.
+      '\\gla \\PlaidWord{perros} \\PlaidWord{corren}\\PlaidWord{.} //',
+      '\\glb \\PlaidOrthography{perros-translit} {} //',
+      '\\glb \\PlaidWordField{\\textsc{noun}} \\PlaidWordField{\\textsc{verb}} //',
+      // corren has no morphemes in this fixture.
+      '\\glb \\PlaidMorphemes{perro=s} {} //',
+      '\\glb \\PlaidMorphemeField{dog=\\textsc{pl}} {} //',
       '\\glft {\\PlaidTranslation{The dogs run.}} //',
       '\\endgl',
       '\\xe',
@@ -187,12 +188,12 @@ describe('formatExample', () => {
       { kind: 'orthography', name: 'Translit' },
     ];
     const tex = formatExample(makeFixtureDoc().sortedSentences[0], { ...SEL, rows });
-    expect(lineOf(tex, 'gla')).toEqual(['\\PlaidMorphemes{perro=s} {} {}']);
+    expect(lineOf(tex, 'gla')).toEqual(['\\PlaidMorphemes{perro=s} {}']);
     expect(lineOf(tex, 'glb')).toEqual([
-      '\\PlaidWord{perros} \\PlaidWord{corren} \\PlaidWord{.}',
-      '\\PlaidMorphemeField{dog=\\textsc{pl}} {} {}',
-      '\\PlaidWordField{\\textsc{noun}} \\PlaidWordField{\\textsc{verb}} {}',
-      '\\PlaidOrthography{perros-translit} {} {}',
+      '\\PlaidWord{perros} \\PlaidWord{corren}\\PlaidWord{.}',
+      '\\PlaidMorphemeField{dog=\\textsc{pl}} {}',
+      '\\PlaidWordField{\\textsc{noun}} \\PlaidWordField{\\textsc{verb}}',
+      '\\PlaidOrthography{perros-translit} {}',
     ]);
   });
 
@@ -279,6 +280,38 @@ describe('formatExample', () => {
     expect(lineOf(formatExample(s, SEL), 'gla')).toEqual([
       '\\PlaidWord{kuna} \\PlaidWord{ha} \\PlaidWord{mi.}',
     ]);
+  });
+
+  it('sets punctuation with the word it belongs to, not as a column of its own', () => {
+    const gap = (content) => ({ type: 'gap', content });
+    const tok = (t) => ({ type: 'token', ...t });
+    const [a, b, c, d] = [word('a', [['a', 'x']]), word('b'), word('c'), word('d')];
+    const dash = word('-');
+    const s = sentenceOf([a, b, c, d], {}, [
+      gap('«'),
+      tok(a),
+      gap(' , '),
+      tok(b),
+      gap(' ( '),
+      tok(c),
+      gap(' - '),
+      tok(d),
+      tok(dash),
+      gap(' .”'),
+    ]);
+    // Closing marks go with the word before, opening ones with the word after,
+    // whatever the spaces, and a dash between spaces keeps its column. A mark
+    // touching a word goes with that word.
+    expect(lineOf(formatExample(s, SEL), 'gla')).toEqual([
+      '\\PlaidWord{«}\\PlaidWord{a}\\PlaidWord{,} \\PlaidWord{b} \\PlaidWord{(}\\PlaidWord{c} \\PlaidWord{-} \\PlaidWord{d}\\PlaidWord{-.”}',
+    ]);
+    // Every other line keeps one cell per remaining column.
+    expect(lineOf(formatExample(s, SEL), 'glb').at(-1)).toBe('\\PlaidMorphemeField{x} {} {} {} {}');
+  });
+
+  it('keeps a mark that carries a value of its own as a column', () => {
+    const s = sentenceOf([word('a'), word('?', [], { POS: span('PUNCT') })]);
+    expect(lineOf(formatExample(s, SEL), 'gla')).toEqual(['\\PlaidWord{a} \\PlaidWord{?}']);
   });
 
   it('gives an empty sentence its number', () => {
@@ -513,7 +546,7 @@ describe('buildLatexBook', () => {
     ]);
     const main = files[0].data;
     expect(main).toContain(
-      '\\include{texts/001-the-fox-the-crow}\n\\include{texts/002-nandu}\n\\include{texts/003}',
+      '\\input{texts/001-the-fox-the-crow}\n\\input{texts/002-nandu}\n\\input{texts/003}',
     );
     expect(main).toContain('\\tableofcontents');
     expect(main).toContain('\\PlaidFallbackFont{Noto Serif Bengali}');
@@ -838,7 +871,9 @@ describe('the vocabulary chapter', () => {
       used: new Set(['a2s', 'a1']),
       exampleNumbers: new Map([['d1/t3', [3, 12]]]),
     });
-    expect(tex).toContain('\\chapter*{Vocabulary}\n\\addcontentsline{toc}{chapter}{Vocabulary}');
+    expect(tex).toContain(
+      '\\chapter*{Vocabulary}\n\\phantomsection\\addcontentsline{toc}{chapter}{Vocabulary}',
+    );
     const entries = tex.split('\n').filter((l) => l.startsWith('\\PlaidEntry{'));
     expect(entries).toEqual([
       '\\PlaidEntry{\\PlaidEntryForm{ana}\\PlaidHomonym{1}}{\\PlaidEntryGloss{go\\_out} \\PlaidEntryField{POS}{v} \\PlaidEntryField{See Also}{zapa}}',

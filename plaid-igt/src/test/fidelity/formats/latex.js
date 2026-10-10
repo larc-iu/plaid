@@ -361,11 +361,13 @@ export default {
     },
     'token.ignoredWord': {
       carried: true,
-      where: 'a column of its own on the word line, empty on the other lines',
+      where:
+        'a column of its own on the word line, empty on the other lines, except a punctuation mark with nothing on the other lines, which is set against the word it belongs to',
     },
     'token.untokenizedText': {
       carried: true,
-      where: 'a column per whitespace-separated run on the word line, empty on the other lines',
+      where:
+        'a column per whitespace-separated run on the word line, empty on the other lines, except a run of punctuation, which is set against the word it belongs to',
     },
     'token.orthographyValue': {
       carried: true,

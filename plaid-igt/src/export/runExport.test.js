@@ -1422,7 +1422,7 @@ describe('runExport: LaTeX book', () => {
   const latexPreset = () => newPreset('latex', discoverExportLayers(PROJECT), 'l');
   const text = (entries, path) => new TextDecoder().decode(entries[path]);
 
-  it('zips a book with a chapter per document, included in the order of the run', async () => {
+  it('zips a book with a chapter per document, read in the order of the run', async () => {
     const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Alpha', 'ba')];
     const client = stubClient({ docs });
     const result = await runExport({
@@ -1443,8 +1443,9 @@ describe('runExport: LaTeX book', () => {
     ]);
     const main = text(entries, 'main.tex');
     expect(main).toContain('\\title{My Project: Test}');
-    expect(main.indexOf('\\include{texts/001-alpha}')).toBeLessThan(
-      main.indexOf('\\include{texts/002-alpha}'),
+    expect(main).toContain('\\input{texts/001-alpha}');
+    expect(main.indexOf('\\input{texts/001-alpha}')).toBeLessThan(
+      main.indexOf('\\input{texts/002-alpha}'),
     );
     expect(text(entries, 'texts/001-alpha.tex')).toContain(
       '\\gla \\PlaidWord{hi} \\PlaidWord{yo} //',

@@ -334,6 +334,9 @@ const linkedMorphemes = (text, morphemes, entries) => {
  */
 const namesOf = (rows, kind) => rows.filter((r) => r.kind === kind).map((r) => r.name);
 
+const SPACE_START_RE = /^[\s\u0085\u2028\u2029]/u;
+const SPACE_END_RE = /[\s\u0085\u2028\u2029]$/u;
+
 function sentenceColumns(sentence, selection) {
   const fields = {
     morphFields: namesOf(selection.rows, ROW_KINDS.MORPHEME_FIELD),
@@ -349,6 +352,8 @@ function sentenceColumns(sentence, selection) {
     }
   }
   const columns = [];
+  // Whether the next column follows the last with no space between them.
+  let glued = false;
   for (const piece of pieces) {
     if (piece.type === 'token') {
       const cells = wordCells(piece, fields);
@@ -372,11 +377,17 @@ function sentenceColumns(sentence, selection) {
           morphemes.length === 1 && segmented === word
             ? (morphemes[0].vocabItem?.id ?? null)
             : null,
+        glued,
       });
+      glued = true;
       continue;
     }
-    for (const run of texLine(piece.content).split(' ')) {
-      if (run === '') continue;
+    const raw = String(piece.content ?? '');
+    const runs = texLine(raw)
+      .split(' ')
+      .filter((run) => run !== '');
+    const touches = glued && !SPACE_START_RE.test(raw);
+    runs.forEach((run, i) => {
       columns.push({
         word: run,
         orthographies: orthographies.map(() => ''),
@@ -388,10 +399,52 @@ function sentenceColumns(sentence, selection) {
         wordEntry: null,
         mweEntry: null,
         soleEntry: null,
+        glued: i === 0 && touches,
       });
-    }
+    });
+    if (raw !== '') glued = runs.length > 0 && !SPACE_END_RE.test(raw);
   }
-  return columns;
+  return attachPunctuation(columns);
+}
+
+// A mark of punctuation with nothing under it is set with a word rather than
+// as a column of its own, as a sentence is written: "drowned." and "(said",
+// not "drowned ." and "( said". It goes with the word it touches, else, when
+// spaces stand on both sides, a closing mark (a full stop, a comma, a closing
+// bracket or quotation mark) with the word before it and an opening one with
+// the word after it. A dash or a straight quotation mark between spaces stays
+// a column. Its text is the column's `before` or `after`, printed on the word
+// line only.
+const PUNCTUATION_RE = /^\p{P}+$/u;
+const CLOSING_RE =
+  /^[\p{Pe}\p{Pf}.,;:!?\u2026\u060c\u061b\u061f\u06d4\u0964\u0965\u3001\u3002\uff0c\uff1f\uff01]+$/u;
+const OPENING_RE = /^[\p{Ps}\p{Pi}\u00bf\u00a1]+$/u;
+const bare = (c) =>
+  PUNCTUATION_RE.test(c.word) &&
+  c.segmented === '' &&
+  !c.wordEntry &&
+  !c.mweEntry &&
+  ![...c.orthographies, ...c.wordLines, ...c.morphLines].some((v) => texLine(v) !== '');
+
+function attachPunctuation(columns) {
+  const out = [];
+  let carry = '';
+  columns.forEach((c, i) => {
+    const next = columns[i + 1];
+    const prev = carry === '' ? out[out.length - 1] : null;
+    const word = next && !bare(next) ? next : null;
+    if (bare(c) && prev && (c.glued || (!word?.glued && CLOSING_RE.test(c.word)))) {
+      prev.after = `${prev.after ?? ''}${c.word}`;
+      return;
+    }
+    if (bare(c) && word && (word.glued || OPENING_RE.test(c.word))) {
+      carry += c.word;
+      return;
+    }
+    out.push(carry ? { ...c, before: carry } : c);
+    carry = '';
+  });
+  return out;
 }
 
 const hasValue = (cells) => cells.some((c) => texLine(c) !== '');
@@ -408,7 +461,7 @@ function glossLines(columns, selection, docDir, entries) {
   const lines = [];
   const add = (texts, render, pieces = null) => {
     if (!hasValue(texts)) return;
-    lines.push(texts.map((t, i) => render(t, pieces?.[i])));
+    lines.push(texts.map((t, i) => render(t, pieces?.[i], i)));
   };
   const morphemeLine =
     selection.rows.some((r) => r.kind === ROW_KINDS.MORPHEMES) &&
@@ -416,9 +469,12 @@ function glossLines(columns, selection, docDir, entries) {
   const index = { orthography: 0, wordField: 0, morphemeField: 0 };
   for (const row of selection.rows) {
     if (row.kind === ROW_KINDS.WORDS) {
+      const word = linkedWordCell('PlaidWord', docDir, entries);
+      const mark = plainCell('PlaidWord', docDir);
       add(
-        columns.map((c) => c.word),
-        linkedWordCell('PlaidWord', docDir, entries),
+        columns.map((c) => `${c.before ?? ''}${c.word}${c.after ?? ''}`),
+        (_, id, i) =>
+          `${columns[i].before ? mark(columns[i].before) : ''}${word(columns[i].word, id)}${columns[i].after ? mark(columns[i].after) : ''}`,
         // A word goes to its own entry, else to its expression's, else (with
         // no morpheme line) to its one morpheme's: the first the chapter lists.
         columns.map((c) =>
@@ -863,7 +919,7 @@ export function formatAbbreviations(tags, projectConfig) {
   });
   return [
     '\\chapter*{Abbreviations}',
-    '\\addcontentsline{toc}{chapter}{Abbreviations}',
+    '\\phantomsection\\addcontentsline{toc}{chapter}{Abbreviations}',
     '',
     ...(rows.length
       ? ['\\begin{PlaidAbbreviationList}', ...rows, '\\end{PlaidAbbreviationList}']
@@ -1147,7 +1203,7 @@ export function formatVocabulary({
     const title = chapters.length === 1 ? 'Vocabulary' : heading(texLine(name)) || 'Vocabulary';
     out.push(
       `\\chapter*{${title}}`,
-      `\\addcontentsline{toc}{chapter}{${title}}`,
+      `\\phantomsection\\addcontentsline{toc}{chapter}{${title}}`,
       `\\markboth{${title}}{${title}}`,
       '',
       '\\begin{PlaidEntryList}',
@@ -1199,7 +1255,7 @@ const fallbackFonts = (scripts) =>
 
 /** main.tex: the preamble, a place for front matter, and one \include per text. */
 function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary = false }) {
-  const includes = chapters.map((c) => `\\include{texts/${c}}`).join('\n');
+  const includes = chapters.map((c) => `\\input{texts/${c}}`).join('\n');
   return `% ${texLine(title)}
 % Compile with LuaLaTeX, twice, or with latexmk, which runs it as often as
 % the table of contents needs: latexmk -lualatex main.tex
@@ -1209,16 +1265,57 @@ function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary
   \\csname @@end\\endcsname
 \\fi
 
-\\documentclass[11pt,openany]{book}
+% Charis SIL at 10 points reads as large as most book faces at 11.
+\\documentclass[10pt,openany]{book}
 \\raggedbottom
 
-\\usepackage[a4paper,margin=2.5cm]{geometry}
-% Room for four-digit page numbers in the table of contents, and a little
-% give for a line holding a long unbreakable word such as a web address.
-\\makeatletter\\renewcommand{\\@pnumwidth}{2.5em}\\makeatother
+% A4, with the running head in the top margin and no footer, so the text
+% block takes the page: interlinear lines are set in columns, and every
+% column a line holds is one a sentence does not have to break for.
+\\usepackage[a4paper,inner=22mm,outer=22mm,top=24mm,bottom=20mm,
+  headheight=14pt,headsep=8mm,footskip=6mm]{geometry}
 \\setlength{\\emergencystretch}{2em}
 \\usepackage{fontspec}
 \\usepackage{multicol}
+
+% Page numbers and running heads at the top. A text's heading sits where the
+% text begins, mid-page included.
+\\usepackage{fancyhdr}
+\\pagestyle{fancy}
+\\fancyhf{}
+\\fancyhead[LE,RO]{\\small\\thepage}
+\\fancyhead[RE]{\\small\\itshape\\nouppercase{\\leftmark}}
+\\fancyhead[LO]{\\small\\itshape\\nouppercase{\\rightmark}}
+\\renewcommand{\\headrulewidth}{0pt}
+\\fancypagestyle{plain}{\\fancyhf{}\\fancyhead[LE,RO]{\\small\\thepage}}
+% The running head: the chapter's number and name, as written.
+\\renewcommand{\\chaptermark}[1]{\\markboth{\\thechapter\\quad #1}{\\thechapter\\quad #1}}
+
+% Headings. A text runs on after the one before it, under its number and
+% name, and never begins at the foot of a page. The page it begins on has
+% no running head. For each text on a new page, make \\PlaidTextBreak
+% \\clearpage.
+\\newcommand{\\PlaidTextBreak}{}
+\\makeatletter
+% A new page when less than #1 is left on this one.
+\\newcommand{\\PlaidNeedspace}[1]{\\par\\penalty-100\\begingroup
+  \\dimen@=#1\\relax\\dimen@ii=\\pagegoal\\advance\\dimen@ii-\\pagetotal
+  \\ifdim\\dimen@>\\dimen@ii\\ifdim\\dimen@ii>\\z@\\vfil\\fi\\penalty-\\@M\\vskip\\z@\\fi
+  \\endgroup}
+\\renewcommand{\\chapter}{\\par\\PlaidTextBreak\\PlaidNeedspace{12\\baselineskip}%
+  \\thispagestyle{plain}\\global\\@topnum\\z@\\@afterindentfalse\\secdef\\@chapter\\@schapter}
+\\newcommand{\\PlaidHeading}[1]{\\addvspace{2.5\\baselineskip plus .5\\baselineskip}%
+  {\\parindent\\z@\\raggedright\\normalfont\\LARGE #1\\par}\\nobreak\\vskip 1.25\\baselineskip}
+\\def\\@makechapterhead#1{\\PlaidHeading{\\thechapter\\hspace{.75em}#1}}
+\\def\\@makeschapterhead#1{\\PlaidHeading{#1}}
+\\makeatother
+
+% The table of contents: one line per text, its number, name and page.
+\\makeatletter
+\\renewcommand{\\@pnumwidth}{2.5em}
+\\renewcommand{\\@dotsep}{3}
+\\renewcommand*{\\l@chapter}{\\@dottedtocline{0}{0pt}{2.3em}}
+\\makeatother
 
 % ---- Fonts ----------------------------------------------------------------
 % Charis SIL sets Latin (IPA included), Greek and Cyrillic. A character it
@@ -1247,10 +1344,116 @@ ${scriptFonts(scripts)}
 % A sentence too long for the line breaks into blocks, set ragged right, and
 % an example too long for the page continues on the next.
 \\lingset{glbreaking,glrightskip=0pt plus .5\\hsize,aboveglftskip=.3ex}
+% A line's space between examples, and a little between the blocks of one
+% that breaks.
+\\lingset{aboveexskip=1.4ex plus .6ex minus .3ex,belowexskip=1.4ex plus .6ex minus .3ex,
+  extraglskip=.6ex}
+\\usepackage{luacode}
+% A long example breaks into blocks, and a line that has a value somewhere in
+% the sentence keeps its place in every block. In a block where it is empty
+% in every column it takes no room.
+\\newattribute\\PlaidGlossRow
+\\newcommand{\\PlaidGlossRows}{\\PlaidGlossRow=1\\relax}
+\\lingset{everyglword=\\PlaidGlossRows}
+\\begin{luacode*}
+local HLIST, VLIST = node.id('hlist'), node.id('vlist')
+local GLUE, KERN, RULE, GLYPH = node.id('glue'), node.id('kern'), node.id('rule'), node.id('glyph')
+local ROW = luatexbase.attributes.PlaidGlossRow
+local function inked(head)
+  for n in node.traverse(head) do
+    local id = n.id
+    if id == GLYPH then return true end
+    if id == RULE and n.width > 0 then return true end
+    if (id == HLIST or id == VLIST) and n.head and inked(n.head) then return true end
+  end
+  return false
+end
+local function total(head)
+  local t = 0
+  for n in node.traverse(head) do
+    local id = n.id
+    if id == HLIST or id == VLIST or id == RULE then t = t + n.height + n.depth
+    elseif id == GLUE or id == KERN then t = t + n.width end
+  end
+  return t
+end
+local function rowsOf(col)
+  local rows = {}
+  for n in node.traverse_id(HLIST, col.head) do rows[#rows + 1] = n end
+  return rows
+end
+local function squeeze(line)
+  local cols, count = {}, nil
+  for n in node.traverse_id(VLIST, line.head) do
+    local first = n.head
+    while first and first.id ~= HLIST do first = first.next end
+    if first and node.has_attribute(first, ROW) then
+      local rows = rowsOf(n)
+      if count and #rows ~= count then return end
+      count = #rows
+      cols[#cols + 1] = { box = n, rows = rows }
+    end
+  end
+  if #cols < 1 or not count then return end
+  local changed = false
+  for k = count, 2, -1 do
+    local empty = true
+    for _, c in ipairs(cols) do
+      if inked(c.rows[k].head) then empty = false break end
+    end
+    if empty then
+      for _, c in ipairs(cols) do
+        local row = c.rows[k]
+        local before = row.prev
+        if before and (before.id == GLUE or before.id == KERN) then
+          c.box.head = node.remove(c.box.head, before)
+          node.free(before)
+        end
+        c.box.head = node.remove(c.box.head, row)
+        node.flush_node(row)
+      end
+      changed = true
+    end
+  end
+  if not changed then return end
+  for _, c in ipairs(cols) do
+    local first = c.box.head
+    local h = (first and (first.id == HLIST or first.id == VLIST)) and first.height or 0
+    local t = total(c.box.head)
+    c.box.height = h
+    c.box.depth = t - h
+  end
+  local _, h, d = node.dimensions(line.glue_set, line.glue_sign, line.glue_order, line.head)
+  line.height = h
+  line.depth = d
+end
+luatexbase.add_to_callback('post_linebreak_filter', function(head)
+  for line in node.traverse_id(HLIST, head) do squeeze(line) end
+  return true
+end, 'plaid.glossrows')
+\\end{luacode*}
+% A translation never begins a page: it stays with the last lines it translates.
+\\usepackage{etoolbox}
+\\makeatletter
+\\patchcmd{\\gl@wrap@below@ft@a}{\\vskip\\lingaboveglftskip}{\\par\\nobreak\\vskip\\lingaboveglftskip}{}{}
+\\makeatother
 % An example's number reads left to right in a text written right to left too,
 % and the vocabulary links to it.
 \\newcommand{\\PlaidExampleNumber}[1]{\\hypertarget{plaidex.\\thechapter.#1}{(#1)}}
 \\lingset{exnoformat=\\begingroup\\textdir TLT\\PlaidExampleNumber X\\endgroup}
+
+% The title page: the title a third of the way down, and under it the
+% author and date when \\author and \\date below give them.
+\\makeatletter
+\\renewcommand{\\maketitle}{\\begin{titlepage}\\centering
+  \\vspace*{.22\\textheight}
+  {\\fontsize{28}{34}\\selectfont \\@title\\par}
+  \\vspace{2.5\\baselineskip}
+  {\\Large \\@author\\par}
+  \\vspace{\\baselineskip}
+  {\\large \\@date\\par}
+  \\end{titlepage}}
+\\makeatother
 
 % How each line looks. Change one here to change it throughout the book.
 \\newcommand{\\PlaidWord}[1]{\\textit{#1}}           % the words
@@ -1262,7 +1465,8 @@ ${scriptFonts(scripts)}
 \\newcommand{\\PlaidSentenceField}[2]{\\newline\\textit{#1:} #2} % every other sentence field
 \\newcommand{\\PlaidSpeaker}[1]{\\textsc{#1}:}      % the speaker
 \\newcommand{\\PlaidMetadata}[2]{\\item[#1] #2}     % a document's metadata
-\\newenvironment{PlaidMetadataList}{\\begin{description}\\small}{\\end{description}}
+\\newenvironment{PlaidMetadataList}{\\begin{description}\\small
+  \\setlength{\\itemsep}{0pt}\\setlength{\\parsep}{0pt}}{\\end{description}}
 \\newcommand{\\PlaidAbbreviation}[2]{\\item[#1] #2}
 \\newenvironment{PlaidAbbreviationList}{%
   \\begin{multicols}{2}\\raggedright
@@ -1292,9 +1496,6 @@ ${scriptFonts(scripts)}
 % A text written right to left: its examples run right to left.
 \\newenvironment{PlaidRightToLeft}{\\par\\pardir TRT\\textdir TRT}{\\par}
 
-% The running head: the chapter's number and name, as written.
-\\renewcommand{\\chaptermark}[1]{\\markboth{\\thechapter\\quad #1}{\\thechapter\\quad #1}}
-
 \\usepackage[hidelinks]{hyperref}
 
 % The table of contents is read from the previous run, so the first run
@@ -1319,8 +1520,8 @@ ${scriptFonts(scripts)}
 ${abbreviations ? '\\include{abbreviations}\n' : ''}% ---- End of front matter ----------------------------------------------------
 
 \\mainmatter
-% One chapter per text. To compile only some of them while you work, list
-% them here, for example \\includeonly{texts/001-name}.
+% One chapter per text, each running on after the one before. To compile
+% only some of them while you work, put a % before the others.
 ${includes}
 
 \\backmatter
