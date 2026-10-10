@@ -244,6 +244,8 @@ try {
       digest: doc.layerInfo.primaryTextLayer.text.digest ?? null,
       gaps,
     });
+  // The two halves of sentence 2's split word, as text.
+  let splitHalves = [];
   const said = (ok, what) => {
     if (!ok) throw new Error(`IGT refused: ${what} (${igt.error || 'no message'})`);
   };
@@ -282,6 +284,9 @@ try {
       .sort((a, b) => cpLength(b.text) - cpLength(a.text))[0];
     said(await igt.splitToken(w.t.id, 1), 'split a word of sentence 2');
     igt = await loadIgt();
+    const left = tokenOf(igt, 'primaryTokenLayer', w.t.id);
+    const right = wordsIn(igt, sentenceIds[1]).find((t) => t.begin === left.end);
+    splitHalves = [left, right].map((t) => cpSlice(bodyOf(igt), t.begin, t.end));
   }
   // Sentence 1: its second lettered word respelled, one character changed,
   // through the Baseline tab's path.
@@ -341,11 +346,16 @@ try {
     'and is anchored to the new spelling',
     JSON.stringify(anchorText(umr, node('thing1') || { wordIds: [], sentence: 1 })),
   );
-  // Sentence 2, a word split.
+  // Sentence 2, a word split. The open puts the root on the half with more
+  // letters, marks and digits, the first on a tie (planWordSplits).
+  const letterCount = (s) => [...s].filter((c) => /[\p{L}\p{M}\p{N}]/u.test(c)).length;
+  const keptHalf =
+    letterCount(splitHalves[1]) > letterCount(splitHalves[0]) ? splitHalves[1] : splitHalves[0];
   check(
-    !!node('ev2-01') && anchorText(umr, node('ev2-01')).length === 2,
-    'the root on the split word covers both halves',
-    JSON.stringify(node('ev2-01') && anchorText(umr, node('ev2-01'))),
+    !!node('ev2-01') &&
+      JSON.stringify(anchorText(umr, node('ev2-01'))) === JSON.stringify([keptHalf]),
+    'the root on the split word stands on the half with more letters',
+    `${JSON.stringify(node('ev2-01') && anchorText(umr, node('ev2-01')))}, halves ${JSON.stringify(splitHalves)}`,
   );
   // Sentence 3, two words merged.
   check(['ev3-01', 'thing3', 'person3'].every(node), 'the nodes on merged words survive');
