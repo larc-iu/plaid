@@ -16,7 +16,7 @@ import re
 from collections import Counter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..core import opkind, work
+from ..core import opkind, rules, work
 from ..core.bidi import qrx, qv
 from ..core.limits import SAMPLE_LINES
 from ..core.provenance import unmark
@@ -192,11 +192,14 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     # What it replaces is found again only when it is approved, so the values
     # a person made or accepted are counted now, from what the query returned.
     accepted = sum(1 for ch in found if work.protected(ch.get('metadata')))
+    shown = qrx(pattern) if regex else qv(pattern)
     ws.add_op({'kind': 'replace_scope', 'field': field, 'pattern': pattern, 'replacement': replacement,
                'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
                'document_id': document_id, 'documents': docs, 'count': len(found), 'ref': None,
-               work.COUNTED: accepted,
-               'label': f'{field}: replace {qrx(pattern) if regex else qv(pattern)} with {qv(replacement)} on {len(found)} value(s){where}'
+               work.COUNTED: accepted, 'change': f'{field} {shown} → {qv(replacement)}',
+               CARD: _card(field, pattern, replacement, bool(regex), bool(whole), bool(case_sensitive),
+                           found, names),
+               'label': f'{field}: replace {shown} with {qv(replacement)} on {len(found)} value(s){where}'
                         + work.counted_phrase(accepted)})
     # Counted by document, never by name: two documents may share one, and
     # their counts are then told apart by id.
@@ -210,6 +213,33 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
             + f'{counts}\nFor example:\n  '
             + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE_LINES} more' if len(found) > SAMPLE_LINES else '')
             + '\nsearch shows every match with its reference.')
+
+
+#: The key a replace_scope op carries for its card row while it is in the
+#: turn's plan. The row goes in `changes` only (``Workspace.plan_payload``).
+CARD = 'card'
+
+
+def _card(field: str, pattern: str, replacement: str, regex: bool, whole: bool, case_sensitive: bool,
+          found: List[Dict[str, Any]], names: Dict[str, str]) -> Dict[str, Any]:
+    """The card row's ``rule``, as igt's corpus-wide rules have it
+    (:func:`core.rules.card`): the total, the count in each document, how it
+    matches and every distinct change it makes. No sample: a match read from
+    the query has no word reference to place it at."""
+    kind = 'set_deprel' if field == 'deprel' else 'set_span'
+    out = rules.card({'tool': 'replace_in_field', 'counts': {kind: len(found)},
+                      'args': {'field': field, 'pattern': pattern, 'replacement': replacement,
+                               'regex': regex, 'whole': whole, 'case_sensitive': case_sensitive}},
+                     found, lambda ch: ch.get('document_id'), lambda d: names.get(d, d),
+                     lambda ch: {}, lambda ch: 0)
+    out['sample'] = []
+    out['mode'] = rules.match_mode(pattern, regex, whole, case_sensitive)
+    rows, more = rules.transitions(found, lambda ch: (ch['old'], ch['new']),
+                                   rules.surprises(pattern, regex, whole, case_sensitive))
+    out[rules.TRANSITIONS] = rows
+    out[rules.TRANSITIONS_MORE] = more
+    out[rules.UNIT] = ['dependency', 'dependencies'] if field == 'deprel' else ['value', 'values']
+    return out
 
 
 def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],

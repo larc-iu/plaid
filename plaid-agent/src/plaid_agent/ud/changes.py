@@ -25,6 +25,14 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
+    if op.get('card') is not None:
+        # A field-wide replace: its row was built when it was staged (bulk._card).
+        docs = op['card'].get('documents') or []
+        where = ({'kind': 'document', 'document_id': docs[0][0], 'document_name': docs[0][1]}
+                 if len(docs) == 1 else None)
+        return {'label': op.get('label') or '', 'where': where, 'change': op.get('change'),
+                'writes_text': False, 'replaces_work': int(op.get(work.COUNTED) or 0),
+                'rule': op['card']}
     return {'label': op.get('label') or '', 'where': locate(ws, op),
             'writes_text': op.get('kind') in _PROSE_KINDS,
             'replaces_work': int(op.get(work.FLAG) or 0)}

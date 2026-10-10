@@ -1235,6 +1235,15 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     payload = ws.plan_payload()
     assert [(d['id'], d['version']) for d in payload['documents']] == [('other', 9), ('ud1', 3)]
     assert payload['changes'][0]['where'] is None
+    # The card lists the rule's distinct changes, as igt's bulk rows do, and
+    # the stored op does not carry the row.
+    row = payload['changes'][0]
+    assert row['change'] == 'lemma "mar" → "mare"' and row['replaces_work'] == 2
+    assert row['rule']['total'] == 2 and row['rule']['unit'] == ['value', 'values']
+    assert [(t['from'], t['to'], t['count']) for t in row['rule']['transitions']] == [
+        ('Mar', 'mare', 1), ('mar', 'mare', 1)]
+    assert sorted(d[1] for d in row['rule']['documents']) == ['Otro', 'Viaje']
+    assert 'card' not in payload['ops'][0]
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
     assert counts == {'field values': 2}
     assert ws.client.updates('spans') == [('sp-l3', 'mare'), ('sp-x', 'mare')]

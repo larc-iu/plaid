@@ -291,6 +291,10 @@ TRANSITIONS_MAX = 12
 TRANSITIONS = 'transitions'
 TRANSITIONS_MORE = 'transitions_more'
 
+#: The key on a rule's card naming what the rest count (``[one, many]``,
+#: ``['morpheme form', 'morpheme forms']``).
+UNIT = 'unit'
+
 #: Why a change is listed first: the match is part of a longer word, or it
 #: matched only because case was ignored.
 INSIDE_WORD = 'inside a word'

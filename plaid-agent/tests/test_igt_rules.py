@@ -319,6 +319,8 @@ def test_a_rule_lists_every_distinct_change_the_surprising_ones_first():
         ('PROS', 'PROSP', 2, []),
     ]
     assert rule[rules.TRANSITIONS_MORE] == [0, 0]
+    # the rest are counted in the rule's own unit, as the tool result says
+    assert rule[rules.UNIT] == ['value', 'values']
     # the model reads the same list, in the same order
     lines = out.split('\n')
     at = lines.index('Every distinct change it makes, the card lists the same:')

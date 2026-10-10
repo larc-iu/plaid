@@ -267,9 +267,14 @@ class Workspace(BaseWorkspace):
         # what the user approves later. Large groups of like ops are stored
         # as one (the summary still counts what they stand for).
         ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)), compact_spec(self))
+        # A replace's card row was built when it was staged and goes in
+        # `changes` only.
+        changes = describe_changes(self, ops)
+        for op in ops:
+            op.pop('card', None)
         return {'id': uuid7(), 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
-                'changes': describe_changes(self, ops),
+                'changes': changes,
                 'documents': self.touched_documents()}
 
 

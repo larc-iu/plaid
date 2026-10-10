@@ -231,6 +231,17 @@ describe('every distinct change a rule makes (H12-RULES-1)', () => {
     await view.unmount();
   });
 
+  it("counts the rest in the rule's own unit", async () => {
+    const forms = ruleRow({
+      rule: { ...withChanges().rule, unit: ['morpheme form', 'morpheme forms'] },
+    });
+    const view = await mount(plan([forms]));
+    expect(
+      byText(view.container, 'td', 'and 2 more distinct changes (5 morpheme forms)'),
+    ).not.toBeNull();
+    await view.unmount();
+  });
+
   it('says a rule of one change in its own line only', async () => {
     const one = ruleRow({
       rule: { ...ruleRow().rule, transitions: [{ from: 'VASP', to: 'ASP', count: 9, notes: [] }] },

@@ -76,9 +76,11 @@ export const ruleCountLine = (rule, replacesWork = 0) => {
 
 // Every distinct change a rule makes (`rule.transitions`, `{from, to, count,
 // notes}`, the surprising ones first, see core/rules.py in plaid-agent), and
-// the line counting the rest. Listed when there is more than one or one is
-// noted: a rule over one value says it in its own line.
+// the line counting the rest in the rule's own unit (`rule.unit`, `[one,
+// many]`: morpheme forms, values, dependencies). Listed when there is more
+// than one or one is noted: a rule over one value says it in its own line.
 export const ruleTransitions = (rule) => {
+  const [one, many] = rule?.unit || ['value', 'values'];
   const rows = (rule?.transitions || []).map((t) => ({
     from: t.from ?? '',
     to: t.to ?? '',
@@ -91,7 +93,7 @@ export const ruleTransitions = (rule) => {
     rows: shown ? rows : [],
     more:
       shown && Number(moreKinds) > 0
-        ? `and ${count(Number(moreKinds), 'more distinct change', 'more distinct changes')} (${count(Number(moreValues), 'value', 'values')})`
+        ? `and ${count(Number(moreKinds), 'more distinct change', 'more distinct changes')} (${count(Number(moreValues), one, many)})`
         : null,
   };
 };

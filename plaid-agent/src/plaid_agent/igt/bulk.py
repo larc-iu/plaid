@@ -512,6 +512,7 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
         rows, more = rules.transitions(kept, lambda o: (_was(ws, o), _becomes(o)), seen)
         out[CARD][rules.TRANSITIONS] = rows
         out[CARD][rules.TRANSITIONS_MORE] = more
+        out[CARD][rules.UNIT] = list(unit)
     return out
 
 
