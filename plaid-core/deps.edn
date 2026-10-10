@@ -12,9 +12,6 @@
         org.slf4j/slf4j-api {:mvn/version "2.0.18"}
         org.slf4j/slf4j-simple {:mvn/version "2.0.18"}
 
-        ;; profiler, haven't used so far
-        com.taoensso/tufte {:mvn/version "3.0.2"}
-
         ;; routing
         metosin/reitit {:mvn/version "0.10.1"}
 
@@ -26,7 +23,6 @@
         ring/ring-core {:mvn/version "1.15.4"}
         ring/ring-defaults {:mvn/version "0.7.0"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
-        metosin/ring-http-response {:mvn/version "0.9.5"}
 
         ;; sql — OLTP backend
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.1048"}
@@ -39,7 +35,6 @@
         buddy/buddy-core {:mvn/version "1.12.0-430"}
         buddy/buddy-hashers {:mvn/version "2.0.167"}
         buddy/buddy-sign {:mvn/version "3.6.1-359"}
-        buddy/buddy-auth {:mvn/version "3.0.323"}
         ;; buddy-core 1.12.0-430 still requests Bouncy Castle 1.78.1.
         ;; Override the suite together so all three provider artifacts stay
         ;; version-aligned and receive the security fixes released since then.
@@ -48,7 +43,6 @@
         org.bouncycastle/bcutil-jdk18on {:mvn/version "1.84"}
 
         ;; misc
-        camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
         juji/editscript {:mvn/version "0.7.0"}
         org.clojure/data.json {:mvn/version "2.5.2"}
 
