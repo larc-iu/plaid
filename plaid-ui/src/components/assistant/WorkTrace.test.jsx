@@ -97,6 +97,12 @@ describe('WorkTrace', () => {
     const pres = texts(view.container, 'pre');
     expect(pres).toContain('document: Text 1\nsentences: [\n  3\n]');
     expect(pres).toContain(CONLLU);
+    // A CoNLL-U row is kept whole: the block scrolls sideways, never wraps.
+    for (const pre of all(view.container, 'pre')) {
+      expect(pre.className).toContain('whitespace-pre ');
+      expect(pre.className).toContain('overflow-auto');
+      expect(pre.className).not.toContain('break-words');
+    }
     expect(pres).toContain(CODE);
     expect(pres).toContain('40\n');
     expect(view.container.textContent).toContain('Cut at 12,000 characters.');

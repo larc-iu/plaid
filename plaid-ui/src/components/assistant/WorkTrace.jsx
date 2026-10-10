@@ -23,8 +23,10 @@ import { callInput, callOf, foldReads, runLabel } from './rounds.js';
 // way (`thinking`, its last 2,000 characters) shows open as it streams.
 
 const MUTED = 'text-xs text-muted-foreground';
+// Lines are kept whole, as the tool wrote them (CoNLL-U columns, word
+// lines): a long one scrolls sideways inside the block.
 const PRE =
-  'max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground';
+  'max-h-72 min-w-0 max-w-full overflow-auto whitespace-pre rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground';
 
 const CUT_LINE = 'Cut at 12,000 characters.';
 const NOT_STORED = 'Output not stored.';
@@ -105,7 +107,7 @@ const CopyButton = ({ text }) => {
 // A block of text as it was: monospace, scrollable, with Copy. A block
 // that is the whole of its disclosure needs no heading of its own.
 const Block = ({ heading, text, after, exported }) => (
-  <div className="my-1 flex flex-col gap-0.5">
+  <div className="my-1 flex min-w-0 flex-col gap-0.5">
     <div className={cn('flex items-center gap-2', heading ? 'justify-between' : 'justify-end')}>
       {heading && <span className="font-medium">{heading}</span>}
       {!exported && <CopyButton text={text} />}
@@ -133,7 +135,7 @@ const InputBlock = ({ call, exported }) => {
 
 // One call's input and output, once its round is read.
 const CallDetail = ({ call, exported }) => (
-  <div className="mb-1 ml-4 flex flex-col">
+  <div className="mb-1 ml-4 flex min-w-0 flex-col">
     <InputBlock call={call} exported={exported} />
     <Block
       heading="Output"
