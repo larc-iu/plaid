@@ -847,7 +847,7 @@ def test_reading_a_document_names_it_the_way_the_user_would(ws):
     said = []
     ws.on_progress = said.append
     ws.doc('ud1')
-    assert said == ['Reading "Viaje"…']
+    assert said == ['Reading “Viaje”…']
 
 
 # --- reshaping a token -----------------------------------------------------------

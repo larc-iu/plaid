@@ -206,7 +206,7 @@ def test_a_stub_models_turn_reads_why_and_stops_asking(ws, monkeypatch):
                ('set_head', {'document': 'Linea', 'ref': 's1.w4', 'head': 1, 'deprel': 'obl'})),
         _reply(text='Approve the split first, then I will tag the new words.'),
     ])
-    monkeypatch.setattr(agent, '_complete', lambda cfg, kwargs, on_text, cancelled=None: next(script))
+    monkeypatch.setattr(agent, '_complete', lambda cfg, kwargs, on_text, cancelled=None, on_thinking=None: next(script))
     kit = AssistantService().toolkit()
     out = agent.run_turn(agent.ModelConfig(model='stub'), kit, ws, 'system', [{'role': 'user', 'content': 'x'}])
     results = [m['content'] for m in out.messages if m.get('role') == 'tool']

@@ -253,8 +253,9 @@ NOTHING = 'Nothing to change: '
 
 def nothing_label(label: str) -> str:
     """The line for a plan call that went through and left the plan as it
-    was: "Nothing to change: replacing “QQZX” → “3SG” in Gloss", never
-    "Planned" over a card that does not hold it."""
+    was: "Nothing to change: replacing ..." where it would have said
+    "Planned replacing ...", never "Planned" over a card that does not hold
+    it."""
     for done, _tried in _FAILED_VERBS:
         if label.startswith(done):
             return NOTHING + label[len(done):]
