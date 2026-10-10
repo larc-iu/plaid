@@ -24,10 +24,14 @@ const src = path.resolve(here, '..');
 // sibling, which is the one thing the package does know about them.
 const SIBLING_APPS = path.join(src, 'domain', 'siblingApps.js');
 
+// What the apps load: not the tests, nor the helpers only tests import (src/test),
+// whose fake screens sit at app routes as the tests' own do.
+const TEST_HELPERS = path.join(src, 'test');
+
 const sources = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) return sources(full);
+    if (e.isDirectory()) return full === TEST_HELPERS ? [] : sources(full);
     return e.isFile() && /\.jsx?$/.test(e.name) && !/\.test\.jsx?$/.test(e.name) ? [full] : [];
   });
 
