@@ -8,12 +8,14 @@ import { SectionHeader } from './SectionHeader.jsx';
  *
  * - `newDocument`: a component drawn beside the heading when `canEdit`, given
  *   `{ projectId, documents }`.
+ * - `project`: the project, whose plaid an empty list shows.
  * - `wordLayerId`, `seedLayerId`: the layers `DocumentTable` counts.
  * - `href(documentId, counts)`: where a row opens.
  * - `error` and `onRetry`: a listing that failed, said above the table.
  */
 export const ProjectDocumentsList = ({
   projectId,
+  project,
   documents,
   client,
   canEdit,
@@ -42,6 +44,7 @@ export const ProjectDocumentsList = ({
       documents={documents}
       client={client}
       projectId={projectId}
+      project={project}
       wordLayerId={wordLayerId}
       seedLayerId={seedLayerId}
       href={href}

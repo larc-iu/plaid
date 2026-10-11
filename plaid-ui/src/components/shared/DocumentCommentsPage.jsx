@@ -38,7 +38,7 @@ export const DocumentCommentsPage = ({ buildAnchors }) => {
   const present = useMemo(() => documentEntityIds(doc?.raw), [doc, version]);
 
   return (
-    <div className="w-full max-w-4xl">
+    <div className="w-full max-w-4xl pt-4">
       <CommentsBrowser
         store={comments}
         anchors={anchors}

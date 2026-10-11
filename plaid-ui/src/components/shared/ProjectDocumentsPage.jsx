@@ -141,6 +141,7 @@ export const ProjectDocumentsPage = ({
 
       <ProjectDocumentsList
         projectId={projectId}
+        project={project}
         documents={documents}
         client={getClient()}
         canEdit={canEdit}

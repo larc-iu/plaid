@@ -8,6 +8,7 @@ import { Loading } from './Loading.jsx';
 import { LoadError } from './LoadError.jsx';
 import { PendingCell } from './PendingCell.jsx';
 import { TYPE } from '../../lib/typeScale.js';
+import { EmptyState } from './EmptyState.jsx';
 
 /**
  * A number that is still being counted, could not be counted, or is a number.
@@ -114,9 +115,8 @@ export const LinkedListPage = ({
       {loading ? (
         <Loading />
       ) : rows.length === 0 && error ? null : rows.length === 0 ? (
-        <Card className="p-10 text-center text-muted-foreground">
-          <p className="text-lg">{empty.title}</p>
-          <p className="mt-1 text-sm">{empty.hint}</p>
+        <Card>
+          <EmptyState title={empty.title} hint={empty.hint} />
         </Card>
       ) : (
         <TooltipProvider>

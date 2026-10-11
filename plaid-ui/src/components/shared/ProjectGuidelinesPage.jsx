@@ -17,6 +17,7 @@ export const ProjectGuidelinesPage = ({ tabs }) => {
           <GuidelinesTab
             client={client}
             projectId={projectId}
+            project={project}
             canWrite={canEditProject(project, user)}
           />
         </>

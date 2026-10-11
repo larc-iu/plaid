@@ -156,6 +156,9 @@ export const DataTable = ({
 
       {loading && rows.length === 0 ? (
         <Loading className="px-4" />
+      ) : paged.pageItems.length === 0 && rows.length === 0 && typeof empty !== 'string' ? (
+        // An EmptyState, or any node, drawn as it is.
+        empty
       ) : paged.pageItems.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
           {rows.length === 0

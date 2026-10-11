@@ -6,6 +6,7 @@ import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyWarning } from '../../lib/notify.js';
 import { textIncludes } from '../../domain/collation.js';
 import { PendingCell } from './PendingCell.jsx';
+import { EmptyState } from './EmptyState.jsx';
 
 /**
  * A project's documents, with what both apps show about one: how many words it
@@ -32,6 +33,7 @@ export const DocumentTable = ({
   documents,
   client,
   projectId,
+  project,
   wordLayerId,
   seedLayerId,
   href,
@@ -252,7 +254,7 @@ export const DocumentTable = ({
           match: (d, q) => textIncludes(d.name || '', q),
         }}
         noun="document"
-        empty="No documents yet."
+        empty={<EmptyState project={project} title="No documents yet." />}
         noMatch={(q) => `No documents match “${q}”.`}
       />
     </TooltipProvider>

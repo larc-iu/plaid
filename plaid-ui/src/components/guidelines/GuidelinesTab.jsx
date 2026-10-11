@@ -18,6 +18,7 @@ import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { useGuidelineCaps } from './guidelineCaps.js';
 import { cn } from '../../lib/utils.js';
+import { EmptyState } from '../shared/EmptyState.jsx';
 
 // Where the counter appears, as a fraction of the server's body cap: below it a
 // guideline is nowhere near the ceiling and the number is noise.
@@ -83,7 +84,7 @@ const GuidelineRow = ({ entry, selected, to, onSelect }) => (
   </Link>
 );
 
-export function GuidelinesTab({ client, projectId, canWrite }) {
+export function GuidelinesTab({ client, projectId, project, canWrite }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -344,14 +345,18 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
             <Loading className="px-3 py-6 text-center" />
           ) : loadError ? (
             <p className="px-3 py-6 text-center text-sm text-destructive">{loadError}</p>
-          ) : paged.pageItems.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {entries.length === 0
-                ? canWrite
+          ) : paged.pageItems.length === 0 && entries.length === 0 ? (
+            <EmptyState
+              project={project}
+              title={
+                canWrite
                   ? 'No guidelines yet. Add one to record a convention.'
                   : 'No guidelines yet.'
-                : 'Nothing matches.'}
-            </p>
+              }
+              className="px-3 py-6"
+            />
+          ) : paged.pageItems.length === 0 ? (
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches.</p>
           ) : (
             paged.pageItems.map((entry) => (
               <GuidelineRow
