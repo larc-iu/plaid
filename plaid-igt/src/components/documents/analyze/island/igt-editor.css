@@ -326,6 +326,10 @@
   display: flex;
   align-items: stretch;
   gap: 6px;
+  /* The row floats over the grid's top edge, so it carries the card's ground
+     under its quiet buttons. */
+  background: var(--igt-surface);
+  border-radius: calc(var(--radius) - 2px);
 }
 .igt-sentence:hover .igt-sentence__tools,
 .igt-sentence__tools:focus-within {
@@ -337,62 +341,11 @@
   display: flex;
   align-items: stretch;
 }
-.igt-ask {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--igt-gray-600);
-  background: var(--igt-surface);
-  border: 1px solid var(--igt-gray-300);
-  border-radius: calc(var(--radius) - 2px);
-  padding: 2px 8px;
-  cursor: pointer;
-}
-.igt-ask:hover {
-  background: var(--igt-hover);
-  color: var(--igt-gray-900);
-}
-.igt-ask:focus-visible {
-  outline: 2px solid var(--igt-ring);
-  outline-offset: 1px;
-}
-.igt-copy__btn,
+/* Ask, the link, Copy and its caret wear plaid-ui's SENTENCE_ACTION
+   (sentenceActions.js), the treatment of every app's sentence actions. The
+   caret sits tight against Copy. */
 .igt-copy__caret {
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--igt-gray-600);
-  background: var(--igt-surface);
-  border: 1px solid var(--igt-gray-300);
-  padding: 2px 8px;
-  cursor: pointer;
-}
-.igt-copy__btn {
-  border-start-start-radius: calc(var(--radius) - 2px);
-  border-end-start-radius: calc(var(--radius) - 2px);
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-}
-.igt-copy__caret {
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
-  border-start-end-radius: calc(var(--radius) - 2px);
-  border-end-end-radius: calc(var(--radius) - 2px);
-  border-inline-start: none;
-  padding: 2px 5px;
-}
-.igt-copy__btn:hover,
-.igt-copy__caret:hover {
-  background: var(--igt-hover);
-  color: var(--igt-gray-900);
-}
-.igt-copy__btn:focus-visible,
-.igt-copy__caret:focus-visible {
-  outline: 2px solid var(--igt-ring);
-  outline-offset: 1px;
+  padding-inline: 4px;
 }
 .igt-copy__menu {
   position: absolute;
@@ -1525,26 +1478,6 @@
 /* Copy a shareable link to one sentence. Sits left of "Copy" in the same
    hover-revealed control, so the two share a visual home without the link
    icon competing with the primary action's label. */
-.igt-copy__link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  padding: 0;
-  border: 1px solid var(--igt-gray-300);
-  border-inline-end: 0;
-  border-start-start-radius: calc(var(--radius) - 2px);
-  border-end-start-radius: calc(var(--radius) - 2px);
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-  background: var(--igt-surface);
-  color: var(--igt-gray-500);
-  cursor: pointer;
-}
-.igt-copy__link:hover {
-  background: var(--igt-hover);
-  color: var(--igt-gray-900);
-}
 .igt-copy__link.is-copied {
   color: hsl(var(--primary));
 }
@@ -1553,12 +1486,6 @@
   font-weight: 700;
   line-height: 1;
 }
-/* The Copy button is no longer the leftmost element in the group. */
-.igt-copy__link + .igt-copy__btn {
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
-}
-
 /* ---- alternatives list (Alt+↓ on an annotation cell) ----
    Every value seen for the form, ranked: precedent counts, the linked entry,
    the producer's own prediction. Position: fixed, like the vocab popover.

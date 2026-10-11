@@ -2,7 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, Undo2, PenLine, Tags } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
-import { Button } from '@ui/components/ui/button';
+import { cn } from '@ui/lib/utils.js';
+import { SENTENCE_ACTION, SENTENCE_REVIEW } from '@ui/components/shared/sentenceActions.js';
 import { SentenceComments } from '@ui/components/shared/SentenceComments';
 import { SentenceMetadataDialog } from './SentenceMetadataDialog.jsx';
 import { useEditorSession } from './editorSession.js';
@@ -10,9 +11,10 @@ import { useEditorSession } from './editorSession.js';
 // Everything the sentence itself offers, BELOW the grid and left-aligned with
 // the first token so it reads as belonging to this sentence. Two kinds, told
 // apart by weight rather than by position: Accept and Discard are outlined and
-// only appear when they have something to do, while the four standing actions
-// are one plain icon-and-label treatment apiece (`sentence-action`) because
-// none of them is the thing you came to the sentence to do. The metadata
+// only appear when they have something to do (plaid-ui's SENTENCE_REVIEW),
+// while the four standing actions are the plain icon-and-label treatment every
+// app's sentence actions wear (SENTENCE_ACTION), because none of them is the
+// thing you came to the sentence to do. The metadata
 // disclosure is one of the four: it used to be a bold SENTENCE heading on its
 // own line, which made housekeeping the loudest thing under the grid.
 //
@@ -65,61 +67,64 @@ export const SentenceActions = React.memo(
           (!isReadOnly && (hasInferred || hasMachine))) && (
           <div className="sentence-confirm">
             {!isReadOnly && onConfirmTokens && hasInferred && (
-              <Button
-                className="accept-predictions-btn plaid-review plaid-review--accept h-6 gap-1 px-2 text-xs"
-                variant="outline"
+              <button
+                type="button"
+                className={cn(
+                  SENTENCE_REVIEW,
+                  'accept-predictions-btn plaid-review plaid-review--accept',
+                )}
                 onClick={handleConfirmSentence}
                 title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter to do one word."
               >
                 <Check width={12} height={12} />
                 Accept predictions
-              </Button>
+              </button>
             )}
             {!isReadOnly && onDiscardTokens && hasMachine && (
-              <Button
-                className="discard-predictions-btn plaid-review plaid-review--discard h-6 gap-1 px-2 text-xs"
-                variant="outline"
+              <button
+                type="button"
+                className={cn(
+                  SENTENCE_REVIEW,
+                  'discard-predictions-btn plaid-review plaid-review--discard',
+                )}
                 onClick={handleDiscardSentence}
                 title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace to do one word."
               >
                 <Undo2 width={12} height={12} />
                 Discard predictions
-              </Button>
+              </button>
             )}
             {sentenceToken && (
-              <Button
-                className="sentence-meta__toggle sentence-action h-6 gap-1 px-2 text-xs"
-                variant="ghost"
+              <button
+                type="button"
+                className={cn(SENTENCE_ACTION, 'sentence-meta__toggle sentence-action')}
                 onClick={() => setMetaOpen(true)}
                 title="Edit this sentence's CoNLL-U comment lines"
               >
                 <Tags width={12} height={12} />
                 Edit metadata
-              </Button>
+              </button>
             )}
             {editTextTo && (
-              <Button
-                asChild
-                className="edit-text-btn sentence-action h-6 gap-1 px-2 text-xs"
-                variant="ghost"
+              <Link
+                to={editTextTo}
+                className={cn(SENTENCE_ACTION, 'edit-text-btn sentence-action')}
                 title="Open this sentence in the Text Editor. Alt+click a word to do the same."
               >
-                <Link to={editTextTo}>
-                  <PenLine width={12} height={12} />
-                  Edit text
-                </Link>
-              </Button>
+                <PenLine width={12} height={12} />
+                Edit text
+              </Link>
             )}
             {onAskAssistant && (
-              <Button
-                className="sentence-action h-6 gap-1 px-2 text-xs"
-                variant="ghost"
+              <button
+                type="button"
+                className={cn(SENTENCE_ACTION, 'sentence-action')}
                 onClick={() => onAskAssistant({ ref: `s${sentenceNumber}`, label: 'Sentence' })}
                 title="Ask the assistant about this sentence"
               >
                 <AssistantMark className="h-3.5 w-3.5" />
                 Ask
-              </Button>
+              </button>
             )}
             {comments && sentenceToken?.id && (
               <SentenceComments

@@ -4,6 +4,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover.jsx';
 import { CommentThread } from './CommentThread.jsx';
 import { useCommentStore } from '../../domain/useCommentStore.js';
 import { cn } from '../../lib/utils.js';
+import { SENTENCE_ACTION } from './sentenceActions.js';
 
 /**
  * The Comment action on one sentence of an annotation editor: a small icon and
@@ -16,8 +17,8 @@ import { cn } from '../../lib/utils.js';
  * - `anchorLabel`: the caption the popover heads the thread with, and what a
  *   comment shows once its sentence is gone.
  * - `canWrite`, `canDeleteAny`: as for CommentThread.
- * - `className`: the host's own class for the button, so it can wear the
- *   host's treatment of the actions beside it (plaid-ud: `sentence-action`).
+ * - `className`: the host's own class for the button. It wears
+ *   SENTENCE_ACTION, the treatment of the actions beside it in every app.
  *
  * Only the COUNT colours in, because a sentence someone has written on is a
  * fact about the sentence and not a state of the button. A reader with nothing
@@ -62,10 +63,7 @@ export const SentenceComments = ({
         <button
           ref={buttonRef}
           type="button"
-          className={cn(
-            'sentence-comments inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-transparent bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground',
-            className,
-          )}
+          className={cn('sentence-comments', SENTENCE_ACTION, className)}
           data-count={count}
           title={label}
           aria-label={label}

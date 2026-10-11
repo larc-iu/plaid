@@ -799,7 +799,7 @@ describe('SentenceBlock comments', () => {
     );
   };
 
-  it('offers a writer the Comment action in the header, in the pill look', async () => {
+  it('offers a writer the Comment action in the header', async () => {
     const store = await makeStore();
     const r = await mount({ comments: store, canComment: true, commentAnchorLabel: 'Sentence 1' });
     const btn = r.container.querySelector('.umr-block-header .umr-comment-toggle');

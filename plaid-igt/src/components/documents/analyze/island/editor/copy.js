@@ -1,4 +1,5 @@
 import { html, nothing } from 'lit-html';
+import { SENTENCE_ACTION } from '@ui/components/shared/sentenceActions.js';
 import { notifyError } from '@/utils/feedback';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { bareIgnoredSentence } from '@/domain/derive';
@@ -127,7 +128,7 @@ export const copy = {
       <div class="igt-copy" @click=${(e) => e.stopPropagation()}>
         <button
           type="button"
-          class="igt-copy__link ${linked ? 'is-copied' : ''}"
+          class="igt-copy__link ${SENTENCE_ACTION} ${linked ? 'is-copied' : ''}"
           title="Copy a link to this sentence"
           aria-label="Copy a link to this sentence"
           @click=${() => this._copySentenceLink(sentence)}
@@ -150,15 +151,29 @@ export const copy = {
         </button>
         <button
           type="button"
-          class="igt-copy__btn"
+          class="igt-copy__btn ${SENTENCE_ACTION}"
           title=${`Copy as IGT: ${favLabel}`}
           @click=${() => this._copySentence(sentence, ctx, fav)}
         >
+          <svg
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+          </svg>
           ${copied ? 'Copied ✓' : 'Copy'}
         </button>
         <button
           type="button"
-          class="igt-copy__caret"
+          class="igt-copy__caret ${SENTENCE_ACTION}"
           aria-label="Choose copy format"
           aria-expanded=${open ? 'true' : 'false'}
           @click=${() => {

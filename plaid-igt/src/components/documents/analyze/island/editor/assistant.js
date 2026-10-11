@@ -1,5 +1,6 @@
 import { html } from 'lit-html';
 import { wideEnoughToDock } from '@ui/components/assistant/panelWidth.js';
+import { SENTENCE_ACTION } from '@ui/components/shared/sentenceActions.js';
 
 // The assistant's mark, for lit. The React copy and its reasoning are in
 // plaid-ui/src/components/assistant/PlaidMarks.jsx: keep the two in step,
@@ -109,7 +110,7 @@ export const assistant = {
     return html`
       <button
         type="button"
-        class="igt-ask"
+        class="igt-ask ${SENTENCE_ACTION}"
         title="Ask the assistant about this sentence"
         @click=${(e) => {
           e.stopPropagation();

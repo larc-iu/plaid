@@ -39,6 +39,9 @@ import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import { followIds, stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { SentenceComments } from '@ui/components/shared/SentenceComments';
+import { SENTENCE_ACTION, SENTENCE_REVIEW } from '@ui/components/shared/sentenceActions.js';
+import { cn } from '@ui/lib/utils.js';
+import { Parentheses } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { CATEGORICAL } from '@ui/domain/dyes.js';
 import './canvas.css';
@@ -1628,67 +1631,73 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         {sentence.rawGraph && sentence.nodes.length === 0 && (
           <span className="umr-block-note">Unreadable graph, stored as text</span>
         )}
-        {!readOnly && !textMode && doc?.canConfirmSentence(sentence.index) && (
-          <button
-            type="button"
-            className="umr-text-toggle plaid-review plaid-review--accept"
-            onClick={acceptGraph}
-          >
-            Accept graph
-          </button>
-        )}
-        {!readOnly && !textMode && doc?.canDiscardSentence(sentence.index) && (
-          <button
-            type="button"
-            ref={discardRef}
-            className="umr-text-toggle plaid-review plaid-review--discard"
-            onClick={discardDraft}
-          >
-            Discard graph
-          </button>
-        )}
-        {!readOnly && (
-          <button
-            type="button"
-            className={`umr-text-toggle${textMode ? ' umr-text-toggle--on' : ''}`}
-            aria-pressed={textMode}
-            onClick={() => {
-              if (textMode) {
-                askLeaveTextMode(penmanDirtyRef.current);
-                return;
+        {/* The sentence's actions, in the treatment every app's wear
+            (plaid-ui's sentenceActions.js): Accept and Discard outlined, the
+            rest quiet. */}
+        <span className="umr-block-actions">
+          {!readOnly && !textMode && doc?.canConfirmSentence(sentence.index) && (
+            <button
+              type="button"
+              className={cn(SENTENCE_REVIEW, 'umr-review plaid-review plaid-review--accept')}
+              onClick={acceptGraph}
+            >
+              Accept graph
+            </button>
+          )}
+          {!readOnly && !textMode && doc?.canDiscardSentence(sentence.index) && (
+            <button
+              type="button"
+              ref={discardRef}
+              className={cn(SENTENCE_REVIEW, 'umr-review plaid-review plaid-review--discard')}
+              onClick={discardDraft}
+            >
+              Discard graph
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              className={cn(SENTENCE_ACTION, 'umr-text-toggle')}
+              aria-pressed={textMode}
+              onClick={() => {
+                if (textMode) {
+                  askLeaveTextMode(penmanDirtyRef.current);
+                  return;
+                }
+                setUnapplied(null);
+                setTextMode(true);
+              }}
+            >
+              <Parentheses width={12} height={12} />
+              Text
+            </button>
+          )}
+          {onAskAssistant && (
+            <button
+              type="button"
+              className={SENTENCE_ACTION}
+              onClick={() =>
+                onAskAssistant({ ref: `s${sentence.number ?? sentence.index}`, label: 'Sentence' })
               }
-              setUnapplied(null);
-              setTextMode(true);
-            }}
-          >
-            Text
-          </button>
-        )}
-        {onAskAssistant && (
-          <button
-            type="button"
-            className="umr-text-toggle inline-flex items-center gap-1"
-            onClick={() =>
-              onAskAssistant({ ref: `s${sentence.number ?? sentence.index}`, label: 'Sentence' })
-            }
-            title="Ask the assistant about this sentence"
-          >
-            <AssistantMark className="h-3.5 w-3.5" />
-            Ask
-          </button>
-        )}
-        {/* Comments are about the sentence, not the graph, so a reader sees
-            the thread too (and a writer can start one) whatever the mode. */}
-        {comments && (
-          <SentenceComments
-            store={comments}
-            sentenceId={sentence.tokenId}
-            anchorLabel={commentAnchorLabel}
-            canWrite={canComment}
-            canDeleteAny={canDeleteAnyComment}
-            className="umr-comment-toggle"
-          />
-        )}
+              title="Ask the assistant about this sentence"
+            >
+              <AssistantMark className="h-3.5 w-3.5" />
+              Ask
+            </button>
+          )}
+          {/* Comments are about the sentence, not the graph, so a reader sees
+              the thread too (and a writer can start one) whatever the mode. */}
+          {comments && (
+            <SentenceComments
+              store={comments}
+              sentenceId={sentence.tokenId}
+              anchorLabel={commentAnchorLabel}
+              canWrite={canComment}
+              canDeleteAny={canDeleteAnyComment}
+              className="umr-comment-toggle"
+            />
+          )}
+        </span>
         {problems.length > 0 && (
           <button
             type="button"

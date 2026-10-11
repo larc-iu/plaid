@@ -41,11 +41,10 @@ const MIRRORED = [
       '.igt-morph',
       '.igt-mwe',
       '.igt-cmt-badge',
-      // The sentence's tools and the chip under each word sit inside the
-      // mirrored block. The tool row carries dir="ltr", and its insets are
-      // logical all the same, so the rule reads the same in either.
+      // The sentence's Copy group and the chip under each word sit inside
+      // the mirrored block. The tool row carries dir="ltr", and its insets
+      // are logical all the same, so the rule reads the same in either.
       '.igt-copy',
-      '.igt-ask',
       '.igt-vocab__',
     ],
   },

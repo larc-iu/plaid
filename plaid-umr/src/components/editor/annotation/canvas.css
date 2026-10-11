@@ -589,54 +589,18 @@
   background: var(--umr-warning);
 }
 
-/* Text mode. */
-.umr-text-toggle {
+/* The sentence's actions (Accept graph, Discard graph, Text, Ask, Comment)
+   at the end of its header. Each wears plaid-ui's sentenceActions.js
+   treatment, the same as under a ud sentence and over an igt one. */
+.umr-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-inline-start: auto;
   flex-shrink: 0;
-  white-space: nowrap;
-  border: 1px solid var(--umr-node-border);
-  border-radius: 999px;
-  background: hsl(var(--background));
-  padding: 0 10px;
-  font-size: 0.72rem;
-  line-height: 1.25rem;
-  cursor: pointer;
 }
-.umr-text-toggle--on {
-  background: hsl(var(--primary) / 0.1);
-  border-color: var(--umr-edge-lit);
-  color: hsl(var(--primary));
-}
-.umr-text-toggle + .umr-problems-toggle,
-.umr-block-note + .umr-text-toggle,
-.umr-text-toggle + .umr-text-toggle {
-  margin-inline-start: 8px;
-}
-/* The sentence's Comment action (plaid-ui's SentenceComments), in the pill
-   the header's other actions wear. After Accept graph and Text, or first in
-   the row for a reader, who has neither. Two classes, so the pill wins over
-   the shared button's own utilities in either load order. */
-.umr-block-header .umr-comment-toggle {
-  margin-inline-start: auto;
-  height: auto;
-  border: 1px solid var(--umr-node-border);
-  border-radius: 999px;
-  background: hsl(var(--background));
-  padding: 0 10px;
-  font-size: 0.72rem;
-  line-height: 1.25rem;
-  color: inherit;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.umr-block-header .umr-comment-toggle:hover {
-  border-color: var(--umr-edge);
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-}
-.umr-block-header .umr-text-toggle + .umr-comment-toggle,
-.umr-block-header .umr-block-note + .umr-comment-toggle,
-.umr-comment-toggle + .umr-problems-toggle {
+.umr-block-note + .umr-block-actions,
+.umr-block-actions + .umr-problems-toggle {
   margin-inline-start: 8px;
 }
 .umr-penman {
