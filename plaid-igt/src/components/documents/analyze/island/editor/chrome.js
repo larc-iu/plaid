@@ -9,6 +9,7 @@ import { provTitle } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { retryingText } from '@ui/lib/retrying.js';
+import { buttonVariants } from '@ui/components/ui/button.jsx';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
@@ -29,29 +30,27 @@ export const chrome = {
     const info = doc.layerInfo;
     if (!info.primaryTokenLayer) {
       return html` <div class="igt-island__empty igt-island__empty--warn">
-        <div class="igt-empty__title">Not set up for analysis</div>
-        <p class="igt-empty__body">${NOT_SET_UP}</p>
+        <p>${NOT_SET_UP}</p>
       </div>`;
     }
     const sentences = doc.sentences;
     const hasTokens = sentences.some((s) => s.tokens.length > 0);
     if (!hasTokens) {
+      // One muted line and the app's own outline button, as every other empty
+      // state draws it.
       return html` <div class="igt-island__empty">
-        <div class="igt-empty__title">Nothing to analyze yet</div>
-        <p class="igt-empty__body">
-          Split the text into sentences and words on the <strong>Tokenize</strong> tab.
-        </p>
+        <p>No sentences. Split the text on the Tokenize tab.</p>
         ${this.readOnly
           ? nothing
           : html`<button
               type="button"
-              class="igt-empty__cta"
+              class="igt-empty__cta ${buttonVariants({ variant: 'outline', size: 'sm' })}"
               @click=${(e) => {
                 e.stopPropagation();
                 this._navigateTab('tokenize');
               }}
             >
-              Go to Tokenize →
+              Go to Tokenize
             </button>`}
       </div>`;
     }

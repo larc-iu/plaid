@@ -26,18 +26,28 @@
   --igt-teal: #0f766e;
   --igt-teal-soft: #3d8a83;
   --igt-green: #15803d;
-  /* The rest of the island's palette, named once. Tailwind names where the
-     value is Tailwind's; a role where it is not. A value used once stays a
-     literal at its one use. */
-  --igt-gray-50: #f9fafb;
-  --igt-gray-100: #f3f4f6;
-  --igt-gray-200: #e5e7eb;
-  --igt-gray-300: #d1d5db;
-  --igt-gray-400: #9ca3af;
-  --igt-gray-500: #6b7280;
-  --igt-gray-600: #4b5563;
-  --igt-gray-700: #374151;
-  --igt-gray-900: #111827;
+  /* The neutrals are the theme's (plaid-ui's index.css), so the grid sits on
+     the same warm greys as the cards and tabs around it. The names are the
+     old Tailwind steps the rules are written in. The steps the theme has no
+     token for are mixed from its muted ink and the card, so they move with
+     the theme too. */
+  --igt-gray-50: hsl(var(--background));
+  --igt-gray-100: hsl(var(--muted));
+  --igt-gray-200: hsl(var(--border));
+  --igt-gray-300: hsl(var(--input));
+  --igt-gray-400: color-mix(in srgb, hsl(var(--muted-foreground)) 62%, hsl(var(--card)));
+  --igt-gray-500: hsl(var(--muted-foreground));
+  --igt-gray-600: color-mix(in srgb, hsl(var(--muted-foreground)) 70%, hsl(var(--foreground)));
+  --igt-gray-700: color-mix(in srgb, hsl(var(--muted-foreground)) 40%, hsl(var(--foreground)));
+  --igt-gray-900: hsl(var(--foreground));
+  --igt-surface: hsl(var(--card));
+  --igt-popover: hsl(var(--popover));
+  /* Chrome (the toolbar, the pager, the sentence tools, the menus) answers
+     focus and hover the way every other control in the app does. Blue is for
+     the grid, where it means word scope or the selection. */
+  --igt-ring: hsl(var(--ring));
+  --igt-hover: hsl(var(--accent));
+  /* Orthography scope: the slate of its stripe and legend chip. */
   --igt-slate-100: #f1f5f9;
   --igt-slate-400: #94a3b8;
   --igt-blue-50: #eff6ff;
@@ -49,15 +59,15 @@
   --igt-indigo-100: #e0e7ff;
   --igt-indigo-200: #c7d2fe;
   --igt-green-50: #f0fdf4;
-  --igt-amber-800: #92400e;
-  --igt-red-700: #b91c1c;
-  --igt-hint: #9aa3b2; /* secondary hint text */
-  --igt-line: #d5dae1; /* a box border */
-  --igt-hairline: #f1f3f5; /* a faint divider */
-  --igt-band: #eef1f5; /* a light band behind row labels */
+  --igt-warning: hsl(var(--warning-foreground));
+  --igt-red-700: hsl(var(--destructive-strong));
+  --igt-hint: var(--igt-gray-400); /* secondary hint text */
+  --igt-line: hsl(var(--border)); /* a box border */
+  --igt-hairline: hsl(var(--muted)); /* a faint divider */
+  --igt-band: hsl(var(--muted)); /* a light band behind row labels */
+  /* The sentence cards alternate between the card and a breath of muted. */
+  --igt-zebra: color-mix(in srgb, hsl(var(--muted)) 35%, hsl(var(--card)));
   --igt-blue-line: #c7d7fe; /* a control border in the blue family */
-  --igt-blue-wash: #eff4ff; /* a resting blue control */
-  --igt-blue-hover: #e0eaff; /* the same control hovered */
   --igt-teal-fill: #e9f4f2; /* an entry-backed guess */
   --igt-row-h: 30px;
   --igt-morph-h: 26px;
@@ -87,15 +97,19 @@
 .igt-island__error {
   margin-bottom: 12px;
   padding: 8px 12px;
-  border: 1px solid #fecaca;
-  background: #fef2f2;
-  color: #991b1b;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--destructive) / 0.5);
+  background: hsl(var(--destructive) / 0.05);
+  color: hsl(var(--destructive-strong));
+  border-radius: calc(var(--radius) - 2px);
   font-size: 13px;
 }
 
 .igt-island__empty {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 24px;
   text-align: center;
   color: var(--igt-gray-500);
 }
@@ -124,16 +138,16 @@
   transition: opacity 0.15s;
 }
 .igt-status[data-state='saving'] {
-  color: var(--igt-blue);
-  background: var(--igt-blue-50);
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.08);
 }
 .igt-status[data-state='offline'] {
   color: var(--igt-gray-600);
   background: var(--igt-gray-100);
 }
 .igt-status[data-state='saved'] {
-  color: var(--igt-green);
-  background: var(--igt-green-50);
+  color: hsl(var(--success-foreground));
+  background: hsl(var(--success) / 0.1);
 }
 .igt-status[data-state='idle'] {
   background: transparent;
@@ -147,7 +161,7 @@
   gap: 12px;
   padding: 6px 4px 8px;
   margin-bottom: 8px;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid var(--igt-line);
   flex-wrap: wrap;
 }
 .igt-toolbar__left,
@@ -165,18 +179,18 @@
   font: inherit;
   font-size: 12px;
   font-weight: 500;
-  color: var(--igt-blue-700);
-  background: var(--igt-blue-wash);
-  border: 1px solid var(--igt-blue-line);
-  border-radius: 6px;
+  color: var(--igt-gray-900);
+  background: var(--igt-surface);
+  border: 1px solid var(--igt-gray-300);
+  border-radius: calc(var(--radius) - 2px);
   padding: 3px 9px;
   cursor: pointer;
 }
 .igt-toolbar__btn:hover {
-  background: var(--igt-blue-hover);
+  background: var(--igt-hover);
 }
 .igt-toolbar__btn:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 1px;
 }
 /* A run outlives its dialog; the button carries the clock until it is done. */
@@ -203,12 +217,12 @@
   background: var(--igt-gray-200);
 }
 .igt-help-btn[aria-expanded='true'] {
-  background: var(--igt-blue);
-  color: #fff;
-  border-color: var(--igt-blue);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
 }
 .igt-help-btn:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 2px;
 }
 
@@ -226,21 +240,21 @@
   color: var(--igt-gray-600);
   background: var(--igt-gray-100);
   border: 1px solid var(--igt-gray-200);
-  border-radius: 5px;
+  border-radius: calc(var(--radius) - 2px);
   padding: 3px 7px;
   cursor: pointer;
 }
 .igt-pager__btn:hover:not(:disabled) {
-  background: var(--igt-blue-hover);
-  color: var(--igt-blue-700);
-  border-color: var(--igt-blue-line);
+  background: var(--igt-hover);
+  color: var(--igt-gray-900);
+  border-color: var(--igt-gray-300);
 }
 .igt-pager__btn:disabled {
   opacity: 0.4;
   cursor: default;
 }
 .igt-pager__btn:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 1px;
 }
 .igt-pager__label {
@@ -262,7 +276,7 @@
   padding: 10px 12px;
   background: var(--igt-gray-50);
   border: 1px solid var(--igt-gray-200);
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 12px;
   color: var(--igt-gray-700);
   display: flex;
@@ -334,7 +348,7 @@
 .igt-legend kbd {
   font: inherit;
   font-size: 10px;
-  background: #fff;
+  background: var(--igt-surface);
   border: 1px solid var(--igt-gray-300);
   border-bottom-width: 2px;
   border-radius: 3px;
@@ -342,43 +356,9 @@
   color: var(--igt-gray-700);
 }
 
-/* ---- richer empty states ---- */
+/* ---- empty states ---- */
 .igt-island__empty--warn {
-  color: var(--igt-amber-800);
-}
-.igt-empty__title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--igt-gray-900);
-  margin-bottom: 6px;
-}
-.igt-island__empty--warn .igt-empty__title {
-  color: var(--igt-amber-800);
-}
-.igt-empty__body {
-  max-width: 460px;
-  margin: 0 auto 14px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--igt-gray-500);
-}
-.igt-empty__cta {
-  font: inherit;
-  font-weight: 600;
-  font-size: 13px;
-  color: #fff;
-  background: var(--igt-blue);
-  border: none;
-  border-radius: 7px;
-  padding: 8px 16px;
-  cursor: pointer;
-}
-.igt-empty__cta:hover {
-  background: var(--igt-blue-700);
-}
-.igt-empty__cta:focus-visible {
-  outline: 2px solid var(--igt-blue);
-  outline-offset: 2px;
+  color: var(--igt-warning);
 }
 
 /* ---- sentence block ----
@@ -397,10 +377,10 @@
   padding-inline: 34px 12px;
 }
 .igt-sentence:nth-child(odd) {
-  background: #ffffff;
+  background: var(--igt-surface);
 }
 .igt-sentence:nth-child(even) {
-  background: #f8fcff;
+  background: var(--igt-zebra);
 }
 
 /* Search click-through: flash the focused sentence. */
@@ -464,19 +444,18 @@
   font-size: 11px;
   font-weight: 500;
   color: var(--igt-gray-600);
-  background: #fff;
-  border: 1px solid #d8dde4;
-  border-radius: 6px;
+  background: var(--igt-surface);
+  border: 1px solid var(--igt-gray-300);
+  border-radius: calc(var(--radius) - 2px);
   padding: 2px 8px;
   cursor: pointer;
 }
 .igt-ask:hover {
-  background: var(--igt-blue-wash);
-  color: var(--igt-blue-700);
-  border-color: var(--igt-blue-line);
+  background: var(--igt-hover);
+  color: var(--igt-gray-900);
 }
 .igt-ask:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 1px;
 }
 .igt-copy__btn,
@@ -485,34 +464,33 @@
   font-size: 11px;
   font-weight: 500;
   color: var(--igt-gray-600);
-  background: #fff;
-  border: 1px solid #d8dde4;
+  background: var(--igt-surface);
+  border: 1px solid var(--igt-gray-300);
   padding: 2px 8px;
   cursor: pointer;
 }
 .igt-copy__btn {
-  border-start-start-radius: 6px;
-  border-end-start-radius: 6px;
+  border-start-start-radius: calc(var(--radius) - 2px);
+  border-end-start-radius: calc(var(--radius) - 2px);
   border-start-end-radius: 0;
   border-end-end-radius: 0;
 }
 .igt-copy__caret {
   border-start-start-radius: 0;
   border-end-start-radius: 0;
-  border-start-end-radius: 6px;
-  border-end-end-radius: 6px;
+  border-start-end-radius: calc(var(--radius) - 2px);
+  border-end-end-radius: calc(var(--radius) - 2px);
   border-inline-start: none;
   padding: 2px 5px;
 }
 .igt-copy__btn:hover,
 .igt-copy__caret:hover {
-  background: var(--igt-blue-wash);
-  color: var(--igt-blue-700);
-  border-color: var(--igt-blue-line);
+  background: var(--igt-hover);
+  color: var(--igt-gray-900);
 }
 .igt-copy__btn:focus-visible,
 .igt-copy__caret:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 1px;
 }
 .igt-copy__menu {
@@ -521,9 +499,9 @@
   inset-inline-end: 0;
   width: 190px;
   padding: 4px;
-  background: #fff;
-  border: 1px solid var(--igt-gray-300);
-  border-radius: 6px;
+  background: var(--igt-popover);
+  border: 1px solid var(--igt-line);
+  border-radius: calc(var(--radius) - 2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
   display: flex;
   flex-direction: column;
@@ -538,19 +516,20 @@
   font-size: 12px;
   text-align: start;
   padding: 4px 6px;
-  background: var(--igt-gray-50);
+  background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: calc(var(--radius) - 4px);
   cursor: pointer;
 }
 .igt-copy__item:hover {
-  background: var(--igt-indigo-50);
+  background: var(--igt-hover);
 }
 .igt-copy__item.is-fav {
-  background: var(--igt-indigo-50);
+  background: var(--igt-hover);
 }
+/* Not amber: amber means a contributor's unreviewed work. */
 .igt-copy__fav {
-  color: var(--igt-amber);
+  color: hsl(var(--primary));
   font-size: 11px;
 }
 /* An Arabic sentence puts the tools at its left edge, so the menu opens
@@ -673,7 +652,7 @@
   height: var(--igt-form-h);
   background: var(--igt-band);
   border-inline-start-color: transparent;
-  border-start-start-radius: 6px;
+  border-start-start-radius: calc(var(--radius) - 2px);
 }
 
 .igt-tokens {
@@ -787,7 +766,7 @@
   min-width: 4.5ch;
   box-sizing: border-box;
   border: none;
-  border-bottom: 1px solid #e9ecf0;
+  border-bottom: 1px solid var(--igt-hairline);
   border-radius: 2px;
   background: transparent;
   text-align: center;
@@ -802,14 +781,14 @@
     border-color 0.12s;
 }
 .igt-field:hover:not(:disabled) {
-  background: #f4f6f9;
-  border-bottom-color: #c3c9d2;
+  background: hsl(var(--muted) / 0.6);
+  border-bottom-color: var(--igt-gray-300);
 }
 .igt-field:focus {
   outline: 2px solid var(--igt-blue);
   outline-offset: -1px;
   border-bottom-color: transparent;
-  background: #fff;
+  background: var(--igt-surface);
 }
 .igt-field--empty {
   color: var(--igt-gray-400);
@@ -886,7 +865,7 @@
    Last among the field states so it wins on source order over the provenance
    underlines. skip-ink off keeps the wave continuous under descenders. */
 .igt-field--invalid {
-  text-decoration: underline wavy #dc2626;
+  text-decoration: underline wavy hsl(var(--destructive));
   text-decoration-skip-ink: none;
   text-underline-offset: 2px;
 }
@@ -943,7 +922,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f7;
+  background: hsl(var(--muted) / 0.6);
   border-radius: 3px;
 }
 /* Display-only affix joint between adjacent morphemes ("-", or "=" for
@@ -974,18 +953,18 @@
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--igt-line);
   font-size: 11px;
-  color: #777;
+  color: var(--igt-gray-500);
 }
 .igt-vocab-pop__type select {
   flex: 1;
   font-size: 11px;
   padding: 1px 2px;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  background: #fff;
-  color: #444;
+  border: 1px solid var(--igt-gray-300);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--igt-surface);
+  color: var(--igt-gray-900);
 }
 .igt-morph-cell {
   height: var(--igt-morph-h);
@@ -1036,7 +1015,7 @@
   color: var(--igt-gray-500);
   background: transparent;
   text-decoration: underline dotted;
-  text-decoration-color: #b6bfcc;
+  text-decoration-color: var(--igt-gray-400);
   text-underline-offset: 2px;
   /* Cap to the column, not a fixed ch count — the form/gloss bands above set
      the column width and the 10px hint is almost always narrower, so this
@@ -1152,9 +1131,9 @@
   width: 240px;
   margin-top: 4px;
   padding: 6px;
-  background: #fff;
-  border: 1px solid var(--igt-gray-300);
-  border-radius: 6px;
+  background: var(--igt-popover);
+  border: 1px solid var(--igt-line);
+  border-radius: calc(var(--radius) - 2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
   text-align: left;
   /* Anchored inside the word-form cell, which is nowrap: notes must wrap. */
@@ -1235,12 +1214,12 @@
   border-color: var(--igt-indigo-200);
 }
 .igt-vocab-pop__item.is-linked {
-  background: #dcfce7;
-  border-color: #86efac;
+  background: hsl(var(--success) / 0.1);
+  border-color: hsl(var(--success) / 0.4);
 }
 .igt-vocab-pop__item.is-linked.is-active {
-  background: #bbf7d0;
-  border-color: #4ade80;
+  background: hsl(var(--success) / 0.2);
+  border-color: hsl(var(--success) / 0.7);
 }
 /* A headword shown only because a sense under it matched: there for its
    place in the dictionary, not offered as the thing to link to. */
@@ -1294,7 +1273,7 @@
   margin-top: 4px;
   padding: 4px 6px;
   background: transparent;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--igt-gray-300);
   border-radius: 4px;
   color: var(--igt-gray-700);
   font: inherit;
@@ -1308,19 +1287,19 @@
   font-size: 10px;
   line-height: 1;
   padding: 2px 5px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--igt-gray-300);
   border-radius: 999px;
   color: var(--igt-gray-700);
   white-space: nowrap;
   cursor: pointer;
 }
 .igt-vocab-pop__take-all:hover {
-  background: #fff;
+  background: var(--igt-surface);
   border-color: var(--igt-blue-300);
   border-style: solid;
 }
 .igt-vocab-pop__all:hover {
-  background: #f8fafc;
+  background: var(--igt-gray-50);
   border-color: var(--igt-blue-300);
 }
 .igt-vocab-pop__create.is-active {
@@ -1339,7 +1318,7 @@
   padding: 1px 4px;
   border: 1px solid var(--igt-blue-300);
   border-radius: 3px;
-  background: #fff;
+  background: var(--igt-surface);
   color: var(--igt-blue-900);
   font: inherit;
 }
@@ -1354,7 +1333,7 @@
   gap: 3px;
   margin-top: 5px;
   padding-top: 5px;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--igt-line);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -1502,7 +1481,7 @@
   margin-top: 2px;
   font-size: 11px;
   font-style: italic;
-  color: var(--igt-amber-800);
+  color: var(--igt-warning);
 }
 
 /* ---- minimized rows ------------------------------------------------------
@@ -1582,9 +1561,9 @@
   max-height: 60vh;
   overflow-y: auto;
   padding: 6px;
-  background: #fff;
+  background: var(--igt-popover);
   border: 1px solid var(--igt-line);
-  border-radius: 8px;
+  border-radius: calc(var(--radius) - 2px);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
   font-weight: 400;
   cursor: default;
@@ -1605,7 +1584,7 @@
   padding: 0;
   font-size: 11px;
   font-weight: 600;
-  color: var(--igt-blue);
+  color: hsl(var(--primary));
   cursor: pointer;
 }
 .igt-rowmenu__all:hover {
@@ -1622,7 +1601,7 @@
   cursor: pointer;
 }
 .igt-rowmenu__item:hover {
-  background: var(--igt-slate-100);
+  background: var(--igt-hover);
 }
 .igt-rowmenu__name {
   flex: 1 1 auto;
@@ -1634,12 +1613,12 @@
 .igt-rowmenu__scope {
   flex: 0 0 auto;
   font-size: 10px;
-  color: var(--igt-slate-400);
+  color: var(--igt-hint);
 }
 .igt-rowmenu__hint {
   padding: 6px 6px 2px;
   font-size: 10px;
-  color: var(--igt-slate-400);
+  color: var(--igt-hint);
 }
 
 /* Copy a shareable link to one sentence. Sits left of "Copy" in the same
@@ -1651,22 +1630,22 @@
   justify-content: center;
   width: 22px;
   padding: 0;
-  border: 1px solid var(--igt-line);
+  border: 1px solid var(--igt-gray-300);
   border-inline-end: 0;
-  border-start-start-radius: 5px;
-  border-end-start-radius: 5px;
+  border-start-start-radius: calc(var(--radius) - 2px);
+  border-end-start-radius: calc(var(--radius) - 2px);
   border-start-end-radius: 0;
   border-end-end-radius: 0;
-  background: #fff;
+  background: var(--igt-surface);
   color: var(--igt-gray-500);
   cursor: pointer;
 }
 .igt-copy__link:hover {
-  background: var(--igt-slate-100);
-  color: var(--igt-gray-700);
+  background: var(--igt-hover);
+  color: var(--igt-gray-900);
 }
 .igt-copy__link.is-copied {
-  color: var(--igt-blue);
+  color: hsl(var(--primary));
 }
 .igt-copy__linkok {
   font-size: 11px;
@@ -1685,7 +1664,7 @@
    The chevron is grey: it says a list is there, not who wrote the value, and
    violet is reserved for a machine's. */
 .igt-field--alts:focus {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5l3 3 3-3' fill='none' stroke='%236b7280' stroke-width='1.2'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5l3 3 3-3' fill='none' stroke='%236c6560' stroke-width='1.2'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 2px center;
   /* Make room for the caret rather than drawing it over the last character.
@@ -1706,9 +1685,9 @@
   max-height: 220px;
   overflow-y: auto;
   padding: 4px;
-  background: #fff;
-  border: 1px solid var(--igt-gray-300);
-  border-radius: 6px;
+  background: var(--igt-popover);
+  border: 1px solid var(--igt-line);
+  border-radius: calc(var(--radius) - 2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
   font-size: 12px;
   text-align: left;
@@ -1781,10 +1760,11 @@
 /* An edit of yours that is not saved: a value put back after its save was
    refused (the cell engine, cells.js), or one that lost to another user's edit
    of the same cell, which then shows theirs with yours noted under it
-   (conflicts.js). The amber of plaid-ud's conflicted cell. */
+   (conflicts.js). The warning colour, never amber, which means a
+   contributor's unreviewed work. */
 .igt-field.igt-field--unsent,
 .igt-field.igt-field--conflict {
-  box-shadow: inset 0 0 0 1px #f59e0b;
+  box-shadow: inset 0 0 0 1px hsl(var(--warning));
 }
 .igt-field-conflict {
   position: absolute;
@@ -1802,9 +1782,9 @@
   padding: 1px 4px;
   font-size: 10px;
   line-height: 1.3;
-  color: #92400e;
-  background-color: #fffbeb;
-  border: 1px solid #fcd34d;
+  color: hsl(var(--warning-foreground));
+  background-color: color-mix(in srgb, hsl(var(--warning)) 8%, hsl(var(--card)));
+  border: 1px solid hsl(var(--warning) / 0.5);
   border-radius: 2px;
   cursor: text;
 }
@@ -1933,7 +1913,7 @@
    click. */
 .igt-token-col:hover > .igt-token-form,
 .igt-morph-col:hover > .igt-morph-form {
-  background: #e2e8f0;
+  background: var(--igt-gray-200);
 }
 
 /* The sentence badge sits ON the sentence number, tangent to its right edge —
@@ -1961,9 +1941,9 @@
   max-height: 60vh;
   overflow-y: auto;
   padding: 10px 12px 12px;
-  background: #fff;
-  border: 1px solid var(--igt-gray-300);
-  border-radius: 6px;
+  background: var(--igt-popover);
+  border: 1px solid var(--igt-line);
+  border-radius: calc(var(--radius) - 2px);
   box-shadow:
     0 4px 6px -1px rgb(0 0 0 / 0.1),
     0 10px 25px -5px rgb(0 0 0 / 0.15);
@@ -2012,7 +1992,7 @@
   color: var(--igt-gray-900);
 }
 .igt-cmt-pop__close:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 1px;
 }
 
@@ -2063,7 +2043,7 @@
   top: 3px;
   inset-inline: 0;
   height: 0;
-  border-top: 1px solid #b4bcc8;
+  border-top: 1px solid var(--igt-gray-400);
 }
 .igt-mwe--start .igt-mwe__rule {
   inset-inline-start: 10px;
@@ -2089,9 +2069,9 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: #8a93a3;
+  color: var(--igt-gray-500);
   text-decoration: underline dotted;
-  text-decoration-color: #c9cfd8;
+  text-decoration-color: var(--igt-gray-300);
   text-underline-offset: 2px;
   white-space: nowrap;
   cursor: pointer;
@@ -2149,7 +2129,7 @@
   padding: 0 3px;
   border: 1px solid var(--igt-blue-line);
   border-radius: 3px;
-  background: #fff;
+  background: var(--igt-surface);
 }
 .igt-token-form.is-selected {
   box-shadow: inset 0 0 0 2px var(--igt-blue);
