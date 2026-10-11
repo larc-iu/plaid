@@ -129,25 +129,6 @@ export const tartanRects = (id, size) => {
   return out;
 };
 
-/**
- * The project's sett as a band a few pixels tall: its warp stripes side by
- * side, one repeat `period` px wide, as a CSS `image` to tile across. Hard
- * stops, so each stripe is a stripe and not a blend. Under the active tab of a
- * project's tab strip, where the teal underline is elsewhere.
- */
-export const tartanWeave = (id, period = 72) => {
-  const { stripes } = tartanOf(id);
-  const threads = stripes.reduce((n, s) => n + s.n, 0);
-  const stops = [];
-  let at = 0;
-  for (const s of stripes) {
-    const end = at + (s.n / threads) * period;
-    stops.push(`${s.color} ${at.toFixed(2)}px ${end.toFixed(2)}px`);
-    at = end;
-  }
-  return { image: `linear-gradient(90deg, ${stops.join(', ')})`, period };
-};
-
 // A person's own colour, for the initials of a user with no picture: a dye
 // from the same cloth, picked by a hash of the user's id, so the same person
 // wears the same colour everywhere. Only dyes white initials read on, and no

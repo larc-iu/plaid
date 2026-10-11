@@ -8,7 +8,6 @@ import { ProjectTartan } from './ProjectTartan.jsx';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 import { TYPE } from '../../lib/typeScale.js';
-import { useTartanWeave } from '../../hooks/useTartanWeave.js';
 
 /**
  * The header over an open document, in every app: the breadcrumb, a heading
@@ -81,8 +80,6 @@ export const DocumentTabStrip = ({
   // The heading has gone up behind the pinned row, and the breadcrumb with it.
   const [scrolledPast, setScrolledPast] = useState(false);
   useProjectFavicon(project);
-  // The active tab's underline is woven in the project's sett.
-  const weave = useTartanWeave(project);
 
   useLayoutEffect(() => {
     if (!sticky) return undefined;
@@ -195,7 +192,7 @@ export const DocumentTabStrip = ({
         >
           {/* Pinned, the row's own rule is the tabs' rule: a second one under
               the list drew two lines a few pixels apart. */}
-          <TabsList className={cn(sticky && 'border-b-0', weave.className)} style={weave.style}>
+          <TabsList className={sticky ? 'border-b-0' : undefined}>
             {tabs.map((t) => (
               <TabsTrigger key={t.value} value={t.value} {...target(t.value)}>
                 {t.label}
