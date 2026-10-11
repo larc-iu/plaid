@@ -6,6 +6,7 @@ import { Textarea } from '../ui/textarea.jsx';
 import { SafeMarkdown } from './markdown.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { initials } from '../../lib/initials.js';
+import { personDye } from '../../domain/projectTartan.js';
 import { isPending, withReturnedDraft } from '../../domain/CommentStore.js';
 import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
@@ -128,9 +129,16 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
       {/* Actions ride the byline rather than sitting under the body: icons on a
           line that already exists cost no extra height. */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {/* The author's dye, as UserAvatar draws everyone's initials. */}
         <span
           aria-hidden="true"
+          data-slot="comment-avatar"
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-foreground"
+          style={
+            comment.authorId
+              ? { backgroundColor: personDye(comment.authorId), color: '#fff' }
+              : undefined
+          }
         >
           {initials(name)}
         </span>

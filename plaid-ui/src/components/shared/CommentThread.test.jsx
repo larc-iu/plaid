@@ -4,6 +4,7 @@ import { renderComponent } from '../../test/renderComponent.jsx';
 import { CommentThread } from './CommentThread.jsx';
 import { CommentStore } from '../../domain/CommentStore.js';
 import { hasUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
+import { personDye } from '../../domain/projectTartan.js';
 
 // What was typed into a thread is kept until the server has it: a refused
 // post puts it back in the composer, a refused edit opens the editor on it
@@ -85,6 +86,24 @@ const mount = async (store, props = {}) => {
   view = await renderComponent(<Host store={store} {...props} />);
   return view;
 };
+
+describe("an author's initials", () => {
+  it("wear the author's dye, as every avatar does", async () => {
+    const { store } = makeStore([row(), row({ id: 'c2', authorId: 'b@x.com' })]);
+    await mount(store);
+    const avatars = [...view.container.querySelectorAll('[data-slot="comment-avatar"]')];
+    const hex = (c) => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = c;
+      return probe.style.backgroundColor;
+    };
+    expect(avatars.map((a) => a.style.backgroundColor)).toEqual([
+      hex(personDye(ME)),
+      hex(personDye('b@x.com')),
+    ]);
+    expect(avatars[0].style.color).toBe(hex('#fff'));
+  });
+});
 
 describe('an author who may no longer write', () => {
   it('is offered neither Edit nor Delete on their own comment', async () => {
