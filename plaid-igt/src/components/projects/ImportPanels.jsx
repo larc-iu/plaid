@@ -154,7 +154,7 @@ export const WarningLog = ({ log }) => {
   const asText = () => log.map((e) => `${e.document ?? 'Corpus'}\t${e.text}`).join('\n');
   return (
     <Panel tone="warning" title={`${log.length} warning${log.length === 1 ? '' : 's'}`}>
-      <div className="mt-2 max-h-64 overflow-y-auto rounded border bg-background/60 p-2">
+      <div className="mt-2 max-h-64 overflow-y-auto rounded-md border bg-background/60 p-2">
         {groups.map((g, gi) => (
           <div key={gi} className={gi ? 'mt-2' : ''}>
             <p className="text-xs font-medium">{g.document ?? 'The corpus as a whole'}</p>

@@ -817,11 +817,11 @@ export const VocabularyDetail = () => {
                       <span className="flex items-center gap-2">
                         <span>{fieldLabel(field)}</span>
                         {field.immutable ? (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                             Required
                           </span>
                         ) : isBuiltInField(field.name) ? (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                             Built in
                           </span>
                         ) : null}

@@ -204,7 +204,7 @@ export const TimeAlignmentPopover = ({
                 type="button"
                 onClick={() => handleModeChange(opt.value)}
                 className={cn(
-                  'flex-1 rounded px-3 py-1 transition-colors',
+                  'flex-1 rounded-md px-3 py-1 transition-colors',
                   mode === opt.value
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground',

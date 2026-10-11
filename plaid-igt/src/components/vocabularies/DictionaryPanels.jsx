@@ -33,14 +33,14 @@ const ItemLink = ({ item, numbers, itemTo, className }) => {
 };
 
 const Chip = ({ children, onRemove, disabled }) => (
-  <span className="inline-flex max-w-full items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 text-sm">
+  <span className="inline-flex max-w-full items-center gap-1 rounded-sm border bg-muted/40 px-1.5 py-0.5 text-sm">
     {children}
     {!disabled && onRemove && (
       <button
         type="button"
         aria-label="Remove"
         onClick={onRemove}
-        className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+        className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive"
       >
         <X className="h-3 w-3" />
       </button>
@@ -285,7 +285,7 @@ const SenseTree = ({
         end();
       }}
       className={cn(
-        'mx-2 my-0.5 rounded border border-dashed px-2 py-0.5 text-xs text-muted-foreground/70',
+        'mx-2 my-0.5 rounded-sm border border-dashed px-2 py-0.5 text-xs text-muted-foreground/70',
         dragId && 'text-muted-foreground',
         over === key && 'border-primary bg-accent text-foreground',
       )}
@@ -395,7 +395,7 @@ export const HomographNumber = ({ number, onOpen, className }) => {
       aria-label={`${number}. Reorder the entries spelled this way`}
       onClick={onOpen}
       className={cn(
-        'rounded px-0.5 tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 hover:bg-accent hover:text-foreground',
+        'rounded-sm px-0.5 tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 hover:bg-accent hover:text-foreground',
         className,
       )}
     >
@@ -639,7 +639,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
                     type="button"
                     aria-label="Remove example"
                     onClick={() => onRemove(i)}
-                    className="mt-1.5 rounded p-1 text-muted-foreground hover:text-destructive"
+                    className="mt-1.5 rounded-md p-1 text-muted-foreground hover:text-destructive"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -680,7 +680,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
                   type="button"
                   aria-label="Remove example"
                   onClick={() => onRemove(i)}
-                  className="mt-1.5 rounded p-1 text-muted-foreground hover:text-destructive"
+                  className="mt-1.5 rounded-md p-1 text-muted-foreground hover:text-destructive"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>

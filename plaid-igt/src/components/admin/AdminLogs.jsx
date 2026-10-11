@@ -399,7 +399,7 @@ export const AdminLogs = ({ client }) => {
           <div className="flex flex-col gap-2">
             <p className="whitespace-pre-wrap text-xs">{e.message}</p>
             {e.trace && (
-              <pre className="max-h-64 overflow-auto rounded bg-background p-2 text-[11px] leading-relaxed">
+              <pre className="max-h-64 overflow-auto rounded-md bg-background p-2 text-[11px] leading-relaxed">
                 {e.trace}
               </pre>
             )}
@@ -475,7 +475,7 @@ export const AdminLogs = ({ client }) => {
               {file?.error ? (
                 <p className="text-sm text-muted-foreground">{file.error}</p>
               ) : (
-                <pre className="max-h-96 overflow-auto rounded bg-muted p-2 text-xs leading-relaxed">
+                <pre className="max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs leading-relaxed">
                   {(file?.lines || []).join('\n')}
                 </pre>
               )}

@@ -465,7 +465,7 @@ export const ImportElanDocuments = () => {
 
                 {stage === 'running' && progress && (
                   <div className="flex flex-col gap-2">
-                    <div className="h-2 overflow-hidden rounded bg-muted">
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full bg-primary transition-all"
                         style={{ width: `${Math.min(100, Math.round(progress.pct))}%` }}

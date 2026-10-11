@@ -104,7 +104,7 @@ const Occurrences = ({ res, projectId }) => (
               to={hitTo(projectId, grp.docId, r.sentenceId)}
               onClick={() => rememberCaret(grp.docId, r.sentenceId, r.hitBegin)}
               className={cn(
-                'block rounded px-2 py-1 text-sm hover:bg-background',
+                'block rounded-sm px-2 py-1 text-sm hover:bg-background',
                 'text-foreground no-underline',
               )}
             >
@@ -432,7 +432,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                       <ChevronRight className="h-4 w-4" />
                     )}
                   </Button>
-                  <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-sm text-destructive">
+                  <code className="rounded-sm bg-destructive/10 px-1.5 py-0.5 text-sm text-destructive">
                     {row.value}
                   </code>
                   <span className="text-xs text-muted-foreground">

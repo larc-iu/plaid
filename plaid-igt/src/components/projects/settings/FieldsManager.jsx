@@ -625,7 +625,7 @@ export const FieldsManager = ({
                     {violations[`${record.scope.toLowerCase()}:${record.name}`] > 0 && (
                       <Link
                         to={`/projects/${projectId}?tab=validate`}
-                        className="ml-2 inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive hover:underline"
+                        className="ml-2 inline-flex items-center gap-1 rounded-sm bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive hover:underline"
                         title="Show these in the Validation tab"
                       >
                         <AlertTriangle className="h-3 w-3" />

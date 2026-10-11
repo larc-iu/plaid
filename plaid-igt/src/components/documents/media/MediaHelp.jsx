@@ -7,7 +7,9 @@ import { keys } from '@/lib/keymap.js';
 // learn that Enter saves a row or that Shift+Space pauses and resumes a segment.
 
 const Kbd = ({ children }) => (
-  <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[11px]">{children}</kbd>
+  <kbd className="rounded-sm border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+    {children}
+  </kbd>
 );
 
 // An action's chord as keycaps, in whatever the person has bound it to.

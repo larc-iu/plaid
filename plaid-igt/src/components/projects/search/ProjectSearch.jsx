@@ -203,7 +203,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               type="button"
               onClick={() => switchMode(m)}
               className={cn(
-                'rounded px-3 py-1 transition-colors',
+                'rounded-md px-3 py-1 transition-colors',
                 mode === m
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground',

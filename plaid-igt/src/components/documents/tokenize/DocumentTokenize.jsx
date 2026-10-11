@@ -224,31 +224,41 @@ export function DocumentTokenize() {
                 </p>
                 <div className="flex flex-col gap-[0.4rem] mb-2">
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>{' '}
-                    + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>:
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
+                      Left click
+                    </kbd>{' '}
+                    + <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>:
                     Create token from selection, or merge tokens
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>:
-                    Split token
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
+                      Left click
+                    </kbd>
+                    : Split token
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Esc</kbd>: Close
-                    the split points
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Esc</kbd>:
+                    Close the split points
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right click</kbd>
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
+                      Right click
+                    </kbd>
                     : Delete token
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> +{' '}
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>{' '}
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> +{' '}
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
+                      Left click
+                    </kbd>{' '}
                     on token: Split sentence here
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Alt</kbd> +{' '}
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>{' '}
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Alt</kbd> +{' '}
+                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
+                      Left click
+                    </kbd>{' '}
                     on token: Open it in Analyze
                   </div>
                   <div>
@@ -514,7 +524,7 @@ function SentenceComponent({
                 <button
                   type="button"
                   onClick={handleMerge}
-                  className="merge-icon inline-flex items-center justify-center rounded h-5 w-5 text-muted-foreground"
+                  className="merge-icon inline-flex items-center justify-center rounded-sm h-5 w-5 text-muted-foreground"
                 >
                   <ChevronUp className="h-3 w-3" />
                 </button>

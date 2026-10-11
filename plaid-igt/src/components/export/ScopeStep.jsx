@@ -77,7 +77,7 @@ export const ScopeStep = ({
           {(documents || []).map((d) => (
             <label
               key={d.id}
-              className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50"
+              className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm hover:bg-muted/50"
             >
               <input
                 type="checkbox"

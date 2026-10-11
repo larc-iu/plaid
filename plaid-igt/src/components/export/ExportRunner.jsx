@@ -253,7 +253,7 @@ export const ExportRunner = ({
             <button
               type="button"
               aria-label="Dismiss"
-              className="rounded p-0.5 hover:bg-background/60"
+              className="rounded-md p-0.5 hover:bg-background/60"
               onClick={() => setOutcome(null)}
             >
               <X className="h-4 w-4" />

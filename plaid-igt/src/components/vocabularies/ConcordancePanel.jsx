@@ -72,7 +72,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
                           disabled={chosen}
                           onClick={() => onAddExample(g.docId, tokenId)}
                           className={cn(
-                            'mr-2 mt-1.5 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100',
+                            'mr-2 mt-1.5 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100',
                             chosen
                               ? 'opacity-60'
                               : 'opacity-0 group-hover:opacity-100 disabled:opacity-30',

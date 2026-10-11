@@ -124,7 +124,7 @@ export const ItemPicker = ({
                 pick(it);
               }}
               className={cn(
-                'flex cursor-pointer items-baseline gap-2 rounded px-2 py-1 text-sm',
+                'flex cursor-pointer items-baseline gap-2 rounded-sm px-2 py-1 text-sm',
                 i === active && 'bg-accent',
               )}
             >

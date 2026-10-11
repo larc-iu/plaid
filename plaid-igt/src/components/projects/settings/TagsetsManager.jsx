@@ -426,7 +426,7 @@ export const TagsetsManager = ({
                     {preview.map((p, i) => (
                       <span key={i}>
                         {i > 0 && ' + '}
-                        <span className="rounded bg-background px-1 font-mono">
+                        <span className="rounded-sm bg-background px-1 font-mono">
                           {p.text || '(empty)'}
                         </span>
                       </span>

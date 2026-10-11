@@ -270,7 +270,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
       </div>
 
       {columns.length > 0 && (
-        <table className="mt-1 w-full table-fixed rounded bg-muted/40 text-xs">
+        <table className="mt-1 w-full table-fixed rounded-md bg-muted/40 text-xs">
           <thead>
             <tr>
               <th className="w-28" />

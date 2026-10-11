@@ -106,7 +106,7 @@ export const EntryList = ({
             title="Every entry in one list"
             onClick={() => setTreeView(false)}
             className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
+              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
               !treeView && 'bg-accent text-foreground',
             )}
           >
@@ -118,7 +118,7 @@ export const EntryList = ({
             title="Senses under their entry"
             onClick={() => setTreeView(true)}
             className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
+              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
               treeView && 'bg-accent text-foreground',
             )}
           >
@@ -131,7 +131,7 @@ export const EntryList = ({
             aria-pressed={emptyOnly}
             onClick={() => dispatch({ type: 'scope/toggleEmptyOnly' })}
             className={cn(
-              'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:underline',
+              'inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:underline',
               emptyOnly ? 'bg-accent' : 'bg-muted',
             )}
           >
@@ -149,7 +149,7 @@ export const EntryList = ({
                 : 'Show only the entries with a value outside its tagset'
             }
             className={cn(
-              'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-destructive hover:underline',
+              'inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-destructive hover:underline',
               scope.offTagsetOnly ? 'bg-destructive/20' : 'bg-destructive/10',
             )}
           >
