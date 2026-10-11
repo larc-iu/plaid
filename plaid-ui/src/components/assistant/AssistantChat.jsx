@@ -1053,20 +1053,24 @@ export const AssistantChat = ({
         {/* As tall as the app header's band and its rule, so the two bars
             line up where the dock sits beside it. Unconditional rather than a
             flag: a slightly taller bar costs nothing where there is nothing to
-            line up with. */}
-        <header className="flex min-h-[var(--plaid-sticky-top)] flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
+            line up with. One row at every dock width: the model's name gives
+            way (it truncates, its title has it whole) and the controls keep
+            their room, with the icon buttons at 32px. */}
+        <header className="flex min-h-[var(--plaid-sticky-top)] items-center gap-2 border-b px-3 py-2 text-sm">
           <AssistantMark className="h-4 w-4 shrink-0" />
-          {choice.discovering && !choice.services.length ? (
-            <span className="text-muted-foreground">Looking for an assistant…</span>
-          ) : !service ? (
-            <span className="text-muted-foreground">
-              No assistant is online for this project. An operator can start one with{' '}
-              <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
-            </span>
-          ) : (
-            renderIdentity?.(chrome)
-          )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center">
+            {choice.discovering && !choice.services.length ? (
+              <span className="truncate text-muted-foreground">Looking for an assistant…</span>
+            ) : !service ? (
+              <span className="text-muted-foreground">
+                No assistant is online for this project. An operator can start one with{' '}
+                <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
+              </span>
+            ) : (
+              renderIdentity?.(chrome)
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1 [&_button]:px-2">
             {elsewhere.length > 0 && (
               <Link
                 to={adapter.convHref(elsewhere[0].projectId, elsewhere[0].id)}
