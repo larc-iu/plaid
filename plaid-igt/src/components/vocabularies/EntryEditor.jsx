@@ -113,7 +113,7 @@ export const EntryEditor = ({
             value={values[field.name] || ''}
             tagset={tagsetFor(field.name)}
             placeholder={label}
-            className="h-8"
+            className="h-8 font-text"
             spellCheck={false}
             disabled={disabled}
             onChange={(v) => onChange({ ...values, [field.name]: v })}
@@ -122,7 +122,7 @@ export const EntryEditor = ({
           <Input
             compose
             id={fieldId}
-            className="h-8"
+            className="h-8 font-text"
             placeholder={label}
             spellCheck={false}
             value={values[field.name] || ''}
@@ -233,7 +233,7 @@ export const EntryEditor = ({
             <Input
               id={`${uid}-form`}
               compose
-              className="h-8"
+              className="h-8 font-text"
               value={draft.form}
               autoFocus={isNew}
               placeholder="Form"

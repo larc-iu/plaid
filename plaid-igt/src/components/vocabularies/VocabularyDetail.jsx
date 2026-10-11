@@ -1028,7 +1028,7 @@ export const VocabularyDetail = () => {
         {!isNewVocabulary && (
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
-              <h1 dir="auto" className="min-w-0 truncate text-2xl font-bold">
+              <h1 dir="auto" className="min-w-0 truncate font-text text-2xl font-bold">
                 {vocabulary?.name}
               </h1>
               <div className="flex shrink-0 items-center gap-2">

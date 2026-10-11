@@ -227,7 +227,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             <div key={g.docId} className="rounded-lg border bg-card">
               <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{g.docName}</span>
+                <span dir="auto" className="font-text text-sm font-medium">
+                  {g.docName}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {g.docHits} hit{g.docHits === 1 ? '' : 's'}
                 </span>
@@ -253,7 +255,10 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                       </p>
                     )}
                     {row.translation && (
-                      <p className="mt-0.5 text-xs italic text-muted-foreground">
+                      <p
+                        dir="auto"
+                        className="mt-0.5 font-text text-xs italic text-muted-foreground"
+                      >
                         ‘{row.translation}’
                       </p>
                     )}

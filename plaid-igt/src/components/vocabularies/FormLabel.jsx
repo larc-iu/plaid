@@ -17,8 +17,9 @@
 export const FormLabel = ({ form, index, className = '' }) => (
   // `dir="auto"` and a LOGICAL gap on the number: a headword is the language
   // being documented, and the subscript follows the form in reading order, so
-  // on an Arabic entry both sit to its left.
-  <span dir="auto" className={className}>
+  // on an Arabic entry both sit to its left. In the data face, Charis,
+  // wherever it is shown.
+  <span dir="auto" className={`font-text ${className}`.trim()}>
     {form}
     {index ? (
       <sub className="vocab-num ms-0.5 font-normal tabular-nums text-muted-foreground">{index}</sub>

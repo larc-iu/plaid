@@ -226,7 +226,7 @@ export const EntryList = ({
                     )}
                   </span>
                   {hasGloss && (
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate font-text text-xs text-muted-foreground">
                       {item.metadata?.gloss || ''}
                     </span>
                   )}
