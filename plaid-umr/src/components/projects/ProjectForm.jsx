@@ -18,6 +18,6 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => (
       <li>Token layers: Sentences &rarr; Words</li>
       <li>UMR nodes, concepts, relations and document graph</li>
     </ul>
-    <p className="mt-2">Documents come from .umr import. Text is edited in Plaid IGT or UD.</p>
+    <p className="mt-2">Documents come from .umr import. Text is edited in Plaid IGT.</p>
   </NewProjectDialog>
 );

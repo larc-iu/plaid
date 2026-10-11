@@ -70,7 +70,7 @@ test('a project with no text says so and points at the app that makes some', asy
     await page.goto(`/#/projects/${project.id}/documents`);
     await expect(page.getByText('No text to annotate')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Set up for UMR' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Open in Plaid UD' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open in Plaid IGT' })).toBeVisible();
   } finally {
     await client.projects.delete(project.id);
   }

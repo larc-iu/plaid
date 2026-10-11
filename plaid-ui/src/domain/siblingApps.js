@@ -22,6 +22,9 @@ const UMR_URL = trimSlash(import.meta.env.VITE_UMR_URL || '/umr');
 /** A UD project's own page in plaid-ud. */
 export const udProjectUrl = (projectId) => `${UD_URL}/#/projects/${projectId}/documents`;
 
+/** An IGT project's own page in plaid-igt. */
+export const igtProjectUrl = (projectId) => `${IGT_URL}/#/projects/${projectId}`;
+
 /** A UMR project's own page in plaid-umr. */
 export const umrProjectUrl = (projectId) => `${UMR_URL}/#/projects/${projectId}/documents`;
 

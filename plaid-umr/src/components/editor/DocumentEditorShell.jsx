@@ -16,7 +16,7 @@ const UMR_SHELL = {
   documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
   // The order is every app's: the work tabs, then Comments, Export, Details.
   // There is no Text Editor tab: the text and the tokens under it are made in
-  // Plaid IGT or Plaid UD, and this app reads them.
+  // Plaid IGT, and this app reads them.
   tabs: {
     list: [
       { value: 'annotate', label: 'Annotate' },

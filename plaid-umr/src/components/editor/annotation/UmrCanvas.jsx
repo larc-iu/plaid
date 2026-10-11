@@ -280,7 +280,7 @@ export const UmrCanvas = ({
   if (sentences.length === 0) {
     return (
       <p className="py-10 text-center text-muted-foreground">
-        No sentences. Import a .umr file, or add text to this document in Plaid IGT or Plaid UD.
+        No sentences. Import a .umr file, or add text to this document in Plaid IGT.
       </p>
     );
   }
