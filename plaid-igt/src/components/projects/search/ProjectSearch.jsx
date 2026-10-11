@@ -201,11 +201,12 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             <button
               key={m}
               type="button"
+              aria-pressed={mode === m}
               onClick={() => switchMode(m)}
               className={cn(
                 'rounded-md px-3 py-1 transition-colors',
                 mode === m
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
