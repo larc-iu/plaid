@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { plural } from '../../lib/plural.js';
@@ -8,6 +8,9 @@ import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx
 import { Loading } from './Loading.jsx';
 import { pageKey, usePagedList } from '../../hooks/usePagedList.js';
 import { listPrefKey, useStickySort } from '../../hooks/useStickyState.js';
+import { useScrollEdges } from '../../hooks/useScrollEdges.js';
+import { fadeStyle } from '../../lib/scrollEdges.js';
+import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
 
 // One browsable table, so that a list of accounts, of invites and of services
 // are told apart by their rows and by nothing else.
@@ -133,6 +136,8 @@ export const DataTable = ({
   // the frequency table does.
   const showToolbar = title || search || actions || (showCount && rows.length > 0);
   const span = columns.length + (expand ? 1 : 0);
+  const scroller = useRef(null);
+  const [edges, measureEdges] = useScrollEdges(scroller);
 
   return (
     <div className={cn('rounded-md border', className)}>
@@ -168,85 +173,96 @@ export const DataTable = ({
               : noMatch || `No ${plural(2, noun)} match.`}
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                {expand && <th className="w-8 px-1 py-2" />}
-                {columns.map((c) => (
-                  <th
-                    key={c.key}
-                    className={cn(
-                      'px-3 py-2 font-medium',
-                      c.align === 'right' && 'text-right',
-                      c.headerClassName,
-                    )}
-                  >
-                    {c.sort ? (
-                      <SortHeader field={c.key} label={c.label} sort={sort} onSort={onSort} />
-                    ) : (
-                      c.label
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paged.pageItems.map((row) => {
-                const key = rowKey(row);
-                const isOpen = open.has(key);
-                return (
-                  <React.Fragment key={key}>
-                    <tr className={cn('border-b hover:bg-accent/40', isOpen && 'bg-accent/30')}>
-                      {expand && (
-                        <td className="px-1 py-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            aria-expanded={isOpen}
-                            aria-label={isOpen ? 'Collapse' : 'Expand'}
-                            onClick={() => toggle(key)}
-                          >
-                            {isOpen ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </td>
+        // A table wider than its card scrolls inside it, never the page, and
+        // says so: the hidden edge fades and carries a chevron level with the
+        // header row.
+        <div className="relative">
+          <div
+            ref={scroller}
+            className="overflow-x-auto"
+            style={fadeStyle(edges)}
+            onScroll={measureEdges}
+          >
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  {expand && <th className="w-8 px-1 py-2" />}
+                  {columns.map((c) => (
+                    <th
+                      key={c.key}
+                      className={cn(
+                        'px-3 py-2 font-medium',
+                        c.align === 'right' && 'text-right',
+                        c.headerClassName,
                       )}
-                      {columns.map((c) => (
-                        <td
-                          key={c.key}
-                          // Every list in three apps comes through here, and
-                          // what is in a cell is data: a document's name, a
-                          // headword, a gloss, a search hit. Each decides its
-                          // own direction, and a cell with no strong RTL
-                          // character in it is unaffected.
-                          dir="auto"
-                          className={cn(
-                            'px-3 py-2',
-                            c.align === 'right' && 'text-right',
-                            c.className,
-                          )}
-                        >
-                          {c.render ? c.render(row) : null}
-                        </td>
-                      ))}
-                    </tr>
-                    {isOpen && (
-                      <tr className="border-b bg-muted/40">
-                        <td colSpan={span} className="px-3 py-2">
-                          {expand(row)}
-                        </td>
+                    >
+                      {c.sort ? (
+                        <SortHeader field={c.key} label={c.label} sort={sort} onSort={onSort} />
+                      ) : (
+                        c.label
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paged.pageItems.map((row) => {
+                  const key = rowKey(row);
+                  const isOpen = open.has(key);
+                  return (
+                    <React.Fragment key={key}>
+                      <tr className={cn('border-b hover:bg-accent/40', isOpen && 'bg-accent/30')}>
+                        {expand && (
+                          <td className="px-1 py-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              aria-expanded={isOpen}
+                              aria-label={isOpen ? 'Collapse' : 'Expand'}
+                              onClick={() => toggle(key)}
+                            >
+                              {isOpen ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </td>
+                        )}
+                        {columns.map((c) => (
+                          <td
+                            key={c.key}
+                            // Every list in three apps comes through here, and
+                            // what is in a cell is data: a document's name, a
+                            // headword, a gloss, a search hit. Each decides its
+                            // own direction, and a cell with no strong RTL
+                            // character in it is unaffected.
+                            dir="auto"
+                            className={cn(
+                              'px-3 py-2',
+                              c.align === 'right' && 'text-right',
+                              c.className,
+                            )}
+                          >
+                            {c.render ? c.render(row) : null}
+                          </td>
+                        ))}
                       </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                      {isOpen && (
+                        <tr className="border-b bg-muted/40">
+                          <td colSpan={span} className="px-3 py-2">
+                            {expand(row)}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <ScrollEdgeCue edges={edges} box={scroller} className="top-1.5" />
         </div>
       )}
 

@@ -4,6 +4,8 @@ import * as React from 'react';
 import { useHref } from 'react-router-dom';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { cn } from '../../lib/utils.js';
+import { NO_EDGES, hiddenEdges, sameEdges, fadeStyle } from '../../lib/scrollEdges.js';
+import { ScrollEdgeCue } from '../shared/ScrollEdgeCue.jsx';
 
 // Radix fires `onValueChange` twice for a single trigger click (once when the
 // trigger takes focus, once for the click). That was harmless while handlers
@@ -53,32 +55,9 @@ const Tabs = React.forwardRef(({ value, onValueChange, guard, ...props }, ref) =
 });
 Tabs.displayName = TabsPrimitive.Root.displayName;
 
-const NO_EDGES = { start: false, end: false, rtl: false };
-const FADE = '2rem';
-// The same width in pixels, for scrolling a tab clear of it.
+// The width of the edge fade (scrollEdges.js) in pixels, for scrolling a tab
+// clear of it.
 const fadePx = () => 2 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
-
-// Whether tabs lie past the start and the end of the strip, in its own
-// direction. In a right-to-left box `scrollLeft` runs from 0 down to minus
-// the overflow, so its size is what counts.
-const hiddenEdges = (list) => {
-  const overflow = list.scrollWidth - list.clientWidth;
-  if (overflow <= 1) return NO_EDGES;
-  const scrolled = Math.abs(list.scrollLeft);
-  const rtl = getComputedStyle(list).direction === 'rtl';
-  return { start: scrolled > 1, end: scrolled < overflow - 1, rtl };
-};
-
-// Kept when nothing changed, so a scroll does not re-render the strip.
-const sameEdges = (a, b) => a.start === b.start && a.end === b.end && a.rtl === b.rtl;
-
-const fadeMask = ({ start, end, rtl }) => {
-  if (!start && !end) return null;
-  const toward = rtl ? 'to left' : 'to right';
-  const from = start ? `transparent, black ${FADE}` : 'black';
-  const to = end ? `black calc(100% - ${FADE}), transparent` : 'black';
-  return `linear-gradient(${toward}, ${from}, ${to})`;
-};
 
 // A tab strip that does not fit SCROLLS, and keeps the tab you are on in
 // sight. It used to be an inline-flex row of nowrap triggers with nowhere to
@@ -88,9 +67,9 @@ const fadeMask = ({ start, end, rtl }) => {
 const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref) => {
   const inner = React.useRef(null);
   React.useImperativeHandle(ref, () => inner.current);
-  // Which edges have tabs past them. Those edges fade out, which is the only
-  // sign of more tabs where the scrollbar is an overlay that shows only while
-  // scrolling (macOS, most trackpads).
+  // Which edges have tabs past them. Those edges fade out and carry a
+  // chevron, the only sign of more tabs where the scrollbar is an overlay that
+  // shows only while scrolling (macOS, most trackpads).
   const [edges, setEdges] = React.useState(NO_EDGES);
   const measure = React.useCallback(() => {
     const list = inner.current;
@@ -172,21 +151,25 @@ const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref
   // START edge too, where no scroll position reaches, and the first tab was
   // cut to "cuments". The height is a minimum so that a classic scrollbar
   // (Windows, Linux) sits under the tabs instead of over their underline.
-  const mask = fadeMask(edges);
+  // The strip sits in a box of its own so the chevrons (ScrollEdgeCue) can
+  // sit on its faded edges.
   return (
-    <TabsPrimitive.List
-      ref={inner}
-      className={cn(
-        'inline-flex min-h-9 max-w-full items-center justify-start gap-1 overflow-x-auto overflow-y-hidden border-b text-muted-foreground [scrollbar-width:thin]',
-        className,
-      )}
-      style={mask ? { maskImage: mask, WebkitMaskImage: mask, ...style } : style}
-      onScroll={(e) => {
-        measure();
-        onScroll?.(e);
-      }}
-      {...props}
-    />
+    <div className="relative inline-flex max-w-full align-top">
+      <TabsPrimitive.List
+        ref={inner}
+        className={cn(
+          'inline-flex min-h-9 max-w-full items-center justify-start gap-1 overflow-x-auto overflow-y-hidden border-b text-muted-foreground [scrollbar-width:thin]',
+          className,
+        )}
+        style={fadeStyle(edges, style)}
+        onScroll={(e) => {
+          measure();
+          onScroll?.(e);
+        }}
+        {...props}
+      />
+      <ScrollEdgeCue edges={edges} box={inner} />
+    </div>
   );
 });
 TabsList.displayName = TabsPrimitive.List.displayName;
