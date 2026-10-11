@@ -181,15 +181,14 @@ describe('gauge', () => {
 describe('gaugeTitle', () => {
   const MB = 1048576;
 
-  it('names the limit the bar shows and gives both, the shown one first', () => {
+  it('gives both limits, the one the bar shows first', () => {
     const g = gauge({ sent: 10_000, window: 100_000 }, { bytes: 4.6 * MB, cap: 5 * MB });
     const lines = gaugeTitle(g, 30_000).split('\n');
-    expect(lines[0]).toBe('The bar shows storage.');
-    expect(lines[1]).toBe(
+    expect(lines[0]).toBe(
       'In this conversation, you have used 92% of the available storage (4.6 MB/5 MB).',
     );
-    expect(lines[2]).toContain('10% of this model');
-    expect(lines[3]).toBe('30,000 tokens over the whole conversation.');
+    expect(lines[1]).toContain('10% of this model');
+    expect(lines[2]).toBe('30,000 tokens over the whole conversation.');
   });
 
   // H10-SCRIPTS polish: a 48 KB record read "0/1 MB".
@@ -200,12 +199,11 @@ describe('gaugeTitle', () => {
     );
   });
 
-  it('names context when context is fuller', () => {
+  it('puts context first when context is fuller', () => {
     const g = gauge({ sent: 50_000, window: 100_000 }, { bytes: MB, cap: 5 * MB });
     const lines = gaugeTitle(g, 0).split('\n');
-    expect(lines[0]).toBe('The bar shows context length.');
-    expect(lines[1]).toContain('50% of this model');
-    expect(lines[2]).toContain('20% of the available storage');
+    expect(lines[0]).toContain('50% of this model');
+    expect(lines[1]).toContain('20% of the available storage');
   });
 
   it('is the context tooltip unchanged without a record', () => {

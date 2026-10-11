@@ -119,7 +119,7 @@ describe('the composer note', () => {
 });
 
 describe('the meter', () => {
-  it('shows the fuller limit, amber, and its tooltip names it and gives both', async () => {
+  it('shows the fuller limit, amber, and its tooltip gives both, that one first', async () => {
     const view = await renderComponent(
       <UsageMeter
         usage={{ sent: 10_000, window: 100_000 }}
@@ -132,8 +132,7 @@ describe('the meter', () => {
     expect(meter.dataset.gauge).toBe('storage');
     expect(meter.querySelector('.bg-warning')).not.toBeNull();
     const title = meter.getAttribute('title');
-    expect(title).toContain('The bar shows storage.');
-    expect(title).toContain('90% of the available storage (4.5 MB/5 MB)');
+    expect(title.split('\n')[0]).toContain('90% of the available storage (4.5 MB/5 MB)');
     expect(title).toContain('10% of this model');
     await view.unmount();
   });

@@ -141,18 +141,13 @@ const storageLine = (record) => {
   );
 };
 
-// The meter's tooltip with both limits: which one the bar shows, when both
-// are known, then each.
+// The meter's tooltip with both limits, the one the bar shows first.
 export const gaugeTitle = (g, spend) => {
   if (!g) return null;
   const context = usageTitle(g.usage, spend);
   const storage = g.record ? storageLine(g.record) : null;
   if (!storage) return context;
-  const lines = [];
-  if (g.context !== null) {
-    lines.push(g.which === 'storage' ? 'The bar shows storage.' : 'The bar shows context length.');
-  }
-  lines.push(...(g.which === 'storage' || !context ? [storage, context] : [context, storage]));
+  const lines = [...(g.which === 'storage' || !context ? [storage, context] : [context, storage])];
   if (!context && spend) lines.push(`${thousands(spend)} tokens over the whole conversation.`);
   return lines.filter(Boolean).join('\n');
 };
