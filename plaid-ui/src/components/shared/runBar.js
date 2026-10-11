@@ -21,3 +21,18 @@ export const HELP_MARK =
 
 export const HELP_PANEL =
   'mt-2 max-w-3xl rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground';
+
+// The document's sentence count, and its pager once the sentences run past one
+// page, sit in the row after the run. The same pager closes the list at the
+// bottom, centred. RunBarPager draws both in React, plaid-igt's island takes
+// these strings.
+export const RUN_COUNT = 'whitespace-nowrap text-xs tabular-nums text-muted-foreground';
+
+export const PAGER = 'inline-flex items-center gap-0.5 text-xs text-muted-foreground';
+
+export const PAGER_BUTTON = cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-7 w-7');
+
+export const PAGER_LABEL = 'whitespace-nowrap px-1 tabular-nums';
+
+// The bottom pager's own row, under the last sentence.
+export const PAGER_FOOT = 'flex justify-center pb-6 pt-2';

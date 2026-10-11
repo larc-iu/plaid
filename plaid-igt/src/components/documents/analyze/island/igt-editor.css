@@ -158,11 +158,6 @@
 .igt-toolbar {
   margin-bottom: 8px;
 }
-.igt-toolbar__count {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--igt-gray-600);
-}
 /* A run outlives its dialog; the button carries the clock until it is done. */
 .igt-toolbar__btn[data-running] {
   border-style: dashed;
@@ -172,49 +167,8 @@
   opacity: 0.75;
 }
 
-/* ---- sentence pager (top = in the toolbar; bottom = its own centered bar) ---- */
-.igt-pager {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.igt-pager__btn {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--igt-gray-600);
-  background: var(--igt-gray-100);
-  border: 1px solid var(--igt-gray-200);
-  border-radius: calc(var(--radius) - 2px);
-  padding: 3px 7px;
-  cursor: pointer;
-}
-.igt-pager__btn:hover:not(:disabled) {
-  background: var(--igt-hover);
-  color: var(--igt-gray-900);
-  border-color: var(--igt-gray-300);
-}
-.igt-pager__btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.igt-pager__btn:focus-visible {
-  outline: 2px solid var(--igt-ring);
-  outline-offset: 1px;
-}
-.igt-pager__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--igt-gray-600);
-  padding: 0 4px;
-  white-space: nowrap;
-}
-/* The bottom pager (a direct child of the island, after the sentence cards). */
-.igt-island > .igt-pager {
-  justify-content: center;
-  padding: 4px 0 12px;
-}
+/* ---- sentence pager: plaid-ui's RunBarPager strings (runBar.js), in the
+   toolbar at the top and centred under the last sentence. ---- */
 
 /* ---- help / scope legend ---- */
 /* The box is plaid-ui's HELP_PANEL, as ud's and umr's legends are. */

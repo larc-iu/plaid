@@ -116,7 +116,9 @@ export const AnnotationEditor = () => {
   // is offered only to someone who may write and only over the live state.
   // History is in the tab strip.
   const hasSentences = (shown?.graph?.sentences?.length ?? 0) > 0;
-  const toolbar = (
+  // The canvas pages the sentences, so it hands its pager in to sit after the
+  // run.
+  const toolbar = (pager) => (
     <RunBar
       run={
         canEdit && !selectedEntry ? (
@@ -134,7 +136,9 @@ export const AnnotationEditor = () => {
           <EditorLegend project={shown.project} direction={shown.textDirection} />
         ) : null
       }
-    />
+    >
+      {pager}
+    </RunBar>
   );
 
   // Persistent read-only notice for a reader. A past state says so in the
@@ -179,11 +183,6 @@ export const AnnotationEditor = () => {
 
       {!reconciling && activeDocument && (
         <>
-          <div className="px-6 pb-4">
-            {toolbar}
-            {readOnlyBanner}
-          </div>
-
           {/* The canvas reads the same `shown` document, so it draws a past
               state as readily as the live one. */}
           <UmrCanvas
@@ -202,6 +201,12 @@ export const AnnotationEditor = () => {
             onAskAssistant={
               selectedEntry || !assistantAvailable || !roomToDock ? undefined : askAssistant
             }
+            top={(pager) => (
+              <div className="px-6 pb-4">
+                {toolbar(pager)}
+                {readOnlyBanner}
+              </div>
+            )}
           />
         </>
       )}

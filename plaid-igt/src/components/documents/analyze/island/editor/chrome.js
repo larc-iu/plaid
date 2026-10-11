@@ -16,6 +16,11 @@ import {
   HELP_TOGGLE,
   HELP_MARK,
   HELP_PANEL,
+  RUN_COUNT,
+  PAGER,
+  PAGER_BUTTON,
+  PAGER_LABEL,
+  PAGER_FOOT,
 } from '@ui/components/shared/runBar.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
@@ -25,9 +30,9 @@ const kbd = (id) => keys.caps(id).map((cap, i) => html`${i ? '+' : ''}<kbd>${cap
 
 // lucide's Sparkles, the Auto-analyze dialog's own icon, and its spinner while
 // a run is on, as ServiceRunButton draws them in ud and umr.
-const ICON = (body, extra = '') =>
+const ICON = (body, extra = '', size = 'h-4 w-4') =>
   html`<svg
-    class="h-4 w-4 ${extra}"
+    class="${size} ${extra}"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -42,6 +47,11 @@ const SPARKLES = svg`<path
     d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"
   /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" />`;
 const SPINNER = svg`<path d="M21 12a9 9 0 1 1-6.219-8.56" />`;
+// lucide's chevrons, as RunBarPager draws its steps in ud and umr.
+const FIRST = svg`<path d="m17 18-6-6 6-6" /><path d="M7 6v12" />`;
+const PREV = svg`<path d="m15 18-6-6 6-6" />`;
+const NEXT = svg`<path d="m9 18 6-6-6-6" />`;
+const LAST = svg`<path d="m7 18 6-6-6-6" /><path d="M17 6v12" />`;
 
 // What the save-status pill says in each state. `offline`: a write or a
 // refetch is being sent again until the server answers.
@@ -155,13 +165,15 @@ export const chrome = {
     }
   },
 
+  // plaid-ui's RunBarPager in lit-html: in the run row at the top, and the
+  // same pager centred under the last sentence.
   _pager(total, pageCount, where) {
     const start = this._page * this.constructor.PAGE_SIZE;
     const end = Math.min(total, start + this.constructor.PAGE_SIZE);
-    const btn = (label, target, title, disabled) =>
+    const btn = (icon, target, title, disabled) =>
       html` <button
         type="button"
-        class="igt-pager__btn"
+        class="igt-pager__btn ${PAGER_BUTTON}"
         ?disabled=${disabled}
         title=${title}
         aria-label=${title}
@@ -170,17 +182,20 @@ export const chrome = {
           this._setPage(target, where === 'bottom');
         }}
       >
-        ${label}
+        ${ICON(icon, '', 'h-3.5 w-3.5')}
       </button>`;
-    return html`
-      <div class="igt-pager">
-        ${btn('«', 0, 'First page', this._page === 0)}
-        ${btn('‹', this._page - 1, 'Previous page', this._page === 0)}
-        <span class="igt-pager__label">${start + 1}–${end} of ${total}</span>
-        ${btn('›', this._page + 1, 'Next page', this._page >= pageCount - 1)}
-        ${btn('»', pageCount - 1, 'Last page', this._page >= pageCount - 1)}
+    const pager = html`
+      <div class="igt-pager ${PAGER}">
+        ${btn(FIRST, 0, 'First page', this._page === 0)}
+        ${btn(PREV, this._page - 1, 'Previous page', this._page === 0)}
+        <span class="igt-pager__label ${PAGER_LABEL}">${start + 1}–${end} of ${total}</span>
+        ${btn(NEXT, this._page + 1, 'Next page', this._page >= pageCount - 1)}
+        ${btn(LAST, pageCount - 1, 'Last page', this._page >= pageCount - 1)}
       </div>
     `;
+    return where === 'bottom'
+      ? html`<div class="igt-pager-foot ${PAGER_FOOT}">${pager}</div>`
+      : pager;
   },
 
   // Glossing progress: morphemes with at least one filled gloss field / total.
@@ -231,7 +246,7 @@ export const chrome = {
         }
         ${pageCount > 1
           ? this._pager(nSent, pageCount, 'top')
-          : html`<span class="igt-toolbar__count"
+          : html`<span class="igt-toolbar__count ${RUN_COUNT}"
               >${nSent} sentence${nSent === 1 ? '' : 's'}</span
             >`}
         <span class="igt-status-mount ms-auto"></span>

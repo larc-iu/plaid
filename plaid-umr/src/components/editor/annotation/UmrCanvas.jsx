@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'react-router-dom';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { CrossLinks } from './CrossLinks.jsx';
-import { ListPager } from '@ui/components/shared/list-search';
+import { RunBarPager } from '@ui/components/shared/RunBar.jsx';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
 import { loadFrames } from '../../../domain/lexicon.js';
@@ -74,6 +74,9 @@ export const UmrCanvas = ({
   canDeleteAnyComment = false,
   // Opens the assistant on a sentence, or undefined where Ask is not offered.
   onAskAssistant = undefined,
+  // The editor's run row, drawn over the sentences with their count or pager
+  // in it: `top(pager)`. The canvas owns the paging, so it hands the pager up.
+  top = () => null,
 }) => {
   const frames = useFrames(readProjectLanguage(doc.project));
   const lexicon = useLexicon(doc.client, doc.project);
@@ -278,9 +281,12 @@ export const UmrCanvas = ({
 
   if (sentences.length === 0) {
     return (
-      <p className="py-10 text-center text-muted-foreground">
-        No sentences. Import a .umr file, or add text to this document in Plaid IGT.
-      </p>
+      <>
+        {top(null)}
+        <p className="py-10 text-center text-muted-foreground">
+          No sentences. Import a .umr file, or add text to this document in Plaid IGT.
+        </p>
+      </>
     );
   }
   return (
@@ -291,7 +297,7 @@ export const UmrCanvas = ({
         activeId={activeId}
         version={doc.dataVersion}
       />
-      <ListPager {...paged} onPage={setPage} position="top" className="mx-6 rounded-md border" />
+      {top(<RunBarPager {...paged} onPage={setPage} />)}
       {paged.pageItems.map((sentence) => (
         <SentenceBlock
           key={sentence.tokenId}
@@ -312,7 +318,7 @@ export const UmrCanvas = ({
           commentAnchorLabel={anchorCaption(anchors.get(sentence.tokenId))}
         />
       ))}
-      <ListPager {...paged} onPage={handlePageFromBottom} className="mx-6 mb-6 rounded-md border" />
+      <RunBarPager {...paged} onPage={handlePageFromBottom} position="bottom" />
     </div>
   );
 };
