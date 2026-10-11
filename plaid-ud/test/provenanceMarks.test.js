@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { autoColor } from '../src/utils/udVocab.js';
+import { CATEGORICAL } from '../../plaid-ui/src/domain/dyes.js';
 
 const read = (rel) => readFile(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const rowCss = await read('../src/components/editor/annotation/SentenceRow.css');
@@ -84,14 +85,35 @@ test('the Grew syntax colours use no violet and no amber', async () => {
   }
 });
 
-// A UPOS value or a DEPREL with no configured colour takes one from the auto
-// palette. A settled value drawn in violet or amber reads as a machine's or a
-// contributor's, so the palette leaves both hues to provenance.
-test('the auto colours for labels use no violet and no amber', () => {
+// A UPOS value or a DEPREL with no configured colour takes one of the cloth's
+// dyes (plaid-ui's categorical palette). A settled value drawn in violet or
+// amber reads as a machine's or a contributor's, and one in red as an error,
+// so none of the three is among them. The browns of the cloth (walnut,
+// madder) are dull beside the contributor's saturated amber, so the amber
+// test here asks for saturation as well as hue. The teal is left out, since it
+// is the primary that marks the arc being worked on.
+const saturation = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+};
+test('the auto colours for labels are the shared dyes, with no violet, amber or red', () => {
   const seen = new Set();
   for (let i = 0; i < 2000; i++) seen.add(autoColor(`label-${i}`));
-  assert.ok(seen.size >= 8, 'every slot of the palette is reached');
-  for (const c of seen) assert.ok(!provenanceHue(hue(c)), `${c} (hue ${Math.round(hue(c))})`);
+  assert.deepEqual(
+    [...seen].sort(),
+    CATEGORICAL.filter((c) => c !== '#2a5c57').sort(),
+    'every dye but the teal is reached, and nothing else',
+  );
+  for (const c of seen) {
+    const h = hue(c);
+    const s = saturation(c);
+    assert.ok(!(h >= 250 && h <= 330), `${c} (hue ${Math.round(h)}) is not violet`);
+    assert.ok(!(h >= 20 && h <= 50 && s > 0.6), `${c} (hue ${Math.round(h)}) is not amber`);
+    assert.ok(!((h < 15 || h > 345) && s > 0.4), `${c} (hue ${Math.round(h)}) is not red`);
+  }
 });
 
 // The Accept and Discard pair is quiet by its outline, not by opacity: dimmed,

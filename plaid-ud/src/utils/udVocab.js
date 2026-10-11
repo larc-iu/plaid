@@ -9,6 +9,9 @@
 // opaque bucket and passes it through verbatim — no key re-casing — so labels
 // can safely be object keys, even hyphenated custom ones.
 
+// By real path, so the node suite loads it (no `@ui` alias there).
+import { CATEGORICAL } from '../../../plaid-ui/src/domain/dyes.js';
+
 const UD_NAMESPACE = 'ud';
 
 // UPOS is a CLOSED universal set of exactly 17 tags — not configurable.
@@ -149,27 +152,15 @@ const UD_FEATURE_INVENTORY = Object.freeze([
 // (e.g. nsubj and nsubj:pass both key on `nsubj`).
 export const baseRel = (deprel) => (deprel || '').split(':')[0];
 
-// Categorical palette — distinguishable hues, each dark/saturated enough to
-// read as TEXT on a white background (labels render as colored text in both the
-// SVG tree and the grid). Deliberately distinct from the selection/hover blue
-// (#2563eb) so the highlight state stays unambiguous, and free of violet and
-// amber, which mean a machine's and a contributor's unreviewed values in every
-// app: a settled ADV drawn violet read as a machine's.
-const AUTO_PALETTE = Object.freeze([
-  '#1f77b4',
-  '#d62728',
-  '#2ca02c',
-  '#17a2b8',
-  '#5b6f1f',
-  '#1a7f7f',
-  '#2f6f9e',
-  '#a01b4a',
-  '#3a7d34',
-  '#0b7285',
-  '#475569',
-  '#9f1239',
-  '#166534',
-]);
+// Labels with no configured colour take one of the cloth's dyes (plaid-ui's
+// categorical palette), each dark enough to read as TEXT on the page, since
+// labels render as coloured text in both the SVG tree and the grid. None is
+// violet or amber, which mean a machine's and a contributor's unreviewed
+// values in every app, and none is a red, which reads as an error. The teal is
+// left out here: it is plaid-ui's `--primary` (174 37% 26%), which marks the
+// arc being worked on.
+const PRIMARY_DYE = '#2a5c57';
+const AUTO_PALETTE = Object.freeze(CATEGORICAL.filter((c) => c !== PRIMARY_DYE));
 
 // FNV-1a — stable across sessions/users so a given label always maps to the
 // same palette slot (Math.imul keeps it in 32-bit range).
