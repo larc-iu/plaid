@@ -40,6 +40,7 @@ import { followIds, stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { SentenceComments } from '@ui/components/shared/SentenceComments';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { CATEGORICAL } from '@ui/domain/dyes.js';
 import './canvas.css';
 
 // The margin to the left of every graph, where the document graph's
@@ -72,17 +73,11 @@ const Arrow = ({ id, color }) => (
   </marker>
 );
 
-// A chain's color, from its index, cycling through a fixed set. Blues and
-// greens only: red marks an error and magenta a warning, violet and amber are
-// the machine's and the contributor's, teal is the temporal family and brown
-// is coreference.
-const CHAIN_COLORS = [
-  'hsl(210 62% 42%)',
-  'hsl(140 55% 32%)',
-  'hsl(75 60% 30%)',
-  'hsl(198 80% 34%)',
-  'hsl(160 60% 24%)',
-];
+// A chain's color, from its index, cycling through the cloth's dyes (plaid-ui's
+// categorical palette), which hold no red (an error), violet or amber (the
+// machine's and the contributor's). Less the teal, which is the primary and
+// lights the selection, and the madder, which is the coreference family.
+const CHAIN_COLORS = CATEGORICAL.filter((c) => c !== '#2a5c57' && c !== '#9a4b2c');
 const chainColor = (index) => CHAIN_COLORS[index % CHAIN_COLORS.length];
 
 // The actions that need no focused node, and of them the two that walk the

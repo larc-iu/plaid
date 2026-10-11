@@ -6,19 +6,22 @@
    the list. */
 .umr-canvas-list,
 .umr-block {
-  /* Lighter than the text in the boxes, so lines stop competing with it. */
-  --umr-edge: hsl(215 16% 62%);
-  --umr-edge-lit: hsl(221 83% 53%);
-  --umr-node-bg: hsl(0 0% 100%);
-  --umr-node-border: hsl(214 32% 82%);
-  /* The document graph, a hue per family of relation: blue-grey, teal and
-     brown. Never violet or amber, which are the machine's and the
-     contributor's (plaid-ui's provenance tokens). */
-  --umr-doc: hsl(220 45% 33%);
-  --umr-doc-temporal: hsl(185 70% 30%);
-  --umr-doc-coref: hsl(16 42% 34%);
-  /* A validation warning. Red is an error. */
-  --umr-warning: hsl(320 70% 45%);
+  /* Lighter than the text in the boxes, so lines stop competing with it.
+     The theme's neutrals, so the canvas sits on the same warm page as the
+     chrome. A lit line is the selection, in the primary. */
+  --umr-edge: hsl(var(--muted-foreground) / 0.55);
+  --umr-edge-lit: hsl(var(--primary));
+  --umr-node-bg: hsl(var(--card));
+  --umr-node-border: hsl(var(--input));
+  /* The document graph, a hue per family of relation, taken from the cloth's
+     dyes (plaid-ui's domain/dyes.js): indigo, green and madder. Never violet
+     or amber, which are the machine's and the contributor's (plaid-ui's
+     provenance tokens), and never the teal, which is the primary. */
+  --umr-doc: #43678a;
+  --umr-doc-temporal: #4f7a55;
+  --umr-doc-coref: #9a4b2c;
+  /* A validation warning, in the shared burnt orange. Red is an error. */
+  --umr-warning: hsl(var(--warning));
 }
 .umr-canvas-list {
   position: relative;
@@ -52,12 +55,12 @@
   white-space: nowrap;
 }
 /* A note on the sentence's graph (unconnected, unreadable) is a warning, so
-   it takes the warning's magenta. Never amber, the contributor's colour. */
+   it takes the warning's colour. Never amber, the contributor's colour. */
 .umr-block-note {
   margin-inline-start: auto;
   border-radius: 999px;
-  background: hsl(320 70% 45% / 0.1);
-  color: hsl(320 70% 32%);
+  background: hsl(var(--warning) / 0.1);
+  color: hsl(var(--warning-foreground));
   padding: 1px 8px;
   font-size: 0.75rem;
   white-space: nowrap;
@@ -95,7 +98,7 @@
 }
 /* An empty graph is a keyboard stop of its own (SentenceBlock's `emptyStop`). */
 .umr-graph:focus-visible {
-  outline: 2px solid var(--umr-edge-lit);
+  outline: 2px solid hsl(var(--ring));
   outline-offset: -2px;
   border-radius: 6px;
 }
@@ -166,7 +169,7 @@
   border-radius: 8px;
   background: var(--umr-node-bg);
   padding: 4px 10px;
-  box-shadow: 0 1px 2px hsl(215 25% 27% / 0.08);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.08);
   cursor: default;
   user-select: none;
   outline: none;
@@ -192,21 +195,23 @@
 }
 /* A problem shows as the corner dot plus a ring OUTSIDE the border, so it
    shows from across a large graph and the border keeps saying who made the
-   node. The warning is magenta, not amber: amber is the contributor's border
-   (plaid-ui's provenance tokens), and a warning ring beside it read as one.
-   Both rings are at least 3:1 against the page. */
+   node. The warning is the shared burnt orange, not amber: amber is the
+   contributor's border (plaid-ui's provenance tokens), and a warning ring
+   beside it read as one. Both rings are at least 3:1 against the page. */
 .umr-node:has(> .umr-node-mark--warning) {
   outline: 2px solid var(--umr-warning);
   outline-offset: 2px;
 }
 .umr-node:has(> .umr-node-mark--error) {
-  outline: 2px solid hsl(0 72% 62%);
+  outline: 2px solid hsl(var(--destructive));
   outline-offset: 2px;
 }
+/* Focus is the ring's colour, solid: the border and a ring hugging it, so a
+   focused node reads from across the canvas. */
 .umr-node.umr-node--focused,
 .umr-node:focus-visible {
-  border-color: var(--umr-edge-lit);
-  box-shadow: 0 0 0 3px hsl(221 83% 53% / 0.2);
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
 }
 /* Provenance (the cross-app convention): a node a machine drafted wears a
    dashed violet border and a contributor's a dashed amber one, until a
@@ -214,7 +219,7 @@
    plaid-ui's `plaid-prov-node--machine`, restated here because `.umr-node`
    sets its own border after that stylesheet loads. Placed AFTER the hover and
    focus rules, with their weight, so the colour holds under the pointer and
-   under focus (focus still draws its blue ring outside). A settled node draws
+   under focus (focus still draws its ring outside). A settled node draws
    plain: the mark is for what needs a look. */
 .umr-node.umr-node--machine {
   border-style: dashed;
@@ -225,10 +230,10 @@
   border-color: var(--plaid-contributed);
 }
 /* Focus cannot take a drafted or contributed node's border, so it is a solid
-   blue ring hugging that border. The pale halo alone was all but invisible. */
+   ring hugging that border. */
 .umr-node.umr-node--machine:is(.umr-node--focused, :focus-visible),
 .umr-node.umr-node--contributed:is(.umr-node--focused, :focus-visible) {
-  box-shadow: 0 0 0 2px var(--umr-edge-lit);
+  box-shadow: 0 0 0 2px hsl(var(--ring));
 }
 /* A problem's ring steps out past the focus ring, so both show. */
 .umr-node:has(> .umr-node-mark):is(.umr-node--focused, :focus-visible) {
@@ -357,7 +362,7 @@
   border-bottom-color: var(--umr-node-border);
 }
 .umr-word--lit {
-  background: hsl(221 83% 53% / 0.12);
+  background: hsl(var(--primary) / 0.1);
 }
 .umr-word--lit .umr-word-text {
   border-bottom-color: var(--umr-edge-lit);
@@ -467,7 +472,7 @@
 }
 .umr-grip:hover {
   border-color: var(--umr-edge-lit);
-  background: hsl(221 83% 53% / 0.15);
+  background: hsl(var(--primary) / 0.15);
 }
 .umr-node--root .umr-node-concept {
   text-decoration: underline;
@@ -482,7 +487,7 @@
 }
 .umr-node--target {
   cursor: pointer;
-  box-shadow: 0 0 0 2px hsl(221 83% 53% / 0.25);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.3);
 }
 .umr-edge--hand {
   stroke: var(--umr-edge-lit);
@@ -500,11 +505,11 @@
   cursor: pointer;
 }
 .umr-tokens--pick .umr-word:hover {
-  background: hsl(221 83% 53% / 0.08);
+  background: hsl(var(--primary) / 0.08);
 }
 .umr-block-note--mode {
-  background: hsl(221 83% 53% / 0.12);
-  color: hsl(221 83% 40%);
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
 .umr-inline-editor {
@@ -517,7 +522,8 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* Validation. Color means state here: red is an error, magenta a warning. */
+/* Validation. Color means state here: red is an error, the burnt orange a
+   warning. */
 .umr-problems-toggle {
   margin-inline-start: auto;
   display: inline-flex;
@@ -538,12 +544,12 @@
   font-variant-numeric: tabular-nums;
 }
 .umr-count--error {
-  background: hsl(0 84% 60% / 0.15);
-  color: hsl(0 72% 40%);
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive-strong));
 }
 .umr-count--warning {
-  background: hsl(320 70% 45% / 0.14);
-  color: hsl(320 70% 32%);
+  background: hsl(var(--warning) / 0.12);
+  color: hsl(var(--warning-foreground));
 }
 .umr-problems {
   margin: 0 16px 8px;
@@ -565,7 +571,7 @@
   color: hsl(var(--muted-foreground));
 }
 .umr-problem--error .umr-problem-code {
-  color: hsl(0 72% 40%);
+  color: hsl(var(--destructive-strong));
 }
 .umr-node-mark {
   position: absolute;
@@ -577,7 +583,7 @@
   border: 2px solid hsl(var(--background));
 }
 .umr-node-mark--error {
-  background: hsl(0 84% 60%);
+  background: hsl(var(--destructive));
 }
 .umr-node-mark--warning {
   background: var(--umr-warning);
@@ -597,9 +603,9 @@
   cursor: pointer;
 }
 .umr-text-toggle--on {
-  background: hsl(221 83% 53% / 0.12);
+  background: hsl(var(--primary) / 0.1);
   border-color: var(--umr-edge-lit);
-  color: hsl(221 83% 40%);
+  color: hsl(var(--primary));
 }
 .umr-text-toggle + .umr-problems-toggle,
 .umr-block-note + .umr-text-toggle,
@@ -686,7 +692,7 @@
   flex: 1;
 }
 .umr-penman-status--error {
-  color: hsl(0 72% 40%);
+  color: hsl(var(--destructive-strong));
 }
 
 /* The document lane: a margin of constants, edges in the document graph's
@@ -722,7 +728,7 @@
 }
 .umr-margin--over::before {
   border-right: 1px solid hsl(var(--border));
-  box-shadow: 4px 0 6px -4px hsl(215 25% 27% / 0.25);
+  box-shadow: 4px 0 6px -4px hsl(var(--foreground) / 0.2);
 }
 .umr-const {
   border: 1px dashed var(--umr-node-border);
@@ -874,7 +880,7 @@
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
   background: hsl(var(--popover));
-  box-shadow: 0 4px 16px hsl(0 0% 0% / 0.12);
+  box-shadow: 0 4px 16px hsl(var(--foreground) / 0.12);
   padding: 8px 10px;
   font-size: 0.72rem;
 }
@@ -934,16 +940,16 @@
   border-color: hsl(var(--muted-foreground) / 0.5);
 }
 .umr-attr-value:focus-visible {
-  outline: 2px solid hsl(221 83% 53%);
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }
 .umr-attr-value[data-on-path] {
-  border-color: hsl(221 83% 53%);
+  border-color: hsl(var(--primary));
 }
 .umr-attr-value[aria-pressed='true'] {
-  background: hsl(221 83% 53%);
-  border-color: hsl(221 83% 53%);
-  color: white;
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   font-weight: 500;
 }
 .umr-attr-other {
@@ -1034,7 +1040,7 @@
   line-height: 1rem;
 }
 .umr-mode-end:hover {
-  background: hsl(221 83% 53% / 0.18);
+  background: hsl(var(--primary) / 0.15);
 }
 
 /* The editor, with its delete button beside the input when the thing being

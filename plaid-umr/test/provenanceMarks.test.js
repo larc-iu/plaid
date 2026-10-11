@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { CATEGORICAL } from '../../plaid-ui/src/domain/dyes.js';
 
 const css = await readFile(
   fileURLToPath(new URL('../src/components/editor/annotation/canvas.css', import.meta.url)),
@@ -28,15 +29,21 @@ test('a machine or contributed node has a dashed border in its hue and no fill',
   }
 });
 
-test('the document graph uses no violet and no amber', () => {
-  // Violet and magenta sit around 250 to 330 degrees, amber around 25 to 50.
+// The document graph's families take the cloth's dyes (plaid-ui's categorical
+// palette), which hold no violet, amber or red. Not the teal, which is the
+// primary and lights the selection.
+test('the document graph takes its colours from the shared dyes', () => {
   for (const name of ['--umr-doc', '--umr-doc-temporal', '--umr-doc-coref']) {
-    const m = css.match(new RegExp(`${name}:\\s*hsl\\((\\d+)`));
-    assert.ok(m, `${name} is an hsl colour`);
-    const hue = Number(m[1]);
-    assert.ok(!(hue >= 250 && hue <= 330), `${name} hue ${hue} is not violet`);
-    assert.ok(!(hue >= 25 && hue <= 50), `${name} hue ${hue} is not amber`);
+    const m = css.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6})`, 'i'));
+    assert.ok(m, `${name} is a hex colour`);
+    assert.ok(CATEGORICAL.includes(m[1].toLowerCase()), `${name} ${m[1]} is one of the dyes`);
+    assert.notEqual(m[1].toLowerCase(), '#2a5c57', `${name} is not the primary's teal`);
   }
+});
+
+// One warning colour in every app: plaid-ui's burnt orange, never amber.
+test('a canvas warning is the shared warning colour', () => {
+  assert.match(css, /--umr-warning:\s*hsl\(var\(--warning\)\)/);
 });
 
 // A problem on a drafted node must not repaint the drafted border: red or amber
@@ -55,14 +62,14 @@ test("a problem rings the node and leaves the provenance border's colour alone",
 });
 
 // Focus cannot take a drafted or contributed node's border, which says who made
-// it, so it is a solid blue ring hugging that border. The pale halo alone
+// it, so it is a solid ring in the focus colour hugging that border. The pale halo alone
 // measured 1.3:1 on white, and a problem's ring painted over it. A problem's
 // ring steps out past the focus ring.
 test('a focused drafted or contributed node wears a solid ring, clear of a problem ring', () => {
   const focus = block(
     '.umr-node.umr-node--machine:is(.umr-node--focused, :focus-visible),\n.umr-node.umr-node--contributed:is(.umr-node--focused, :focus-visible)',
   );
-  assert.match(focus, /box-shadow:\s*0 0 0 2px var\(--umr-edge-lit\)/);
+  assert.match(focus, /box-shadow:\s*0 0 0 2px hsl\(var\(--ring\)\)/);
   assert.doesNotMatch(focus, /border-color/);
   const stepped = block('.umr-node:has(> .umr-node-mark):is(.umr-node--focused, :focus-visible)');
   const offset = Number(stepped.match(/outline-offset:\s*(\d+)px/)[1]);
