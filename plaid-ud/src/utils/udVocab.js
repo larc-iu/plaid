@@ -173,7 +173,53 @@ const hashString = (str) => {
   return h >>> 0;
 };
 
-export const autoColor = (label) => AUTO_PALETTE[hashString(label || '') % AUTO_PALETTE.length];
+// The common labels have fixed colours, so the ones that meet on one head
+// tell apart: a verb's subject, object and oblique, a noun's modifiers.
+// Function words and punctuation share the stone, which recedes. Every other
+// label takes a dye by hash.
+const [INDIGO, MADDER, , OLIVE, NAVY, GREEN, WALNUT, STONE] = CATEGORICAL;
+const FIXED = Object.freeze({
+  root: NAVY,
+  nsubj: INDIGO,
+  csubj: INDIGO,
+  obj: MADDER,
+  iobj: MADDER,
+  obl: OLIVE,
+  advmod: GREEN,
+  amod: GREEN,
+  nummod: GREEN,
+  nmod: WALNUT,
+  conj: WALNUT,
+  acl: WALNUT,
+  advcl: WALNUT,
+  ccomp: WALNUT,
+  xcomp: WALNUT,
+  compound: MADDER,
+  det: STONE,
+  case: STONE,
+  cc: STONE,
+  mark: STONE,
+  aux: STONE,
+  cop: STONE,
+  punct: STONE,
+  NOUN: INDIGO,
+  PROPN: INDIGO,
+  VERB: MADDER,
+  ADJ: GREEN,
+  ADV: OLIVE,
+  PRON: NAVY,
+  NUM: WALNUT,
+  DET: STONE,
+  ADP: STONE,
+  AUX: STONE,
+  CCONJ: STONE,
+  SCONJ: STONE,
+  PART: STONE,
+  PUNCT: STONE,
+});
+
+export const autoColor = (label) =>
+  FIXED[label] || AUTO_PALETTE[hashString(label || '') % AUTO_PALETTE.length];
 
 // Configured color (from a normalized {label: '#hex'} map) else the deterministic
 // auto-color. Callers pass baseRel(value) for deprels.

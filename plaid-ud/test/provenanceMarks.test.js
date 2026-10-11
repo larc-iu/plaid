@@ -154,3 +154,17 @@ test('the hand-off flash and the multi-word token chip use no violet and no ambe
     assert.ok(!provenanceHue(hue(c)), `${c} (hue ${Math.round(hue(c))})`);
   }
 });
+
+// The relations that meet on one verb, and the modifiers that meet on one
+// noun, are told apart by colour, and every common label is a dye that is not
+// the teal.
+test('the common relations on one head have different colours', () => {
+  const distinct = (labels) =>
+    assert.equal(new Set(labels.map(autoColor)).size, labels.length, labels.join(', '));
+  distinct(['nsubj', 'obj', 'obl', 'advmod', 'root']);
+  distinct(['det', 'amod', 'nmod']);
+  distinct(['NOUN', 'VERB', 'ADJ', 'ADV', 'PRON']);
+  for (const l of ['nsubj', 'obj', 'obl', 'det', 'case', 'NOUN', 'VERB']) {
+    assert.ok(CATEGORICAL.includes(autoColor(l)) && autoColor(l) !== '#2a5c57', l);
+  }
+});
