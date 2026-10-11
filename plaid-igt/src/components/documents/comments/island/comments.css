@@ -7,18 +7,22 @@
  */
 
 .igt-cmt {
-  /* The thread's palette, named once (Tailwind's names for Tailwind's
-     values). Defined here rather than on the Analyze island because a thread
-     also renders on the Comments tab, outside it. */
-  --cmt-gray-100: #f3f4f6;
-  --cmt-gray-200: #e5e7eb;
-  --cmt-gray-300: #d1d5db;
-  --cmt-gray-500: #6b7280;
-  --cmt-gray-600: #4b5563;
-  --cmt-gray-900: #111827;
-  --cmt-blue-700: #1d4ed8;
-  --cmt-red-50: #fef2f2;
-  --cmt-red-700: #b91c1c;
+  /* The thread's palette, named once and taken from the theme (plaid-ui's
+     index.css), so a thread sits on the same warm greys as the page around
+     it. Defined here rather than on the Analyze island because a thread also
+     renders on the Comments tab, outside it. */
+  --cmt-gray-100: hsl(var(--muted));
+  --cmt-gray-200: hsl(var(--border));
+  --cmt-gray-300: hsl(var(--input));
+  --cmt-gray-400: color-mix(in srgb, hsl(var(--muted-foreground)) 62%, hsl(var(--card)));
+  --cmt-gray-500: hsl(var(--muted-foreground));
+  --cmt-gray-600: color-mix(in srgb, hsl(var(--muted-foreground)) 70%, hsl(var(--foreground)));
+  --cmt-gray-900: hsl(var(--foreground));
+  --cmt-surface: hsl(var(--background));
+  --cmt-ring: hsl(var(--ring));
+  --cmt-link: hsl(var(--primary));
+  --cmt-red-50: hsl(var(--destructive) / 0.1);
+  --cmt-red-700: hsl(var(--destructive-strong));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -172,7 +176,7 @@
   color: var(--cmt-gray-600);
 }
 .igt-cmt__body a {
-  color: var(--cmt-blue-700);
+  color: var(--cmt-link);
 }
 
 .igt-cmt__empty {
@@ -198,15 +202,15 @@
   color: inherit;
   padding: 6px 8px;
   border: 1px solid var(--cmt-gray-300);
-  border-radius: 4px;
-  background: #fff;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--cmt-surface);
   resize: vertical;
   min-height: 42px;
   max-height: 200px;
 }
 
 .igt-cmt__input:focus {
-  outline: 2px solid var(--igt-blue, #2563eb);
+  outline: 2px solid var(--cmt-ring);
   outline-offset: -1px;
   border-color: transparent;
 }
@@ -220,7 +224,7 @@
 
 .igt-cmt__hint {
   font-size: 10px;
-  color: #9ca3af;
+  color: var(--cmt-gray-400);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -264,7 +268,7 @@
   color: var(--cmt-gray-900);
 }
 .igt-cmt__icon:focus-visible {
-  outline: 2px solid var(--igt-blue, #2563eb);
+  outline: 2px solid var(--cmt-ring);
   outline-offset: 1px;
 }
 .igt-cmt__icon--danger:hover {
@@ -277,19 +281,19 @@
   font-size: 11px;
   line-height: 1.4;
   padding: 3px 9px;
-  border-radius: 4px;
+  border-radius: calc(var(--radius) - 2px);
   border: 1px solid var(--cmt-gray-300);
-  background: #fff;
-  color: #374151;
+  background: var(--cmt-surface);
+  color: var(--cmt-gray-900);
   cursor: pointer;
 }
 
 .igt-cmt__btn:hover:not(:disabled) {
-  background: #f9fafb;
+  background: hsl(var(--accent));
 }
 
 .igt-cmt__btn:focus-visible {
-  outline: 2px solid var(--igt-blue, #2563eb);
+  outline: 2px solid var(--cmt-ring);
   outline-offset: 1px;
 }
 
@@ -299,10 +303,10 @@
 }
 
 .igt-cmt__btn--primary {
-  background: var(--igt-blue, #2563eb);
-  border-color: var(--igt-blue, #2563eb);
-  color: #fff;
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 .igt-cmt__btn--primary:hover:not(:disabled) {
-  background: var(--cmt-blue-700);
+  background: hsl(var(--primary) / 0.9);
 }

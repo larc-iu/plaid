@@ -17,6 +17,7 @@ import { live } from 'lit-html/directives/live.js';
 import { isPending } from '@ui/domain/CommentStore';
 import { timeAgo } from '@ui/lib/formatTime.js';
 import { initials } from '@ui/lib/initials.js';
+import { personDye } from '@ui/domain/projectTartan.js';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
 
@@ -119,7 +120,14 @@ function commentRow(comment, ctx) {
   return html`
     <li class=${`igt-cmt__row${pending ? ' igt-cmt__row--pending' : ''}`}>
       <div class="igt-cmt__meta">
-        <span class="igt-cmt__avatar" aria-hidden="true">${initials(name)}</span>
+        <span
+          class="igt-cmt__avatar"
+          aria-hidden="true"
+          style=${comment.authorId
+            ? `background-color: ${personDye(comment.authorId)}; color: #fff`
+            : ''}
+          >${initials(name)}</span
+        >
         <span class="igt-cmt__author"
           >${name}${mine ? html`<span class="igt-cmt__you"> (you)</span>` : nothing}</span
         >
