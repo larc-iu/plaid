@@ -57,11 +57,13 @@ const Checkbox = ({ checked, onChange, indeterminate = false, ...rest }) => (
 
 const Change = ({ from, to }) => (
   <span className="inline-flex min-w-0 items-center gap-1 font-mono text-sm">
-    <span className="truncate rounded bg-red-50 px-1 text-red-800 line-through decoration-red-400">
+    <span className="truncate rounded-sm bg-destructive/10 px-1 text-destructive-strong line-through decoration-destructive/50">
       {from === '' ? '∅' : from}
     </span>
     <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-    <span className="truncate rounded bg-green-50 px-1 text-green-800">{to === '' ? '∅' : to}</span>
+    <span className="truncate rounded-sm bg-success/10 px-1 text-success-foreground">
+      {to === '' ? '∅' : to}
+    </span>
   </span>
 );
 

@@ -525,12 +525,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 }}
               />
               {totalWarnings > 0 && (
-                <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
-                  <p className="font-medium text-orange-800">
+                <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <p className="font-medium text-warning-foreground">
                     {totalWarnings} word{totalWarnings === 1 ? '' : 's'} could not be aligned to the
                     baseline and will be skipped:
                   </p>
-                  <ul className="mt-1 list-disc pl-5 text-orange-700">
+                  <ul className="mt-1 list-disc pl-5 text-warning-foreground">
                     {warningSamples.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
@@ -541,13 +541,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 </div>
               )}
               {irWarnings.length > 0 && (
-                <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
-                  <p className="font-medium text-orange-800">
+                <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <p className="font-medium text-warning-foreground">
                     {flextext
                       ? `${irWarnings.length} warning${irWarnings.length === 1 ? '' : 's'}:`
                       : `${irWarnings.length} reference${irWarnings.length === 1 ? '' : 's'} in the backup could not be resolved. Some data may be missing from the import:`}
                   </p>
-                  <ul className="mt-1 list-disc pl-5 text-orange-700">
+                  <ul className="mt-1 list-disc pl-5 text-warning-foreground">
                     {irWarningSamples.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}

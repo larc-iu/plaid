@@ -140,13 +140,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Text layer:</p>
             {layerData.textLayerType === 'adopted' ? (
-              <Badge className="border-transparent bg-blue-100 text-blue-700">
-                Reusing existing baseline
-              </Badge>
+              <Badge variant="secondary">Reusing existing baseline</Badge>
             ) : layerData.textLayerType === 'existing' ? (
-              <Badge className="border-transparent bg-blue-100 text-blue-700">
-                Existing: {layerData.selectedTextLayerName}
-              </Badge>
+              <Badge variant="secondary">Existing: {layerData.selectedTextLayerName}</Badge>
             ) : layerData.textLayerType === 'new' ? (
               <Badge className="border-transparent bg-success/15 text-success-foreground">
                 New: Main Text
@@ -185,10 +181,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
         <ul className="list-disc pl-5 text-sm">
           {enabledFields.map((field) => (
             <li key={`${field.scope}-${field.name}`}>
-              {field.name}{' '}
-              {field.isCustom && (
-                <Badge className="border-transparent bg-orange-100 text-orange-700">Custom</Badge>
-              )}
+              {field.name} {field.isCustom && <Badge variant="secondary">Custom</Badge>}
             </li>
           ))}
         </ul>
@@ -206,10 +199,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
         <ul className="list-disc pl-5 text-sm">
           {orthographiesData.orthographies.map((orth) => (
             <li key={orth.name}>
-              {orth.name}{' '}
-              {orth.isBaseline && (
-                <Badge className="border-transparent bg-blue-100 text-blue-700">Baseline</Badge>
-              )}
+              {orth.name} {orth.isBaseline && <Badge variant="secondary">Baseline</Badge>}
             </li>
           ))}
         </ul>
@@ -288,7 +278,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
             <li key={vocab.name}>
               {vocab.name}{' '}
               {vocab.isCustom && (
-                <Badge className="border-transparent bg-orange-100 text-orange-700">New</Badge>
+                <Badge className="border-transparent bg-success/15 text-success-foreground">
+                  New
+                </Badge>
               )}
             </li>
           ))}

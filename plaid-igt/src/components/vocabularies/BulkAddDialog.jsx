@@ -100,7 +100,7 @@ const SAMPLE_VALUES = 3;
 
 // How each outcome reads in the row list. A replace is called out separately
 // from a fill: one adds to an entry, the other overwrites what somebody put
-// there by hand, and the amber says which. Whether the entry being changed is
+// there by hand, and the warning colour says which. Whether the entry being changed is
 // stored or one this import is about to insert makes no difference here, and
 // saying it differently for the two only invites the question why.
 const actionLabel = (d) => {
@@ -201,7 +201,7 @@ const sameValue = (a, b) =>
     .normalize('NFC');
 
 // One entry's value for one field, tinted by how it relates to the other side:
-// amber where the two disagree, green where this side alone supplies it.
+// the warning colour where the two disagree, green where this side alone supplies it.
 const ValueCell = ({ value, clash, add }) => (
   <td className="break-words px-1 align-top">
     <span

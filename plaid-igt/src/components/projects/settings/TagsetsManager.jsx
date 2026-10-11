@@ -52,17 +52,18 @@ const MODES_UI = {
     // "Open" against "Closed", the way a linguist already reads open and
     // closed classes. The stored mode value is still `suggest`.
     label: 'Open',
-    badge: 'border-transparent bg-slate-100 text-slate-700',
+    badge: 'border-transparent bg-secondary text-secondary-foreground',
     help: 'The whole list is offered while you annotate, but anything can be typed.',
   },
   [MODES.CLOSED]: {
     label: 'Closed',
-    badge: 'border-transparent bg-amber-100 text-amber-800',
+    // Neutral: amber means a contributor's unreviewed work.
+    badge: 'border-input bg-transparent text-foreground',
     help: 'Only tags in the list can be entered. For a fixed inventory such as part of speech.',
   },
   [MODES.MIXED]: {
     label: 'Closed, plus lexical glosses',
-    badge: 'border-transparent bg-indigo-100 text-indigo-800',
+    badge: 'border-dashed border-input bg-transparent text-foreground',
     help: 'A tag is allowed if it has a lowercase letter or is in a script without capitals. Anything else must be on the list. Useful for glosses.',
   },
 };

@@ -2,7 +2,8 @@
 //
 // The visual language is that colour means scope or provenance. This is the
 // scope half: a word is blue, a morpheme teal, a sentence green, and a fact
-// about the whole document amber. Six screens each drew this table from
+// about the whole document a warm stone grey (never amber, which means a
+// contributor's unreviewed work). Six screens each drew this table from
 // memory, which is how one of them ends up a shade off from the rest and the
 // colour stops meaning anything.
 //
@@ -17,20 +18,20 @@ export const SCOPE_TINTS = Object.freeze({
   word: 'blue',
   morpheme: 'teal',
   sentence: 'green',
-  document: 'amber',
+  document: 'stone',
 });
 
 const BADGE = {
   word: 'border-transparent bg-blue-100 text-blue-700',
   morpheme: 'border-transparent bg-teal-100 text-teal-700',
   sentence: 'border-transparent bg-green-100 text-green-700',
-  document: 'border-transparent bg-amber-100 text-amber-700',
+  document: 'border-transparent bg-stone-100 text-stone-700',
 };
 const TEXT = {
   word: 'text-blue-700',
   morpheme: 'text-teal-700',
   sentence: 'text-green-700',
-  document: 'text-amber-700',
+  document: 'text-stone-700',
 };
 
 const key = (scope) => String(scope ?? '').toLowerCase();

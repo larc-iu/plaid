@@ -51,11 +51,13 @@ export const Checkbox = ({ checked, onChange, indeterminate = false, ...rest }) 
 
 export const Change = ({ from, to }) => (
   <span className="inline-flex items-center gap-1 font-mono text-sm">
-    <span className="rounded bg-red-50 px-1 text-red-800 line-through decoration-red-400">
+    <span className="rounded-sm bg-destructive/10 px-1 text-destructive-strong line-through decoration-destructive/50">
       {from === '' ? '∅' : from}
     </span>
     <ArrowRight className="h-3 w-3 text-muted-foreground" />
-    <span className="rounded bg-green-50 px-1 text-green-800">{to === '' ? '∅' : to}</span>
+    <span className="rounded-sm bg-success/10 px-1 text-success-foreground">
+      {to === '' ? '∅' : to}
+    </span>
   </span>
 );
 

@@ -37,7 +37,7 @@ const clockTime = (ts) => {
 };
 
 // A status wears the colour of the level its line was logged at, so the two
-// tables agree: amber for what was a warning, red for what was an error.
+// tables agree: the warning colour for what was a warning, red for what was an error.
 const WARN_BADGE = 'border-warning text-warning-foreground';
 
 const StatusBadge = ({ entry }) => {
