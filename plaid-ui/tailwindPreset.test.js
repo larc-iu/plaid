@@ -58,6 +58,11 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
     expect(resolved.theme.animation['accordion-up']).toBeTruthy();
   });
 
+  it('sets the chrome in the package face and language data in Charis', () => {
+    expect(resolved.theme.fontFamily.sans).toBe('var(--plaid-font-ui)');
+    expect(resolved.theme.fontFamily.text).toBe('var(--plaid-font-text)');
+  });
+
   it('switches theme by class, so the three apps agree on what dark means', () => {
     expect(resolved.darkMode).toEqual(['class']);
   });
@@ -81,4 +86,28 @@ describe("the package's stylesheet", () => {
       expect(css).toMatch(new RegExp(`${name}:\\s*\\d`));
     },
   );
+});
+
+// Both faces are self-hosted, so a renamed or missing file is a silent fall
+// back to the system's own font and no error anywhere.
+describe('the self-hosted fonts', () => {
+  const dir = path.join(repoRoot(), 'plaid-ui/src');
+  const css = fs.readFileSync(path.join(dir, 'index.css'), 'utf8');
+  const urls = [...css.matchAll(/url\('\.\/(fonts\/[^']+)'\)/g)].map((m) => m[1]);
+
+  it('names a file that exists in every @font-face', () => {
+    expect(urls.length).toBeGreaterThan(8);
+    for (const url of urls) expect(fs.existsSync(path.join(dir, url)), url).toBe(true);
+  });
+
+  it('defines both family tokens', () => {
+    expect(css).toMatch(/--plaid-font-ui:\s*'Source Sans Plaid'/);
+    expect(css).toMatch(/--plaid-font-text:\s*'Charis Plaid'/);
+  });
+
+  it('carries the licence beside each face', () => {
+    for (const face of ['charis', 'source-sans-3']) {
+      expect(fs.existsSync(path.join(dir, 'fonts', face, 'OFL.txt')), face).toBe(true);
+    }
+  });
 });

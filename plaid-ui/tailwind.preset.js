@@ -80,8 +80,10 @@ export default {
       // Here rather than in a base rule, since preflight comes after plaid-ui's
       // index.css and would win.
       borderColor: { DEFAULT: 'hsl(var(--border))' },
-      // `font-text`, for language data outside a surface with its own CSS.
-      fontFamily: { text: 'var(--plaid-font-text)' },
+      // `font-sans` is the chrome's face, which preflight also sets on
+      // `html`. `font-text`, for language data outside a surface with its own
+      // CSS.
+      fontFamily: { sans: 'var(--plaid-font-ui)', text: 'var(--plaid-font-text)' },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
