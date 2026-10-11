@@ -359,6 +359,26 @@ html:has([data-pinned]) {
   scroll-padding-top: calc(var(--plaid-sticky-top) + var(--plaid-tab-row-height) + 0.25rem);
 }
 
+/* Inside a project, the active tab's underline is woven in the project's own
+   sett (tartanWeave in domain/projectTartan.js), which the tab strip sets as
+   `--plaid-weave` and `--plaid-weave-period` on its list. Two selectors deep
+   plus the attribute, so it outranks the trigger's teal border. */
+.plaid-woven [role='tab'][data-state='active'] {
+  position: relative;
+  border-bottom-color: transparent;
+}
+.plaid-woven [role='tab'][data-state='active']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 3px;
+  background-image: var(--plaid-weave);
+  background-size: var(--plaid-weave-period) 100%;
+  background-repeat: repeat-x;
+}
+
 /* A page's heading takes focus when the page changes (useRouteFocus.js), as
    the place reading starts, not as a control: no ring. */
 main h1[tabindex='-1']:focus {

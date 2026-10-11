@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tartanRects } from './projectTartan.js';
+import { tartanRects, tartanWeave } from './projectTartan.js';
 
 // A project's tartan is a function of its id: the same cloth in every app and
 // on every visit, a different one for another project, and never a colour the
@@ -64,5 +64,16 @@ describe('personDye', () => {
     const seen = new Set(Array.from({ length: 40 }, (_, i) => personDye(`user${i}@example.org`)));
     expect(seen.size).toBeGreaterThan(3);
     for (const c of seen) expect(c).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe('tartanWeave', () => {
+  it('lays one repeat of the warp across the period, in hard stops, the same for one id', () => {
+    const { image, period } = tartanWeave(A, 72);
+    expect(period).toBe(72);
+    expect(image).toMatch(/^linear-gradient\(90deg, /);
+    expect(image).toMatch(/72\.00px\)$/);
+    expect(tartanWeave(A, 72)).toEqual(tartanWeave(A, 72));
+    expect(tartanWeave(A, 72).image).not.toBe(tartanWeave(B, 72).image);
   });
 });

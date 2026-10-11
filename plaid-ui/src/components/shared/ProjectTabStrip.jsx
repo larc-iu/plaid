@@ -11,6 +11,7 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 import { TYPE } from '../../lib/typeScale.js';
 import { cn } from '../../lib/utils.js';
+import { useTartanWeave } from '../../hooks/useTartanWeave.js';
 
 /**
  * The breadcrumb and tab row every project-level screen wears, mirroring the
@@ -50,6 +51,8 @@ export const ProjectTabStrip = ({
   // and a tab is a way out of it like any link.
   const guard = useUnsavedGuard();
   useProjectFavicon(project);
+  // The active tab's underline is woven in the project's sett.
+  const weave = useTartanWeave(project);
 
   // The panel is about the PROJECT here. No subject of its own: what a reader
   // is looking at on these screens is the project at large, and naming a screen
@@ -97,7 +100,7 @@ export const ProjectTabStrip = ({
           on its behalf. The shared trigger already swallows Radix's double
           fire. */}
       <Tabs value={active} onValueChange={(v) => navigate(to[v])} guard={guard}>
-        <TabsList>
+        <TabsList className={weave.className} style={weave.style}>
           {shown.map((t) => (
             <TabsTrigger key={t.value} value={t.value} to={t.to}>
               {t.label}
