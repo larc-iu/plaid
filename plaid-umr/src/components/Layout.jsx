@@ -6,11 +6,15 @@ import { keys } from '../lib/keymap.js';
 // its chip and rail, and the one container every screen renders into. What this
 // app tells it is which assistant answers here, which keymap a person's own
 // bindings lie over, and where its user guide is. It has no destinations of its
-// own beside Projects, so its nav is the Guide.
+// own beside Projects, which the nav names as plaid-igt's does, so the three
+// headers read alike.
+const NAV = [{ to: '/projects', label: 'Projects', match: (path) => path.startsWith('/projects') }];
+
 export const Layout = () => (
   <AppShell
     adapter={UMR_ASSISTANT}
     keymap={keys}
+    nav={NAV}
     guideHref="https://larc-iu.github.io/plaid/umr-guide.html"
   />
 );
