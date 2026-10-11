@@ -132,11 +132,14 @@ test('the review pair is at full strength at rest', () => {
 
 // The standing actions under a sentence (Edit metadata, Edit text, Ask,
 // Comment) are quiet by weight and by having no outline, not by opacity:
-// dimmed to 0.55, their gray measured 2.96:1 on white.
-test('the standing sentence actions are at full strength at rest', () => {
-  const action = rule(rowCss, '.sentence-confirm .sentence-action');
-  assert.ok(action, 'the rule exists');
+// dimmed to 0.55, their gray measured 2.96:1 on white. They wear plaid-ui's
+// SENTENCE_ACTION, as every app's sentence actions do.
+test('the standing sentence actions are at full strength at rest', async () => {
+  const shared = await read('../../plaid-ui/src/components/shared/sentenceActions.js');
+  const action = shared.match(/SENTENCE_ACTION =\s*'([^']*)'/)?.[1];
+  assert.ok(action, 'the shared treatment exists');
   assert.doesNotMatch(action, /opacity/);
+  assert.match(action, /text-\[hsl\(var\(--foreground\)\/0\.85\)\]/);
   assert.doesNotMatch(rowCss, /\.sentence-action[^{]*\{[^}]*opacity/);
 });
 
