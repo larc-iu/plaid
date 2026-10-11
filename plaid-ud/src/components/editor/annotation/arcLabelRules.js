@@ -7,18 +7,20 @@ import { provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
 // Here rather than beside the component because a file that exports a React
 // component may export nothing else.
 
-// The highlight on the label being worked on, and on the arc under it.
-export const ACTIVE_BLUE = '#2563eb';
+// The highlight on the label being worked on, and on the arc under it: the
+// primary, as selection is everywhere in the chrome. A CSS colour, so callers
+// set it through `style`, where every browser resolves the variable.
+export const ACTIVE_COLOR = 'hsl(var(--primary))';
 
 /**
- * What colour an arc and its label are drawn in: blue while it is the one
+ * What colour an arc and its label are drawn in: the primary while it is the one
  * being worked on, else the hue of its provenance mark, else the DEPREL's own
  * configured colour. The mark is paired with a dashed stroke by the callers,
  * so the state never rests on colour alone (a configured DEPREL colour could
  * itself be purple).
  */
 export const arcColor = (relation, active, deprelColors) => {
-  if (active) return ACTIVE_BLUE;
+  if (active) return ACTIVE_COLOR;
   const mark = provMark(relation?.metadata);
   if (mark) return PROV_MARK_COLORS[mark];
   return resolveColor(baseRel(relation?.value || 'dep'), deprelColors);

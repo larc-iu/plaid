@@ -97,7 +97,7 @@ export const ArcLabel = ({
     <text
       x={at.x}
       y={at.y}
-      fill={color}
+      style={{ fill: color }}
       className={`tree-deprel-text ${focused ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}${className}`}
       tabIndex="-1"
       role="button"

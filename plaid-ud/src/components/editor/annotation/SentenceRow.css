@@ -59,7 +59,7 @@
    outline or fill, never by opacity: dimmed, the gray fell under 3:1. */
 .sentence-confirm .sentence-action {
   font-weight: 400;
-  color: #374151;
+  color: hsl(var(--foreground) / 0.85);
 }
 /* The sentence's number in the document, at the top-left of its block and
    aligned with the row labels below it. Gray and small because it is how you
@@ -78,7 +78,7 @@
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   line-height: 1;
-  color: #9ca3af;
+  color: hsl(var(--muted-foreground));
 }
 
 /* The top padding is the room the dependency tree needs, and is set inline per
@@ -130,7 +130,7 @@
   border: none;
   border-radius: 9999px;
   background-color: var(--plaid-machine);
-  color: #fff;
+  color: white;
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -162,7 +162,7 @@
 .row-label {
   font-size: 10px;
   font-weight: bold;
-  color: #374151;
+  color: hsl(var(--foreground) / 0.85);
   padding: 2px;
   min-height: 28px;
   display: flex;
@@ -179,14 +179,14 @@
 }
 
 .row-label--toggle:hover {
-  background-color: #f3f4f6;
-  color: #111827;
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
 }
 
 .row-label__chevron {
   flex: 0 0 auto;
   margin-inline-end: 2px;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
 }
 
 /* Token form (baseline).
@@ -242,17 +242,17 @@
 }
 
 .editable-field:focus {
-  border-color: #3b82f6;
-  background-color: #fff;
+  border-color: hsl(var(--ring));
+  background-color: hsl(var(--card));
 }
 
 .editable-field--empty {
-  color: #999;
+  color: hsl(var(--muted-foreground));
   font-style: italic;
 }
 
 .editable-field--filled {
-  color: #000;
+  color: hsl(var(--foreground));
   font-style: normal;
 }
 
@@ -289,9 +289,10 @@
 
 /* A cell whose edit lost to another user's: it shows the stored value, and
    the refused one hangs under it until the annotator keeps it (Enter) or lets
-   it go (Escape). */
+   it go (Escape). The warning colour, as in plaid-igt, never amber, which
+   means a contributor's unreviewed work. */
 .editable-field--conflict {
-  border-color: #f59e0b;
+  border-color: hsl(var(--warning));
 }
 .editable-field-conflict {
   font-family: var(--plaid-font-text);
@@ -303,9 +304,9 @@
   font-size: 10px;
   line-height: 1.3;
   white-space: nowrap;
-  color: #92400e;
-  background-color: #fffbeb;
-  border: 1px solid #fcd34d;
+  color: hsl(var(--warning-foreground));
+  background-color: color-mix(in srgb, hsl(var(--warning)) 8%, hsl(var(--card)));
+  border: 1px solid hsl(var(--warning) / 0.5);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -337,15 +338,15 @@
 }
 
 .feature-tag--hovered {
-  background-color: #fecaca;
-  border: 1px solid #ef4444;
+  background-color: hsl(var(--destructive) / 0.12);
+  border: 1px solid hsl(var(--destructive));
 }
 
 /* Keyboard-selected pill (Backspace at the empty chip input): same
    delete-intent styling as hover, but driven by the chip-input selection. */
 .feature-tag--selected {
-  background-color: #fecaca;
-  border: 1px solid #ef4444;
+  background-color: hsl(var(--destructive) / 0.12);
+  border: 1px solid hsl(var(--destructive));
 }
 
 .feature-text {
@@ -371,7 +372,7 @@
   inset-inline-end: 2px;
   top: 50%;
   transform: translateY(-50%);
-  color: #ef4444;
+  color: hsl(var(--destructive));
   font-size: 10px;
   line-height: 1;
   padding: 0;
@@ -407,12 +408,12 @@
 }
 
 .feature-chip-input:focus {
-  border-color: #3b82f6;
-  background-color: #fff;
+  border-color: hsl(var(--ring));
+  background-color: hsl(var(--card));
 }
 
 .feature-chip-input::placeholder {
-  color: #999;
+  color: hsl(var(--muted-foreground));
   font-style: italic;
 }
 
@@ -434,7 +435,7 @@
   top: 2px;
   inset-inline-start: 0;
   height: 9px;
-  border: 1px solid #9ca3af;
+  border: 1px solid hsl(var(--muted-foreground) / 0.6);
   border-top: none;
   border-end-start-radius: 2px;
   border-end-end-radius: 2px;
@@ -451,7 +452,7 @@
   padding: 0 4px;
   font-size: 12px;
   line-height: 16px;
-  color: #4b5563;
-  background-color: #fff;
+  color: hsl(var(--muted-foreground));
+  background-color: hsl(var(--background));
   pointer-events: auto;
 }

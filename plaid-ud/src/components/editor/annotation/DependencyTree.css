@@ -25,60 +25,23 @@
   overflow: visible;
 }
 
+/* The ROOT bar: the page's own colour at rest, so it shows only under the
+   pointer, and a fill all the same, so it takes clicks. */
+.tree-root-rect,
+.tree-root-rect--default {
+  fill: hsl(var(--background));
+}
+
 .tree-root-rect {
   cursor: pointer;
 }
 
+.tree-root-rect--hovered {
+  fill: hsl(var(--muted));
+}
+
 .tree-root-rect--default {
   cursor: default;
-}
-
-.tree-root-text {
-  font-size: 12px;
-  fill: #4b5563;
-  font-weight: bold;
-  text-anchor: middle;
-}
-
-.tree-token-text {
-  font-size: 14px;
-  text-anchor: middle;
-}
-
-.tree-token-text--drag-source {
-  fill: #dc2626;
-  font-weight: bold;
-}
-
-.tree-token-text--selected {
-  fill: #2563eb;
-  font-weight: bold;
-}
-
-.tree-token-text--hovered {
-  fill: #4b5563;
-}
-
-.tree-token-text--normal {
-  fill: #111827;
-}
-
-.tree-token-index {
-  font-size: 10px;
-  fill: #9ca3af;
-  text-anchor: middle;
-}
-
-.tree-token-group {
-  user-select: none;
-}
-
-.tree-token-group--drag {
-  cursor: crosshair;
-}
-
-.tree-token-group--grab {
-  cursor: grab;
 }
 
 .tree-token-area {
@@ -121,42 +84,29 @@
   pointer-events: auto;
 }
 
-.tree-deprel-edit {
-  font-size: 11px;
-  color: #2563eb;
-  text-align: center;
-  font-family: sans-serif;
-  background: white;
-  border: 1px solid #2563eb;
-  border-radius: 2px;
-  padding: 1px 4px;
-  outline: none;
-  min-width: 40px;
-}
-
 .tree-deprel-text {
   font-size: 11px;
   text-anchor: middle;
   cursor: pointer;
-  font-family: sans-serif;
+  font-family: var(--plaid-font-ui);
   outline: none;
   /* A halo in the page colour, so a line crossing the label (a root line or a
      leg in a non-projective tree) stops at its letters. */
   paint-order: stroke;
-  stroke: #fff;
+  stroke: hsl(var(--background));
   stroke-width: 3px;
   stroke-linejoin: round;
 }
 
 /* A root's label sits in the ROOT bar, where nothing crosses it, and a halo
-   there shows as a white outline on the grey bar. */
+   there shows as an outline on the bar. */
 .tree-deprel-text.tree-deprel-text--root,
 .tree-drag-label.tree-drag-label--root {
   stroke: none;
 }
 
 .tree-deprel-text--focused {
-  outline: 2px solid #2563eb;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
 
@@ -198,11 +148,11 @@
 
 .tree-drag-label {
   font-size: 11px;
-  font-family: sans-serif;
+  font-family: var(--plaid-font-ui);
   text-anchor: middle;
   fill: currentColor;
   paint-order: stroke;
-  stroke: #fff;
+  stroke: hsl(var(--background));
   stroke-width: 3px;
   stroke-linejoin: round;
 }
@@ -213,28 +163,20 @@
   opacity: 0.75;
 }
 
-.tree-temp-arc {
-  fill: none;
-  stroke: #93c5fd;
-  stroke-width: 2;
-  stroke-dasharray: 5, 5;
-  pointer-events: none;
-}
-
 /* The inline deprel editor (DeprelEditor), inside the tree's <foreignObject>.
-   Blue on blue to match the focused label it replaces. Written here rather
+   In the primary, to match the focused label it replaces. Written here rather
    than as utility classes because the sentence grid is not a Tailwind subtree. */
 .deprel-edit-input {
   box-sizing: border-box;
   width: 100%;
   height: 22px;
   padding: 0 6px;
-  font-family: sans-serif;
+  font-family: var(--plaid-font-ui);
   font-size: 11px;
   text-align: center;
-  color: #2563eb;
-  background-color: #fff;
-  border: 1px solid #2563eb;
+  color: hsl(var(--primary));
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--primary));
   border-radius: 4px;
   outline: none;
 }
@@ -257,14 +199,14 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  color: #6b7280;
-  background-color: #fff;
-  border: 1px solid #d1d5db;
+  color: hsl(var(--muted-foreground));
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--input));
   border-radius: 4px;
   cursor: pointer;
 }
 
 .deprel-edit-delete:hover {
-  color: #dc2626;
-  border-color: #dc2626;
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive));
 }

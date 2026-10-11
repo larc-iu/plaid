@@ -42,7 +42,7 @@ const isEnhancedGesture = (event) => Boolean(event?.ctrlKey || event?.metaKey);
 
 // The arc in the hand, while it points at nothing: no word means no label,
 // and no label means no colour of its own.
-const DRAG_GREY = '#6b7280';
+const DRAG_GREY = 'hsl(var(--muted-foreground))';
 
 export const DependencyTree = forwardRef(
   (
@@ -682,7 +682,7 @@ export const DependencyTree = forwardRef(
           <path
             id={pathId}
             d={shape.d}
-            stroke={color}
+            style={{ stroke: color }}
             strokeWidth={strokeWidth}
             strokeDasharray={inferred ? '5,4' : undefined}
             opacity={dimmed ? 0.35 : undefined}
@@ -695,7 +695,7 @@ export const DependencyTree = forwardRef(
           {/* Arrow polygon */}
           <polygon
             points={shape.arrow}
-            fill={color}
+            style={{ fill: color }}
             opacity={dimmed ? 0.35 : undefined}
             className="tree-arc-arrow"
             onClick={(e) => handleArcClick(e, relation)}
@@ -880,8 +880,7 @@ export const DependencyTree = forwardRef(
             y={ROOT_Y}
             width="100%"
             height={ROOT_BAR_HEIGHT}
-            fill={hoveredToken?.lemmaSpanId === 'ROOT' ? '#e5e7eb' : '#fafafa'}
-            className={selectedSource || dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}
+            className={`${selectedSource || dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}${hoveredToken?.lemmaSpanId === 'ROOT' ? ' tree-root-rect--hovered' : ''}`}
             onClick={() => handleRootClick()}
             onMouseDown={handleRootMouseDown}
             onMouseUp={handleRootMouseUp}

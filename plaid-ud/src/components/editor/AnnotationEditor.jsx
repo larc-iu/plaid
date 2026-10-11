@@ -570,7 +570,7 @@ export const AnnotationEditor = () => {
                       className="transition-shadow duration-300"
                       style={
                         flashSentId === String(sentenceData.id)
-                          ? { boxShadow: '0 0 0 2px #2563eb', borderRadius: 6 }
+                          ? { boxShadow: '0 0 0 2px hsl(var(--ring))', borderRadius: 6 }
                           : undefined
                       }
                     >

@@ -104,7 +104,7 @@ export const EnhancedArcs = forwardRef(
         <>
           <path
             d={shape.d}
-            stroke={color}
+            style={{ stroke: color }}
             strokeWidth={active ? 2 : 1}
             strokeDasharray={mark ? '5,4' : undefined}
             className="tree-arc-path enhanced-arc-path"
@@ -113,7 +113,12 @@ export const EnhancedArcs = forwardRef(
             onClick={open}
           />
           {/* The arrowhead points UP, into the word. */}
-          <polygon points={shape.arrow} fill={color} className="tree-arc-arrow" onClick={open} />
+          <polygon
+            points={shape.arrow}
+            style={{ fill: color }}
+            className="tree-arc-arrow"
+            onClick={open}
+          />
         </>
       );
 

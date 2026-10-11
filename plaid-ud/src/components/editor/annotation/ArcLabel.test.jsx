@@ -3,7 +3,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { press } from '../../../test/keyboard.js';
 import { ArcLabel } from './ArcLabel.jsx';
 import {
-  ACTIVE_BLUE,
+  ACTIVE_COLOR,
   afterDeleting,
   arcColor,
   commitsLabel,
@@ -120,7 +120,7 @@ describe('the arc label walks the same way wherever it is drawn', () => {
 
 describe('the rules that go with a label', () => {
   it('colours by what is being worked on, then provenance, then the deprel', () => {
-    expect(arcColor(MACHINE, true, {})).toBe(ACTIVE_BLUE);
+    expect(arcColor(MACHINE, true, {})).toBe(ACTIVE_COLOR);
     expect(arcColor(MACHINE, false, {})).toBe('#6d28d9');
     expect(arcColor(RELATION, false, { nsubj: '#123456' })).toBe('#123456');
   });

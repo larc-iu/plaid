@@ -4,12 +4,14 @@
 
    The colours are written out rather than taken from utility classes, because
    this is a measured overlay rendered over the raw document text and the classes
-   would fight the badge geometry. Tailwind's scale, so it sits with the rest. */
+   would fight the badge geometry. The frame and the text between tokens take
+   the theme's tokens. The badges are blue, the annotation surfaces' colour for
+   a word. */
 
 .container {
   padding: 1rem;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
   border-radius: 4px;
   /* The data face, not monospace, as in the annotation grid (see the note on
      .token-form in SentenceRow.css). Nothing here aligns by column, and a
@@ -31,17 +33,17 @@
   transition: box-shadow 300ms ease;
 }
 
-/* The sentence a hand-off from Annotate landed on. Same blue ring the
-   annotation grid flashes (and plaid-igt's search flash), so arriving at a
+/* The sentence a hand-off from Annotate landed on. The same ring the
+   annotation grid flashes, in the focus ring's colour, so arriving at a
    sentence looks the same in both directions. Never amber, which is a
    contributor's value. */
 .sentence[data-flash='true'] {
-  box-shadow: 0 0 0 2px #2563eb;
+  box-shadow: 0 0 0 2px hsl(var(--ring));
 }
 
 /* The text between tokens: present, but not the thing being edited. */
 .plainText {
-  color: #9ca3af;
+  color: hsl(var(--muted-foreground));
 }
 
 /* --- token badges --- */

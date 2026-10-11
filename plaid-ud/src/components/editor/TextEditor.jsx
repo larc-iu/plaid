@@ -519,7 +519,9 @@ export const TextEditor = () => {
 
           <p className="text-sm">
             {/* Offline, the shell's save status says so, over every tab. */}
-            {saving && !doc.isOffline && <span className="italic text-blue-600">Saving…</span>}
+            {saving && !doc.isOffline && (
+              <span className="italic text-muted-foreground">Saving…</span>
+            )}
             {!saving && lastSaved && (
               <span className="text-success-foreground">
                 Saved: {lastSaved.toLocaleTimeString()}
