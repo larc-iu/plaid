@@ -175,6 +175,10 @@
   --ring: 174 30% 36%;
   --radius: 0.5rem;
 
+  /* A match: a search hit, the word a citation points at. A soft yellow, the
+     highlighter's, which reads on Charis and is not amber. */
+  --plaid-highlight: 53 96% 82%;
+
   /* The mark's four colours, for the brand's own surfaces. */
   --plaid-slate: #1e293b;
   --plaid-oxblood: #7f1d1d;
@@ -197,6 +201,12 @@ body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: var(--plaid-font-ui);
+}
+
+/* Selected text in the accent, so a selection looks like the product's and
+   not the system's. */
+::selection {
+  background-color: hsl(var(--primary) / 0.2);
 }
 
 /* Language data, where an app draws it outside a surface of its own. */

@@ -30,6 +30,15 @@ describe('an excerpt with its hits marked', () => {
     }
   });
 
+  it('is set in the face for language data, and a hit in the shared highlight', async () => {
+    const view = await renderComponent(
+      <MarkedText text="Ваз хъсан чида" marks={[{ begin: 4, end: 9 }]} />,
+    );
+    expect(view.container.querySelector('bdi').className).toContain('font-text');
+    expect(view.container.querySelector('mark').className).toContain('bg-highlight');
+    await view.unmount();
+  });
+
   it('marks the hit by code points', async () => {
     const view = await renderComponent(<MarkedText text="a😀bc" marks={[{ begin: 1, end: 3 }]} />);
     expect(view.container.querySelector('mark').textContent).toBe('😀b');

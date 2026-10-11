@@ -177,7 +177,7 @@ export const DocumentTable = ({
                 distinguishing two recordings, so hiding its tail is worse
                 than a taller row. break-words so a single very long token
                 still cannot force the column wider. */}
-            <div className="break-words font-medium">{d.name}</div>
+            <div className="break-words font-text font-medium">{d.name}</div>
           </div>,
         ),
     },

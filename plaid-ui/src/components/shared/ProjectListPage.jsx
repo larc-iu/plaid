@@ -115,7 +115,7 @@ export const ProjectListPage = ({
       cell: (p) => (
         <div className="flex min-w-0 items-center gap-2">
           <ProjectTartan project={p} size={16} className="shrink-0" />
-          <div className="truncate font-medium" title={p.name}>
+          <div className="truncate font-text font-medium" title={p.name}>
             {p.name}
           </div>
         </div>

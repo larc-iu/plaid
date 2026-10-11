@@ -9,8 +9,14 @@ import { SafeMarkdown } from '../shared/markdown.jsx';
 // On its own file rather than in the tab, because the admin area renders a
 // whole conversation with it and has no business loading the tab's turn
 // registry to do so.
+//
+// The prose is the chrome's face. What the reply quotes from the data, in
+// double quotes or guillemets, is set in the face for language data.
 export const AssistantMarkdown = ({ children }) => (
-  <SafeMarkdown className="prose prose-sm max-w-none leading-relaxed dark:prose-invert prose-p:my-3.5 prose-headings:mt-6 prose-headings:mb-2.5 prose-pre:my-3 prose-table:my-4 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-hr:my-5">
+  <SafeMarkdown
+    quotedForms
+    className="prose prose-sm max-w-none leading-relaxed dark:prose-invert prose-p:my-3.5 prose-headings:mt-6 prose-headings:mb-2.5 prose-pre:my-3 prose-table:my-4 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-hr:my-5"
+  >
     {children}
   </SafeMarkdown>
 );

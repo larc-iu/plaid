@@ -63,6 +63,10 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
     expect(resolved.theme.fontFamily.text).toBe('var(--plaid-font-text)');
   });
 
+  it('answers to the one highlight for a match', () => {
+    expect(resolved.theme.colors.highlight).toBe('hsl(var(--plaid-highlight))');
+  });
+
   it('switches theme by class, so the three apps agree on what dark means', () => {
     expect(resolved.darkMode).toEqual(['class']);
   });
@@ -80,6 +84,7 @@ describe("the package's stylesheet", () => {
     '--success',
     '--success-foreground',
     '--destructive-strong',
+    '--plaid-highlight',
   ])(
     'defines %s',
     (name) => {

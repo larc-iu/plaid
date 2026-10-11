@@ -75,6 +75,8 @@ export default {
         accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
         popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+        // The one mark for "this matched": a search hit, a cited word.
+        highlight: 'hsl(var(--plaid-highlight))',
       },
       // The colour of a bare `border`, which preflight sets on every element.
       // Here rather than in a base rule, since preflight comes after plaid-ui's

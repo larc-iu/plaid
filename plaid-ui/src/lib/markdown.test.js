@@ -133,4 +133,34 @@ describe('markdownToSafeHtml', () => {
       expect(out.querySelector('a')?.hasAttribute('dir')).toBe(false);
     });
   });
+
+  // The assistant's prose is chrome, and what it quotes from the data is
+  // language data, set in Charis.
+  describe('quoted forms', () => {
+    const forms = (md) => {
+      const host = document.createElement('div');
+      host.innerHTML = markdownToSafeHtml(md, { quotedForms: true });
+      return [...host.querySelectorAll('span.font-text')].map((s) => s.textContent);
+    };
+
+    it('sets a run in double quotes or guillemets apart, and not the marks', () => {
+      expect(forms('The word "хъсан" means good, as in «Ваз хъсан чида».')).toEqual([
+        'хъсан',
+        'Ваз хъсан чида',
+      ]);
+      expect(forms('Glossed \u201cyear\u201d here.')).toEqual(['year']);
+    });
+
+    it('leaves code, links, single quotes and an unpaired mark alone', () => {
+      expect(forms('Run `"x"` or see [the "doc"](https://example.org).')).toEqual([]);
+      expect(forms("It's glossed 'good' and 12\" long.")).toEqual([]);
+    });
+
+    it('is off unless asked for, and still sanitizes', () => {
+      expect(markdownToSafeHtml('"a"')).not.toContain('font-text');
+      const host = document.createElement('div');
+      host.innerHTML = markdownToSafeHtml('"<img src=x onerror=alert(1)>"', { quotedForms: true });
+      expect(host.querySelector('img')).toBeNull();
+    });
+  });
 });

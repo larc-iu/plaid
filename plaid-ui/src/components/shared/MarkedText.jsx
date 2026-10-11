@@ -9,13 +9,21 @@ import { detectDirection } from '../../domain/textDirection.js';
  * - `marks`: `[{ begin, end }]`, code-point offsets into `text`, sorted and
  *   not overlapping. Out-of-range offsets are clamped.
  *
+ * The excerpt is language data, set in Charis, and a hit wears the one
+ * highlight every "this matched" mark in the apps shares.
+ *
  * The excerpt is isolated with its own direction, since it sits in an English
  * row. A sentence's direction is its letters' majority, not its first
  * letter's: an Arabic sentence may open with a Latin name.
  */
 export const MarkedText = ({ text, marks }) => {
   const dir = detectDirection(text);
-  if (!marks?.length) return <bdi dir={dir}>{text}</bdi>;
+  if (!marks?.length)
+    return (
+      <bdi dir={dir} className="font-text">
+        {text}
+      </bdi>
+    );
   const chars = [...text];
   const out = [];
   let pos = 0;
@@ -24,12 +32,16 @@ export const MarkedText = ({ text, marks }) => {
     const e = Math.max(b, Math.min(m.end, chars.length));
     if (b > pos) out.push(chars.slice(pos, b).join(''));
     out.push(
-      <mark key={i} className="rounded-sm bg-yellow-200 px-0.5 text-foreground">
+      <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
         {chars.slice(b, e).join('')}
       </mark>,
     );
     pos = e;
   });
   if (pos < chars.length) out.push(chars.slice(pos).join(''));
-  return <bdi dir={dir}>{out}</bdi>;
+  return (
+    <bdi dir={dir} className="font-text">
+      {out}
+    </bdi>
+  );
 };
