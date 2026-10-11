@@ -43,11 +43,16 @@ describe('DocumentTabStrip', () => {
     expect(active.textContent).toBe('Details');
   });
 
-  it('says Loading… for a project and a document not read yet', async () => {
+  // The page body says Loading… once. The crumb holds an ellipsis and the
+  // heading its height, so the tabs do not jump when the names arrive.
+  it('holds the places of a project and a document not read yet, without a word', async () => {
     await mount({ project: null, document: null });
     const crumbs = view.container.querySelector('nav[aria-label="Breadcrumb"]');
-    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', 'Loading…']);
-    expect(view.container.querySelector('h1').textContent).toBe('Loading…');
+    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', '…']);
+    const heading = view.container.querySelector('h1');
+    expect(heading.textContent.trim()).toBe('');
+    expect(heading.getAttribute('aria-busy')).toBe('true');
+    expect(view.container.textContent).not.toContain('Loading…');
   });
 
   it('says nothing is loading for a document that failed to load', async () => {

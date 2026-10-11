@@ -1,6 +1,8 @@
 import { useRef } from 'react';
 import { AssistantPanel } from './AssistantPanel.jsx';
 import { clampWidth } from './panelWidth.js';
+import { SLIDE_CLASSES } from '../../hooks/useSlide.js';
+import { cn } from '../../lib/utils.js';
 
 // The assistant as part of the app's chrome: one panel on the right, mounted by
 // the shell and not by any screen, holding its conversation across a navigation.
@@ -25,6 +27,8 @@ const Resizer = ({ width, onResize }) => {
   const onPointerDown = (e) => {
     drag.current = { x: e.clientX, width };
     e.currentTarget.setPointerCapture(e.pointerId);
+    // The page's gutter follows the drag at once rather than on the slide.
+    document.documentElement.dataset.plaidResizing = '';
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
   };
@@ -38,6 +42,7 @@ const Resizer = ({ width, onResize }) => {
     e.currentTarget.releasePointerCapture(e.pointerId);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    delete document.documentElement.dataset.plaidResizing;
   };
   return (
     <div
@@ -58,11 +63,24 @@ const Resizer = ({ width, onResize }) => {
 // `picker` stands in for the chat when there is no project for it to be about
 // yet, which is the state a reader is in on the screen they land on after
 // signing in.
-export const AssistantDock = ({ width, onResize, onClose, picker = null, ...assistant }) => {
+export const AssistantDock = ({
+  width,
+  onResize,
+  onClose,
+  picker = null,
+  entered = true,
+  inert = false,
+  ...assistant
+}) => {
   return (
     <aside
       style={{ width }}
-      className="fixed inset-y-0 right-0 z-30 flex flex-col border-l bg-card"
+      inert={inert}
+      className={cn(
+        'fixed inset-y-0 right-0 z-30 flex flex-col border-l bg-card transition-transform',
+        SLIDE_CLASSES,
+        entered ? 'translate-x-0' : 'translate-x-full',
+      )}
     >
       <Resizer width={width} onResize={onResize} />
       <div className="min-h-0 flex-1">

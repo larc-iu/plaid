@@ -21,7 +21,13 @@ export const ProjectActivityPage = ({ tabs: Tabs }) => {
 
   useDocumentTitle('Activity', project?.name);
 
-  if (loading) return <Loading />;
+  if (loading)
+    return (
+      <div className="w-full">
+        <Tabs projectId={projectId} project={null} />
+        <Loading />
+      </div>
+    );
   if (!project || !canConfigure) return null;
 
   const routes = appRoutes();

@@ -7,6 +7,8 @@ import { fullTimestamp } from '../../lib/formatTime.js';
 import { readableDescription, operationKindLabel } from '../../lib/auditText.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
+import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
@@ -73,6 +75,7 @@ export const HistoryDrawer = ({
   loadingMoreOps = null,
 }) => {
   const [expanded, setExpanded] = useState(() => new Set());
+  const slide = useSlide(isOpen);
 
   // Most recent first
   const reversedAuditEntries = useMemo(() => [...auditEntries].reverse(), [auditEntries]);
@@ -328,22 +331,31 @@ export const HistoryDrawer = ({
     );
   };
 
-  if (!isOpen) return null;
+  if (!slide.mounted) return null;
 
+  // Full height at the window's left edge, beside the app header, the twin of
+  // the assistant dock on the right: the shell steps the whole page, header and
+  // all, right by the drawer's width (`--plaid-history-width`), on the same
+  // slide as the drawer's own.
   return (
     <div
       ref={rootRef}
       role="region"
       aria-label="History"
+      inert={!isOpen}
       onKeyDown={onDrawerKeyDown}
-      className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background shadow-lg"
+      className={cn(
+        'fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background shadow-lg transition-transform',
+        SLIDE_CLASSES,
+        slide.entered ? 'translate-x-0' : '-translate-x-full',
+      )}
       style={{ width: HISTORY_DRAWER_WIDTH }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between border-b p-4">
+      {/* Header, as tall as the app header's band beside it. */}
+      <div className="flex h-[var(--plaid-sticky-top)] shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
-          <History className="h-5 w-5" />
-          <span className="text-lg font-semibold">History</span>
+          <History className="h-4 w-4" />
+          <span className={TYPE.panel}>History</span>
         </div>
         <Button ref={closeRef} variant="ghost" size="sm" onClick={onClose}>
           <X className="h-4 w-4" /> Close
@@ -391,7 +403,12 @@ export const HistoryDrawer = ({
       {selectedEntry && (
         <div className="border-t bg-accent p-4">
           <div className="flex flex-col items-start gap-2">
-            <Badge>Historical state</Badge>
+            <Badge
+              variant="outline"
+              className="border-warning/40 bg-warning/10 text-warning-foreground"
+            >
+              Historical state
+            </Badge>
             {selectedEntry.label && (
               <p dir="auto" className="line-clamp-2 text-xs font-medium">
                 {selectedEntry.label}

@@ -9,6 +9,8 @@ import { readDockOpen, saveDockOpen } from './panelWidth.js';
 import { useAssistantFocus } from './subject.js';
 import { useAssistantAvailable } from './useAssistantAvailable.js';
 import { useDockWidth } from './useDock.js';
+import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
+import { cn } from '../../lib/utils.js';
 
 // The assistant as part of an app's chrome: the header chip, the edge rail,
 // the docked panel, and the gutter the page leaves for it.
@@ -107,6 +109,7 @@ export const AssistantChrome = ({
   // the dock. The toaster is mounted at the root, above the router, so it
   // cannot read this from React (see plaid-ui's index.css).
   const dockWidth = gate.showDock ? width : 0;
+  const slide = useSlide(gate.showDock);
   useEffect(() => {
     document.documentElement.style.setProperty('--plaid-dock-width', `${dockWidth}px`);
     return () => document.documentElement.style.removeProperty('--plaid-dock-width');
@@ -131,11 +134,22 @@ export const AssistantChrome = ({
   ) : null;
 
   return (
-    <div className={className} style={{ paddingRight: gate.showDock ? width : undefined }}>
+    <div
+      className={cn(
+        className,
+        // The page's gutter slides with the dock (useSlide.js), and follows a
+        // drag of the dock's edge at once.
+        'transition-[padding] [html[data-plaid-resizing]_&]:transition-none',
+        SLIDE_CLASSES,
+      )}
+      style={{ paddingRight: slide.entered ? width : undefined }}
+    >
       {children({ chip })}
       {gate.showHandle && <AssistantRail onOpen={() => setDockOpen(true)} />}
-      {gate.showDock && (
+      {slide.mounted && (
         <AssistantDock
+          entered={slide.entered}
+          inert={!gate.showDock}
           width={width}
           onResize={resize}
           onClose={() => setDockOpen(false)}

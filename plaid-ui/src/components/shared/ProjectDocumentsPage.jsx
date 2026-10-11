@@ -87,7 +87,13 @@ export const ProjectDocumentsPage = ({
     }
   };
 
-  if (loading) return <Loading />;
+  if (loading)
+    return (
+      <div className="w-full">
+        <Tabs projectId={projectId} project={null} />
+        <Loading />
+      </div>
+    );
 
   if (!project) {
     return (

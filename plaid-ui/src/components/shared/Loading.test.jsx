@@ -9,7 +9,9 @@ describe('Loading', () => {
     const line = view.container.querySelector('p');
     expect(line.textContent).toBe('Loading…');
     expect(line.className).toContain('text-muted-foreground');
-    expect(line.className).toContain('p-4');
+    // On the gutter of where it is: room above and below, none at the sides.
+    expect(line.className.split(' ')).toContain('py-4');
+    expect(line.className).not.toMatch(/\bp[xl]?-/);
     // No spinner: the text is the whole indicator.
     expect(view.container.querySelector('svg, .animate-spin')).toBeNull();
     await view.unmount();
@@ -20,7 +22,7 @@ describe('Loading', () => {
     const line = view.container.querySelector('p');
     expect(line.textContent).toBe('Loading entries…');
     expect(line.className.split(' ')).toContain('p-0');
-    expect(line.className.split(' ')).not.toContain('p-4');
+    expect(line.className.split(' ')).not.toContain('py-4');
     await view.unmount();
   });
 });

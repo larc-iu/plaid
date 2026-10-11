@@ -296,6 +296,17 @@ const DocumentEditor = ({ app, documentClient }) => {
     reload,
     onExpired: () => logout('expired'),
   });
+  // The drawer steps the whole page right, the app header with it, rather than
+  // overlaying it (AppShell reads the width, and slides on the drawer's own
+  // timing).
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.style.setProperty(
+      '--plaid-history-width',
+      history.drawerOpen ? `${HISTORY_DRAWER_WIDTH}px` : '0px',
+    );
+    return () => root.style.removeProperty('--plaid-history-width');
+  }, [history.drawerOpen]);
   const pastEntry = history.selectedEntry;
   const shown = history.snapshot ?? doc;
   const onPastTab = app.tabs.past.includes(tab);
@@ -458,12 +469,7 @@ const DocumentEditor = ({ app, documentClient }) => {
   };
 
   return (
-    // The drawer pushes the whole page right rather than overlaying it, the
-    // chrome and the tab under it together.
-    <div
-      className="pt-4 transition-[margin-left] duration-300 ease-out"
-      style={{ marginLeft: history.drawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
-    >
+    <div className="pt-4">
       <DocumentHistoryPanel
         history={{ ...history, selectEntry }}
         client={client}
@@ -542,7 +548,7 @@ const DocumentEditor = ({ app, documentClient }) => {
       )}
 
       {(loading || showReconcileSpinner) && (
-        <Loading label={loading ? undefined : 'Checking this document…'} />
+        <Loading label={loading ? undefined : 'Checking this document…'} className="px-6" />
       )}
 
       {!loading && (loadError || !doc || !project) && (

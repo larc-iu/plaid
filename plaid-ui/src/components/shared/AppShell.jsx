@@ -14,6 +14,7 @@ import { adminUrl } from '../../domain/siblingApps.js';
 import { useUserKeymap } from '../../hooks/useUserKeymap.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { focusMain, useRouteFocus } from '../../hooks/useRouteFocus.js';
+import { SLIDE_CLASSES } from '../../hooks/useSlide.js';
 
 // The app shell, and the one place the assistant panel is mounted.
 //
@@ -81,7 +82,13 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
       subject={subject}
       routeHasProject={routes.at.project(path)}
       assistantRoute={assistantRoute}
-      className="flex min-h-screen flex-col bg-background text-foreground"
+      // A document's History drawer steps the whole page right, header and
+      // all, as the assistant's dock does from the other side, on the same
+      // slide (useSlide.js).
+      className={cn(
+        'flex min-h-screen flex-col bg-background pl-[var(--plaid-history-width,0px)] text-foreground transition-[padding]',
+        SLIDE_CLASSES,
+      )}
     >
       {({ chip }) => (
         <>
@@ -108,7 +115,13 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                 width: the nav scrolls sideways in the room left beside the
                 account. */}
             <div
-              className={cn('mx-auto flex h-14 items-center gap-2 px-4 sm:gap-4', LIST_PAGE_WIDTH)}
+              className={cn(
+                'flex h-14 items-center gap-2 sm:gap-4',
+                // On a document the band runs the window's width with the
+                // document's own gutter, so the mark, the breadcrumb and the
+                // title share one left edge.
+                isDocument ? 'w-full px-6' : cn('mx-auto px-4', LIST_PAGE_WIDTH),
+              )}
             >
               {/* Two links. The mark is the server's and leads to the root the
                   server serves, a full page load out of this app. The name is

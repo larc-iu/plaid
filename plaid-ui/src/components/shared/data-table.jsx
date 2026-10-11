@@ -155,7 +155,7 @@ export const DataTable = ({
       <ListPager {...paged} onPage={paged.setPage} position="top" />
 
       {loading && rows.length === 0 ? (
-        <Loading />
+        <Loading className="px-4" />
       ) : paged.pageItems.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
           {rows.length === 0

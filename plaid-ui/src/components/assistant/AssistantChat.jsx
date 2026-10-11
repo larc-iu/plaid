@@ -1050,11 +1050,11 @@ export const AssistantChat = ({
           !compact && 'rounded-lg border',
         )}
       >
-        {/* `min-h-14` matches the app header's own height, so the two bars
+        {/* As tall as the app header's band and its rule, so the two bars
             line up where the dock sits beside it. Unconditional rather than a
             flag: a slightly taller bar costs nothing where there is nothing to
             line up with. */}
-        <header className="flex min-h-14 flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
+        <header className="flex min-h-[var(--plaid-sticky-top)] flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
           <AssistantMark className="h-4 w-4 shrink-0" />
           {choice.discovering && !choice.services.length ? (
             <span className="text-muted-foreground">Looking for an assistant…</span>

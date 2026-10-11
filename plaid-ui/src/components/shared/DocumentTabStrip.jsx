@@ -7,6 +7,7 @@ import { Breadcrumb } from './Breadcrumb.jsx';
 import { ProjectTartan } from './ProjectTartan.jsx';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 /**
  * The header over an open document, in every app: the breadcrumb, a heading
@@ -135,7 +136,7 @@ export const DocumentTabStrip = ({
           items={[
             { label: 'Projects', to: routes.projects, fixed: true },
             {
-              label: project?.name || (failed ? 'Project' : 'Loading…'),
+              label: project?.name || (failed ? 'Project' : '…'),
               to: routes.documents(projectId),
               icon: <ProjectTartan project={project} size={14} />,
             },
@@ -150,13 +151,10 @@ export const DocumentTabStrip = ({
       {!(failed && !name) && (
         <h1
           ref={headingRef}
-          className={cn(
-            'mb-2 break-words font-text text-[1.75rem] font-bold leading-tight',
-            !name && 'text-muted-foreground',
-            inset,
-          )}
+          aria-busy={!name || undefined}
+          className={cn('mb-2 min-h-[1.25em] break-words font-text', TYPE.page, inset)}
         >
-          <span dir="auto">{name || 'Loading…'}</span>
+          <span dir="auto">{name}</span>
         </h1>
       )}
 
