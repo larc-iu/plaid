@@ -10,6 +10,8 @@ import { runExport, ExportCancelled } from '@/export/runExport';
 import { saveBlob } from '@ui/lib/download.js';
 import { ScopeStep } from './ScopeStep.jsx';
 import { FlexImportSteps } from './FlexImportSteps.jsx';
+import { TYPE } from '@ui/lib/typeScale.js';
+import { cn } from '@ui/lib/utils';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
@@ -168,7 +170,7 @@ export const ExportRunner = ({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
+        <h2 className={cn('flex items-center gap-2', TYPE.card)}>
           <Download className="h-4 w-4" />
           <span>{presetId ? 'Run this export' : `Export${defaultScope ? ':' : ''}`}</span>
           {defaultScope && (

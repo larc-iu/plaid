@@ -28,6 +28,7 @@ import { nameKey } from '@ui/lib/nameKey.js';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 import { moveItem } from './useListManager';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
@@ -585,7 +586,7 @@ export const FieldsManager = ({
           <p className="mb-4 text-sm font-medium">Annotation fields</p>
         ) : (
           <>
-            <h2 className="text-lg font-semibold">Annotation fields</h2>
+            <h2 className={TYPE.card}>Annotation fields</h2>
             <p className="mb-4 mt-1 text-sm text-muted-foreground">
               Configure annotation fields for your project. Word scope fields apply to words,
               Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire

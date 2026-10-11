@@ -8,6 +8,7 @@ import { FieldPanel } from './FieldPanel.jsx';
 import { MergePanel } from './MergePanel.jsx';
 import { ReanalyzePanel } from './ReanalyzePanel.jsx';
 import { RespellPanel } from './RespellPanel.jsx';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // The Bulk Edit workbench: pick an operation, describe the change, preview
 // every match as a checkbox row (grouped by document, each row a link into
@@ -76,7 +77,7 @@ export const ProjectBulkEdit = ({ project, projectId, client }) => {
           return (
             <TabsContent key={o.id} value={o.id} className="mt-0">
               <div className="mb-4">
-                <h2 className="text-lg font-semibold">{o.label}</h2>
+                <h2 className={TYPE.card}>{o.label}</h2>
                 <p className="text-sm text-muted-foreground">{o.blurb}</p>
               </div>
               {op === o.id && <Panel {...panelProps} />}

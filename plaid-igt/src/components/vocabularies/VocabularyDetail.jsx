@@ -82,6 +82,8 @@ import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/Histo
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { useVocabHistory } from './useVocabHistory';
+import { TYPE } from '@ui/lib/typeScale.js';
+import { cn } from '@ui/lib/utils';
 
 // A tab the past state does not reach. The trigger is an anchor, which the
 // `disabled:` variant does not match, so it keys on Radix's data attribute.
@@ -1028,7 +1030,7 @@ export const VocabularyDetail = () => {
         {!isNewVocabulary && (
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
-              <h1 dir="auto" className="min-w-0 truncate font-text text-2xl font-bold">
+              <h1 dir="auto" className={cn('min-w-0 truncate font-text', TYPE.page)}>
                 {vocabulary?.name}
               </h1>
               <div className="flex shrink-0 items-center gap-2">
@@ -1243,7 +1245,7 @@ export const VocabularyDetail = () => {
 
         {isNewVocabulary && (
           <div className="flex flex-col gap-6">
-            <h2 className="text-lg font-semibold">New vocabulary</h2>
+            <h1 className={TYPE.page}>New vocabulary</h1>
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-1.5">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
+import { TYPE } from '@ui/lib/typeScale.js';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
@@ -126,7 +127,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
 
   if (error) {
     return (
-      <div className="flex flex-col gap-4 pt-4">
+      <div className="flex flex-col gap-4">
         <div>{backButton}</div>
         <div
           role="alert"
@@ -142,12 +143,12 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
   const hasVocabularies = (project.vocabs?.length ?? 0) > 0;
 
   return (
-    <div className="flex flex-col gap-6 pt-4">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <div>{backButton}</div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">{saved?.name ?? draft.name}</h2>
+            <h2 className={TYPE.section}>{saved?.name ?? draft.name}</h2>
             <p className="text-sm text-muted-foreground">{formatLabel(draft.format)}</p>
           </div>
           <div className="flex items-center gap-2">

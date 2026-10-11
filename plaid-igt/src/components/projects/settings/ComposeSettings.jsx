@@ -18,6 +18,7 @@ import {
   validateCode,
 } from '@/domain/composeConfig';
 import { textIncludes } from '@ui/domain/collation.js';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 const ORIGIN_LABEL = {
   changed: 'Changed',
@@ -141,7 +142,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Special characters</h2>
+      <h2 className={TYPE.card}>Special characters</h2>
       <p className="mb-4 mt-1 max-w-3xl text-sm text-muted-foreground">
         Type a backslash and a two-letter code in any field to enter a character your keyboard does
         not have: <code>\sw</code> gives ə, <code>\00</code> gives ∅. Every code is listed here.

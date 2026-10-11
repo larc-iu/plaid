@@ -13,6 +13,8 @@ import { AdminAssistant } from './AdminAssistant';
 import { AdminServer } from './AdminServer';
 import { AdminLogs } from './AdminLogs';
 import { LOG_PARAMS } from './logFilters';
+import { TYPE } from '@ui/lib/typeScale.js';
+import { cn } from '@ui/lib/utils';
 
 // The whole-server view, for whoever runs this instance. Everything a project
 // maintainer needs lives on the project; what is here is the part that spans
@@ -48,7 +50,7 @@ export const AdminView = () => {
   return (
     // The shell already pads the page and holds it to the list width.
     <div>
-      <h1 className="pb-4 text-3xl font-bold tracking-tight">Administration</h1>
+      <h1 className={cn('pb-4', TYPE.page)}>Administration</h1>
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="users" to={tabHref('/admin', 'users')}>

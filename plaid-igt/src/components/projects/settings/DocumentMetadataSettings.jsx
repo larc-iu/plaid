@@ -5,6 +5,7 @@ import { notifyError } from '@/utils/feedback';
 import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { PREDEFINED_FIELDS, readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // What DocumentMetadataManager shows, read off a project's config. Null means
 // "use the defaults".
@@ -116,7 +117,7 @@ export const DocumentMetadataSettings = ({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Document metadata</h2>
+      <h2 className={TYPE.card}>Document metadata</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Configure which metadata fields are available when creating or editing documents in this
         project.

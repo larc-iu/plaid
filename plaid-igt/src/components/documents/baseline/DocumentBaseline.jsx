@@ -7,6 +7,7 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 export function DocumentBaseline() {
   const { doc, readOnly } = useDocumentCtx();
@@ -72,7 +73,7 @@ export function DocumentBaseline() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Baseline text</h2>
+              <h2 className={TYPE.card}>Baseline text</h2>
             </div>
             {!ops.isEditing && !readOnly && (
               <Button ref={editButtonRef} variant="outline" size="sm" onClick={ops.handleEdit}>

@@ -8,6 +8,7 @@ import { igtFields, queueFieldDeclarations, tagsetRefusal } from '@/domain/igtCo
 import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { expectStored, isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // Everything here is derived from the LIVE project rather than a private fetch.
 // `usage` (which fields point at which tagset) changes when the field table
@@ -141,7 +142,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Tagsets</h2>
+      <h2 className={TYPE.card}>Tagsets</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         A tagset is the list of tags a field may use, such as Leipzig glossing abbreviations for
         Gloss or a part of speech inventory. Assign it to a field under Annotation fields below. The

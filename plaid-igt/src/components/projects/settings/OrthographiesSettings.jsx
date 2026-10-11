@@ -11,6 +11,7 @@ import {
   readOrthographies,
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 export const OrthographiesSettings = ({ projectId, client }) => {
   const [, setIsLoading] = useState(false);
@@ -197,7 +198,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Orthographies</h2>
+      <h2 className={TYPE.card}>Orthographies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         The ways this project’s text is written. Baseline cannot be removed. Add others for IPA,
         another writing system, or a normalized form.

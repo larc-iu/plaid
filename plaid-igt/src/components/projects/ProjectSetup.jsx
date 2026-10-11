@@ -16,6 +16,7 @@ import { FieldsStep } from './setup/FieldsStep';
 import { VocabularyStep } from './setup/VocabularyStep';
 import { ConfirmationStep } from './setup/ConfirmationStep';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 export const ProjectSetup = () => {
   useDocumentTitle('Project setup');
@@ -167,9 +168,7 @@ export const ProjectSetup = () => {
         />
 
         <div>
-          <h1 className="text-2xl font-bold">
-            {isNewProject ? 'Start from scratch' : 'Project setup'}
-          </h1>
+          <h1 className={TYPE.page}>{isNewProject ? 'Start from scratch' : 'Project setup'}</h1>
           <p className="text-sm text-muted-foreground">
             {isNewProject
               ? 'Set up a new Plaid IGT project.'

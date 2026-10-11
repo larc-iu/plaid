@@ -13,6 +13,8 @@ import { AuditFeed } from '@ui/components/shared/AuditFeed';
 import { textIncludes } from '@ui/domain/collation.js';
 import { projectRole } from '@larc-iu/plaid-client';
 import { useLatestCall } from '@ui/hooks/useLatestCall.js';
+import { TYPE } from '@ui/lib/typeScale.js';
+import { cn } from '@ui/lib/utils';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -113,7 +115,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
               className="h-12 w-12"
             />
             <div>
-              <h2 className="flex items-center gap-2 text-xl font-semibold">
+              <h2 className={cn('flex items-center gap-2', TYPE.section)}>
                 {user.displayName || user.id}
                 {user.isAdmin && <Badge variant="secondary">Admin</Badge>}
                 {user.deactivatedAt && <Badge variant="outline">Deactivated</Badge>}

@@ -7,6 +7,7 @@ import { PenLine, FileUp, FileText, Archive, Table2, AudioLines, ChevronRight } 
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 const OPTIONS = [
   {
@@ -60,7 +61,7 @@ export const NewProjectChooser = () => {
         <Breadcrumb items={[{ label: 'Projects', to: '/projects', fixed: true }]} />
 
         <div>
-          <h1 className="text-2xl font-bold">New project</h1>
+          <h1 className={TYPE.page}>New project</h1>
         </div>
 
         <div className="flex flex-col gap-3">

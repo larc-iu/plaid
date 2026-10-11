@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
+import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import {
@@ -151,7 +152,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
 
   if (hasError) {
     return (
-      <div className="pt-4">
+      <div>
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 p-4 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4" /> Failed to load the export presets.
           <Button variant="outline" size="sm" onClick={load}>
@@ -166,19 +167,17 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const deleting = presets.find((p) => p.id === deletingId);
 
   return (
-    <div className="flex flex-col gap-4 pt-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">Export presets</h2>
-          <p className="text-sm text-muted-foreground">
-            A preset fixes an export format and which orthographies, fields and options it includes.
-            Open one to edit it and to run it.
-          </p>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" /> New preset
-        </Button>
-      </div>
+    <div className="flex flex-col gap-4">
+      <SectionHeader
+        className="mb-2"
+        title="Export"
+        description="A preset fixes an export format and which orthographies, fields and options it includes. Open one to edit it and to run it."
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" /> New preset
+          </Button>
+        }
+      />
 
       {presets.length === 0 ? (
         <p className="text-sm text-muted-foreground">No export presets yet.</p>

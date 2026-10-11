@@ -15,7 +15,7 @@ export function DocumentMetadata({ doc, readOnly }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Metadata</CardTitle>
+        <CardTitle>Metadata</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {ops.metadataFields.map((field) => (

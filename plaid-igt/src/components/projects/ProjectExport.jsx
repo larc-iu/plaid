@@ -27,7 +27,7 @@ export const ProjectExport = ({
 }) => {
   if (!canManage) {
     return (
-      <div className="pt-4">
+      <div>
         <ExportRunner
           client={client}
           project={project}

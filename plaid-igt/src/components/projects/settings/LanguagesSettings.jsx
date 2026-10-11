@@ -7,6 +7,7 @@ import { notifyError } from '@/utils/feedback';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { isLangTag } from '@/domain/fieldNames';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // Advisory only: a wrong-looking code still saves, since a project may be
 // documenting something Glottolog has no entry for.
@@ -151,7 +152,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Languages</h2>
+      <h2 className={TYPE.card}>Languages</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Which language this project documents, and which one it is glossed in. Exports use this to
         identify the data: a CLDF dataset without a Glottocode cannot be linked to any other

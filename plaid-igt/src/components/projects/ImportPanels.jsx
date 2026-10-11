@@ -18,6 +18,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { notifySuccess } from '@/utils/feedback';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 const NEW_PROJECT_CRUMBS = [
   { label: 'Projects', to: '/projects', fixed: true },
@@ -33,7 +34,7 @@ export const ImportHeader = ({ crumbs = NEW_PROJECT_CRUMBS, title, resume = null
   <>
     <Breadcrumb items={crumbs} />
     <div>
-      <h1 className="text-2xl font-bold">{title}</h1>
+      <h1 className={TYPE.page}>{title}</h1>
       <p className="text-sm text-muted-foreground">{children}</p>
       {resume && <ResumeBanner {...resume} />}
     </div>

@@ -21,6 +21,7 @@ import { latestUsage, totalSpend } from '@ui/components/assistant/usage.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
 import { textIncludes } from '@ui/domain/collation.js';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // Every assistant conversation on the instance. A conversation is private to
 // the person who had it — it never appears in anyone else's sidebar — and an
@@ -153,7 +154,7 @@ const ConversationDetail = ({ client, row, backTo }) => {
       <AllConversations to={backTo} />
 
       <div>
-        <h2 className="text-xl font-semibold">{row.title}</h2>
+        <h2 className={TYPE.section}>{row.title}</h2>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
           <span>{row.userName}</span>
           <span>·</span>

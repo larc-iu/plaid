@@ -4,6 +4,7 @@ import { VocabularyManager } from './VocabularyManager';
 import { notifyError } from '@/utils/feedback';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { TYPE } from '@ui/lib/typeScale.js';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -87,7 +88,7 @@ export const VocabularySettings = ({ projectId, client }) => {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Vocabularies</h2>
+      <h2 className={TYPE.card}>Vocabularies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Vocabularies linked to this project. Words, morphemes and multi-word expressions link to
         their entries.

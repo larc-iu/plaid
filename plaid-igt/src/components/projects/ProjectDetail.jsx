@@ -9,6 +9,7 @@ import { ProjectTabPage } from '@ui/components/shared/ProjectTabPage.jsx';
 import { ProjectTabStrip } from '@ui/components/shared/ProjectTabStrip.jsx';
 import { ProjectDocumentsList } from '@ui/components/shared/ProjectDocumentsList.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
@@ -233,9 +234,19 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
       />
     );
   } else if (active === 'search') {
-    body = <ProjectSearch project={project} projectId={projectId} client={client} />;
+    body = (
+      <>
+        <SectionHeader title="Search" />
+        <ProjectSearch project={project} projectId={projectId} client={client} />
+      </>
+    );
   } else if (active === 'bulk' && canManage) {
-    body = <ProjectBulkEdit project={project} projectId={projectId} client={client} />;
+    body = (
+      <>
+        <SectionHeader title="Bulk Edit" />
+        <ProjectBulkEdit project={project} projectId={projectId} client={client} />
+      </>
+    );
   } else if (active === 'validate' && canManage) {
     // The same width as plaid-ud's and plaid-umr's Validation.
     body = (
@@ -249,7 +260,12 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
       </div>
     );
   } else if (active === 'activity' && canManage) {
-    body = <ProjectActivity client={client} project={project} projectId={projectId} />;
+    body = (
+      <>
+        <SectionHeader title="Activity" />
+        <ProjectActivity client={client} project={project} projectId={projectId} />
+      </>
+    );
   } else if (active === 'assistant') {
     body = (
       <ProjectAssistant
@@ -262,7 +278,12 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
       />
     );
   } else if (active === 'guidelines') {
-    body = <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />;
+    body = (
+      <>
+        <SectionHeader title="Guidelines" />
+        <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />
+      </>
+    );
   } else if (active === 'export') {
     // A form, so the narrower width, from the page's left edge.
     body = (
@@ -280,13 +301,16 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
     );
   } else if (active === 'settings' && canManage) {
     body = (
-      <ProjectSettingsPanel
-        project={project}
-        projectId={projectId}
-        client={client}
-        section={section || 'general'}
-        onProjectUpdate={refreshProject}
-      />
+      <>
+        <SectionHeader title="Settings" />
+        <ProjectSettingsPanel
+          project={project}
+          projectId={projectId}
+          client={client}
+          section={section || 'general'}
+          onProjectUpdate={refreshProject}
+        />
+      </>
     );
   }
 
