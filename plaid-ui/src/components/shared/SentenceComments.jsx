@@ -63,7 +63,7 @@ export const SentenceComments = ({
           ref={buttonRef}
           type="button"
           className={cn(
-            'sentence-comments inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-transparent bg-transparent px-2 text-xs text-gray-700 hover:bg-gray-100 hover:text-gray-900',
+            'sentence-comments inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-transparent bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground',
             className,
           )}
           data-count={count}

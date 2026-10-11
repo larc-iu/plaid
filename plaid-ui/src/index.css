@@ -315,8 +315,8 @@ body {
   color: var(--plaid-machine);
 }
 .plaid-review.plaid-review--discard {
-  border-color: #fca5a5;
-  color: #dc2626;
+  border-color: hsl(var(--destructive) / 0.4);
+  color: hsl(var(--destructive-strong));
 }
 .plaid-review.plaid-review--accept:hover {
   background-color: var(--plaid-machine);
@@ -324,9 +324,9 @@ body {
   color: #fff;
 }
 .plaid-review.plaid-review--discard:hover {
-  background-color: #dc2626;
-  border-color: #dc2626;
-  color: #fff;
+  background-color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
 }
 
 /* The assistant dock is fixed to the right edge of the window, and toasts are

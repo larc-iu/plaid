@@ -70,7 +70,7 @@ export const DocumentFileExport = ({
             spellCheck={false}
             readOnly
             rows={Math.min(Math.max(content.split('\n').length, 20), 400)}
-            className="w-full rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="w-full rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         ))}
     </div>

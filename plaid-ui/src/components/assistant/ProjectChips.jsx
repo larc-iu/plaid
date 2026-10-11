@@ -158,7 +158,7 @@ export const AddProject = ({
                 autoFocus
                 placeholder="Project"
                 aria-label="Project"
-                className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 listClassName="max-w-[18rem]"
                 optionClassName="truncate"
               />

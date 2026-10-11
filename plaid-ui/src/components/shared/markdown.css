@@ -71,12 +71,12 @@
 }
 
 .md-body a {
-  color: #2563eb;
+  color: hsl(var(--primary));
   text-decoration: underline;
 }
 
 .md-body code {
-  background: rgba(0, 0, 0, 0.06);
+  background: hsl(var(--muted));
   padding: 0 0.25em;
   border-radius: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
