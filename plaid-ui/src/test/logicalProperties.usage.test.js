@@ -98,10 +98,25 @@ const PHYSICAL =
 // A shorthand is physical too when its left and right differ: four-value
 // `margin: 0 4px 0 2px`, or `border-radius: 6px 0 0 6px`, whose corners are
 // named top-left first whatever the direction.
+//
+// The values are split on the spaces between them, never inside parentheses:
+// `calc(var(--radius) - 2px)` is one value on every corner.
+const topLevelValues = (text) => {
+  const out = [''];
+  let depth = 0;
+  for (const ch of text.trim()) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (/\s/.test(ch) && depth === 0) {
+      if (out[out.length - 1]) out.push('');
+    } else out[out.length - 1] += ch;
+  }
+  return out.filter(Boolean);
+};
 const lopsidedShorthand = (decl) => {
   const m = /^(margin|padding|border-width|border-radius)\s*:\s*(.+)$/.exec(decl);
   if (!m) return false;
-  const values = m[2].split('/')[0].trim().split(/\s+/);
+  const values = topLevelValues(m[2].split('/')[0]);
   if (m[1] === 'border-radius') return new Set(values).size > 1;
   return values.length === 4 && values[1] !== values[3];
 };
