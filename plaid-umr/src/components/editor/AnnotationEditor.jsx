@@ -14,6 +14,8 @@ import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
 import { DraftDialog } from './services/DraftDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
+import { cn } from '@ui/lib/utils.js';
+import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { RunBar } from '@ui/components/shared/RunBar.jsx';
 
 // The document's annotation page: the frame around the graph editor. The
@@ -175,7 +177,7 @@ export const AnnotationEditor = () => {
     <div className="min-h-screen w-full">
       {/* Only the BODY waits here: the breadcrumbs and tab strip are the
           shell's and stay on screen throughout. */}
-      {reconciling && <Loading label="Checking this document…" className="px-6" />}
+      {reconciling && <Loading label="Checking this document…" className={DOC_GUTTER} />}
 
       {!reconciling && !activeDocument && (
         <p className="py-10 text-center text-muted-foreground">Document not found</p>
@@ -202,7 +204,7 @@ export const AnnotationEditor = () => {
               selectedEntry || !assistantAvailable || !roomToDock ? undefined : askAssistant
             }
             top={(pager) => (
-              <div className="px-6 pb-4">
+              <div className={cn(DOC_GUTTER, 'pb-4')}>
                 {toolbar(pager)}
                 {readOnlyBanner}
               </div>

@@ -33,6 +33,8 @@ import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { LongDocumentNotice } from './LongDocumentNotice.jsx';
 import { isLongDocument } from '../../domain/longDocument.js';
+import { DOC_GUTTER } from '../../lib/pageWidth.js';
+import { cn } from '../../lib/utils.js';
 
 // The screen of an open document in every app. It owns the project and
 // document load and renders the breadcrumbs and the tab strip, so a tab switch
@@ -517,7 +519,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         disabled={busy}
         status={doc && app.saveStatus !== false ? <SaveStatus doc={doc} /> : null}
         sticky
-        inset="px-6"
+        inset={DOC_GUTTER}
         actions={
           // Not a tab: history is a drawer, and it keeps whatever tab you are
           // on.
@@ -535,24 +537,24 @@ const DocumentEditor = ({ app, documentClient }) => {
       />
 
       {(pastEntry || writeLock.held) && (
-        <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
+        <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
           <HistoricalBanner entry={pastEntry} loading={history.loadingSnapshot} className="mb-4" />
           {writeLock.held && <RunBanner {...writeLock.held} />}
         </div>
       )}
 
       {app.tabs.long?.includes(tab) && isLongDocument(words) && (
-        <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
+        <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
           <LongDocumentNotice words={words} className="mb-4" />
         </div>
       )}
 
       {(loading || showReconcileSpinner) && (
-        <Loading label={loading ? undefined : 'Checking this document…'} className="px-6" />
+        <Loading label={loading ? undefined : 'Checking this document…'} className={DOC_GUTTER} />
       )}
 
       {!loading && (loadError || !doc || !project) && (
-        <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
+        <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
           <Notice tone="error" icon={null} role="alert">
             {loadError || 'Document or project not found'}
           </Notice>
@@ -565,7 +567,7 @@ const DocumentEditor = ({ app, documentClient }) => {
       {!loading && !reconciling && !loadError && doc && project && (
         // Always this div, its class alone changing with the tab: a
         // wrapper that came and went would remount the tab under it.
-        <div className={wide ? undefined : 'max-w-[1320px] px-6 pb-8'}>
+        <div className={wide ? undefined : cn('max-w-[1320px] pb-8', DOC_GUTTER)}>
           {pastEntry && !onPastTab ? (
             <p className="pt-2 text-sm text-muted-foreground">Not shown at a past state.</p>
           ) : query ? (

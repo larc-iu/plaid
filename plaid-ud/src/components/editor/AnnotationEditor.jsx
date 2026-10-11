@@ -19,6 +19,8 @@ import { usePrecedent } from './hooks/usePrecedent.js';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
+import { cn } from '@ui/lib/utils.js';
+import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { RunBar, RunBarPager } from '@ui/components/shared/RunBar.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
@@ -531,7 +533,7 @@ export const AnnotationEditor = () => {
     <div className="min-h-screen w-full">
       {/* Only the BODY waits here: the breadcrumbs and tab strip are the
           shell's and stay on screen throughout. */}
-      {reconciling && <Loading label="Checking this document…" className="px-6" />}
+      {reconciling && <Loading label="Checking this document…" className={DOC_GUTTER} />}
 
       {!reconciling && !activeDocument && (
         <p className="py-10 text-center text-muted-foreground">Document not found</p>
@@ -539,7 +541,7 @@ export const AnnotationEditor = () => {
 
       {!reconciling && activeDocument && (
         <>
-          <div className="px-6 pb-4">
+          <div className={cn(DOC_GUTTER, 'pb-4')}>
             {toolbar}
             {readOnlyBanner}
           </div>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -211,7 +212,7 @@ const DocumentBody = ({ tab, context }) => {
   // nothing may land on the live document in the window between.
   const readOnly = permissions.isReadOnly || !!pastEntry || !!writeLockHeld;
   // The wide tabs run to the window's edge, and take the chrome's inset.
-  const inset = WIDE_TABS.includes(tab) ? 'px-6' : undefined;
+  const inset = WIDE_TABS.includes(tab) ? DOC_GUTTER : undefined;
 
   return (
     <DocumentProvider

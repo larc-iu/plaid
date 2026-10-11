@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { appName, appRoutes } from '../../lib/uiConfig.js';
-import { LIST_PAGE_WIDTH } from '../../lib/pageWidth.js';
+import { DOC_GUTTER, LIST_PAGE_WIDTH } from '../../lib/pageWidth.js';
 import { cn } from '../../lib/utils.js';
 import { Menu } from 'lucide-react';
 import { PlaidMark } from '../assistant/PlaidMarks.jsx';
@@ -128,7 +128,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                 // On a document the band runs the window's width with the
                 // document's own gutter, so the mark, the breadcrumb and the
                 // title share one left edge.
-                isDocument ? 'w-full px-6' : cn('mx-auto px-4', LIST_PAGE_WIDTH),
+                isDocument ? cn('w-full', DOC_GUTTER) : cn('mx-auto px-4', LIST_PAGE_WIDTH),
               )}
             >
               {/* Two links. The mark is the server's and leads to the root the
