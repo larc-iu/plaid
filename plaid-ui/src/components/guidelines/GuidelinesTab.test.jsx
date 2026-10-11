@@ -141,10 +141,25 @@ describe('the guidelines list', () => {
     await unmount();
   });
 
-  it('says so when the project has no guidelines yet', async () => {
+  it('says so across the tab when the project has no guidelines yet', async () => {
     const client = fakeClient({ list: vi.fn().mockResolvedValue([]) });
     const { container, unmount } = await mount({ client });
-    expect(container.textContent).toContain('No guidelines yet');
+    expect(container.querySelector('[data-testid="empty-state"]')?.textContent).toBe(
+      'No guidelines yet.',
+    );
+    // No list to search, and nothing for a reader to press.
+    expect(container.querySelector('input')).toBeNull();
+    expect(all(container, 'button')).toHaveLength(0);
+    await unmount();
+  });
+
+  it('offers a writer the first guideline from the empty state', async () => {
+    const client = fakeClient({ list: vi.fn().mockResolvedValue([]) });
+    const { container, step, unmount } = await mount({ client, canWrite: true });
+    const labels = all(container, 'button').map((b) => b.textContent.trim());
+    expect(labels).toEqual(['New guideline']);
+    await step(() => all(container, 'button')[0].click());
+    expect(container.querySelector('#guideline-title')).not.toBeNull();
     await unmount();
   });
 });

@@ -103,7 +103,7 @@ export const guidelinesTests = ({
     page,
   }) => {
     await open(page);
-    await page.getByRole('button', { name: 'New', exact: true }).click();
+    await page.getByRole('button', { name: /^New( guideline)?$/ }).click();
 
     const title = titled('Written here');
     await page.locator('#guideline-title').fill(title);
@@ -190,7 +190,7 @@ export const guidelinesTests = ({
     // document someone had just typed to prevent two rows sharing a name.
     await seed({ title: 'Taken', body: 't' });
     await open(page);
-    await page.getByRole('button', { name: 'New', exact: true }).click();
+    await page.getByRole('button', { name: /^New( guideline)?$/ }).click();
     await page.locator('#guideline-title').fill(titled('Taken'));
     await expect(page.locator('#guideline-title-taken')).toHaveText(
       'Another guideline has this title.',

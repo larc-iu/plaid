@@ -306,6 +306,28 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       (g) => g.id !== draft.id && collationKey(g.title) === collationKey(draft.title.trim()),
     );
 
+  // A project with no guidelines has no list to search and nothing to open:
+  // one empty state across the tab, with the way to write the first.
+  if (!loading && !loadError && !editing && entries.length === 0) {
+    return (
+      <div className="rounded-md border">
+        <EmptyState
+          project={project}
+          title="No guidelines yet."
+          className="py-16"
+          action={
+            canWrite && (
+              <Button type="button" size="sm" onClick={startNew}>
+                <Plus className="h-4 w-4" />
+                New guideline
+              </Button>
+            )
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       <div className="flex w-full shrink-0 flex-col overflow-hidden rounded-md border lg:w-80">
@@ -346,15 +368,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
           ) : loadError ? (
             <p className="px-3 py-6 text-center text-sm text-destructive">{loadError}</p>
           ) : paged.pageItems.length === 0 && entries.length === 0 ? (
-            <EmptyState
-              project={project}
-              title={
-                canWrite
-                  ? 'No guidelines yet. Add one to record a convention.'
-                  : 'No guidelines yet.'
-              }
-              className="px-3 py-6"
-            />
+            <EmptyState project={project} title="No guidelines yet." className="px-3 py-6" />
           ) : paged.pageItems.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches.</p>
           ) : (
