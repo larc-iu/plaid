@@ -113,7 +113,7 @@ const Table = ({ c, columns, scroller }) => (
                 className={cn(
                   'px-1.5 align-top leading-5',
                   r.token && 'text-muted-foreground',
-                  r.focus && (r.token ? 'bg-primary/10' : 'bg-primary/15'),
+                  r.focus && (r.token ? 'bg-highlight/50' : 'bg-highlight'),
                   r.focus && j === 0 && 'rounded-l',
                   r.focus && j === columns.length - 1 && 'rounded-r',
                 )}

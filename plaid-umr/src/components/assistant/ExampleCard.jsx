@@ -29,7 +29,7 @@ const Graph = ({ penman, focus }) => {
           <div
             key={i}
             data-cited={cited ? '' : undefined}
-            className={cn('px-1', cited && 'rounded bg-primary/15 font-medium')}
+            className={cn('px-1', cited && 'rounded bg-highlight font-medium')}
           >
             {line}
           </div>
