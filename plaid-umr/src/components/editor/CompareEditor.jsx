@@ -40,10 +40,13 @@ import { humanizeError } from '../../utils/feedback.jsx';
 // The two marks, one class each, shared by the graphs and the legend. Each
 // has an outline at 3:1 or more on the page, and they differ in pattern as
 // well as hue: dashed where the other graph has nothing, solid where it has
-// another concept. Never amber, the contributor's colour.
+// another concept. The hues are two of the cloth's dyes (plaid-ui's
+// domain/dyes.js), indigo and madder, written out because Tailwind reads
+// class names from the source. Never amber, the contributor's colour.
 const MARK_CLASS = {
-  missing: 'rounded bg-sky-100 px-0.5 text-sky-950 outline-dashed outline-1 outline-sky-700',
-  differs: 'rounded bg-rose-100 px-0.5 text-rose-950 outline outline-1 outline-rose-700',
+  missing:
+    'rounded bg-[#43678a]/10 px-0.5 text-foreground outline-dashed outline-1 outline-[#43678a]',
+  differs: 'rounded bg-[#9a4b2c]/10 px-0.5 text-foreground outline outline-1 outline-[#9a4b2c]',
 };
 export const CompareEditor = () => {
   const { projectId, documentId, doc, project, services, writeLockHeld } = useDocumentEditor();
@@ -287,7 +290,7 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
 function Pair({ match, withConcepts = false }) {
   return (
     <span
-      className={`mr-3 inline-block whitespace-nowrap font-mono ${withConcepts ? 'text-rose-900' : ''}`}
+      className={`mr-3 inline-block whitespace-nowrap font-mono ${withConcepts ? 'text-[#9a4b2c]' : ''}`}
       data-pair={match.this}
     >
       {match.this}
