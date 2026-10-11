@@ -13,7 +13,3 @@ export const CATEGORICAL = [
   '#8a6a45', // walnut
   '#6f6a63', // stone
 ];
-
-// The colour of the `i`th kind, cycling.
-export const categorical = (i) =>
-  CATEGORICAL[((i % CATEGORICAL.length) + CATEGORICAL.length) % CATEGORICAL.length];
