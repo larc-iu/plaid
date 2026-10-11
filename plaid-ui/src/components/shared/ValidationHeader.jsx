@@ -1,5 +1,6 @@
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button';
+import { SectionHeader } from './SectionHeader.jsx';
 
 /**
  * The top of a project's Validation tab, the same in every app: the heading,
@@ -17,13 +18,14 @@ import { Button } from '../ui/button';
  * - `className`: merged over the header's own (its bottom margin).
  */
 export const ValidationHeader = ({ description, busy, disabled, onCheck, className }) => (
-  <div className={cn('mb-4 flex items-center justify-between gap-3', className)}>
-    <div>
-      <h2 className="text-2xl font-semibold tracking-tight">Validation</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </div>
-    <Button variant="outline" className="shrink-0" onClick={onCheck} disabled={busy || disabled}>
-      {busy ? 'Checking…' : 'Check again'}
-    </Button>
-  </div>
+  <SectionHeader
+    title="Validation"
+    description={description}
+    className={cn('mb-4', className)}
+    actions={
+      <Button variant="outline" onClick={onCheck} disabled={busy || disabled}>
+        {busy ? 'Checking…' : 'Check again'}
+      </Button>
+    }
+  />
 );

@@ -20,6 +20,7 @@ import {
   grantRoleHints,
   setProjectRoleReporting,
 } from '../../domain/projectRoles.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -126,7 +127,7 @@ export const ProjectAccessScreen = ({
       {/* Add a user (server-side search) */}
       <div>
         <div className="pb-3">
-          <h2 className="text-lg font-semibold">Add a user</h2>
+          <h2 className={TYPE.card}>Add a user</h2>
         </div>
         <UserSearch
           client={client}

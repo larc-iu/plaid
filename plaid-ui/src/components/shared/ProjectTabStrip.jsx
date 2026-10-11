@@ -9,6 +9,8 @@ import { ProjectTartan } from './ProjectTartan.jsx';
 import { useAssistantSubject } from '../assistant/subject.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
+import { TYPE } from '../../lib/typeScale.js';
+import { cn } from '../../lib/utils.js';
 
 /**
  * The breadcrumb and tab row every project-level screen wears, mirroring the
@@ -83,7 +85,7 @@ export const ProjectTabStrip = ({
           a heading that stays with the chrome: an Arabic name reads right to
           left and still starts at the left edge under the breadcrumb. The
           minimum height holds the tabs still while the project loads. */}
-      <h1 className="mb-3 flex min-h-9 items-center gap-3 font-text text-[1.75rem] font-bold leading-tight">
+      <h1 className={cn('mb-3 flex min-h-9 items-center gap-3 font-text', TYPE.page)}>
         <ProjectTartan project={project} size={32} className="shrink-0" />
         <span dir="auto" className="min-w-0 truncate">
           {project?.name}

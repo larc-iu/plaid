@@ -7,6 +7,7 @@ import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { Loading } from './Loading.jsx';
 import { LoadError } from './LoadError.jsx';
 import { PendingCell } from './PendingCell.jsx';
+import { TYPE } from '../../lib/typeScale.js';
 
 /**
  * A number that is still being counted, could not be counted, or is a number.
@@ -100,7 +101,7 @@ export const LinkedListPage = ({
   return (
     <div className={className}>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <h1 className={TYPE.page}>{title}</h1>
         {action}
       </div>
 

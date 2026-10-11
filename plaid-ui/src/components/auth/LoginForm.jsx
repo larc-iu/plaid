@@ -8,6 +8,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { PlaidMark } from '../assistant/PlaidMarks.jsx';
+import { TYPE } from '../../lib/typeScale.js';
 
 /**
  * The sign-in screen. `tagline` is the one line under the app's name, and
@@ -65,7 +66,7 @@ export const LoginForm = ({ tagline, homePath }) => {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <PlaidMark className="mb-1 h-10 w-10" />
-          <CardTitle className="text-2xl">Sign in to {appName()}</CardTitle>
+          <CardTitle className={TYPE.page}>Sign in to {appName()}</CardTitle>
           <CardDescription>{tagline}</CardDescription>
         </CardHeader>
         <CardContent>

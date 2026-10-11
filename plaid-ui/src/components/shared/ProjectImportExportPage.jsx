@@ -27,6 +27,7 @@ import { saveBlob, sanitizeFilename } from '../../lib/download.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { NotSetUpNotice } from './NotSetUpNotice.jsx';
+import { SectionHeader } from './SectionHeader.jsx';
 
 // A drop target with a hidden file input behind it. `dragging` is counted
 // rather than set, because dragging over a child element fires dragleave on the
@@ -394,13 +395,12 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
 
       <Tabs projectId={projectId} project={project} />
 
+      <SectionHeader title="Import and export" />
       <div className="flex flex-col gap-6">
-        <h2 className="text-2xl font-semibold tracking-tight">Import and export</h2>
-
         {canEdit && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">{format.importTitle}</CardTitle>
+              <CardTitle>{format.importTitle}</CardTitle>
             </CardHeader>
             <CardContent>
               {!configured ? (
@@ -547,7 +547,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Export project</CardTitle>
+            <CardTitle>Export project</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">

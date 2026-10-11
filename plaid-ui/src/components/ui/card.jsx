@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { cn } from '../../lib/utils.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 const Card = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('rounded-xl border bg-card text-card-foreground shadow', className)}
+    data-slot="card"
+    className={cn('rounded-lg border bg-card text-card-foreground shadow', className)}
     {...props}
   />
 ));
@@ -16,11 +18,7 @@ const CardHeader = React.forwardRef(({ className, ...props }, ref) => (
 CardHeader.displayName = 'CardHeader';
 
 const CardTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn('font-semibold leading-none tracking-tight', className)}
-    {...props}
-  />
+  <div ref={ref} className={cn(TYPE.card, className)} {...props} />
 ));
 CardTitle.displayName = 'CardTitle';
 

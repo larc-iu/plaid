@@ -67,7 +67,7 @@ export const DeleteProjectCard = ({ project }) => {
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle className="text-lg">Delete</CardTitle>
+        <CardTitle>Delete</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">{consequence}</p>

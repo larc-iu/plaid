@@ -5,6 +5,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { ActivityPanel } from './ActivityPanel.jsx';
 import { Loading } from './Loading.jsx';
+import { SectionHeader } from './SectionHeader.jsx';
 
 // Who has been working on this project, and on what. Maintainers only.
 //
@@ -28,6 +29,7 @@ export const ProjectActivityPage = ({ tabs: Tabs }) => {
   return (
     <div className="w-full">
       <Tabs projectId={projectId} project={project} />
+      <SectionHeader title="Activity" />
       <div className="w-full">
         <ActivityPanel
           client={client}

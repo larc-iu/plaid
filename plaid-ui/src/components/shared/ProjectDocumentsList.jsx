@@ -1,5 +1,6 @@
 import { DocumentTable } from './DocumentTable.jsx';
 import { LoadError } from './LoadError.jsx';
+import { SectionHeader } from './SectionHeader.jsx';
 
 /**
  * A project's Documents tab body in every app: the heading, the app's way to
@@ -24,10 +25,12 @@ export const ProjectDocumentsList = ({
   onRetry,
 }) => (
   <div>
-    <div className="mb-6 flex items-center justify-between">
-      <h2 className="text-2xl font-semibold tracking-tight">Documents</h2>
-      {canEdit && NewDocument && <NewDocument projectId={projectId} documents={documents} />}
-    </div>
+    <SectionHeader
+      title="Documents"
+      actions={
+        canEdit && NewDocument && <NewDocument projectId={projectId} documents={documents} />
+      }
+    />
 
     {error && (
       <LoadError onRetry={onRetry} className="mb-4">

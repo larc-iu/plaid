@@ -237,7 +237,7 @@ export const AssistantComposer = ({
       )}
       <div
         className={cn(
-          'relative mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring',
+          'relative mx-auto flex max-w-3xl items-end gap-2 rounded-lg border bg-background p-2 focus-within:ring-1 focus-within:ring-ring',
           over && 'border-primary ring-1 ring-primary',
         )}
       >

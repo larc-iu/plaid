@@ -100,7 +100,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Keyboard shortcuts</CardTitle>
+        <CardTitle>Keyboard shortcuts</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {groups.map((group) => (

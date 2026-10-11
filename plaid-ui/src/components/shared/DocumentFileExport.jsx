@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, Copy, Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { copyText, saveBlob, sanitizeFilename } from '../../lib/download.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 /**
  * A document's Export tab in plaid-ud and plaid-umr: the document in one
@@ -45,7 +46,7 @@ export const DocumentFileExport = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-xl font-semibold tracking-tight">{heading}</h3>
+      <h3 className={TYPE.section}>{heading}</h3>
 
       {notice}
 

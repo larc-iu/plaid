@@ -14,6 +14,7 @@ import { UserAvatar } from './UserAvatar';
 import { notifyError } from '../../lib/notify.js';
 import { ROLE_RANK, aclMemberIds, roleOf, setProjectRole } from '../../domain/projectRoles.js';
 import { isConfigConflict, storedConfig } from '../../domain/configCells.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 /**
  * Everyone explicitly granted a role on a project, what they may do, and whose
@@ -336,7 +337,7 @@ export const ProjectMembers = ({
   return (
     <div>
       <div className="flex items-center justify-between gap-2 pb-3">
-        <h2 className="text-lg font-semibold">Members</h2>
+        <h2 className={TYPE.card}>Members</h2>
         {headerAction}
       </div>
 

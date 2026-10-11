@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { ProjectSettingsLayout } from './ProjectSettingsLayout.jsx';
+import { SectionHeader } from './SectionHeader.jsx';
 
 const endsWith = (path, slug) => path.endsWith(`/${slug}`);
 
@@ -65,6 +66,7 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   return (
     <>
       <Tabs projectId={projectId} project={current} />
+      <SectionHeader title="Settings" />
       <ProjectSettingsLayout
         sections={sections}
         active={active}

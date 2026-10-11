@@ -11,6 +11,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Loading } from '../shared/Loading.jsx';
+import { TYPE } from '../../lib/typeScale.js';
 
 // Why a code can be dead, in the words the holder needs. The server sends the
 // status because the holder already has the code: there is nothing left to
@@ -132,7 +133,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <CardTitle className="text-2xl">
+          <CardTitle className={TYPE.page}>
             {isReset ? 'Set a new password' : 'Accept your invitation'}
           </CardTitle>
           <CardDescription>{subtitle}</CardDescription>

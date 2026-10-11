@@ -23,7 +23,8 @@ const typeInto = (el, value) => {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 };
 const saves = (root) => all(root, 'button').filter((b) => b.textContent.trim() === 'Save');
-const cards = (root) => all(root, '.rounded-xl').map((c) => c.querySelector('div').textContent);
+const cards = (root) =>
+  all(root, '[data-slot="card"]').map((c) => c.querySelector('div').textContent);
 
 let client;
 let view;
@@ -63,7 +64,7 @@ describe('ProjectGeneralPage', () => {
     await mount({
       language: { saved: '', save: vi.fn(), description: 'The language.' },
       children: (
-        <div className="rounded-xl">
+        <div data-slot="card">
           <div>Tokenizer locale</div>
         </div>
       ),

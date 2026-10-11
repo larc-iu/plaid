@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card.jsx';
 export const ProjectAccessTokens = ({ profileHref }) => (
   <Card>
     <CardHeader>
-      <CardTitle className="text-lg">API tokens</CardTitle>
+      <CardTitle>API tokens</CardTitle>
     </CardHeader>
     <CardContent className="flex flex-col items-start gap-4">
       <p className="text-sm text-muted-foreground">

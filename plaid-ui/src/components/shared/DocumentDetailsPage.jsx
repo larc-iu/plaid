@@ -155,7 +155,7 @@ export const DocumentDetailsPage = ({
     <div className="flex max-w-2xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Details</CardTitle>
+          <CardTitle>Details</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
@@ -200,7 +200,7 @@ export const DocumentDetailsPage = ({
       {!readOnly && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Copy</CardTitle>
+            <CardTitle>Copy</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
@@ -216,7 +216,7 @@ export const DocumentDetailsPage = ({
       {!readOnly && (
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-xl">Delete</CardTitle>
+            <CardTitle>Delete</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">

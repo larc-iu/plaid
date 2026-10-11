@@ -21,6 +21,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { ROW_DELETE_CLASS } from '../../lib/destructive.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { GRANT_ROLES, cap, fmtDate, inviteRevocable } from '../../domain/invites.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 const EMPTY_FORM = { role: 'writer', maxUses: '1', ttlDays: '14', note: '' };
 
@@ -174,7 +175,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Invitation links</h2>
+          <h2 className={TYPE.card}>Invitation links</h2>
           <p className="text-sm text-muted-foreground">
             Links that let someone create an account and join{' '}
             {projectName ? <strong>{projectName}</strong> : 'this project'}. Anyone with a link can

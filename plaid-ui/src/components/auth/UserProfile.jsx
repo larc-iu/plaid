@@ -237,7 +237,7 @@ export const UserProfile = ({ className, children }) => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">User profile</CardTitle>
+          <CardTitle>User profile</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex items-center gap-4">
@@ -376,7 +376,7 @@ export const UserProfile = ({ className, children }) => {
           unlike the session token. They carry the same permissions as you. */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">API tokens</CardTitle>
+          <CardTitle>API tokens</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">

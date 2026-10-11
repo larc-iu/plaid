@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { useFocusReturn } from '../../lib/focusReturn.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -68,7 +69,7 @@ const DialogFooter = ({ className, ...props }) => (
 );
 
 const DialogTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn('text-lg font-semibold', className)} {...props} />
+  <DialogPrimitive.Title ref={ref} className={cn(TYPE.dialog, className)} {...props} />
 ));
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 

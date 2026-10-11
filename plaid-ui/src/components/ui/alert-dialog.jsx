@@ -3,6 +3,7 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import { cn } from '../../lib/utils.js';
 import { buttonVariants } from './button.jsx';
 import { useFocusReturn } from '../../lib/focusReturn.js';
+import { TYPE } from '../../lib/typeScale.js';
 
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -52,11 +53,7 @@ const AlertDialogFooter = ({ className, ...props }) => (
 );
 
 const AlertDialogTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Title
-    ref={ref}
-    className={cn('text-lg font-semibold', className)}
-    {...props}
-  />
+  <AlertDialogPrimitive.Title ref={ref} className={cn(TYPE.dialog, className)} {...props} />
 ));
 AlertDialogTitle.displayName = AlertDialogPrimitive.Title.displayName;
 

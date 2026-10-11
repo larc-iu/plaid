@@ -11,6 +11,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Loading } from './Loading.jsx';
 import { SetupBlocked } from './SetupBlocked.jsx';
+import { TYPE } from '../../lib/typeScale.js';
 
 /**
  * The standalone setup page of plaid-ud and plaid-umr: the app's layers in a
@@ -84,7 +85,7 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
     <div className="mx-auto flex max-w-4xl flex-col gap-6 py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Set up {setup.app} layers</h1>
+          <h1 className={TYPE.page}>Set up {setup.app} layers</h1>
           <p className="text-sm text-muted-foreground">{project.name}</p>
           {info.isConfigured ? (
             <p className="text-sm text-success-foreground">{setup.allSet}</p>
@@ -102,7 +103,7 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">{setup.card.title}</CardTitle>
+            <CardTitle>{setup.card.title}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">{setup.card.body}</p>

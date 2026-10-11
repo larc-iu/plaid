@@ -78,7 +78,7 @@ export const ProjectGeneralPage = ({
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Name</CardTitle>
+          <CardTitle>Name</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex max-w-md items-start gap-2" onSubmit={handleRename}>
@@ -146,7 +146,7 @@ const LanguageCard = ({ onSaved, saved, save, description, note }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Language</CardTitle>
+        <CardTitle>Language</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
@@ -206,7 +206,7 @@ const TartanCard = ({ project, onSaved }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Project plaid</CardTitle>
+        <CardTitle>Project plaid</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -267,7 +267,7 @@ const ResearchCard = ({ project, onSaved }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Research</CardTitle>
+        <CardTitle>Research</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <label className="flex cursor-pointer items-center gap-2 text-sm">

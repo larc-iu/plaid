@@ -138,7 +138,7 @@ function SpotCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">{spot.label}</CardTitle>
+        <CardTitle>{spot.label}</CardTitle>
         <CardDescription>{spot.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -415,7 +415,7 @@ export const ServiceDefaultsSettings = ({
       {unmatched.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Other services</CardTitle>
+            <CardTitle>Other services</CardTitle>
             <CardDescription>Seen on this project, not used by any task here.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
