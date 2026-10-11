@@ -9,7 +9,7 @@ describe('the disclosure', () => {
       <DisclosureNotice text={'Runs on our servers.\nNothing leaves them.'} />,
     );
     const box = view.container.querySelector('[data-testid="assistant-disclosure"]');
-    expect(box.textContent).toContain('From the people running this assistant');
+    expect(box.textContent).toContain('Notice');
     expect(box.textContent).toContain('Runs on our servers.\nNothing leaves them.');
     await view.unmount();
   });

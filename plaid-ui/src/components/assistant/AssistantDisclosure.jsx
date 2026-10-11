@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 // when starting the assistant (`--disclosure`) and it arrives here in the
 // service's `extras.disclosure`, shown in their words and said to be theirs.
 
-const HEADING = 'From the people running this assistant';
+const HEADING = 'Notice';
 
 /** Shown in a conversation with nothing in it yet, above the app's own empty state. */
 export const DisclosureNotice = ({ text }) =>
