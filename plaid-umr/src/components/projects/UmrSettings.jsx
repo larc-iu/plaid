@@ -126,7 +126,7 @@ export const UmrSettings = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Gloss lines</CardTitle>
+        <CardTitle>Gloss lines</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">

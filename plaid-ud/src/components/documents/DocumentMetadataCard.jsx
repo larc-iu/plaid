@@ -15,7 +15,7 @@ export const DocumentMetadataCard = ({ doc, project, readOnly }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Metadata</CardTitle>
+        <CardTitle>Metadata</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">

@@ -388,7 +388,7 @@ export const ProjectCustomization = () => {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-lg">UPOS tags</CardTitle>
+          <CardTitle>UPOS tags</CardTitle>
           {resetButton(() => setUposVocab([...UPOS_TAGS]), 'Reset to universal 17')}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -419,7 +419,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">XPOS tags</CardTitle>
+          <CardTitle>XPOS tags</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
@@ -447,7 +447,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-lg">Dependency relations</CardTitle>
+          <CardTitle>Dependency relations</CardTitle>
           {resetButton(() => setDeprelVocab([...UNIVERSAL_DEPRELS]), 'Reset to universal 37')}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -483,7 +483,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Relation colors</CardTitle>
+          <CardTitle>Relation colors</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
@@ -506,7 +506,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">UPOS colors</CardTitle>
+          <CardTitle>UPOS colors</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
@@ -528,7 +528,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Feature inventory</CardTitle>
+          <CardTitle>Feature inventory</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
@@ -601,7 +601,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Document fields</CardTitle>
+          <CardTitle>Document fields</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
@@ -621,7 +621,7 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Sentence fields</CardTitle>
+          <CardTitle>Sentence fields</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">

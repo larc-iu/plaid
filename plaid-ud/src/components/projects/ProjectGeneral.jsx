@@ -126,7 +126,7 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Tokenizer locale</CardTitle>
+        <CardTitle>Tokenizer locale</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
