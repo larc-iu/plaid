@@ -272,11 +272,7 @@ const DocumentBody = ({ tab, context }) => {
             </div>
           </div>
         )}
-        {tab === 'details' && (
-          <div className="pt-4">
-            <DocumentDetailsPage metadata={DocumentMetadata} context={context} />
-          </div>
-        )}
+        {tab === 'details' && <DocumentDetailsPage metadata={DocumentMetadata} context={context} />}
       </div>
     </DocumentProvider>
   );

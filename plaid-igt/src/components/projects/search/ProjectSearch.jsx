@@ -14,12 +14,12 @@ import {
   SelectGroup,
   SelectLabel,
 } from '@ui/components/ui/select';
-import { cn } from '@ui/lib/utils';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
 import { PatternError } from '@ui/domain/javaRegex.js';
 import { runHitsSearch, runFreqSearch } from './searchRunner.js';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
 
@@ -193,27 +193,16 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             {busy ? 'Searching…' : 'Search'}
           </Button>
         </div>
-        <div className="mt-3 flex items-center gap-1 text-sm">
-          {[
-            ['hits', 'Hits'],
-            ['freq', 'Frequencies'],
-          ].map(([m, label]) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={mode === m}
-              onClick={() => switchMode(m)}
-              className={cn(
-                'rounded-md px-3 py-1 transition-colors',
-                mode === m
-                  ? 'bg-accent text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label="View"
+          className="mt-3"
+          value={mode}
+          onChange={switchMode}
+          options={[
+            { value: 'hits', label: 'Hits' },
+            { value: 'freq', label: 'Frequencies' },
+          ]}
+        />
       </div>
 
       {/* Results */}

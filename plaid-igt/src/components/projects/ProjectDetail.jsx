@@ -281,7 +281,12 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
     body = (
       <>
         <SectionHeader title="Guidelines" />
-        <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />
+        <GuidelinesTab
+          client={client}
+          projectId={projectId}
+          project={project}
+          canWrite={canWrite}
+        />
       </>
     );
   } else if (active === 'export') {

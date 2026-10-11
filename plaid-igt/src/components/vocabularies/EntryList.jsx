@@ -23,6 +23,7 @@ import { humanizeFieldName } from '@/domain/vocabFields';
 import { ANY_FIELD } from '@/domain/vocabItemFilter';
 import { FormLabel } from './FormLabel';
 import { NEW_ID } from './vocabItemsState';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 
 // The left pane: the search box and its scope, the view toggle, the paged
 // rows, and the footer's bulk actions. `list` is a useEntryList; `scope` and
@@ -99,32 +100,29 @@ export const EntryList = ({
             <ListCount shown={filteredItems.length} total={items.length} noun="entry" />
           )}
         </div>
-        <div className="flex items-center gap-1" role="group" aria-label="View">
-          <button
-            type="button"
-            aria-pressed={!treeView}
-            title="Every entry in one list"
-            onClick={() => setTreeView(false)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
-              !treeView && 'bg-accent text-foreground',
-            )}
-          >
-            <List className="h-3.5 w-3.5" /> Flat
-          </button>
-          <button
-            type="button"
-            aria-pressed={treeView}
-            title="Senses under their entry"
-            onClick={() => setTreeView(true)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
-              treeView && 'bg-accent text-foreground',
-            )}
-          >
-            <ListTree className="h-3.5 w-3.5" /> By entry
-          </button>
-        </div>
+        <SegmentedControl
+          label="View"
+          value={treeView ? 'tree' : 'flat'}
+          onChange={(v) => setTreeView(v === 'tree')}
+          options={[
+            {
+              value: 'flat',
+              label: (
+                <>
+                  <List className="h-3.5 w-3.5" /> Flat
+                </>
+              ),
+            },
+            {
+              value: 'tree',
+              label: (
+                <>
+                  <ListTree className="h-3.5 w-3.5" /> By entry
+                </>
+              ),
+            },
+          ]}
+        />
         {emptyField && emptyCount > 0 && (
           <button
             type="button"

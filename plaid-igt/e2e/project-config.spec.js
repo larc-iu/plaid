@@ -256,7 +256,7 @@ test('the project page and its settings are the shared layout', async ({ page })
 
   // A section's parts sit in cards, not between rules.
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
-  await expect(page.locator('.rounded-xl.border').filter({ hasText: 'Orthographies' })).toHaveCount(
+  await expect(page.locator('[data-slot="card"]').filter({ hasText: 'Orthographies' })).toHaveCount(
     1,
   );
 });

@@ -13,7 +13,7 @@ const MorphemeCell = ({ parts, joiners, marked }) =>
   parts.map((part, k) => (
     <Fragment key={k}>
       {k > 0 && (joiners[k - 1] ?? '-')}
-      <span className={cn(marked.has(k + 1) && 'rounded-sm bg-primary/35 px-0.5')}>{part}</span>
+      <span className={cn(marked.has(k + 1) && 'rounded-sm bg-highlight px-0.5')}>{part}</span>
     </Fragment>
   ));
 
@@ -118,7 +118,7 @@ export const ExampleCard = ({ c, projectId }) => {
                         r.kind !== 'surface' && r.kind !== 'morphemes' && 'text-xs',
                         // A word cited whole is filled; one cited for its
                         // morphemes is tinted, with the morphemes filled.
-                        cited && (morphemes ? 'bg-primary/10' : 'bg-primary/15'),
+                        cited && (morphemes ? 'bg-highlight/50' : 'bg-highlight'),
                         cited && i === 0 && 'rounded-t',
                         cited && i === rows.length - 1 && 'rounded-b',
                       )}
