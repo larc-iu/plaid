@@ -156,8 +156,23 @@ describe('markdownToSafeHtml', () => {
       expect(forms("It's glossed 'good' and 12\" long.")).toEqual([]);
     });
 
+    it('sets a bold or italic form inside the quotes apart, and bold alone not', () => {
+      const host = document.createElement('div');
+      host.innerHTML = markdownToSafeHtml(
+        'The word "**хъсан**" and \u00ab*Ваз*\u00bb, but **хъсан** alone and "**3**" not.',
+        { quotedForms: true },
+      );
+      expect([...host.querySelectorAll('.font-text')].map((e) => e.textContent)).toEqual([
+        'хъсан',
+        'Ваз',
+      ]);
+      expect(host.querySelector('strong.font-text')?.textContent).toBe('хъсан');
+      expect(forms('**"хъсан"**')).toEqual(['хъсан']);
+    });
+
     it('is off unless asked for, and still sanitizes', () => {
       expect(markdownToSafeHtml('"a"')).not.toContain('font-text');
+      expect(markdownToSafeHtml('"**a**"')).not.toContain('font-text');
       const host = document.createElement('div');
       host.innerHTML = markdownToSafeHtml('"<img src=x onerror=alert(1)>"', { quotedForms: true });
       expect(host.querySelector('img')).toBeNull();

@@ -57,7 +57,7 @@ export const DeleteProjectCard = ({ project }) => {
 
   const consequence = (
     <>
-      <strong className="text-foreground" dir="auto">
+      <strong className="font-text text-foreground" dir="auto">
         {project.name}
       </strong>{' '}
       and all of its documents, annotations and settings are deleted. This cannot be undone.
@@ -95,12 +95,13 @@ export const DeleteProjectCard = ({ project }) => {
         <div className="flex flex-col gap-1.5 text-foreground">
           <Label htmlFor="delete-project-confirm">
             To confirm, type{' '}
-            <strong dir="auto" className="select-all">
+            <strong dir="auto" className="select-all font-text">
               {project.name}
             </strong>
           </Label>
           <Input
             id="delete-project-confirm"
+            className="font-text"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => {

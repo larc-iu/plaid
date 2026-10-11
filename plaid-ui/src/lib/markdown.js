@@ -117,6 +117,25 @@ const QUOTED_RE =
   /(["\u201c\u00ab\u201e])([^"\u201c\u201d\u00ab\u00bb\u201e\n]{1,200}?)(["\u201d\u00bb\u201c])/gu;
 const CLOSER = { '"': '"', '\u201c': '\u201d', '\u00ab': '\u00bb', '\u201e': '\u201c' };
 const LETTER_RE = /\p{L}/u;
+// An opening mark at the very end of a text node, and its closer at the very
+// start of the next: a quoted form set in bold or italic ("**хъсан**") is
+// split across three nodes.
+const OPEN_AT_END_RE = /["\u201c\u00ab\u201e]$/u;
+const EMPHASIS = new Set(['STRONG', 'EM', 'B', 'I']);
+
+// The bold or italic run that sits whole inside a pair of quotes. Bold alone is
+// not a quotation: a model bolds a form and an English word the same way.
+function setQuotedEmphasis(root) {
+  for (const el of root.querySelectorAll('strong, em, b, i')) {
+    if (!EMPHASIS.has(el.tagName) || el.closest('code, pre, a')) continue;
+    const before = el.previousSibling;
+    const after = el.nextSibling;
+    if (before?.nodeType !== 3 || after?.nodeType !== 3) continue;
+    const open = before.nodeValue.match(OPEN_AT_END_RE)?.[0];
+    if (!open || !after.nodeValue.startsWith(CLOSER[open])) continue;
+    if (LETTER_RE.test(el.textContent)) el.classList.add('font-text');
+  }
+}
 
 // Sets what a reply quotes in the face for language data, and leaves the
 // quote marks and the prose around them in the chrome's. Code, a fenced block
@@ -153,7 +172,8 @@ function setQuotedForms(root) {
  *
  * `quotedForms` sets what the text quotes in double quotes or guillemets in
  * the face for language data (the assistant's replies, where the prose is
- * chrome and a quoted form is data).
+ * chrome and a quoted form is data), bold or italic inside the quotes too.
+ * Bold or italic alone stays in the chrome's face.
  *
  * NOTE: no images. An `<img>` is a fetch to an arbitrary URL every time anyone
  * views the content, which leaks who is reading what — and for the two inputs
@@ -175,6 +195,7 @@ export function markdownToSafeHtml(text, { quotedForms = false } = {}) {
       RETURN_DOM_FRAGMENT: true,
     });
     setQuotedForms(fragment);
+    setQuotedEmphasis(fragment);
     const box = fragment.ownerDocument.createElement('div');
     box.appendChild(fragment);
     return box.innerHTML;
