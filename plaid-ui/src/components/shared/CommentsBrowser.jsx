@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, CornerUpRight } from 'lucide-react';
-import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager } from './list-search.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.jsx';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '../../hooks/usePagedList.js';
@@ -9,6 +8,7 @@ import { useCommentStore } from '../../domain/useCommentStore.js';
 import { threadList, plainText } from '../../domain/commentThreads.js';
 import { detectDirection } from '../../domain/textDirection.js';
 import { CommentThread } from './CommentThread.jsx';
+import { SegmentedControl } from './SegmentedControl.jsx';
 
 // Every thread on one document (or one vocabulary), with the list chrome around
 // it: search, count, sort, Current / On other layers / Outdated, a pager top
@@ -222,41 +222,25 @@ export const CommentsBrowser = ({
             <SelectItem value="position">{positionLabel}</SelectItem>
           </SelectContent>
         </Select>
-        <div className="ml-auto flex items-center gap-1" role="group" aria-label="Which threads">
-          <Button
-            size="sm"
-            variant={filter === 'current' ? 'secondary' : 'ghost'}
-            aria-pressed={filter === 'current'}
-            onClick={() => setFilter('current')}
-          >
-            Current
-            <span className="ml-1 tabular-nums text-muted-foreground">{currentTotal}</span>
-          </Button>
-          {showElsewhere && (
-            <Button
-              size="sm"
-              variant={filter === 'elsewhere' ? 'secondary' : 'ghost'}
-              aria-pressed={filter === 'elsewhere'}
-              onClick={() => setFilter('elsewhere')}
-            >
-              On other layers
-              <span className="ml-1 tabular-nums text-muted-foreground">
-                {list?.elsewhereTotal ?? 0}
-              </span>
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant={filter === 'outdated' ? 'secondary' : 'ghost'}
-            aria-pressed={filter === 'outdated'}
-            onClick={() => setFilter('outdated')}
-          >
-            Outdated
-            <span className="ml-1 tabular-nums text-muted-foreground">
-              {list?.outdatedTotal ?? 0}
-            </span>
-          </Button>
-        </div>
+        <SegmentedControl
+          label="Which threads"
+          value={filter}
+          onChange={setFilter}
+          className="ml-auto"
+          options={[
+            { value: 'current', label: 'Current', count: currentTotal },
+            ...(showElsewhere
+              ? [
+                  {
+                    value: 'elsewhere',
+                    label: 'On other layers',
+                    count: list?.elsewhereTotal ?? 0,
+                  },
+                ]
+              : []),
+            { value: 'outdated', label: 'Outdated', count: list?.outdatedTotal ?? 0 },
+          ]}
+        />
       </div>
       <div className="overflow-hidden rounded-md border bg-card">
         <ListPager {...paged} onPage={paged.setPage} position="top" />

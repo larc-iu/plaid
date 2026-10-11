@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button } from '../ui/button.jsx';
 import { DataTable } from './data-table.jsx';
 import { UserAvatar } from './UserAvatar.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
@@ -8,6 +7,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { AuditFeed } from './AuditFeed.jsx';
 import { textIncludes } from '../../domain/collation.js';
+import { SegmentedControl } from './SegmentedControl.jsx';
 
 // Who has been working, and on what. Two reads: a tally of people, and the
 // feed of what happened. `projectId` scopes both to one project, which is what
@@ -201,19 +201,13 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-1">
-        {WINDOWS.map((w) => (
-          <Button
-            key={w.value}
-            size="sm"
-            variant={range === w.value ? 'secondary' : 'ghost'}
-            aria-pressed={range === w.value}
-            onClick={() => setRange(w.value)}
-          >
-            {w.label}
-          </Button>
-        ))}
-      </div>
+      <SegmentedControl
+        label="Time window"
+        value={range}
+        onChange={setRange}
+        options={WINDOWS}
+        className="self-start"
+      />
 
       <DataTable
         title="Who has been working"
