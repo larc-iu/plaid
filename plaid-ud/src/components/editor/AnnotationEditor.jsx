@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Button } from '@ui/components/ui/button';
 import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
@@ -541,13 +542,25 @@ export const AnnotationEditor = () => {
           </div>
 
           {processedSentences.length === 0 ? (
-            <p className="py-10 text-center text-muted-foreground">
-              {isViewingHistorical
-                ? 'This state has no tokens.'
-                : repairFailed
-                  ? 'The document could not be repaired. Reload the page to try again.'
-                  : 'No sentences. Parse, or tokenize in the Text Editor.'}
-            </p>
+            // One muted line and, where the reader can write, the app's own
+            // outline button to the place that fixes it, as plaid-igt's
+            // Analyze tab draws the same state.
+            <div className="flex flex-col items-center gap-3 py-10">
+              <p className="text-center text-muted-foreground">
+                {isViewingHistorical
+                  ? 'This state has no tokens.'
+                  : repairFailed
+                    ? 'The document could not be repaired. Reload the page to try again.'
+                    : 'No sentences. Parse, or tokenize in the Text Editor.'}
+              </p>
+              {!isViewingHistorical && !repairFailed && !readOnly && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to={`/projects/${projectId}/documents/${documentId}/edit`}>
+                    Go to Text Editor
+                  </Link>
+                </Button>
+              )}
+            </div>
           ) : (
             // The review gestures listen here, above every sentence, because
             // each of them can cross a sentence boundary.
