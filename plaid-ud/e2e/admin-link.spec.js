@@ -11,7 +11,7 @@ test("an admin is offered the server's admin area, in the app that hosts it", as
   await seedAuth(page);
   await page.goto('/#/projects');
 
-  const link = page.getByRole('link', { name: 'Admin' });
+  const link = page.getByRole('link', { name: 'Admin', exact: true });
   await expect(link).toBeVisible({ timeout: 15000 });
 
   // A full page load into the other app, not a router Link: VITE_IGT_URL names
@@ -45,5 +45,5 @@ test('a non-admin is not offered it', async ({ page }) => {
   // As above: something has to be on screen for the link's absence to mean
   // anything. A /#/projects that failed to load satisfied this on its own.
   await expect(page.getByText('Plaid UD').first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
 });

@@ -77,9 +77,10 @@ test('the tab strip stays pinned under the app header with the panel docked', as
   };
   await seedAuth(page);
   await withAssistant(page);
-  // Short, so the fixture's few sentences give the page something to scroll: a
-  // document that fits leaves the strip in flow and never pins it.
-  await page.setViewportSize({ width: 1280, height: 420 });
+  // Short, so the fixture's one sentence gives the page something to scroll: a
+  // document that fits leaves the strip in flow and never pins it. 420 left the
+  // strip 10px short of pinning once the toolbar became the shared RunBar row.
+  await page.setViewportSize({ width: 1280, height: 360 });
   await openDocument(page);
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
   await toggle(page).click();

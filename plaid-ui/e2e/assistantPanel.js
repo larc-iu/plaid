@@ -104,6 +104,19 @@ export const assistantPanelTests = ({
   const { stub, foreign, two, withAssistant, panelOf, toggle, openDocument, contentSelector } =
     harness;
 
+  // Until the dock has finished sliding: two reads of its place agree.
+  const settled = async (dock) => {
+    let last = null;
+    await expect
+      .poll(async () => {
+        const x = (await dock.boundingBox())?.x;
+        const still = x !== undefined && x === last;
+        last = x;
+        return still;
+      })
+      .toBe(true);
+  };
+
   const open = async (page, services = stub) => {
     await seedAuth(page);
     await withAssistant(page, services);
@@ -245,6 +258,9 @@ export const assistantPanelTests = ({
     test('a width survives a reload', async ({ page }) => {
       await open(page);
       await toggle(page).click();
+      // The dock slides in, and a grip measured mid-slide is not where the
+      // mouse finds it a moment later.
+      await settled(panelOf(page));
       const before = (await panelOf(page).boundingBox()).width;
 
       const grip = page.getByRole('separator', { name: 'Resize the assistant' });

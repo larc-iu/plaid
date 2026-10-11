@@ -601,9 +601,9 @@ test.describe('editing', () => {
         );
       for (const f of flagged) expect(f).toEqual({ color: 'rgb(109, 40, 217)', outline: 'solid' });
 
-      // Focus keeps the violet border too, so it shows as a solid blue ring
-      // hugging it, and a problem's ring steps out past that.
-      const ring = 'rgb(36, 99, 235) 0px 0px 0px 2px';
+      // Focus keeps the violet border too, so it shows as a solid ring in the
+      // theme's ring colour hugging it, and a problem's ring steps out past that.
+      const ring = 'rgb(64, 119, 114) 0px 0px 0px 2px';
       await plain.focus();
       await expect(plain).toHaveCSS('box-shadow', ring);
       await expect(plain).toHaveCSS('border-top-color', 'rgb(109, 40, 217)');
@@ -675,7 +675,7 @@ test.describe('editing', () => {
       await expect(block.locator('.umr-node')).toHaveCount(4);
 
       const discard = block.getByRole('button', { name: 'Discard graph' });
-      await expect(discard).toHaveCSS('color', 'rgb(220, 38, 38)');
+      await expect(discard).toHaveCSS('color', 'rgb(186, 28, 28)');
       // Keyboard: the button takes focus and Enter asks.
       await discard.focus();
       await page.keyboard.press('Enter');
