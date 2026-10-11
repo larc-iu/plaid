@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'react-router-dom';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { CrossLinks } from './CrossLinks.jsx';
-import { EditorLegend } from './EditorLegend.jsx';
 import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
@@ -292,11 +291,6 @@ export const UmrCanvas = ({
         activeId={activeId}
         version={doc.dataVersion}
       />
-      {!readOnly && (
-        <div className="px-6 pb-3">
-          <EditorLegend project={doc.project} direction={doc.textDirection} />
-        </div>
-      )}
       <ListPager {...paged} onPage={setPage} position="top" className="mx-6 rounded-md border" />
       {paged.pageItems.map((sentence) => (
         <SentenceBlock

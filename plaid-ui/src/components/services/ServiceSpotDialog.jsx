@@ -15,7 +15,7 @@ import { runHeldNotice } from './runHeld.js';
 // for a parsing service." while `isDiscovering`. `blocked` disables Run with
 // nothing said. `running` defaults to the run's own. `onOpen` runs each time
 // the dialog opens. `closeFirst` closes the dialog before `onRun`, else after
-// it settles.
+// it settles. `size` is the button's (`sm` on an annotation tab's RunBar).
 export function ServiceSpotDialog({
   label,
   icon,
@@ -33,6 +33,7 @@ export function ServiceSpotDialog({
   blocked = false,
   running = run.running,
   closeFirst = true,
+  size,
 }) {
   const [open, setOpen] = useState(false);
   const notice = running ? null : (blockedHint ?? runHeldNotice(writeLock, running));
@@ -53,6 +54,7 @@ export function ServiceSpotDialog({
         }}
         progress={run}
         disabled={disabled}
+        size={size}
       />
 
       <ServiceRunDialog

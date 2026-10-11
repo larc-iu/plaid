@@ -13,6 +13,8 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
 import { DraftDialog } from './services/DraftDialog.jsx';
+import { EditorLegend } from './annotation/EditorLegend.jsx';
+import { RunBar } from '@ui/components/shared/RunBar.jsx';
 
 // The document's annotation page: the frame around the graph editor. The
 // canvas replaces SentenceList below; everything else here (the read-only
@@ -109,16 +111,30 @@ export const AnnotationEditor = () => {
   const canEdit = canEditProject(project, user);
   const readOnly = !canEdit || !!selectedEntry || !!writeLockHeld;
 
-  // A draft rewrites the document, so it is offered only to someone who may
-  // write and only over the live state. History is in the tab strip.
-  const toolbar = canEdit && !selectedEntry && (
-    <div className="flex items-center gap-2">
-      <DraftDialog
-        draft={services.draft}
-        isDiscovering={services.isDiscovering}
-        writeLockHeld={writeLockHeld}
-      />
-    </div>
+  // The run controls, in the RunBar every annotation tab shares: Draft at the
+  // start, the keys and marks at the end. A draft rewrites the document, so it
+  // is offered only to someone who may write and only over the live state.
+  // History is in the tab strip.
+  const hasSentences = (shown?.graph?.sentences?.length ?? 0) > 0;
+  const toolbar = (
+    <RunBar
+      run={
+        canEdit && !selectedEntry ? (
+          <DraftDialog
+            draft={services.draft}
+            isDiscovering={services.isDiscovering}
+            writeLockHeld={writeLockHeld}
+            size="sm"
+          />
+        ) : null
+      }
+      helpLabel="Keys and marks"
+      help={
+        hasSentences && !readOnly ? (
+          <EditorLegend project={shown.project} direction={shown.textDirection} />
+        ) : null
+      }
+    />
   );
 
   // Persistent read-only notice for a reader. A past state says so in the
@@ -163,12 +179,10 @@ export const AnnotationEditor = () => {
 
       {!reconciling && activeDocument && (
         <>
-          {(toolbar || readOnlyBanner) && (
-            <div className="px-6 pb-4">
-              {toolbar}
-              {readOnlyBanner}
-            </div>
-          )}
+          <div className="px-6 pb-4">
+            {toolbar}
+            {readOnlyBanner}
+          </div>
 
           {/* The canvas reads the same `shown` document, so it draws a past
               state as readily as the live one. */}

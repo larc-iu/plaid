@@ -176,7 +176,7 @@ Clicking the chip goes to the next mention in the chain, in this sentence or ano
 
 The official UMR checks run as you edit.
 A sentence's header counts its errors and warnings, and clicking the count lists them.
-A node a check names wears a red mark for an error or a magenta one for a warning, with the message on hover.
+A node a check names wears a red mark for an error or an orange one for a warning, with the message on hover.
 The project's **Validation** tab lists every problem in every document.
 
 == Text changes under an annotation

@@ -20,6 +20,7 @@ import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
+import { RunBar } from '@ui/components/shared/RunBar.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
 import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
@@ -468,22 +469,29 @@ export const AnnotationEditor = () => {
 
   const hasText = !isViewingHistorical && Boolean(activeDocument?.textLayers?.[0]?.text);
 
-  // The run controls. History is in the tab strip, on every tab. Parse is the
-  // same run the Text Editor's button opens, so a parse started there shows
-  // its clock here. It is gated on `canEdit` rather than on `readOnly`, or the
-  // button carrying a run's progress would vanish the moment that run took the
-  // lock. No Assistant button here: the panel is app chrome and its control is
-  // in the header, on every screen. "Ask" under a sentence still opens it,
-  // pointed at that sentence.
-  const toolbar = hasText && canEdit && !selectedEntry && (
-    <div className="flex items-center justify-end gap-3">
-      <ParseDialog
-        parse={services.parse}
-        isDiscovering={services.isDiscovering}
-        writeLockHeld={writeLockHeld}
-        onOpen={services.discoverServices}
-      />
-    </div>
+  // The run controls, in the RunBar every annotation tab shares: Parse at the
+  // start, the gestures and marks at the end. History is in the tab strip, on
+  // every tab. Parse is the same run the Text Editor's button opens, so a
+  // parse started there shows its clock here. It is gated on `canEdit` rather
+  // than on `readOnly`, or the button carrying a run's progress would vanish
+  // the moment that run took the lock. No Assistant button here: the panel is
+  // app chrome and its control is in the header, on every screen. "Ask" under
+  // a sentence still opens it, pointed at that sentence.
+  const parseButton = hasText && canEdit && !selectedEntry && (
+    <ParseDialog
+      parse={services.parse}
+      isDiscovering={services.isDiscovering}
+      writeLockHeld={writeLockHeld}
+      onOpen={services.discoverServices}
+      size="sm"
+    />
+  );
+  const toolbar = (
+    <RunBar
+      run={parseButton || null}
+      helpLabel="Gestures and marks"
+      help={processedSentences.length > 0 && !readOnly ? <EditorLegend project={project} /> : null}
+    />
   );
 
   // Persistent read-only notice for a reader. A past state says so in the
@@ -532,7 +540,6 @@ export const AnnotationEditor = () => {
           <div className="px-6 pb-4">
             {toolbar}
             {readOnlyBanner}
-            {processedSentences.length > 0 && !readOnly && <EditorLegend project={project} />}
             <ListPager
               {...paged}
               onPage={setPage}

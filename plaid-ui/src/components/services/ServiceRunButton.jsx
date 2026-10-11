@@ -27,7 +27,8 @@ export function ServiceRunButton({
     <Button
       variant={variant}
       size={size ?? (iconOnly ? 'icon' : undefined)}
-      className={iconOnly ? 'h-9 w-9' : undefined}
+      // A small one sits beside History, and spaces its icon the same.
+      className={iconOnly ? 'h-9 w-9' : size === 'sm' ? 'gap-1.5' : undefined}
       onClick={onClick}
       disabled={disabled}
       aria-label={iconOnly ? label : undefined}

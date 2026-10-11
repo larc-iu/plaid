@@ -153,45 +153,15 @@
   background: transparent;
 }
 
-/* ---- toolbar (progress / jump / help / save status) ---- */
+/* ---- toolbar: plaid-ui's RunBar row (runBar.js) carries the layout, the
+   run button and the help toggle. What is left here is the island's own. ---- */
 .igt-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 4px 8px;
   margin-bottom: 8px;
-  border-bottom: 1px solid var(--igt-line);
-  flex-wrap: wrap;
-}
-.igt-toolbar__left,
-.igt-toolbar__right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 .igt-toolbar__count {
   font-size: 12px;
   font-weight: 600;
   color: var(--igt-gray-600);
-}
-.igt-toolbar__btn {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--igt-gray-900);
-  background: var(--igt-surface);
-  border: 1px solid var(--igt-gray-300);
-  border-radius: calc(var(--radius) - 2px);
-  padding: 3px 9px;
-  cursor: pointer;
-}
-.igt-toolbar__btn:hover {
-  background: var(--igt-hover);
-}
-.igt-toolbar__btn:focus-visible {
-  outline: 2px solid var(--igt-ring);
-  outline-offset: 1px;
 }
 /* A run outlives its dialog; the button carries the clock until it is done. */
 .igt-toolbar__btn[data-running] {
@@ -200,30 +170,6 @@
 .igt-toolbar__elapsed {
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
-}
-.igt-help-btn {
-  font: inherit;
-  font-weight: 700;
-  line-height: 1;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  color: var(--igt-gray-600);
-  background: var(--igt-gray-100);
-  border: 1px solid var(--igt-gray-200);
-  cursor: pointer;
-}
-.igt-help-btn:hover {
-  background: var(--igt-gray-200);
-}
-.igt-help-btn[aria-expanded='true'] {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  border-color: hsl(var(--primary));
-}
-.igt-help-btn:focus-visible {
-  outline: 2px solid var(--igt-ring);
-  outline-offset: 2px;
 }
 
 /* ---- sentence pager (top = in the toolbar; bottom = its own centered bar) ---- */
@@ -271,14 +217,9 @@
 }
 
 /* ---- help / scope legend ---- */
+/* The box is plaid-ui's HELP_PANEL, as ud's and umr's legends are. */
 .igt-legend {
   margin-bottom: 12px;
-  padding: 10px 12px;
-  background: var(--igt-gray-50);
-  border: 1px solid var(--igt-gray-200);
-  border-radius: var(--radius);
-  font-size: 12px;
-  color: var(--igt-gray-700);
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -292,6 +233,12 @@
 .igt-legend__row > strong {
   flex: 0 0 84px;
   color: var(--igt-gray-900);
+}
+/* A row of one label and one line wraps the line beside the label, inside the
+   panel's reading width, rather than dropping it under the label. */
+.igt-legend__row > strong + span:last-child {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .igt-legend__chip {
   font-size: 11px;

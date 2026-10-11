@@ -68,7 +68,7 @@ test('a rebound shortcut works, shows in the legend, and survives a reload', asy
   await expect(form).toHaveValue(`${before}∅`);
   await page.keyboard.press('Escape'); // put the form back, write nothing
 
-  await page.getByRole('button', { name: 'Keyboard & scope help' }).click();
+  await page.getByRole('button', { name: 'Keys and marks' }).click();
   const legend = page.locator('.igt-legend');
   await expect(legend).toContainText('9 to type a zero morph');
   await expect(legend).toContainText('L to list the rest');

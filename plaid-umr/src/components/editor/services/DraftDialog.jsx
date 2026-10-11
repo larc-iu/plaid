@@ -2,7 +2,7 @@ import { Sparkles } from 'lucide-react';
 import { ServiceSpotDialog } from '@ui/components/services/ServiceSpotDialog.jsx';
 
 // Drafting: the button on the annotation toolbar and the dialog behind it.
-export function DraftDialog({ draft, isDiscovering, writeLockHeld, disabled = false }) {
+export function DraftDialog({ draft, isDiscovering, writeLockHeld, disabled = false, size }) {
   return (
     <ServiceSpotDialog
       label="Draft"
@@ -16,6 +16,7 @@ export function DraftDialog({ draft, isDiscovering, writeLockHeld, disabled = fa
       noun="drafting"
       isDiscovering={isDiscovering}
       disabled={disabled}
+      size={size}
     />
   );
 }

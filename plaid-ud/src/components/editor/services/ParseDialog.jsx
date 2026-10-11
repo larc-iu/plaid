@@ -13,6 +13,7 @@ export function ParseDialog({
   writeLockHeld,
   blockedHint = null,
   onOpen = null,
+  size,
 }) {
   return (
     <ServiceSpotDialog
@@ -28,6 +29,7 @@ export function ParseDialog({
       noun="parsing"
       isDiscovering={isDiscovering}
       onOpen={onOpen}
+      size={size}
     />
   );
 }

@@ -3,8 +3,8 @@ import { readReview } from '@larc-iu/plaid-client';
 import { chordCaps } from '@ui/lib/chords.js';
 import { keys } from '../../../lib/keymap.js';
 
-// The canvas's keys, gestures and marks, behind a `?` disclosure over the
-// sentences, as plaid-ud's EditorLegend is over its grid. Every rebindable key
+// The canvas's keys, gestures and marks, the help of the Annotate tab's
+// RunBar, as plaid-ud's EditorLegend is over its grid. Every rebindable key
 // is printed from the keymap, so a person's own binding is what it shows. Keep
 // it in step with the guide's Keyboard reference.
 
@@ -52,72 +52,62 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
   const reviewsSomeone = review.users.length > 0 || review.roles.length > 0;
 
   return (
-    <details className="group text-xs text-muted-foreground">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 hover:bg-muted [&::-webkit-details-marker]:hidden">
-        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border font-medium">
-          ?
-        </span>
-        <span className="group-open:hidden">Keys and marks</span>
-        <span className="hidden group-open:inline">Hide</span>
-      </summary>
+    <>
+      <Row title="Marks">
+        <span className="plaid-prov--machine">machine-made</span>
+        {' · '}
+        {reviewsSomeone && (
+          <>
+            <span className="plaid-prov--contributed">contributed</span>
+            {' · '}
+          </>
+        )}
+        plain: settled · a dashed grey border: no word · a red ring: an error · an orange ring: a
+        warning
+      </Row>
 
-      <div className="mt-2 max-w-3xl rounded-md border border-border bg-muted/30 px-3 py-2">
-        <Row title="Marks">
-          <span className="plaid-prov--machine">machine-made</span>
-          {' · '}
-          {reviewsSomeone && (
-            <>
-              <span className="plaid-prov--contributed">contributed</span>
-              {' · '}
-            </>
-          )}
-          plain: settled · a dashed grey border: no word · a red ring: an error · a magenta ring: a
-          warning
-        </Row>
+      <Row title="Move">
+        <Kbd>↑</Kbd> parent · <Kbd>↓</Kbd> first child · <Kbd>←</Kbd>
+        <Kbd>→</Kbd> along the row · {k('canvas.nextSentence')} {k('canvas.previousSentence')} next
+        or previous sentence · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> next sentence · <Kbd>⇧</Kbd>+
+        <Kbd>Tab</Kbd> out of the sentence · <Kbd>Esc</Kbd> to leave a mode, close a picker, or
+        unfocus the node
+      </Row>
 
-        <Row title="Move">
-          <Kbd>↑</Kbd> parent · <Kbd>↓</Kbd> first child · <Kbd>←</Kbd>
-          <Kbd>→</Kbd> along the row · {k('canvas.nextSentence')} {k('canvas.previousSentence')}{' '}
-          next or previous sentence · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> next sentence ·{' '}
-          <Kbd>⇧</Kbd>+<Kbd>Tab</Kbd> out of the sentence · <Kbd>Esc</Kbd> to leave a mode, close a
-          picker, or unfocus the node
-        </Row>
+      <Row title="Make">
+        <Kbd>Tab</Kbd> child of the focused node · {k('canvas.newRoot')} node with no parent ·{' '}
+        {k('node.reentrancy')} second parent · drag the grip under a node onto a node, a word or
+        empty space · double-click a word or empty space for a node with no parent
+      </Row>
 
-        <Row title="Make">
-          <Kbd>Tab</Kbd> child of the focused node · {k('canvas.newRoot')} node with no parent ·{' '}
-          {k('node.reentrancy')} second parent · drag the grip under a node onto a node, a word or
-          empty space · double-click a word or empty space for a node with no parent
-        </Row>
+      <Row title="Change">
+        <Kbd>↵</Kbd> concept · {k('node.relation')} relation to the parent · {k('node.attributes')}{' '}
+        attributes · {k('node.variable')} variable · {k('node.anchor')} anchor, by clicking words or
+        typing their numbers · {k('node.move')} to move under another node · {k('node.earlier')}{' '}
+        {k('node.later')} earlier or later among its siblings · {k('node.root')} to make it the root
+        · {k('node.takeEntry')} {k('node.takeEntryAll')} the new concept of a changed vocabulary
+        entry, for the node or every node picked from it
+      </Row>
 
-        <Row title="Change">
-          <Kbd>↵</Kbd> concept · {k('node.relation')} relation to the parent ·{' '}
-          {k('node.attributes')} attributes · {k('node.variable')} variable · {k('node.anchor')}{' '}
-          anchor, by clicking words or typing their numbers · {k('node.move')} to move under another
-          node · {k('node.earlier')} {k('node.later')} earlier or later among its siblings ·{' '}
-          {k('node.root')} to make it the root · {k('node.takeEntry')} {k('node.takeEntryAll')} the
-          new concept of a changed vocabulary entry, for the node or every node picked from it
-        </Row>
+      <Row title="Document">
+        {k('node.coref')} coreference · {k('node.temporal')} temporal · {k('node.modal')} modal ·{' '}
+        {k('node.docRelations')} to change or delete one of the node&rsquo;s document relations
+      </Row>
 
-        <Row title="Document">
-          {k('node.coref')} coreference · {k('node.temporal')} temporal · {k('node.modal')} modal ·{' '}
-          {k('node.docRelations')} to change or delete one of the node&rsquo;s document relations
-        </Row>
+      <Row title="Review">
+        {k('node.confirm')} to accept the node and its relation to its parent. Accept graph and
+        Discard graph in a sentence&rsquo;s header do the whole sentence.
+      </Row>
 
-        <Row title="Review">
-          {k('node.confirm')} to accept the node and its relation to its parent. Accept graph and
-          Discard graph in a sentence&rsquo;s header do the whole sentence.
-        </Row>
+      <Row title="Delete">
+        {k('node.delete')} the relation to the parent, with what only it reached ·{' '}
+        {k('node.deleteNode')} the node and everything under it
+      </Row>
 
-        <Row title="Delete">
-          {k('node.delete')} the relation to the parent, with what only it reached ·{' '}
-          {k('node.deleteNode')} the node and everything under it
-        </Row>
-
-        <Row title="Mouse">
-          Click to focus a node, and double-click one of its parts to edit that part. Right-click or
-          ⋯ to list every action with its key.
-        </Row>
-      </div>
-    </details>
+      <Row title="Mouse">
+        Click to focus a node, and double-click one of its parts to edit that part. Right-click or ⋯
+        to list every action with its key.
+      </Row>
+    </>
   );
 };

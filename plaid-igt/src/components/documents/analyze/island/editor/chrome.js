@@ -1,4 +1,4 @@
-import { html, nothing } from 'lit-html';
+import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { PROV, PROV_STATES, readReview } from '@larc-iu/plaid-client';
 import { readOrthographies, readIgnoredTokens } from '@/domain/igtConfig';
@@ -10,11 +10,38 @@ import { keys } from '@/lib/keymap.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { retryingText } from '@ui/lib/retrying.js';
 import { buttonVariants } from '@ui/components/ui/button.jsx';
+import {
+  RUN_BAR,
+  RUN_BUTTON,
+  HELP_TOGGLE,
+  HELP_MARK,
+  HELP_PANEL,
+} from '@ui/components/shared/runBar.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
 // An action's chord as keycaps, in whatever the person has bound it to.
 const kbd = (id) => keys.caps(id).map((cap, i) => html`${i ? '+' : ''}<kbd>${cap}</kbd>`);
+
+// lucide's Sparkles, the Auto-analyze dialog's own icon, and its spinner while
+// a run is on, as ServiceRunButton draws them in ud and umr.
+const ICON = (body, extra = '') =>
+  html`<svg
+    class="h-4 w-4 ${extra}"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    ${body}
+  </svg>`;
+const SPARKLES = svg`<path
+    d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"
+  /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" />`;
+const SPINNER = svg`<path d="M21 12a9 9 0 1 1-6.219-8.56" />`;
 
 // What the save-status pill says in each state. `offline`: a write or a
 // refetch is being sent again until the server answers.
@@ -166,61 +193,59 @@ export const chrome = {
     >`;
   },
 
+  // The RunBar every annotation tab shares (plaid-ui's runBar.js): the run at
+  // the start, the help toggle at the end, the legend under the row.
   _toolbar(sentences, ctx, pageCount = 1) {
     const nSent = sentences.length;
+    const running = this._autoAnalyzeStatus?.running;
     return html`
-      <div class="igt-toolbar">
-        <div class="igt-toolbar__left">
-          ${pageCount > 1
-            ? this._pager(nSent, pageCount, 'top')
-            : html`<span class="igt-toolbar__count"
-                >${nSent} sentence${nSent === 1 ? '' : 's'}</span
-              >`}
-          ${
-            /* Gated on canAutoAnalyze rather than readOnly: an Auto-analyze run
-                takes the document read-only, and this button is where that
-                run's progress shows and how the dialog is reopened, so it must
-                outlive the lock it caused. */
-            this.canAutoAnalyze
-              ? html`<button
-                  type="button"
-                  class="igt-toolbar__btn"
-                  data-running=${this._autoAnalyzeStatus?.running ? 'true' : nothing}
-                  title=${this._autoAnalyzeStatus?.running
-                    ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
-                    : /* A phrase, like every other button here. The steps it
-                         can run are the dialog's own checkboxes. */
-                      'Analyze the document automatically'}
-                  @click=${(e) => {
-                    e.stopPropagation();
-                    this._openAutoAnalyze();
-                  }}
-                >
-                  Auto-analyze${this._autoAnalyzeStatus?.running
-                    ? html` <span class="igt-toolbar__elapsed"
-                        >${this._autoAnalyzeStatus.label}</span
-                      >`
-                    : nothing}
-                </button>`
-              : nothing
-          }
-        </div>
-        <div class="igt-toolbar__right">
-          <span class="igt-status-mount"></span>
-          <button
-            type="button"
-            class="igt-help-btn"
-            aria-expanded=${this._helpOpen ? 'true' : 'false'}
-            aria-label="Keyboard & scope help"
-            title="Keyboard & scope help"
-            @click=${(e) => {
-              e.stopPropagation();
-              this._toggleHelp();
-            }}
-          >
-            ?
-          </button>
-        </div>
+      <div class="igt-toolbar ${RUN_BAR}">
+        ${
+          /* Gated on canAutoAnalyze rather than readOnly: an Auto-analyze run
+              takes the document read-only, and this button is where that
+              run's progress shows and how the dialog is reopened, so it must
+              outlive the lock it caused. */
+          this.canAutoAnalyze
+            ? html`<button
+                type="button"
+                class="igt-toolbar__btn ${RUN_BUTTON}"
+                data-running=${running ? 'true' : nothing}
+                title=${running
+                  ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
+                  : /* A phrase, like every other button here. The steps it
+                       can run are the dialog's own checkboxes. */
+                    'Analyze the document automatically'}
+                @click=${(e) => {
+                  e.stopPropagation();
+                  this._openAutoAnalyze();
+                }}
+              >
+                ${running ? ICON(SPINNER, 'animate-spin') : ICON(SPARKLES)}
+                Auto-analyze${running
+                  ? html` <span class="igt-toolbar__elapsed"
+                      >${this._autoAnalyzeStatus.label}</span
+                    >`
+                  : nothing}
+              </button>`
+            : nothing
+        }
+        ${pageCount > 1
+          ? this._pager(nSent, pageCount, 'top')
+          : html`<span class="igt-toolbar__count"
+              >${nSent} sentence${nSent === 1 ? '' : 's'}</span
+            >`}
+        <span class="igt-status-mount ms-auto"></span>
+        <button
+          type="button"
+          class="igt-help-btn ${HELP_TOGGLE}"
+          aria-expanded=${this._helpOpen ? 'true' : 'false'}
+          @click=${(e) => {
+            e.stopPropagation();
+            this._toggleHelp();
+          }}
+        >
+          <span aria-hidden="true" class=${HELP_MARK}>?</span>Keys and marks
+        </button>
       </div>
     `;
   },
@@ -263,7 +288,7 @@ export const chrome = {
 
   _legend(ctx) {
     return html`
-      <div class="igt-legend">
+      <div class="igt-legend ${HELP_PANEL}">
         <div class="igt-legend__row">
           <strong>Scopes</strong>
           <span class="igt-legend__chip igt-legend__chip--orth">Orthography</span>

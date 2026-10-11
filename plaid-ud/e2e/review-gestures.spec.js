@@ -229,12 +229,15 @@ test('the legend names the gestures, and shows amber only where work is reviewed
   page,
 }) => {
   await openAnnotate(page);
-  const legend = page.locator('details', { hasText: 'Gestures and marks' });
-  await expect(legend).toBeVisible();
+  // The RunBar's help toggle, and the panel it opens under the row.
+  const toggle = page.getByRole('button', { name: 'Gestures and marks' });
+  await expect(toggle).toBeVisible();
+  const legend = page.locator(`[id="${await toggle.getAttribute('aria-controls')}"]`);
   // Closed until asked for: the tip line it replaced was always on screen.
-  await expect(legend.getByText('to accept a word and move to the next')).toBeHidden();
+  await expect(page.getByText('to accept a word and move to the next')).toHaveCount(0);
 
-  await legend.locator('summary').click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(legend.getByText('to accept a word and move to the next')).toBeVisible();
   await expect(legend.getByText('machine-made')).toBeVisible();
   // This project reviews nobody, so there is no such thing as contributed work
@@ -249,7 +252,7 @@ test('the legend names the gestures, and shows amber only where work is reviewed
   await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
     timeout: 15000,
   });
-  await page.locator('details', { hasText: 'Gestures and marks' }).locator('summary').click();
+  await page.getByRole('button', { name: 'Gestures and marks' }).click();
   await expect(page.getByText('contributed', { exact: true })).toBeVisible();
 
   await S.client.projects.setConfig(S.projectId, 'plaid', 'review', { users: [] });
