@@ -65,7 +65,8 @@
 /* The theme. The mark is a slate ground with oxblood and sage bands and a
    bone overcheck (PlaidMarks.jsx), and the chrome takes its neutrals from
    that cloth: a bone page, white cards lifted off it, warm grey rules, and
-   slate ink for the primary. Blue is left to the annotation surfaces, where
+   slate ink for text. The primary is the project plaids' teal dye, deepened
+   for white text. Blue is left to the annotation surfaces, where
    it means word scope or selection. Oxblood and sage are for the brand's own
    surfaces only: oxblood on a button would read as destructive, and sage as
    the sentence scope. */
@@ -76,7 +77,7 @@
   --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
-  --primary: 217 33% 17%;
+  --primary: 174 37% 26%;
   --primary-foreground: 40 23% 97%;
   --secondary: 40 14% 93%;
   --secondary-foreground: 217 33% 17%;
@@ -90,7 +91,7 @@
   --destructive-foreground: 210 40% 98%;
   --border: 30 8% 88%;
   --input: 30 8% 84%;
-  --ring: 217 33% 35%;
+  --ring: 174 30% 36%;
   --radius: 0.5rem;
 
   /* The mark's four colours, for the brand's own surfaces. */
@@ -109,27 +110,6 @@
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-}
-
-/* The selvedge: the cloth's colours as a thin woven edge along the top of
-   the app header. Drawn over the header's own box, so the header's height
-   (`--plaid-sticky-top`) does not change. The period is the mark's: oxblood,
-   slate, sage, slate, a bone thread. */
-.plaid-selvedge::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--plaid-oxblood) 0 18px,
-    var(--plaid-slate) 18px 22px,
-    var(--plaid-sage) 22px 30px,
-    var(--plaid-slate) 30px 34px,
-    var(--plaid-bone) 34px 35px,
-    var(--plaid-slate) 35px 40px
-  );
-  pointer-events: none;
 }
 
 /* Language data, where an app draws it outside a surface of its own. */

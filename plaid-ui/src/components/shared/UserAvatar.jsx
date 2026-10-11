@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.jsx';
 import { cn } from '../../lib/utils.js';
 import { initials } from '../../lib/initials.js';
+import { personDye } from '../../domain/projectTartan.js';
 import { useSignInAgain } from '../../lib/signInAgain.js';
 
 // The last URL each client resolved for a user and hash. An avatar that
@@ -105,7 +106,10 @@ export function UserAvatar({
       )}
       {/* The initials do not scale with the avatar on their own, so anything
           much larger than the default needs to say so. */}
-      <AvatarFallback className={cn('text-xs', fallbackClassName)}>
+      <AvatarFallback
+        className={cn('text-xs', fallbackClassName)}
+        style={userId ? { backgroundColor: personDye(userId), color: '#fff' } : undefined}
+      >
         {initials(displayName)}
       </AvatarFallback>
     </Avatar>

@@ -56,3 +56,13 @@ describe('showsTartan', () => {
     expect(showsTartan(null)).toBe(false);
   });
 });
+
+describe('personDye', () => {
+  it('gives a person the same colour every time, and people several between them', async () => {
+    const { personDye } = await import('./projectTartan.js');
+    expect(personDye('ana@example.org')).toBe(personDye('ana@example.org'));
+    const seen = new Set(Array.from({ length: 40 }, (_, i) => personDye(`user${i}@example.org`)));
+    expect(seen.size).toBeGreaterThan(3);
+    for (const c of seen) expect(c).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});

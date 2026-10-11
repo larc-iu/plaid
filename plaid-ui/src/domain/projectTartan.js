@@ -134,4 +134,11 @@ export const tartanRects = (id, size) => {
  * settings turned it off (`config.plaid.tartan` false), and a project not yet
  * loaded does not, so a project that has it off never shows it for a moment.
  */
+// A person's own colour, for the initials of a user with no picture: a dye
+// from the same cloth, picked by a hash of the user's id, so the same person
+// wears the same colour everywhere. Only dyes white initials read on, and no
+// grey.
+const PERSON_DYES = ['#43678a', '#9a4b2c', '#6b6d34', '#8a6a45', '#4f7a55', '#264b47'];
+export const personDye = (id) => PERSON_DYES[fnv(String(id)) % PERSON_DYES.length];
+
 export const showsTartan = (project) => !!project?.id && project.config?.plaid?.tartan !== false;
