@@ -67,7 +67,7 @@ export const SearchResults = ({
 
       {byDoc.map(([docId, sentences]) => (
         <div key={docId} className="overflow-hidden rounded-md border">
-          <div dir="auto" className="truncate border-b px-4 py-2 text-sm font-semibold">
+          <div dir="auto" className="truncate border-b px-4 py-2 font-text text-sm font-semibold">
             {docName(docId) || docId}
           </div>
           <div className="flex flex-col">

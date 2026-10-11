@@ -31,7 +31,7 @@ export const QuickSearch = ({ onSearch, disabled }) => {
     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
       <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
       <Select value={field} onValueChange={setField} disabled={disabled}>
-        <SelectTrigger className="h-8 w-44" aria-label="Which field">
+        <SelectTrigger className="w-44" aria-label="Which field">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -43,7 +43,7 @@ export const QuickSearch = ({ onSearch, disabled }) => {
         </SelectContent>
       </Select>
       <Select value={match} onValueChange={setMatch} disabled={disabled}>
-        <SelectTrigger className="h-8 w-28" aria-label="How to match">
+        <SelectTrigger className="w-28" aria-label="How to match">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -55,7 +55,7 @@ export const QuickSearch = ({ onSearch, disabled }) => {
         </SelectContent>
       </Select>
       <Input
-        className="h-8 w-56"
+        className="w-56"
         placeholder="What to look for"
         aria-label="What to look for"
         spellCheck={false}
@@ -69,7 +69,7 @@ export const QuickSearch = ({ onSearch, disabled }) => {
           }
         }}
       />
-      <Button size="sm" disabled={disabled || !text.trim()} onClick={submit}>
+      <Button disabled={disabled || !text.trim()} onClick={submit}>
         Search
       </Button>
     </div>
