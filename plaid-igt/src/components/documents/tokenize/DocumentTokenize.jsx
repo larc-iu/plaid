@@ -272,14 +272,17 @@ export function DocumentTokenize() {
 
           {/* Sentence rendering */}
           <div className="sentence-container">
-            {!hasSentencePartition && !readOnly && (
+            {/* No text is an empty document, said in one muted line as every
+                empty state is. Text without sentences is a fault, so a warning. */}
+            {!hasSentencePartition && !readOnly && !text?.body && (
+              <p className="px-4 py-10 text-center font-sans text-sm text-muted-foreground">
+                No text. Add it on the Baseline tab.
+              </p>
+            )}
+            {!hasSentencePartition && !readOnly && text?.body && (
               <Notice tone="warning" icon={Info} className="m-4 font-sans">
-                <p className="font-medium">{text?.body ? 'No sentences yet' : 'No text yet'}</p>
-                <p>
-                  {text?.body
-                    ? 'The text has no sentences. Save it again on the Baseline tab.'
-                    : 'Add the text on the Baseline tab first.'}
-                </p>
+                <p className="font-medium">No sentences yet</p>
+                <p>The text has no sentences. Save it again on the Baseline tab.</p>
               </Notice>
             )}
             {sentences.map((sentence, index) => (
