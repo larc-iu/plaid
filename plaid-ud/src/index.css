@@ -9,15 +9,17 @@
   :root {
     /* The Grew query box paints its own syntax colors (see grewSyntax.js),
        which emits an HTML string rather than utility classes, so the palette
-       is named here instead. Tailwind's 700 and 900 steps, to sit alongside
-       the rest of the app, and never violet or amber, which mean a machine's
-       and a contributor's values on every annotation surface. */
-    --grew-keyword: #1d4ed8;
-    --grew-global: #4d7c0f;
-    --grew-string: #0f766e;
-    --grew-number: #be185d;
-    --grew-operator: #0f172a;
-    --grew-punct: #4b5563;
-    --grew-comment: #6b7280;
+       is named here instead. The kinds take the cloth's dyes (plaid-ui's
+       domain/dyes.js: indigo, green, madder, olive, navy) and the quiet ones
+       the theme's muted ink. Never violet or amber, which mean a machine's
+       and a contributor's values on every annotation surface, and never the
+       teal, which is the primary. */
+    --grew-keyword: #43678a;
+    --grew-global: #4f7a55;
+    --grew-string: #9a4b2c;
+    --grew-number: #6b6d34;
+    --grew-operator: #22364f;
+    --grew-punct: hsl(var(--muted-foreground));
+    --grew-comment: hsl(var(--muted-foreground));
   }
 }

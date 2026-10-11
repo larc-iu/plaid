@@ -56,9 +56,10 @@ test('the legend draws its samples with the shared mark classes', async () => {
   assert.doesNotMatch(legend, /decoration-dotted/);
 });
 
-// Violet and amber mean provenance on every annotation surface, so the Grew
-// query box's syntax colours keep clear of both (violet and magenta from 250
-// to 330 degrees, amber and orange from 15 to 50).
+// Violet and amber mean provenance on every annotation surface, so colours
+// for kinds keep clear of both: violet and magenta from 250 to 330 degrees,
+// and a saturated amber or orange from 20 to 50. The cloth's browns are dull
+// beside the contributor's amber, so the amber test asks for saturation too.
 const hue = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   const max = Math.max(r, g, b);
@@ -67,10 +68,18 @@ const hue = (hex) => {
   const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return (h * 60 + 360) % 360;
 };
-// Brown counts with amber here: beside an amber value it reads as one.
 const provenanceHue = (h) => h !== null && ((h >= 250 && h <= 330) || (h >= 5 && h <= 50));
 
-test('the Grew syntax colours use no violet and no amber', async () => {
+const saturation = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+};
+
+// The Grew query box's syntax colours are the cloth's dyes.
+test('the Grew syntax colours are dyes, with no violet and no amber', async () => {
   const appCss = await read('../src/index.css');
   const colours = [...appCss.matchAll(/--grew-([a-z]+):\s*(#[0-9a-f]{6})/gi)];
   assert.ok(colours.length >= 5, 'the Grew palette is found');
@@ -81,24 +90,19 @@ test('the Grew syntax colours use no violet and no amber', async () => {
       !(h >= 250 && h <= 330),
       `--grew-${name} ${hex} (hue ${Math.round(h)}) is not violet`,
     );
-    assert.ok(!(h >= 15 && h <= 50), `--grew-${name} ${hex} (hue ${Math.round(h)}) is not amber`);
+    assert.ok(
+      !(h >= 20 && h <= 50 && saturation(hex) > 0.6),
+      `--grew-${name} ${hex} (hue ${Math.round(h)}) is not amber`,
+    );
+    assert.ok(CATEGORICAL.includes(hex.toLowerCase()), `--grew-${name} ${hex} is one of the dyes`);
   }
 });
 
 // A UPOS value or a DEPREL with no configured colour takes one of the cloth's
 // dyes (plaid-ui's categorical palette). A settled value drawn in violet or
 // amber reads as a machine's or a contributor's, and one in red as an error,
-// so none of the three is among them. The browns of the cloth (walnut,
-// madder) are dull beside the contributor's saturated amber, so the amber
-// test here asks for saturation as well as hue. The teal is left out, since it
-// is the primary that marks the arc being worked on.
-const saturation = (hex) => {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
-};
+// so none of the three is among them. The teal is left out, since it is the
+// primary that marks the arc being worked on.
 test('the auto colours for labels are the shared dyes, with no violet, amber or red', () => {
   const seen = new Set();
   for (let i = 0; i < 2000; i++) seen.add(autoColor(`label-${i}`));
