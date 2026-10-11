@@ -113,9 +113,6 @@ const ProjectTabs = ({ projectId, project }) => {
     { value: 'documents', label: 'Documents', to: tabHref(at, 'documents') },
     { value: 'search', label: 'Search', to: tabHref(at, 'search') },
     { value: 'guidelines', label: 'Guidelines', to: tabHref(at, 'guidelines') },
-    { value: 'bulk', label: 'Bulk Edit', to: tabHref(at, 'bulk'), show: canManage },
-    { value: 'validate', label: 'Validation', to: tabHref(at, 'validate'), show: canManage },
-    { value: 'activity', label: 'Activity', to: tabHref(at, 'activity'), show: canManage },
     // Offered only when an assistant is online. The tab itself still renders
     // when it is the active one, so a link to a past conversation opens
     // whether or not one is running: this hides the invitation, not the
@@ -127,6 +124,9 @@ const ProjectTabs = ({ projectId, project }) => {
       show: assistantAvailable,
       alsoWhenActive: true,
     },
+    { value: 'bulk', label: 'Bulk Edit', to: tabHref(at, 'bulk'), show: canManage },
+    { value: 'validate', label: 'Validation', to: tabHref(at, 'validate'), show: canManage },
+    { value: 'activity', label: 'Activity', to: tabHref(at, 'activity'), show: canManage },
     { value: 'export', label: 'Export', to: `${at}/export` },
     // Entered at its first section. The path drives the panel.
     { value: 'settings', label: 'Settings', to: `${at}/general`, show: canManage },
