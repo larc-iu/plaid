@@ -4,7 +4,15 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { appName, appRoutes } from '../../lib/uiConfig.js';
 import { LIST_PAGE_WIDTH } from '../../lib/pageWidth.js';
 import { cn } from '../../lib/utils.js';
+import { Menu } from 'lucide-react';
 import { PlaidMark } from '../assistant/PlaidMarks.jsx';
+import { Button } from '../ui/button.jsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu.jsx';
 import { UserButton } from './UserButton';
 import { headerItem } from './headerItem.js';
 import { AssistantChrome } from '../assistant/AssistantChrome.jsx';
@@ -136,7 +144,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                 </Link>
               </div>
               {(nav.length > 0 || guideHref) && (
-                <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+                <nav className="hidden min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] sm:flex">
                   {nav.map(({ to, label, match }) => (
                     <Link key={to} to={to} className={headerItem(!!match?.(path))}>
                       {label}
@@ -163,14 +171,52 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                       with the account rather than in the nav. */}
                   {user.isAdmin &&
                     (adminTo ? (
-                      <Link to={adminTo} className={headerItem(path.startsWith(adminTo))}>
+                      <Link
+                        to={adminTo}
+                        className={cn(headerItem(path.startsWith(adminTo)), 'hidden sm:block')}
+                      >
                         Admin
                       </Link>
                     ) : (
-                      <a href={adminUrl()} className={headerItem()}>
+                      <a href={adminUrl()} className={cn(headerItem(), 'hidden sm:block')}>
                         Admin
                       </a>
                     ))}
+                  {/* On a phone the band has room for the name and the account
+                      only, so the nav, the guide and Admin fold into one menu
+                      of the same links. */}
+                  {(nav.length > 0 || guideHref || user.isAdmin) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Menu">
+                          <Menu className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {nav.map(({ to, label }) => (
+                          <DropdownMenuItem key={to} asChild>
+                            <Link to={to}>{label}</Link>
+                          </DropdownMenuItem>
+                        ))}
+                        {guideHref && (
+                          <DropdownMenuItem asChild>
+                            <a href={guideHref} target="_blank" rel="noreferrer">
+                              Guide
+                            </a>
+                          </DropdownMenuItem>
+                        )}
+                        {user.isAdmin && (
+                          <DropdownMenuItem asChild>
+                            {adminTo ? (
+                              <Link to={adminTo}>Admin</Link>
+                            ) : (
+                              <a href={adminUrl()}>Admin</a>
+                            )}
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                   {/* Profile and Logout are both in here. Two bare text buttons
                       beside the name made the account three controls wide and
                       left Logout one stray click from Profile. */}
