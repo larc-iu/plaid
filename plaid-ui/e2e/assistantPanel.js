@@ -181,14 +181,18 @@ export const assistantPanelTests = ({
       // do.
       await open(page);
       await toggle(page).click();
+      // The dock slides in and the page's gutter widens with it: measured
+      // mid-slide, the two can overlap by a fraction of a pixel.
+      await settled(panelOf(page));
       const box = await panelOf(page).boundingBox();
 
-      const overlap = await page.evaluate(
-        ([selector, panelLeft]) =>
-          document.querySelector(selector).getBoundingClientRect().right - panelLeft,
-        [contentSelector, box.x],
-      );
-      expect(overlap).toBeLessThanOrEqual(0);
+      const overlap = () =>
+        page.evaluate(
+          ([selector, panelLeft]) =>
+            document.querySelector(selector).getBoundingClientRect().right - panelLeft,
+          [contentSelector, box.x],
+        );
+      await expect.poll(overlap).toBeLessThanOrEqual(0);
       // And the app header stops short of it too, rather than running
       // underneath.
       const header = await page.locator('header').first().boundingBox();
