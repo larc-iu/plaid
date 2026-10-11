@@ -6,7 +6,7 @@ import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { cn } from '@ui/lib/utils';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { notifySuccess } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAlignmentEditor } from './useAlignmentEditor.js';
@@ -194,26 +194,16 @@ export const TimeAlignmentPopover = ({
             </p>
           </div>
 
-          <div className="inline-flex rounded-md border p-0.5 text-sm">
-            {[
+          <SegmentedControl
+            label="Segment text"
+            value={mode}
+            onChange={handleModeChange}
+            options={[
               { label: 'New text', value: 'new' },
               { label: 'Existing text', value: 'align' },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => handleModeChange(opt.value)}
-                className={cn(
-                  'flex-1 rounded-md px-3 py-1 transition-colors',
-                  mode === opt.value
-                    ? 'bg-accent text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+            ]}
+            className="self-start"
+          />
 
           {mode === 'align' && !canAlign() ? (
             <Notice tone="warning" className="p-3">
