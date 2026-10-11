@@ -136,9 +136,11 @@ body {
   /* Warning and success, beside each app's destructive (Tailwind's
      `warning` and `success`, from the preset). HSL parts like the shadcn
      tokens, so an opacity modifier (`bg-warning/10`) works. The hue is for a
-     tint, a border or an icon, the foreground is the text on that tint. */
-  --warning: 38 92% 50%;
-  --warning-foreground: 22 78% 26%;
+     tint, a border or an icon, the foreground is the text on that tint.
+     Warning is a burnt orange, never amber: amber means a contributor's
+     unreviewed work and nothing else. */
+  --warning: 18 80% 46%;
+  --warning-foreground: 16 70% 28%;
   --success: 142 71% 35%;
   --success-foreground: 144 61% 20%;
   /* Red text on the error tint (red-700, 5.9:1 there), where each app's
@@ -148,8 +150,8 @@ body {
 
 /* The dark pair, for the day an app turns on `.dark`. */
 .dark {
-  --warning: 38 92% 50%;
-  --warning-foreground: 48 96% 89%;
+  --warning: 20 90% 58%;
+  --warning-foreground: 28 90% 88%;
   --success: 142 69% 45%;
   --success-foreground: 141 84% 93%;
   --destructive-strong: 0 94% 82%;
