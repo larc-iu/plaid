@@ -102,8 +102,8 @@ export function MediaHelp() {
         speaker · two segments may overlap in time only when their speakers differ (cross-talk)
       </Row>
       <Row label="Machine">
-        a row marked <span className="text-violet-600">machine</span> was made by a service ·
-        editing or trimming it confirms it
+        a row marked <span className="text-[color:var(--plaid-machine)]">machine</span> was made by
+        a service · editing or trimming it confirms it
       </Row>
     </div>
   );

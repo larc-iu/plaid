@@ -413,7 +413,9 @@ const SegmentRow = memo(function SegmentRow({
           <span
             className={cn(
               'mt-0.5 text-[10px] uppercase tracking-wide',
-              proposed === 'machine' ? 'text-violet-600' : 'text-amber-700',
+              proposed === 'machine'
+                ? 'text-[color:var(--plaid-machine)]'
+                : 'text-[color:var(--plaid-contributed)]',
             )}
           >
             {proposed}
@@ -457,7 +459,7 @@ const SegmentRow = memo(function SegmentRow({
             aria-describedby={conflict ? noteId : undefined}
             className={cn(
               'min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]',
-              conflict && 'border-amber-500 focus-visible:ring-amber-500',
+              conflict && 'border-warning focus-visible:ring-warning',
             )}
             onChange={(e) => {
               editLog.onChange(e);
@@ -490,7 +492,7 @@ const SegmentRow = memo(function SegmentRow({
           {conflict && (
             <ConflictNote
               id={noteId}
-              className="text-xs text-amber-700 dark:text-amber-400"
+              className="text-xs text-warning-foreground"
               typed={conflict.typed}
             />
           )}
@@ -1336,7 +1338,7 @@ export function TranscriptList({
           {unsaved.map((u) => (
             <li
               key={u.id}
-              className="flex items-start gap-2 rounded-md border border-amber-500 px-2 py-1 text-xs text-amber-700 dark:text-amber-400"
+              className="flex items-start gap-2 rounded-md border border-warning px-2 py-1 text-xs text-warning-foreground"
             >
               <span className="min-w-0 flex-1 select-text">
                 Not saved, {formatTime(u.timeBegin)} to {formatTime(u.timeEnd)}:{' '}
