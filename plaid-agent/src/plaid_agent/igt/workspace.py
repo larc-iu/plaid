@@ -154,6 +154,11 @@ class Workspace(BaseWorkspace):
     # offsets, which the word's sentence's fingerprint holds.
     NOT_CONTENT_KEYS = ('text_id',)
 
+    # A model handed a table of entries staged them one by one (2026-10-12
+    # survey).
+    FILE_ROUTES = ('A table of lexicon entries goes in through Bulk Add on the lexicon\'s page, not through a '
+                   'plan. Where it will not go in as it is, give the user a cleaned copy with save_file.')
+
     def __init__(self, client, project: IgtProject, on_progress=None):
         super().__init__(client, project, on_progress)
         self._lexicons: Dict[str, List[dict]] = {}

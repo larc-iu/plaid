@@ -1103,7 +1103,8 @@ class BaseAssistantService(BaseService):
             # The plan an earlier message staged that still waits on its card,
             # which this turn's own plan replaces (see `turn_ending`).
             ws.waiting = waiting_plan(conv['display'])
-            transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
+            transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []),
+                                         ws.FILE_ROUTES)
             # The other projects the user added to the conversation, read from their
             # own message and nowhere else, and only those the requester's token
             # reaches (the server scoped it to them). Stamped onto the question when the set

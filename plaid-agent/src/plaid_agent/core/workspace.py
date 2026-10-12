@@ -102,6 +102,9 @@ class BaseWorkspace:
     # could have made. Every kind the app declares is named here, which a test
     # holds each app to, so a new kind has to answer.
     REPLACES: Dict[str, Any] = {}
+    # The app's sentence in the note on an attached file saying which file
+    # goes in through which of its own screens (``filetools.note``).
+    FILE_ROUTES = ''
 
     def __init__(self, client, project, on_progress=None):
         self.client = client

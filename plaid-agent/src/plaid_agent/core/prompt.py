@@ -44,7 +44,9 @@ FIND_FIRST = '''- For bulk edits, first find every affected {subject}, then plan
 are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning. \
 That includes ONE thing the user names ({one}) when more than one matches where they point, or when nothing \
 says where (no sentence named): ask which one, list the candidates with their references, and plan nothing. \
-Do not pick one yourself, and do not change them all unless the user said all.'''
+Do not pick one yourself, and do not change them all unless the user said all. Where values differ only \
+by convention (dots, spaces, underscores, case), ask which form is the convention before planning, and plan \
+only the fields and levels the user named.'''
 
 STAGE_NOW = '''- Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask \
 the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on \

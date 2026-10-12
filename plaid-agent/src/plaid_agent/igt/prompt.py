@@ -42,6 +42,8 @@ than picking one.
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone; \
 set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a \
 word, never to change a single gloss.
+- When you show examples of a planned change, cite the item it writes: sN.wN.mN for a morpheme's field, sN.wN \
+for a word's.
 - THE BASELINE IS THE USER'S OWN TRANSCRIPTION, not working material. retype_sentence and respell_all rewrite it. \
 Plan either one only when the user asked for a change to the text itself, and never to tidy it for an analysis: \
 its punctuation, capitalization and spacing are theirs, and a convention you know of is not their consent. \
