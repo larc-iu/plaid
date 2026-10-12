@@ -99,8 +99,8 @@ TOOLS = [
     _fn('search',
         'Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, '
         'or a regex). Returns positional references with each hit\'s word line and sentence. Scans every '
-        'document unless one is named. (For items LACKING a value use worklist; for aligned context use concordance; '
-        'for every value a field holds, with counts, use frequency_list rather than one search per value.)',
+        'document unless one is named. (For items LACKING a value use worklist; for aligned context use concordance.) '
+        'Every value a field holds, with counts, is frequency_list\'s job, not one search per value.',
         {'pattern': {'type': 'string'},
          'where': {'type': 'string', 'description': '"baseline" (word forms, default), "morpheme" (morpheme forms), '
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
