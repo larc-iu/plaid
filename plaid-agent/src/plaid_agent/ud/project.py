@@ -802,6 +802,17 @@ def columns_of(s: Sentence) -> Tuple[str, ...]:
     return ALL_COLUMNS if s.has_enhanced else COLUMNS
 
 
+#: Characters that would break a CoNLL-U row, as a read prints them. A token
+#: whose text held two lines printed as two rows (2026-10-12 survey).
+_BREAKS = str.maketrans({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
+
+
+def visible(value: str) -> str:
+    """``value`` with its line breaks and tabs as visible escapes, so a row
+    stays one line."""
+    return value.translate(_BREAKS)
+
+
 def _rows(s: Sentence) -> List[List[str]]:
     """One CoNLL-U-shaped row per surface token and per word, in reading order.
     A multi-word token gets its range line first, with empty annotation columns,
@@ -822,7 +833,7 @@ def _rows(s: Sentence) -> List[List[str]]:
             if s.has_enhanced:
                 row.append(deps_of(w))
             rows.append(row)
-    return rows
+    return [[visible(c) for c in r] for r in rows]
 
 
 #: The line a read prints the stored ``sent_id`` under, beside the positional
@@ -878,7 +889,7 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
         stored = s.metadata.get('sent_id')
         if isinstance(stored, str) and stored.strip():
             out.append(f'# {STORED_SENT_ID} = {stored.strip()}')
-        out.append(f'# text = {s.text}')
+        out.append(f'# text = {visible(s.text)}')
         for k in sorted(s.metadata):
             if k not in ('sent_id', 'text') and isinstance(s.metadata[k], str) and s.metadata[k]:
                 out.append(f'# {k} = {s.metadata[k]}')

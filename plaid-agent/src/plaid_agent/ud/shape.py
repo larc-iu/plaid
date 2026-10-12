@@ -26,7 +26,7 @@ from typing import Any, Dict, List
 
 
 from ..core.bidi import qv
-from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, word_ref
+from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, visible, word_ref
 from .tools import ToolError, Workspace, resolve_in
 
 
@@ -59,6 +59,13 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
                         + ' + '.join(f'"{f}"' for f in clean) + '.')
     if len(clean) == len(token.words):
         return _respell(ws, doc, sentence, token, clean)
+    if len(clean) > 1 and any(c.isspace() for c in token.surface):
+        # Ten words for a token whose text held two lines, where the user
+        # wanted ten tokens (2026-10-12 survey).
+        raise ToolError(f'"{visible(token.surface)}" in s{sentence.index} holds whitespace, so this would make '
+                        f'it ONE multi-word token of {len(clean)} words, not {len(clean)} tokens. Nothing was '
+                        'planned. Tokens are split in the Text Editor (Edit text under the sentence), which the '
+                        'user does.')
 
     annotated = sum(1 for w in token.words for f in ('lemma', 'upos', 'xpos', 'features')
                     if w.value(f))
