@@ -748,8 +748,9 @@ def q_consistency(ws: Workspace, f):
 # --- check_lexicon --------------------------------------------------------------------
 
 def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
-    """(uses, use_docs, corpus_gloss, gloss_items, stale) for check_lexicon,
-    from grouped queries over the links of the given lexicons."""
+    """(uses, use_docs, corpus_gloss, gloss_items, stale, stale_docs) for
+    check_lexicon, from grouped queries over the links of the given lexicons.
+    ``stale_docs`` is a document holding each stale pair."""
     from .stats import _note_stale
     c = ws.corpus
     c.forget_clipping()
@@ -760,6 +761,7 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
     corpus_gloss: Dict[str, Counter] = defaultdict(Counter)
     gloss_items: Dict[str, set] = defaultdict(set)
     stale: Counter = Counter()
+    stale_docs: Dict[tuple, str] = {}
     levels = [('?t', c.word('?t'), gw, ['?t.value'])]
     if c.M:
         levels.append(('?t', c.morph('?t'), gm, ['?t.metadata.form', '?t.value']))
@@ -783,17 +785,21 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
         # as the editor shows it.
         per_link: Dict[str, tuple] = {}
         item_links = [['vocab', '?v', {'layer': v['id']}], ['link-item', '?l', '?v'], ['link-token', '?l', '?t']]
-        for iid, lid, value, begin, _n in c.group(item_links + [c.word('?t')], ['?v', '?l', '?t.value', '?t.begin']):
+        for iid, lid, value, begin, doc, _n in c.group(item_links + [c.word('?t')],
+                                                       ['?v', '?l', '?t.value', '?t.begin', '?t.doc']):
             if iid in items and value is not None and not c.ignored(value):
-                per_link.setdefault(lid, (iid, []))[1].append((begin, value))
+                per_link.setdefault(lid, (iid, [], doc))[1].append((begin, value))
         if c.M:
-            for iid, lid, form, value, _n in c.group(item_links + [c.morph('?t')], ['?v', '?l', '?t.metadata.form', '?t.value']):
+            for iid, lid, form, value, doc, _n in c.group(item_links + [c.morph('?t')],
+                                                          ['?v', '?l', '?t.metadata.form', '?t.value', '?t.doc']):
                 raw = form if form not in (None, '') else (value or '')
                 if iid in items and raw and not c.ignored(value):
-                    per_link.setdefault(lid, (iid, []))[1].append((0, raw))
-        for iid, parts in per_link.values():
-            _note_stale(stale, items[iid], ' '.join(f for _b, f in sorted(parts)))
-    return uses, use_docs, corpus_gloss, gloss_items, stale
+                    per_link.setdefault(lid, (iid, [], doc))[1].append((0, raw))
+        for iid, parts, doc in per_link.values():
+            key = _note_stale(stale, items[iid], ' '.join(f for _b, f in sorted(parts)))
+            if key:
+                stale_docs.setdefault(key, doc)
+    return uses, use_docs, corpus_gloss, gloss_items, stale, stale_docs
 
 
 # --- sequence_search ----------------------------------------------------------------

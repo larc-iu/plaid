@@ -235,7 +235,7 @@ def test_multi_word_expressions_and_review(review_proj):
     for args in ({}, {'section': 'stale'}, {'section': 'unused'}):
         same(proj, 'check_lexicon', args)
     out = same(proj, 'check_lexicon', {'section': 'stale'})
-    assert '1 links whose form no longer contains the entry form: gam akuna → "zzz yyy"' in out
+    assert '1 links whose form no longer contains the entry form: text "gam akuna" linked to entry "zzz yyy"' in out
     assert 'Linked from 2 words and 0 morphemes (1 multi-word expression)' in same(proj, 'lexicon_entry', {'entry_form': 'gam akuna'})
     for args in ({'kind': 'unlinked', 'level': 'word'}, {'kind': 'unverified'}, {'kind': 'contributed'},
                  {'kind': 'contributed', 'user': ANN}, {'kind': 'contributed', 'user': 'nobody@x.com'}):

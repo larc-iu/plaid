@@ -261,14 +261,17 @@ def _strip_affix(form: str) -> str:
     return (form or '').strip('-=~ ').casefold()
 
 
-def _note_stale(stale: Counter, item: dict, form: str) -> None:
+def _note_stale(stale: Counter, item: dict, form: str) -> Optional[tuple]:
     """Count a link as stale when its entry's form is no longer contained in
     the linked form: containment, not equality, since a word may link to its
     stem's entry; a multi-word expression's linked form is its members'
-    surfaces in text order. Keyed by (linked form, entry form)."""
+    surfaces in text order. Keyed by (linked form, entry form), the key
+    returned when it counted."""
     entry = item.get('form') or ''
     if _strip_affix(entry) not in _strip_affix(form):
         stale[(form, entry)] += 1
+        return (form, entry)
+    return None
 
 
 LEXICON_SECTIONS = ('unused', 'fields', 'homographs', 'near', 'glosses', 'spread', 'stale', 'single', 'refs')
@@ -323,7 +326,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         fld = lex_gloss.get(item_vocab.get(it['id']))
         return str((it.get('metadata') or {}).get(fld) or '').strip() if fld else ''
     from .queries import q_lexicon_usage
-    uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
+    uses, use_docs, corpus_gloss, gloss_items, stale, stale_docs = q_lexicon_usage(ws, vocabs, items)
     lines = [f'Lexicon check: {len(items)} entries in {", ".join(v["name"] for v in vocabs)}, {sum(uses.values())} links'
              + (f'; section "{only}"' if only else '; each section capped, ask for one section for the full list') + '.']
 
@@ -437,7 +440,12 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         spread = {g: ids for g, ids in gloss_items.items() if len(ids) > 1}
         listing('corpus glosses linked to several entries', (f'{g} → {", ".join(items[i].get("form") or "" for i in ids)}' for g, ids in spread.items()))
     if want('stale'):
-        shown = [f'{form} → "{entry}"' + (f' ×{n}' if n > 1 else '')
+        # Spelled out which side is which: "he → "se"" was read backwards,
+        # and the model looked up "he" as the entry (2026-10-12 survey).
+        names = ws.corpus.doc_names() if stale else {}
+        shown = [f'text "{form}" linked to entry "{entry}"' + (f' ×{n}' if n > 1 else '')
+                 + (f' (e.g. in "{names.get(stale_docs[(form, entry)], stale_docs[(form, entry)])}")'
+                    if stale_docs.get((form, entry)) and len(names) > 1 else '')
                  for (form, entry), n in sorted(stale.items(), key=lambda kv: (-kv[1], kv[0]))]
         lines.append(f'{sum(stale.values())} links whose form no longer contains the entry form'
                      + (': ' + '; '.join(shown[:cap]) + (' …' if len(shown) > cap else '') if shown else '.'))

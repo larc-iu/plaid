@@ -134,7 +134,16 @@ def test_entry_tools_move_and_delete_the_whole_expression_once():
         {'id': 'vi-stale', 'form': 'zzz yyy'}
     c2._lexicon['items'].append({'id': 'vi-stale', 'form': 'zzz yyy', 'metadata': {'morphType': 'phrase'}})
     out = call_tool(fake_ws(c2), 'check_lexicon', {'section': 'stale'})
-    assert '1 links whose form no longer contains the entry form: gam akuna → "zzz yyy"' in out
+    assert '1 links whose form no longer contains the entry form: text "gam akuna" linked to entry "zzz yyy"' in out
+    # With more than one document, one that holds the pair is named.
+    import copy
+    d2 = copy.deepcopy(c2._documents['d1'])
+    d2['id'], d2['name'] = 'd2', 'Text 2'
+    for link in d2['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links']:
+        link['id'] += '-d2'
+    c2._documents['d2'] = d2
+    out = call_tool(fake_ws(c2), 'check_lexicon', {'section': 'stale'})
+    assert 'text "gam akuna" linked to entry "zzz yyy" ×2 (e.g. in "Text ' in out, out
     assert '2 links' not in out.split('\n')[0] or True
     assert 'Linked from 2 words and 0 morphemes' in call_tool(w, 'lexicon_entry', {'entry_id': PHRASE_ITEM})
     # Members count as linked in the worklist.
