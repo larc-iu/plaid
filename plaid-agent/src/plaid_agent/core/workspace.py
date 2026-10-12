@@ -61,6 +61,19 @@ def loose_name_key(name: str) -> str:
     return re.sub(r' ?: ?', ':', name_key(name))
 
 
+def _ids_in(value: Any, key: Optional[str] = None):
+    """Every id a planned change names: the text under a key ending in
+    ``_id`` or ``_ids``, at any depth."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            yield from _ids_in(v, str(k))
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from _ids_in(v, key)
+    elif isinstance(value, str) and value and key and (key.endswith('_id') or key.endswith('_ids')):
+        yield value
+
+
 class BaseWorkspace:
     """What one turn holds while its tools run.
 
@@ -865,6 +878,39 @@ class BaseWorkspace:
         """The plan's entries as plan_status lists them: as the card will show
         them."""
         return self.ops
+
+    def op_fields(self, op: Dict[str, Any]) -> set:
+        """The names of the fields a planned change writes, as the tools take
+        them, for drop_planned's ``field``: the layer of each value it writes
+        (:meth:`staged_values`, :meth:`value_rules`), a field it names, or the
+        field of the corpus-wide change it stands for. An app adds kinds that
+        name a field some other way."""
+        names = set()
+        for layer_id in [lid for lid, _v in self.staged_values(op)] + [op.get('layer_id')]:
+            if layer_id:
+                name = self.value_rules(layer_id)[0]
+                if name:
+                    names.add(name)
+        args = op.get('args')
+        for v in (op.get('field'), args.get('field') if isinstance(args, dict) else None):
+            if isinstance(v, str) and v:
+                names.add(v)
+        return names
+
+    def op_documents(self, op: Dict[str, Any]) -> set:
+        """The documents a planned change lands in, for drop_planned's
+        ``document``: those it names, else the documents read in this turn
+        that hold an id it names."""
+        out = docs_of_op(op)
+        if op.get('doc'):
+            out.add(op['doc'])
+        if out:
+            return out
+        ids = set(_ids_in(op))
+        for did, doc in self._docs.items():
+            if ids & {doc.id, getattr(doc, 'text_id', None)} or any(i in self.sentence_index(doc) for i in ids):
+                out.add(did)
+        return out
 
     def after_discard(self) -> None:
         """What the app clears with the plan's ops."""

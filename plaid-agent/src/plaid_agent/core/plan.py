@@ -1482,26 +1482,74 @@ def discard_plan(ws) -> str:
     return said
 
 
-def drop_planned(ws, indexes=None) -> str:
-    """Drop some planned changes by their plan_status numbers, keeping the
-    rest. What a dropped change took with it (``ws.after_drop``) is said, and
-    the plan is listed again so its new numbers are in front of the model."""
+def drop_planned(ws, indexes=None, field=None, document=None) -> str:
+    """Drop some planned changes, keeping the rest: by their plan_status
+    numbers, or every one that writes ``field``, lands in ``document``, or
+    both (``ws.op_fields``, ``ws.op_documents``). What a dropped change took
+    with it (``ws.after_drop``) is said, and the plan is listed again so its
+    new numbers are in front of the model."""
     from .args import whole
     from .tools import ToolError
-    if isinstance(indexes, (int, str)):
-        indexes = [indexes]
-    try:
-        drop = {whole(i, 'indexes') for i in (indexes or [])}
-    except (TypeError, ValueError):
-        raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
-    if not drop:
-        raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
-    bad = sorted(i for i in drop if not 1 <= i <= len(ws.ops))
-    if bad:
-        raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
-                        f'{len(ws.ops)} are planned (see plan_status).')
+    kept = 0
+    if field is not None or document is not None:
+        if indexes not in (None, []):
+            raise ToolError('Give indexes, or field and document, not both.')
+        drop, kept = _matching(ws, field, document)
+    else:
+        if isinstance(indexes, (int, str)):
+            indexes = [indexes]
+        try:
+            drop = {whole(i, 'indexes') for i in (indexes or [])}
+        except (TypeError, ValueError):
+            raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
+        if not drop:
+            raise ToolError('Give indexes (the numbers plan_status shows, as a list), or a field or a document.')
+        bad = sorted(i for i in drop if not 1 <= i <= len(ws.ops))
+        if bad:
+            raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
+                            f'{len(ws.ops)} are planned (see plan_status).')
     dropped = [ws.ops[i - 1] for i in sorted(drop)]
     ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
     note = ws.after_drop(dropped)
+    if kept:
+        note += (f' {kept} change{"s" if kept != 1 else ""} that also reach{"" if kept != 1 else "es"} other '
+                 f'documents {"were" if kept != 1 else "was"} kept: drop {"them" if kept != 1 else "it"} by number '
+                 'if they should go.')
     return (f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + note + '\n'
             + plan_status(ws))
+
+
+def _matching(ws, field, document) -> tuple:
+    """The plan_status numbers of the planned changes that write ``field``
+    and land in ``document`` (either may be None), and how many changes
+    matched but also reach other documents, which a document alone does not
+    drop."""
+    from .tools import ToolError
+    if field is not None and (not isinstance(field, str) or not field.strip()):
+        raise ToolError('field must be a field\'s name, as text.')
+    doc_id = ws.resolve_document_id(document) if document is not None else None
+    want = field.strip().casefold() if field is not None else None
+    drop, kept = set(), 0
+    for i, op in enumerate(ws.ops, start=1):
+        if want is not None and want not in {f.casefold() for f in ws.op_fields(op)}:
+            continue
+        if doc_id is not None:
+            docs = ws.op_documents(op)
+            if doc_id not in docs:
+                continue
+            if len(docs) > 1:
+                kept += 1
+                continue
+        drop.add(i)
+    if not drop and not kept:
+        what = ' and'.join(([f' writes {field}'] if field is not None else [])
+                           + ([f' is in "{_doc_name(ws, doc_id)}"'] if doc_id is not None else []))
+        fields = sorted({f for op in ws.ops for f in ws.op_fields(op)}, key=str.casefold)
+        raise ToolError(f'No planned change{what}.'
+                        + (f' The plan writes {", ".join(fields)}.' if field is not None and fields else '')
+                        + ' See plan_status.')
+    return drop, kept
+
+
+def _doc_name(ws, doc_id: str) -> str:
+    return next((d.get('name') or doc_id for d in ws.documents() if d['id'] == doc_id), doc_id)

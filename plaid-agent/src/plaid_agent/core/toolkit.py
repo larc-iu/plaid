@@ -55,8 +55,13 @@ def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = Fal
         'plan_status': fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
         'discard_plan': fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
         'drop_planned': fn(
-            'drop_planned', 'Drop some of the planned changes by their numbers from plan_status. The rest stay.',
-            {'indexes': {'type': 'array', 'items': {'type': 'integer'}}}, ['indexes']),
+            'drop_planned',
+            'Drop some of the planned changes, by their numbers from plan_status, or every change to one field, '
+            'in one document, or both. The rest stay.',
+            {'indexes': {'type': 'array', 'items': {'type': 'integer'}},
+             'field': {'type': 'string', 'description': 'Drop every planned change that writes this field.'},
+             'document': {'type': 'string', 'description': 'Drop every planned change in this document (id or '
+                                                           'exact name).'}}, []),
         'query_help': fn(
             'query_help',
             'The Plaid query language that `query` takes, and this project\'s layer names. Call it once before '
