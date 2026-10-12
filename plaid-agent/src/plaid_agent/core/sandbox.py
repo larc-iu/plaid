@@ -646,6 +646,8 @@ class Tally:
         self.plans = 0
         self.refused = 0
         self.first_refusal = ''
+        # Whether a plan from an earlier message waited unmentioned as the run began.
+        self.waiting_unsaid = False
 
     def wrap(self, api: Dict[str, Callable]) -> Dict[str, Callable]:
         def counted(name, f):
@@ -685,7 +687,15 @@ class Tally:
             first = self.first_refusal if len(self.first_refusal) <= 300 else self.first_refusal[:297] + '...'
             what = (f': {n - self.refused} staged, {self.refused} refused '
                     f'({"the first" if self.refused > 1 else "it"} said: {first})')
-        return f'\n\n{calls}{what}. The plan now holds {held} change{"s" if held != 1 else ""}.'
+        out = f'\n\n{calls}{what}. The plan now holds {held} change{"s" if held != 1 else ""}.'
+        # The note that this turn's plan replaces the one still waiting is said
+        # once, by the first staging, and here that was a plan() call whose
+        # answer the code may never have printed.
+        if self.waiting_unsaid and getattr(ws, 'reported_waiting', False):
+            from .plan import waiting_phrase
+            out += (f' It replaces {waiting_phrase(ws.waiting)}, which the user can no longer approve. '
+                    'Stage those again if they should stay.')
+        return out
 
     def note(self, ws) -> None:
         """The run's notes, in place of whatever the reads it made noted on
@@ -710,6 +720,7 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
     tally = Tally()
+    tally.waiting_unsaid = bool(getattr(ws, 'waiting', None)) and not getattr(ws, 'reported_waiting', False)
     try:
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally)
     except CodeError as e:

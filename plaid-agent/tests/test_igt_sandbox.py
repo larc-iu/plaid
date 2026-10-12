@@ -62,6 +62,18 @@ plan("no_such_tool", x=2)
     assert 'ValueError: later' in out and out.endswith('plan() was called 1 time and staged. The plan now holds 2 changes.')
 
 
+def test_a_run_whose_plan_replaces_a_waiting_one_says_so_once():
+    """The first staging of a turn says it replaces the plan still waiting
+    from an earlier message, and from run_code that staging is a plan() call
+    whose answer the code need not print."""
+    w = fake_ws(FakeClient())
+    w.waiting = {'count': 114, 'summary': 'retag da'}
+    stage = 'plan("set_field", document="Text 1", refs=["s1.w2"], field="Gloss", value="X")'
+    out = call_tool(w, 'run_code', {'code': stage})
+    assert 'It replaces the plan of 114 changes' in out and 'can no longer approve' in out
+    out = call_tool(w, 'run_code', {'code': stage.replace('s1.w2', 's1.w1')})
+    assert 'replaces' not in out
+
 def test_the_helps_say_what_a_query_row_is_and_how_an_entry_field_is_read():
     """Rows are lists, not dicts, ids and entities stop at 1000, and an
     entry's fields are its metadata under the project's own spelling
