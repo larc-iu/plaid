@@ -33,6 +33,7 @@ few hundred characters of the window until something asks for it.
 import csv
 import io
 import json
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from plaid_client.http import PlaidAPIError
@@ -112,6 +113,19 @@ def _delimiter(name: str, text: str) -> str:
         return ','
 
 
+# A header row of Column1 .. ColumnN is what Excel writes over a table it
+# exported without one, and the real header is then the next row. Read with
+# the placeholders as names, the file's own header became row 1 (2026-10-12
+# survey).
+_PLACEHOLDER = re.compile(r'column\s*\d+', re.I)
+PLACEHOLDER_NOTE = ('[its first line, Column1 to ColumnN, is a placeholder header a spreadsheet wrote, so the '
+                    'columns are named by the second line and the rows start after it]')
+
+
+def _placeholders(cells: List[str]) -> bool:
+    return bool(cells) and all(_PLACEHOLDER.fullmatch((c or '').strip()) for c in cells)
+
+
 def read_table(name: str, text: str) -> Optional[Tuple[List[str], List[Dict[str, Any]]]]:
     """``(columns, rows)`` when the file reads as a table, else None.
 
@@ -130,6 +144,8 @@ def read_table(name: str, text: str) -> Optional[Tuple[List[str], List[Dict[str,
     reader = csv.reader(io.StringIO(text, newline=''), delimiter=_delimiter(name, text))
     try:
         header = next(reader)
+        if _placeholders(header):
+            header = next(reader, header)
     except StopIteration:
         return ([], [])
     columns = _name_columns(header)
@@ -245,8 +261,20 @@ class Attachment:
         """The first lines, as they are written in the file. What a person
         opening it would see first, which is also what settles whether the
         columns mean what their names say."""
-        lines = self.text().split('\n')[:rows]
-        return '\n'.join(line[:200] for line in lines)
+        lines = [line[:200] for line in self.text().split('\n')[:rows]]
+        if self.placeholder_header():
+            lines.append(PLACEHOLDER_NOTE)
+        return '\n'.join(lines)
+
+    def placeholder_header(self) -> bool:
+        """Whether this table's first line is a spreadsheet's Column1 ..
+        ColumnN, which :func:`read_table` passed over for the line after it."""
+        table = self.table()
+        if not table or self.name.lower().endswith('.json'):
+            return False
+        first = next(csv.reader(io.StringIO(self.text(), newline=''),
+                                delimiter=_delimiter(self.name, self.text())), [])
+        return _placeholders(first) and table[0] != _name_columns(first)
 
 
 def numbered(name: str, n: int) -> str:

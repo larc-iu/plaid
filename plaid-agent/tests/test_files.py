@@ -363,3 +363,16 @@ def test_a_column_called_extra_keeps_its_own_cells_when_a_row_runs_long():
     columns, rows = read_table('x.csv', 'word,extra\nnis,milk\nhoa,sun,late\n')
     assert rows[0] == {'word': 'nis', 'extra': 'milk'}
     assert rows[1] == {'word': 'hoa', 'extra': 'sun', 'extra (2)': ['late']}
+
+
+def test_a_placeholder_header_a_spreadsheet_wrote_gives_way_to_the_real_one():
+    """Excel writes Column1 .. ColumnN over a table exported without a
+    header, and the file's own header is the next line (2026-10-12 survey)."""
+    text = 'Column1,Column2,Column3\nword,gloss,source\naq\'a,water,EK\nkar,go,EK\n'
+    columns, rows = read_table('words.csv', text)
+    assert columns == ['word', 'gloss', 'source'] and rows[0] == {'word': "aq'a", 'gloss': 'water', 'source': 'EK'}
+    files = attached(('words.csv', text))
+    note = filetools.note(list(files))
+    assert 'a table of 2 rows, columns: word, gloss, source' in note and 'placeholder header' in note
+    assert 'placeholder' not in filetools.note(list(attached(('wordlist.csv', WORDLIST)))), 'a real header stays'
+    assert read_table('one.csv', 'Column1,Column2\n') == (['Column1', 'Column2'], [])
