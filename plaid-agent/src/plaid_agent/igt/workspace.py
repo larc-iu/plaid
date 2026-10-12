@@ -449,6 +449,12 @@ class Workspace(BaseWorkspace):
                 for it in self.lexicon(v):
                     if it['id'] == entry_id:
                         return 'existing', it
+            if entry_id.startswith('new:'):
+                # A model passed the id an earlier message's plan gave a new
+                # entry (2026-10-12 survey).
+                raise ToolError(f'No entry in this plan has id {entry_id}. A new: id names an entry only within '
+                                'the plan that created it. Once that plan is approved, name the entry by its '
+                                'form, with its number if several share it ("gam#2"), as read_lexicon shows it.')
             raise ToolError(f'No lexicon entry with id {entry_id}')
 
         if not form:
@@ -544,6 +550,21 @@ class Workspace(BaseWorkspace):
                 if numbered and numbered.group(1).strip():
                     return self.find_entry(f'{numbered.group(1).strip()}#{numbered.group(2)}', lexicon,
                                            None, gloss)
+            if g:
+                # The form names entries, just none with that value: list them
+                # with their fields, as for several matches. "think" was
+                # refused over a stored "think (II)" with nothing to go on
+                # (2026-10-12 survey).
+                spelled = [(v, it) for v in vocabs
+                           for it in _hits_in(self, v, form, suffix, lambda *_: True, deep=True)]
+                unglossed = [(k, e) for k, e in self.new_entries.items()
+                             if e['form'].lower() == form.lower()
+                             and (not lexicon or e['vocab_id'] == vocabs[0]['id'])]
+                if spelled or unglossed:
+                    raise ToolError('\n'.join(
+                        [f'No entry "{form}" has a field valued "{gloss}". Entries spelled "{form}" (pass '
+                         'entry_id, or entry_gloss as one of them gives it):']
+                        + self.entry_lines(spelled, unglossed)))
             hint = ''
             if suffix is not None and any(self.view(v).tree_has_form(form) for v in vocabs):
                 hint = (f' Headword "{form}" has no sense {suffix}; lexicon_entry shows the senses '
@@ -554,8 +575,15 @@ class Workspace(BaseWorkspace):
                          + (f', and {more} more (read_lexicon lists them)' if more else '') + '.')
             raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
                             + '.' + hint + ' Use read_lexicon to look, or create_entry to add one.')
-        lines = [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one '
-                 f'out), or entry_form as the list shows it:']
+        raise ToolError('\n'.join(
+            [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one '
+             f'out), or entry_form as the list shows it:'] + self.entry_lines(hits, news)))
+
+    def entry_lines(self, hits, news) -> List[str]:
+        """Entries as a refusal lists them to choose from: existing ones
+        ``(lexicon, item)`` with their fields, then this plan's new ones
+        ``(key, entry)``."""
+        lines = []
         for v, it in hits:
             view = self.view(v)
             addr = view.address(it['id'])
@@ -563,7 +591,7 @@ class Workspace(BaseWorkspace):
             lines.append(f'  id={it["id"]}{shown} {entry_line(it, view)} ({v["name"]})')
         for k, e in news:
             lines.append(f'  id={k} {e["form"]} (new in this plan)')
-        raise ToolError('\n'.join(lines))
+        return lines
 
     def spelled_close(self, form: str, vocabs, limit: int = 6) -> Tuple[List[str], int]:
         """``(offered, more)``: the headwords spelled as ``form`` is once affix

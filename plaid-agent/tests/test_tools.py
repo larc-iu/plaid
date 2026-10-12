@@ -377,7 +377,8 @@ def test_entry_gloss_singles_out_a_homograph():
     call_tool(w, 'drop_planned', {'indexes': [1, 2]})
     call_tool(w, 'merge_entries', merge)
     assert w.ops[-1]['kind'] == 'merge_entries' and (w.ops[-1]['keep_id'], w.ops[-1]['remove_id']) == ('vi-gam', 'vi-gam2')
-    assert 'No lexicon entry "gam" with a field valued "boat"' in call_tool(w, 'delete_entry', {'entry_form': 'gam', 'entry_gloss': 'boat'})
+    out = call_tool(w, 'delete_entry', {'entry_form': 'gam', 'entry_gloss': 'boat'})
+    assert 'No entry "gam" has a field valued "boat"' in out and 'id=vi-gam ' in out and 'id=vi-gam2' not in out
 
 
 def test_reads_mark_unverified_machine_material():
