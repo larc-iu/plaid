@@ -32,7 +32,8 @@ def t_project_overview(ws: Workspace) -> str:
 def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_field: Optional[str] = None,
                      value: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> str:
     """:func:`core.tools.list_documents`, also filtered by a document
-    metadata value (an empty value lists the documents lacking it)."""
+    metadata value (an empty value lists the documents lacking it), with the
+    pattern matching metadata values as well as names."""
     docs = None
     if metadata_field:
         name = next((n for n in ws.project.document_metadata if n.lower() == metadata_field.lower()), None)
@@ -43,8 +44,30 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         want = (value or '').casefold()
         docs = [d for d in ws.documents() if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
                 or (not want and not (metas.get(d['id']) or {}).get(name))]
+    lines = document_lines
+    if pattern and ws.project.document_metadata:
+        # The pattern matches a metadata value too, which the line then
+        # shows: a text's abbreviation kept in metadata could not be found by
+        # name (2026-10-12 survey).
+        metas = ws.corpus.document_metadata()
+        match = _matcher(pattern, False)
+        why: Dict[str, List[str]] = {}
+        kept = []
+        for d in (ws.documents() if docs is None else docs):
+            meta = metas.get(d['id']) or {}
+            found = [f'{k}={meta[k]}' for k in ws.project.document_metadata
+                     if meta.get(k) not in (None, '') and match(str(meta[k]))]
+            if match(d.get('name') or ''):
+                kept.append(d)
+            elif found:
+                kept.append(d)
+                why[d['id']] = found
+        docs, pattern = kept, None
+        if why:
+            lines = lambda page: [line + (f'  ({", ".join(why[d["id"]])})' if d['id'] in why else '')  # noqa: E731
+                                  for d, line in zip(page, document_lines(page))]
     limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
-    return documents_page(ws, pattern, limit, offset, docs=docs, lines=document_lines)
+    return documents_page(ws, pattern, limit, offset, docs=docs, lines=lines)
 
 
 #: What a model writes for each kind of ``where`` a read takes besides a

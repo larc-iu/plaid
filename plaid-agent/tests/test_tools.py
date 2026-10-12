@@ -636,6 +636,10 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     out = call_tool(w, 'list_documents', {'metadata_field': 'Date', 'value': '2021', 'limit': 500})
     assert out.startswith('53 documents matching:')
     assert 'No document metadata field "Genre"' in call_tool(w, 'list_documents', {'metadata_field': 'Genre', 'value': 'x'})
+    # A pattern finds a metadata value too, and says which (2026-10-12 survey).
+    out = call_tool(w, 'list_documents', {'pattern': '202', 'limit': 1})
+    assert out.startswith('105 documents matching, showing 1-1:\n  Text 000  id=d0') and '(Date=2021)' in out, out
+    assert '(Date=' not in call_tool(w, 'list_documents', {'pattern': 'Text 10'})
 
 
 def test_parsed_documents_are_cached_across_workspaces_by_version(fresh_document_cache):

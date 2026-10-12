@@ -74,8 +74,9 @@ TOOLS = [
         f'list of documents, the first {OVERVIEW_DOCS} by name (list_documents pages and filters the rest). '
         'Call this first.', {}, []),
     _fn('list_documents',
-        'The documents by name, a page at a time, optionally filtered by a name substring and/or a document metadata '
-        'value (metadata_field + value; an empty value lists documents lacking it).',
+        'The documents by name, a page at a time, optionally filtered by a substring of the name or of any '
+        'document metadata value (pattern), and/or by a whole metadata value (metadata_field + value; an empty '
+        'value lists documents lacking it).',
         {'pattern': {'type': 'string'}, 'metadata_field': {'type': 'string'}, 'value': {'type': 'string'},
          'limit': limit_arg('list_documents', 'Documents to show'),
          'offset': {'type': 'integer'}}, []),
