@@ -191,6 +191,12 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
         shown_all += shown
         matched += len(hits)
     ws.note_read(shown_all, 'entry', of=matched)
+    from .queries import looks_like_regex
+    if pattern and not matched and looks_like_regex(pattern):
+        # "^se$" and "a|b" found nothing and were retried as other regexes
+        # (2026-10-12 survey).
+        lines.append(f'"{pattern}" was read as literal text: pattern is plain text found anywhere in an '
+                     f'entry\'s line.')
     return truncate('\n'.join(lines))
 
 

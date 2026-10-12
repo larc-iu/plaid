@@ -1001,3 +1001,11 @@ def test_concordance_says_how_many_it_shows_when_the_document_budget_stops_it(mo
     assert 'by frequency, among the 2 shown' in out
     out = call_tool(w, 'concordance', {'pattern': 'gam', 'document': 'Text 2'})
     assert out.startswith('2 occurrences of "gam" in morpheme.\n'), out
+
+
+def test_read_lexicon_says_a_regex_looking_pattern_was_literal():
+    w = ws()
+    out = call_tool(w, 'read_lexicon', {'pattern': '^gam$'})
+    assert out.endswith('"^gam$" was read as literal text: pattern is plain text found anywhere in an '
+                        'entry\'s line.'), out
+    assert 'literal' not in call_tool(w, 'read_lexicon', {'pattern': 'gam'})
