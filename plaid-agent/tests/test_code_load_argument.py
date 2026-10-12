@@ -82,7 +82,7 @@ print(n, doc.sentences[0].words[0].ref == doc["sentences"][0]["words"][0]["ref"]
         w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'load(documents()[0]).sentences[0].n'})
         assert out.startswith('Error') and 'no "n" here' in out and "'ref'" in out and "'words'" in out
-        assert 'What load() returns:' in out and 'm["fields"].get("Gloss")' in out
+        assert 'What load() returns:' in out and 'm["fields"].get("Morph Gloss")' in out
         out = call_tool(w, 'run_code', {'code': 'load(documents()[0])["sentences"][0]["words"][0]["text"]'})
         assert 'KeyError' in out and 'What load() returns:' in out
 

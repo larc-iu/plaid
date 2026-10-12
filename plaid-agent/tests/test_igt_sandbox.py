@@ -32,3 +32,12 @@ print(plan("set_field", document="Text 1", refs=["s1.w2"], field="Gloss", value=
     assert out.startswith('4\n') and 'Planned' in out
     assert len(w.ops) == 1
     assert 'load(document)' in call_tool(w, 'code_help', {})
+
+
+def test_the_help_spells_this_projects_fields_and_a_percent_format_is_explained():
+    w = fake_ws(FakeClient())
+    help_text = call_tool(w, 'code_help', {})
+    assert 'spelled as the code must spell them: ' + w.project.field_list() in help_text
+    assert 'm["fields"].get("Morph Gloss")' in help_text
+    out = call_tool(w, 'run_code', {'code': "print('%s' % 'a')"})
+    assert 'f-string or str.format()' in out

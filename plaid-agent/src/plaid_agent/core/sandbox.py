@@ -311,6 +311,8 @@ def _explain(e, shape: str = '') -> str:
                  'documents(), load(), query() and plan().')
     if "'list' object is not an iterator" in text:
         text += '\nA generator expression is a list in this sandbox: write next(iter(...)).'
+    if "unsupported operand type(s) for %: 'str'" in text:
+        text += '\nThis sandbox has no % formatting of strings: write an f-string or str.format().'
     if shape and ('KeyError' in text or 'Its keys:' in text):
         text += '\nWhat load() returns:\n' + shape
     return text

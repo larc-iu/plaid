@@ -5,6 +5,7 @@ The view is plain data: sentences, words and morphemes with their fields by
 display name, orthographies, lexicon links, and the review state of each
 value. Nothing in it is an id the code could write to."""
 
+import json
 from typing import Any, Callable, Dict
 
 from plaid_client.provenance import prov_state
@@ -19,8 +20,21 @@ A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
   s = doc["sentences"][2]       # {"ref": "s3", "text", "fields", "words"}
   w = s["words"][1]             # {"ref": "s3.w2", "surface", "fields", "link", "morphemes", ...}
   m = w["morphemes"][0]         # {"ref": "s3.w2.m1", "form", "type", "fields", "link", "review"}
-  m["fields"].get("Gloss")      # a field by the project's own name, "" when empty
+  {example}  # a field by its exact name, "" when empty
+This project's fields, spelled as the code must spell them: {fields}
 '''
+
+
+def _shape(ws: Workspace) -> str:
+    """The short shape with this project's own field names in it. A model
+    copies the example's name, and .get() on a name the project does not
+    have answers None, so a walk keyed "POS" on a project whose field is
+    "POS (Word)" counted nothing and said nothing (2026-10-12 log)."""
+    project = ws.project
+    m, w = project.gloss_field('Morpheme'), project.gloss_field('Word')
+    example = (f'm["fields"].get({json.dumps(m.name)})' if m
+               else f'w["fields"].get({json.dumps(w.name)})' if w else 'w["fields"].get("Gloss")')
+    return IGT_SHAPE.replace('{example}', example).replace('{fields}', project.field_list())
 
 IGT_HELP = '''
 THE SHAPE load(document) RETURNS:
@@ -104,8 +118,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
-    return sandbox.run_tool(ws, code, api, IGT_SHAPE)
+    return sandbox.run_tool(ws, code, api, _shape(ws))
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(IGT_HELP, filetools.code_help(ws), ws, IGT_SHAPE)
+    return sandbox.help_text(IGT_HELP, filetools.code_help(ws), ws, _shape(ws))
