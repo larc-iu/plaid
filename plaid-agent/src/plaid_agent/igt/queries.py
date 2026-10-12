@@ -99,7 +99,7 @@ def _spread_fetch(c: Corpus, where: List[Any], find: List[str], doc_var: str, li
     rows: List[list] = []
     for did in picked.ids:
         rows += c.entities(where + [['in', f'{doc_var}.doc', [did]]], find,
-                           picked.per_doc * rows_per_hit + 1, [[f'{doc_var}.begin']])
+                           picked.per_doc * rows_per_hit + 1, [[f'{doc_var}.begin']], sample=True)
     return rows, picked.per_doc, picked.documents
 
 
@@ -452,22 +452,22 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
     if where_l == 'baseline':
         where = [c.word('?w', value=spec)]
         total = c.word_count(where, '?w')
-        rows = c.entities(where, ['?w'], limit * 2, [['?w.doc'], ['?w.begin']])
+        rows = c.entities(where, ['?w'], limit * 2, [['?w.doc'], ['?w.begin']], sample=True)
         picks = [(r[0], None) for r in rows]
     elif where_l == 'morpheme':
         where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         total = c.count(where, ['?m'])
-        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']], sample=True)
         picks = [(r[0], r[1]) for r in rows]
     elif field.scope == 'Word':
         where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?w'], c.word('?w')]
         total = c.count(where, ['?w'])
-        rows = c.entities(where, ['?w'], limit, [['?w.doc'], ['?w.begin']])
+        rows = c.entities(where, ['?w'], limit, [['?w.doc'], ['?w.begin']], sample=True)
         picks = [(r[0], None) for r in rows]
     else:
         where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m']] + c.in_word('?m', '?w')
         total = c.count(where, ['?m'])
-        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']], sample=True)
         picks = [(r[0], r[1]) for r in rows]
     hits = []
     loaded = set()
@@ -515,7 +515,7 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int]) -> str:
 
     def examples(where, find, order):
         out = []
-        for row in c.entities(where, find, 3, order):
+        for row in c.entities(where, find, 3, order, sample=True):
             ent = row[0]
             if not isinstance(ent, dict):
                 continue
@@ -656,7 +656,7 @@ def q_consistency(ws: Workspace, f):
 
     def examples(where, find, fmt):
         out = []
-        for row in c.entities(where, find, 15, [['?u.doc'], ['?u.begin']]):
+        for row in c.entities(where, find, 15, [['?u.doc'], ['?u.begin']], sample=True):
             ent = row[0]
             if not isinstance(ent, dict):
                 continue
@@ -780,7 +780,7 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
     where += [c.sent('?sent')] + [['within', v, '?sent'] for v in wvars]
     total = c.count(where, ['?sent'])
     order = [['?sent.doc'], ['?sent.begin']] + [[f'{v}.begin'] for v in wvars]
-    rows = c.entities(where, ['?sent'] + wvars, limit * 4, order)
+    rows = c.entities(where, ['?sent'] + wvars, limit * 4, order, sample=True)
     out = []
     seen = set()
     loaded = set()
@@ -818,7 +818,7 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
     mwes = sum(1 for _l, n in c.group([['link', '?l', {'item': item_id}], ['link-token', '?l', '?t']], ['?l']) if n >= 2)
     exs = []
     if examples:
-        for row in c.entities(where, ['?t'], examples * 2, [['?t.doc'], ['?t.begin']]):
+        for row in c.entities(where, ['?t'], examples * 2, [['?t.doc'], ['?t.begin']], sample=True):
             ent = row[0]
             if not isinstance(ent, dict):
                 continue

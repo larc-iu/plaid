@@ -201,14 +201,23 @@ class Corpus(Clipping):
         """Distinct tuples of ``find`` (never inflated by joins)."""
         return int(self.run({'find': find, 'where': where, 'return': 'count'}).get('count') or 0)
 
-    def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
-        """Entity rows, ``limit`` at most."""
+    def entities(self, where: List[Any], find: List[str], limit: int, order_by=None,
+                 sample: bool = False) -> List[list]:
+        """Entity rows, ``limit`` at most.
+
+        ``sample`` marks a read of a few rows to show, whose numbers come from
+        a count. The engine says truncated whenever the limit is reached, so
+        such a read marked the report clipped and exact counts went out as
+        "part of the corpus" (2026-10-12 survey). Only ``truncated`` is set."""
         body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities',
                                 'limit': min(int(limit), ROW_LIMIT)}
         if order_by:
             body['order_by'] = order_by
         res = self.run(body)
-        self.note_truncation(res)
+        if sample:
+            self.truncated = bool(res.get('truncated'))
+        else:
+            self.note_truncation(res)
         return res.get('results') or []
 
     def group(self, where: List[Any], group: List[str], aggregates=None,

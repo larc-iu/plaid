@@ -253,12 +253,34 @@ def test_a_clipped_read_is_never_reported_as_the_whole_corpus():
     for name, args in [('corpus_stats', {}),
                        ('frequency_list', {}),
                        ('worklist', {'kind': 'unglossed'}),
-                       ('check_consistency', {'field': 'Gloss'}),
-                       ('sequence_search', {'sequence': [{'Gloss': 'x'}]})]:
+                       ('check_consistency', {'field': 'Gloss'})]:
         out = call_tool(query_ws(), name, args)
         assert 'come from part of the corpus and not all of it' in out, (name, out)
     # One document is read through the engine too, and warned about the same.
     assert 'part of the corpus' in call_tool(query_ws(), 'worklist', {'kind': 'unglossed', 'document': 'Text 1'})
+
+
+def test_a_few_examples_read_to_show_do_not_mark_exact_counts_partial():
+    """The engine says truncated whenever a limit is reached, so the 15
+    examples check_consistency reads, or the sentences sequence_search shows,
+    marked counts that came from an exact count as "part of the corpus", and
+    the model told users so (2026-10-12 survey)."""
+    c = FakeClient()
+
+    def fake_query(body):
+        ret = body.get('return')
+        if ret == 'count':
+            return {'return': 'count', 'count': 3, 'truncated': False}
+        if ret == 'entities':
+            return {'return': 'entities', 'columns': [], 'results': [], 'count': 0, 'truncated': True}
+        return {'return': ret, 'columns': [], 'results': [], 'count': 0, 'truncated': False}
+    c.query = fake_query
+    for name, args in [('check_consistency', {'field': 'Gloss'}),
+                       ('sequence_search', {'sequence': [{'Gloss': 'x'}]}),
+                       ('search', {'pattern': 'x'}),
+                       ('concordance', {'pattern': 'x'})]:
+        out = call_tool(Workspace(c, load_project(c, 'p1')), name, args)
+        assert 'part of the corpus' not in out, (name, out)
 
 
 def test_a_failing_tool_call_leaves_no_partial_plan():
