@@ -116,7 +116,7 @@ def test_search_on_a_name_two_fields_share_searches_each():
             'IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.')
     assert out == f'Gloss (Word): 1 hits:\n{line}\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out
     out = call_tool(w, 'search', {'pattern': 'ERG', 'where': 'Gloss'})
-    assert out == f'Gloss (Word): No hits.\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out
+    assert out == f'Gloss (Word): No hits in the Gloss (Word) field.\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out
 
 
 def test_a_search_of_a_shared_name_notes_one_count():
@@ -199,7 +199,7 @@ def test_search_and_concordance_read_where_in_plain_words():
     p['text_layers'][0]['token_layers'][1]['span_layers'][0]['name'] = 'Words'
     w = ws(project=p)
     assert 'Words=Ali' in call_tool(w, 'search', {'pattern': 'Ali', 'where': 'Words'})
-    assert call_tool(w, 'search', {'pattern': 'zzz', 'where': 'Words'}) == 'No hits.'
+    assert call_tool(w, 'search', {'pattern': 'zzz', 'where': 'Words'}) == 'No hits in the Words field.'
 
 
 # --- REV-R2-TOOLS -------------------------------------------------------------------

@@ -2,6 +2,7 @@ import re
 import pytest
 from fixtures import fake_ws, FakeClient
 
+from plaid_agent.core.bidi import for_model
 from plaid_agent.igt.toolkit import call_tool, TOOLS, _IMPL
 
 
@@ -35,9 +36,31 @@ def test_search_baseline_morpheme_field_and_lexicon():
     assert 's1 Translation=Ali saw a fish.' in out
     out = call_tool(w, 'search', {'pattern': 'gam', 'where': 'lexicon'})
     assert 'gam | gloss=fish (Lexicon)' in out and 'gam | gloss=net (Lexicon)' in out
-    assert call_tool(w, 'search', {'pattern': 'nothing-here'}) == 'No hits.'
+    assert call_tool(w, 'search', {'pattern': 'nothing-here'}) == 'No hits in word forms.'
     assert 'No field named "Nope"' in call_tool(w, 'search', {'pattern': 'x', 'where': 'Nope'})
     assert '^gam' and 's2.w1' in call_tool(w, 'search', {'pattern': '^gam-', 'regex': True})
+
+
+def test_an_empty_search_or_concordance_says_why():
+    """An empty answer with no reason was retried under other spellings about
+    thirty times in the 2026-10-12 survey. Each says where it looked and, when
+    a cheap check finds one, the reason."""
+    w = ws()
+    out = for_model(call_tool(w, 'search', {'pattern': '^gam'}))
+    assert out == ('No hits in word forms. "^gam" was read as literal text. '
+                   'Pass regex=true to read it as a regular expression.')
+    out = for_model(call_tool(w, 'search', {'pattern': '-di', 'where': 'morpheme'}))
+    assert 'stored without boundary marks' in out and 'Search for "di"' in out
+    out = for_model(call_tool(w, 'search', {'pattern': 'gam', 'where': 'Morph Gloss'}))
+    assert out == ('No hits in the Morph Gloss field. "gam" occurs 2 times as a morpheme form: '
+                   'pass where="morpheme".')
+    out = for_model(call_tool(w, 'concordance', {'pattern': 'ER', 'where': 'Morph Gloss'}))
+    assert out == ('No occurrences of "ER" in the Morph Gloss field, matching whole values. '
+                   '1 value contains it, e.g. "ERG" (1). Pass regex=true, or use search.')
+    out = for_model(call_tool(w, 'concordance', {'pattern': 'akuna'}))
+    assert out.endswith('"akuna" occurs 1 time as a word form: pass where="baseline".')
+    assert call_tool(w, 'concordance', {'pattern': 'zzz'}) == \
+        'No occurrences of "zzz" in morpheme forms, matching whole values.'
 
 
 def test_frequency_list_reports_field_values_with_empties():

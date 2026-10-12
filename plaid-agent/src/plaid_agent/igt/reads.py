@@ -115,10 +115,12 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
             _merge_notes(ws, start)
             return text
         field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
-    from .queries import q_search
+    from .queries import q_empty_hint, q_search, where_label
     with ws.corpus.within(document):
         out, total, morphs = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
-    return _finish(ws, out, total, limit, 'hits', 'match', morphs)
+        why = [] if total else q_empty_hint(ws, pattern, where_l, field, bool(regex), bool(case_sensitive), False)
+    empty = ' '.join([f'No hits in {where_label(where_l, field)}.'] + why)
+    return _finish(ws, out, total, limit, 'hits', 'match', morphs, empty=empty)
 
 
 def _merge_notes(ws, start):
@@ -133,14 +135,14 @@ def _merge_notes(ws, start):
                  of=sum(of) if all(o is not None for o in of) else None)
 
 
-def _finish(ws, out, total, limit, noun, unit, morphs=None):
+def _finish(ws, out, total, limit, noun, unit, morphs=None, empty=None):
     """The hits found, with the count of those shown out of all found noted
     for the step's label (`BaseWorkspace.note_read`). A morpheme search's
     hits are words, and ``morphs`` the morphemes in them that match: "14
     hits" read as 14 morphemes where 23 matched, two in a word."""
     ws.note_read(len(out), unit, of=total)
     if not out:
-        return f'No {noun}.'
+        return empty or f'No {noun}.'
     if morphs is not None:
         noun = (f'word{"s" if total != 1 else ""} hit, holding {morphs} matching '
                 f'morpheme{"s" if morphs != 1 else ""}')
@@ -227,12 +229,15 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         field = _field_or_where(ws, where, ('baseline', 'morpheme'))
         if field.scope == 'Sentence':
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
-    from .queries import q_concordance_hits
+    from .queries import q_concordance_hits, q_empty_hint, where_label
     with ws.corpus.within(document):
         hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
+        why = [] if total else q_empty_hint(ws, pattern, where_l, field, bool(regex), bool(case_sensitive),
+                                            not regex)
     ws.note_read(len(hits), 'match', of=total)
     if not total:
-        return f'No occurrences of "{pattern}".'
+        return ' '.join([f'No occurrences of "{pattern}" in {where_label(where_l, field)}'
+                         + ('' if regex else ', matching whole values') + '.'] + why)
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
     patterns: Counter = Counter()
     lines_out: List[str] = []

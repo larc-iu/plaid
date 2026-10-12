@@ -12,7 +12,7 @@
  "proj concordance {\"pattern\": \"ali\", \"where\": \"Gloss\"}": "1 occurrence of \"ali\" in Gloss.\nWord patterns (hit in [brackets]), by frequency:\n  1\tAli-di\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w1 # [Ali-di] gam | seg=Ali-di | Morph Gloss=Ali-ERG | Gloss=Ali || Ali-di gam akuna.",
  "proj concordance {\"pattern\": \"ali-di\", \"where\": \"baseline\"}": "1 occurrence of \"ali-di\" in baseline.\nWord patterns (hit in [brackets]), by frequency:\n  1\tAli-di\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w1 # [Ali-di] gam | seg=Ali-di | Morph Gloss=Ali-ERG | Gloss=Ali || Ali-di gam akuna.",
  "proj concordance {\"pattern\": \"gam\"}": "2 occurrences of \"gam\" in morpheme.\nThe hit's own Morph Gloss: (blank) 2.\nWord patterns (hit in [brackets]), by frequency:\n  1\t[Gam]=ar\n  1\t[gam]\nOccurrences (previous [word] next | segmentation | morpheme fields || sentence):\n  s1.w2 Ali-di [gam] akuna | seg=[gam] || Ali-di gam akuna.\n  s2.w1 # [Gam-ar] # | seg=[Gam]=ar || Gam-ar.",
- "proj concordance {\"pattern\": \"zzz\"}": "No occurrences of \"zzz\".",
+ "proj concordance {\"pattern\": \"zzz\"}": "No occurrences of \"zzz\" in morpheme forms, matching whole values.",
  "proj copy_to_orthography {\"orthography\": \"IPA\", \"overwrite\": true}": {
   "answer": "Planned 4 words in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 4 changes in 1 numbered entry). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nIn 1 document: \"Text 1\" 4.\nFor example:\n  Text 1 s1.w1 \"Ali-di\": IPA = \"Ali-di\"\n  Text 1 s1.w2 \"gam\": IPA = \"gam\"\n  Text 1 s1.w3 \"akuna\": IPA = \"akuna\"\n  Text 1 s2.w1 \"Gam-ar\": IPA = \"Gam-ar\"\nStored as a rule, found again when the user approves.",
   "ops": [
@@ -852,7 +852,7 @@
  "proj search {\"pattern\": \"fish\", \"where\": \"Translation\"}": "1 hits:\ns1 Translation=Ali saw a fish. | Ali-di gam akuna.",
  "proj search {\"pattern\": \"gam\", \"where\": \"lexicon\"}": "2 lexicon entries:\ngam | gloss=fish (Lexicon)\ngam | gloss=net (Lexicon)",
  "proj search {\"pattern\": \"gam\"}": "2 hits:\ns1.w2 gam || Ali-di gam akuna.\ns2.w1 Gam-ar | seg=Gam=ar types=?,enclitic || Gam-ar.",
- "proj search {\"pattern\": \"nothing-here\"}": "No hits.",
+ "proj search {\"pattern\": \"nothing-here\"}": "No hits in word forms.",
  "proj sequence_search {\"adjacent\": false, \"sequence\": [{\"Morph Gloss\": \"ERG\"}, {\"form\": \"akuna\"}]}": "1 sentence match:\ns1 [Ali-di] gam [akuna]\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w3 akuna",
  "proj sequence_search {\"regex\": true, \"sequence\": [{\"form\": \"^g\"}]}": "2 sentences match:\ns1 Ali-di [gam] akuna\n    w2 gam\ns2 [Gam-ar]\n    w1 Gam-ar | seg=Gam=ar types=?,enclitic",
  "proj sequence_search {\"sequence\": [{\"Gloss\": \"Ali\"}, {\"form\": \"gam\"}]}": "1 sentence match:\ns1 [Ali-di] [gam] akuna\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w2 gam",

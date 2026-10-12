@@ -14,6 +14,7 @@ and the document lookups that turn an entity id back into a printable
 reference, are in ``corpus.py``.
 """
 
+import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -138,6 +139,71 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
     rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?t'], '?t', limit, 2)
     lines = _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None, per_doc=per_doc)
     return _spread_note(lines, docs), total, None
+
+
+#: What a pattern typed for regex=true looks like: anchors, alternation, an
+#: escape, a class, a repeated dot. A lone dot is left out, as "e.g." is text.
+REGEX_SYNTAX = re.compile(r'^\^|\$$|[|\\]|\.[*+?]|\[[^\]]+\]')
+
+
+def looks_like_regex(pattern: str) -> bool:
+    return bool(REGEX_SYNTAX.search(pattern or ''))
+
+
+def where_label(where_l: str, field) -> str:
+    """What a search or concordance looked in, as its empty answer says it."""
+    if field is not None:
+        return f'the {field.name} field'
+    return 'morpheme forms' if where_l == 'morpheme' else 'word forms'
+
+
+def q_empty_hint(ws: Workspace, pattern: str, where_l: str, field, regex: bool, case_sensitive: bool,
+                 whole: bool) -> List[str]:
+    """Why a search or concordance found nothing, from at most two count or
+    group queries. Models retried an empty search under other spellings
+    about thirty times in the 2026-10-12 survey, where the answer was a
+    literal pattern, a boundary mark, a whole-value match, or another field."""
+    c = ws.corpus
+    if not regex and looks_like_regex(pattern):
+        return [f'{qv(pattern)} was read as literal text. Pass regex=true to read it as a regular expression.']
+    if not regex and where_l == 'morpheme' and pattern.strip('-=') and pattern.strip('-=') != pattern:
+        return [f'Morpheme forms are stored without boundary marks (- or =). Search for {qv(pattern.strip("-="))}.']
+    if whole and not regex:
+        # Concordance matches whole values. One grouped read of the values
+        # that contain the pattern says whether that is why.
+        spec = rx(pattern, case_sensitive=case_sensitive)
+        if where_l == 'baseline':
+            rows = [(r[0], r[-1]) for r in c.group([c.word('?h', value=spec)], ['?h.value'], limit=200)]
+        elif where_l == 'morpheme':
+            rows = [(Corpus.morph_key(r[0], r[1]), r[-1])
+                    for r in c.group([c.morph_form_clauses('?h', spec)], ['?h.metadata.form', '?h.value'], limit=200)]
+        else:
+            rows = [(r[0], r[-1]) for r in c.group([c.span('?h', field.layer_id, value=spec)], ['?h.value'], limit=200)]
+        values: Counter = Counter()
+        for v, n in rows:
+            if v not in (None, ''):
+                values[v] += n
+        if values:
+            many = f'{len(values)} or more values contain' if c.truncated else (
+                f'{len(values)} value{"s" if len(values) != 1 else ""} contain{"s" if len(values) == 1 else ""}')
+            eg = ', '.join(f'{qv(v)} ({n})' for v, n in values.most_common(3))
+            return [f'{many} it, e.g. {eg}. Pass regex=true, or use search.']
+    # Not here, but maybe as a form: one count where it most likely is.
+    spec = rx(pattern, regex=regex, whole=whole, case_sensitive=case_sensitive)
+    if where_l == 'baseline' or (field is not None and field.scope == 'Morpheme'):
+        other = 'morpheme' if c.M else None
+    else:
+        other = 'baseline'
+    if other == 'morpheme':
+        n = c.count([c.morph_form_clauses('?h', spec)], ['?h'])
+    elif other == 'baseline':
+        n = c.word_count([c.word('?h', value=spec)], '?h')
+    else:
+        n = 0
+    if n:
+        return [f'{qv(pattern)} occurs {n} time{"s" if n != 1 else ""} as a {where_label(other, None)[:-1]}: '
+                f'pass where="{other}".']
+    return []
 
 
 # --- shared tallies --------------------------------------------------------------
