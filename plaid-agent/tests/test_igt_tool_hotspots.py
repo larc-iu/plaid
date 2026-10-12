@@ -232,3 +232,17 @@ def test_a_word_named_by_its_form_reaches_the_link_tools():
     assert 'Error' not in out and len(w.ops) == 1, out
     out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1."kwa"'], 'entry_form': 'gam#1'})
     assert out.startswith('Error: s1."kwa": s1 has no word "kwa"'), out
+
+
+def test_sequence_search_reads_a_shared_name_as_either_field_and_lists_its_keys():
+    """The tool's own example, {"Gloss":"ERG"}, was refused as ambiguous in
+    most projects, and an invented "form_regex" key got a list of fields
+    alone (2026-10-12 survey)."""
+    w = ws(project=shared_gloss_project())
+    for value in ('ERG', 'Ali'):
+        out = call_tool(w, 'sequence_search', {'sequence': [{'Gloss': value}, {'form': 'gam'}]})
+        assert out.startswith('1 sentence match:\n("Gloss" names a word field and a morpheme field, so a word '
+                              'matched when either holds the value.)\ns1 [Ali-di] [gam] akuna'), out
+    out = call_tool(w, 'sequence_search', {'sequence': [{'form_regex': 'g.*'}]})
+    assert out == ('Error: No condition key "form_regex". A condition takes "form", "morpheme", "type", or a field: '
+                   '"Gloss (Word)", "Gloss (Morpheme)". regex is a flag on the call (regex=true), not a key.'), out

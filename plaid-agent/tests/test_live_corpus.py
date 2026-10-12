@@ -279,3 +279,21 @@ def test_a_value_on_an_unsegmented_words_morpheme_is_written_with_the_morpheme(l
         assert 'akuna' not in out
     finally:
         s.delete()
+
+
+def test_sequence_search_reads_a_shared_name_as_either_field(live_client):
+    """A bare "Gloss" on words and on morphemes is either, on the real engine
+    as on the fake, after the tool's own example was refused as ambiguous
+    (2026-10-12 survey)."""
+    import copy
+    p = copy.deepcopy(project_raw())
+    p['text_layers'][0]['token_layers'][2]['span_layers'][0]['name'] = 'Gloss'
+    s = seed(live_client, p, {'d1': document_raw()}, {VOCAB: lexicon_raw()}, name='igt-agent shared gloss')
+    try:
+        w = Workspace(s.client, load_project(s.client, s.project_id))
+        for value in ('ERG', 'Ali'):
+            out = call_tool(w, 'sequence_search', {'sequence': [{'Gloss': value}, {'form': 'gam'}]})
+            assert out.startswith('1 sentence match:\n("Gloss" names a word field and a morpheme field'), out
+            assert 's1 [Ali-di] [gam] akuna' in out, out
+    finally:
+        s.delete()

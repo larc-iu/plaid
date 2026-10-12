@@ -810,6 +810,7 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
     ws.corpus.forget_clipping()
     wvars = [f'?w{i}' for i in range(n)]
     extra: List[Any] = []
+    shared: List[str] = []
     token_cons: List[Dict[str, Any]] = []
     for i, cond in enumerate(sequence):
         cons: Dict[str, Any] = {}
@@ -823,14 +824,23 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
             elif k == 'type':
                 extra += [c.morph(f'?m{i}t', metadata={'morphType': spec})] + c.in_word(f'?m{i}t', wvars[i], f'{i}t')
             else:
-                f = p.field(key)
-                if f.scope == 'Word':
-                    extra += [c.span(f'?s{i}w', f.layer_id, value=spec), ['covers', f'?s{i}w', wvars[i]]]
-                elif f.scope == 'Morpheme':
-                    extra += [c.span(f'?s{i}m', f.layer_id, value=spec), ['covers', f'?s{i}m', f'?m{i}g']] \
-                        + c.in_word(f'?m{i}g', wvars[i], f'{i}g')
-                else:
-                    raise ToolError(f'"{f.name}" is a sentence field; sequence conditions are per word')
+                # A bare name a word field and a morpheme field share ("Gloss",
+                # "POS") is either, as search reads it: the tool's own example
+                # was refused as ambiguous in most projects (2026-10-12 survey).
+                alike = p.fields_sharing_name(key)
+                fields = [f for f in alike if f.scope != 'Sentence'] or [_condition_field(p, key)]
+                if len(fields) > 1:
+                    shared.append(key)
+                branches = []
+                for f in fields:
+                    if f.scope == 'Word':
+                        branches.append([c.span(f'?s{i}w', f.layer_id, value=spec), ['covers', f'?s{i}w', wvars[i]]])
+                    elif f.scope == 'Morpheme':
+                        branches.append([c.span(f'?s{i}m', f.layer_id, value=spec), ['covers', f'?s{i}m', f'?m{i}g']]
+                                        + c.in_word(f'?m{i}g', wvars[i], f'{i}g'))
+                    else:
+                        raise ToolError(f'"{f.name}" is a sentence field; sequence conditions are per word')
+                extra += branches[0] if len(branches) == 1 else [['or', *branches]]
         token_cons.append(cons)
     where: List[Any] = []
     if adjacent:
@@ -866,7 +876,25 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
         out.append((doc, s, [w['id'] for w in row[1:] if isinstance(w, dict)]))
         if len(out) >= limit:
             break
-    return out, total
+    return out, total, list(dict.fromkeys(shared))
+
+
+#: The keys a sequence condition takes besides a field's name.
+SEQUENCE_KEYS = ('form', 'morpheme', 'type')
+
+
+def _condition_field(p, key: str):
+    """The field a condition key names, or a refusal that lists every key a
+    condition takes. Models invent keys such as "form_regex"."""
+    try:
+        return p.field(key)
+    except ValueError as e:
+        if 'names several' in str(e):
+            raise
+        fields = [f.name for f in p.fields.values() if f.scope != 'Sentence']
+        raise ToolError(f'No condition key "{key}". A condition takes ' + ', '.join(f'"{k}"' for k in SEQUENCE_KEYS)
+                        + (', or a field: ' + ', '.join(f'"{f}"' for f in fields) if fields else '')
+                        + '. regex is a flag on the call (regex=true), not a key.') from None
 
 
 # --- lexicon_entry --------------------------------------------------------------------

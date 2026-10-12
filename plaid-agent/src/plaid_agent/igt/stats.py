@@ -534,8 +534,10 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
             f'\n    w{i} ' + render_word(s.words[i - 1], ws.project)[len(s.words[i - 1].ref) + 1:] for i in matches))
     from .queries import q_sequence
     with ws.corpus.within(document):
-        found, total = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)
+        found, total, shared = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)
     clipped = ws.corpus.clipped_note('matches')
+    clipped += ''.join(f'\n("{k}" names a word field and a morpheme field, so a word matched when either holds the '
+                       f'value.)' for k in shared)
     for d, s, word_ids in found:
         show(ws.corpus.tag(d.id), s, [w.index for w in s.words if w.id in word_ids])
     ws.note_read(len(out), 'match', of=total)

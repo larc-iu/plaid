@@ -383,7 +383,7 @@ TOOLS += [
     _fn('sequence_search',
         'Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, '
         'or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]; conditions match whole '
-        'values (regex=true for patterns). adjacent=false lets other words come between, in order. Counts are '
+        'values (regex=true for patterns). A name a word field and a morpheme field share matches either. adjacent=false lets other words come between, in order. Counts are '
         'sentences (first match per sentence). For constituent-order and construction questions.',
         {'sequence': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
          'adjacent': {'type': 'boolean'}, 'document': _DOC, 'regex': {'type': 'boolean'},
