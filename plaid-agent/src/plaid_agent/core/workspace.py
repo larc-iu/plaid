@@ -13,6 +13,9 @@ adds how ITS documents are loaded, what a plan payload looks like, and the
 refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 """
 
+import difflib
+import re
+import unicodedata
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +42,23 @@ WEB_READ_REFUSAL = (
 READ_ONLY_REFUSAL = (
     'This conversation plans changes in "{home}" only. Tell the user what you would change in '
     '"{here}" and let them make it there.')
+
+
+#: Characters a typed document name has in place of the stored one's.
+_NAME_FOLDS = str.maketrans({'\u2019': "'", '\u2018': "'", '\u02bc': "'", '\u201c': '"', '\u201d': '"',
+                             '\u2013': '-', '\u2014': '-'})
+
+
+def name_key(name: str) -> str:
+    """A document name as it compares with a typed one: NFC, casefolded, curly
+    quotes and dashes as typed, whitespace collapsed."""
+    folded = unicodedata.normalize('NFC', name).casefold().translate(_NAME_FOLDS)
+    return ' '.join(folded.split())
+
+
+def loose_name_key(name: str) -> str:
+    """:func:`name_key` with the spaces around a colon left out."""
+    return re.sub(r' ?: ?', ':', name_key(name))
 
 
 class BaseWorkspace:
@@ -300,15 +320,27 @@ class BaseWorkspace:
             if d['id'] == document:
                 return d['id']
         by_name = [d for d in docs if (d.get('name') or '').lower() == document.lower()]
+        # Then as the names would be typed: a model wrote "children's" for a
+        # name with ’ and "COMPLETE:Pear_Story_01" for "COMPLETE: Pear_Story_01"
+        # and was refused eight times (2026-10-12 survey).
+        for key in (name_key, loose_name_key):
+            if by_name:
+                break
+            by_name = [d for d in docs if key(d.get('name') or '') == key(document)]
         if len(by_name) == 1:
             return by_name[0]['id']
         if len(by_name) > 1:
             raise ToolError(f'Several documents are named "{document}"; use an id: '
                             + ', '.join(d['id'] for d in by_name))
-        starts = [d for d in docs if (d.get('name') or '').lower().startswith(document.lower())]
+        starts = [d for d in docs if name_key(d.get('name') or '').startswith(name_key(document))]
         if len(starts) == 1:
             return starts[0]['id']
-        raise ToolError(f'No document "{document}". Documents: '
+        keys = {}
+        for d in docs:
+            keys.setdefault(name_key(d.get('name') or ''), d.get('name'))
+        close = ', '.join(f'"{keys[k]}"' for k in
+                          difflib.get_close_matches(name_key(document), list(keys), n=5, cutoff=0.5))
+        raise ToolError(f'No document "{document}".' + (f' Closest: {close}.' if close else '') + ' Documents: '
                         + ', '.join(f'"{d.get("name")}"' for d in docs[:50]))
 
     # --- the plan ---------------------------------------------------------
