@@ -1058,7 +1058,7 @@ export const AssistantChat = ({
             their room, with the icon buttons at 32px. */}
         <header className="flex min-h-[var(--plaid-sticky-top)] items-center gap-2 border-b px-3 py-2 text-sm">
           <AssistantMark className="h-4 w-4 shrink-0" />
-          <div className="flex min-w-0 flex-1 items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {choice.discovering && !choice.services.length ? (
               <span className="truncate text-muted-foreground">Looking for an assistant…</span>
             ) : !service ? (
