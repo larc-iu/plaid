@@ -21,6 +21,7 @@ run code is never told that it can.
 
 import ast
 import atexit
+import re
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
@@ -299,6 +300,10 @@ class Session:
                 pass
 
 
+_METHOD_MISSING = re.compile(r"AttributeError: '(\w+)' object has no attribute '(\w+)'")
+_BUILTIN_TYPES = {t.__name__: t for t in (str, bytes, list, tuple, dict, set, frozenset, int, float)}
+
+
 def _explain(e, shape: str = '') -> str:
     """The sandbox's error, with a line about what the sandbox has where the
     error is about what it lacks, and the shape of a loaded document where
@@ -313,6 +318,18 @@ def _explain(e, shape: str = '') -> str:
         text += '\nA generator expression is a list in this sandbox: write next(iter(...)).'
     if "unsupported operand type(s) for %: 'str'" in text:
         text += '\nThis sandbox has no % formatting of strings: write an f-string or str.format().'
+    # A builtin's method named without a call, as in max(d, key=d.get): Monty
+    # can only call one, and says the method is missing (2026-10-12 survey).
+    m = _METHOD_MISSING.search(text)
+    if m and m.group(2) in dir(_BUILTIN_TYPES.get(m.group(1), object)) \
+            and re.search(r'\.' + m.group(2) + r'\b(?!\s*\()', text[:m.start()]):
+        text += ('\nA method cannot be passed as a value in this sandbox, only called: write '
+                 'key=lambda k: d[k] rather than key=d.get.')
+    if 'unexpected keyword argument' in text and "'default'" in text and 'JSON' in text:
+        text += '\njson.dumps takes no default= here: turn each value into a str, number, list or dict first.'
+    if 'NameError' in text:
+        text += ('\nNames last only between run_code calls in one turn. A name made in an earlier turn is '
+                 'gone: build it again in this code.')
     if shape and ('KeyError' in text or 'Its keys:' in text):
         text += '\nWhat load() returns:\n' + shape
     return text
@@ -331,8 +348,13 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     if reason:
         raise CodeError(f'Code cannot run on this assistant: {reason}.')
     cut_before = cuts()
-    if not isinstance(code, str) or not code.strip():
-        raise CodeError('Give code to run, as a string.')
+    # A call that arrives with an empty argument, or none, lost its code on
+    # the way (2026-10-12 survey), so the answer says that rather than asking
+    # for code as if none had been written.
+    if code is None or isinstance(code, str) and not code.strip():
+        raise CodeError('This run_code call arrived with no code. Send it again with the Python in "code".')
+    if not isinstance(code, str):
+        raise CodeError('"code" is the Python to run, as one string.')
     from pydantic_monty import CollectString
     printed = CollectString(max_bytes=4 * 1024 * 1024)
     try:

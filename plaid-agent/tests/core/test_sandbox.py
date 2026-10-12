@@ -74,3 +74,35 @@ def test_the_help_names_the_budget_that_actually_applies():
     text = sandbox.help_text('')
     assert f'{sandbox.TURN_EXEC_SECONDS:.0f} seconds of computation' in text
     assert not hasattr(sandbox, 'EXEC_SECONDS')
+
+
+def test_a_method_passed_as_a_value_is_explained(run):
+    """Monty calls a builtin's method but cannot hand one over, and says the
+    method is missing (2026-10-12 survey)."""
+    with pytest.raises(sandbox.CodeError) as e:
+        run('d = {"a": 1, "b": 2}\nmax(d, key=d.get)')
+    assert "has no attribute 'get'" in str(e.value) and 'key=lambda k: d[k]' in str(e.value)
+
+
+def test_a_missing_method_that_is_called_gets_no_such_hint(run):
+    with pytest.raises(sandbox.CodeError) as e:
+        run('d = {"a": 1}\nd.nothing_here()')
+    assert 'lambda' not in str(e.value)
+
+
+def test_json_dumps_with_default_says_to_convert_first(run):
+    with pytest.raises(sandbox.CodeError) as e:
+        run('import json\njson.dumps({"a": 1}, default=str)')
+    assert 'takes no default=' in str(e.value)
+
+
+def test_an_unknown_name_says_names_last_one_turn(run):
+    with pytest.raises(sandbox.CodeError) as e:
+        run('print(tally_from_before)')
+    assert 'NameError' in str(e.value) and 'earlier turn is gone' in str(e.value)
+
+
+@pytest.mark.parametrize('code', [None, '', '  \n'])
+def test_a_call_with_no_code_says_it_arrived_empty(run, code):
+    with pytest.raises(sandbox.CodeError, match='arrived with no code'):
+        run(code)
