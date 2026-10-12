@@ -512,7 +512,8 @@ q_corpus_numbers.empty = _empty_numbers
 def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
                        case_sensitive: bool = False):
     """[(doc, sentence, word, hit morpheme|None)] for the shown occurrences,
-    ordered by document and position, and the total number of occurrences."""
+    ordered by document and position, the total number of occurrences, and
+    whether the per-call document budget stopped the hits short of the limit."""
     c = ws.corpus
     spec = rx(pattern, regex=regex, whole=not regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
@@ -537,10 +538,12 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
         picks = [(r[0], r[1]) for r in rows]
     hits = []
     loaded = set()
+    cut = False
     for went, ment in picks:
         if not isinstance(went, dict) or (where_l == 'baseline' and c.ignored(went.get('value'))):
             continue
         if not c.may_load(went['document'], loaded):
+            cut = True
             break
         doc, s, w, _ = c.locate(went['document'], went['id'])
         if w is None:
@@ -553,7 +556,7 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
         hits.append((doc, s, w, hit))
         if len(hits) >= limit:
             break
-    return hits, total
+    return hits, total, cut
 
 
 # --- analyses_of --------------------------------------------------------------------

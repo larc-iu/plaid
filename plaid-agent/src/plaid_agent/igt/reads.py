@@ -231,7 +231,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
     from .queries import q_concordance_hits, q_empty_hint, where_label
     with ws.corpus.within(document):
-        hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
+        hits, total, cut = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
         why = [] if total else q_empty_hint(ws, pattern, where_l, field, bool(regex), bool(case_sensitive),
                                             not regex)
     ws.note_read(len(hits), 'match', of=total)
@@ -255,8 +255,14 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         lines_out.append(f'{ws.corpus.tag(doc.id)}{word_ref(s, w)} {prev} [{w.surface}] {nxt} | seg={seg}'
                          + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')
                          + f' || {s.text}')
+    # The shown count is the hits rendered: the per-call document budget can
+    # stop well short of the limit, and "(showing 200)" over 67 lines was
+    # read as 200 (2026-10-12 survey).
+    docs_shown = len({doc.id for doc, _s, _w, _h in hits})
     lines = [f'{total} occurrence{"s" if total != 1 else ""} of "{pattern}" in {where_l if not field else field.name}'
-             + (f' (showing {limit})' if total > limit else '') + '.',
+             + (f' (showing {len(hits)})' if total > len(hits) else '') + '.'
+             + (f' The ones shown come from the first {docs_shown} document{"s" if docs_shown != 1 else ""} '
+                f'with hits. Name a document to see its own.' if cut else ''),
              'Word patterns (hit in [brackets]), by frequency' + (f', among the {len(hits)} shown' if total > len(hits) else '') + ':']
     # The hit's own values, tallied: asked which glosses a morpheme carries,
     # models read the patterns below and missed the rare ones among them.

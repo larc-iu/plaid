@@ -983,3 +983,17 @@ def test_concordance_tallies_the_hits_own_values():
     w = fake_ws(FakeClient())
     out = call_tool(w, 'concordance', {'pattern': '.*', 'regex': True})
     assert out.split('\n')[1] == "The hit's own Morph Gloss: (blank) 3, Ali 1, ERG 1.", out
+
+
+def test_concordance_says_how_many_it_shows_when_the_document_budget_stops_it(monkeypatch):
+    """The header said "(showing 200)" over 67 hits when the per-call
+    document budget stopped loading documents (2026-10-12 survey)."""
+    from plaid_agent.igt import corpus as igt_corpus
+    monkeypatch.setattr(igt_corpus, 'RENDER_DOC_BUDGET', 1)
+    w = fake_ws(_two_documents('Text 2'))
+    out = call_tool(w, 'concordance', {'pattern': 'gam'})
+    assert out.startswith('4 occurrences of "gam" in morpheme (showing 2). The ones shown come from the first '
+                          '1 document with hits. Name a document to see its own.'), out
+    assert 'by frequency, among the 2 shown' in out
+    out = call_tool(w, 'concordance', {'pattern': 'gam', 'document': 'Text 2'})
+    assert out.startswith('2 occurrences of "gam" in morpheme.\n'), out
