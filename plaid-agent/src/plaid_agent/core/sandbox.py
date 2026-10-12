@@ -434,7 +434,13 @@ The project reaches the code through four functions, and nothing else:
   load(document)              -> a plain-data view of one document (its shape is below); by id, by name,
                                  or by an entry of documents()
   query(q)                    -> the engine's answer to a query object, as query_help describes it
-                                 (layers by name; "results" holds the rows as plain dicts)
+                                 (layers by name), as a dict. Its "results" is a list of rows, and a row
+                                 is a LIST, one item per find variable: [entity dict] for "entities"
+                                 (the default), [id] for "ids". An aggregate's row is its group values
+                                 then its aggregates, e.g. ["NOUN", 412]. "count" gives {{"count": n}}
+                                 and no rows. "truncated" is true when rows were cut: "ids" and
+                                 "entities" stop at 1000, so count with an aggregate return, or split
+                                 the where and query once per part.
   plan(tool, **args)          -> stage a proposal through a plan tool by name, with the same arguments
                                  the tool takes; returns the tool's own reply as text. Nothing is written:
                                  the user approves the plan afterwards, exactly as with the tools.

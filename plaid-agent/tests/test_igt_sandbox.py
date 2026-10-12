@@ -60,3 +60,15 @@ plan("no_such_tool", x=2)
     out = call_tool(w, 'run_code', {'code': 'plan("set_field", document="Text 1", refs=["s1.w1"], field="Gloss", value="Y")\n'
                                             'raise ValueError("later")'})
     assert 'ValueError: later' in out and out.endswith('plan() was called 1 time and staged. The plan now holds 2 changes.')
+
+
+def test_the_helps_say_what_a_query_row_is_and_how_an_entry_field_is_read():
+    """Rows are lists, not dicts, ids and entities stop at 1000, and an
+    entry's fields are its metadata under the project's own spelling
+    (2026-10-12 survey)."""
+    w = fake_ws(FakeClient())
+    code_help = call_tool(w, 'code_help', {})
+    assert 'a row\n' in code_help and 'is a LIST' in code_help and '{"count": n}' in code_help
+    query_help = call_tool(w, 'query_help', {})
+    assert 'stop at 1000 rows' in query_help
+    assert '["vocab","?v",{"metadata":{"gloss":"dog"}}]' in query_help and '"?v.metadata.gloss"' in query_help

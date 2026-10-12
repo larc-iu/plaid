@@ -9,6 +9,7 @@ lexicon is a vocab layer. A model that does not know that writes queries that
 return nothing, so the help says it in as many words.
 """
 
+import json
 from typing import Any, Dict, List
 
 from ..core.query import HELP, display, layer_index, query_tool
@@ -23,6 +24,8 @@ THIS PROJECT'S LAYERS, and how interlinear text sits on them:
   A vocab layer is a lexicon; ["link", "?l", {{...}}] is a link itself, and its metadata is its
   provenance ({{"prov": "inferred"|"contributed", "provConfirmed": true}}). One link over several
   words is a multi-word expression.
+  An entry's own fields are its metadata, by exact field name: ["vocab","?v",{{"metadata":{{{entry}:"dog"}}}}]
+  matches one, and "?v.metadata.{entry_bare}" reads one in a predicate or a group.
 {layers}
   provenance metadata on machine-made annotations: {{"prov": "inferred", "provSource": "...", "provConfirmed": true|absent}}
 
@@ -71,10 +74,17 @@ def t_query_help(ws: Workspace) -> str:
             lines.append(f'  {scope}-scope fields (span layers on {scope.lower()} tokens): '
                          + ', '.join(f.name for f in fs))
     if p.vocabs:
-        lines.append('  lexicons (vocab layers): ' + ', '.join(v['name'] for v in p.vocabs))
+        lines.append('  lexicons (vocab layers): ' + ', '.join(
+            v['name'] + (f' (entry fields: {", ".join(f["name"] for f in v["fields"])})' if v.get('fields') else '')
+            for v in p.vocabs))
     gloss = p.gloss_field('Morpheme') or p.gloss_field('Word')
+    # The example spells a lexicon field this project has, since a metadata
+    # key matches only as it is spelled.
+    names = [f['name'] for v in p.vocabs or [] for f in v.get('fields') or []]
+    entry = next((n for n in names if 'gloss' in n.casefold()), names[0] if names else 'Gloss')
     return HELP + IGT_HELP.format(morphemes=', morphemes' if p.morpheme_layer_id else '',
-                                  layers='\n'.join(lines), gloss=gloss.name if gloss else 'Gloss')
+                                  layers='\n'.join(lines), gloss=gloss.name if gloss else 'Gloss',
+                                  entry=json.dumps(entry, ensure_ascii=False), entry_bare=entry)
 
 
 def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:

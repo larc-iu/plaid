@@ -66,7 +66,9 @@ Sequences over one token layer (adjacent tokens):
 Return shapes: "ids" (default), "entities" (full objects), "count" (distinct find tuples),
   aggregate {"group": ["?d"], "aggregates": [["count"], ["min","?b"], ["max","?b"], ["avg","?b"]]} (group by
   bound variables; no find and no order_by with aggregates; extra joins inflate counts).
-Limits: default 1000 rows from the engine (this tool shows at most `limit`, default 50), 30 s per query.
+Limits: "ids" and "entities" stop at 1000 rows, and past that the answer is cut ("truncated"): count with
+  "count" or an aggregate return instead, or split the where (by document, say). This tool shows at most
+  `limit` rows, default 50. 30 s per query.
 '''
 
 
