@@ -41,3 +41,22 @@ def test_the_help_spells_this_projects_fields_and_a_percent_format_is_explained(
     assert 'm["fields"].get("Morph Gloss")' in help_text
     out = call_tool(w, 'run_code', {'code': "print('%s' % 'a')"})
     assert 'f-string or str.format()' in out
+
+
+def test_what_plan_did_is_said_after_the_output_even_unprinted():
+    """Code that never prints plan()'s answer still shows the model what was
+    staged, what was refused, and what the plan holds (2026-10-12 survey)."""
+    w = fake_ws(FakeClient())
+    code = '''
+plan("set_field", document="Text 1", refs=["s1.w2"], field="Gloss", value="X")
+plan("no_such_tool", x=1)
+plan("no_such_tool", x=2)
+'''
+    out = call_tool(w, 'run_code', {'code': code})
+    assert 'plan() was called 3 times: 1 staged, 2 refused (the first said: "no_such_tool" is not a plan tool' in out
+    assert out.endswith('The plan now holds 1 change.') and len(w.ops) == 1
+    out = call_tool(w, 'run_code', {'code': 'print("hi")'})
+    assert 'plan()' not in out
+    out = call_tool(w, 'run_code', {'code': 'plan("set_field", document="Text 1", refs=["s1.w1"], field="Gloss", value="Y")\n'
+                                            'raise ValueError("later")'})
+    assert 'ValueError: later' in out and out.endswith('plan() was called 1 time and staged. The plan now holds 2 changes.')

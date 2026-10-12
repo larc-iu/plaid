@@ -637,6 +637,9 @@ class Tally:
         self.queries = 0
         self.rows = 0
         self.printed = 0
+        self.plans = 0
+        self.refused = 0
+        self.first_refusal = ''
 
     def wrap(self, api: Dict[str, Callable]) -> Dict[str, Callable]:
         def counted(name, f):
@@ -649,10 +652,34 @@ class Tally:
                     self.queries += 1
                 elif name == 'file_rows':
                     self.rows += len(answer or ())
+                elif name == 'plan':
+                    self.plans += 1
+                    if isinstance(answer, str) and answer.startswith('Error:'):
+                        self.refused += 1
+                        self.first_refusal = self.first_refusal or answer[len('Error:'):].strip()
                 return answer
             return call
-        return {name: counted(name, f) if name in ('load', 'query', 'file_rows') else f
+        return {name: counted(name, f) if name in ('load', 'query', 'file_rows', 'plan') else f
                 for name, f in api.items()}
+
+    def plan_note(self, ws) -> str:
+        """What the run's plan() calls did, said after its output. plan()
+        answers the code, and code that never prints the answer leaves the
+        model guessing: 365 calls met the plan's cap and half of them were
+        refused unseen, and a model said the plan held 133 changes when it held
+        19 (2026-10-12 survey)."""
+        if not self.plans:
+            return ''
+        from .plan import plan_changes
+        n, held = self.plans, plan_changes(getattr(ws, 'ops', None) or [])
+        calls = f'plan() was called {n} time{"s" if n != 1 else ""}'
+        if not self.refused:
+            what = ' and staged each time' if n > 1 else ' and staged'
+        else:
+            first = self.first_refusal if len(self.first_refusal) <= 300 else self.first_refusal[:297] + '...'
+            what = (f': {n - self.refused} staged, {self.refused} refused '
+                    f'({"the first" if self.refused > 1 else "it"} said: {first})')
+        return f'\n\n{calls}{what}. The plan now holds {held} change{"s" if held != 1 else ""}.'
 
     def note(self, ws) -> None:
         """The run's notes, in place of whatever the reads it made noted on
@@ -672,13 +699,14 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what
     the app lets the code see, and ``shape`` its short example of a loaded
-    document. What the run read and printed is noted (:class:`Tally`)."""
+    document. What the run read and printed is noted (:class:`Tally`), and
+    what its plan() calls did is said after its output, on an error too."""
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
     tally = Tally()
     try:
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally)
     except CodeError as e:
-        raise ToolError(str(e))
+        raise ToolError(str(e) + tally.plan_note(ws))
     tally.note(ws)
-    return out
+    return out + tally.plan_note(ws)
