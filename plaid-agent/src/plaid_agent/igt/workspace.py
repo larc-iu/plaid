@@ -53,7 +53,7 @@ NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexi
                        'they create has its form and nothing else (a phrase entry also its type), as in the '
                        'app. Its fields and its type are for a maintainer of that lexicon to fill in. Nothing was planned. Create the '
                        'entry with its form alone, and tell them a maintainer has to add the rest.')
-from .project import (BAD_REF, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
+from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
@@ -163,6 +163,8 @@ class Workspace(BaseWorkspace):
         self.item_patches: Dict[str, dict] = {}
         self._patch_version = 0
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
+        # Whether a read this turn printed the format legend (``render``).
+        self.legend_shown = False
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
         # The version of each document a change was staged in from a query
         # without the turn loading it, read as the change was staged
@@ -292,8 +294,12 @@ class Workspace(BaseWorkspace):
     def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,
                indexes: Optional[List[int]] = None, budget: Optional[int] = None,
                shown_out: Optional[List[int]] = None) -> str:
-        return render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
-                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out)
+        # The legend once a turn: later reads point back at it.
+        out = render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
+                              ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out,
+                              legend=not self.legend_shown)
+        self.legend_shown = self.legend_shown or FORMAT_LEGEND in out
+        return out
 
     # --- what a comment sits on ------------------------------------------
 

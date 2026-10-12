@@ -686,11 +686,14 @@ def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
     whole = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert '\n[s2]' in whole, 'the fixture needs two sentences for this'
     monkeypatch.setattr(core_tools, 'RENDER_BUDGET', whole.index('\n[s2]') + 200)
+    # Each read as a turn's first, with the legend the budget was measured with.
+    w.legend_shown = False
     out = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert 'Showing s1-s1. The rest did not fit in one call.' in out
     assert 'read_document with from_sentence=2 for the next batch' in out
     assert '[s2]' not in out and '[truncated' not in out
     # Named sentences say which did not fit, and nothing about a range.
+    w.legend_shown = False
     out = call_tool(w, 'read_document', {'document': 'Text 1', 'sentences': ['s1', 's2']})
     assert 'Showing s1. Not shown, as they did not fit: s2. Ask for them in another call.' in out
     assert '[s2]' not in out and 'from_sentence' not in out

@@ -798,13 +798,19 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
                  'Address items as sN, sN.wN, sN.wN.mN; cite one to the user as '
                  '<cite doc="<document name>" ref="sN"/>.')
 
+#: What a later read in the turn says in place of the legend, which cost
+#: about a kilobyte of every read and left room for three sentences a call
+#: where a project had many fields (2026-10-12 survey).
+FORMAT_AS_BEFORE = 'Format as in your first read this turn.'
+
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
                     max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
                     budget: Optional[int] = None, indexes: Optional[List[int]] = None,
-                    shown_out: Optional[List[int]] = None) -> str:
+                    shown_out: Optional[List[int]] = None, legend: bool = True) -> str:
     """Either a range (``start`` to ``end``) or the sentences numbered in
-    ``indexes``, in that order. ``ref_name`` is how a reference to this
+    ``indexes``, in that order. ``legend`` False points at the legend an
+    earlier read printed instead of printing it again. ``ref_name`` is how a reference to this
     document must name it (its id where another document shares its name):
     shown so what is read back is unambiguous. ``budget`` is the most
     characters the result may hold: sentences are rendered until it is spent
@@ -832,7 +838,8 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         wanted = list(range(start, end + 1))
     rendered: List[str] = []
     done: List[int] = []
-    used = len(head) + len(FORMAT_LEGEND) + 250  # the showing line and the trailing note
+    format_line = FORMAT_LEGEND if legend else FORMAT_AS_BEFORE
+    used = len(head) + len(format_line) + 250  # the showing line and the trailing note
     for i in wanted:
         text = render_sentence(doc.sentences[i - 1], project)
         if budget is not None and rendered and used + len(text) + 1 > budget:
@@ -847,9 +854,9 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         showing = 'Showing ' + ', '.join(f's{i}' for i in done) + '.'
         if left:
             showing += ' Not shown, as they did not fit: ' + ', '.join(f's{i}' for i in left) + '. Ask for them in another call.'
-        return '\n'.join([head, FORMAT_LEGEND, showing] + rendered)
+        return '\n'.join([head, format_line, showing] + rendered)
     end = done[-1] if done else start - 1
-    lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if left else '')]
+    lines = [head, format_line, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if left else '')]
     lines += rendered
     if end < n:
         lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')
