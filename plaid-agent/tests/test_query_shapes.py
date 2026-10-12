@@ -79,3 +79,11 @@ def test_an_or_written_with_a_colon_is_checked_as_an_or():
         parse_query({'find': ['?e'], 'where': [[':or', ['=', '?e.value', 'A']]]})
     q = parse_query({'find': ['?e'], 'where': [[':not', {'span': '?e', 'value': 'A'}]]})
     assert q['where'] == [[':not', ['span', '?e', {'value': 'A'}]]]
+
+
+def test_a_find_beside_an_aggregate_return_is_dropped():
+    """The engine refuses ":find is not used with an aggregate :return", and
+    the group already says what comes back (2026-10-12 survey)."""
+    q = parse_query({'find': ['?g'], 'where': [['span', '?g', {'layer': 'Gloss'}]],
+                     'return': {'group': ['?g.value'], 'aggregates': [['count']]}})
+    assert 'find' not in q and q['return'] == {'group': ['?g.value'], 'aggregates': [['count']]}

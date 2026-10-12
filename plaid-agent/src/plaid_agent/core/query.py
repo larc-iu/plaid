@@ -27,7 +27,7 @@ LAYER_SLOTS = ('layer', 'token-layer', 'text-layer', 'parent-token-layer', 'span
 HELP = '''\
 PLAID QUERY LANGUAGE (project-scoped; read-only; results limited)
 Request: {"find": ["?a", ...], "where": [clause, ...], "return": "entities"|"ids"|"count"|aggregate, "limit": n,
-          "order_by": [["?t.begin"], ["?t.doc", "desc"]]}   (find is omitted only with an aggregate return)
+          "order_by": [["?t.begin"], ["?t.doc", "desc"]]}   (find is left out with an aggregate return)
 Variables start with "?"; the same name in two clauses is a join. Layers are named by NAME here (see the list
 below); the tool turns names into ids. Scope is always this project.
 
@@ -140,6 +140,11 @@ def parse_query(query: Any) -> Dict[str, Any]:
                            'Only an aggregate return ({"group": [...], "aggregates": [...]}) may '
                            'leave it out, and "count" counts the distinct find tuples.')
     query = dict(query)
+    # The engine refuses find beside an aggregate return, and the group names
+    # the columns anyway, so a find written there out of habit is dropped
+    # rather than sent back as a refusal (five times in the 2026-10-12 survey).
+    if isinstance(ret, dict):
+        query.pop('find', None)
     if query.get('find'):
         query['find'] = _find(query['find'])
     query['where'] = _where(query['where'])
