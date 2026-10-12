@@ -452,7 +452,9 @@ TOOLS += [
          'at': {'type': 'string', 'description': 'The left part, or its length.'}}, ['document', 'ref', 'at']),
     _fn('merge_words',
         'PLAN: merge adjacent words of one sentence into one token. Their morpheme analyses are deleted; word '
-        'values are combined losslessly (distinct values joined with " | "); one lexicon link is kept.',
+        'values are combined losslessly (distinct values joined with " | "); one lexicon link is kept. The text is '
+        'unchanged, so the merged word keeps the space between them ("ado thee"). To write them together, respell '
+        'the merged word.',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
     _fn('delete_word',
         'PLAN: delete word tokens. The text is unchanged (use respell to change spelling); the words\' analyses, '
