@@ -31,7 +31,12 @@ from .limits import CITE_DOC_BUDGET, MAX_CITATIONS
 from .tools import ToolError
 
 TAG_RE = re.compile(r'<\s*cite\b(?P<attrs>[^<>]*?)/?\s*>(?:[ \t]*<\s*/\s*cite\s*>)?', re.I)
-ATTR_RE = re.compile(r'''([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>/]+))''')
+# A quoted value ends at the quote followed by the next attribute or the tag's
+# end, not at the first quote: a document named Coniugazione "potere" broke 17
+# of 25 citations in one reply at its inner quote (2026-10-12 survey).
+_VALUE_END = r'(?=\s*[A-Za-z_][\w-]*\s*=|\s*/?\s*$)'
+ATTR_RE = re.compile(r'([A-Za-z_][\w-]*)\s*=\s*(?:"(.*?)"' + _VALUE_END + r"|'(.*?)'" + _VALUE_END
+                     + r"""|([^\s"'<>/]+))""", re.S)
 
 
 def brace_re(ref: str) -> re.Pattern:
