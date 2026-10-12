@@ -93,7 +93,8 @@ from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
                    PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, expanding,
-                   forget_held, holding, may_have_written, nothing_landed, outcome_unknown, stamp_of, writing)
+                   forget_held, holding, may_have_written, nothing_landed, outcome_unknown, stamp_of, waiting_plan,
+                   writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -1099,6 +1100,9 @@ class BaseAssistantService(BaseService):
             ws.keeper = FileKeeper(store, conv_id)
             last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
             ws.asked = str((last_user or {}).get('text') or '')
+            # The plan an earlier message staged that still waits on its card,
+            # which this turn's own plan replaces (see `turn_ending`).
+            ws.waiting = waiting_plan(conv['display'])
             transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
             # The other projects the user added to the conversation, read from their
             # own message and nowhere else, and only those the requester's token

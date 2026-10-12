@@ -20,7 +20,7 @@ from plaid_client.constraints import value_set_allows
 
 from . import docload, fingerprint as fp, garble, opkind, work
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
-from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, plan_changes, reserve as core_reserve
+from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, plan_changes, reserve as core_reserve, waiting_phrase
 from .tools import ToolError
 from .trace import note as trace_note
 
@@ -156,6 +156,11 @@ class BaseWorkspace:
         # service, so a tool can hold what it plans against values the user
         # wrote out. '' where there is none.
         self.asked = ''
+        # The plan an earlier message staged that still waits on its card
+        # (``plan.waiting_plan``), set by the service, and whether a staging
+        # result has said this turn's plan replaces it. None where none waits.
+        self.waiting: Optional[Dict[str, Any]] = None
+        self.reported_waiting = False
 
     def close(self) -> None:
         """Release what the turn held: the code worker and any reads still
@@ -842,12 +847,24 @@ class BaseWorkspace:
         through the single-item tool and throws its notes away, so a counter
         read there would take what those notes would have said with it.
         """
+        out = self.waiting_note()
         new = self.replaced - self.reported_replaced
         if new <= 0:
-            return ''
+            return out
         self.reported_replaced = self.replaced
-        return (f' {new} earlier planned change{"s" if new != 1 else ""} on the same '
-                f'target{"s" if new != 1 else ""} superseded.')
+        return out + (f' {new} earlier planned change{"s" if new != 1 else ""} on the same '
+                      f'target{"s" if new != 1 else ""} superseded.')
+
+    def waiting_note(self) -> str:
+        """Said once, by the first staging of a turn while a plan from an
+        earlier message waits: the card will hold this turn's plan alone. A
+        model that added 19 changes told the user the plan held the 114 before
+        them too, and the 114 never landed (2026-10-12 survey)."""
+        if not self.waiting or not self.ops or self.reported_waiting:
+            return ''
+        self.reported_waiting = True
+        return (f' This replaces {waiting_phrase(self.waiting)}, which the user can no longer approve. '
+                'Stage those again if they should stay.')
 
     def planned_note(self, n: int, what: Optional[str] = None) -> str:
         """What a tool that staged ``n`` changes says back. ``what`` says it

@@ -1407,10 +1407,51 @@ def holding(client, document_ids: Iterable[str]):
 PLAN_STATUS_LINES = 200
 
 
+#: How much of a waiting plan's summary the model is shown.
+WAITING_SUMMARY_MAX = 160
+
+
+def waiting_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
+    """The plan an earlier message staged that is still waiting on its card,
+    as ``{'count', 'summary'}``, or None. The test is the one a new plan's
+    turn uses to mark it replaced (`conversation.replace_undecided`): a plan
+    with no status that no approval was interrupted on."""
+    waiting = [d for d in display or () if isinstance(d, dict) and isinstance(d.get('plan'), dict)
+               and d.get('status') is None and not d.get('interrupted')]
+    if not waiting:
+        return None
+    plan = waiting[-1]['plan']
+    count = plan.get('proposed_count')
+    if not isinstance(count, int):
+        count = len(plan.get('changes') or plan.get('ops') or [])
+    summary = str(plan.get('summary') or '').strip()
+    if len(summary) > WAITING_SUMMARY_MAX:
+        summary = summary[:WAITING_SUMMARY_MAX - 1].rstrip() + '…'
+    return {'count': count, 'summary': summary}
+
+
+def waiting_phrase(waiting: Dict[str, Any], the: str = 'the') -> str:
+    """"the plan of 114 changes (its summary) from your earlier message"."""
+    n = waiting['count']
+    summary = f' ({waiting["summary"]})' if waiting.get('summary') else ''
+    return f'{the} plan of {n} change{"s" if n != 1 else ""}{summary} from your earlier message'
+
+
 def plan_status(ws) -> str:
     """The plan's entries, numbered as drop_planned takes them, each as the
-    card will show it (``ws.plan_view()``)."""
+    card will show it (``ws.plan_view()``).
+
+    Each turn stages a plan of its own, which replaces the one still waiting
+    from an earlier message, so that one is named too: a model told only
+    "nothing is planned" said the waiting card was cleared, and one that
+    added 19 changes told the user the card held the 114 before them as well
+    (2026-10-12 survey)."""
+    waiting = getattr(ws, 'waiting', None)
     if not ws.ops:
+        if waiting:
+            return (f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting on '
+                    'its card for the user to approve or discard. Staging anything now replaces it, so stage '
+                    'again whatever of it should stay.')
         return 'Nothing is planned yet.'
     ops = ws.plan_view()
     n = len(ops)
@@ -1421,6 +1462,8 @@ def plan_status(ws) -> str:
         out.append(f'  {i}. {op.get("label")}{where}')
     if n > PLAN_STATUS_LINES:
         out.append(f'  ... {n - PLAN_STATUS_LINES} more')
+    if waiting:
+        out.append(f'This plan replaces {waiting_phrase(waiting)}: only what is listed here can be approved.')
     return '\n'.join(out)
 
 
@@ -1428,7 +1471,15 @@ def discard_plan(ws) -> str:
     n = len(ws.ops)
     ws.ops.clear()
     ws.after_discard()
-    return f'Discarded {n} planned change{"s" if n != 1 else ""}.' if n else 'Nothing was planned.'
+    said = f'Discarded {n} planned change{"s" if n != 1 else ""}.' if n else 'Nothing was planned.'
+    waiting = getattr(ws, 'waiting', None)
+    if waiting:
+        said = said if n else 'Nothing was planned in this turn.'
+        # Only the user discards a card (2026-10-12 survey: "the plan was
+        # cleared" while it could still be approved).
+        said += (f' {waiting_phrase(waiting, "The")} is still waiting on its card: only the user can '
+                 'discard it there.')
+    return said
 
 
 def drop_planned(ws, indexes=None) -> str:
