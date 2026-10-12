@@ -107,7 +107,7 @@ No parameters.
 
 ### list_documents
 
-The documents by name, a page at a time, optionally filtered by a name substring and/or a document metadata value (metadata_field + value; an empty value lists documents lacking it).
+The documents by name, a page at a time, optionally filtered by a substring of the name or of any document metadata value (pattern), and/or by a whole metadata value (metadata_field + value; an empty value lists documents lacking it).
 
 - `pattern` (string)
 - `metadata_field` (string)
@@ -126,7 +126,7 @@ Read a document as compact interlinear text: baseline sentences, sentence fields
 
 ### search
 
-Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, or a regex). Returns positional references with each hit's word line and sentence. Scans every document unless one is named. (For items LACKING a value use worklist; for aligned context use concordance.)
+Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, or a regex). Returns positional references with each hit's word line and sentence. Scans every document unless one is named. (For items LACKING a value use worklist; for aligned context use concordance.) Every value a field holds, with counts, is frequency_list's job, not one search per value.
 
 - `pattern` (string, required)
 - `where` (string): "baseline" (word forms, default), "morpheme" (morpheme forms), "lexicon" (entries), or a field name (e.g. "Gloss", "Translation").
@@ -253,7 +253,7 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 - `document` (string): Document id or exact name (see project_overview).
 - `regex` (boolean)
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
-- `limit` (integer): Max occurrences to list (default 60); the pattern tally always covers all.
+- `limit` (integer): Max occurrences to list (default 60). The pattern and value tallies cover the occurrences listed.
 
 ### analyses_of
 
@@ -479,7 +479,7 @@ Data-shape report: segmentations that do not add up to the word, duplicate and e
 
 ### sequence_search
 
-Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]; conditions match whole values (regex=true for patterns). adjacent=false lets other words come between, in order. Counts are sentences (first match per sentence). For constituent-order and construction questions.
+Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]; conditions match whole values (regex=true for patterns). A name a word field and a morpheme field share matches either. adjacent=false lets other words come between, in order. Counts are sentences (first match per sentence). For constituent-order and construction questions.
 
 - `sequence` (array of object of string, required)
 - `adjacent` (boolean)
@@ -588,7 +588,7 @@ PLAN: split one word token into two. at: the left part ("Ali") or the number of 
 
 ### merge_words
 
-PLAN: merge adjacent words of one sentence into one token. Their morpheme analyses are deleted; word values are combined losslessly (distinct values joined with " | "); one lexicon link is kept.
+PLAN: merge adjacent words of one sentence into one token. Their morpheme analyses are deleted; word values are combined losslessly (distinct values joined with " | "); one lexicon link is kept. The text is unchanged, so the merged word keeps the space between them ("ado thee"). To write them together, respell the merged word.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.

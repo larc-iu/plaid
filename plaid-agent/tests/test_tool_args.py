@@ -189,9 +189,13 @@ def test_a_sentence_range_takes_the_references_a_read_prints(app):
         ws, call, doc = _ud_ws(), ud_call, 'Viaje'
     else:
         ws, call, doc = _umr_ws(), umr_call, 'Story'
-    plain = call(ws, 'read_document', {'document': doc, 'from_sentence': 2})
-    assert plain == call(ws, 'read_document', {'document': doc, 'from_sentence': 's2'})
-    assert plain == call(ws, 'read_document', {'document': doc, 'from_sentence': '2'})
+    def read(at):
+        # Each read as a turn's first: igt prints its legend once per turn.
+        ws.legend_shown = False
+        return call(ws, 'read_document', {'document': doc, 'from_sentence': at})
+    plain = read(2)
+    assert plain == read('s2')
+    assert plain == read('2')
 
 
 # A number a model wrote that is not a whole one. `int()` cuts 2.7 down to 2
