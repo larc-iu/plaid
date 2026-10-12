@@ -84,3 +84,42 @@ def test_the_helps_say_what_a_query_row_is_and_how_an_entry_field_is_read():
     query_help = call_tool(w, 'query_help', {})
     assert 'stop at 1000 rows' in query_help
     assert '["vocab","?v",{"metadata":{"gloss":"dog"}}]' in query_help and '"?v.metadata.gloss"' in query_help
+
+
+def test_lexicon_gives_every_entry_with_its_id_address_fields_and_links():
+    """Code reads the whole lexicon, joins a word's link to its entry by id,
+    and stages a change by entry id where the form names two entries
+    (2026-10-12 survey: lexicon work sampled 907 of 1205 entries, and 17 of
+    101 set_entry_field calls failed on homographs)."""
+    w = fake_ws(FakeClient())
+    word = view(w.doc('d1'))['sentences'][0]['words'][0]
+    assert word['link_id'] == 'vi-ali' and word['morphemes'][1]['link_id'] == 'vi-erg'
+    code = '''
+by_id = {e["id"]: e for e in lexicon()}
+print(len(by_id), by_id["vi-ali"]["links"], by_id["vi-erg"]["links"], by_id["vi-gam"]["links"])
+print(by_id["vi-erg"]["type"], repr(by_id["vi-gam"]["fields"]["gloss"]), by_id["vi-ali"].fields["pos"], by_id["vi-ali"].lexicon)
+print(sorted(e.address for e in by_id.values() if e.form == "gam"))
+for e in lexicon("Lexicon"):
+    if e["form"] == "gam" and e["fields"]["gloss"] == "net":
+        plan("set_entry_field", entry_id=e["id"], field="pos", value="N")
+print([e["fields"].get("pos") for e in lexicon() if e["id"] == "vi-gam2"])
+'''
+    w.reads = []
+    out = call_tool(w, 'run_code', {'code': code})
+    lines = out.splitlines()
+    assert lines[0] == '4 1 1 0', out
+    assert lines[1] == "suffix 'fish' N Lexicon", out
+    assert lines[2] == "['gam#1', 'gam#2']", out
+    # The entry a plan() call changed reads changed in the same run.
+    assert lines[3] == "['N']", out
+    assert len(w.ops) == 1 and w.ops[0]['item_id'] == 'vi-gam2'
+    assert {'n': 12, 'unit': 'entry'} in w.reads  # three calls of four entries
+    out = call_tool(w, 'run_code', {'code': 'lexicon("Nope")'})
+    assert 'No lexicon named "Nope"' in out
+
+
+def test_the_help_spells_the_lexicons_entry_fields():
+    w = fake_ws(FakeClient())
+    help_text = call_tool(w, 'code_help', {})
+    assert 'lexicon(name=None)' in help_text and '"Lexicon": "gloss"\n' in help_text
+    assert 'plan("set_entry_field", entry_id=e["id"], field="pos"' in help_text

@@ -429,7 +429,7 @@ standard-library modules {modules}. It is for a question the reads do not answer
 many documents, a join between two columns, a tally under your own conditions, a check across the corpus.
 It is not for what a single tool already answers.
 
-The project reaches the code through four functions, and nothing else:
+The project reaches the code through the functions here and any named further down, and nothing else:
   documents()                 -> [{{"id", "name"}}, ...] every document in the project
   load(document)              -> a plain-data view of one document (its shape is below); by id, by name,
                                  or by an entry of documents()
@@ -636,9 +636,12 @@ class Tally:
     documents it loaded (each once, however often), the queries it ran, the
     rows of attached tables it read, and the lines it printed. Counted here,
     in the process the workspace lives in: the worker calls back into it for
-    every read."""
+    every read. ``counted`` names host functions an app adds whose answer is
+    a list of things read, each with its unit."""
 
-    def __init__(self):
+    def __init__(self, counted: Optional[Dict[str, str]] = None):
+        self.counted = dict(counted or {})
+        self.read: Dict[str, int] = {}
         self.documents: set = set()
         self.queries = 0
         self.rows = 0
@@ -660,6 +663,9 @@ class Tally:
                     self.queries += 1
                 elif name == 'file_rows':
                     self.rows += len(answer or ())
+                elif name in self.counted:
+                    unit = self.counted[name]
+                    self.read[unit] = self.read.get(unit, 0) + len(answer or ())
                 elif name == 'plan':
                     self.plans += 1
                     if isinstance(answer, str) and answer.startswith('Error:'):
@@ -667,7 +673,8 @@ class Tally:
                         self.first_refusal = self.first_refusal or answer[len('Error:'):].strip()
                 return answer
             return call
-        return {name: counted(name, f) if name in ('load', 'query', 'file_rows', 'plan') else f
+        return {name: counted(name, f) if name in ('load', 'query', 'file_rows', 'plan') or name in self.counted
+                else f
                 for name, f in api.items()}
 
     def plan_note(self, ws) -> str:
@@ -705,21 +712,24 @@ class Tally:
         if getattr(ws, 'reads', None) is None:
             return
         del ws.reads[:]
-        for n, unit in ((len(self.documents), 'document'), (self.queries, 'query'), (self.rows, 'row')):
+        for n, unit in ((len(self.documents), 'document'), (self.queries, 'query'), (self.rows, 'row'),
+                        *((n, unit) for unit, n in self.read.items())):
             if n:
                 ws.note_read(n, unit)
         ws.note_read(self.printed, 'printed')
 
 
-def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]], shape: str = '') -> str:
+def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]], shape: str = '',
+             counted: Optional[Dict[str, str]] = None) -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what
     the app lets the code see, and ``shape`` its short example of a loaded
-    document. What the run read and printed is noted (:class:`Tally`), and
+    document, and ``counted`` the app's own reads a step label counts. What
+    the run read and printed is noted (:class:`Tally`), and
     what its plan() calls did is said after its output, on an error too."""
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
-    tally = Tally()
+    tally = Tally(counted)
     tally.waiting_unsaid = bool(getattr(ws, 'waiting', None)) and not getattr(ws, 'reported_waiting', False)
     try:
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally)
