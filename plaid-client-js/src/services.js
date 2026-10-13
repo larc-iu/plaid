@@ -373,11 +373,25 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       // requester has stopped the request, so a service that reports progress
       // through its work is cancellable without doing anything else. Use
       // `critical()` around writes to hold it off.
+      //
+      // A request the server answers 404 for is one it no longer knows (it
+      // ended, or the server restarted and forgot it), so nobody is waiting
+      // for the work: it counts as a stop, and the next checkpoint throws.
+      // Any other failure to send is only logged.
       progress: (percent, msg, extra) => {
         scope.raiseIfCancelled();
-        return reportEvent(requestId, {
+        return reportRequestEvent(client, projectId, requestId, {
           status: 'progress',
           progress: { percent, message: msg, ...extra },
+        }).catch((error) => {
+          if (error?.status === 404) {
+            if (cancelled.get(requestId) === false) {
+              console.warn(`The server no longer knows request ${requestId}, so it is stopped`);
+              cancelled.set(requestId, true);
+            }
+            return;
+          }
+          console.warn('Failed to report request event:', error.message || error);
         });
       },
       complete: (data) => {

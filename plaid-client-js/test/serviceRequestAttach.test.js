@@ -155,6 +155,36 @@ test('a served request sees who asked and whether a stop was requested', async (
   }
 });
 
+test('a request the server no longer knows is stopped, and other failures are not', async () => {
+  let onEvent;
+  const statuses = { r1: 404, r2: 503 };
+  const client = {
+    messages: { listen: (projectId, cb) => ((onEvent = cb), { readyState: 1, close() {} }) },
+    _request: (method, path) => {
+      const id = path.split('/').at(-2);
+      return Promise.reject(Object.assign(new Error(`HTTP ${statuses[id]}`), { status: statuses[id] }));
+    },
+  };
+  const seen = {};
+  const registration = serve(client, 'p1', { serviceId: 's1', serviceName: 'S' }, (data, helper) => {
+    seen[helper.requestId] = helper;
+  });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    onEvent('service_request', { requestId: 'r1', data: {} });
+    onEvent('service_request', { requestId: 'r2', data: {} });
+    await seen.r1.progress(10, 'Writing');
+    await seen.r2.progress(10, 'Writing');
+    assert.equal(seen.r1.cancelled, true);
+    assert.equal(seen.r2.cancelled, false);
+    assert.throws(() => seen.r1.progress(20, 'More'), ServiceCancelled);
+  } finally {
+    console.warn = warn;
+    registration.stop();
+  }
+});
+
 test('the other projects a request is about ride the URL beside a minted id', async () => {
   const urls = [];
   for (const opts of [{ requestId: 'abc', projectIds: ['p2', 'p3'] }, { projectIds: [] }]) {

@@ -501,14 +501,25 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 request, so a service that reports progress through its work
                 is cancellable without doing anything else. Wrap writes in
                 ``critical()`` to hold it off.
+
+                A request the server answers 404 for is one it no longer
+                knows (it ended, or the server restarted and forgot it), so
+                nobody is waiting for the work: it counts as a stop, and the
+                next checkpoint raises. Any other failure to send is only
+                logged.
                 """
                 self.raise_if_cancelled()
                 try:
                     _report_event(client, project_id, req_id,
                                   {'status': 'progress',
                                    'progress': {'percent': percent, 'message': msg, **extra}})
-                except Exception:
-                    logger.warning('Failed to send progress update')
+                except Exception as e:
+                    if getattr(e, 'status', None) == 404:
+                        if not cancel_flag.is_set():
+                            logger.warning('The server no longer knows request %s, so it is stopped', req_id)
+                        cancel_flag.set()
+                    else:
+                        logger.warning('Failed to send progress update')
 
             def complete(self, data=None):
                 """Send the final successful result for the request."""

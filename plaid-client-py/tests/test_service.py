@@ -647,6 +647,42 @@ def test_served_request_sees_requester_and_cancel():
         reg.stop()
 
 
+def test_a_request_the_server_no_longer_knows_is_stopped():
+    from plaid_client.http import PlaidAPIError
+    from plaid_client.services import ServiceCancelled
+    seen = []
+    on_event, reported, reg = _serve_with_capture(lambda data, helper: seen.append(helper))
+    try:
+        on_event('service_request', {'request_id': 'r1', 'data': {}})
+        on_event('service_request', {'request_id': 'r2', 'data': {}})
+        gone, alive = seen
+        statuses = {'r1': 404, 'r2': 503}
+
+        def refuse(client, project_id, req_id, body):
+            raise PlaidAPIError(f'HTTP {statuses[req_id]}', status=statuses[req_id])
+
+        import plaid_client.services as svc_mod
+        real = svc_mod._report_event
+        svc_mod._report_event = refuse
+        try:
+            gone.progress(10, 'Writing')
+            alive.progress(10, 'Writing')
+        finally:
+            svc_mod._report_event = real
+        assert gone.cancelled is True, 'a 404 says nobody is waiting: a stop'
+        assert alive.cancelled is False, 'a server error is only logged'
+        try:
+            gone.progress(20, 'More')
+        except ServiceCancelled:
+            pass
+        else:
+            raise AssertionError('the next checkpoint raises')
+        alive.progress(20, 'More')
+        assert reported[-1][1].endswith('/r2/events')
+    finally:
+        reg.stop()
+
+
 def test_served_request_sees_the_projects_its_token_reaches():
     seen = []
     on_event, _, reg = _serve_with_capture(lambda data, helper: seen.append(data))
