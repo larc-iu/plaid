@@ -228,7 +228,7 @@ No parameters.
 
 ### query
 
-Run one read-only Plaid query over this project: structure across layers, joins, negation, aggregates. The escape hatch for a question the other tools cannot express, so prefer them when they fit. Layers are named by their names from query_help.
+Run one read-only Plaid query over this project: structure across layers, joins, negation, aggregates. The escape hatch for a question the other tools cannot express, so prefer them when they fit. Layers are named by their names from query_help. For a head and its dependent, a deprel with a UPOS on either end, or a pattern the user wants for the Search tab, use grew_search instead: the Search tab speaks Grew, not this language.
 
 - `query` (object, required): The query object: find, where, return, limit, order_by. See query_help.
 - `limit` (integer): Rows to show (default 50, max 500).
