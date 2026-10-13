@@ -117,6 +117,22 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
     return refs
 
 
+def _entry_refs(ws: Workspace, entities: List[Dict[str, Any]]) -> Dict[str, str]:
+    """entry id -> its label as the lexicon tools take it back ("kwatha",
+    "kwatha#1.2" for a sense), since a sense carries its headword's form and
+    several of them read as one headword repeated (2026-10-13 survey)."""
+    refs: Dict[str, str] = {}
+    vocabs = {v['id']: v for v in ws.project.vocabs or []}
+    for e in entities:
+        v = vocabs.get(e.get('layer')) or ws.vocab_of_item(e['id'])
+        if v is None:
+            continue
+        view = ws.view(v, removed=True)
+        if e['id'] in view.tree.by_id:
+            refs[e['id']] = view.label(e['id'])
+    return refs
+
+
 def t_query(ws: Workspace, query: Any = None, limit: Any = None) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
-    return query_tool(ws, query, limit, _layer_index, display, _ref_index)
+    return query_tool(ws, query, limit, _layer_index, display, _ref_index, _entry_refs)

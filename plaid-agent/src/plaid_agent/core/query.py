@@ -67,9 +67,15 @@ Return shapes: "ids" (default), "entities" (full objects), "count" (distinct fin
   aggregate {"group": ["?d"], "aggregates": [["count"], ["min","?b"], ["max","?b"], ["avg","?b"]]} (group by
   bound variables; no find and no order_by with aggregates; extra joins inflate counts).
 Limits: "ids" and "entities" stop at 1000 rows, and past that the answer is cut ("truncated"): count with
-  "count" or an aggregate return instead, or split the where (by document, say). This tool shows at most
-  `limit` rows, default 50. 30 s per query.
+  "count" or an aggregate return instead, or split the where (by document, say). This tool shows the
+  number of rows its own limit argument says, or else the query's "limit", default 50, up to 500. 30 s per query.
 '''
+
+
+# How to see the rows past what the tool shows. The "limit" inside the query
+# was read as the shown limit, and a model planned from the first 50 of 97
+# rows (2026-10-13 survey).
+MORE = f'the tool\'s limit argument shows up to {READ_LIMITS["query"][1]}'
 
 
 class QueryRefused(Exception):
@@ -263,7 +269,9 @@ def cell(entity: Any, refs: Dict[str, str], layer_names: Dict[str, str]) -> str:
     ref = refs.get(eid)
     layer = layer_names.get(entity.get('layer'), '')
     if 'form' in entity and 'tokens' not in entity:
-        return f'entry "{entity.get("form")}"' + (f' [{layer}]' if layer else '')
+        # A sense carries its headword's form, so the app's address for it
+        # ("kwatha#1.2") is what tells several apart (2026-10-13 survey).
+        return 'entry ' + (ref or f'"{entity.get("form")}"') + (f' [{layer}]' if layer else '')
     if 'tokens' in entity:
         return (ref or f'span {eid[:8]}') + f' = "{entity.get("value")}"' + ('' if ref else f' [{layer}]')
     if 'begin' in entity:
@@ -293,12 +301,12 @@ def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
             lines.append('  ' + '\t'.join(
                 str(doc_names.get(c, c)) if isinstance(c, str) else str(c) for c in r))
         if len(rows) > limit:
-            lines.append(f'  … {len(rows) - limit} more groups')
+            lines.append(f'  … {len(rows) - limit} more groups ({MORE})')
         return '\n'.join(lines)
     total = res.get('count', len(rows))
     header = f'{total} row{"s" if total != 1 else ""}' \
         + (' (truncated by the engine limit)' if res.get('truncated') else '') \
-        + (f', showing {limit}' if len(rows) > limit else '') + ': ' + '\t'.join(cols)
+        + (f', showing {limit} ({MORE})' if len(rows) > limit else '') + ': ' + '\t'.join(cols)
     if q.get('return') == 'ids':
         return '\n'.join([header] + ['  ' + '\t'.join(str(c) for c in r) for r in rows[:limit]])
     return '\n'.join([header] + ['  ' + '\t'.join(cell(c, refs, layer_names) for c in r)
@@ -354,16 +362,23 @@ def documents_in(rows: List[Any], limit: int, cap: int = 25) -> List[str]:
 
 
 def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Callable,
-               ref_index: Callable) -> str:
+               ref_index: Callable, entry_refs: Optional[Callable] = None) -> str:
     """The ``query`` tool, for every app.
 
     An app answers three things: what its layers are called
     (``layer_index``), how a refusal names one (``display``), and how a row is
     addressed back to the user (``ref_index``). The rest is the same wherever
-    the engine is asked a question.
+    the engine is asked a question. An app whose vocabulary entries have
+    addresses of their own names them with ``entry_refs(ws, entities)``.
+
+    The tool's own ``limit`` sets the rows shown. When it is not given, a
+    number written as the query's "limit" is taken for it, as a model that
+    writes one means to see that many.
     """
     try:
         q = parse_query(query)
+        if limit in (None, '') and isinstance(q.get('limit'), int) and not isinstance(q.get('limit'), bool):
+            limit = q['limit']
         limit = clamp_limit(limit, *READ_LIMITS['query'])
         idx = layer_index(ws)
         docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
@@ -375,6 +390,11 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
     doc_names = {d['id']: d.get('name') for d in ws.documents()}
     rows = res.get('results') or [] if isinstance(res, dict) else []
     refs = ref_index(ws, documents_in(rows, limit))
+    if entry_refs is not None:
+        entries = [c for r in rows[:limit] if isinstance(r, list) for c in r
+                   if isinstance(c, dict) and 'form' in c and 'tokens' not in c and c.get('id')]
+        if entries:
+            refs.update(entry_refs(ws, entries))
     layer_names = {h[1]: h[2] for hs in idx.values() for h in hs}
     note_rows(ws, res, limit)
     return truncate(render(res, q, limit, refs, layer_names, doc_names))
