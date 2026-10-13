@@ -16,6 +16,10 @@ from .project import word_ref
 from .tools import Workspace
 
 UD_HELP = '''
+A STRUCTURAL QUESTION (a head and its dependent, a deprel with a UPOS on either end, a word that lacks a
+dependent) and any pattern the user wants for the Search tab is grew_search's, not this language's: the
+Search tab speaks Grew. Use this language for what Grew cannot say.
+
 THIS PROJECT'S LAYERS, and how UD sits on them:
   token layers: sentences, tokens (the surface tokens), words (the syntactic words)
   text layer: baseline

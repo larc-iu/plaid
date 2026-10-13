@@ -47,6 +47,14 @@ _REFS = {'type': 'array', 'items': {'type': 'string'},
 _FIELD = {'type': 'string', 'enum': list(FIELDS),
           'description': 'Which column: lemma, upos, xpos or features.'}
 
+# A structural question went to query or run_code, and its QL JSON was given
+# to the user for the Search tab, which speaks Grew (2026-10-13 survey).
+_QUERY = {**_SHARED['query'], 'function': {
+    **_SHARED['query']['function'],
+    'description': _SHARED['query']['function']['description']
+    + ' For a head and its dependent, a deprel with a UPOS on either end, or a pattern the user wants for the '
+      'Search tab, use grew_search instead: the Search tab speaks Grew, not this language.'}}
+
 TOOLS = [
     _fn('project_overview',
         'The project: its language, its controlled vocabularies and whether each one is a rule or a '
@@ -186,7 +194,7 @@ TOOLS = [
                                                           'root_head.'}},
         ['document', 'ref']),
     _SHARED['query_help'],
-    _SHARED['query'],
+    _QUERY,
     _fn('restore_document',
         'PLAN: put a document back as it was at a moment in its history, every layer of it. The '
         'plan shows what would change, from the server\'s own dry run, so it is not a guess. '

@@ -233,3 +233,15 @@ def test_no_matches_over_an_edge_says_which_end_is_the_head(treebank):
     out = t_grew_search(treebank, 'pattern { A [upos=PUNCT]; A -> N }', document='Viaje')
     assert out.splitlines()[-1] == 'In X -[rel]-> Y, X is the head and Y the dependent: check the direction.'
     assert t_grew_search(treebank, 'pattern { X [upos=PRON] }', document='Viaje').endswith('No matches in "Viaje".')
+
+
+def test_ud_query_points_structure_and_the_search_tab_at_grew_search(treebank):
+    """A structural question went to query, and its QL JSON was given to the
+    user for the Search tab (2026-10-13 survey). The words are ud's own."""
+    from plaid_agent.igt.toolkit import TOOLS as IGT_TOOLS
+    from plaid_agent.ud.toolkit import TOOLS
+    desc = next(t['function']['description'] for t in TOOLS if t['function']['name'] == 'query')
+    assert desc.endswith('use grew_search instead: the Search tab speaks Grew, not this language.')
+    igt = next(t['function']['description'] for t in IGT_TOOLS if t['function']['name'] == 'query')
+    assert 'grew_search' not in igt
+    assert "is grew_search's, not this language's" in call_tool(treebank, 'query_help', {})
