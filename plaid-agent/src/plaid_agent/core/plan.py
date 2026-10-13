@@ -1491,8 +1491,11 @@ def discard_plan(ws) -> str:
         said = said if n else 'Nothing was planned in this turn.'
         # Only the user discards a card (2026-10-12 survey: "the plan was
         # cleared" while it could still be approved).
+        # The next step is said too: a model that read "only the user can
+        # discard it" as "the card is safe" staged again and looped
+        # (2026-10-13 survey).
         said += (f' {waiting_phrase(waiting, "The")} is still waiting on its card: only the user can '
-                 'discard it there.')
+                 'discard it there. To keep its changes, call resume_plan now, before staging anything.')
     return said
 
 

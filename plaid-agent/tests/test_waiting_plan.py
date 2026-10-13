@@ -42,7 +42,8 @@ def test_plan_status_with_nothing_staged_names_the_waiting_plan():
 def test_discarding_does_not_claim_the_waiting_card():
     out = call_tool(_ws(), 'discard_plan', {})
     assert out.startswith('Nothing was planned in this turn.')
-    assert 'still waiting on its card: only the user can discard it there' in out
+    assert out.endswith('still waiting on its card: only the user can discard it there. To keep its changes, '
+                        'call resume_plan now, before staging anything.')
 
 
 def test_the_first_staging_says_once_that_it_replaces_the_waiting_plan():
