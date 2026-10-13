@@ -350,7 +350,7 @@ class BaseAssistantService(BaseService):
         parser.add_argument('--api-key', default=None, help='Provider API key (else the provider\'s env var)')
         parser.add_argument('--max-steps', type=int, default=50, help='Tool-call rounds per turn (default 50)')
         parser.add_argument('--temperature', type=float, default=None)
-        parser.add_argument('--max-output-tokens', '--max-tokens', dest='max_tokens', type=_positive_int,
+        parser.add_argument('--max-output-tokens', dest='max_tokens', type=_positive_int,
                             default=None, metavar='N',
                             help=f'The most one model call may write, its reasoning included (default '
                                  f'{DEFAULT_MAX_OUTPUT_TOKENS}, or less for a model known to write less). '
