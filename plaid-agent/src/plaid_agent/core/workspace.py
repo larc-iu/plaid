@@ -18,11 +18,12 @@ import json
 import re
 import unicodedata
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
 
 from . import docload, fingerprint as fp, garble, opkind, work
+from .java_regex import matcher
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .plan import (PLAN_MAX_OPS, PlanFull, carried_pins, docs_of_op, keep_waiting, plan_changes,
                    reserve as core_reserve, waiting_phrase)
@@ -61,6 +62,24 @@ def name_key(name: str) -> str:
 def loose_name_key(name: str) -> str:
     """:func:`name_key` with the spaces around a colon left out."""
     return re.sub(r' ?: ?', ':', name_key(name))
+
+
+def _typed(name: str, loose: bool = False) -> str:
+    """:func:`name_key` (or :func:`loose_name_key`) with the case left as it
+    is, for :func:`name_matcher` to fold as the server's search folds it."""
+    folded = ' '.join(unicodedata.normalize('NFC', name).translate(_NAME_FOLDS).split())
+    return re.sub(r' ?: ?', ':', folded) if loose else folded
+
+
+def name_matcher(pattern: str) -> Callable[[Optional[str]], bool]:
+    """A list_documents pattern over document names: a literal substring
+    folded as :meth:`BaseWorkspace.resolve_document_id` folds a name (curly
+    quotes and dashes as typed, whitespace, the spaces around a colon), its
+    case read as the server's search reads it (java_regex). "Man's hunting
+    story" listed nothing for a name with ’ in 3 of 3 runs (2026-10-13
+    survey)."""
+    tests = [(loose, matcher(_typed(pattern, loose), literal=True, case_insensitive=True)) for loose in (False, True)]
+    return lambda name: any(m(_typed(name or '', loose)) for loose, m in tests)
 
 
 def _op_key(op: Dict[str, Any]) -> str:

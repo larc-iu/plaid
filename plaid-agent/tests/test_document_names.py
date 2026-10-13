@@ -38,3 +38,17 @@ def test_a_miss_leads_with_the_closest_names():
     said = str(e.value)
     assert said.startswith('No document "Pear_Story_03". Closest: "COMPLETE: Pear_Story_0')
     assert said.index('Closest:') < said.index('Documents:')
+
+
+@pytest.mark.parametrize('typed, names', [
+    ("children's", ['The children’s story']),
+    ('complete:pear', ['COMPLETE: Pear_Story_01', 'COMPLETE: Pear_Story_02']),
+    ('"where are you" - part', ['Frog “where are you” – part 1']),
+    ('Ab:c', ['Ab : c', 'Ab:c']),
+])
+def test_list_documents_folds_the_pattern_as_a_name_resolves(typed, names):
+    """"Man's hunting story" listed nothing in 3 of 3 runs (2026-10-13 survey)."""
+    from plaid_agent.igt.toolkit import call_tool
+    out = call_tool(_ws(), 'list_documents', {'pattern': typed})
+    assert [line.split('  id=')[0].strip() for line in out.splitlines()[1:]] == names, out
+    assert call_tool(_ws(), 'list_documents', {'pattern': 'zzz'}) == 'No documents matched.'

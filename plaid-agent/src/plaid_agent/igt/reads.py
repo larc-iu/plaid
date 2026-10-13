@@ -17,6 +17,7 @@ from ..core.args import clamp_limit, read_int
 from ..core.limits import MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
 from ..core.tools import ToolError, document_page, documents_page, named_sentences, truncate
 from ..core.trace import ranges
+from ..core.workspace import name_matcher
 
 from .project import (Word, Morpheme, document_lines, joiner_between, read_view, render_overview, word_ref)
 from .lexview import LexView, _num_key, entry_line
@@ -52,13 +53,14 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         # name (2026-10-12 survey).
         metas = ws.corpus.document_metadata()
         match = _matcher(pattern, False)
+        by_name = name_matcher(pattern)
         why: Dict[str, List[str]] = {}
         kept = []
         for d in (ws.documents() if docs is None else docs):
             meta = metas.get(d['id']) or {}
             found = [f'{k}={meta[k]}' for k in ws.project.document_metadata
                      if meta.get(k) not in (None, '') and match(str(meta[k]))]
-            if match(d.get('name') or ''):
+            if by_name(d.get('name')):
                 kept.append(d)
             elif found:
                 kept.append(d)

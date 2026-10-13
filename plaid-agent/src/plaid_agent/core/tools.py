@@ -11,7 +11,6 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit, read_int, sentence_number
-from .java_regex import matcher
 from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET, note_cut
 from .trace import ranges
 
@@ -189,9 +188,8 @@ def documents_page(ws, pattern: str = None, limit: int = None, offset: int = 0, 
     narrowed = docs is not None
     docs = sorted(ws.documents() if docs is None else docs, key=lambda d: (d.get('name') or '').casefold())
     if pattern:
-        # Read as the server's search reads it: literal, case-insensitive, in
-        # NFC on both sides (java_regex), so a name typed decomposed is found.
-        matches = matcher(pattern, literal=True, case_insensitive=True)
+        from .workspace import name_matcher
+        matches = name_matcher(pattern)
         docs = [d for d in docs if matches(d.get('name'))]
     if not docs:
         return 'No documents matched.' if pattern or narrowed else 'The project has no documents.'
