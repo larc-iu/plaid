@@ -32,7 +32,7 @@ EXEMPT = {'code_help'}
 
 # Reads run only against the engine that answers nothing, since ud's and umr's
 # fake clients refuse their queries.
-ENGINE_ONLY = {('igt', 'query'), ('ud', 'query'), ('umr', 'query'),
+ENGINE_ONLY = {('igt', 'query'), ('ud', 'query'), ('ud', 'grew_search'), ('umr', 'query'),
                ('ud', 'check_consistency'), ('umr', 'frequency_list')}
 
 APPS = {
@@ -53,7 +53,7 @@ def _cases():
             params = f.get('parameters') or {}
             args = dict(smoke.EXTRA[app].get(name) or {})
             for k in params.get('required') or []:
-                args[k] = values[k]
+                args.setdefault(k, values[k])
             if 'document' in (params.get('properties') or {}):
                 args.setdefault('document', values['document'])
             for empty in ((True,) if (app, name) in ENGINE_ONLY else (False, True)):
