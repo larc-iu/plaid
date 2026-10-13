@@ -14,6 +14,7 @@ from ..core.limits import MAX_SENTENCES_PER_READ
 from ..core.tools import fn, limit_arg
 
 from .bulk import t_replace_in_field
+from .grew_search import t_grew_search
 from ..core.history import recent_changes as t_recent_changes
 from .query import t_query, t_query_help
 from .restore import t_restore_document
@@ -213,6 +214,23 @@ TOOLS += [
          'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off: "the" finds "The"). '
                                                               'The same switch replace_in_field takes.'}},
         ['field', 'pattern']),
+    _fn('grew_search',
+        'Sentences matching a Grew pattern, the language of the Search tab: the structural '
+        'questions (a head and its dependent, a deprel with a UPOS on either end, a word that '
+        'lacks a dependent) in ONE engine query instead of walking documents in run_code. Gives '
+        'the total matches, sentences and documents, then sentences with the matched words in '
+        'brackets and each node\'s word (V=w2 S=w1), and echoes the pattern so the user can '
+        'paste it into the Search tab: show it when they ask how something was found. A node is '
+        'a word: [upos=VERB, lemma="be", Number=Sing, !Tense, form=re"^un"]. An edge is '
+        'H -[nsubj]-> D, -[nsubj|obj]->, -[^punct]->, -[re"subj"]->, -[E:nsubj]-> for the enhanced '
+        'graph, -> for any. A root is * -[root]-> D. Also X < Y (next word), X << Y (anywhere '
+        'before), without { ... } for what must be absent. Example: pattern { V [upos=VERB]; '
+        'V -[nsubj]-> S; S [upos=PRON] } without { V -[obj]-> O }',
+        {'pattern': {'type': 'string', 'description': 'A Grew request: pattern { ... }, '
+                                                      'optionally with without { ... } and '
+                                                      'global { ... } blocks.'},
+         'document': _DOC, 'limit': limit_arg('search', 'Max sentences to show')},
+        ['pattern']),
     _fn('frequency_list',
         'The commonest values of one column, with counts. Across the project, or inside one document. '
         '"features" counts each Feature=Value on its own; "feature-bundles" counts whole FEATS strings '
@@ -251,6 +269,7 @@ _IMPL = {
     'project_overview': t_project_overview,
     'add_comment': t_add_comment,
     'search': t_search,
+    'grew_search': t_grew_search,
     'frequency_list': t_frequency_list,
     'check_consistency': t_check_consistency,
     'worklist': t_worklist,

@@ -48,11 +48,14 @@ UMR_ARGS = {'title': 'Aspect', 'document': 'Story', 'pattern': 'dog', 'what': 'c
 
 SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 
-# Arguments a tool needs to do anything, where its schema requires none. Without
-# them the tool refuses every call, which the sweep accepts as an answer and
-# which leaves its body unrun (see test_every_read_tool_answered_at_least_once).
+# Arguments a tool needs to do anything, where its schema requires none or the
+# shared value above means nothing to it (grew_search's pattern is Grew, not a
+# substring). Without them the tool refuses every call, which the sweep accepts
+# as an answer and which leaves its body unrun (see
+# test_every_read_tool_answered_at_least_once).
 EXTRA = {'igt': {'analyses_of': {'forms': ['gam']}, 'lexicon_entry': {'entry_form': 'gam#1'}},
-         'ud': {}, 'umr': {'find_nodes': {'concept': 'dog'}}}
+         'ud': {'grew_search': {'pattern': 'pattern { V [upos=VERB] }'}},
+         'umr': {'find_nodes': {'concept': 'dog'}}}
 
 
 def _cases(tools, write_tools, values, in_document: bool, extra=None):
@@ -68,8 +71,8 @@ def _cases(tools, write_tools, values, in_document: bool, extra=None):
         props = params.get('properties') or {}
         base = dict((extra or {}).get(name) or {})
         for k in params.get('required') or []:
-            assert k in values, f'{name} requires "{k}" and this test has no value for it'
-            base[k] = values[k]
+            assert k in base or k in values, f'{name} requires "{k}" and this test has no value for it'
+            base.setdefault(k, values.get(k))
         if 'document' in props and 'document' not in base:
             if in_document:
                 base['document'] = values['document']

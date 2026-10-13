@@ -53,6 +53,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'search':
         where = a.get('field') or 'the corpus'
         return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
+    if name == 'grew_search':
+        return f'Searched with Grew for {q(" ".join(str(a.get("pattern") or "").split()))}{in_doc(a)}'
     if name == 'frequency_list':
         return f'Ranked {a.get("what") or "lemma"}s by frequency{in_doc(a)}'
     if name == 'check_consistency':
@@ -109,6 +111,7 @@ _PROGRESS = {
     'split_sentence': lambda a: 'Splitting a sentence…',
     'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
+    'grew_search': lambda a: 'Running a Grew search…',
     'replace_in_field': lambda a: f'Finding every {a.get("field", "value")} matching "{a.get("pattern", "")}"…',
     'frequency_list': lambda a: 'Counting frequencies…',
     'check_consistency': lambda a: 'Checking the corpus for disagreements…',
@@ -118,5 +121,5 @@ _PROGRESS = {
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('grew_search',))
 describe_step = TRACER.describe

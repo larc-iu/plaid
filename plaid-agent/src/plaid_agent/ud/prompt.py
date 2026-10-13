@@ -95,7 +95,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'user_values': shared.user_values('a lemma, a UPOS, a feature, a head, a relation'),
     'one_turn': shared.one_turn(),
     'final_message': shared.final_message('words'),
-    'read_budget': shared.read_budget('search, frequency_list, worklist or check_consistency'),
+    'read_budget': shared.read_budget('search, grew_search, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
     'copy_forms': shared.copy_forms(),
     'attach_files': shared.attach_files('.conllu'),
@@ -103,9 +103,11 @@ SYSTEM = shared.filled(_SYSTEM, {
         refs=_CITE_REFS, shown_as='sentence', never_paste='CoNLL-U rows', example=_CITE_EXAMPLE),
 })
 
+# A condition on a word's head or its dependents is a Grew pattern, which
+# grew_search answers in one query. Code is for what a pattern cannot say.
 CODE = shared.code_section(
-    triggers="two columns at once, a condition on a word's head or its neighbours",
-    outright='search, frequency_list, worklist or check_consistency')
+    triggers='a tally by some column of the words a pattern finds, a condition no Grew pattern states',
+    outright='search, grew_search, frequency_list, worklist or check_consistency')
 
 WEB = webtools.prompt(
     'what a dependency relation conventionally covers, how a construction is analyzed in the '
