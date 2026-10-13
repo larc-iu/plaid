@@ -21,6 +21,8 @@ A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
                                 #  "triples"}
   n = s["nodes"][0]             # {"ref": "s3.s3p", "var", "concept", "attrs", "alignment", "root"}
   n["attrs"]                    # [{"rel": ":aspect", "value": "state"}, ...]
+  # a ref ("s3", "s3.w2") is unique only within its document: key a collection over several
+  # documents by (doc["name"], ref), or "s12" of one document merges with "s12" of another
 '''
 
 UMR_HELP = '''

@@ -20,6 +20,8 @@ A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
   w = s["words"][1]             # {"ref": "s3.w2", "id": 2, "form", "lemma", "upos", "xpos", "feats",
                                 #  "head", "deprel", "token", "mwt", "review"}
   w["head"]                     # the "id" of the head word in the same sentence, 0 for the root
+  # a ref ("s3", "s3.w2") is unique only within its document: key a collection over several
+  # documents by (doc["name"], ref), or "s12" of one document merges with "s12" of another
 '''
 
 UD_HELP = '''

@@ -140,3 +140,14 @@ print(math.pi > 3, c.most_common(1), a)
         w = fake_ws(FakeClient())
         out = call_tool(w, 'code_help', {})
         assert out.startswith('A LOADED DOCUMENT IN SHORT') and 'by an entry of documents()' in out
+
+
+def test_the_short_shape_says_a_ref_is_unique_only_within_its_document():
+    """A set of refs across documents merged "s12" of two of them, and a count
+    of sentences came out 9 for 11 (2026-10-13 survey)."""
+    from plaid_agent.igt.sandbox import IGT_SHAPE
+    from plaid_agent.ud.sandbox import UD_SHAPE
+    from plaid_agent.umr.sandbox import UMR_SHAPE
+    for shape in (IGT_SHAPE, UD_SHAPE, UMR_SHAPE):
+        assert 'unique only within its document' in shape and '(doc["name"], ref)' in shape
+    assert '(doc["name"], ref)' in call_tool(fake_ws(FakeClient()), 'code_help', {})

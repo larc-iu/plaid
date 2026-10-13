@@ -26,6 +26,8 @@ A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
   w = s["words"][1]             # {"ref": "s3.w2", "surface", "fields", "link", "morphemes", ...}
   m = w["morphemes"][0]         # {"ref": "s3.w2.m1", "form", "type", "fields", "link", "review"}
   {example}  # a field by its exact name, "" when empty
+  # a ref ("s3", "s3.w2") is unique only within its document: key a collection over several
+  # documents by (doc["name"], ref), or "s12" of one document merges with "s12" of another
 This project's fields, spelled as the code must spell them: {fields}
 '''
 
