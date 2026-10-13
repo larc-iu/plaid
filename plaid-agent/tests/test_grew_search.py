@@ -223,3 +223,13 @@ def test_past_the_fetch_the_totals_are_counted(treebank, monkeypatch):
     assert lines[1] == '2 matches in 2 sentences, 2 documents. Showing 1 sentence:'
     assert lines[2] == '"Viaje" (1 match in 1 sentence, of those fetched)'
     assert lines[-1].startswith('(note) The totals are exact, but only the first 1 matches')
+
+
+def test_no_matches_over_an_edge_says_which_end_is_the_head(treebank):
+    """A model that wrote A -[amod]-> N for an adjective on its noun answered
+    0 (2026-10-13 survey)."""
+    out = t_grew_search(treebank, 'pattern { A [upos=ADP]; A -[case]-> N; N [upos=NOUN] }', document='Viaje')
+    assert out.splitlines()[-1] == 'In A -[case]-> N, A is the head and N the dependent: check the direction.'
+    out = t_grew_search(treebank, 'pattern { A [upos=PUNCT]; A -> N }', document='Viaje')
+    assert out.splitlines()[-1] == 'In X -[rel]-> Y, X is the head and Y the dependent: check the direction.'
+    assert t_grew_search(treebank, 'pattern { X [upos=PRON] }', document='Viaje').endswith('No matches in "Viaje".')

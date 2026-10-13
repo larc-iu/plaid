@@ -9,6 +9,7 @@ sentences, the matched words, the totals and the pattern itself, which the
 user can paste into the tab.
 """
 
+import re
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
@@ -65,6 +66,23 @@ def _marked(doc: UdDoc, s: Sentence, words: List[Word]) -> str:
     out += doc.body[at:end]
     text = ' '.join(out.split())
     return ('…' if begin > s.begin else '') + text + ('…' if end < s.end else '')
+
+
+EDGE = re.compile(r'([A-Za-z_][\w]*)\s*-\[([^\]]*)\]->\s*([A-Za-z_][\w]*)')
+
+
+def _direction_hint(pattern: str) -> str:
+    """A line under "No matches." for a pattern with an edge: a model that
+    wrote A -[amod]-> N for an adjective on its noun answered 0, where the
+    other direction finds 34 (2026-10-13 survey)."""
+    m = EDGE.search(pattern)
+    if m:
+        head, rel, dep = m.groups()
+        return (f'\nIn {head} -[{rel}]-> {dep}, {head} is the head and {dep} the dependent: check the '
+                'direction.')
+    if '->' in pattern:
+        return '\nIn X -[rel]-> Y, X is the head and Y the dependent: check the direction.'
+    return ''
 
 
 def _binding(row: Dict[str, Any], doc: UdDoc, enhanced: Optional[str]) -> str:
@@ -124,7 +142,7 @@ def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limi
     if not rows:
         ws.note_read(0, 'match')
         where = f' in "{ws.doc(doc_id).name}"' if doc_id else ''
-        return f'{echo}\nNo matches{where}.{notes}'
+        return f'{echo}\nNo matches{where}.{_direction_hint(pattern)}{notes}'
 
     # Rows come ordered by document and position: group them by sentence.
     by_doc: 'OrderedDict[str, OrderedDict[str, List[dict]]]' = OrderedDict()
