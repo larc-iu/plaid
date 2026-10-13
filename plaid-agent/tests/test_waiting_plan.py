@@ -82,3 +82,14 @@ def test_the_service_tells_the_turn_of_the_waiting_plan(monkeypatch):
     _service().process_request(_request(client), helper)
     assert not helper.errors, helper.errors
     assert {k: seen['waiting'][k] for k in ('count', 'summary')} == {'count': 1, 'summary': '1 field value'}
+
+
+def test_drop_planned_with_nothing_staged_names_the_waiting_plan():
+    """A model told only "0 are planned" went to discard_plan and asked the
+    user, and the earlier card was then approved whole (2026-10-13 survey)."""
+    want = ('Error: Nothing is planned in this turn. The plan of 114 changes (114 part-of-speech values) from your '
+            'earlier message is still waiting on its card: call resume_plan first to take it into this turn, then '
+            'drop_planned.')
+    assert call_tool(_ws(), 'drop_planned', {'indexes': [2, 3]}) == want
+    assert call_tool(_ws(), 'drop_planned', {'field': 'Translation'}) == want
+    assert 'resume_plan' not in call_tool(_ws(None), 'drop_planned', {'indexes': [2]})

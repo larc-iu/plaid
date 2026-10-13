@@ -1569,6 +1569,12 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
     new numbers are in front of the model."""
     from .args import whole
     from .tools import ToolError
+    waiting = getattr(ws, 'waiting', None)
+    if waiting and not ws.ops and not getattr(ws, 'resumed', False):
+        # A model told only "0 are planned" went to discard_plan and asked
+        # the user, the earlier card then approved whole (2026-10-13 survey).
+        raise ToolError(f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting on '
+                        'its card: call resume_plan first to take it into this turn, then drop_planned.')
     kept = 0
     if field is not None or document is not None:
         if indexes not in (None, []):
