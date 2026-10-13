@@ -66,12 +66,11 @@ at once, and reading documents one by one to count something will run out of too
 out of corpus.'''
 
 ONE_TURN = '''- A plan lives for ONE turn. The staging tools start empty on every message, so a plan you built \
-in an earlier message is not yours to add to and not yours to describe. If that earlier plan is still \
-waiting for the user, staging anything in this message REPLACES it: its card can no longer be approved. So \
-when you stage, stage everything from it that should still happen, together with what is new. A message \
-that stages nothing leaves an earlier plan waiting, with its own Approve. Count and describe ONLY what you \
-staged in THIS message. Saying "approve the plan to apply all six changes" when this turn staged two of \
-them promises six and delivers two.'''
+in an earlier message is not part of this message's plan. If that earlier plan is still waiting for the \
+user, staging anything in this message REPLACES it: its card can no longer be approved. To keep its \
+changes, call resume_plan before staging anything, then add to it. A message that stages nothing leaves an \
+earlier plan waiting, with its own Approve. Count and describe ONLY what this message's plan holds. Saying \
+"approve the plan to apply all six changes" when it holds two of them promises six and delivers two.'''
 
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
 into the folded list of steps, which they may never open. So the last message answers every question they \

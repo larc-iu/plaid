@@ -41,7 +41,7 @@ from .tools import ToolError
 
 # The tools that act on the plan rather than on a project. The plan is the home
 # project's, so these always act there, whatever project they are handed.
-PLAN_TOOLS = ('plan_status', 'discard_plan', 'drop_planned')
+PLAN_TOOLS = ('plan_status', 'discard_plan', 'drop_planned', 'resume_plan')
 
 # The tools that never read a project: the web, the attached files, and the
 # code worker, which is one per turn and reaches other projects through its

@@ -25,7 +25,7 @@ def test_the_waiting_plan_is_the_last_undecided_one():
                {'kind': 'assistant', 'plan': {'summary': 'old', 'proposed_count': 3}, 'status': 'replaced'},
                {'kind': 'assistant', 'plan': {'summary': '114 values', 'proposed_count': 114}, 'status': None},
                user_item('b')]
-    assert waiting_plan(display) == {'count': 114, 'summary': '114 values'}
+    assert waiting_plan(display) == {'count': 114, 'summary': '114 values', 'id': None, 'documents': []}
     display[2]['interrupted'] = True
     assert waiting_plan(display) is None
     assert waiting_plan([user_item('a')]) is None
@@ -35,7 +35,7 @@ def test_plan_status_with_nothing_staged_names_the_waiting_plan():
     out = call_tool(_ws(), 'plan_status', {})
     assert out.startswith('Nothing is planned in this turn. The plan of 114 changes (114 part-of-speech values) '
                           'from your earlier message is still waiting on its card')
-    assert 'Staging anything now replaces it' in out
+    assert out.endswith('Staging anything now replaces it. To keep its changes, call resume_plan first.')
     assert call_tool(_ws(None), 'plan_status', {}) == 'Nothing is planned yet.'
 
 
@@ -49,7 +49,8 @@ def test_the_first_staging_says_once_that_it_replaces_the_waiting_plan():
     w = _ws()
     first = call_tool(w, 'set_entry_field', {'entry_id': 'vi-ali', 'field': 'pos', 'value': 'PN'})
     assert ('This replaces the plan of 114 changes (114 part-of-speech values) from your earlier message, '
-            'which the user can no longer approve. Stage those again if they should stay.') in first
+            'which the user can no longer approve. To keep those changes, discard_plan, call resume_plan, then '
+            'stage this again.') in first
     second = call_tool(w, 'set_entry_field', {'entry_id': 'vi-ali', 'field': 'gloss', 'value': 'Ali'})
     assert 'earlier message' not in second
     status = call_tool(w, 'plan_status', {})
@@ -80,4 +81,4 @@ def test_the_service_tells_the_turn_of_the_waiting_plan(monkeypatch):
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert not helper.errors, helper.errors
-    assert seen['waiting'] == {'count': 1, 'summary': '1 field value'}
+    assert {k: seen['waiting'][k] for k in ('count', 'summary')} == {'count': 1, 'summary': '1 field value'}

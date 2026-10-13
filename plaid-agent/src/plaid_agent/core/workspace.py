@@ -14,6 +14,7 @@ refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 """
 
 import difflib
+import json
 import re
 import unicodedata
 from contextlib import contextmanager
@@ -23,7 +24,8 @@ from plaid_client.constraints import value_set_allows
 
 from . import docload, fingerprint as fp, garble, opkind, work
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
-from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, plan_changes, reserve as core_reserve, waiting_phrase
+from .plan import (PLAN_MAX_OPS, PlanFull, carried_pins, docs_of_op, keep_waiting, plan_changes,
+                   reserve as core_reserve, waiting_phrase)
 from .tools import ToolError
 from .trace import note as trace_note
 
@@ -59,6 +61,12 @@ def name_key(name: str) -> str:
 def loose_name_key(name: str) -> str:
     """:func:`name_key` with the spaces around a colon left out."""
     return re.sub(r' ?: ?', ':', name_key(name))
+
+
+def _op_key(op: Dict[str, Any]) -> str:
+    """A planned change as a resumed plan finds it again: by what it holds,
+    since a plan's payload is built from copies."""
+    return json.dumps(op, sort_keys=True, ensure_ascii=False, default=str)
 
 
 def _ids_in(value: Any, key: Optional[str] = None):
@@ -197,6 +205,17 @@ class BaseWorkspace:
         # result has said this turn's plan replaces it. None where none waits.
         self.waiting: Optional[Dict[str, Any]] = None
         self.reported_waiting = False
+        # Reads the stored state of a plan by its id (``plan_state``), set by
+        # the service. None where nothing is stored, and then resume_plan
+        # refuses.
+        self.load_plan_state = None
+        # Whether this turn's plan starts with the waiting plan's changes
+        # (:meth:`resume`), each of them by its content -> (the documents it
+        # lands in or None, the work of a person's it replaces), and the
+        # waiting plan's document records, carried into this plan's.
+        self.resumed = False
+        self._carried: Dict[str, tuple] = {}
+        self._carried_pins: List[Dict[str, Any]] = []
 
     def close(self) -> None:
         """Release what the turn held: the code worker and any reads still
@@ -559,7 +578,10 @@ class BaseWorkspace:
             found, metadata = self.metadata_of(entity_id)
             if found and work.protected(metadata):
                 return 1
-        return 0
+        # A resumed change in a document this turn has not read, as the turn
+        # that staged it found it.
+        hit = self._carried.get(_op_key(op)) if self._carried else None
+        return hit[1] if hit is not None else 0
 
     def count_replaced_work(self, ops: List[Dict[str, Any]]) -> int:
         """How many of ``ops`` replace a person's work, for a corpus-wide
@@ -900,7 +922,11 @@ class BaseWorkspace:
     def op_documents(self, op: Dict[str, Any]) -> set:
         """The documents a planned change lands in, for drop_planned's
         ``document``: those it names, else the documents read in this turn
-        that hold an id it names."""
+        that hold an id it names. A resumed change answers as it did in the
+        turn that staged it."""
+        hit = self._carried.get(_op_key(op)) if self._carried else None
+        if hit is not None and hit[0] is not None:
+            return set(hit[0])
         out = docs_of_op(op)
         if op.get('doc'):
             out.add(op['doc'])
@@ -940,12 +966,83 @@ class BaseWorkspace:
         """Said once, by the first staging of a turn while a plan from an
         earlier message waits: the card will hold this turn's plan alone. A
         model that added 19 changes told the user the plan held the 114 before
-        them too, and the 114 never landed (2026-10-12 survey)."""
+        them too, and the 114 never landed (2026-10-12 survey). Nothing is
+        said after resume_plan, whose plan holds them."""
         if not self.waiting or not self.ops or self.reported_waiting:
             return ''
         self.reported_waiting = True
         return (f' This replaces {waiting_phrase(self.waiting)}, which the user can no longer approve. '
-                'Stage those again if they should stay.')
+                + keep_waiting())
+
+    # --- resuming the plan an earlier message left waiting ------------------
+
+    def plan_state(self) -> Dict[str, Any]:
+        """The plan as it stands, stored beside the conversation for a later
+        turn to resume (:meth:`resume`): :meth:`snapshot`, which holds all an
+        app keeps beside its ops, plus the documents each change lands in and
+        the work of a person's it replaces, found now while the documents it
+        was read from are loaded, and which of those documents were read."""
+        documents_of = [sorted(self.op_documents(op)) for op in self.ops]
+        return {'snapshot': self.snapshot(), 'documents_of': documents_of,
+                'work': [self.replaces_work(op) for op in self.ops],
+                'read': sorted({did for docs in documents_of for did in docs} & set(self._docs))}
+
+    def resume(self, state: Dict[str, Any], documents: List[Dict[str, Any]]) -> None:
+        """Start this turn's plan from a stored :meth:`plan_state`, carrying
+        ``documents``, the waiting plan's records, into what approval checks
+        (:meth:`with_carried_pins`). Refused as staging is, on a workspace
+        that may not stage."""
+        self.refuse_read_only()
+        if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
+            raise ToolError(WEB_READ_REFUSAL)
+        before = self.snapshot()
+        try:
+            self.restore(state['snapshot'])
+        except (KeyError, TypeError):
+            self.restore(before)
+            raise ToolError('Resume is not available for that plan. Stage its changes again.') from None
+        self.reported_replaced = self.replaced
+        docs_of, work_of = state.get('documents_of') or [], state.get('work') or []
+        self._carried = {_op_key(op): (docs_of[i] if i < len(docs_of) else None,
+                                       int(work_of[i] or 0) if i < len(work_of) else 0)
+                         for i, op in enumerate(self.ops)}
+        self._carried_pins = list(documents)
+        self.resumed = True
+        self.reported_waiting = True
+        # The documents the turn that staged the plan had read, read again:
+        # the card places a change and pins its sentences from them.
+        read = [did for did in state.get('read') or () if isinstance(did, str)]
+        self.read_ahead(read)
+        for did in read:
+            try:
+                self.doc(did)
+            except Exception:  # noqa: BLE001 - gone since: approval refuses the plan by its pin
+                continue
+
+    def forget_resumed(self) -> None:
+        """The plan was thrown away, and what it resumed with it."""
+        self.resumed = False
+        self.reported_waiting = False
+        self._carried = {}
+        self._carried_pins = []
+
+    def with_carried_pins(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """This plan's document records with the resumed plan's carried in
+        for the documents its changes still in the plan land in
+        (``plan.carried_pins``), so approval refuses an edit made since the
+        earlier turn staged them."""
+        if not self.resumed or not self._carried_pins:
+            return documents
+        keep: Optional[set] = set()
+        for op in self.ops:
+            hit = self._carried.get(_op_key(op))
+            if hit is None:
+                continue
+            if hit[0] is None:
+                keep = None
+                break
+            keep |= set(hit[0])
+        return self.cap_pins(carried_pins(documents, self._carried_pins, keep))
 
     def planned_note(self, n: int, what: Optional[str] = None) -> str:
         """What a tool that staged ``n`` changes says back. ``what`` says it

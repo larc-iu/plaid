@@ -673,6 +673,14 @@ class Workspace(BaseWorkspace):
             return True
         return self.requester_id in (v.get('maintainers') or []) or self.requester_is_admin()
 
+    def op_fields(self, op: Dict[str, Any]) -> set:
+        # An orthography is named as the tools take it, without its key's prefix.
+        names = super().op_fields(op)
+        key = op.get('key')
+        if op.get('kind') == 'set_orthography' and isinstance(key, str) and key.startswith('orthog:'):
+            names.add(key[len('orthog:'):])
+        return names
+
     def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
         if op.get('kind') == 'set_analysis':
             return [(fv.get('layer_id'), fv.get('value'))

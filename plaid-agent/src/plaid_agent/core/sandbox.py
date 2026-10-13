@@ -699,9 +699,9 @@ class Tally:
         # once, by the first staging, and here that was a plan() call whose
         # answer the code may never have printed.
         if self.waiting_unsaid and getattr(ws, 'reported_waiting', False):
-            from .plan import waiting_phrase
+            from .plan import keep_waiting, waiting_phrase
             out += (f' It replaces {waiting_phrase(ws.waiting)}, which the user can no longer approve. '
-                    'Stage those again if they should stay.')
+                    + keep_waiting('these'))
         return out
 
     def note(self, ws) -> None:

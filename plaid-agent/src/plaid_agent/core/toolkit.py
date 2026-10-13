@@ -12,10 +12,17 @@ whichever assistant it is.
 from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
 from . import filetools, guidelines, sandbox, webtools
+from .plan import resume_plan
 from .reach import route
 from .tools import ToolError, fn, limit_arg, run_tool, tools_for as offered_tools
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
+
+# Plans are core's, so every app offers it, beside drop_planned.
+RESUME_PLAN = fn(
+    'resume_plan',
+    'Copy the plan still waiting on its card from an earlier message into this turn\'s plan, so you can add to it '
+    'and drop from it and the card holds both. Call it before staging anything.', {}, [])
 
 
 def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = False) -> Dict[str, Dict[str, Any]]:
@@ -88,14 +95,18 @@ class Kit(NamedTuple):
 def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str, web: str, code: str,
           rewrite: Optional[Callable[[Callable, Dict[str, Any]], Dict[str, Any]]] = None) -> Kit:
     """An app's whole tool table and the dispatch behind it, from the tools it
-    declares. Core's own tools are added in one order for every app: the
-    guidelines (``manual`` says what they are about), the web (``web`` what
+    declares. Core's own tools are added in one order for every app:
+    resume_plan after drop_planned, then the guidelines (``manual`` says what they are about), the web (``web`` what
     to look up), attached files, the sandbox (``code`` what it reads; its
     implementations are the app's, in ``impl``). ``impl`` gains core's.
 
     ``rewrite(fn, args)`` is the app's last word on a call's arguments before
     the tool runs."""
-    tools = (list(tools) + guidelines.schemas(manual) + guidelines.write_schemas() + webtools.schemas(web)
+    tools = list(tools)
+    at = next((i + 1 for i, t in enumerate(tools) if t['function']['name'] == 'drop_planned'), len(tools))
+    tools.insert(at, RESUME_PLAN)
+    impl['resume_plan'] = resume_plan
+    tools = (tools + guidelines.schemas(manual) + guidelines.write_schemas() + webtools.schemas(web)
              + filetools.schemas() + sandbox.schemas(code))
     impl.update({'read_guideline': guidelines.t_read_guideline, 'add_guideline': guidelines.t_add_guideline,
                  'revise_guideline': guidelines.t_revise_guideline,
