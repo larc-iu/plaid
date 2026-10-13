@@ -39,9 +39,10 @@ const convKey = (app, projectId, id) => `${app}:assistant:${projectId}:conv:${id
 
 const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:meta:`;
 
-// What is stored beside a conversation: its files, its rounds and the
-// instructions its turns were given (plaid_agent/core/conversation.py BESIDE).
-const BESIDE = ['file', 'round', 'prompt'];
+// What is stored beside a conversation: its files, its rounds, the
+// instructions its turns were given and its waiting plan's live state
+// (plaid_agent/core/conversation.py BESIDE).
+const BESIDE = ['file', 'round', 'prompt', 'plan'];
 const besidePrefix = (app, projectId, id, kind) => `${app}:assistant:${projectId}:${kind}:${id}:`;
 
 // Every conversation of this app's, across every project. The project sits in
