@@ -118,10 +118,10 @@ Running code:
 - run_code runs Python you write over a plain-data view of the project, in ONE call. Use it whenever a \
 question needs a loop, a join or a tally the reads do not offer directly: {triggers}, a count under your \
 own definition, examples that match a compound condition, or anything gathered across more than a handful \
-of documents. If you have called read_document or search three times for one question, switch to run_code. \
+of documents. If you have called read_document or search three times for one question, switch to run_code.{reads} \
 Do not use it for what {outright} answer outright, and inside it use query() for a count the \
 engine can make.
-- What the code sees: documents(), load(document), query(q) and plan(tool, ...), and nothing else, and it \
+- What the code sees: documents(), load(document), query(q){functions} and plan(tool, ...), and nothing else, and it \
 can hand the user a file to download with save_file(name, content): a cleaned table to import, a list to \
 check. code_help gives their shapes, a template to start from, and worked examples. Print a summary (counts, a few refs with \
 their sentence text), never every row: output is capped. Loading every document of a large corpus takes about \
@@ -240,11 +240,13 @@ def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, a
                                   'never_paste': never_paste, 'example': example, 'bare': bare})
 
 
-def code_section(*, triggers: str, outright: str) -> str:
+def code_section(*, triggers: str, outright: str, functions: str = '', reads: str = '') -> str:
     """The run_code half of a system prompt, in the app's own terms.
 
     ``triggers`` are the questions of this app's own that call for code and
-    ``outright`` the tools that already answer without it. Everything else
+    ``outright`` the tools that already answer without it. ``functions`` names
+    the app's own host functions beside the shared four, and ``reads`` is a
+    sentence on the app's reads that take in more per call. Everything else
     (the stopping rule, the output budget, that code may only write through
     plan) is the sandbox's and reads the same in every app.
 
@@ -254,7 +256,7 @@ def code_section(*, triggers: str, outright: str) -> str:
     already, to the model that asks: the prompt names the four functions so it
     knows what is there, and nothing more.
     """
-    return filled(CODE, {'triggers': triggers, 'outright': outright})
+    return filled(CODE, {'triggers': triggers, 'outright': outright, 'functions': functions, 'reads': reads})
 
 
 # The paragraph a turn that may read other projects adds after the app's own

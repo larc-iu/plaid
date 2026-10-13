@@ -93,12 +93,13 @@ class Kit(NamedTuple):
 
 
 def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str, web: str, code: str,
+          code_functions: str = '',
           rewrite: Optional[Callable[[Callable, Dict[str, Any]], Dict[str, Any]]] = None) -> Kit:
     """An app's whole tool table and the dispatch behind it, from the tools it
     declares. Core's own tools are added in one order for every app:
     resume_plan after drop_planned, then the guidelines (``manual`` says what they are about), the web (``web`` what
-    to look up), attached files, the sandbox (``code`` what it reads; its
-    implementations are the app's, in ``impl``). ``impl`` gains core's.
+    to look up), attached files, the sandbox (``code`` what it reads, ``code_functions`` any host
+    function of the app's own, its implementations the app's, in ``impl``). ``impl`` gains core's.
 
     ``rewrite(fn, args)`` is the app's last word on a call's arguments before
     the tool runs."""
@@ -107,7 +108,7 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
     tools.insert(at, RESUME_PLAN)
     impl['resume_plan'] = resume_plan
     tools = (tools + guidelines.schemas(manual) + guidelines.write_schemas() + webtools.schemas(web)
-             + filetools.schemas() + sandbox.schemas(code))
+             + filetools.schemas() + sandbox.schemas(code, code_functions))
     impl.update({'read_guideline': guidelines.t_read_guideline, 'add_guideline': guidelines.t_add_guideline,
                  'revise_guideline': guidelines.t_revise_guideline,
                  'rewrite_guideline': guidelines.t_rewrite_guideline,

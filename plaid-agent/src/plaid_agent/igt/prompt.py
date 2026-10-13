@@ -107,7 +107,10 @@ SYSTEM = shared.filled(_SYSTEM, {
 
 CODE = shared.code_section(
     triggers='two fields at once, a condition on a word and its morphemes together',
-    outright='search, concordance, frequency_list, worklist or check_consistency')
+    outright='search, concordance, frequency_list, worklist or check_consistency',
+    functions=', lexicon()',
+    reads=' Before that, read_sentences reads chosen sentences of several documents in one call, and fields= '
+          'on it and on read_document keeps only the fields the question needs.')
 
 WEB = webtools.prompt(
     'what a gloss abbreviation conventionally means, how a construction is described in related '

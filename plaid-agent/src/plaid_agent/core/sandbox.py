@@ -482,16 +482,18 @@ def help_text(app_half: str, extra: str = '', ws=None, shape: str = '') -> str:
     return out
 
 
-def schemas(subject: str) -> List[Dict[str, Any]]:
+def schemas(subject: str, functions: str = '') -> List[Dict[str, Any]]:
     """The two tool declarations, in the app's own words for what the
-    project holds."""
+    project holds. ``functions`` names the app's own host functions beside
+    the shared four, so the description does not say
+    "nothing else" over one the help then offers."""
     return [
         {'type': 'function', 'function': {
             'name': 'run_code',
             'description': ('Run Python over a plain-data view of the project, for a question the other '
                             'reads do not answer in one call: a loop over many documents, a join between '
                             'columns, a tally under your own conditions, a check across the corpus. Code '
-                            f'sees {subject} through load(document), documents(), query(q) and plan(tool, '
+                            f'sees {subject} through load(document), documents(), query(q){functions} and plan(tool, '
                             '...), and nothing else: no filesystem, no network, no packages. Call code_help '
                             'first for the shape of a document and examples. Print what you want to see.'),
             'parameters': {'type': 'object', 'properties': {

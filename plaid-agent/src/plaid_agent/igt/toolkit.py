@@ -515,4 +515,5 @@ _IMPL.update({'query_help': t_query_help, 'query': t_query})
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
-    web='this corpus and its lexicons', code='the texts and lexicons', rewrite=entry_form_named_form)
+    web='this corpus and its lexicons', code='the texts and lexicons',
+    code_functions=', lexicon()', rewrite=entry_form_named_form)

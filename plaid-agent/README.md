@@ -339,7 +339,9 @@ subprocess (the `pydantic-monty` package, a dependency): no filesystem, no
 network, a small standard library, and limits on time, memory and output.
 It reaches the project through four host functions only: `documents()`,
 `load(document)`, `query(q)`, and `plan(tool, ...)`, which stages a proposal
-through the same plan tools and guards the model uses directly. No client
+through the same plan tools and guards the model uses directly. The IGT
+assistant adds `lexicon()`, every entry of a lexicon with its id, address,
+fields and link count. No client
 crosses the boundary, so code cannot write; the plan card stays the contract.
 `load()` takes a name, an id or an entry of `documents()`, and returns dicts
 and lists. Monty runs no `__getattr__`, so an attribute read the model writes
@@ -430,7 +432,9 @@ The modules below are `igt/` unless they say otherwise.
   `recent_changes` (the audit log, read in widening windows from the most
   recent week, each entry with the `as_of` instant a restore takes),
   `comments` (what people have written to each other, anchored to the
-  document, a sentence, a word, a morpheme, or a value), `plan_status`, and
+  document, a sentence, a word, a morpheme, or a value), `plan_status`,
+  `drop_planned` (by number, field or document), `resume_plan` (the plan an
+  earlier message left waiting, carried into this turn's), and
   the escape hatch `query` + `query_help` (Plaid's query language,
   project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field`, `set_analysis` (one word, or a whole sentence's words in one
