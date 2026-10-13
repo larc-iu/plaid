@@ -37,7 +37,7 @@ REFUSALS = (ToolError, ValueError)
 # A value for every parameter a read tool requires or declares an enum for.
 IGT_ARGS = {'title': 'Glossing', 'document': 'Text 1', 'pattern': 'a', 'field': 'Gloss', 'sequence': [{'Gloss': 'ERG'}], 'code': 'print(1)',
             'indexes': [1], 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
-            'name': 'wordlist.csv'}
+            'name': 'wordlist.csv', 'items': [{'document': 'Text 1', 'sentences': ['s1']}]}
 UD_ARGS = {'title': 'Glossing', 'document': 'Viaje', 'pattern': 'a', 'field': 'lemma', 'what': 'lemma', 'indexes': [1], 'code': 'print(1)',
            'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
            'name': 'wordlist.csv'}

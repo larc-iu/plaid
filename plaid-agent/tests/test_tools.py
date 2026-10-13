@@ -790,10 +790,8 @@ def test_igt_search_and_concordance_match_case_only_when_asked():
 
 def test_read_document_reads_the_sentences_named_in_one_call():
     """igt's read_document took only a range, so a reader that knew it wanted
-    s2 had to page to it. It is core's read_document now, as in ud and umr,
-    rendered by this app's workspace."""
-    from plaid_agent.core import tools as core_tools
-    assert _IMPL['read_document'] is core_tools.read_document
+    s2 had to page to it. It pages as core's read_document does, as in ud
+    and umr, rendered by this app's workspace."""
     w = ws()
     out = call_tool(w, 'read_document', {'document': 'Text 1', 'sentences': ['s2']})
     assert 'Showing s2.' in out and '[s2]' in out and '[s1]' not in out

@@ -248,10 +248,19 @@ def test_the_bulk_cap_is_the_plan_cap():
 def test_every_app_reads_a_document_through_core(app):
     """igt kept its own read_document when ud and umr moved to core's, and so
     could not read named sentences in one call. What an app owns is how a
-    sentence is rendered (its workspace's render), not which ones are read."""
+    sentence is rendered (its workspace's render), not which ones are read.
+    igt's takes ``fields`` as well, and pages through core's."""
     import importlib
     from plaid_agent.core import tools as core_tools
     toolkit = importlib.import_module(f'plaid_agent.{app}.toolkit')
-    assert toolkit._IMPL['read_document'] is core_tools.read_document
+    if app == 'igt':
+        from fixtures import FakeClient, fake_ws
+        from plaid_agent.igt import reads
+        assert toolkit._IMPL['read_document'] is reads.t_read_document
+        args = {'document': 'd1', 'sentences': ['s2']}
+        assert reads.t_read_document(fake_ws(FakeClient()), **args) == \
+            core_tools.read_document(fake_ws(FakeClient()), **args)
+    else:
+        assert toolkit._IMPL['read_document'] is core_tools.read_document
     spec = next(t['function'] for t in toolkit.TOOLS if t['function']['name'] == 'read_document')
     assert 'sentences' in spec['parameters']['properties']

@@ -721,6 +721,87 @@ def resolve(doc: IgtDoc, ref: str):
     return m
 
 
+# --- what a read shows -------------------------------------------------------
+
+#: The words a model writes for the parts of a word line that are not a
+#: field: its morphemes, its lexicon links, every orthography.
+VIEW_WORDS = {'segmentation': ('segmentation', 'seg', 'morphemes', 'analysis', 'types'),
+              'links': ('links', 'link', 'lexicon', 'lexicon links', 'entries', 'mwe', 'mlinks'),
+              'orthographies': ('orthographies', 'orthography')}
+
+
+@dataclass(frozen=True)
+class View:
+    """The parts of a document a read shows, when ``fields=`` names them: the
+    fields by name, the orthographies by name, and whether the segmentation
+    and the lexicon links are shown. The baseline and every reference always
+    are."""
+    names: Tuple[str, ...]
+    fields: frozenset
+    orthographies: frozenset
+    segmentation: bool
+    links: bool
+
+    @property
+    def words(self) -> bool:
+        """Whether the read has a word line to print: something on a word or
+        a morpheme is named, not only sentence fields."""
+        return bool(self.segmentation or self.links or self.orthographies
+                    or any(scope != 'Sentence' for scope, _ in self.fields))
+
+    def shows(self, f: 'Field') -> bool:
+        return (f.scope, f.name) in self.fields
+
+    def line(self) -> str:
+        return 'Only these are shown: ' + ', '.join(self.names) + '. Anything else is left out, not missing.'
+
+
+def read_view(project: IgtProject, names) -> View:
+    """The view ``fields=`` names. A field is named as every tool names one (a
+    bare name a word and a morpheme field share is both), an orthography by
+    its name, and the rest by :data:`VIEW_WORDS`. An unknown name is refused
+    with every name there is."""
+    items = names if isinstance(names, list) else [names]
+    fields, orthos, parts, shown = set(), set(), set(), []
+    for raw in items:
+        name = str(raw or '').strip()
+        key = name.casefold()
+        found = project.fields_sharing_name(name)
+        if not found:
+            try:
+                found = [project.field(name)]
+            except ValueError:
+                found = []
+        ortho = [o for o in project.orthographies if o.casefold() == key]
+        part = next((p for p, words in VIEW_WORDS.items() if key in words), None)
+        if found:
+            fields |= {(f.scope, f.name) for f in found}
+            shown += [f.name for f in found]
+        elif ortho:
+            orthos |= set(ortho)
+            shown += ortho
+        elif part == 'orthographies' and project.orthographies:
+            orthos |= set(project.orthographies)
+            shown += project.orthographies
+        elif part:
+            parts.add(part)
+            shown.append(part)
+        else:
+            raise ValueError(f'fields: nothing is called "{name}". The names are ' + view_names(project) + '.')
+    if not shown:
+        raise ValueError('fields: name at least one, from ' + view_names(project) + '.')
+    return View(tuple(dict.fromkeys(shown)), frozenset(fields), frozenset(orthos),
+                'segmentation' in parts, 'links' in parts)
+
+
+def view_names(project: IgtProject) -> str:
+    """Every name ``fields=`` takes, as a refusal lists them."""
+    out = [project.field_list()]
+    if project.orthographies:
+        out.append('orthographies: ' + ', '.join(project.orthographies))
+    return '; '.join(out) + '; "segmentation", "links"'
+
+
 # --- rendering ---------------------------------------------------------------
 
 MISSING = '_'
@@ -747,23 +828,27 @@ def segmentation_mark(w: Word) -> str:
     return UNVERIFIED if UNVERIFIED in marks else CONTRIBUTED if CONTRIBUTED in marks else ''
 
 
-def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = None) -> str:
+def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = None,
+                view: Optional[View] = None) -> str:
     parts = [f'w{w.index} {w.surface}']
     seg = segmentation(w)
-    if analyzed(w):
+    if analyzed(w) and (view is None or view.segmentation):
         types = [m.morph_type for m in w.morphemes if m.morph_type]
         seg += segmentation_mark(w)
         parts.append(f'seg={seg}' + (f' types={",".join(m.morph_type or "?" for m in w.morphemes)}' if types else ''))
     for f in project.fields_by_scope('Morpheme'):
-        line = morpheme_field_line(w, f.name)
+        line = morpheme_field_line(w, f.name) if view is None or view.shows(f) else None
         if line is not None:
             parts.append(f'{f.name}={line}')
     for f in project.fields_by_scope('Word'):
-        sp = w.fields.get(f.name)
+        sp = w.fields.get(f.name) if view is None or view.shows(f) else None
         if sp and sp.value != '':
             parts.append(f'{f.name}={_mark(sp.value, sp.metadata)}')
     for o, v in w.orthographies.items():
-        parts.append(f'{o}={v}')
+        if view is None or o in view.orthographies:
+            parts.append(f'{o}={v}')
+    if view is not None and not view.links:
+        return ' | '.join(parts)
     if w.link:
         parts.append(f'link={_mark(w.link.form, w.link.metadata)}')
     for l in w.mwes:
@@ -775,14 +860,17 @@ def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = No
     return ' | '.join(parts)
 
 
-def render_sentence(s: Sentence, project: IgtProject) -> str:
+def render_sentence(s: Sentence, project: IgtProject, view: Optional[View] = None) -> str:
+    """A sentence, its fields and a line per word. A ``view`` that names
+    only sentence fields leaves the word lines out."""
     lines = [f'[s{s.index}] {s.text}']
     for f in project.fields_by_scope('Sentence'):
-        sp = s.fields.get(f.name)
+        sp = s.fields.get(f.name) if view is None or view.shows(f) else None
         if sp and sp.value != '':
             lines.append(f'  {f.name}: {_mark(sp.value, sp.metadata)}')
-    for w in s.words:
-        lines.append('  ' + render_word(w, project, s.index))
+    if view is None or view.words:
+        for w in s.words:
+            lines.append('  ' + render_word(w, project, s.index, view))
     return '\n'.join(lines)
 
 
@@ -807,10 +895,13 @@ FORMAT_AS_BEFORE = 'Format as in your first read this turn.'
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
                     max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
                     budget: Optional[int] = None, indexes: Optional[List[int]] = None,
-                    shown_out: Optional[List[int]] = None, legend: bool = True) -> str:
+                    shown_out: Optional[List[int]] = None, legend: Optional[bool] = True,
+                    view: Optional[View] = None) -> str:
     """Either a range (``start`` to ``end``) or the sentences numbered in
     ``indexes``, in that order. ``legend`` False points at the legend an
-    earlier read printed instead of printing it again. ``ref_name`` is how a reference to this
+    earlier read printed instead of printing it again, and None, for a
+    document after the first in one read, says nothing of it. ``view`` is
+    what ``fields=`` named, None for everything. ``ref_name`` is how a reference to this
     document must name it (its id where another document shares its name):
     shown so what is read back is unambiguous. ``budget`` is the most
     characters the result may hold: sentences are rendered until it is spent
@@ -838,10 +929,12 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         wanted = list(range(start, end + 1))
     rendered: List[str] = []
     done: List[int] = []
-    format_line = FORMAT_LEGEND if legend else FORMAT_AS_BEFORE
-    used = len(head) + len(format_line) + 250  # the showing line and the trailing note
+    format_lines = [FORMAT_LEGEND if legend else FORMAT_AS_BEFORE] if legend is not None else []
+    if view is not None:
+        format_lines.append(view.line())
+    used = len(head) + sum(len(x) + 1 for x in format_lines) + 250  # the showing line and the trailing note
     for i in wanted:
-        text = render_sentence(doc.sentences[i - 1], project)
+        text = render_sentence(doc.sentences[i - 1], project, view)
         if budget is not None and rendered and used + len(text) + 1 > budget:
             break
         rendered.append(text)
@@ -854,9 +947,9 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         showing = 'Showing ' + ', '.join(f's{i}' for i in done) + '.'
         if left:
             showing += ' Not shown, as they did not fit: ' + ', '.join(f's{i}' for i in left) + '. Ask for them in another call.'
-        return '\n'.join([head, format_line, showing] + rendered)
+        return '\n'.join([head, *format_lines, showing] + rendered)
     end = done[-1] if done else start - 1
-    lines = [head, format_line, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if left else '')]
+    lines = [head, *format_lines, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if left else '')]
     lines += rendered
     if end < n:
         lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')

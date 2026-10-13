@@ -24,6 +24,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'search':
         where = a.get('where') if a.get('where') and a['where'] != 'baseline' else 'the baseline'
         return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
+    if name == 'read_sentences':
+        return f'Read sentences of {plural(count(a, "items"), "document")}'
     if name == 'read_lexicon':
         return 'Read the lexicon' + (f' for {q(a["pattern"])}' if a.get('pattern') else '')
     if name == 'concordance':
@@ -159,6 +161,7 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
 
 _PROGRESS = {
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
+    'read_sentences': lambda a: 'Reading sentences…',
     'read_lexicon': lambda a: 'Reading the lexicon…',
     'concordance': lambda a: f'Concordancing "{a.get("pattern", "")}"…',
     'analyses_of': lambda a: f'Tallying analyses of "{a.get("form", "")}"…',

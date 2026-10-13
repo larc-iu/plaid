@@ -3,7 +3,7 @@
 The corpus-wide half of reading (search over every document, the statistics
 and worklists) is :mod:`.stats` and :mod:`.corpus`, which ask the query engine.
 What is here reads one entry, or looks across documents for a form. Reading a
-document is :func:`..core.tools.read_document`, rendered by the workspace, and the
+document pages as :func:`..core.tools.read_document` does, rendered by the workspace, and the
 change history and comments are :mod:`..core.history`, all shared with the other
 apps.
 """
@@ -14,10 +14,11 @@ from collections import Counter
 from typing import Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int
-from ..core.limits import READ_LIMITS
-from ..core.tools import ToolError, documents_page, truncate
+from ..core.limits import MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
+from ..core.tools import ToolError, document_page, documents_page, named_sentences, truncate
+from ..core.trace import ranges
 
-from .project import (Word, Morpheme, document_lines, joiner_between, render_overview, word_ref)
+from .project import (Word, Morpheme, document_lines, joiner_between, read_view, render_overview, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, descendants_of, homograph_group, references_to
 from .workspace import Workspace, _hits_in, _matcher, _meta_of
@@ -68,6 +69,69 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
                                   for d, line in zip(page, document_lines(page))]
     limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
     return documents_page(ws, pattern, limit, offset, docs=docs, lines=lines)
+
+
+def t_read_document(ws: Workspace, document: Optional[str] = None, from_sentence=None, to_sentence=None,
+                    sentences=None, fields=None) -> str:
+    """:func:`core.tools.read_document`, showing only the ``fields`` named
+    when it names any."""
+    return document_page(ws, document, from_sentence, to_sentence, sentences,
+                         **({'fields': fields} if fields else {}))
+
+
+ITEMS_SHAPE = 'items takes a list like [{"document": "Text 1", "sentences": ["s3", "s8"]}, ...].'
+
+
+def t_read_sentences(ws: Workspace, items=None, fields=None) -> str:
+    """Chosen sentences of several documents in one call, each document under
+    its own header as read_document prints it, so a citation names its
+    document. One render budget and one sentence cap for the whole call: a
+    document that does not fit, and every one after it, is listed at the end
+    to be asked for again."""
+    if not isinstance(items, list) or not items:
+        raise ToolError(ITEMS_SHAPE)
+    if fields:
+        read_view(ws.project, fields)  # refused before anything is read
+    wanted: Dict[str, list] = {}  # document id -> the sentences named, in the order named
+    for it in items:
+        if not isinstance(it, dict) or not it.get('document') or not it.get('sentences'):
+            raise ToolError(ITEMS_SHAPE)
+        named = it['sentences'] if isinstance(it['sentences'], list) else [it['sentences']]
+        wanted.setdefault(ws.resolve_document_id(it['document']), []).extend(named)
+    out: List[str] = []
+    left: List[str] = []
+    used = total = 0
+    cut = False  # a document's render left some of its sentences out
+    for doc_id, named in wanted.items():
+        room = RENDER_BUDGET - used
+        if cut or left or total >= MAX_SENTENCES_PER_READ:
+            left.append(_named_left(ws, doc_id, named))
+            continue
+        doc = ws.doc(doc_id)
+        picked = named_sentences(ws, doc, named)[:MAX_SENTENCES_PER_READ - total]
+        shown: List[int] = []
+        text = ws.render(doc, indexes=picked, budget=room, shown_out=shown, fields=fields or None,
+                         pointer=not out)
+        if out and len(text) > room:  # not even its first sentence fitted
+            left.append(_named_left(ws, doc_id, named))
+            continue
+        out.append(text)
+        used += len(text) + 1
+        total += len(shown)
+        if shown:
+            numbers = [ws.sentence_shown(doc, doc.sentences[i - 1]) for i in shown]
+            ws.note_read(len(shown), 'sentence', which=f'{ranges(numbers)} in {doc.name}')
+        cut = len(shown) < len([i for i in picked if 1 <= i <= len(doc.sentences)])
+    if left:
+        out.append('Not read, as they did not fit: ' + '; '.join(left)
+                   + '. Ask for them in another read_sentences call.')
+    return truncate('\n\n'.join(out))
+
+
+def _named_left(ws: Workspace, doc_id: str, named: list) -> str:
+    """A document left for another call, and its sentences as they were
+    asked for."""
+    return f'"{ws.corpus.ref_name(doc_id)}" ' + ', '.join(str(n) for n in named)
 
 
 #: What a model writes for each kind of ``where`` a read takes besides a

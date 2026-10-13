@@ -54,7 +54,7 @@ NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexi
                        'app. Its fields and its type are for a maintainer of that lexicon to fill in. Nothing was planned. Create the '
                        'entry with its form alone, and tell them a maintainer has to add the rest.')
 from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
-                      load_document, render_document, resolve)
+                      load_document, read_view, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 
@@ -298,11 +298,14 @@ class Workspace(BaseWorkspace):
 
     def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,
                indexes: Optional[List[int]] = None, budget: Optional[int] = None,
-               shown_out: Optional[List[int]] = None) -> str:
-        # The legend once a turn: later reads point back at it.
+               shown_out: Optional[List[int]] = None, fields=None, pointer: bool = True) -> str:
+        # The legend once a turn: later reads point back at it, and a later
+        # document of the same read (``pointer`` False) says nothing.
+        view = read_view(self.project, fields) if fields is not None else None
+        legend = True if not self.legend_shown else False if pointer else None
         out = render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out,
-                              legend=not self.legend_shown)
+                              legend=legend, view=view)
         self.legend_shown = self.legend_shown or FORMAT_LEGEND in out
         return out
 

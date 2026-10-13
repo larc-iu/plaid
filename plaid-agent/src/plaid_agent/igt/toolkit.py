@@ -16,7 +16,7 @@ from ..core import toolkit, webtools
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
     plan_status as t_plan_status
-from ..core.tools import fn, limit_arg, read_document as t_read_document
+from ..core.tools import fn, limit_arg
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -28,7 +28,7 @@ from ..core.history import (add_comment_on_values as t_add_comment, comments_on_
                             recent_changes as t_recent_changes)
 from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
                     t_list_documents, t_project_overview,
-                    t_read_lexicon, t_search)
+                    t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
@@ -62,6 +62,12 @@ _ENTRY_ADDR = {'entry_form': _ENTRY_FORM,
                'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
                'entry_id': {'type': 'string'}}
 
+_FIELDS = {'type': 'array', 'items': {'type': 'string'},
+           'description': 'Show only these, e.g. ["Gloss", "Translation"]: field names, orthography names, '
+                          '"segmentation" (seg= and types=), "links" (link=, mwe=, mlinks=). The baseline and the '
+                          'references are always shown, and naming only sentence fields leaves out the word lines. '
+                          'Leave it out to show everything.'}
+
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.'}
 _MORPHEMES = {'type': 'array', 'items': {'type': 'object', 'properties': {
@@ -86,7 +92,8 @@ TOOLS = [
         f'{MAX_SENTENCES_PER_READ} sentences per '
         'call, fewer when they are long: the header says which were shown and where to continue. WHEN YOU ALREADY '
         'KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get '
-        'them all in ONE call.',
+        'them all in ONE call. Several documents at once: read_sentences. Where a project has many fields, name '
+        'the ones you need in `fields` and more sentences fit in a call.',
         {'document': _DOC,
          'sentences': {'type': 'array', 'items': {'type': 'string'},
                        'description': 'Just these sentences, e.g. ["s3","s8"]. A reference like "s3.w2" names its '
@@ -94,8 +101,21 @@ TOOLS = [
          'from_sentence': {'type': ['integer', 'string'],
                            'description': 'First sentence to show: 3 or "s3" (default 1).'},
          'to_sentence': {'type': ['integer', 'string'],
-                         'description': 'Last sentence to show: 8 or "s8".'}},
+                         'description': 'Last sentence to show: 8 or "s8".'},
+         'fields': _FIELDS},
         ['document']),
+    _fn('read_sentences',
+        'Read chosen sentences of SEVERAL documents in one call, e.g. the hits of a search, each document under '
+        'its own header as read_document prints it. Up to '
+        f'{MAX_SENTENCES_PER_READ} sentences per call, fewer when they are long: what did not fit is listed at '
+        'the end.',
+        {'items': {'type': 'array', 'description': 'e.g. [{"document":"Text 1","sentences":["s3","s8"]}, '
+                                                   '{"document":"Text 2","sentences":["s1"]}].',
+                   'items': {'type': 'object', 'properties': {
+                       'document': _DOC, 'sentences': {'type': 'array', 'items': {'type': 'string'}}},
+                       'required': ['document', 'sentences']}},
+         'fields': _FIELDS},
+        ['items']),
     _fn('search',
         'Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, '
         'or a regex). Returns positional references with each hit\'s word line and sentence. Scans every '
@@ -308,6 +328,7 @@ TOOLS = [
 
 _IMPL = {
     'project_overview': t_project_overview, 'read_document': t_read_document, 'search': t_search,
+    'read_sentences': t_read_sentences,
     'list_documents': t_list_documents,
     'read_lexicon': t_read_lexicon,
     'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_morpheme': t_set_morpheme,

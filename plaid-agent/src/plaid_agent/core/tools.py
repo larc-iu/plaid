@@ -219,6 +219,13 @@ def read_document(ws, document: str = None, from_sentence=None, to_sentence=None
     RENDERED is the app's (:meth:`BaseWorkspace.render`); which ones, and how
     many at once, is not.
     """
+    return document_page(ws, document, from_sentence, to_sentence, sentences)
+
+
+def document_page(ws, document, from_sentence=None, to_sentence=None, sentences=None, **render) -> str:
+    """:func:`read_document` for an app whose read takes more than which
+    sentences: ``render`` goes to its workspace's render as it is (what parts
+    of a sentence to show)."""
     doc = ws.doc(document)
 
     def position(item, name):
@@ -228,17 +235,30 @@ def read_document(ws, document: str = None, from_sentence=None, to_sentence=None
         return n if n is not None else sentence_number(item, name)
 
     if sentences:
-        items = sentences if isinstance(sentences, list) else [sentences]
-        picked = list(dict.fromkeys(n for n in (position(i, 'sentences') for i in items)
-                                    if n is not None))[:MAX_SENTENCES_PER_READ]
-        return _noted(ws, doc, lambda shown: ws.render(doc, indexes=picked, budget=RENDER_BUDGET, shown_out=shown))
+        picked = named_sentences(ws, doc, sentences)
+        return _noted(ws, doc, lambda shown: ws.render(doc, indexes=picked, budget=RENDER_BUDGET, shown_out=shown,
+                                                       **render))
     lo = max(1, position(from_sentence, 'from_sentence') or 1)
     hi = (position(to_sentence, 'to_sentence')
           or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1))
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
         hi = lo + MAX_SENTENCES_PER_READ - 1
     return _noted(ws, doc, lambda shown: ws.render(doc, from_sentence=lo, to_sentence=hi, budget=RENDER_BUDGET,
-                                                   shown_out=shown))
+                                                   shown_out=shown, **render))
+
+
+def named_sentences(ws, doc, sentences) -> List[int]:
+    """The positions of the sentences a read names, each once, in the order
+    named, at most :data:`MAX_SENTENCES_PER_READ` of them. An item is what the
+    app reads as a sentence (`BaseWorkspace.sentence_position`), else a number
+    or a reference."""
+    picked = []
+    for item in sentences if isinstance(sentences, list) else [sentences]:
+        if item is None or item == '':
+            continue
+        n = ws.sentence_position(doc, item)
+        picked.append(n if n is not None else sentence_number(item, 'sentences'))
+    return list(dict.fromkeys(picked))[:MAX_SENTENCES_PER_READ]
 
 
 def _noted(ws, doc, render: Callable[[List[int]], str]) -> str:
