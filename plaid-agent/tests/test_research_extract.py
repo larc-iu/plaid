@@ -49,6 +49,8 @@ def test_turn_ends():
     assert turn_end({'kind': 'assistant', 'text': '(The model returned an empty reply.)'}) == 'empty_reply'
     assert turn_end({'kind': 'assistant', 'text': "x\n\n*(The reply was cut off at the model's output limit.)*"}) \
         == 'cut_at_length'
+    assert turn_end({'kind': 'error', 'text': 'The model wrote 32,768 tokens without finishing, so this turn '
+                                              'was stopped. Ask again, perhaps more narrowly.'}) == 'cut_at_length'
     assert turn_end({'kind': 'assistant', 'text': 'Here.'}) == 'answered'
 
 

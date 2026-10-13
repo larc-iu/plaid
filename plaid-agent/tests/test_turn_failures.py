@@ -133,9 +133,90 @@ def test_the_step_limit_is_said_without_the_operators_flag(monkeypatch):
     assert '--max-steps' not in turn.text
 
 
-def test_a_cut_off_reply_does_not_name_the_operators_flag(monkeypatch):
-    turn = _turn(monkeypatch, Script(_resp('Half a', finish='length')))
-    assert turn.text == "Half a\n\n*(The reply was cut off at the model's output limit.)*"
+# --- the output cap ---------------------------------------------------------------
+
+def test_every_model_call_carries_the_output_cap(monkeypatch):
+    seen = []
+    script = Script(_resp(calls=[_call(1, 'read', '{}')]), _resp(''), _resp('ok'))
+
+    def spy(**kwargs):
+        seen.append(kwargs.get('max_tokens'))
+        return script(**kwargs)
+
+    _turn(monkeypatch, spy)
+    assert seen == [agent.DEFAULT_MAX_OUTPUT_TOKENS] * 3, 'the empty reply\'s nudge is capped too'
+    seen.clear()
+    _turn(monkeypatch, spy, max_tokens=500)
+    assert seen[0] == 500
+
+
+def test_a_call_that_reaches_the_cap_ends_the_turn_and_keeps_what_it_wrote(monkeypatch):
+    """A local model fell into a loop and wrote 229,501 tokens in one call.
+    With the cap the call ends, and the turn ends with it rather than reading
+    a reply cut off mid sentence as an answer."""
+    resp = _resp('Half a', calls=[_call(1, 'read', '{"x": ')], finish='length')
+    resp.choices[0].message.reasoning_content = 'Thinking and thinking'
+    resp.usage = SimpleNamespace(prompt_tokens=900, completion_tokens=32768)
+    tools = []
+    with pytest.raises(TurnFailed) as e:
+        _turn(monkeypatch, Script(resp), lambda ws, n, a: tools.append(n) or 'ok')
+    assert str(e.value) == ('The model wrote 32,768 tokens without finishing, so this turn was stopped. '
+                            'Ask again, perhaps more narrowly.')
+    assert tools == [], 'a call cut off mid tool call runs no tool'
+    steps, partial = agent.turn_trace(e.value)
+    assert partial == 'Half a'
+    assert '--max' not in str(e.value)
+
+
+def test_a_cut_off_call_keeps_its_reasoning_in_a_round(monkeypatch):
+    class Keeper:
+        def __init__(self):
+            self.thinking, self.text, self.kept = '', '', []
+
+        def follow(self, trace):
+            pass
+
+        def think(self, t):
+            self.thinking = t
+
+        def store(self, rnd):
+            self.kept.append(rnd)
+            return True
+
+    ws = Ws()
+    ws.rounds = Keeper()
+    resp = _resp(None, finish='length')
+    resp.choices[0].message.reasoning_content = 'Round and round'
+    with pytest.raises(TurnFailed) as e:
+        _turn(monkeypatch, Script(resp), ws=ws)
+    assert str(e.value).startswith(f'The model wrote {agent.DEFAULT_MAX_OUTPUT_TOKENS:,} tokens')
+    assert [r.get('thinking') for r in ws.rounds.kept] == ['Round and round']
+    assert agent.turn_reply_round(e.value) == ws.rounds.kept[0]['id']
+
+
+def test_the_output_cap_is_the_operators_or_what_the_model_can_write(monkeypatch):
+    monkeypatch.setattr(agent.litellm, 'get_model_info', lambda m: {'max_output_tokens': 16384})
+    assert agent.output_cap('openai/gpt-4o') == 16384, 'a provider refuses more than its model writes'
+    assert agent.output_cap('openai/gpt-4o', 100_000) == 100_000
+    monkeypatch.setattr(agent.litellm, 'get_model_info', lambda m: {'max_output_tokens': 128000})
+    assert agent.output_cap('openai/gpt-5') == agent.DEFAULT_MAX_OUTPUT_TOKENS
+
+    def unknown(m):
+        raise Exception('This model isn\'t mapped yet.')
+    monkeypatch.setattr(agent.litellm, 'get_model_info', unknown)
+    assert agent.output_cap('openai/qwen3.5-122b') == agent.DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_the_cap_flag_reaches_the_model_config():
+    import argparse
+    from plaid_agent.igt.service import AssistantService
+    parser = argparse.ArgumentParser()
+    AssistantService.add_arguments(object.__new__(AssistantService), parser)
+    args = parser.parse_args(['--model', 'openai/x', '--max-output-tokens', '4096'])
+    assert args.max_tokens == 4096
+    assert parser.parse_args(['--model', 'openai/x']).max_tokens is None
+    with pytest.raises(SystemExit):
+        parser.parse_args(['--model', 'openai/x', '--max-output-tokens', '0'])
 
 
 # --- the operator's timeout reaches every model call ----------------------------
@@ -432,3 +513,31 @@ def test_arguments_that_are_not_json_are_not_sent_back(monkeypatch):
     assert call['function']['arguments'] == '{}'
     answer = next(m for m in sent[1] if m.get('role') == 'tool')
     assert answer['content'].startswith('Error: arguments were not valid JSON')
+
+
+def test_a_stop_the_client_sees_while_sending_the_text_closes_the_stream(monkeypatch):
+    """A request the server no longer knows answers the text so far with 404,
+    which the client takes as a stop (plaid_client.services). The stream is
+    closed then, so a model writing nonstop is not read to its end."""
+    from plaid_client import ServiceCancelled
+
+    class Stream:
+        closed = False
+
+        def __iter__(self):
+            for i in range(1000):
+                delta = SimpleNamespace(content=f'w{i} ', tool_calls=None, reasoning_content=None)
+                yield SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=None)])
+
+        def close(self):
+            Stream.closed = True
+
+    def on_text(t):
+        if t:
+            raise ServiceCancelled('gone')
+
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: Stream())
+    with pytest.raises(ServiceCancelled):
+        run_turn(ModelConfig(model='fake/m'), _kit(lambda ws, n, a: 'ok'), Ws(), 'system',
+                 [{'role': 'user', 'content': 'hi'}], on_text=on_text)
+    assert Stream.closed

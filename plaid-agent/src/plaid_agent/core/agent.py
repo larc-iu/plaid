@@ -59,6 +59,13 @@ class Toolkit:
     tracer: Tracer
 
 
+#: The most one model call of a turn may write when the operator states no
+#: figure (--max-output-tokens), its reasoning included. A model that fell
+#: into a loop was seen writing 229,501 tokens in one call, and another
+#: filled its whole 262,144-token window, each for over an hour.
+DEFAULT_MAX_OUTPUT_TOKENS = 32768
+
+
 @dataclass
 class ModelConfig:
     model: str
@@ -66,7 +73,11 @@ class ModelConfig:
     api_key: Optional[str] = None
     max_steps: int = 50
     temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
+    # The most one model call may write, its reasoning included (the
+    # operator's --max-output-tokens, else `output_cap`). A call that reaches
+    # it ends the turn (`cut_line`): with no cap a model that never stops
+    # writing was never stopped, since the deadline counts only silence.
+    max_tokens: Optional[int] = DEFAULT_MAX_OUTPUT_TOKENS
     # Seconds one model call may take before it is abandoned (the operator's
     # --timeout, the same flag and default as the model services), None for
     # the provider's own default, which for litellm is 6000 s: long enough for
@@ -85,6 +96,31 @@ class ModelConfig:
         model services' ``describe()``: an internal endpoint is the operator's
         business, not the reader's."""
         return {'model': self.model}
+
+
+def output_cap(model: str, stated: Optional[int] = None) -> int:
+    """The most one model call may write: the operator's figure, else
+    :data:`DEFAULT_MAX_OUTPUT_TOKENS`, or less for a model litellm knows to
+    write less, as a provider refuses a request that asks for more than its
+    model can write."""
+    if stated:
+        return stated
+    try:
+        info = litellm.get_model_info(model) or {}
+    except Exception:  # noqa: BLE001 - an unknown model is the normal case, not an error
+        info = {}
+    most = info.get('max_output_tokens')
+    if isinstance(most, int) and 0 < most < DEFAULT_MAX_OUTPUT_TOKENS:
+        return most
+    return DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def cut_line(written: Optional[int]) -> str:
+    """What the reader is told when a model call reached its output cap."""
+    if not written:
+        return 'The model wrote without finishing, so this turn was stopped. Ask again, perhaps more narrowly.'
+    return (f'The model wrote {written:,} tokens without finishing, so this turn was stopped. '
+            'Ask again, perhaps more narrowly.')
 
 
 PING_TIMEOUT_S = 30
@@ -267,6 +303,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     seam = False  # a tool call or reasoning came after the last text piece
     last = 0.0
     last_thought = 0.0
+    stream = None
     try:
         # The provider's own count of what it sent, the thinking included, in
         # its last chunk. A provider that has no such option has it dropped
@@ -276,9 +313,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
             return stream  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
             if abandoned is not None and abandoned.is_set():
-                close = getattr(stream, 'close', None)
-                if callable(close):
-                    close()
+                _close(stream)
                 raise TurnCancelled()
             chunks.append(chunk)
             choices = getattr(chunk, 'choices', None) or []
@@ -303,6 +338,12 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                     last = now
                     on_text(text)
     except TurnCancelled:
+        raise
+    except ServiceCancelled:
+        # A stop the client saw as it sent the text so far (a stop asked for,
+        # or a request the server no longer knows): the stream is closed as
+        # at a stop seen here, so the provider can stop writing.
+        _close(stream)
         raise
     except Exception as e:
         # A timeout, a rate limit or a provider that is down is not a provider
@@ -336,6 +377,12 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     if thought and msg is not None:
         msg.reasoning_content = thought
     return resp
+
+
+def _close(stream: Any) -> None:
+    close = getattr(stream, 'close', None)
+    if callable(close):
+        close()
 
 
 def _assembled(chunks: List[Any]):
@@ -450,15 +497,6 @@ def _clean_transcript(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             d['content'] = ''
         out.append(d)
     return out
-
-
-def _length_note(choice) -> str:
-    """A reply the provider cut off at its output limit says so. The flag
-    that raises the limit is the operator's (``--max-tokens``), not something
-    the reader can act on, so it is not named here."""
-    if getattr(choice, 'finish_reason', None) != 'length':
-        return ''
-    return '\n\n*(The reply was cut off at the model\'s output limit.)*'
 
 
 class TurnCancelled(Exception):
@@ -882,7 +920,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # The plan is the substance of this turn and the card shows it,
             # so keep it rather than throw it away with the missing words.
             text = f'({EMPTY_REPLY})'
-        return text + _length_note(choice), thinking
+        return text, thinking
 
     def reply_round_of(n: int, thinking: Optional[str], asked_here: Optional[str] = None):
         """The reply's own round, stored when it holds something the steps'
@@ -899,6 +937,29 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         return rnd['id'], bool(thinking)
 
     def ask(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
+        """One model call, ended with :class:`TurnFailed` when it reached
+        its output cap (`unless_capped`)."""
+        return unless_capped(asked_once(kwargs, messages))
+
+    def unless_capped(resp):
+        """``resp``, unless the model was still writing when the call
+        reached its output cap. What it wrote stays for the record: its text
+        as the turn's partial reply and its reasoning in a round of its own,
+        as a stop keeps them (`run_turn`). A call cut off mid tool call has
+        arguments no tool can read, so none of it is run."""
+        choices = getattr(resp, 'choices', None) or []
+        if not choices or getattr(choices[0], 'finish_reason', None) != 'length':
+            return resp
+        msg = getattr(choices[0], 'message', None)
+        said = getattr(msg, 'content', None)
+        if isinstance(said, str) and said.strip():
+            text_seen(said)
+        thought = clean_reasoning(getattr(msg, 'reasoning_content', None))
+        if thought:
+            on_thinking(thought)
+        raise TurnFailed(cut_line((usage_of(resp) or {}).get('received') or cfg.max_tokens))
+
+    def asked_once(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
         """One model call. Refused as too long, it is asked once more on a
         transcript `shrink` cut to the window the refusal named."""
         text_seen('')
@@ -948,8 +1009,6 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
                                                        'Reply now with your answer to the user.')
                 thinking = _joined(thinking, more)
-            else:
-                text += _length_note(choice)
             # The reply's own round holds something only on a turn that
             # called no tool (the question as received) or when the model
             # reasoned. Its text is the reply.

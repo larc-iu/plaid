@@ -146,8 +146,17 @@ that misbehaves under streaming can be run with `--no-stream`, and the reply
 then arrives whole. Each model call has a deadline, `--timeout` seconds
 (default 120, the same flag the model services take). A call that does not
 answer in that time is tried once more, and then the turn fails and the reader
-can retry it. `--max-steps` caps the tool-call rounds of one turn (default 50),
-and `--temperature` and `--max-tokens` are passed to the model as they are.
+can retry it. The deadline counts silence, so a model that keeps writing is
+not stopped by it. `--max-output-tokens N` caps what one model call may write,
+its reasoning included (default 32768, or less for a model litellm knows to
+write less). A call that reaches the cap ends the turn with a message asking
+the user to try again more narrowly, and what the model wrote stays on the
+turn as a stop's does. `--max-steps` caps the tool-call rounds of one turn
+(default 50), and `--temperature` is passed to the model as it is.
+
+A turn whose request the Plaid server no longer knows (it answers the turn's
+progress updates with 404, as after a restart) is stopped as if the user had
+stopped it, and the model call under way is abandoned.
 
 The panel shows how full a conversation is against the model's context
 window and warns near the limit. The window is litellm's figure for the model

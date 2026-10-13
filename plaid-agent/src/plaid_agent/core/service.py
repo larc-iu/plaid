@@ -75,8 +75,8 @@ from . import prompt as shared_prompt
 from .guidelines import in_reading_order
 from .limits import MAX_PROJECTS, TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
-from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed, turn_reply_round,
-                    turn_trace,
+from .agent import (DEFAULT_MAX_OUTPUT_TOKENS, ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled,
+                    TurnFailed, output_cap, turn_reply_round, turn_trace,
                     context_window, model_failure_line, ping_model, run_turn, token_counter)
 from .files import Attachments, FileKeeper
 from .garble import seed
@@ -350,7 +350,11 @@ class BaseAssistantService(BaseService):
         parser.add_argument('--api-key', default=None, help='Provider API key (else the provider\'s env var)')
         parser.add_argument('--max-steps', type=int, default=50, help='Tool-call rounds per turn (default 50)')
         parser.add_argument('--temperature', type=float, default=None)
-        parser.add_argument('--max-tokens', type=int, default=None)
+        parser.add_argument('--max-output-tokens', '--max-tokens', dest='max_tokens', type=_positive_int,
+                            default=None, metavar='N',
+                            help=f'The most one model call may write, its reasoning included (default '
+                                 f'{DEFAULT_MAX_OUTPUT_TOKENS}, or less for a model known to write less). '
+                                 'A call that reaches it ends the turn with a message to the user.')
         add_timeout_argument(parser)
         parser.add_argument('--context-window', type=_positive_int, default=None, metavar='TOKENS',
                             help='How many tokens the model can be sent. The conversation gauge shows '
@@ -385,7 +389,8 @@ class BaseAssistantService(BaseService):
 
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
-                               max_steps=args.max_steps, temperature=args.temperature, max_tokens=args.max_tokens,
+                               max_steps=args.max_steps, temperature=args.temperature,
+                               max_tokens=output_cap(args.model, args.max_tokens),
                                stream=not getattr(args, 'no_stream', False), timeout=args.timeout,
                                context_window=getattr(args, 'context_window', None))
         self.kit = self.toolkit()
@@ -429,6 +434,8 @@ class BaseAssistantService(BaseService):
         else:
             print('  Context window: unknown, so the conversation gauge shows a count with no '
                   'percentage. State it with --context-window.')
+        print(f'  Output cap: {self.cfg.max_tokens} tokens per model call'
+              + (' (--max-output-tokens).' if args.max_tokens else '.'))
         # Ask the model one question before registering. A service that cannot
         # reach its model has nothing to offer, and the operator is here NOW.
         started = time.monotonic()

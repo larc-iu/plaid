@@ -43,6 +43,9 @@ ROUND_RE = re.compile(r'^(?P<app>[^:]+):assistant:(?P<project>[^:]+):round:(?P<c
 STOPPED_REPEAT = re.compile(r'\*\(Stopped after the same step (failed|was repeated) \d+ times\.\)\*\s*$')
 STEP_LIMIT = re.compile(r'\*\(Stopped at the step limit\.\)\*\s*$')
 CUT_AT_LENGTH = re.compile(r"\*\(The reply was cut off at the model's output limit\.\)\*\s*$")
+# The error a turn ends with when a model call reached its output cap
+# (agent.cut_line), which replaced the note above.
+CUT_AT_CAP = re.compile(r'^The model wrote (\S+ tokens )?without finishing, so this turn was stopped\.')
 EMPTY_REPLY = '(The model returned an empty reply.)'
 
 # A tool's refusal, by what it says. The first that matches wins, and the
@@ -151,6 +154,8 @@ def arg_names(args: Any) -> Optional[List[str]]:
 def turn_end(item: Dict[str, Any]) -> str:
     """How a turn ended: an answer, or which of the ways it can stop."""
     if item.get('kind') == 'error':
+        if CUT_AT_CAP.search(item.get('text') or ''):
+            return 'cut_at_length'
         return 'stopped' if item.get('stopped') else 'lost' if item.get('lost') else 'failed'
     text = item.get('text') or ''
     if STOPPED_REPEAT.search(text):
