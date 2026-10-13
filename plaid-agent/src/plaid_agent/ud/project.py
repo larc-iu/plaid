@@ -175,6 +175,10 @@ class UdProject:
     value_sets: Dict[str, List[dict]] = dc_field(default_factory=dict)
     #: Whether the tree's layer holds the acyclic rule (plaid-ud declares it).
     acyclic: bool = False
+    #: Every relation layer on the lemma layer, any app's. The Grew compiler
+    #: reads "a relation layer of the lemma layer" as the tree or the enhanced
+    #: graph only while these are the two.
+    lemma_relation_layer_ids: List[str] = dc_field(default_factory=list)
 
     def allows(self, field: str, value) -> bool:
         """Whether the layer's stored rules take ``value`` once it is a
@@ -246,10 +250,12 @@ def load_project(client, project_id: str) -> UdProject:
     relation_layer_id, relation_config = None, {}
     acyclic = False
     enhanced_layer_id = None
+    lemma_relations: List[str] = []
     for sl in word.get('span_layers') or []:
         if sl['id'] != span_layers['lemma']:
             continue
         for rl in sl.get('relation_layers') or []:
+            lemma_relations.append(rl['id'])
             if _ud(rl.get('config'), RELATION_KEY) is True:
                 relation_layer_id, relation_config = rl['id'], rl.get('config') or {}
                 value_sets['deprel'] = value_set_rules(rl)
@@ -282,7 +288,7 @@ def load_project(client, project_id: str) -> UdProject:
             'deprel': _descriptions(relation_config),
         },
         guidelines=guidelines,
-        value_sets=value_sets, acyclic=acyclic,
+        value_sets=value_sets, acyclic=acyclic, lemma_relation_layer_ids=lemma_relations,
     )
 
 
