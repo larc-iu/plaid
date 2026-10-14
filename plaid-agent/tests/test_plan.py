@@ -229,6 +229,9 @@ def test_every_igt_kind_has_an_apply_and_every_apply_is_registered():
     for name, spec in plan.KIND.items():
         if spec.stage == opkind.RESOLVED:
             assert spec.apply is None, f'{name} never reaches the executor'
+        elif spec.stage == getattr(plan, 'APP', None):
+            # Settings the app writes, which the executor only reads back.
+            assert spec.apply is None, f'{name} is written by the app'
         else:
             assert callable(spec.apply), f'{name} has no apply function'
     registered = {spec.apply for spec in plan.KIND.values() if spec.apply}
@@ -373,6 +376,9 @@ def test_every_ud_kind_has_an_apply_and_every_apply_is_registered():
     for name, spec in plan.KIND.items():
         if spec.stage == opkind.RESOLVED:
             assert spec.apply is None, f'{name} never reaches the executor'
+        elif spec.stage == getattr(plan, 'APP', None):
+            # Settings the app writes, which the executor only reads back.
+            assert spec.apply is None, f'{name} is written by the app'
         else:
             assert callable(spec.apply), f'{name} has no apply function'
             assert spec.stage in plan.STAGES, f'{name} belongs to no pass'

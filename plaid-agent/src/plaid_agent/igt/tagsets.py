@@ -52,8 +52,8 @@ Actions of the tagsets tool:
   delete: true, only for a tagset no field uses.
 - assign (field, tagset): plans a field's tagset. Pass tagset "" for none. field is an annotation field, a document metadata field, or with lexicon= a lexicon entry field.
 
-Core refuses an approval that closes a list, or assigns a closed list, while a stored value in an annotation field breaks it. The whole batch is refused and nothing in it is written. So check before closing, and fix or add those values first.
-Changing a tagset changes the project's settings, which only a maintainer may do.'''
+Tagset changes are settings: they are a plan of their own, which holds no other change, and only a maintainer may approve one.
+Core refuses to close a list, or to assign a closed list, while a stored value in an annotation field breaks it, and then nothing in the plan is written. So check before closing. Plan fixes to those values first, as a separate plan the user approves, then the close.'''
 
 
 def t_tagsets(ws, action: str, tagset: Optional[str] = None, field: Optional[str] = None,
@@ -492,19 +492,25 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
             breaks.append(f'{f["name"]} ({len(refused)}: '
                           + _listing(refused, lambda r: qv(r[0])) + ')')
     if breaks:
-        out += (' Core will refuse this approval, writing nothing in its batch, while these stored values '
-                'break the closed list: ' + '; '.join(breaks) + '. Plan changes to them in this plan, add them '
-                'to the list, or leave it open, and tell the user.')
+        out += (' Core will refuse this approval, writing nothing, while these stored values break the closed '
+                'list: ' + '; '.join(breaks) + '. Add them to the list, leave it open, or drop this and plan '
+                'changes to the values first (a plan of their own), and tell the user.')
     return out
 
 
 # --- approval ------------------------------------------------------------------------
 #
 # What the plan stages is the tagset as it will read and the name each field
-# will use. Approval reads the configuration afresh, refuses the plan when a
-# tagset or a field's reference it changes moved since (`check_settings`), and
-# queues the writes last in the plan's final batch (`queue_settings`), each
-# expecting what it just read, with the rule declarations a closed list needs.
+# will use. A delegated token may not change a project's or a lexicon's
+# settings, nor declare a layer's rules (core, H9-ACL-1), so the app writes them
+# with the user's own session when they approve (plaid-igt
+# `domain/tagsetPlan.js`), and only then sends the approval. The executor writes
+# nothing: it reads the settings and records the plan applied when they read as
+# planned (`verify_settings`). `check_settings` and `queue_settings` are the
+# app's write in Python, for scripts and tests (`write_settings`).
+
+SETTINGS_APART = ('Tagset changes are settings, a plan of their own: this plan already holds other changes. '
+                  'Finish this plan with the user first (approve or discard), then plan the other.')
 
 IGT = 'igt'
 REMEDIABLE = frozenset(('coextensive', 'single-span', 'single-link', 'same-ancestor'))
@@ -672,6 +678,70 @@ def queue_settings(client, b, project, ops) -> None:
                 b.add(lambda batch, i=sl['id'], w=wanted: batch.span_layers.repair_constraints(i, w))
             b.add(lambda batch, i=sl['id'], w=wanted, e=stored: batch.span_layers.set_constraints(
                 i, IGT, w, expected=e))
+
+
+class _Queue:
+    """The batcher ``queue_settings`` takes, over one batch of ``client``."""
+
+    def __init__(self):
+        self.calls = []
+
+    def add(self, fn) -> None:
+        self.calls.append(fn)
+
+
+def write_settings(client, project, ops) -> None:
+    """Write the plan's tagset changes as the app does on approval: refused
+    when what they change moved, one atomic batch otherwise."""
+    from plaid_agent.core.plan import PlanOutOfDate
+    reasons = check_settings(client, project, ops)
+    if reasons:
+        raise PlanOutOfDate(reasons)
+    q = _Queue()
+    queue_settings(client, q, project, ops)
+    if q.calls:
+        with client.batched() as batch:
+            for fn in q.calls:
+                fn(batch)
+
+
+def _state(cfg, layers, entry_fields, op) -> str:
+    """'after' when the stored settings read as ``op`` leaves them, 'before'
+    as it found them, else 'moved'."""
+    if op['kind'] == 'assign_tagset':
+        now = _reference(cfg, layers, entry_fields, op)
+        return 'after' if now == op.get('after') else 'before' if now == op.get('before') else 'moved'
+    raw = _igt(cfg).get('tagsets')
+    raw = raw if isinstance(raw, dict) else {}
+    named = _norm(raw[op['name']], op['name']) if op['name'] in raw else None
+    was = _norm(raw[op['was']], op['was']) if op['was'] in raw else None
+    renamed = op['was'] != op['name']
+    if named == op.get('after') and (not renamed or was is None):
+        return 'after'
+    if was == op.get('before') and (not renamed or named is None):
+        return 'before'
+    return 'moved'
+
+
+def verify_settings(client, project, ops) -> Dict[str, int]:
+    """What approval does with a plan of tagset changes: the per-kind counts
+    when the settings read as the plan leaves them (the app wrote them), and a
+    refusal otherwise, out of date when they moved some other way."""
+    from plaid_agent.core.plan import PlanError, PlanOutOfDate
+    states = []
+    for owner in dict.fromkeys(op['owner'] for op in ops):
+        cfg, layers, entry_fields = _live(client, project, owner)
+        states.extend((op, _state(cfg, layers, entry_fields, op)) for op in ops if op['owner'] == owner)
+    if all(s == 'after' for _, s in states):
+        counts: Dict[str, int] = {}
+        for op, _ in states:
+            noun = "tagset changes" if op['kind'] == 'set_tagset' else "fields' tagsets"
+            counts[noun] = counts.get(noun, 0) + 1
+        return counts
+    if all(s in ('after', 'before') for _, s in states):
+        raise PlanError('The tagset changes were not written: the app writes them, with your own sign-in, '
+                        'when the plan is approved there. Approve it from the app', 0, len(ops))
+    raise PlanOutOfDate(['the tagset settings this plan changes were changed some other way since it was made'])
 
 
 def refusal_words(error) -> Optional[str]:

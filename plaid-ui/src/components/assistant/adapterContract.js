@@ -47,6 +47,11 @@ export const ADAPTER_MEMBERS = [
 ];
 // Optional: `rowText(row)`, what a plan row says beside its place, where the
 // default (`change`, else `label`) does not fit (PLAIN_ASSISTANT).
+// Optional: `writeFirst({client, projectId, plan})`, the app's own write of a
+// plan the service may not make with its delegated token (igt's tagset
+// settings), made with the user's session before the approval is sent. It
+// returns at once for any other plan, and an error it throws is the
+// approval's, with nothing sent.
 
 export const missingFromAdapter = (adapter) =>
   adapter ? ADAPTER_MEMBERS.filter((k) => adapter[k] == null) : ADAPTER_MEMBERS;

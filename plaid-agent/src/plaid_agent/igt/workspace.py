@@ -56,6 +56,7 @@ NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexi
 from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, read_view, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
+from .tagsets import SETTINGS_APART, SETTINGS_KINDS
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 
 MAX_DOCS_PER_SEARCH = 1000
@@ -694,6 +695,12 @@ class Workspace(BaseWorkspace):
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
         self.guard_morpheme_change(op, replacing=replacing)
+        # Tagset changes are settings, which the app writes with the user's
+        # own session when they approve, so they are a plan of their own.
+        others = [o for i, o in enumerate(self.ops) if i != replacing]
+        settings = op.get('kind') in SETTINGS_KINDS
+        if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
+            raise ToolError(SETTINGS_APART)
         v = self.lexicon_maintained_by(op)
         if v is not None and not self.can_manage_vocab(v):
             if op.get('kind') == 'create_entry' and not (op.get('metadata') or {}).get(PARENT_KEY):

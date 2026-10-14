@@ -5,6 +5,7 @@
 // This is the whole of IGT's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-ud has an adapter of its own.
 import { readInitialized } from '../../../domain/igtConfig.js';
+import { isTagsetPlan, writeTagsetPlan } from '../../../domain/tagsetPlan.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationToMarkdown } from './citationMarkdown.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
@@ -125,6 +126,12 @@ export const IGT_ASSISTANT = {
   parseCitationHref,
   // The assistant reads a project set up for IGT, and no other.
   opensProject: (project) => readInitialized(project?.config),
+  // A plan of tagset changes is settings, which the assistant's delegated
+  // token may not write: written here, with the user's session, before the
+  // approval goes (domain/tagsetPlan.js).
+  writeFirst: async ({ client, projectId, plan }) => {
+    if (isTagsetPlan(plan)) await writeTagsetPlan(client, projectId, plan);
+  },
   examples: [
     'Which words in this project are still unglossed?',
     'Are the glosses for the most common suffix consistent?',

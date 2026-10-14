@@ -597,8 +597,20 @@ export const changesTheView = (j) =>
 // Apply `plan`. What a plan writes is recorded as verified (made by the
 // assistant, confirmed by the approver) unless the user asks for it to count
 // as human-made. The service marks the conversation, refuses while other work
-// runs there, and settles the plan in the record.
-export const startApply = ({ store, service, conv, plan, asHuman, docked = false, tab = null }) => {
+// runs there, and settles the plan in the record. `writeFirst` is the app's
+// own write for a plan the service may not make with its delegated token
+// (settings): made with the user's session before the approval is sent, which
+// is not sent when it throws.
+export const startApply = ({
+  store,
+  service,
+  conv,
+  plan,
+  asHuman,
+  docked = false,
+  tab = null,
+  writeFirst = null,
+}) => {
   const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
@@ -614,8 +626,9 @@ export const startApply = ({ store, service, conv, plan, asHuman, docked = false
   });
   jobs.set(conv.id, j);
   j.promise = (async () => {
-    await watch(j, () =>
-      client.messages.requestService(
+    await watch(j, async () => {
+      if (writeFirst) await writeFirst();
+      return client.messages.requestService(
         projectId,
         service.serviceId,
         { projectId, conversationId: conv.id, tab, op: 'approve', planId: plan.id, asHuman },
@@ -633,8 +646,8 @@ export const startApply = ({ store, service, conv, plan, asHuman, docked = false
         // Approving is its own action, applied as one assistant-plan
         // operation the service opens.
         { requestId, noOperation: true },
-      ),
-    );
+      );
+    });
     if (j.outcome?.kind !== 'refused' || j.outcome.why !== 'gone') {
       applyToasts(j, plan.summary, { docked });
     }

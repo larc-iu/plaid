@@ -833,6 +833,9 @@ export const AssistantChat = ({
         asHuman,
         docked: !toastOnApply,
         tab: held.tab,
+        writeFirst: adapter.writeFirst
+          ? () => adapter.writeFirst({ client, projectId, plan })
+          : null,
       }),
     );
   };

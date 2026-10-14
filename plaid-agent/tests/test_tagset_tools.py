@@ -15,7 +15,8 @@ from plaid_agent.core.tools import ToolError
 from plaid_agent.igt import toolkit
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tagsets import HELP
+from plaid_agent.igt.tagsets import HELP, refusal_words, write_settings
+from plaid_client import PlaidAPIError
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import Workspace
 
@@ -69,6 +70,8 @@ def ws_of(s):
 
 
 def run(s, ws):
+    """The app's write with the user's session, then the approval, which reads it back."""
+    write_settings(s.client, ws.project, ws.ops)
     return execute_plan(s.client, ws.ops, source='test', label='tagsets', project=ws.project)
 
 
@@ -92,9 +95,9 @@ def test_closing_a_list_the_data_breaks_is_refused_whole(proj):
     ws = ws_of(proj)
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
     assert 'Core will refuse this approval' in out and 'Morph Gloss (1: "Ali")' in out
-    with pytest.raises(PlanError) as e:
+    with pytest.raises(PlaidAPIError) as e:
         run(proj, ws)
-    assert 'not in the closed tagset: Ali' in str(e.value)
+    assert 'not in the closed tagset: Ali' in refusal_words(e.value)
     assert igt_config(proj)['tagsets']['Leipzig']['mode'] == 'mixed'
 
 
@@ -164,3 +167,23 @@ def test_delimiters_given_as_a_list_are_the_characters():
     ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'T', 'changes': {'delimiters': ['.', '(', ')', '.']}})
     assert ws.ops[-1]['after']['delimiters'] == '.()'
+
+
+def test_approval_reads_back_what_the_app_wrote_and_never_writes(proj):
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
+    with pytest.raises(PlanError) as e:
+        execute_plan(proj.client, ws.ops, source='test', label='tagsets', project=ws.project)
+    assert 'Approve it from the app' in str(e.value) and e.value.applied == 0
+    assert 'NOM' not in [v['value'] for v in igt_config(proj)['tagsets']['Leipzig']['values']]
+    counts = run(proj, ws)
+    assert counts['tagset changes'] == 1
+    # Applied again (a lost answer, a retry): it still reads as planned.
+    assert execute_plan(proj.client, ws.ops, source='test', label='tagsets', project=ws.project)['tagset changes'] == 1
+
+
+def test_tagset_changes_are_a_plan_of_their_own():
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'x'})
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
+    assert 'a plan of their own' in out and all(op['kind'] != 'set_tagset' for op in ws.ops)
