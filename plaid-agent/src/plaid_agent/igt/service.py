@@ -55,8 +55,8 @@ class AssistantService(BaseAssistantService):
     # entry exists or not.
     proposed_keys = (('token_id', 'analysis_word_id', 'word_id', 'morpheme_id', 'span_id', 'link_id', 'token_ids',
                       'item_id', 'keep_id', 'guideline_id', 'sentence_id', 'entity_id', 'document_id',
-                      'vocab_id', 'text_id'),
-                     ('value', 'form', 'entry_form', 'new', 'name', 'morph_type', 'title', 'body', 'as_of'),
+                      'vocab_id', 'text_id', 'key', 'owner'),
+                     ('value', 'form', 'entry_form', 'new', 'name', 'morph_type', 'title', 'body', 'as_of', 'after'),
                      # The second thing a change joins: the entry a word is
                      # linked to (None for one the plan makes), and what a
                      # merge takes in.

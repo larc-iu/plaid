@@ -4,8 +4,9 @@ Reads the configuration the editor reads (plaid-igt ``domain/tagsets.js``
 and ``domain/vocabFields.js``), so a service or an assistant can see which
 values a field is held to and show them to whatever proposes annotations.
 
-Nothing here enforces anything, on purpose. The app marks a value its
-tagset refuses and a person decides what to do with it. A machine that
+Nothing here enforces anything. The app marks a value its tagset refuses
+and a person decides what to do with it, and core refuses an off-list value
+only in a field whose tagset is closed (:func:`field_constraints`). A machine that
 writes an off-list value is telling the linguist something (the list is
 incomplete, or the model is wrong), so never snap output to the nearest
 listed value: show the list BEFORE asking for output, and write what
@@ -91,6 +92,21 @@ def resolve_tagset(layer_config, config) -> Optional[dict]:
     so it never behaves like a closed, empty list."""
     name = read_tagset_name(layer_config)
     return read_tagsets(config).get(name) if name else None
+
+
+def field_constraints(layer_config, config) -> List[dict]:
+    """The layer rules IGT declares on a field's span layer under the project
+    ``config`` (plaid-igt ``fieldConstraints`` in ``domain/igtConstraints.js``):
+    one span per token, and when the field's tagset is closed, a value made
+    only of listed tags. Core holds them and refuses a write that breaks one.
+    A ``mixed`` tagset's lexical parts are a Leipzig reading core does not
+    hold, and an open one enforces nothing, so neither declares a value set."""
+    rules: List[dict] = [{'type': 'single-span'}]
+    t = resolve_tagset(layer_config, config)
+    if t and t['mode'] == CLOSED:
+        rules.append({'type': 'value-set', 'values': [v['value'] for v in t['values']],
+                      'delimiters': t['delimiters'], 'parts': 'all'})
+    return rules
 
 
 def _span_layers(project) -> Iterator[dict]:

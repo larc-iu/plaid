@@ -37,6 +37,7 @@ from .tagsets import (
     read_tagsets,
     read_tagset_name,
     resolve_tagset,
+    field_constraints,
     tagset_for,
     vocab_tagset_for,
     governed_fields,
@@ -50,6 +51,6 @@ __all__ = [
     'ParsedWord', 'parse_interleaved', 'align_words', 'analysis_for', 'similarity',
     'clitic_side_of_boundary', 'clitic_types', 'ALIGN_THRESHOLD',
     'write_analyses', 'chunk_plans', 'BATCH_OP_BUDGET',
-    'MODES', 'normalize_tagset', 'read_tagsets', 'read_tagset_name', 'resolve_tagset',
+    'MODES', 'normalize_tagset', 'read_tagsets', 'read_tagset_name', 'resolve_tagset', 'field_constraints',
     'tagset_for', 'vocab_tagset_for', 'governed_fields', 'mode_rule', 'value_lines',
 ]

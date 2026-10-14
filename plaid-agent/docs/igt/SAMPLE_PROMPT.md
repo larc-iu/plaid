@@ -97,7 +97,7 @@ Running code:
 
 ## Tools
 
-73 tools, in the order the model receives them: 43 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+74 tools, in the order the model receives them: 44 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -658,6 +658,16 @@ Run one read-only Plaid query over this project: structure across layers, joins,
 
 - `query` (object, required): The query object: find, where, return, limit, order_by. See query_help.
 - `limit` (integer): Rows to show (default 50, max 500).
+
+### tagsets
+
+PLAN: set up tagsets (the value lists fields are held to): create, change, close, seed from the values in use, assign to fields. Call with action "help" first.
+
+- `action` (one of `help`, `check`, `edit`, `assign`, required)
+- `tagset` (string)
+- `field` (string)
+- `lexicon` (string)
+- `changes` (object)
 
 ### read_guideline
 

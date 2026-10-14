@@ -30,6 +30,7 @@ from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon
                     t_list_documents, t_project_overview,
                     t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
+from .tagsets import t_tagsets
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
 from .stats import (t_check_integrity, t_check_lexicon, t_corpus_stats, t_frequency_list,
@@ -511,6 +512,16 @@ _IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_
 
 TOOLS += [_SHARED['query_help'], _SHARED['query']]
 _IMPL.update({'query_help': t_query_help, 'query': t_query})
+
+# One schema for every tagset action, its instructions behind action "help":
+# most conversations never set a tagset up.
+TOOLS += [_fn('tagsets',
+              'PLAN: set up tagsets (the value lists fields are held to): create, change, close, seed from the '
+              'values in use, assign to fields. Call with action "help" first.',
+              {'action': {'type': 'string', 'enum': ['help', 'check', 'edit', 'assign']},
+               'tagset': {'type': 'string'}, 'field': {'type': 'string'}, 'lexicon': {'type': 'string'},
+               'changes': {'type': 'object'}}, ['action'])]
+_IMPL['tagsets'] = t_tagsets
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(

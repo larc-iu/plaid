@@ -47,6 +47,12 @@ def _split_parts(value, delimiters):
     return out
 
 
+def value_parts(value, delimiters):
+    """The parts a value-set reads in ``value``: split on any of
+    ``delimiters`` and trimmed as the server trims them, an empty part kept."""
+    return [_trim(p) for p in _split_parts(value, delimiters or '')]
+
+
 def value_set_allows(constraint, value):
     """Whether a value-set constraint (``{'values', 'delimiters'?,
     'parts'?}``) allows ``value`` as the server reads it: None and blank

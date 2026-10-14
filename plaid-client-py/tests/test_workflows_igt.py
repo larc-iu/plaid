@@ -591,3 +591,24 @@ def test_words_the_caller_names_are_left_alone_whatever_overwrite_says():
         targets, skipped = select_targets(s, overwrite=overwrite, skip_word_ids={'w1'})
         assert [idxs for _, idxs in targets] == [[1]], overwrite
         assert skipped['precedent'] == 1
+
+
+def test_field_constraints_declare_a_value_set_only_for_a_closed_list():
+    """plaid-igt fieldConstraints: one span per token always, the listed
+    values only when the field's tagset is closed, in the list's order."""
+    from plaid_client.workflows.igt.tagsets import field_constraints
+    cfg = {'igt': {'tagsets': {'L': {'mode': 'closed', 'delimiters': '. :', 'values': [{'value': 'PL'}, {'value': 'ERG'}]},
+                               'M': {'mode': 'mixed', 'values': [{'value': 'PL'}]}}}}
+    assert field_constraints({'igt': {'tagset': 'L'}}, cfg) == [
+        {'type': 'single-span'},
+        {'type': 'value-set', 'values': ['PL', 'ERG'], 'delimiters': '.:', 'parts': 'all'}]
+    assert field_constraints({'igt': {'tagset': 'M'}}, cfg) == [{'type': 'single-span'}]
+    assert field_constraints({'igt': {'tagset': 'gone'}}, cfg) == [{'type': 'single-span'}]
+    assert field_constraints({}, cfg) == [{'type': 'single-span'}]
+
+
+def test_value_parts_trim_as_the_server_does():
+    from plaid_client.constraints import value_parts
+    assert value_parts(' 1SG . NOM', '.') == ['1SG', 'NOM']
+    assert value_parts('a..b', '.') == ['a', '', 'b']
+    assert value_parts('dog-PL', '') == ['dog-PL']

@@ -1348,6 +1348,8 @@ REPLACES = {
     # new sentence boundary replaces nothing anyone annotated.
     'confirm': _NONE, 'add_comment': _NONE, 'create_document': _NONE, 'split_sentence': _NONE,
     'rename_document': _NONE, 'set_doc_metadata': _NONE,
+    # Settings, not annotation: nobody's work is in a tagset's list.
+    'set_tagset': _NONE, 'assign_tagset': _NONE,
     # The lexicon: an entry is not a document's annotation.
     'create_entry': _NONE, 'set_entry_field': _NONE, 'set_entry_metadata': _NONE,
     'rename_entry': _NONE, 'merge_entries': _NONE,

@@ -74,6 +74,9 @@ wire's key recasing):
   set_morph_type  {morpheme_id, morph_type|null}   (stamped as every rewrite is)
   add_comment     {entity_type, entity_id, body, anchor_label, document_id}   (unaudited, as every comment)
   restore_document {document_id, as_of}   (the server's own restore, always a plan of its own)
+  set_tagset      {owner: 'project'|vocab id, was, name, before, after}   (a tagset as it will read, after null
+                   to delete it, was its stored name. Written last, in the final batch: see igt/tagsets.py)
+  assign_tagset   {owner, field_kind: span|metadata|entry_field, key, before, after}   (a field's tagset name)
   delete_word may carry link_ids: multi-word expressions the deletion would leave with one member.
   merge_entries links are [{link_id, token_ids}] so a moved multi-word expression keeps every member.
   They are what the card shows. The write is the core's merge, which moves every link the removed entry
@@ -99,6 +102,7 @@ from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate,
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, confirm_note, ConfirmRows, expand_ops)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
+from .tagsets import check_settings, queue_settings, refusal_words
 from .vocab import PARENT_KEY, build_sense_tree, morph_type_of, parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -154,6 +158,7 @@ class Context:
         self.text_edits: List[Dict[str, Any]] = []
         self.restores: List[Dict[str, Any]] = []
         self.new_docs: List[Dict[str, Any]] = []
+        self.settings: List[Dict[str, Any]] = []  # set_tagset and assign_tagset, queued last
         # Once per entity, whichever ops name it. The server accepts a
         # `bulk_delete` of ids that are already gone, but a SINGLE delete of
         # one 404s, and the batch it shares is atomic: an unlink beside the
@@ -460,6 +465,15 @@ def _apply_delete_entry(ctx: Context, op) -> int:
 
 def _apply_rename_entry(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.vocab_items.update(o['item_id'], o['form']))
+    return 1
+
+
+def _apply_settings(ctx: Context, op) -> int:
+    # The configuration is read afresh and written once per owner, after
+    # every other write of the plan (`queue_settings`): a closed list is
+    # declared over the values the plan has already changed.
+    ctx.settings.append(op)
+    ctx.defer(op)
     return 1
 
 
@@ -775,6 +789,11 @@ KIND = ok.registry([
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
            compact_each=('item_id', 'form'), extra={'names_entry': ('item_id',)}),
+    OpKind('set_tagset', ('tagset change', 'tagset changes'), required=('owner', 'was', 'name'),
+           apply=_apply_settings, target=lambda op: ('tagset', op.get('owner'), op.get('was'))),
+    OpKind('assign_tagset', ("field's tagset", "fields' tagsets"), required=('owner', 'field_kind', 'key'),
+           apply=_apply_settings,
+           target=lambda op: ('tagset_field', op.get('owner'), op.get('field_kind'), op.get('key'))),
     OpKind('rename_document', ('renamed document', 'renamed documents'), required=('document_id', 'name'),
            apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id'))),
     # A confirmation the model NAMED (refs) is a write to what it names, and a
@@ -966,6 +985,9 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     that cannot be read is a failure to read, never a deletion. Many entries
     are settled by those lexicons directly, one read each. Without a project
     a 403 counts as gone."""
+    settings = check_settings(client, project, ops) if project is not None else []
+    if settings:
+        raise PlanOutOfDate(settings)
     named = named_entries(ops)
     if not named:
         return
@@ -1451,9 +1473,14 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                                 f'deleted ({op.get("label") or "Delete entry"}).', b.applied, len(ops))
             ctx.gone.add(('vocab_items', iid))
             b.add(lambda batch, i=iid, n=len(links): batch.vocab_items.delete(i, expected_link_count=n))
+        if ctx.settings:
+            queue_settings(client, b, project, ctx.settings)
         try:
             b.flush()
         except PlaidAPIError as e:
+            words = refusal_words(e) if ctx.settings else None
+            if words:
+                raise PlanError(words, getattr(e, '_applied', b.applied), len(ops)) from e
             # Every link it has in this project is one the plan read, so the
             # server counting more means links in projects this one cannot
             # open, which the assistant can neither see nor take.

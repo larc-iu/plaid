@@ -152,6 +152,17 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'retype_sentence':
         return f'Planned retyping {a.get("ref")}{in_doc(a)}'
 
+    # --- tagsets: one tool, the action says which ------------------------------
+    if name == 'tagsets':
+        act = a.get('action')
+        if act == 'help':
+            return 'Read how to set up tagsets'
+        if act == 'check':
+            return f'Checked the tagset {q(a.get("tagset"))}'
+        if act == 'assign':
+            return f'Planned the tagset {q(a.get("tagset"))} on {q(a.get("field"))}'
+        return f'Planned a change to the tagset {q(a.get("tagset"))}'
+
     return None
 
 
@@ -171,6 +182,7 @@ _PROGRESS = {
     'frequency_list': lambda a: 'Counting frequencies…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
     'check_lexicon': lambda a: 'Checking the lexicon…',
+    'tagsets': lambda a: 'Checking a tagset…' if a.get('action') == 'check' else 'Working on tagsets…',
     'add_sense': lambda a: 'Adding a sense…',
     'move_sense': lambda a: 'Renumbering a sense…',
     'make_sense_of': lambda a: 'Moving an entry under another…',

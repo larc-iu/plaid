@@ -87,10 +87,12 @@ class Field:
     #: The value-set rules stored on the layer, any app's, as core enforces
     #: them (the layer's ``constraints``).
     value_sets: List[dict] = dataclasses.field(default_factory=list)
+    #: The tagset name the layer references, a dangling one included.
+    tagset_name: Optional[str] = None
 
 
 def _unique_field_names(entries):
-    """[(layer name, layer id, scope, tagset, value sets)] -> Fields with display names made
+    """[(layer name, layer id, scope, tagset name, tagset, value sets)] -> Fields with display names made
     unique (case-insensitively) by a scope suffix where the same layer name
     occurs in several scopes, and a further counter if a layer is literally
     named like a qualified one ("Gloss (Word)")."""
@@ -99,14 +101,14 @@ def _unique_field_names(entries):
         counts[name.casefold()] = counts.get(name.casefold(), 0) + 1
     out = {}
     taken = set()
-    for name, lid, scope, tagset, value_sets in entries:
+    for name, lid, scope, tname, tagset, value_sets in entries:
         display = f'{name} ({scope})' if counts[name.casefold()] > 1 else name
         n = 2
         while display.casefold() in taken:
             display = f'{name} ({scope} {n})'
             n += 1
         taken.add(display.casefold())
-        out[display] = Field(display, lid, scope, name, tagset, value_sets)
+        out[display] = Field(display, lid, scope, name, tagset, value_sets, tname)
     return out
 
 
@@ -131,6 +133,10 @@ class IgtProject:
     document_metadata: List[str]
     # document metadata field -> tagset (dataclasses.field spelled out: the class has a field() method)
     metadata_tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
+    # Every tagset of the project by name, a list no field uses included, and
+    # the tagset name each document metadata field references.
+    tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
+    metadata_tagset_names: Dict[str, str] = dataclasses.field(default_factory=dict)
     # The project's own annotation manual. Loaded with the project because the
     # prompt names it every turn; see plaid_agent.core.guidelines.
     guidelines: List[Guideline] = dataclasses.field(default_factory=list)
@@ -307,14 +313,16 @@ def load_project(client, project_id: str) -> IgtProject:
             scope = _igt(sl.get('config'), 'scope')
             if scope in SCOPES:
                 tname = read_tagset_name(sl.get('config'))
-                entries.append((sl['name'], sl['id'], scope, tagsets.get(tname) if tname else None,
+                entries.append((sl['name'], sl['id'], scope, tname, tagsets.get(tname) if tname else None,
                                 value_set_rules(sl)))
     fields = _unique_field_names(entries)
     metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
-    metadata_tagsets = {}
+    metadata_tagsets, metadata_tagset_names = {}, {}
     for m in metadata:
         tname = m.get('tagset')
         tname = tname.strip() if isinstance(tname, str) else ''
+        if tname:
+            metadata_tagset_names[m['name']] = tname
         if tname in tagsets:
             metadata_tagsets[m['name']] = tagsets[tname]
     return IgtProject(
@@ -328,6 +336,7 @@ def load_project(client, project_id: str) -> IgtProject:
         vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
         document_metadata=[m['name'] for m in metadata],
         metadata_tagsets=metadata_tagsets,
+        tagsets=tagsets, metadata_tagset_names=metadata_tagset_names,
         guidelines=guidelines,
     )
 
@@ -344,6 +353,7 @@ def _vocab_entry(v: dict) -> dict:
         if t:
             tagsets[f['name']] = t
     return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets,
+            'all_tagsets': read_tagsets(v.get('config')),
             'maintainers': list(v.get('maintainers') or [])}
 
 
