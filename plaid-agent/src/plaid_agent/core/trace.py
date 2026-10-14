@@ -41,6 +41,13 @@ class Tracer:
     progress: Callable[[str, Dict[str, Any]], str]
     #: Whether a read is a search: a look for a pattern across the data.
     search: Callable[[str], bool] = lambda name: False
+    #: The kind of one call where its arguments decide it, else ``kind``'s
+    #: answer: a tool with some actions that plan and some that only read, whose
+    #: reading actions are no plan call.
+    kind_of: Callable[[str, Dict[str, Any]], str] = None
+
+    def call_kind(self, name: str, args: Dict[str, Any]) -> str:
+        return self.kind_of(name, args) if self.kind_of else self.kind(name)
 
 
 # Bookkeeping rather than a look at the data: the overview, the plan so far,
@@ -57,7 +64,8 @@ SEARCH_TOOLS = frozenset({'search', 'query'})
 
 
 def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], Optional[str]],
-               progress: Dict[str, Callable[[Dict[str, Any]], str]], searches=()) -> Tracer:
+               progress: Dict[str, Callable[[Dict[str, Any]], str]], searches=(),
+               reading: Optional[Dict[str, Callable[[Dict[str, Any]], Optional[str]]]] = None) -> Tracer:
     """One app's tracer. What KIND a call was is read off the app's own tool
     tables. The lines are the app's for its own tools (``describe`` answers
     None for a tool it has no line for) and :data:`SHARED_DESCRIBE` and
@@ -91,8 +99,13 @@ def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]],
             return 'Planning changes…'
         return f'{name}…'
 
+    def kind_of(name: str, args: Dict[str, Any]) -> str:
+        fn = (reading or {}).get(name)
+        return (fn(args) if fn else None) or kind(name)
+
     searching = SEARCH_TOOLS | frozenset(searches)
-    return Tracer(kind=kind, describe=line, progress=label, search=lambda name: name in searching)
+    return Tracer(kind=kind, describe=line, progress=label, search=lambda name: name in searching,
+                  kind_of=kind_of)
 
 
 # --- the words an app's descriptions are built from -----------------------------
@@ -312,7 +325,7 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     call, on the round's first step only. ``thought`` says that round holds
     the model's reasoning, on the same step, so the panel offers it.
     ``nothing`` marks a plan call that left the plan as it was."""
-    kind = tracer.kind(name)
+    kind = tracer.call_kind(name, args)
     if kind == DOCUMENT and saw and not failed:
         label = f'Read {_document(args)}'
     else:

@@ -298,3 +298,16 @@ def test_extra_keys_and_duplicates_in_a_stored_list_read_back_as_planned(proj):
     ws = ws_of(proj)
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
     assert run(proj, ws)['tagset changes'] == 1
+
+
+def test_help_and_check_are_reads_so_a_repeat_gets_its_answer():
+    """The agent loop answers a repeated PLAN call with "already planned",
+    and labels one that planned nothing "Nothing to change". Neither is
+    true of the manual or a check."""
+    from plaid_agent.core.trace import META, PLAN, READ, trace_step
+    from plaid_agent.igt.trace import TRACER
+    assert TRACER.call_kind('tagsets', {'action': 'help'}) == META
+    assert TRACER.call_kind('tagsets', {'action': 'check', 'tagset': 'L'}) == READ
+    assert TRACER.call_kind('tagsets', {'action': 'edit', 'tagset': 'L'}) == PLAN
+    item = trace_step(TRACER, 'c1', 'tagsets', {'action': 'help'})
+    assert item['label'] == 'Read how to set up tagsets' and item['kind'] == META

@@ -9,7 +9,7 @@ declared tool reaches that fallback.
 
 from typing import Any, Dict, Optional
 
-from ..core.trace import count, in_doc, plural, q, tracer_for
+from ..core.trace import META, READ, count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
@@ -195,5 +195,10 @@ _PROGRESS = {
 }
 
 
-TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'))
+# The tagsets tool plans with edit and assign, and only reads with help (its
+# manual) and check.
+_READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(a.get('action'))}
+
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'),
+                    reading=_READING)
 describe_step = TRACER.describe

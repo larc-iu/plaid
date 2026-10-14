@@ -1047,7 +1047,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 c['function']['arguments'] = '{}'
             else:
                 key = (name, json.dumps(args, sort_keys=True, default=str))
-                plan_call = kit.tracer.kind(name) == PLAN and name not in META_TOOLS
+                plan_call = kit.tracer.call_kind(name, args) == PLAN and name not in META_TOOLS
                 before = _plan_snapshot(ws) if plan_call else None
                 line = kit.tracer.progress(name, args)
                 on_progress(min(85, 8 + rounds * 5), line)
