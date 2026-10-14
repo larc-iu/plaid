@@ -158,3 +158,9 @@ def test_a_lexicon_keeps_its_own_tagsets(proj):
     assert lex['tagsets']['Category']['mode'] == 'closed'
     assert lex['fields']['gloss'] == {'inline': True, 'tagset': 'Category'}
     assert 'Category' not in igt_config(proj)['tagsets']
+
+
+def test_delimiters_given_as_a_list_are_the_characters():
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'T', 'changes': {'delimiters': ['.', '(', ')', '.']}})
+    assert ws.ops[-1]['after']['delimiters'] == '.()'

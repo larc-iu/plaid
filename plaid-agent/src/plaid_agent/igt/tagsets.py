@@ -344,7 +344,10 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
             said.append(f'mode {t["mode"]} → {mode}' if not new else f'mode {mode}')
         t['mode'] = mode
     if 'delimiters' in changes:
-        d = ''.join(str(changes['delimiters'] or '').split())
+        raw = changes['delimiters']
+        # A model may list them (['.', ':']) rather than write them as one string.
+        raw = ''.join(str(x) for x in raw) if isinstance(raw, list) else str(raw or '')
+        d = ''.join(dict.fromkeys(''.join(raw.split())))
         if d != t['delimiters']:
             said.append(f'delimiters {qv(d) if d else "none"}')
         t['delimiters'] = d
