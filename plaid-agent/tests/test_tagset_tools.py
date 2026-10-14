@@ -95,6 +95,7 @@ def test_closing_a_list_the_data_breaks_is_refused_whole(proj):
     ws = ws_of(proj)
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
     assert 'Core will refuse this approval' in out and 'Morph Gloss (1: "Ali")' in out
+    assert 'Ask the user whether they mean mixed' in out
     with pytest.raises(PlaidAPIError) as e:
         run(proj, ws)
     assert 'not in the closed tagset: Ali' in refusal_words(e.value)
@@ -123,6 +124,7 @@ def test_a_list_seeded_from_a_field_assigned_and_renamed(proj):
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Words',
                                     'changes': {'add_used': 'all', 'from_fields': ['Gloss']}})
     assert '1 values in use added from Gloss' in out
+    assert '1 of them are ordinary word glosses' in out
     call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Gloss', 'tagset': 'Words'})
     call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Date', 'tagset': 'Words'})
     run(proj, ws)
@@ -187,3 +189,14 @@ def test_tagset_changes_are_a_plan_of_their_own():
     call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'x'})
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
     assert 'a plan of their own' in out and all(op['kind'] != 'set_tagset' for op in ws.ops)
+
+
+def test_a_seed_without_delimiters_says_compound_values_are_listed_whole(monkeypatch):
+    from plaid_agent.igt import tagsets as T
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    monkeypatch.setattr(T, '_attested', lambda ws, f: [('DEM2.DIST', 3), ('PL', 1)])
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'New', 'changes': {'add_used': 'tags', 'from_fields': ['Gloss']}})
+    assert 'values such as "DEM2.DIST" are listed whole' in out
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Other', 'changes': {'delimiters': '.', 'add_used': 'tags', 'from_fields': ['Gloss']}})
+    assert 'listed whole' not in out
+    assert [v['value'] for v in ws.ops[-1]['after']['values']] == ['DEM2', 'DIST', 'PL']

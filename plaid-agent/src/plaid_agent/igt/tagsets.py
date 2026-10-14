@@ -383,16 +383,24 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
         ws.corpus.forget_clipping()
         reading = {**t, 'values': values, 'mode': 'suggest'}
         before = len(added)
-        skipped = 0
+        skipped = words = 0
         for f in sources:
             for part, _n, lexical in _unlisted(_attested(ws, f), reading):
                 if lexical and used == 'tags':
                     skipped += 1
                     continue
+                words += lexical and part not in by_value
                 add({'value': part})
         clip = ws.corpus.clipped_note()
         notes.append(f'{len(added) - before} values in use added from {", ".join(f["name"] for f in sources)}'
                      + (f', {skipped} lexical glosses left out' if skipped else '') + '.' + (f' {clip}' if clip else ''))
+        if words:
+            notes.append(f'{words} of them are ordinary word glosses, which make a tag list a word list: say so '
+                         'to the user, and ask before planning it unless they asked for exactly that.')
+        joined = [v for v in added[before:] if any(ch in v for ch in '.:')]
+        if joined and not t['delimiters']:
+            notes.append(f'The tagset has no delimiters, so values such as {qv(joined[0])} are listed whole. '
+                         'To list their tags, set delimiters (e.g. ".:") in the same call.')
     removed = []
     for v in _values(changes.get('remove'), 'remove'):
         if v['value'] in by_value:
@@ -479,6 +487,7 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
     tagsets = planned_tagsets(ws, owner)
     stored = _stored_tagsets(ws, owner)
     breaks = []
+    words = refused_n = 0
     ws.corpus.forget_clipping()
     for f in _fields(ws, owner):
         t = tagsets.get(f['tagset']) if f['tagset'] else None
@@ -487,7 +496,10 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
         old = stored.get(f['field'].tagset_name) if f['field'].tagset_name else None
         if old is not None and old == {**t, 'name': old['name']}:
             continue  # in force already, so stored values keep to it
-        refused = _refused(_attested(ws, f), t)
+        attested = _attested(ws, f)
+        refused = _refused(attested, t)
+        refused_n += len(refused)
+        words += sum(1 for v, _ in refused if all(is_lexical_part(p) for p in _parts(v, t['delimiters'])))
         if refused:
             breaks.append(f'{f["name"]} ({len(refused)}: '
                           + _listing(refused, lambda r: qv(r[0])) + ')')
@@ -495,6 +507,10 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
         out += (' Core will refuse this approval, writing nothing, while these stored values break the closed '
                 'list: ' + '; '.join(breaks) + '. Add them to the list, leave it open, or drop this and plan '
                 'changes to the values first (a plan of their own), and tell the user.')
+        if words * 2 > refused_n:
+            out += (f' {words} of them are ordinary word glosses: a closed list would have to list every word '
+                    'gloss. Ask the user whether they mean mixed (tags enforced, word glosses free) before '
+                    'planning more.')
     return out
 
 
