@@ -200,3 +200,101 @@ def test_a_seed_without_delimiters_says_compound_values_are_listed_whole(monkeyp
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Other', 'changes': {'delimiters': '.', 'add_used': 'tags', 'from_fields': ['Gloss']}})
     assert 'listed whole' not in out
     assert [v['value'] for v in ws.ops[-1]['after']['values']] == ['DEM2', 'DIST', 'PL']
+
+
+def test_a_value_read_back_is_the_value_planned(proj):
+    """What approval reads back must be exactly what the plan holds, or a
+    write that landed is reported as changed since."""
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {
+        'add': [{'value': 'NOM', 'description': None, 'color': 'red'}, {'value': 'ACC', 'description': 'accusative'}]}})
+    assert ws.ops[-1]['after']['values'][-2:] == [{'value': 'NOM'}, {'value': 'ACC', 'description': 'accusative'}]
+    assert run(proj, ws)['tagset changes'] == 1
+
+
+def _user(admin, email):
+    from live import _Session
+    try:
+        admin.users.create(email, 'pw-for-tests-1', False)
+    except Exception:  # noqa: BLE001 - left by an earlier run
+        pass
+    from plaid_client import PlaidClient
+    return PlaidClient.login(_Session.url, email, 'pw-for-tests-1')
+
+
+def test_a_maintainer_who_is_no_admin_may_and_a_writer_may_not(proj):
+    admin = proj.client
+    _user(admin, 'tagset-maint@x.org')
+    _user(admin, 'tagset-writer@x.org')
+    admin.projects.add_maintainer(proj.project_id, 'tagset-maint@x.org')
+    admin.projects.add_writer(proj.project_id, 'tagset-writer@x.org')
+    for email, may in (('tagset-maint@x.org', True), ('tagset-writer@x.org', False)):
+        c = _user(admin, email)
+        ws = Workspace(c, load_project(c, proj.project_id))
+        ws.requester_id = email
+        out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['DAT']}})
+        assert ('Only a maintainer' not in out) == may, (email, out)
+        if may:
+            write_settings(c, ws.project, ws.ops)
+            assert execute_plan(c, ws.ops, source='test', label='t', project=ws.project)['tagset changes'] == 1
+
+
+# --- what review found (2026-10-14) -----------------------------------------------------
+
+def _fake_ws():
+    return Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+
+
+def test_an_edit_by_a_name_the_plan_renamed_points_to_the_new_name():
+    ws = _fake_ws()
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'rename_to': 'Other'}})
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['X']}})
+    assert 'This plan renames "Leipzig" to "Other": edit "Other"' in out
+    [op] = [op for op in ws.ops if op['kind'] == 'set_tagset']
+    assert (op['was'], op['name']) == ('Leipzig', 'Other')
+
+
+def test_a_deleted_tagset_made_again_is_an_edit_of_the_stored_one():
+    ws = _fake_ws()
+    call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Morph Gloss', 'tagset': ''})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'delete': True}})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['X']}})
+    [op] = [op for op in ws.ops if op['kind'] == 'set_tagset']
+    assert op['before']['mode'] == 'mixed' and [v['value'] for v in op['after']['values']] == ['X']
+
+
+def test_a_field_assigned_in_the_plan_follows_a_later_rename():
+    ws = _fake_ws()
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'New', 'changes': {'add': ['X']}})
+    call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Gloss', 'tagset': 'New'})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'New', 'changes': {'rename_to': 'Newer'}})
+    [assign] = [op for op in ws.ops if op['kind'] == 'assign_tagset']
+    assert assign['after'] == 'Newer' and assign['label'] == 'Gloss: tagset "Newer"'
+
+
+def test_a_rename_onto_a_stored_name_the_plan_frees_is_refused():
+    ws = _fake_ws()
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'rename_to': 'B'}})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'C', 'changes': {'add': ['X']}})
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'C', 'changes': {'rename_to': 'Leipzig'}})
+    assert 'which this plan frees' in out
+
+
+def test_assign_then_rename_applies_with_the_field_on_the_new_name(proj):
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'New', 'changes': {'add': ['Ali'], 'mode': 'closed'}})
+    call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Gloss', 'tagset': 'New'})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'New', 'changes': {'rename_to': 'Newer'}})
+    run(proj, ws)
+    assert layer(proj, GLOSS)['config']['igt']['tagset'] == 'Newer'
+    assert any(r['type'] == 'value-set' for r in layer(proj, GLOSS)['constraints']['igt'])
+
+
+def test_extra_keys_and_duplicates_in_a_stored_list_read_back_as_planned(proj):
+    tagsets = igt_config(proj)['tagsets']
+    tagsets['Leipzig']['values'] = [{'value': 'PL', 'description': None, 'flex_id': 'a'},
+                                    {'value': 'PL ', 'flex_id': 'dup'}, {'value': 'ERG'}]
+    proj.client.projects.set_config(proj.project_id, 'igt', 'tagsets', tagsets)
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
+    assert run(proj, ws)['tagset changes'] == 1

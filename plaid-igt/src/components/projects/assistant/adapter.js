@@ -129,9 +129,8 @@ export const IGT_ASSISTANT = {
   // A plan of tagset changes is settings, which the assistant's delegated
   // token may not write: written here, with the user's session, before the
   // approval goes (domain/tagsetPlan.js).
-  writeFirst: async ({ client, projectId, plan }) => {
-    if (isTagsetPlan(plan)) await writeTagsetPlan(client, projectId, plan);
-  },
+  writeFirst: async ({ client, projectId, plan }) =>
+    isTagsetPlan(plan) ? writeTagsetPlan(client, projectId, plan) : false,
   examples: [
     'Which words in this project are still unglossed?',
     'Are the glosses for the most common suffix consistent?',

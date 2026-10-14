@@ -228,4 +228,26 @@ describe('a plan of tagset changes, written with the approver’s session', () =
     expect(fields[5]).toEqual({ pos: { inline: true }, gloss: { inline: true, tagset: 'Cat' } });
     expect(c.calls.some(([r]) => r === 'projects')).toBe(false);
   });
+
+  it('writes a list with duplicates and a null description so that it reads back as planned', async () => {
+    const stored = {
+      ...LEIPZIG,
+      values: [
+        { value: 'PL', description: null, flex_id: 'a' },
+        { value: 'PL ', flex_id: 'dup' },
+      ],
+    };
+    // As the plan holds it: normalized, the first of a duplicate, keys recased.
+    const before = { ...LEIPZIG, values: [{ value: 'PL', description: null, flexId: 'a' }] };
+    const after = { ...before, values: [...before.values, { value: 'NOM' }] };
+    const project = projectWith({ Leipzig: stored });
+    const c = fakeClient(project);
+    const plan = { ops: [setTagset(after, { before })] };
+    expect(await writeTagsetPlan(c, 'proj-1', plan)).toBe(true);
+    const written = c.calls.find(([, m, , , key]) => m === 'setConfig' && key === 'tagsets')[5];
+    expect(written.Leipzig.values).toEqual([{ value: 'PL', flex_id: 'a' }, { value: 'NOM' }]);
+    // Approved again over what was written: nothing more to write.
+    project.config.igt.tagsets = written;
+    expect(await writeTagsetPlan(fakeClient(project), 'proj-1', plan)).toBe(false);
+  });
 });

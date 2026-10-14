@@ -556,7 +556,16 @@ export const settleApplyToasts = (display) => {
   }
 };
 
+export const WROTE_FIRST =
+  'The settings were written, but the approval was not recorded. Approve again to record it.';
+
 export const applyToasts = (j, summary, { docked = false } = {}) => {
+  // The app wrote its part (settings) and the approval that records it did
+  // not go through: what stands is written, and approving again records it.
+  if (j.wroteFirst && (j.error || j.outcome?.kind === 'refused') && !j.error?.pending) {
+    notifyError(WROTE_FIRST, 'Not recorded', { duration: Infinity });
+    return;
+  }
   // We stopped waiting, the service did not stop working. Nothing has failed
   // and nothing needs approving again, so say what actually happened.
   if (j.error?.pending) {
@@ -627,7 +636,7 @@ export const startApply = ({
   jobs.set(conv.id, j);
   j.promise = (async () => {
     await watch(j, async () => {
-      if (writeFirst) await writeFirst();
+      if (writeFirst) j.wroteFirst = !!(await writeFirst());
       return client.messages.requestService(
         projectId,
         service.serviceId,

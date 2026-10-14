@@ -297,7 +297,12 @@ def _values(raw, name: str) -> List[dict]:
             v = {'value': v}
         if not isinstance(v, dict) or not isinstance(v.get('value'), str) or not v['value'].strip():
             raise ToolError(f'Each value in {name} is a string or {{"value", "description"}}.')
-        out.append({**v, 'value': v['value'].strip()})
+        # Only what the app writes for a value it is given: a stored value's
+        # other keys stay as stored, and approval reads back exactly this.
+        rec = {'value': v['value'].strip()}
+        if isinstance(v.get('description'), str):
+            rec['description'] = v['description']
+        out.append(rec)
     return out
 
 
@@ -316,8 +321,18 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     key = _find(tagsets, name)
     fields = _fields(ws, owner)
     prior = next((op for op in _ops(ws, 'set_tagset', owner) if key is not None and op['name'] == key), None)
+    if key is None:
+        # A stored tagset the plan already renames or deletes, named by its
+        # stored name: a rename is edited under its new name, and a deleted
+        # one made again is an edit of the stored one.
+        gone = next((op for op in _ops(ws, 'set_tagset', owner)
+                     if op['was'].casefold() == name.casefold()), None)
+        if gone is not None and gone.get('after') is not None:
+            raise ToolError(f'This plan renames {qv(gone["was"])} to {qv(gone["name"])}: edit {qv(gone["name"])}.')
+        if gone is not None:
+            name = gone['was']
     was = prior['was'] if prior else (key or name)
-    stored = _stored_tagsets(ws, owner).get(was) if (prior or key) else None
+    stored = _stored_tagsets(ws, owner).get(was)
     using = [f for f in fields if key is not None and f['tagset'] == key]
     notes: List[str] = []
 
@@ -424,6 +439,10 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
         clash = _find(tagsets, rename)
         if clash is not None and clash != key:
             raise ToolError(f'{where.capitalize()} already has a tagset {qv(clash)}.')
+        taken = _find(_stored_tagsets(ws, owner), rename)
+        if taken is not None and taken != was:
+            raise ToolError(f'{qv(taken)} is a stored tagset\'s name, which this plan frees: a tagset can take it '
+                            'in a later plan, once this one is approved.')
         if rename != key:
             said.append(f'rename to {qv(rename)}')
             target = rename
@@ -440,9 +459,18 @@ def _few(values: List[str], n: int = 8) -> str:
 
 def _stage_tagset(ws, owner, was, name, stored, after, label, notes) -> str:
     rec = None if after is None else {k: v for k, v in after.items() if k != 'name'}
-    ws.add_op({'kind': 'set_tagset', 'owner': owner, 'was': was, 'name': name,
-               'before': None if stored is None else {k: v for k, v in stored.items() if k != 'name'},
-               'after': rec, 'label': label})
+    old_name = next((op['name'] for op in _ops(ws, 'set_tagset', owner) if op['was'] == was), was)
+    with ws.staging():
+        ws.add_op({'kind': 'set_tagset', 'owner': owner, 'was': was, 'name': name,
+                   'before': None if stored is None else {k: v for k, v in stored.items() if k != 'name'},
+                   'after': rec, 'label': label})
+        # A field this plan assigns the tagset to follows a rename, as a
+        # field that stores its name does when the plan is applied.
+        if rec is not None and name != old_name:
+            for op in _ops(ws, 'assign_tagset', owner):
+                if op.get('after') == old_name:
+                    field = op['label'].rsplit(': ', 1)[0]
+                    ws.add_op({**op, 'after': name, 'label': f'{field}: tagset {qv(name)}'})
     return _planned(ws, owner, notes)
 
 
@@ -551,6 +579,18 @@ def _norm(raw, name) -> dict:
     return {k: v for k, v in normalize_tagset(raw, name).items() if k != 'name'}
 
 
+def _comparable(t) -> Optional[dict]:
+    """A tagset as approval compares it, as the app does (tagsetPlan.js
+    `comparable`): its values by value and description only, a description of
+    None as none."""
+    if t is None:
+        return None
+    return {'delimiters': t.get('delimiters') or '', 'mode': t.get('mode'),
+            'values': [{'value': v['value'], **({'description': v['description']}
+                                                if v.get('description') is not None else {})}
+                       for v in t.get('values') or []]}
+
+
 def _live(client, project, owner: str):
     """(config, span layers or [], the entry fields map or None) as stored now."""
     if owner == PROJECT:
@@ -588,8 +628,8 @@ def check_settings(client, project, ops) -> List[str]:
             if op['owner'] != owner:
                 continue
             if op['kind'] == 'set_tagset':
-                now = _norm(raw[op['was']], op['was']) if op['was'] in raw else None
-                if now != op.get('before'):
+                now = _comparable(_norm(raw[op['was']], op['was'])) if op['was'] in raw else None
+                if now != _comparable(op.get('before')):
                     reasons.append(f'the tagset {qv(op["was"])} changed since this plan was made')
                 elif op['was'] != op['name'] and op['name'] in raw:
                     reasons.append(f'a tagset named {qv(op["name"])} was made since this plan was')
@@ -729,12 +769,12 @@ def _state(cfg, layers, entry_fields, op) -> str:
         return 'after' if now == op.get('after') else 'before' if now == op.get('before') else 'moved'
     raw = _igt(cfg).get('tagsets')
     raw = raw if isinstance(raw, dict) else {}
-    named = _norm(raw[op['name']], op['name']) if op['name'] in raw else None
-    was = _norm(raw[op['was']], op['was']) if op['was'] in raw else None
+    named = _comparable(_norm(raw[op['name']], op['name'])) if op['name'] in raw else None
+    was = _comparable(_norm(raw[op['was']], op['was'])) if op['was'] in raw else None
     renamed = op['was'] != op['name']
-    if named == op.get('after') and (not renamed or was is None):
+    if named == _comparable(op.get('after')) and (not renamed or was is None):
         return 'after'
-    if was == op.get('before') and (not renamed or named is None):
+    if was == _comparable(op.get('before')) and (not renamed or named is None):
         return 'before'
     return 'moved'
 

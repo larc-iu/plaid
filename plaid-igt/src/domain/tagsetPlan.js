@@ -74,14 +74,19 @@ const stored = (raw, name) =>
 // The tagset to store for `after`, its value records taken from the stored
 // one where it lists the value, so keys the record recased are kept as stored.
 const toStore = (after, old) => {
-  const byValue = new Map((old?.values || []).map((v) => [v?.value, v]));
+  // By value as normalizeTagset reads them: trimmed, the first of a duplicate.
+  const byValue = new Map();
+  for (const v of old?.values || []) {
+    const value = typeof v?.value === 'string' ? v.value.trim() : '';
+    if (value && !byValue.has(value)) byValue.set(value, v);
+  }
   return {
     ...(old && typeof old === 'object' ? old : {}),
     delimiters: after.delimiters ?? '',
     mode: after.mode,
     values: (after.values || []).map((v) => {
       const kept = byValue.get(v.value);
-      const rec = kept ? { ...kept } : { value: v.value };
+      const rec = kept ? { ...kept, value: v.value } : { value: v.value };
       if (v.description != null) rec.description = v.description;
       else delete rec.description;
       return rec;

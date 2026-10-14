@@ -12,7 +12,8 @@ vi.mock('../../lib/notify.js', () => ({
   notifyWarning: vi.fn(),
 }));
 
-const { startApply } = await import('./jobs.js');
+const { startApply, WROTE_FIRST } = await import('./jobs.js');
+const { notifyError } = await import('../../lib/notify.js');
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -72,5 +73,15 @@ describe('an approval the app writes first', () => {
     await j.promise;
     expect(sent).toHaveLength(0);
     expect(j.error?.message).toMatch(/not in the tagset/);
+  });
+
+  it('says the settings stand when the approval that records them fails', async () => {
+    const { client, sent } = setup();
+    notifyError.mockClear();
+    const j = approve(client, async () => true);
+    await j.promise;
+    expect(sent).toHaveLength(1);
+    expect(notifyError).toHaveBeenCalledWith(WROTE_FIRST, 'Not recorded', { duration: Infinity });
+    expect(notifyError.mock.calls.some(([m]) => /Nothing was written/.test(String(m)))).toBe(false);
   });
 });
