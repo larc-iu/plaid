@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { uuidv7 } from '@larc-iu/plaid-client';
 import { FieldsManager } from './FieldsManager';
 import { fieldKey } from '@/domain/fieldNames';
@@ -21,7 +21,8 @@ import { readTagsetName } from '@/domain/tagsets';
 import { readFieldLang, readLanguages } from '@/domain/igtConfig';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
-import { queueFieldDeclarations, tagsetRefusal } from '@/domain/igtConstraints';
+import { queueFieldDeclarations, refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
+import { RefusedValuesNotice } from './RefusedValuesNotice.jsx';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
 import {
   annotatedCounts,
@@ -75,6 +76,26 @@ const extractFields = (project) => {
   return { fields, ignoredTokens };
 };
 
+// The fields `fields` (whose tagset a save sets) as `queueFieldDeclarations`
+// takes them: each with its layer's config as it will be after the save.
+// `layerOf` maps a field's key to its layer, absent for one the save makes,
+// and `idOf` a key to the layer id.
+const declarationsOf = (fields, layerOf, idOf) =>
+  fields.map((field) => {
+    const key = fieldKey(field);
+    const layer = layerOf.get(key);
+    const igt = { ...layer?.config?.[IGT_NAMESPACE], scope: field.scope };
+    if (field.tagset) igt.tagset = field.tagset;
+    else delete igt.tagset;
+    return {
+      id: idOf(key),
+      name: field.name,
+      config: { ...layer?.config, [IGT_NAMESPACE]: igt },
+      // A new field's layer holds nothing to repair.
+      constraints: layer ? (layer.constraints ?? {}) : null,
+    };
+  });
+
 // `project` and `tagsetNames` come from AnnotationSettings, which holds the
 // live project, so a tagset created in the section above shows up in the
 // picker immediately.
@@ -105,6 +126,9 @@ export const FieldsSettings = ({
   // reads the layers that exist and creates the missing ones, so two at once
   // (a second field added while the first is on its way) both made the first.
   const turnRef = useRef(Promise.resolve());
+  // The values in use a closed list would refuse, from the last save not
+  // made for them (`refusedBySave`), or null.
+  const [refused, setRefused] = useState(null);
   const inTurn = (fn) => {
     const run = turnRef.current.then(fn, fn);
     turnRef.current = run.catch(() => {});
@@ -134,6 +158,25 @@ export const FieldsSettings = ({
     // (scope, name) -> span layer id, kept current through the creates and
     // deletes below so the tagset sync at the end can find every field.
     const layerIds = new Map(managed.map((l) => [layerKey(l), l.id]));
+
+    // A closed list the stored values break would be refused whole: ask
+    // first, and say which values are in the way. A field this save makes
+    // holds no values.
+    const layerOf = new Map(managed.map((l) => [layerKey(l), l]));
+    const asked = await refusedBySave(
+      client,
+      declarationsOf(
+        change.tagset.filter((f) => layerOf.has(fieldKey(f))),
+        layerOf,
+        (key) => layerOf.get(key).id,
+      ),
+      fresh?.config,
+    );
+    if (asked.length) {
+      throw Object.assign(new Error('Values in use are not in the list'), {
+        refusedValues: asked,
+      });
+    }
 
     // The parent of each field added here that has no layer yet.
     const toCreate = [];
@@ -167,6 +210,7 @@ export const FieldsSettings = ({
       }
       queueRest(b, data, change, layers, layerIds, fresh?.config);
     });
+    setRefused(null);
     // The Tagsets section above reads which fields point at which tagset off
     // the project, and that is what gates its "Add values used in this
     // project" button. Without this, pointing a field at a tagset here left
@@ -259,19 +303,7 @@ export const FieldsSettings = ({
     // same batch, so a tagset the stored values break is refused with them.
     queueFieldDeclarations(
       b,
-      change.tagset.map((field) => {
-        const key = fieldKey(field);
-        const layer = layerOf.get(key);
-        const igt = { ...layer?.config?.[IGT_NAMESPACE], scope: field.scope };
-        if (field.tagset) igt.tagset = field.tagset;
-        else delete igt.tagset;
-        return {
-          id: layerIds.get(key),
-          config: { ...layer?.config, [IGT_NAMESPACE]: igt },
-          // A new field's layer holds nothing to repair.
-          constraints: layer ? (layer.constraints ?? {}) : null,
-        };
-      }),
+      declarationsOf(change.tagset, layerOf, (key) => layerIds.get(key)),
       projectConfig,
     );
   };
@@ -373,7 +405,8 @@ export const FieldsSettings = ({
   // A refused save or move: say why, and read the project again, so the
   // table shows what the server holds rather than what was asked for.
   const handleError = (error) => {
-    notifyError(tagsetRefusal(error) ?? error, 'Not saved');
+    if (error?.refusedValues) setRefused(error.refusedValues);
+    else notifyError(tagsetRefusal(error) ?? error, 'Not saved');
     Promise.resolve(onProjectUpdate?.()).catch((err) =>
       console.error('Failed to reload the project:', err),
     );
@@ -383,6 +416,7 @@ export const FieldsSettings = ({
   // itself, so this wrapper adds nothing but a root: no outer card.
   return (
     <div>
+      {refused && <RefusedValuesNotice fields={refused} className="mb-4 text-xs" />}
       <FieldsManager
         initialData={initialData}
         onSaveChanges={handleSaveChanges}

@@ -9,6 +9,7 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { RefusedValuesNotice } from './RefusedValuesNotice.jsx';
 import {
   MODES,
   RESERVED_VALUE_KEYS,
@@ -380,28 +381,7 @@ export const TagsetsManager = ({
                   ))}
                   <p className="max-w-2xl text-xs text-muted-foreground">{enforceNote}</p>
                   {refused?.name === name && (
-                    <Notice
-                      tone="warning"
-                      role="alert"
-                      className="max-w-2xl text-xs"
-                      data-testid="tagset-refused"
-                    >
-                      <div>Not saved. These values are in use and not in the list:</div>
-                      {refused.fields.map((f) => (
-                        <div key={f.layerId}>
-                          <span className="font-medium">{f.field}</span>: {f.count}{' '}
-                          {f.count === 1 ? 'annotation' : 'annotations'},{' '}
-                          {f.values.map((v, i) => (
-                            <span key={i}>
-                              {i > 0 && ', '}
-                              <span className="font-mono">{String(v.value)}</span> ({v.count})
-                            </span>
-                          ))}
-                          {f.valueCount > f.values.length &&
-                            `, and ${f.valueCount - f.values.length} more`}
-                        </div>
-                      ))}
-                    </Notice>
+                    <RefusedValuesNotice fields={refused.fields} className="max-w-2xl text-xs" />
                   )}
                 </div>
 
