@@ -571,30 +571,32 @@ q_corpus_numbers.empty = _empty_numbers
 
 # --- concordance -------------------------------------------------------------------
 
+def concordance_where(c: Corpus, pattern: str, where_l: str, field, regex: bool, case_sensitive: bool = False):
+    """(clauses, the hit's morpheme variable or None) for a concordance's
+    occurrences: ``?w`` is the word, ``?m`` the morpheme hit when it is one."""
+    spec = rx(pattern, regex=regex, whole=not regex, case_sensitive=case_sensitive)
+    if where_l == 'baseline':
+        return [c.word('?w', value=spec)], None
+    if where_l == 'morpheme':
+        return [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w'), '?m'
+    if field.scope == 'Word':
+        return [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?w'], c.word('?w')], None
+    return [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m']] + c.in_word('?m', '?w'), '?m'
+
+
 def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
                        case_sensitive: bool = False):
     """[(doc, sentence, word, hit morpheme|None)] for the shown occurrences,
     ordered by document and position, the total number of occurrences, and
     whether the per-call document budget stopped the hits short of the limit."""
     c = ws.corpus
-    spec = rx(pattern, regex=regex, whole=not regex, case_sensitive=case_sensitive)
-    if where_l == 'baseline':
-        where = [c.word('?w', value=spec)]
-        total = c.word_count(where, '?w')
-        rows = c.entities(where, ['?w'], limit * 2, [['?w.doc'], ['?w.begin']], sample=True)
-        picks = [(r[0], None) for r in rows]
-    elif where_l == 'morpheme':
-        where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
-        total = c.count(where, ['?m'])
-        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']], sample=True)
-        picks = [(r[0], r[1]) for r in rows]
-    elif field.scope == 'Word':
-        where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?w'], c.word('?w')]
-        total = c.count(where, ['?w'])
-        rows = c.entities(where, ['?w'], limit, [['?w.doc'], ['?w.begin']], sample=True)
+    where, mvar = concordance_where(c, pattern, where_l, field, regex, case_sensitive)
+    if mvar is None:
+        total = c.word_count(where, '?w') if where_l == 'baseline' else c.count(where, ['?w'])
+        rows = c.entities(where, ['?w'], limit * 2 if where_l == 'baseline' else limit, [['?w.doc'], ['?w.begin']],
+                          sample=True)
         picks = [(r[0], None) for r in rows]
     else:
-        where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m']] + c.in_word('?m', '?w')
         total = c.count(where, ['?m'])
         rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']], sample=True)
         picks = [(r[0], r[1]) for r in rows]
@@ -619,6 +621,62 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
         if len(hits) >= limit:
             break
     return hits, total, cut
+
+
+def q_concordance_tally(ws: Workspace, where: List[Any], wvar: str, mvar: Optional[str], top: int = 25):
+    """The tallies a concordance gives over EVERY occurrence ``where`` finds,
+    not the ones shown (survey item 10), each one grouped read: the hit's own
+    values per field (a morpheme hit's morpheme fields, a word hit's word
+    fields), the words it occurs in (by form, and slot for a morpheme), and
+    the word before and after (``#`` at a sentence edge). Lines to print."""
+    c = ws.corpus
+    p = c.p
+    hit = mvar or wvar
+    total = c.count(where, [hit])
+    lines: List[str] = []
+    scope = 'Morpheme' if mvar else 'Word'
+    own: Dict[str, Counter] = defaultdict(Counter)
+    for layer, value, n in c.group(where + [['span', '?ts', {'layer': '?tl'}], ['covers', '?ts', hit]],
+                                   ['?tl', '?ts.value']):
+        f = p.field_by_layer(layer)
+        if f is not None and f.scope == scope and value not in (None, ''):
+            own[f.name][value] += n
+    for f in p.fields_by_scope(scope):
+        cnt = own.get(f.name) or Counter()
+        blank = total - sum(cnt.values())
+        if blank > 0:
+            cnt['(blank)'] += blank
+        if cnt:
+            lines.append(f'The hit\'s own {f.name}: ' + ', '.join(f'{v} {k}' for v, k in cnt.most_common(top))
+                         + (f', and {len(cnt) - top} more values' if len(cnt) > top else '') + '.')
+    words: Counter = Counter()
+    if mvar:
+        for form, prec, n in c.group(where, [f'{wvar}.value', f'{mvar}.precedence']):
+            if form:
+                words[f'{form.casefold()} m{prec or 1}'] += n
+    else:
+        for form, n in c.group(where, [f'{wvar}.value']):
+            if form:
+                words[form.casefold()] += n
+    if words and (mvar or len(words) > 1):
+        lines.append('In words' + (' (form, slot)' if mvar else '') + ': '
+                     + ', '.join(f'{k} {n}' for k, n in words.most_common(top))
+                     + (f', and {len(words) - top} more' if len(words) > top else '') + '.')
+    for label, first in (('Word before', True), ('Word after', False)):
+        pair = [['token', {}, 'as', '?nb'], ['token', {}, 'as', wvar]] if first else \
+            [['token', {}, 'as', wvar], ['token', {}, 'as', '?nb']]
+        near: Counter = Counter()
+        for form, n in c.group(where + [['seq', {'layer': c.W}, *pair], c.sent('?ns'), ['within', '?nb', '?ns'],
+                                        ['within', wvar, '?ns']], ['?nb.value']):
+            if form:
+                near[form.casefold()] += n
+        edge = total - sum(near.values())
+        if edge > 0:
+            near['#'] += edge
+        if near:
+            lines.append(f'{label}: ' + ', '.join(f'{k} {n}' for k, n in near.most_common(top))
+                         + (f', and {len(near) - top} more' if len(near) > top else '') + '.')
+    return lines
 
 
 # --- analyses_of --------------------------------------------------------------------

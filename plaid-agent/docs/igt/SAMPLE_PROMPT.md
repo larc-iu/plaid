@@ -263,7 +263,7 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 - `document` (string): Document id or exact name (see project_overview).
 - `regex` (boolean)
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
-- `limit` (integer): Max occurrences to list (default 60). The pattern and value tallies cover the occurrences listed.
+- `limit` (integer): Max occurrences to list (default 60). The value, word and neighbour tallies cover every occurrence.
 - `documents` (array of string)
 
 ### analyses_of

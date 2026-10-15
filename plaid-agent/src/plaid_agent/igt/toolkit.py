@@ -227,7 +227,7 @@ TOOLS = [
         {'pattern': {'type': 'string'},
          'where': {'type': 'string', 'description': '"morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.'},
          'document': _DOC, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60). The pattern and value tallies cover the occurrences listed.'},
+         'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60). The value, word and neighbour tallies cover every occurrence.'},
          'documents': _DOCS},
         ['pattern']),
     _fn('analyses_of',

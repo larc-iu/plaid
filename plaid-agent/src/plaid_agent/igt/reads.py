@@ -325,11 +325,17 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         field = _field_or_where(ws, where, ('baseline', 'morpheme'))
         if field.scope == 'Sentence':
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
-    from .queries import q_concordance_hits, q_empty_hint, where_label
+    from .queries import concordance_where, q_concordance_hits, q_concordance_tally, q_empty_hint, where_label
     with ws.corpus.within(document):
         hits, total, cut = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
         why = [] if total else q_empty_hint(ws, pattern, where_l, field, bool(regex), bool(case_sensitive),
                                             not regex)
+        # Past the hits shown, the tallies are the engine's over every
+        # occurrence, not a count of the ones shown (survey item 10).
+        whole = None
+        if total > len(hits):
+            hit_where, mvar = concordance_where(ws.corpus, pattern, where_l, field, bool(regex), bool(case_sensitive))
+            whole = q_concordance_tally(ws, hit_where, '?w', mvar)
     ws.note_read(len(hits), 'match', of=total)
     if not total:
         return ' '.join([f'No occurrences of "{pattern}" in {where_label(where_l, field)}'
@@ -362,13 +368,16 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
              'Word patterns (hit in [brackets]), by frequency' + (f', among the {len(hits)} shown' if total > len(hits) else '') + ':']
     # The hit's own values, tallied: asked which glosses a morpheme carries,
     # models read the patterns below and missed the rare ones among them.
-    among = f', among the {len(hits)} shown' if total > len(hits) else ''
     tallies = []
-    for f in mfields:
-        own = Counter((m.fields[f].value if f in m.fields else '') or '(blank)' for _, _, _, m in hits if m is not None)
-        if own:
-            tallies.append(f'The hit\'s own {f}{among}: ' + ', '.join(f'{v} {n}' for v, n in own.most_common(25))
-                           + (f', and {len(own) - 25} more values' if len(own) > 25 else '') + '.')
+    if whole is not None:
+        tallies = [f'Across all {total} occurrences:'] + ['  ' + t for t in whole]
+    else:
+        for f in mfields:
+            own = Counter((m.fields[f].value if f in m.fields else '') or '(blank)' for _, _, _, m in hits
+                          if m is not None)
+            if own:
+                tallies.append(f'The hit\'s own {f}: ' + ', '.join(f'{v} {n}' for v, n in own.most_common(25))
+                               + (f', and {len(own) - 25} more values' if len(own) > 25 else '') + '.')
     lines[1:1] = tallies
     for key, n in sorted(patterns.items(), key=lambda kv: (-kv[1], kv[0]))[:25]:
         lines.append(f'  {n}\t{key}')
