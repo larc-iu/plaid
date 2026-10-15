@@ -338,9 +338,282 @@ import {
  * and one the server ended is named "StreamClosed".
  * @typedef {object} SSEConnection
  * @property {() => void} close
- * @property {() => any} getStats
+ * @property {() => SSEStats} getStats
  * @property {number} readyState
  * @property {(Error & {status?: number}) | null} error
+ */
+
+/**
+ * How an SSE connection has fared so far. `events` counts what arrived by
+ * event type ("audit-log", "message", "heartbeat", "connected", "other").
+ * @typedef {object} SSEStats
+ * @property {number} durationSeconds
+ * @property {boolean} isConnected
+ * @property {boolean} isClosed
+ * @property {string | null} clientId
+ * @property {Record<string, number>} events
+ * @property {number} readyState
+ */
+
+/**
+ * A value a span or relation holds: a JSON scalar.
+ * @typedef {string | number | boolean | null} AtomicValue
+ */
+
+/**
+ * What a create answers: the new record's id.
+ * @typedef {{id: string}} Created
+ */
+
+/**
+ * A project. `textLayers` nests its layers in their display order, each
+ * with the layers built on it, and `vocabs` lists the vocabularies linked to
+ * it.
+ * @typedef {object} Project
+ * @property {string} id
+ * @property {string} name
+ * @property {Record<string, any>} config
+ * @property {string[]} readers
+ * @property {string[]} writers
+ * @property {string[]} maintainers
+ * @property {ProjectTextLayer[]} textLayers
+ * @property {ProjectVocab[]} vocabs
+ */
+
+/**
+ * @typedef {{id: string, name: string, config: Record<string, any>, tokenLayers: ProjectTokenLayer[]}} ProjectTextLayer
+ * @typedef {{id: string, name: string, config: Record<string, any>,
+ *   constraints: Record<string, LayerConstraint[]>, spanLayers: ProjectSpanLayer[]}} ProjectTokenLayer
+ * @typedef {{id: string, name: string, config: Record<string, any>,
+ *   constraints: Record<string, LayerConstraint[]>, relationLayers: ProjectRelationLayer[]}} ProjectSpanLayer
+ * @typedef {{id: string, name: string, config: Record<string, any>,
+ *   constraints: Record<string, LayerConstraint[]>}} ProjectRelationLayer
+ * @typedef {{id: string, name: string, maintainers: string[], config: Record<string, any>}} ProjectVocab
+ */
+
+/**
+ * A document. `version` rises by one on every write to it or its layers.
+ * A read with `includeBody` also carries `textLayers`, the document's
+ * annotation nested under each layer.
+ * @typedef {object} PlaidDocument
+ * @property {string} id
+ * @property {string} name
+ * @property {string} project
+ * @property {number} version
+ * @property {string} timeCreated
+ * @property {string} timeModified
+ * @property {Record<string, any>} [metadata]
+ * @property {DocumentTextLayer[]} [textLayers]
+ */
+
+/**
+ * A text layer as a document read nests it: `text` is null where the
+ * document has no text in this layer.
+ * @typedef {object} DocumentTextLayer
+ * @property {string} id
+ * @property {string} name
+ * @property {Record<string, any>} config
+ * @property {{id: string, document: string, body: string, digest: string,
+ *   metadata?: Record<string, any>} | null} text
+ * @property {DocumentTokenLayer[]} tokenLayers
+ */
+
+/**
+ * @typedef {object} DocumentTokenLayer
+ * @property {string} id
+ * @property {string} name
+ * @property {Record<string, any>} config
+ * @property {Record<string, LayerConstraint[]>} constraints
+ * @property {string} overlapMode
+ * @property {string | null} parentTokenLayer
+ * @property {Array<{id: string, begin: number, end: number, precedence: number | null,
+ *   metadata?: Record<string, any>}>} tokens
+ * @property {DocumentSpanLayer[]} spanLayers
+ * @property {Array<ProjectVocab & {vocabLinks: Array<{id: string, vocabItem: VocabItem,
+ *   tokens: string[], metadata?: Record<string, any>}>}>} vocabs
+ */
+
+/**
+ * @typedef {object} DocumentSpanLayer
+ * @property {string} id
+ * @property {string} name
+ * @property {Record<string, any>} config
+ * @property {Record<string, LayerConstraint[]>} constraints
+ * @property {Array<{id: string, value: AtomicValue, tokens: string[],
+ *   metadata?: Record<string, any>}>} spans
+ * @property {Array<ProjectRelationLayer & {relations: Array<{id: string, source: string,
+ *   target: string, value: AtomicValue, metadata?: Record<string, any>}>}>} relationLayers
+ */
+
+/**
+ * A text: one document's body in one text layer. `digest` names the body,
+ * as an edit's `base`.
+ * @typedef {object} PlaidText
+ * @property {string} id
+ * @property {string} body
+ * @property {string} document
+ * @property {string} layer
+ * @property {string} digest
+ * @property {Record<string, any>} [metadata]
+ */
+
+/**
+ * What a text write changed besides the body: the tokens whose extent
+ * moved (with `layer` and `text` on one the write made), the spans and
+ * vocabulary links whose tokens or value changed, and the ids of what it
+ * deleted.
+ * @typedef {object} TextReshape
+ * @property {Array<{id: string, begin: number, end: number, layer?: string, text?: string}>} tokens
+ * @property {Array<{id: string, tokens?: string[], value?: AtomicValue}>} spans
+ * @property {Array<{id: string, tokens: string[]}>} vocabLinks
+ * @property {{tokens: string[], spans: string[], relations: string[], vocabLinks: string[]}} deleted
+ */
+
+/**
+ * A token. `value` is the text it covers.
+ * @typedef {object} Token
+ * @property {string} id
+ * @property {string} text
+ * @property {number} begin
+ * @property {number} end
+ * @property {string} layer
+ * @property {string} document
+ * @property {number | null} precedence
+ * @property {string} value
+ * @property {Record<string, any>} [metadata]
+ */
+
+/**
+ * @typedef {object} Span
+ * @property {string} id
+ * @property {string} layer
+ * @property {string} document
+ * @property {AtomicValue} value
+ * @property {string[]} tokens
+ * @property {Record<string, any>} [metadata]
+ */
+
+/**
+ * A relation, from the span `source` to the span `target`.
+ * @typedef {object} Relation
+ * @property {string} id
+ * @property {string} layer
+ * @property {string} document
+ * @property {string} source
+ * @property {string} target
+ * @property {AtomicValue} value
+ * @property {Record<string, any>} [metadata]
+ */
+
+/**
+ * @typedef {object} VocabItem
+ * @property {string} id
+ * @property {string} layer
+ * @property {string} form
+ * @property {Record<string, any>} [metadata]
+ */
+
+/**
+ * A link from a vocabulary entry to the tokens of one occurrence.
+ * @typedef {object} VocabLink
+ * @property {string} id
+ * @property {string} vocabItem
+ * @property {string} document
+ * @property {string[]} tokens
+ * @property {Record<string, any>} [metadata]
+ */
+
+/**
+ * A vocabulary. `items` is there on a read made with `includeItems`.
+ * @typedef {object} VocabLayer
+ * @property {string} id
+ * @property {string} name
+ * @property {string} timeCreated
+ * @property {string} timeModified
+ * @property {Record<string, any>} config
+ * @property {string[]} maintainers
+ * @property {VocabItem[]} [items]
+ */
+
+/**
+ * @typedef {{id: string, name: string, project: string, config: Record<string, any>}} TextLayer
+ * @typedef {{id: string, name: string, textLayer: string, project: string, overlapMode: string,
+ *   parentTokenLayer: string | null, config: Record<string, any>,
+ *   constraints: Record<string, LayerConstraint[]>}} TokenLayer
+ * @typedef {{id: string, name: string, tokenLayer: string, project: string, config: Record<string, any>,
+ *   constraints: Record<string, LayerConstraint[]>}} SpanLayer
+ * @typedef {{id: string, name: string, spanLayer: string, project: string, config: Record<string, any>,
+ *   constraints: Record<string, LayerConstraint[]>}} RelationLayer
+ */
+
+/**
+ * The records with metadata, by the path segment of their routes.
+ * @typedef {{documents: PlaidDocument, texts: PlaidText, tokens: Token, spans: Span,
+ *   relations: Relation, "vocab-items": VocabItem, "vocab-links": VocabLink}} MetadataRecords
+ */
+
+/**
+ * The four layer kinds, by the path segment of their routes.
+ * @typedef {{"text-layers": TextLayer, "token-layers": TokenLayer, "span-layers": SpanLayer,
+ *   "relation-layers": RelationLayer}} LayerRecords
+ */
+
+/**
+ * @typedef {object} User
+ * @property {string} id
+ * @property {string} displayName
+ * @property {boolean} isAdmin
+ * @property {string | null} deactivatedAt
+ * @property {string | null} avatarHash
+ */
+
+/**
+ * A document lock as its holder sees it. `expiresAt` is in epoch
+ * milliseconds.
+ * @typedef {{lockId: string, userId: string, expiresAt: number}} LockGrant
+ */
+
+/**
+ * What `documents.restore` did, or with `dryRun` would do: per kind of
+ * record, how many come back, are set back and are removed (per layer for
+ * the layered kinds), and what could not come back, with why.
+ * @typedef {object} DocumentRestoreSummary
+ * @property {boolean} name
+ * @property {boolean} documentMetadata
+ * @property {RestoreCounts} texts
+ * @property {RestoreCounts & {byLayer: Array<RestoreCounts & {layerId: string}>}} tokens
+ * @property {RestoreCounts & {byLayer: Array<RestoreCounts & {layerId: string}>}} spans
+ * @property {RestoreCounts & {byLayer: Array<RestoreCounts & {layerId: string}>}} relations
+ * @property {RestoreCounts} vocabLinks
+ * @property {Array<{kind: string, count: number, reason: string}>} skipped
+ * @property {number} total 0 when nothing changes.
+ */
+
+/** @typedef {{inserted: number, updated: number, deleted: number}} RestoreCounts */
+
+/**
+ * A logical-operation group: its label, who made it and when, and the kind
+ * and reference of the operation when it has them.
+ * @typedef {object} OperationGroup
+ * @property {string} id
+ * @property {string | null} message
+ * @property {string} user
+ * @property {string} createdAt
+ * @property {string} [kind]
+ * @property {string} [ref]
+ */
+
+/**
+ * A query's answer. For "ids" and "entities", one row of `results` per
+ * match, a cell per `columns` entry: an id, or the entity as its GET
+ * answers it. For "count", only the count. `truncated`: the rows or the
+ * count stopped at the server's cap.
+ * @typedef {object} QueryResult
+ * @property {string} return
+ * @property {number} count
+ * @property {boolean} truncated
+ * @property {string[]} [columns]
+ * @property {any[][]} [results]
  */
 
 // Helper: normalize a document-read `layers` filter to the wire's
@@ -762,6 +1035,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (vocabItem, tokens, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-links", {
@@ -796,6 +1070,7 @@ class PlaidClient {
       /**
        * Get a vocab link by ID
        * @param {string} id - The resource ID
+       * @returns {Promise<VocabLink>}
        */
       get: (id) =>
         this._request("GET", `/api/v1/vocab-links/${id}`),
@@ -803,6 +1078,7 @@ class PlaidClient {
        * Delete a vocab link
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-links/${id}`, { auditMessage }),
@@ -817,6 +1093,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {boolean} [includeItems] - Include vocab items
        * @param {string} [asOf] - The moment to read at (ISO-8601 instant)
+       * @returns {Promise<VocabLayer>}
        */
       get: (id, includeItems, asOf) =>
         this._request("GET", `/api/v1/vocab-layers/${id}`, {
@@ -829,6 +1106,7 @@ class PlaidClient {
        * @param {string} id - The vocabulary ID
        * @param {string} itemId - The entry ID
        * @param {string} asOf - The moment to read at (ISO-8601 instant)
+       * @returns {Promise<VocabItem>}
        */
       getItemAt: (id, itemId, asOf) =>
         this._request("GET", `/api/v1/vocab-layers/${id}/items/${itemId}`, {
@@ -936,6 +1214,7 @@ class PlaidClient {
        * Delete a vocab layer.
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage }),
@@ -944,6 +1223,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} name - The name
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<VocabLayer>}
        */
       update: (id, name, auditMessage) =>
         this._request("PATCH", `/api/v1/vocab-layers/${id}`, {
@@ -984,6 +1264,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-layers", {
@@ -995,6 +1276,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       addMaintainer: (id, userId, auditMessage) =>
         this._request(
@@ -1007,6 +1289,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       removeMaintainer: (id, userId, auditMessage) =>
         this._request(
@@ -1023,6 +1306,7 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {string} spanId - The span ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Relation>}
        */
       setTarget: (relationId, spanId, auditMessage) =>
         this._request("PUT", `/api/v1/relations/${relationId}/target`, {
@@ -1032,6 +1316,7 @@ class PlaidClient {
       /**
        * Get a relation by ID.
        * @param {string} relationId - The relation ID
+       * @returns {Promise<Relation>}
        */
       get: (relationId) =>
         this._request("GET", `/api/v1/relations/${relationId}`),
@@ -1039,6 +1324,7 @@ class PlaidClient {
        * Delete a relation.
        * @param {string} relationId - The relation ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (relationId, auditMessage) =>
         this._request("DELETE", `/api/v1/relations/${relationId}`, {
@@ -1049,6 +1335,7 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {any} value - The value
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Relation>}
        */
       update: (relationId, value, auditMessage) =>
         this._request("PATCH", `/api/v1/relations/${relationId}`, {
@@ -1060,6 +1347,7 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {string} spanId - The span ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Relation>}
        */
       setSource: (relationId, spanId, auditMessage) =>
         this._request("PUT", `/api/v1/relations/${relationId}/source`, {
@@ -1078,6 +1366,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (
         relationLayerId,
@@ -1143,6 +1432,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (tokenLayerId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/span-layers", {
@@ -1157,6 +1447,7 @@ class PlaidClient {
        * @param {string} spanId - The span ID
        * @param {Array} tokens - The tokens
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Span>}
        */
       setTokens: (spanId, tokens, auditMessage) =>
         this._request("PUT", `/api/v1/spans/${spanId}/tokens`, {
@@ -1173,6 +1464,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (spanLayerId, tokens, value, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/spans", {
@@ -1188,6 +1480,7 @@ class PlaidClient {
       /**
        * Get a span by ID.
        * @param {string} spanId - The span ID
+       * @returns {Promise<Span>}
        */
       get: (spanId) =>
         this._request("GET", `/api/v1/spans/${spanId}`),
@@ -1195,6 +1488,7 @@ class PlaidClient {
        * Delete a span.
        * @param {string} spanId - The span ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (spanId, auditMessage) =>
         this._request("DELETE", `/api/v1/spans/${spanId}`, { auditMessage }),
@@ -1203,6 +1497,7 @@ class PlaidClient {
        * @param {string} spanId - The span ID
        * @param {any} value - The value
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Span>}
        */
       update: (spanId, value, auditMessage) =>
         this._request("PATCH", `/api/v1/spans/${spanId}`, {
@@ -1337,6 +1632,7 @@ class PlaidClient {
        *   this client minted. `tokenEdges`: the code-point offsets where the tokens made next on
        *   this text begin and end. The body is stored composed, except a character one of them
        *   falls inside, which stays as sent (see composeText).
+       * @returns {Promise<Created>}
        */
       create: (
         textLayerId,
@@ -1360,6 +1656,7 @@ class PlaidClient {
       /**
        * Get a text.
        * @param {string} textId - The text ID
+       * @returns {Promise<PlaidText>}
        */
       get: (textId) =>
         this._request("GET", `/api/v1/texts/${textId}`),
@@ -1367,6 +1664,7 @@ class PlaidClient {
        * Delete a text and all dependent data.
        * @param {string} textId - The text ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (textId, auditMessage) =>
         this._request("DELETE", `/api/v1/texts/${textId}`, { auditMessage }),
@@ -1389,6 +1687,7 @@ class PlaidClient {
        * @param {any} body - The request body
        * @param {string} [auditMessage]
        * @param {{base?: string, versioned?: boolean}} [options]
+       * @returns {Promise<PlaidText & {reshape: TextReshape}>}
        */
       update: (textId, body, auditMessage, { base, versioned } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
@@ -1412,6 +1711,7 @@ class PlaidClient {
        * @param {Array<object>} edits - The edit directives
        * @param {string} [auditMessage]
        * @param {{base?: string, versioned?: boolean}} [options]
+       * @returns {Promise<PlaidText & {reshape: TextReshape}>}
        */
       edit: (textId, edits, auditMessage, { base, versioned } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
@@ -1466,6 +1766,7 @@ class PlaidClient {
        * @param {string} [displayName] - How the user is shown in the UI.
        *   Defaults to the local part of the email.
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Created>}
        */
       create: (email, password, isAdmin, displayName, auditMessage) =>
         this._request("POST", "/api/v1/users", {
@@ -1540,6 +1841,7 @@ class PlaidClient {
       /**
        * Get a user by ID
        * @param {string} id - The resource ID
+       * @returns {Promise<User>}
        */
       get: (id) =>
         this._request("GET", `/api/v1/users/${id}`),
@@ -1551,6 +1853,7 @@ class PlaidClient {
        * Reversible via activate(), which restores login only.
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/users/${id}`, { auditMessage }),
@@ -1560,6 +1863,7 @@ class PlaidClient {
        * at deactivation are NOT restored — re-grant them deliberately.
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<User>}
        */
       activate: (id, auditMessage) =>
         this._request("POST", `/api/v1/users/${id}/activate`, { auditMessage }),
@@ -1576,6 +1880,7 @@ class PlaidClient {
        * @param {string} [displayName] - New display name
        * @param {boolean} [isAdmin] - New admin status
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<User>}
        */
       update: (id, password, displayName, isAdmin, auditMessage) =>
         this._request("PATCH", `/api/v1/users/${id}`, {
@@ -1677,6 +1982,7 @@ class PlaidClient {
        * Fetch a user's profile picture as raw bytes. Most callers want
        * avatarUrl() instead. This one is for non-browser consumers.
        * @param {string} id - The user ID
+       * @returns {Promise<ArrayBuffer>}
        */
       getAvatar: (id) =>
         this._request("GET", `/api/v1/users/${id}/avatar`, {
@@ -1690,6 +1996,7 @@ class PlaidClient {
        * @param {string} id - The user ID
        * @param {File} file - The image to upload
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<User>}
        */
       setAvatar: (id, file, auditMessage) => {
         const fd = new FormData();
@@ -1705,6 +2012,7 @@ class PlaidClient {
        * Remove a profile picture. Your own, or anyone's if you are an admin.
        * @param {string} id - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       // No flag: the upload beside this one is multipart and cannot be
       // batched, but a DELETE carries no blob, so the batch transport takes
@@ -1844,6 +2152,7 @@ class PlaidClient {
        * Delete one private data entry; 404 if absent.
        * @param {string} userId
        * @param {string} key
+       * @returns {Promise<void>}
        */
       delete: (userId, key) =>
         this._request(
@@ -1909,6 +2218,7 @@ class PlaidClient {
        * @param {string} userId - The user ID who owns the token
        * @param {string} tokenId - The token ID to revoke
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       revoke: (userId, tokenId, auditMessage) =>
         this._request("DELETE", `/api/v1/users/${userId}/tokens/${tokenId}`, {
@@ -2021,6 +2331,7 @@ class PlaidClient {
        * the creator, an admin, or a maintainer of the invite's project.
        * @param {string} id - The invite ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       revoke: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/invites/${id}`, { auditMessage }),
@@ -2297,6 +2608,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (
         textLayerId,
@@ -2324,6 +2636,7 @@ class PlaidClient {
       /**
        * Check the lock status of a document.
        * @param {string} documentId - The document ID
+       * @returns {Promise<{userId: string, expiresAt: number} | void>}
        */
       checkLock: (documentId) =>
         this._request("GET", `/api/v1/documents/${documentId}/lock`),
@@ -2348,6 +2661,7 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} [auditMessage]
        * @param {string} [newLockId] - A holder id this client minted
+       * @returns {Promise<LockGrant>}
        */
       acquireLock: (documentId, auditMessage, newLockId) =>
         this._request("POST", `/api/v1/documents/${documentId}/lock`, {
@@ -2365,6 +2679,7 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} lockId - The `lockId` acquireLock answered with
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<LockGrant>}
        */
       renewLock: (documentId, lockId, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/lock`, {
@@ -2380,6 +2695,7 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} lockId - The `lockId` acquireLock answered with
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       releaseLock: (documentId, lockId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/lock`, {
@@ -2475,6 +2791,7 @@ class PlaidClient {
        * @param {File} file - The file to upload
        * @param {string} [auditMessage] - Custom audit-log message for this write
        * @param {{onProgress?: (progress: {loaded: number, total: number | null}) => void}} [options] - `{ onProgress }`: called with `{ loaded, total }` (bytes) as the file goes up. In a browser the upload then travels by XMLHttpRequest, and the request timeout only fires when the upload stalls, not on total time.
+       * @returns {Promise<{message: string, extension: string, contentType: string}>}
        */
       uploadMedia: (documentId, file, auditMessage, { onProgress } = {}) => {
         const fd = new FormData();
@@ -2495,6 +2812,7 @@ class PlaidClient {
        *   recording meant, the `?v=` of the document's `mediaUrl`. The delete
        *   is refused with a 409 (`media-changed`, and the current `media-url`)
        *   when the stored recording is another one.
+       * @returns {Promise<void>}
        */
       // The upload above is multipart and cannot be batched, but a DELETE
       // carries no blob, so the batch transport takes it. It is a write
@@ -2582,6 +2900,7 @@ class PlaidClient {
        * @param {{dryRun?: boolean}} [options] - `{ dryRun }`: with `dryRun` true nothing
        *   is written and the summary says what would change
        * @param {string} [auditMessage] - Custom audit message for this operation
+       * @returns {Promise<DocumentRestoreSummary>}
        */
       restore: (documentId, asOf, { dryRun } = {}, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/restore`, {
@@ -2609,6 +2928,7 @@ class PlaidClient {
        * @param {boolean} [includeBody] - Include document body data
        * @param {string} [asOf] - Temporal query timestamp
        * @param {string[]|string} [layers] - Layer ids to restrict a body read to
+       * @returns {Promise<PlaidDocument>}
        */
       get: (documentId, includeBody, asOf, layers) =>
         this._request("GET", `/api/v1/documents/${documentId}`, {
@@ -2622,6 +2942,7 @@ class PlaidClient {
        * Delete a document and all data contained.
        * @param {string} documentId - The document ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (documentId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}`, {
@@ -2632,6 +2953,7 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} name - The name
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<PlaidDocument>}
        */
       update: (documentId, name, auditMessage) =>
         this._request("PATCH", `/api/v1/documents/${documentId}`, {
@@ -2646,6 +2968,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (projectId, name, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/documents", {
@@ -2680,6 +3003,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       addWriter: (id, userId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/writers/${userId}`, {
@@ -2690,6 +3014,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       removeWriter: (id, userId, auditMessage) =>
         this._request("DELETE", `/api/v1/projects/${id}/writers/${userId}`, {
@@ -2700,6 +3025,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       addReader: (id, userId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/readers/${userId}`, {
@@ -2710,6 +3036,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       removeReader: (id, userId, auditMessage) =>
         this._request("DELETE", `/api/v1/projects/${id}/readers/${userId}`, {
@@ -2721,6 +3048,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       addMaintainer: (id, userId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/maintainers/${userId}`, {
@@ -2731,6 +3059,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       removeMaintainer: (id, userId, auditMessage) =>
         this._request(
@@ -2819,6 +3148,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       linkVocab: (id, vocabId, auditMessage) =>
         this._request("POST", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
@@ -2829,6 +3159,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       unlinkVocab: (id, vocabId, auditMessage) =>
         this._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
@@ -2838,6 +3169,7 @@ class PlaidClient {
        * Get a project by ID. To fetch the project's documents, use
        * listDocuments(id) — the include-documents flag has been removed.
        * @param {string} id - The resource ID
+       * @returns {Promise<Project>}
        */
       get: (id) =>
         this._request("GET", `/api/v1/projects/${id}`),
@@ -2884,6 +3216,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Custom audit-log message
        * @param {object} [options]
        * @param {number} [options.timeout] - Per-request timeout in ms, the client's own by default (0/null disables)
+       * @returns {Promise<void>}
        */
       delete: (id, auditMessage, { timeout } = {}) =>
         this._request("DELETE", `/api/v1/projects/${id}`, {
@@ -2895,6 +3228,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} name - The name
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Project>}
        */
       update: (id, name, auditMessage) =>
         this._request("PATCH", `/api/v1/projects/${id}`, {
@@ -2934,6 +3268,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/projects", {
@@ -2952,6 +3287,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (projectId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/text-layers", {
@@ -2970,6 +3306,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (vocabLayerId, form, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-items", {
@@ -3018,6 +3355,7 @@ class PlaidClient {
       /**
        * Get a vocab item by ID
        * @param {string} id - The resource ID
+       * @returns {Promise<VocabItem>}
        */
       get: (id) =>
         this._request("GET", `/api/v1/vocab-items/${id}`),
@@ -3030,6 +3368,7 @@ class PlaidClient {
        * @param {{expectedLinkCount?: number}} [options] - `expectedLinkCount`: the
        *   number of links the caller showed. The delete is refused with a 409 when
        *   the entry has any other number of links by then.
+       * @returns {Promise<void>}
        */
       delete: (id, auditMessage, { expectedLinkCount } = {}) =>
         this._request("DELETE", `/api/v1/vocab-items/${id}`, {
@@ -3067,6 +3406,7 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} form - The vocab item form
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<VocabItem>}
        */
       update: (id, form, auditMessage) =>
         this._request("PATCH", `/api/v1/vocab-items/${id}`, {
@@ -3084,6 +3424,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (spanLayerId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/relation-layers", {
@@ -3116,6 +3457,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+       * @returns {Promise<Created>}
        */
       create: (
         tokenLayerId,
@@ -3142,6 +3484,7 @@ class PlaidClient {
       /**
        * Get a token.
        * @param {string} tokenId - The token ID
+       * @returns {Promise<Token>}
        */
       get: (tokenId) =>
         this._request("GET", `/api/v1/tokens/${tokenId}`),
@@ -3150,6 +3493,7 @@ class PlaidClient {
        * have no remaining tokens, the span will also be deleted.
        * @param {string} tokenId - The token ID
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (tokenId, auditMessage) =>
         this._request("DELETE", `/api/v1/tokens/${tokenId}`, { auditMessage }),
@@ -3163,6 +3507,7 @@ class PlaidClient {
        *   CLEAR it (revert to no explicit ordering). bodyOf keeps null but
        *   drops undefined, so the three cases map correctly to the server.
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Token>}
        */
       update: (tokenId, begin, end, precedence, auditMessage) =>
         this._request("PATCH", `/api/v1/tokens/${tokenId}`, {
@@ -3209,6 +3554,7 @@ class PlaidClient {
        *   half. A relation layer whose relations must stay inside one token
        *   of this layer declares a same-ancestor constraint, and the server deletes
        *   the relations the split leaves crossing in the same transaction.
+       * @returns {Promise<Created>}
        */
       split: (
         tokenId,
@@ -3228,6 +3574,7 @@ class PlaidClient {
        * @param {string} tokenId - The anchor token ID
        * @param {string} otherTokenId - The other token to merge in
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Token>}
        */
       merge: (tokenId, otherTokenId, auditMessage) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/merge`, {
@@ -3242,6 +3589,7 @@ class PlaidClient {
        * @param {number} [begin] - New start offset, inclusive (Unicode code points)
        * @param {number} [end] - New end offset, exclusive (Unicode code points)
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<Token>}
        */
       shift: (tokenId, begin, end, auditMessage) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/shift`, {
@@ -3277,7 +3625,7 @@ class PlaidClient {
        * queues, so a message queued after the writes goes out after them.
        * @param {string} projectId - The UUID of the project to send to
        * @param {any} data - The message data to send
-       * @returns {Promise<any>} Response from the send operation
+       * @returns {Promise<{success: boolean, message: string}>}
        */
       sendMessage: (projectId, data) =>
         this._request("POST", `/api/v1/projects/${projectId}/message`, {
@@ -3404,6 +3752,11 @@ class PlaidClient {
         cancelServiceRequest(this, projectId, requestId),
     };
 
+    // outOfBand: a query is a read that travels as a POST (see the note at
+    // the top of http.js). Made on a batch it goes over the wire like any
+    // read, and it never joins a logical operation. It waits past core's own
+    // query limit, so a query too broad answers with core's 408, and a 503
+    // from core's full queue of large queries is not retried.
     /**
      * Run a query over every project you can read.
      *
@@ -3435,16 +3788,11 @@ class PlaidClient {
      *
      * @param {Object} body - The query AST ({find, where, scope?, limit?, orderBy?,
      *   return?, bindings?}).
-     * @returns {Promise<Object>} For 'ids'/'entities': {columns, results, count, truncated}.
+     * @returns {Promise<QueryResult>} For 'ids'/'entities': {columns, results, count, truncated}.
      *   For 'count': {return: 'count', count, truncated}, where `truncated` says
      *   the count stopped at the server's cap. Entity cells are full entity
      *   objects (same shape as the GET endpoints).
      */
-    // outOfBand: a query is a read that travels as a POST (see the note at
-    // the top of http.js). Made on a batch it goes over the wire like any
-    // read, and it never joins a logical operation. It waits past core's own
-    // query limit, so a query too broad answers with core's 408, and a 503
-    // from core's full queue of large queries is not retried.
     this.query = (body) =>
       this._request("POST", "/api/v1/query", {
         body,
@@ -3460,12 +3808,14 @@ class PlaidClient {
       /**
        * Get a logical-operation group (its label + creator).
        * @param {string} id - The group id
+       * @returns {Promise<OperationGroup>}
        */
       get: (id) => this._request("GET", `/api/v1/operation-groups/${id}`),
       /**
        * Relabel a logical-operation group after the fact. Owner or admin only.
        * @param {string} id - The group id
        * @param {string|null} message - The new label
+       * @returns {Promise<OperationGroup>}
        */
       update: (id, message) =>
         this._request("PATCH", `/api/v1/operation-groups/${id}`, {
@@ -3526,6 +3876,7 @@ class PlaidClient {
        * Delete a comment. The author may delete their own; a project
        * maintainer (or admin) may delete any.
        * @param {string} id - The comment id
+       * @returns {Promise<void>}
        */
       delete: (id) =>
         this._request("DELETE", `/api/v1/comments/${id}`, { noOperation: true }),
@@ -3830,6 +4181,7 @@ class PlaidClient {
        * Delete a guideline.
        * @param {string} id - The guideline id
        * @param {string} [auditMessage] - Audit message for this write
+       * @returns {Promise<void>}
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/guidelines/${id}`, { auditMessage }),
@@ -4420,8 +4772,10 @@ function configRequest(auditMessage, value, options, isDelete = false) {
 /**
  * The three metadata methods of a bundle whose entities carry metadata, on
  * `/api/v1/<kind>/<id>/metadata`. Metadata is opaque, so no body is re-cased.
+ * Each answers the entity as its GET does.
+ * @template {keyof MetadataRecords} K
  * @param {PlaidClient} client
- * @param {string} kind
+ * @param {K} kind
  */
 function metadataMethods(client, kind) {
   const path = (id) => `/api/v1/${kind}/${id}/metadata`;
@@ -4431,6 +4785,7 @@ function metadataMethods(client, kind) {
      * @param {string} id - The entity's ID
      * @param {object} body - The new metadata map
      * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<MetadataRecords[K]>}
      */
     setMetadata: (id, body, auditMessage) =>
       client._request("PUT", path(id), { auditMessage, rawBody: body }),
@@ -4438,6 +4793,7 @@ function metadataMethods(client, kind) {
      * Remove all metadata from an entity.
      * @param {string} id - The entity's ID
      * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<MetadataRecords[K]>}
      */
     deleteMetadata: (id, auditMessage) => client._request("DELETE", path(id), { auditMessage }),
     /**
@@ -4445,6 +4801,7 @@ function metadataMethods(client, kind) {
      * @param {string} id - The entity's ID
      * @param {MetadataOp[]} body - The metadata ops
      * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<MetadataRecords[K]>}
      */
     patchMetadata: (id, body, auditMessage) =>
       client._request("PATCH", path(id), { auditMessage, rawBody: body }),
@@ -4469,6 +4826,7 @@ function configMethods(client, kind) {
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
      *   was absent). The write is then refused with a 409 when the stored value differs.
+     * @returns {Promise<void>}
      */
     setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
       client._request(
@@ -4483,6 +4841,7 @@ function configMethods(client, kind) {
      * @param {string} configKey - The config key
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{expected?: any}} [options] - `expected`, as on setConfig.
+     * @returns {Promise<void>}
      */
     deleteConfig: (id, namespace, configKey, auditMessage, options) =>
       client._request(
@@ -4496,8 +4855,9 @@ function configMethods(client, kind) {
 /**
  * The get, delete, update and shift methods of the four layer bundles, on
  * `/api/v1/<kind>/<layerId>`.
+ * @template {keyof LayerRecords} K
  * @param {PlaidClient} client
- * @param {string} kind
+ * @param {K} kind
  */
 function layerMethods(client, kind) {
   const path = (layerId) => `/api/v1/${kind}/${layerId}`;
@@ -4505,12 +4865,14 @@ function layerMethods(client, kind) {
     /**
      * Get a layer by ID.
      * @param {string} layerId - The layer ID
+     * @returns {Promise<LayerRecords[K]>}
      */
     get: (layerId) => client._request("GET", path(layerId)),
     /**
      * Delete a layer.
      * @param {string} layerId - The layer ID
      * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
      */
     delete: (layerId, auditMessage) => client._request("DELETE", path(layerId), { auditMessage }),
     /**
@@ -4518,6 +4880,7 @@ function layerMethods(client, kind) {
      * @param {string} layerId - The layer ID
      * @param {string} name - The new name
      * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<LayerRecords[K]>}
      */
     update: (layerId, name, auditMessage) =>
       client._request("PATCH", path(layerId), { auditMessage, body: bodyOf({ name }) }),
@@ -4526,6 +4889,7 @@ function layerMethods(client, kind) {
      * @param {string} layerId - The layer ID
      * @param {string} direction - The direction ("up" or "down")
      * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
      */
     shift: (layerId, direction, auditMessage) =>
       client._request("POST", `${path(layerId)}/shift`, {
@@ -4568,6 +4932,7 @@ function constraintMethods(client, kind) {
      * @param {string} namespace - The declaring app's namespace
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{expected?: Array<object>|null}} [options] - `expected`, as on setConstraints.
+     * @returns {Promise<void>}
      */
     deleteConstraints: (layerId, namespace, auditMessage, options) => {
       const body = constraintsBody(undefined, options);
