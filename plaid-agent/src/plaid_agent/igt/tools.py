@@ -88,7 +88,7 @@ def _scope_of(doc, ref: str) -> str:
     r = read_ref(ref, 'wm')
     if r is None or r.by_form:
         obj = resolve(doc, ref)
-        return type(obj).__name__
+        return 'Sentence' if isinstance(obj, Sentence) else 'Word' if isinstance(obj, Word) else 'Morpheme'
     _wi, mi = r.parts
     return 'Sentence' if _wi is None else 'Word' if mi is None else 'Morpheme'
 
