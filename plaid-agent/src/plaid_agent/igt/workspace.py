@@ -750,7 +750,17 @@ class Workspace(BaseWorkspace):
                 'item_patches': copy.deepcopy(self.item_patches),
                 'unlinked': self.unlinked, 'reported_unlinked': self.reported_unlinked,
                 'reported_left': self.reported_left, 'analysis_took': self.analysis_took,
-                'reported_took': self.reported_took}
+                'reported_took': self.reported_took,
+                # What each rule found and the values stored before them, so a
+                # rule staged after resume_plan reads what the resumed rules
+                # leave (H16-IGT-TOOLS-1). Keyed by tuples, kept as lists so
+                # the state stored beside the conversation holds them.
+                'rule_found': [[list(k), copy.deepcopy(v)] for k, v in self.rule_found.items() if k in self._rule_keys()],
+                'stored_values': [[*k, v] for k, v in self.stored_values.items()]}
+
+    def _rule_keys(self) -> set:
+        from ..core import rules
+        return {rules.target(op) for op in self.ops if rules.is_rule(op)}
 
     def restore(self, saved: Dict[str, Any]) -> None:
         super().restore(saved)
@@ -761,6 +771,8 @@ class Workspace(BaseWorkspace):
         self.reported_left = saved['reported_left']
         self.analysis_took = saved['analysis_took']
         self.reported_took = saved['reported_took']
+        self.rule_found = {tuple(k): v for k, v in saved['rule_found']}
+        self.stored_values = {(layer, token): v for layer, token, v in saved['stored_values']}
         self._patch_version += 1
 
     def add_op(self, op: Dict[str, Any]) -> None:
