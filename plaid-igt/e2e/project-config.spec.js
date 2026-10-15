@@ -222,6 +222,24 @@ test('C2-03 + B1-10: a reader gets no Create button and a read-only editor', asy
   await expect(page.locator('.igt-field:not([disabled])')).toHaveCount(0);
 });
 
+// H15-IGT polish: a reader met the setup wizard and Add ELAN documents by
+// address. They land on the project, told why, and the wizard never shows.
+test('a reader who opens setup or Add ELAN documents by address lands on the project', async ({
+  page,
+}) => {
+  const { token } = await PlaidClient.login(CORE, READER.email, READER.password);
+  await seedAuth(page, { token, userId: READER.email, displayName: READER.email, isAdmin: false });
+  for (const screen of ['setup', 'import-elan']) {
+    await page.goto(`/#/projects/${projectId}/${screen}`);
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+    await expect(page.getByText("Only a project's maintainers can open this page.")).toBeVisible();
+    await expect(page.getByText('Config doc')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /Project setup|Add ELAN documents/ }),
+    ).toHaveCount(0);
+  }
+});
+
 // The project page and its settings wear the shared chrome every app wears:
 // the project's name as the heading, text tabs, and the settings sections as a
 // list of links, General first, each part of a section in a card.

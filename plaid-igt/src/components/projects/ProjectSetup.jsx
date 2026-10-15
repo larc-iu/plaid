@@ -17,6 +17,8 @@ import { VocabularyStep } from './setup/VocabularyStep';
 import { ConfirmationStep } from './setup/ConfirmationStep';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { Panel } from './ImportPanels.jsx';
+import { useMaintainersOnly } from './useMaintainersOnly.js';
 
 export const ProjectSetup = () => {
   useDocumentTitle('Project setup');
@@ -43,6 +45,26 @@ export const ProjectSetup = () => {
   // For /projects/new, projectId will be undefined
   // For /projects/:projectId/setup, projectId will be the actual ID
   const isNewProject = !projectId || projectId === 'new';
+
+  // Setting up a project that exists is its maintainers' work. The wizard
+  // waits for the project, so a reader who came by address never sees it.
+  const [project, setProject] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+  useEffect(() => {
+    if (isNewProject) return undefined;
+    let cancelled = false;
+    client.projects
+      .get(projectId)
+      .then((p) => !cancelled && setProject(p))
+      .catch((err) => {
+        console.error('Could not load the project:', err);
+        if (!cancelled) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, projectId, isNewProject]);
+  const allowed = useMaintainersOnly(projectId, project);
 
   const steps = [
     ...(isNewProject
@@ -152,6 +174,14 @@ export const ProjectSetup = () => {
     // Default to valid if no validation function
     return true;
   };
+
+  if (!isNewProject && allowed !== true) {
+    return (
+      <div className={FORM_PAGE_WIDTH}>
+        {loadError && <Panel tone="error" title="This project could not be loaded." />}
+      </div>
+    );
+  }
 
   return (
     <div className={FORM_PAGE_WIDTH}>

@@ -66,6 +66,7 @@ import { useMediaDurations } from './elan/useMediaDurations';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
+import { useMaintainersOnly } from './useMaintainersOnly.js';
 
 const NEW_FIELD = '__new__';
 
@@ -96,6 +97,10 @@ export const ImportElanDocuments = () => {
   // them rather than keep them, since no one has worked on them.
   const [leftovers, setLeftovers] = useState([]);
   const stopRef = useRef(false);
+  // Adding documents here may add fields, which is a maintainer's to do. The
+  // screen waits for the project, so a reader who came by address never sees
+  // the wizard.
+  const allowed = useMaintainersOnly(projectId, project);
 
   const fields = project ? existingFields(project) : { Sentence: [], Word: [], Morpheme: [] };
   // What those fields record about their own language, keyed "<scope>:<name>".
@@ -349,6 +354,8 @@ export const ImportElanDocuments = () => {
       </div>
     );
   }
+
+  if (allowed !== true) return <div className={FORM_PAGE_WIDTH} />;
 
   return (
     <div className={FORM_PAGE_WIDTH}>
