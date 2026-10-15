@@ -367,6 +367,10 @@ def entry_form_named_form(fn, args: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+_WHERE = {'type': 'object', 'additionalProperties': {'type': 'string'},
+          'description': 'Only where the word meets these conditions, as one sequence_search step takes them, '
+                         'e.g. {"form": "di"}.'}
+
 _ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
           'entry_gloss': _GLOSS}
 
@@ -421,7 +425,8 @@ TOOLS += [
         'plans every change; the result lists every distinct change it makes (old value → new value), check them '
         'before you describe the plan.',
         {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
-         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'On by default: "PROS" does not find "pros". false to ignore case.'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC},
+         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'On by default: "PROS" does not find "pros". false to ignore case.'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC,
+         'where': _WHERE},
         ['field', 'pattern', 'replacement']),
     _fn('respell_all',
         'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '
@@ -440,7 +445,7 @@ TOOLS += [
         'a word field (e.g. Gloss (Morpheme) = "OBL" on every morpheme "ди"). only_empty=true (default) fills gaps '
         'and leaves existing values alone; false overwrites them.',
         {'form': {'type': 'string'}, 'field': {'type': 'string'}, 'value': {'type': 'string'},
-         'only_empty': {'type': 'boolean'}, 'document': _DOC}, ['form', 'field', 'value']),
+         'only_empty': {'type': 'boolean'}, 'document': _DOC, 'where': _WHERE}, ['form', 'field', 'value']),
     _fn('set_analysis_for_form',
         'PLAN: apply one analysis (same shape as set_analysis\'s morphemes) to every occurrence of a word form; '
         'skip_analyzed=true leaves already-analysed words alone.',

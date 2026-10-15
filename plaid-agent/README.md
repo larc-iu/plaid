@@ -458,7 +458,9 @@ The modules below are `igt/` unless they say otherwise.
   `promote_example` and `remove_example` (the sense tree, the order of entries
   spelled the same, entry references and usage examples, which are structure on
   an entry rather than fields), and the corpus-wide `replace_in_field`
-  (also on stored morpheme forms), `set_field_for_form`, `respell_all`
+  (also on stored morpheme forms) and `set_field_for_form` (both held, with
+  `where`, to words meeting one `sequence_search` step's conditions, still one
+  rule), `respell_all`
   (carrying morpheme forms and lexicon headwords along, as Bulk Edit does),
   `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,
   `delete_entry`, `rename_entry`, `rename_document`; `confirm` (what awaits

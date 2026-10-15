@@ -17,6 +17,14 @@ def _entry(a: Dict[str, Any]) -> str:
     return q(a.get('entry_form') or a.get('entry_id'))
 
 
+def _held(a: Dict[str, Any]) -> str:
+    """A corpus-wide change's ``where``, as the trace says it."""
+    w = a.get('where')
+    if not isinstance(w, dict) or not w:
+        return ''
+    return ' where ' + ' and '.join(f'{k} is {q(v)}' for k, v in w.items())
+
+
 def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     """One past-tense line for a finished call of a tool of this app's own, or
     None for a shared one (:data:`core.trace.SHARED_DESCRIBE`)."""
@@ -96,13 +104,13 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     # --- plans: across the corpus --------------------------------------------
     if name == 'replace_in_field':
         return (f'Planned replacing {q(a.get("pattern"))} → {q(a.get("replacement"))} '
-                f'in {a.get("field")}{in_doc(a)}')
+                f'in {a.get("field")}{_held(a)}{in_doc(a)}')
     if name == 'respell_all':
         return f'Planned respelling {q(a.get("pattern"))} → {q(a.get("replacement"))}{in_doc(a)}'
     if name == 'copy_to_orthography':
         return f'Planned filling {a.get("orthography")} from {a.get("source") or "the baseline"}{in_doc(a)}'
     if name == 'set_field_for_form':
-        return f'Planned {a.get("field")} = {q(a.get("value"))} on every {q(a.get("form"))}{in_doc(a)}'
+        return f'Planned {a.get("field")} = {q(a.get("value"))} on every {q(a.get("form"))}{_held(a)}{in_doc(a)}'
     if name == 'set_analysis_for_form':
         return f'Planned an analysis for every {q(a.get("form"))}{in_doc(a)}'
 

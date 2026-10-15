@@ -819,34 +819,9 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
     shared: List[str] = []
     token_cons: List[Dict[str, Any]] = []
     for i, cond in enumerate(sequence):
-        cons: Dict[str, Any] = {}
-        for key, pat in cond.items():
-            spec = rx(str(pat), regex=regex, whole=not regex)
-            k = (key or '').lower()
-            if k in ('form', 'word', 'baseline'):
-                cons['value'] = spec
-            elif k == 'morpheme':
-                extra += [c.morph_form_clauses(f'?m{i}f', spec)] + c.in_word(f'?m{i}f', wvars[i], f'{i}f')
-            elif k == 'type':
-                extra += [c.morph(f'?m{i}t', metadata={'morphType': spec})] + c.in_word(f'?m{i}t', wvars[i], f'{i}t')
-            else:
-                # A bare name a word field and a morpheme field share ("Gloss",
-                # "POS") is either, as search reads it: the tool's own example
-                # was refused as ambiguous in most projects (2026-10-12 survey).
-                alike = p.fields_sharing_name(key)
-                fields = [f for f in alike if f.scope != 'Sentence'] or [_condition_field(p, key)]
-                if len(fields) > 1:
-                    shared.append(key)
-                branches = []
-                for f in fields:
-                    if f.scope == 'Word':
-                        branches.append([c.span(f'?s{i}w', f.layer_id, value=spec), ['covers', f'?s{i}w', wvars[i]]])
-                    elif f.scope == 'Morpheme':
-                        branches.append([c.span(f'?s{i}m', f.layer_id, value=spec), ['covers', f'?s{i}m', f'?m{i}g']]
-                                        + c.in_word(f'?m{i}g', wvars[i], f'{i}g'))
-                    else:
-                        raise ToolError(f'"{f.name}" is a sentence field; sequence conditions are per word')
-                extra += branches[0] if len(branches) == 1 else [['or', *branches]]
+        cons, more, both = word_condition(c, cond, wvars[i], str(i), regex)
+        extra += more
+        shared += both
         token_cons.append(cons)
     where: List[Any] = []
     if adjacent:
@@ -883,6 +858,92 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
         if len(out) >= limit:
             break
     return out, total, list(dict.fromkeys(shared))
+
+
+def word_condition(c: Corpus, cond: Dict[str, Any], wvar: str, tag: str, regex: bool = False):
+    """One word's conditions, as a sequence_search step takes them (``{"form":
+    "di"}``, ``{"Gloss": "CAUS"}``): (constraints on the word token itself,
+    the clauses that tie morphemes and spans to it, and the keys a word field
+    and a morpheme field share, which match either). Whole values, ignoring
+    case, unless ``regex``. ``tag`` keeps the variables of several words
+    apart. sequence_search and the ``where`` of the corpus-wide plan tools
+    read conditions here, so they take the same keys."""
+    if not isinstance(cond, dict) or not cond:
+        raise ToolError('A condition is an object of keys and values, e.g. {"form": "di"} or {"Gloss": "CAUS"}.')
+    p = c.p
+    cons: Dict[str, Any] = {}
+    extra: List[Any] = []
+    shared: List[str] = []
+    for key, pat in cond.items():
+        spec = rx(str(pat), regex=regex, whole=not regex)
+        k = (key or '').lower()
+        if k in ('form', 'word', 'baseline'):
+            cons['value'] = spec
+        elif k == 'morpheme':
+            extra += [c.morph_form_clauses(f'?m{tag}f', spec)] + c.in_word(f'?m{tag}f', wvar, f'{tag}f')
+        elif k == 'type':
+            extra += [c.morph(f'?m{tag}t', metadata={'morphType': spec})] + c.in_word(f'?m{tag}t', wvar, f'{tag}t')
+        else:
+            # A bare name a word field and a morpheme field share ("Gloss",
+            # "POS") is either, as search reads it: the tool's own example
+            # was refused as ambiguous in most projects (2026-10-12 survey).
+            alike = p.fields_sharing_name(key)
+            fields = [f for f in alike if f.scope != 'Sentence'] or [_condition_field(p, key)]
+            if len(fields) > 1:
+                shared.append(key)
+            branches = []
+            for f in fields:
+                if f.scope == 'Word':
+                    branches.append([c.span(f'?s{tag}w', f.layer_id, value=spec), ['covers', f'?s{tag}w', wvar]])
+                elif f.scope == 'Morpheme':
+                    branches.append([c.span(f'?s{tag}m', f.layer_id, value=spec), ['covers', f'?s{tag}m', f'?m{tag}g']]
+                                    + c.in_word(f'?m{tag}g', wvar, f'{tag}g'))
+                else:
+                    raise ToolError(f'"{f.name}" is a sentence field; conditions are on a word')
+            extra += branches[0] if len(branches) == 1 else [['or', *branches]]
+    return cons, extra, shared
+
+
+def target_condition(c: Corpus, cond: Optional[Dict[str, Any]], var: str, scope: str) -> List[Any]:
+    """The clauses that hold a corpus-wide change to the targets whose word
+    meets ``cond`` (one word's conditions, :func:`word_condition`): ``var``
+    is the word itself for a word value, the morpheme's word for a morpheme
+    value. [] without a condition."""
+    if not cond:
+        return []
+    if scope == 'Sentence':
+        raise ToolError('where is a condition on a word, and a sentence field has no one word to hold it to. '
+                        'Use query or run_code to choose sentences.')
+    wvar = var if scope == 'Word' else '?cw'
+    cons, extra, _shared = word_condition(c, cond, wvar, 'c')
+    out = [c.word(wvar, **cons)] + extra
+    if scope != 'Word':
+        out += c.in_word(var, wvar, 'cw')
+    return out
+
+
+def condition_holds(ws: Workspace, cond: Optional[Dict[str, Any]], scope: str, token_ids) -> set:
+    """Which of ``token_ids`` (words, or morphemes for a morpheme scope) meet
+    ``cond``, asked of the stored project. A derived morpheme (an
+    unsegmented word's) is asked as its word."""
+    from .project import VIRTUAL_PREFIX, is_virtual
+    ids = [t for t in dict.fromkeys(token_ids) if t]
+    if not cond:
+        return set(ids)
+    if not ids:
+        return set()
+    c = ws.corpus
+    out = set()
+    words = {t[len(VIRTUAL_PREFIX):]: t for t in ids if is_virtual(t)}
+    stored = [t for t in ids if not is_virtual(t)]
+    for group, sc, back in ((stored, scope, {}), (list(words), 'Word', words)):
+        for part in _chunks(group):
+            where = target_condition(c, cond, '?u', sc) + [['in', '?u.id', part]]
+            for row in c.entities(where, ['?u'], len(part) + 1):
+                u = row[0]
+                if isinstance(u, dict):
+                    out.add(back.get(u['id'], u['id']))
+    return out
 
 
 #: The keys a sequence condition takes besides a field's name.
@@ -959,7 +1020,8 @@ def _docs_of(rows: List[list]) -> set:
     return {e['document'] for r in rows for e in r if isinstance(e, dict) and e.get('document')}
 
 
-def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], cap: int) -> List[list]:
+def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], cap: int,
+                      cond: Optional[Dict[str, Any]] = None) -> List[list]:
     """The (span, token) rows whose value matches ``spec``, ``cap + 1`` at most
     so the caller can tell a capped read from a full one.
 
@@ -971,6 +1033,7 @@ def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], cap: int) -> List[
     c = ws.corpus
     layer = c.scope_layer(f.scope)
     where = [c.span('?s', f.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
+    where += target_condition(c, cond, '?t', f.scope)
     return c.entities(where, ['?s', '?t'], cap + 1, [['?t.doc'], ['?t.begin']])
 
 
@@ -1004,10 +1067,12 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
     return staged
 
 
-def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int,
+                       cond: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """The edits a replacement would make, or a refusal when more values match
-    than one pass may consider."""
-    rows = q_replace_matches(ws, f, spec, cap)
+    than one pass may consider. ``cond``: only values on a word that meets it
+    (:func:`target_condition`)."""
+    rows = q_replace_matches(ws, f, spec, cap, cond)
     if len(rows) > cap:
         raise ToolError(f'More than {cap} {f.name} values match, which is more than one pass may '
                         f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
@@ -1065,12 +1130,14 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
     return ordered, len(words), len(morphs)
 
 
-def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
+                     cond: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """The stored morpheme forms a replacement changes, in text order: one
     set_morpheme_form op for each whose form differs afterwards. A morpheme
     showing its word's surface stores no form, and is respell_all's."""
     c = ws.corpus
     where = [c.word('?w'), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w')
+    where += target_condition(c, cond, '?m', 'Morpheme')
     rows = c.entities(where, ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
     if len(rows) > cap:
         raise ToolError(f'More than {cap} morpheme forms match, which is more than one pass may '
@@ -1127,14 +1194,15 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
     return staged
 
 
-def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int):
+def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int,
+                         cond: Optional[Dict[str, Any]] = None):
     from .project import Span
     c = ws.corpus
     spec = rx(form, whole=True)
     if f.scope == 'Word':
-        unit = [c.word('?u', value=spec)]
+        unit = [c.word('?u', value=spec)] + target_condition(c, cond, '?u', 'Word')
     else:
-        unit = [c.morph_form_clauses('?u', spec)]
+        unit = [c.morph_form_clauses('?u', spec)] + target_condition(c, cond, '?u', 'Morpheme')
     with_span = [] if False else c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
                                             [['?u.doc'], ['?u.begin']])
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
@@ -1143,7 +1211,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     # A word of that form nobody has segmented: its morpheme is the derived
     # one the editor shows, stored nowhere and so holding no value, which the
     # plan makes when it writes the value (``virtual_at``).
-    bare = c.entities(c.bare_word('?u', value=spec), ['?u'], cap + 1,
+    bare = c.entities(c.bare_word('?u', value=spec) + target_condition(c, cond, '?u', 'Word'), ['?u'], cap + 1,
                       [['?u.doc'], ['?u.begin']]) if f.scope == 'Morpheme' else []
     rows += [(_derived_morpheme(ws, u), None) for (u,) in bare if isinstance(u, dict) and not c.ignored(u.get('value'))]
     # Every read caps CANDIDATES, not matches, and they are ordered by document.

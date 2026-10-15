@@ -67,7 +67,7 @@ def _check_cap(n: int):
 
 def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str, regex: bool = False,
                        whole: bool = False, document: Optional[str] = None,
-                       case_sensitive: bool = True) -> str:
+                       case_sensitive: bool = True, where: Optional[dict] = None) -> str:
     """PLAN: substitute inside every EXISTING value of a field (substring,
     whole value, or regex with backreferences), project-wide or in one
     document. Empty cells are not filled: use set_field_for_form for that.
@@ -78,8 +78,11 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
 
     Staged as one rule (``core.rules``), found again when approved. Its card
     and its result list every distinct change it makes, the surprising ones
-    first (``rules.transitions``), and say how it matches."""
+    first (``rules.transitions``), and say how it matches. ``where`` holds it to values on
+    words that meet one word's conditions, as sequence_search takes them
+    (:func:`condition_of`), still one rule (survey item 4)."""
     forms = _names_morpheme_forms(ws, field)
+    cond = condition_of(where)
     if not forms:
         replacement = unmark(replacement, 'replacement')
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
@@ -88,6 +91,8 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                             'whole': whole, 'case_sensitive': case_sensitive, 'document': doc_id},
                            ('regex', 'whole', 'case_sensitive'))
     args['replacement'] = replacement or ''
+    if cond:
+        args['where'] = cond
     shown, still_regex = rules.pattern_words(pattern, bool(regex))
     mode = rules.match_mode(pattern, bool(regex), bool(whole), bool(case_sensitive))
     case = 'case-sensitive' if case_sensitive else 'ignoring case'
@@ -99,20 +104,61 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     else:
         f = ws.project.field(field)
         name, unit = f.name, ('value', 'values')
+    meets = _planned_meeting(ws, cond, None if forms else f, 'Morpheme' if forms else f.scope)
 
     def restate(op, _found):
         # An earlier planned value on the field is rewritten in place, as the
-        # value the plan would leave there, in the document named if one is.
+        # value the plan would leave there, in the document named if one is,
+        # on a word that meets the condition if there is one.
         if forms or op.get('kind') != 'set_span' or op.get('layer_id') != f.layer_id:
             return None
         if doc_id is not None and _doc_of_op(ws, op) != doc_id:
             return None
+        if meets is not None and op.get('token_id') not in meets:
+            return None
         new = rep(op.get('value') or '')
         return new if new != (op.get('value') or '') and (op.get('value') or '') != '' else None
+    held = condition_words(cond)
     return _stage_rule(ws, 'replace_in_field', args, unit,
-                       change=f'{name} {shown} → {qv(replacement)}',
-                       head=f'{name}: replace {shown} with {qv(replacement)}{how}',
+                       change=f'{name} {shown} → {qv(replacement)}{held}',
+                       head=f'{name}: replace {shown} with {qv(replacement)}{how}{held}',
                        what='morpheme forms' if forms else f'{name} values', restate=restate, mode=mode)
+
+
+# --- a condition on the word (survey item 4) -------------------------------------
+
+def condition_of(where) -> Optional[Dict[str, str]]:
+    """A corpus-wide change's ``where`` as stored: one word's conditions, as a
+    sequence_search step takes them ({"form": "di"}, {"Gloss (Morpheme)":
+    "CAUS"}), each value a whole value, ignoring case. None for none."""
+    if where is None or where == {} or where == '':
+        return None
+    if not isinstance(where, dict):
+        raise ToolError('where is one word\'s conditions, as sequence_search takes them: e.g. {"form": "di"} or '
+                        '{"Gloss (Morpheme)": "CAUS"}.')
+    out = {}
+    for k, v in where.items():
+        if not isinstance(k, str) or not k.strip() or v is None or isinstance(v, (dict, list)):
+            raise ToolError(f'where: {k!s} must name a key with one value, e.g. {{"form": "di"}}.')
+        out[k.strip()] = str(v)
+    return out
+
+
+def condition_words(cond: Optional[Dict[str, str]]) -> str:
+    """A condition as the card and the result say it: ``, where form is "di"``."""
+    if not cond:
+        return ''
+    return ', where ' + ' and '.join(f'{k} is {qv(v)}' for k, v in cond.items())
+
+
+def _planned_meeting(ws: Workspace, cond, f, scope: str) -> Optional[set]:
+    """The targets of the plan's own changes to field ``f`` that meet
+    ``cond``, or None without a condition (everything does)."""
+    if not cond or f is None:
+        return None
+    from .queries import condition_holds
+    ids = [op.get('token_id') for op in ws.ops if op.get('kind') == 'set_span' and op.get('layer_id') == f.layer_id]
+    return condition_holds(ws, cond, scope, ids)
 
 
 # --- corpus-wide changes as ONE op ----------------------------------------------
@@ -135,21 +181,28 @@ def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
                     bool(a.get('case_sensitive')))
     spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
               case_sensitive=bool(a.get('case_sensitive')))
+    cond = a.get('where') or None
     if _names_morpheme_forms(ws, a['field']):
-        return q_morpheme_forms(ws, rep, spec, cap)
+        return q_morpheme_forms(ws, rep, spec, cap, cond)
     f = ws.project.field(a['field'])
-    found = q_replace_in_field(ws, f, rep, spec, cap)
-    return found + _chained(ws, f, rep, found, a.get('document'))
+    found = q_replace_in_field(ws, f, rep, spec, cap, cond)
+    return found + _chained(ws, f, rep, found, a.get('document'), cond)
 
 
-def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optional[str]) -> List[Dict[str, Any]]:
+def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optional[str],
+             cond: Optional[dict] = None) -> List[Dict[str, Any]]:
     """The values an earlier rule of the plan leaves on the field that this
     replacement changes in turn, where the stored value did not match it
-    ("A" → "B", then "B" → "C"). Rules compose in plan order."""
+    ("A" → "B", then "B" → "C"). Rules compose in plan order. With a
+    condition, only those on a word that meets it."""
+    from .queries import condition_holds
     have = {op.get('token_id') for op in found}
+    left = {(layer, token): v for (layer, token), v in ws.rule_values().items()
+            if layer == f.layer_id and token not in have and not (document and v[1].get('doc') != document)}
+    meets = condition_holds(ws, cond, f.scope, [t for _l, t in left]) if cond and left else None
     out = []
-    for (layer, token), (value, earlier) in ws.rule_values().items():
-        if layer != f.layer_id or token in have or (document and earlier.get('doc') != document):
+    for (layer, token), (value, earlier) in left.items():
+        if meets is not None and token not in meets:
             continue
         new = rep(value)
         if new == value or value == '':
@@ -226,7 +279,7 @@ def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dic
     from .queries import q_set_field_for_form
     f = ws.project.field(a['field'])
     value = '' if a.get('value') is None else str(a['value'])
-    return q_set_field_for_form(ws, a['form'], f, value, bool(a.get('only_empty', True)), cap)
+    return q_set_field_for_form(ws, a['form'], f, value, bool(a.get('only_empty', True)), cap, a.get('where') or None)
 
 
 SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
@@ -704,9 +757,11 @@ def _form_matcher(form: str):
 
 
 def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_empty: bool = True,
-                         document: Optional[str] = None) -> str:
+                         document: Optional[str] = None, where: Optional[dict] = None) -> str:
     """PLAN: one field value on every occurrence of a form (morpheme form for
-    a morpheme field, word form for a word field). Staged as one rule."""
+    a morpheme field, word form for a word field). Staged as one rule.
+    ``where``: only occurrences on a word that meets those conditions."""
+    cond = condition_of(where)
     f = ws.project.field(field)
     if f.scope == 'Sentence':
         raise ToolError(f'"{f.name}" is a sentence field; use set_field with sentence references')
@@ -718,6 +773,8 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     args = rules.normalize({'form': form, 'field': field, 'value': value, 'only_empty': only_empty,
                             'document': doc_id}, ('only_empty',))
     args['value'] = value
+    if cond:
+        args['where'] = cond
     # A word whose analysis the plan writes is read as that analysis, and a
     # value on one of its morphemes goes into it (as set_field does).
     same = _form_matcher(form)
@@ -734,22 +791,30 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
             cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
                         if fv.get('layer_id') == f.layer_id), '')
             if same(pm.get('form')) and cur != value and not (only_empty and cur):
-                targets.append((doc, f'{word_ref(s, w)}.m{k}'))
+                targets.append((doc, f'{word_ref(s, w)}.m{k}', w.id))
+    if cond and targets:
+        from .queries import condition_holds
+        held = condition_holds(ws, cond, 'Word', [t[2] for t in targets])
+        targets = [t for t in targets if t[2] in held]
     if targets:
         with ws.staging():
-            for doc, ref in targets:
+            for doc, ref, _w in targets:
                 edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), field=f, value=value)
     edits = len(targets)
 
     def restate(op, found):
+        # ``found``: the rule finds this target too, so it meets the
+        # condition, if there is one, already.
         if op.get('kind') != 'set_span' or found is None:
             return None
         if only_empty and (op.get('value') or ''):
             return None
         return value if op.get('value') != value else None
+    held = condition_words(cond)
     note = _stage_rule(ws, 'set_field_for_form', args, ('value', 'values'),
-                       change=f'{f.name} = {qv(value)} on {qv(form)}',
-                       head=f'{f.name}: {qv(value)} on every {qv(form)}' + (' without a value' if only_empty else ''),
+                       change=f'{f.name} = {qv(value)} on {qv(form)}{held}',
+                       head=f'{f.name}: {qv(value)} on every {qv(form)}' + (' without a value' if only_empty else '')
+                       + held,
                        what=f'occurrences of {qv(form)}' + (' without a value' if only_empty else ''),
                        restate=restate, quiet_when_empty=bool(edits))
     if edits:

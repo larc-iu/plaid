@@ -515,6 +515,7 @@ PLAN: substitute inside every value of a field, project-wide or in one document:
 - `case_sensitive` (boolean): On by default: "PROS" does not find "pros". false to ignore case.
 - `whole` (boolean): Match the whole value only.
 - `document` (string): Document id or exact name (see project_overview).
+- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
 
 ### respell_all
 
@@ -547,6 +548,7 @@ PLAN: set a field value on every occurrence of a form: a morpheme form for a mor
 - `value` (string, required)
 - `only_empty` (boolean)
 - `document` (string): Document id or exact name (see project_overview).
+- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
 
 ### set_analysis_for_form
 
