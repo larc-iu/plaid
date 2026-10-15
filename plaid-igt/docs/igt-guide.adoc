@@ -598,7 +598,8 @@ A value can carry a description, shown beside it in the list.
 A tagset is enforced as you type and in Bulk Edit.
 A **Closed** tagset also refuses an outside value from an approved Assistant plan or a script.
 Values brought in by an import, or proposed by a service, are kept, but cannot be confirmed while they are outside the tagset.
-Closing a tagset, or removing a value from a closed one, is refused while the project holds values outside it, and the message names them.
+Closing a tagset, removing a value from a closed one, or assigning a closed tagset to a field is not saved while the field holds values outside the list.
+A **Not saved** notice names those values, with how many annotations use each.
 Change them first, or add them to the tagset.
 
 The project's **Validation** tab (maintainers) lists, for each governed field, every value in the project that its tagset refuses, with a count.
