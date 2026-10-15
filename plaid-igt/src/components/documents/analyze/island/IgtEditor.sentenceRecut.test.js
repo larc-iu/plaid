@@ -137,7 +137,7 @@ describe('a translation refused because its sentence changed meanwhile', () => {
 
       const after = cell('sa:s-2:Translation');
       expect(after.value).toBe('');
-      expect(note('sa:s-2:Translation')?.textContent).toBe('Yours: A dog. · Enter to keep yours');
+      expect(note('sa:s-2:Translation')?.textContent).toBe('Yours: A dog. · Esc to keep theirs');
       after.focus();
       after.blur();
       await settle(30);

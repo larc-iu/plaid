@@ -185,6 +185,13 @@ test('a row edit refused after its segment was merged elsewhere says the segment
     await expect(row).toHaveValue(merged, { timeout: 15000 });
     await expect(B.page.getByText(`changed this segment to ${merged}.`)).toBeVisible();
     expect(await storedText(0)).toBe(merged);
+    // Luke, 2026-10-15: the typed text shows to copy from, and Enter does not
+    // write it.
+    await expect(B.page.getByText(`Yours: ${before}! · Esc to keep theirs`)).toBeVisible();
+    await row.click();
+    await row.press('Enter');
+    await B.page.waitForTimeout(800);
+    expect(await storedText(0)).toBe(merged);
   } finally {
     await A.ctx.close();
     await B.ctx.close();

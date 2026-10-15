@@ -103,6 +103,10 @@ const type = (el, value) => {
   el.setSelectionRange(value.length, value.length);
   el.dispatchEvent(new Event('input', { bubbles: true }));
 };
+const key = (el, k, init = {}) =>
+  el.dispatchEvent(
+    new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }),
+  );
 const writes = (client) =>
   client.calls.filter((c) => /^spans\.(create|update|delete)/.test(c.kind)).map((c) => c.args);
 
@@ -137,7 +141,7 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
 
       const after = cell('ma:m-1:Gloss');
       expect(after.value).toBe('');
-      expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Enter to keep yours');
+      expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Esc to keep theirs');
       after.focus();
       after.blur();
       await settle(30);
@@ -171,13 +175,37 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
 
     const after = cell('ma:m-1:Gloss');
     expect(after.value).toBe('');
-    expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Enter to keep yours');
+    expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Esc to keep theirs');
     after.focus();
     after.blur();
     await settle(30);
     expect(writes(client)).toEqual([]);
     expect(notifyWarning).toHaveBeenCalledWith('b changed this morpheme to th.');
     expect(notifyError).not.toHaveBeenCalledWith(KEPT_IN_CELL, expect.anything());
+  });
+
+  // Luke, 2026-10-15: after a split or merge the refused value was typed for
+  // a word that is gone. It stays under the cell to copy from, and Enter
+  // does not write it.
+  it('keeps nothing on Enter: the note stays and nothing is written', async () => {
+    const { client } = mount();
+    const restore = refuseWith(client, split());
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'THE');
+    c.blur();
+    await settle(30);
+    restore();
+
+    const after = cell('ma:m-1:Gloss');
+    after.focus();
+    key(after, 'Enter');
+    await settle(30);
+    expect(writes(client)).toEqual([]);
+    expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Esc to keep theirs');
+    key(cell('ma:m-1:Gloss'), 'Escape');
+    await settle(30);
+    expect(note('ma:m-1:Gloss')).toBeNull();
   });
 
   it('is put back to be sent again when the word was not re-cut', async () => {

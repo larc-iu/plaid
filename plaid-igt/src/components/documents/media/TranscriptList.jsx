@@ -494,6 +494,7 @@ const SegmentRow = memo(function SegmentRow({
               id={noteId}
               className="text-xs text-warning-foreground"
               typed={conflict.typed}
+              recut={conflict.recut}
             />
           )}
         </div>
@@ -1000,27 +1001,33 @@ export function TranscriptList({
   // by the segment that names it.
   const segmentAt = (key) => doc.alignmentTokens.find((t) => segmentKey(t) === key);
   const textOf = (token) => cpSlice(doc.body || '', token.begin, token.end);
+  // The ids of the segments on either side of `token` in the text.
+  const neighboursOf = (token) => {
+    const order = [...doc.alignmentTokens].sort((a, b) => a.begin - b.begin || a.end - b.end);
+    const at = order.findIndex((t) => t.id === token.id);
+    return { before: order[at - 1]?.id ?? null, after: order[at + 1]?.id ?? null };
+  };
   const cells = useCellEngine(doc, {
     read: (key) => {
       const token = segmentAt(key);
       return token ? textOf(token) : undefined;
     },
-    // A segment split or merged meanwhile has new times as well as new text,
-    // and its toast says the segment changed: "c changed this segment to …".
-    // New times alone (a boundary dragged) leave the text as it was.
+    // A segment split or merged meanwhile has a new neighbour (the half cut
+    // off, or none where the one merged into it was) as well as new text. Its
+    // toast says the segment changed ("c changed this segment to …"), and the
+    // text typed for it is only shown, never written. A text edit or a
+    // boundary dragged elsewhere leaves the neighbours as they were.
     shape: (key) => {
       const token = segmentAt(key);
-      return token
-        ? { from: token.metadata?.timeBegin, to: token.metadata?.timeEnd, text: textOf(token) }
-        : null;
+      return token ? { text: textOf(token), ...neighboursOf(token) } : null;
     },
     recut: (shape, key) => {
       const token = segmentAt(key);
       if (!shape || !token) return null;
       const text = textOf(token);
-      const retimed =
-        token.metadata?.timeBegin !== shape.from || token.metadata?.timeEnd !== shape.to;
-      return retimed && text !== shape.text ? { unit: 'segment', text, ids: [token.id] } : null;
+      const { before, after } = neighboursOf(token);
+      const recut = before !== shape.before || after !== shape.after;
+      return recut && text !== shape.text ? { unit: 'segment', text, ids: [token.id] } : null;
     },
     entityIds: (key) => {
       const token = segmentAt(key);

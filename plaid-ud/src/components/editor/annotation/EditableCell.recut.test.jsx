@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
-import { type, focus, blur } from '../../../test/keyboard.js';
+import { type, focus, blur, press } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
 import { testCells } from '../../../test/cells.js';
@@ -84,7 +84,7 @@ describe('a value refused because its word was re-cut meanwhile', () => {
       const { view, input, onAnnotationUpdate, heard } = await refusedAfter({ word });
       expect(input.value).toBe('sang');
       expect(view.container.querySelector('.editable-field-conflict')?.textContent).toBe(
-        'Yours: sing · Enter to keep yours',
+        'Yours: sing · Esc to keep theirs',
       );
       expect(heard).toMatchObject([
         { key: 't1:lemma', stored: 'sang', typed: 'sing', recut: { unit: 'word', text: word } },
@@ -96,6 +96,20 @@ describe('a value refused because its word was re-cut meanwhile', () => {
       await view.unmount();
     });
   }
+
+  // Luke, 2026-10-15: after a split or merge the refused value was typed for
+  // a word that is gone. It stays under the cell to copy from, and Enter
+  // does not write it.
+  it('keeps nothing on Enter: the note stays and nothing is written', async () => {
+    const { view, input, onAnnotationUpdate } = await refusedAfter({ word: 'si' });
+    await view.step(async () => focus(input));
+    await view.step(async () => press(input, 'Enter'));
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
+    expect(view.container.querySelector('.editable-field-conflict')?.textContent).toBe(
+      'Yours: sing · Esc to keep theirs',
+    );
+    await view.unmount();
+  });
 
   it('is put back to be sent again when the word was not re-cut', async () => {
     const { view, input, heard } = await refusedAfter({ word: 'sing' });

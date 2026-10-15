@@ -25,7 +25,7 @@ import { isConstraintViolation, isGone } from '../../lib/errors.js';
 //   counts as typed and not saved, so leaving the page asks first.
 // - conflicted: someone else stored another value first. The cell shows the
 //   stored value with the refused one under it. Enter keeps the refused one
-//   (`keepYours`), Escape or typing lets it go (`dismiss`), and leaving the
+//   (`keepYours`), unless the row was split or merged meanwhile, Escape or typing lets it go (`dismiss`), and leaving the
 //   cell sends nothing. Leaving the page does not ask about it.
 //
 // The reader (`read`) answers from the document, never from what a cell
@@ -416,11 +416,16 @@ export class CellEngine {
     this._announce?.({ kind: 'conflict', key, typed, stored, recut, entityIds: ids, since });
   }
 
-  /** Enter in a cell that lost: its value is kept. Answers it, or null. */
+  /**
+   * Enter in a cell that lost: its value is kept. Answers it, or null. Not
+   * after a re-cut of the cell's row (a split or merge): the value was typed
+   * for a row that is gone, so it stays under the cell to copy from and only
+   * Escape lets it go (Luke, 2026-10-15).
+   */
   keepYours(key) {
     const k = this._canonical(key);
     const c = this._conflicts.get(k);
-    if (!c) return null;
+    if (!c || c.recut != null) return null;
     this._conflicts.delete(k);
     this._changed(key);
     return c.typed;

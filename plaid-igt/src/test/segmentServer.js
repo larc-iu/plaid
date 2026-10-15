@@ -538,6 +538,25 @@ export function segmentServer(raw) {
         user,
       );
     },
+    // Another user's merge of the segment `id` with the one after it, `next`,
+    // as the Media tab makes it: `id` keeps its id and covers both, `next`
+    // goes.
+    otherMerges(id, next, user = 'b') {
+      return other(user, (on) => {
+        const tokens = layerOf(stored, 'alignL').tokens;
+        const segment = tokens.find((t) => t.id === id);
+        const after = tokens.find((t) => t.id === next);
+        on['tokens.delete'](next);
+        on['tokens.update'](id, segment.begin, after.end);
+        on['tokens.patchMetadata'](id, [
+          { op: 'set', path: ['timeEnd'], value: after.metadata.timeEnd },
+        ]);
+        return {
+          value: id,
+          ops: [{ description: `Delete token ${next}` }, { description: `Update token ${id}` }],
+        };
+      });
+    },
     // Another user's change of the segment `id`'s speaker or times: token
     // metadata, the body as it was.
     otherRelabels(id, patch, user = 'b') {

@@ -119,6 +119,38 @@ beforeEach(() => {
   toasts.error.length = 0;
 });
 
+// Luke, 2026-10-15: after a split or merge of its segment the refused text
+// was typed for a segment that is gone. It shows under the row to copy from,
+// Enter does not write it, and Escape lets it go.
+describe('a transcript row whose edit lost to a merge of its segment', () => {
+  it('says the segment changed, shows the typed text, and keeps nothing on Enter', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    server.otherMerges('a-1', 'a-2');
+    await typeAndEnter(r, 1, 'uno');
+    await drain();
+
+    expect(row(r.container, 1).value).toBe('one two');
+    expect(noteOf(r.container, 1)).toBe('Yours: uno · Esc to keep theirs');
+    expect(toasts.warn).toEqual(['b changed this segment to one two.']);
+
+    const before = writes(server);
+    await r.step(() => row(r.container, 1).focus());
+    await r.step(async () => {
+      press(row(r.container, 1), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(writes(server)).toBe(before);
+    expect(server.body).toBe('one two three');
+    expect(noteOf(r.container, 1)).toBe('Yours: uno · Esc to keep theirs');
+
+    await r.step(() => press(row(r.container, 1), 'Escape'));
+    expect(noteOf(r.container, 1)).toBe(null);
+    await r.unmount();
+  });
+});
+
 describe('a transcript row whose edit lost to another change of its segment', () => {
   it('shows the stored text, the refused one under it, and a toast naming the change', async () => {
     const server = segmentServer(RAW());

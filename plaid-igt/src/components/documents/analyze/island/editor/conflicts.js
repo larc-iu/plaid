@@ -30,13 +30,16 @@ export const conflicts = {
   _conflictNote(key) {
     const c = this.readOnly ? null : this._cells.conflictOf(key);
     if (!c) return nothing;
-    const { before, value, after } = conflictNoteParts(c.typed);
+    const { before, value, after } = conflictNoteParts(c.typed, c.recut);
+    // After a split or merge the note is there to copy from, so a press on it
+    // selects its text instead of going to the cell.
     return html`<span
-      class="igt-field-conflict"
+      class=${c.recut ? 'igt-field-conflict igt-field-conflict--copy' : 'igt-field-conflict'}
       role="status"
       id=${noteId(this._cells, key)}
       title=${`${before}${value}${after}`}
       @mousedown=${(e) => {
+        if (c.recut) return;
         e.preventDefault();
         e.currentTarget.parentElement?.querySelector('.igt-field')?.focus();
       }}
@@ -54,7 +57,8 @@ export const conflicts = {
 
   // Keys a cell that lost a conflict answers before anything else does. Plain
   // Enter with nothing typed since puts the refused value back in and lets
-  // the handler go on, which commits it and moves on. Escape lets it go.
+  // the handler go on, which commits it and moves on, unless the cell's row
+  // was split or merged meanwhile. Escape lets it go.
   _conflictKeys(e) {
     const el = e.target;
     const key = el?.dataset?.cellKey;
@@ -68,6 +72,9 @@ export const conflicts = {
     }
     if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     if (el.value !== (el.dataset.orig ?? '')) return;
+    // After a split or merge only the stored value is kept: Enter goes on as
+    // in any cell.
+    if (c.recut != null) return;
     // The value goes in before the engine lets the conflict go, so the render
     // that follows finds the cell typed into and leaves it be.
     el.value = c.typed;

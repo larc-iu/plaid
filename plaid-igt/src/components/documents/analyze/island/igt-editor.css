@@ -1618,6 +1618,10 @@
 }
 /* Room under the last tier for its note, which the grid's own scroll box
    would otherwise clip. */
+/* After a split or merge the note is there to copy from. */
+.igt-field-conflict--copy {
+  user-select: text;
+}
 .igt-grid:has(.igt-field-conflict) {
   padding-bottom: 14px;
 }

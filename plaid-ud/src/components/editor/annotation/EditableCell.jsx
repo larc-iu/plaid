@@ -395,6 +395,7 @@ export const EditableCell = React.memo(
             id={conflictId}
             className="editable-field-conflict"
             typed={conflict.typed}
+            recut={conflict.recut}
           />
         </>
       ) : (

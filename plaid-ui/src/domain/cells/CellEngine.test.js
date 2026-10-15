@@ -234,6 +234,11 @@ describe('a refused edit', () => {
     const d = engine.settle(t, refused());
     expect(d).toMatchObject({ kind: 'conflict', stored: 'the woman', recut: { text: 'seg 0-2' } });
     expect(heard[0]).toMatchObject({ kind: 'conflict', recut: { text: 'seg 0-2' } });
+    // Luke, 2026-10-15: the value was typed for a row that is gone, so Enter
+    // keeps nothing and the conflict stands until Escape lets it go.
+    expect(engine.keepYours('k')).toBe(null);
+    expect(engine.conflictOf('k')).toMatchObject({ typed: 'the woman walked home today' });
+    expect(engine.dismiss('k')).toBe(true);
   });
 
   it('refused for good (403, 404) is dropped and the cell shows what is stored', () => {

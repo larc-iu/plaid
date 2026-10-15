@@ -395,7 +395,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     const back = cell('ma:m-1:Gloss');
     expect(back.value).toBe('');
     expect(back.closest('.igt-cell__face')?.querySelector('.igt-field-conflict')?.textContent).toBe(
-      'Yours: AAA · Enter to keep yours',
+      'Yours: AAA · Esc to keep theirs',
     );
   });
 
