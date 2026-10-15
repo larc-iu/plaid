@@ -15,7 +15,7 @@ from .workspace import Workspace
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
 from ..core.limits import NGRAM_MAX, READ_LIMITS
-from .media import clock, recording_of
+from .media import clock, past_end, recording_of
 
 
 def _pct(n, d):
@@ -185,11 +185,18 @@ def time_line(times: Dict[str, Dict[str, float]], recs: Dict[str, Optional[float
             f'{"s" if len(held) != 1 else ""}, {clock(secs)} transcribed (segment lengths summed)')
     have = [i for i in ids if i in recs]
     known = [recs[i] for i in have if recs[i] is not None]
-    if have:
+    if have and not known:
+        line += f'; recordings: {len(have)} document{"s" if len(have) != 1 else ""}, of unknown length'
+    elif have:
         line += (f'; recordings: {len(have)} document{"s" if len(have) != 1 else ""}, {clock(sum(known))} in all'
                  + (f' ({len(have) - len(known)} of unknown length, left out)' if len(known) < len(have) else ''))
     else:
         line += '; no recordings'
+    # Segments past the end of their recording (H16-IGT-TOOLS-7).
+    past = [i for i in have if i in times and past_end(times[i]['last'], recs[i])]
+    if past:
+        line += (f'; in {len(past)} document{"s" if len(past) != 1 else ""} the segments run past the end '
+                 'of the recording')
     return line + '.'
 
 

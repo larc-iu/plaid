@@ -171,6 +171,9 @@ class Workspace(BaseWorkspace):
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
         # Whether a read this turn printed the format legend (``render``).
         self.legend_shown = False
+        # (has a recording, its length) by document, read once a turn
+        # (``media.recording_of``).
+        self.recordings: Dict[str, Tuple[bool, Optional[float]]] = {}
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
         # The version of each document a change was staged in from a query
         # without the turn loading it, read as the change was staged
@@ -304,7 +307,9 @@ class Workspace(BaseWorkspace):
         # document of the same read (``pointer`` False) says nothing.
         view = read_view(self.project, fields) if fields is not None else None
         legend = True if not self.legend_shown else False if pointer else None
-        recording = (True, doc.media_duration) if doc.media_url else None
+        from .media import recording_of
+        has, seconds = recording_of(self, doc.id)
+        recording = (True, seconds) if has else None
         out = render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out,
                               legend=legend, view=view, recording=recording)

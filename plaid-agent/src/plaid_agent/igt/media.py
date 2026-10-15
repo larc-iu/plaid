@@ -19,13 +19,15 @@ from typing import Optional, Tuple
 
 def recording_of(ws, doc_id: str) -> Tuple[bool, Optional[float]]:
     """Whether a document has a recording, and its length in seconds as core
-    stored it (None when core could not read it). A document loaded this turn
-    says so itself, any other is one light read."""
-    doc = ws._docs.get(doc_id)
-    if doc is not None:
-        return bool(doc.media_url), doc.media_duration
-    raw = ws.client.documents.get(doc_id) or {}
-    return bool(raw.get('media_url')), raw.get('media_duration')
+    stored it (None when core could not read it). One light read of the
+    document a turn, never the parsed document: a parse is kept while the
+    document's version stands, and core's backfill stores a length without
+    moving the version (H16-REVIEW-5)."""
+    memo = ws.recordings
+    if doc_id not in memo:
+        raw = ws.client.documents.get(doc_id) or {}
+        memo[doc_id] = (bool(raw.get('media_url')), raw.get('media_duration'))
+    return memo[doc_id]
 
 
 def clock(seconds: Optional[float]) -> str:
@@ -39,6 +41,22 @@ def clock(seconds: Optional[float]) -> str:
 
 def at_time(seconds: float) -> str:
     """``1:02.5`` for a point in a recording, to a tenth of a second."""
-    m, sec = divmod(max(0.0, seconds), 60)
-    h, m = divmod(int(m), 60)
-    return (f'{h}:{m:02d}:' if h else f'{m}:') + f'{sec:04.1f}'
+    # In tenths before the minutes are taken, so 59.97 s is 1:00.0, not 0:60.0
+    # (H16-IGT-TOOLS-7).
+    tenths = int(round(max(0.0, seconds) * 10))
+    m, t = divmod(tenths, 600)
+    h, m = divmod(m, 60)
+    return (f'{h}:{m:02d}:' if h else f'{m}:') + f'{t // 10:02d}.{t % 10}'
+
+
+#: Seconds a segment may run past a recording's stored length before it is
+#: said to: the length is read from a header, to about a hundredth.
+PAST_END_SLACK = 0.05
+
+
+def past_end(last: Optional[float], length: Optional[float]) -> Optional[str]:
+    """``"segments run to 1:04, past its end at 1:00"`` when the last segment
+    ends past a recording of known length, else None."""
+    if last is None or length is None or last <= length + PAST_END_SLACK:
+        return None
+    return f'segments run to {clock(last)}, past its end at {clock(length)}'

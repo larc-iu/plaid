@@ -1030,11 +1030,12 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
 def time_head(doc: IgtDoc, recording: Optional[Tuple[bool, Optional[float]]] = None) -> str:
     """What a read's header says of the recording and the time alignment,
     or ''. ``recording``: (has one, its length in seconds or None)."""
-    from .media import clock
+    from .media import clock, past_end
     bits = []
     if recording and recording[0]:
-        bits.append(f'recording {clock(recording[1])}' if recording[1] is not None
-                    else 'recording of unknown length')
+        past = past_end(max((g.stop for g in doc.segments), default=None), recording[1])
+        bits.append((f'recording {clock(recording[1])}' + (f' ({past})' if past else ''))
+                    if recording[1] is not None else 'recording of unknown length')
     if doc.segments:
         secs = sum(g.stop - g.start for g in doc.segments)
         bits.append(f'{len(doc.segments)} time-aligned segment{"s" if len(doc.segments) != 1 else ""}, '

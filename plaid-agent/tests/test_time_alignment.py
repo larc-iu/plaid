@@ -134,9 +134,48 @@ def test_the_recording_length_is_the_one_core_stored_at_upload_and_the_segments_
     ws = Workspace(c, load_project(c, proj.project_id))
     out = for_model(call_tool(ws, 'corpus_stats', {}))
     assert ('Time alignment: 2 segments in 1 document, 0:03 transcribed (segment lengths summed); '
-            'recordings: 1 document, 0:04 in all.') in out, out
+            'recordings: 1 document, 0:04 in all; in 1 document the segments run past the end of the '
+            'recording.') in out, out
     doc = proj.ids['d1']
     assert c.documents.get(doc)['media_duration'] == pytest.approx(3.5)
     assert media.recording_of(ws, doc) == (True, pytest.approx(3.5))
     out = for_model(call_tool(ws, 'read_document', {'document': 'Text 1'}))
-    assert 'recording 0:04; 2 time-aligned segments' in out and '@0:04.0-0:05.2' in out, out
+    assert 'recording 0:04 (segments run to 0:05, past its end at 0:04); 2 time-aligned segments' in out and '@0:04.0-0:05.2' in out, out
+
+
+def test_a_time_near_a_whole_minute_reads_as_the_next_minute():
+    """H16-IGT-TOOLS-7: rounded to tenths before the minutes are taken."""
+    assert media.at_time(59.97) == '1:00.0' and media.at_time(119.96) == '2:00.0'
+    assert media.at_time(3599.97) == '1:00:00.0' and media.at_time(59.94) == '0:59.9'
+
+
+def test_segments_past_the_end_of_the_recording_are_said(monkeypatch):
+    w = _ws(monkeypatch, seconds=4.5)
+    out = for_model(call_tool(w, 'read_document', {'document': 'Text 1'}))
+    assert 'recording 0:04 (segments run to 0:05, past its end at 0:04)' in out.splitlines()[0], out
+    out = for_model(call_tool(w, 'corpus_stats', {}))
+    assert 'in 1 document the segments run past the end of the recording.' in out, out
+
+
+def test_recordings_all_of_unknown_length_say_so(monkeypatch):
+    w = _ws(monkeypatch, seconds=125.0)
+    w.client._documents['d1']['media_duration'] = None
+    out = for_model(call_tool(w, 'corpus_stats', {}))
+    assert 'recordings: 1 document, of unknown length.' in out and '0:00 in all' not in out, out
+
+
+def test_a_length_stored_after_the_document_was_parsed_is_read_on_the_next_turn(proj):
+    """H16-REVIEW-5: core's backfill stores a length without a new version,
+    and a parse is kept for its version, so the length is never taken from
+    the parse. The kept parse is made to hold no length, as one made before
+    the backfill would."""
+    c = proj.client
+    ws = Workspace(c, load_project(c, proj.project_id))
+    doc = ws.doc(proj.ids['d1'])
+    assert doc.media_duration == pytest.approx(3.5)
+    doc.media_duration = None  # the kept parse, as before the backfill
+    ws2 = Workspace(c, load_project(c, proj.project_id))
+    assert ws2.doc(proj.ids['d1']) is doc, 'the parse is kept across turns'
+    out = for_model(call_tool(ws2, 'read_document', {'document': 'Text 1'}))
+    assert 'recording 0:04' in out.splitlines()[0] and 'unknown length' not in out, out
+    assert 'recordings: 1 document, 0:04 in all' in for_model(call_tool(ws2, 'corpus_stats', {}))
