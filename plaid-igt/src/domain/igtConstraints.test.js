@@ -4,6 +4,7 @@ import {
   fieldConstraints,
   igtFields,
   queueFieldDeclarations,
+  refusedBySave,
   tagsetRefusal,
   valueSetsAllow,
   wantedConstraints,
@@ -223,5 +224,57 @@ describe('a tagset save the stored values refuse', () => {
     });
     expect(tagsetRefusal(e)).toBe('3 values in POS are not in the tagset: XYZ, ABC.');
     expect(tagsetRefusal(new Error('x'))).toBeNull();
+  });
+});
+
+describe('what a settings save would have the server refuse', () => {
+  const closedRule = {
+    type: 'value-set',
+    values: ['N', 'V', '1SG', 'NOM'],
+    delimiters: '.',
+    parts: 'all',
+  };
+  const field = (id, constraints) => ({ id, name: id, config: governed, constraints });
+  const client = (answers) => {
+    const asked = [];
+    return {
+      asked,
+      spanLayers: {
+        refusedValues: async (id, rule, options) => {
+          asked.push([id, rule, options]);
+          return answers[id];
+        },
+      },
+    };
+  };
+
+  it('asks only of a field whose rules change to a closed list, and keeps the ones it refuses', async () => {
+    const c = client({
+      A: { count: 2, valueCount: 1, values: [{ value: 'dog', parts: ['dog'], count: 2 }] },
+      B: { count: 0, valueCount: 0, values: [] },
+    });
+    const fields = [
+      field('A', { igt: [{ type: 'single-span' }] }),
+      field('B', null),
+      // Already holds the list: its stored values keep to it.
+      field('C', { igt: [{ type: 'single-span' }, closedRule] }),
+    ];
+    expect(await refusedBySave(c, fields, tagsets('closed'))).toEqual([
+      {
+        layerId: 'A',
+        field: 'A',
+        count: 2,
+        valueCount: 1,
+        values: [{ value: 'dog', parts: ['dog'], count: 2 }],
+      },
+    ]);
+    expect(c.asked.map((a) => a[0])).toEqual(['A', 'B']);
+    expect(c.asked[0].slice(1)).toEqual([closedRule, { limit: 5 }]);
+  });
+
+  it('asks nothing when no list is closed', async () => {
+    const c = client({});
+    expect(await refusedBySave(c, [field('A', null)], tagsets('mixed'))).toEqual([]);
+    expect(c.asked).toEqual([]);
   });
 });

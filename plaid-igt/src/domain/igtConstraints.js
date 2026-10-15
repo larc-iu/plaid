@@ -139,6 +139,32 @@ export const queueFieldDeclarations = (b, spanLayers, projectConfig) => {
   return n;
 };
 
+/**
+ * What a settings save would have the server refuse: for every field in
+ * `spanLayers` (as `queueFieldDeclarations` takes them) whose rules under
+ * `projectConfig` change to a closed list, the server's answer to which
+ * stored values that list refuses (`refusedValues`, with its exemptions),
+ * kept when it refuses any. Asked before the save, so the screen can say
+ * what is in the way instead of only reading the refusal. Returns
+ * `[{layerId, field, count, valueCount, values: [{value, parts, count}]}]`.
+ */
+export const refusedBySave = async (client, spanLayers, projectConfig, limit = 5) => {
+  const asks = [];
+  for (const sl of spanLayers || []) {
+    if (!sl?.id) continue;
+    const wanted = fieldConstraints(sl.config, projectConfig);
+    if (sameConstraints(wanted, storedConstraints(sl, IGT_NAMESPACE))) continue;
+    const rule = wanted.find((c) => c.type === 'value-set');
+    if (!rule) continue;
+    asks.push(
+      client.spanLayers
+        .refusedValues(sl.id, rule, { limit })
+        .then((r) => ({ layerId: sl.id, field: sl.name, ...r })),
+    );
+  }
+  return (await Promise.all(asks)).filter((r) => r.count > 0);
+};
+
 /** Every IGT field of a layer info, as `queueFieldDeclarations` takes them. */
 export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {}).flat();
 

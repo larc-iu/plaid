@@ -4,7 +4,12 @@ import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsetName, readTagsets } from '@/domain/tagsets';
-import { igtFields, queueFieldDeclarations, tagsetRefusal } from '@/domain/igtConstraints';
+import {
+  igtFields,
+  queueFieldDeclarations,
+  refusedBySave,
+  tagsetRefusal,
+} from '@/domain/igtConstraints';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { expectStored, isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
@@ -87,6 +92,14 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         ...project?.config,
         [IGT_NAMESPACE]: { ...project?.config?.[IGT_NAMESPACE], tagsets: next },
       };
+      // A closed list the stored values break would be refused whole: ask
+      // first, and the editor says which values are in the way.
+      const refused = await refusedBySave(client, fields, after);
+      if (refused.length) {
+        throw Object.assign(new Error('Values in use are not in the list'), {
+          refusedValues: refused,
+        });
+      }
       await tagsetsCell.write(async (expected) => {
         await client.batched((b) => {
           b.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
@@ -97,6 +110,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         return next;
       });
     } catch (error) {
+      if (error?.refusedValues) throw error;
       console.error('Failed to save tagsets:', error);
       notifyError(tagsetRefusal(error) ?? error, 'Failed to save the tagsets');
       // Someone else saved since: show what is stored now.

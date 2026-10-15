@@ -113,21 +113,28 @@ export const TagsetsManager = ({
   const [pendingDelete, setPendingDelete] = useState(null);
   // A seed waiting on a decision: { name, tags, lexical } (see seedCandidates).
   const [seedPending, setSeedPending] = useState(null);
+  // A change to the tagset `name` not saved because values in use are not in
+  // its closed list: { name, fields } (`refusedValues` of the rejection).
+  const [refused, setRefused] = useState(null);
 
-  const save = async (next, meta) => {
+  const save = async (next, meta, name) => {
     setDraft(next);
     try {
       await onSaveChanges(next, meta);
+      setRefused(null);
       return true;
-    } catch {
+    } catch (error) {
       // The settings wrapper reports it; roll the draft back so what's on
-      // screen is what the server has.
+      // screen is what the server has. Values in the way of a closed list
+      // are shown in the tagset's panel.
       setDraft(tagsets);
+      if (error?.refusedValues) setRefused({ name, fields: error.refusedValues });
       return false;
     }
   };
 
-  const patch = (name, changes) => save({ ...draft, [name]: { ...draft[name], ...changes } });
+  const patch = (name, changes) =>
+    save({ ...draft, [name]: { ...draft[name], ...changes } }, undefined, name);
 
   const handleAddTagset = async () => {
     // composed, as the server stores the name, so a name typed in another
@@ -372,6 +379,30 @@ export const TagsetsManager = ({
                     </label>
                   ))}
                   <p className="max-w-2xl text-xs text-muted-foreground">{enforceNote}</p>
+                  {refused?.name === name && (
+                    <Notice
+                      tone="warning"
+                      role="alert"
+                      className="max-w-2xl text-xs"
+                      data-testid="tagset-refused"
+                    >
+                      <div>Not saved. These values are in use and not in the list:</div>
+                      {refused.fields.map((f) => (
+                        <div key={f.layerId}>
+                          <span className="font-medium">{f.field}</span>: {f.count}{' '}
+                          {f.count === 1 ? 'annotation' : 'annotations'},{' '}
+                          {f.values.map((v, i) => (
+                            <span key={i}>
+                              {i > 0 && ', '}
+                              <span className="font-mono">{String(v.value)}</span> ({v.count})
+                            </span>
+                          ))}
+                          {f.valueCount > f.values.length &&
+                            `, and ${f.valueCount - f.values.length} more`}
+                        </div>
+                      ))}
+                    </Notice>
+                  )}
                 </div>
 
                 {/* Delimiters */}
