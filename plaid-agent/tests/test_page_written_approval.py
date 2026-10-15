@@ -1,12 +1,14 @@
 """A plan the app writes before it sends the approval (tagset changes, which
-the assistant's delegated token may not write). The page asks a read-only
-preflight first, which runs every check the approval runs and writes
-nothing; only on ``ready`` does it write, and then it sends the approval with
-``wrote_first``. Such an approval is applied once the changes read as planned,
+the assistant's delegated token may not write). The page asks a preflight
+first, which runs every check the approval runs and writes nothing but a mark
+on the plan that its page writes next; only on ``ready`` does it write, and
+then it sends the approval with ``wrote_first``. Such an approval is applied once the changes read as planned,
 whatever landed after the preflight (a discard, a newer plan, another turn),
 and records the approver as the approval's own path does. Settings that read
 as planned by any other route take the approval's own path, and a discard of
-them is allowed (H16 review and REV-AGENT-1 to -3, -5). Against a live core,
+them is allowed, unless a ready preflight marked the plan: a discard of a
+marked plan whose settings read as planned records it applied (H16 review,
+REV-AGENT-1 to -3, -5, R2-1). Against a live core,
 with the app's write in Python (``write_settings``)."""
 
 import pytest
@@ -72,12 +74,13 @@ def _applied(h):
 
 # --- the preflight -------------------------------------------------------------------
 
-def test_the_preflight_is_ready_for_an_undecided_plan_and_writes_nothing(proj):
+def test_the_preflight_is_ready_for_an_undecided_plan_and_only_marks_it(proj):
     _ws, plan = _planned(proj)
     store = _seed(proj, plan)
-    before = store.load('c1')
     assert _ready(_ask(proj, plan, preflight=True))
-    assert store.load('c1') == before
+    item, meta = _item(store)
+    assert item['status'] is None and item['plan']['page_writing'] is True, 'marked: the page writes next'
+    assert meta.get('pending') is None
     assert 'NOM' not in str(proj.client.projects.get(proj.project_id)['config'])
 
 
@@ -199,3 +202,47 @@ def test_settings_written_to_another_value_are_not_applied(proj):
     write_settings(proj.client, other.project, other.ops)
     h = _ask(proj, plan, wrote_first=True)
     assert not _applied(h) and _item(store)[0]['status'] != 'applied', (h.errors, h.done)
+
+
+# --- the approval lost after the page wrote (R2-1) ----------------------------------------
+
+def test_a_discard_after_a_lost_approval_records_the_written_plan_applied(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    write_settings(proj.client, ws.project, ws.ops)  # the page wrote; its approval never came
+    h = _ask(proj, plan, op='discard', request_id='r10')
+    assert h.done[0]['kind'] == 'refused' and h.done[0]['why'] == 'decided', h.done
+    assert h.done[0]['message'] == 'The settings were already written, so the plan is recorded as applied.'
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and 'page_writing' not in item['plan'], item
+    # Approving again is a duplicate, not a second write.
+    assert _ask(proj, plan, request_id='r11').done[0]['duplicate'] is True
+
+
+def test_a_marked_plan_the_page_never_wrote_is_discarded(proj):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    assert _ask(proj, plan, op='discard', request_id='r10').done[0]['kind'] == 'done'
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_a_marked_plan_whose_settings_moved_is_discarded(proj):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    other = Workspace(proj.client, load_project(proj.client, proj.project_id))
+    call_tool(other, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM', 'ACC']}})
+    write_settings(proj.client, other.project, other.ops)
+    assert _ask(proj, plan, op='discard', request_id='r10').done[0]['kind'] == 'done'
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_an_approval_clears_the_mark(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    write_settings(proj.client, ws.project, ws.ops)
+    assert _applied(_ask(proj, plan, request_id='r10', wrote_first=True))
+    assert 'page_writing' not in _item(store)[0]['plan']

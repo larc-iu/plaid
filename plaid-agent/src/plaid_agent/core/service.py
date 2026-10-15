@@ -720,6 +720,16 @@ class BaseAssistantService(BaseService):
             elif may_have_written(item) and not nothing_landed(ctx.client, item):
                 self._refuse(ctx, 'written', meta=meta)
                 return
+            elif (item.get('plan') or {}).get(PAGE_WRITING):
+                # A ready preflight let the page write, and its approval never
+                # came (lost, the service offline): written, it is applied,
+                # as a run that wrote settles applied over a discard.
+                counts = self._page_wrote(ctx, item)
+                if counts:
+                    written = self._settle_written(ctx, item, plan_id)
+                    self._refuse(ctx, 'decided', ALREADY_WRITTEN,
+                                 meta=written if written is not None else meta)
+                    return
             out = {}
 
             def change(stored):
@@ -975,6 +985,19 @@ class BaseAssistantService(BaseService):
         if refusal:
             ctx.helper.error(refusal)
             return
+        if item.get('status') is None and not (item.get('plan') or {}).get(PAGE_WRITING):
+            # The page writes next: a discard of the plan from now on asks
+            # whether it did (`_op_discard`).
+            def mark(stored):
+                index, it = find_plan(stored, plan_id)
+                if it is None or it.get('status') is not None:
+                    return None
+                display = list(stored['display'])
+                display[index] = {**it, 'plan': {**it['plan'], PAGE_WRITING: True}}
+                return {'messages': stored['messages'], 'display': display}
+            if not self._write(ctx.store, ctx.conv_id, mark, None):
+                self._refuse(ctx, 'gone')
+                return
         ctx.helper.complete({'kind': 'ready'})
 
     def _page_wrote(self, ctx, item) -> Optional[Dict[str, int]]:
@@ -1008,6 +1031,19 @@ class BaseAssistantService(BaseService):
         counts = self._page_wrote(ctx, item)
         if not counts:
             return False
+        ops = item['plan'].get('ops') or []
+        if self._settle_written(ctx, item, plan_id) is None:
+            ctx.helper.error('The changes were applied, but this conversation was deleted.')
+            return True
+        ctx.helper.complete({'kind': 'applied', 'applied': sum(counts.values()),
+                             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
+                             'message': f'Applied {self.summarize(ops)}.'})
+        return True
+
+    def _settle_written(self, ctx, item, plan_id) -> Optional[Dict[str, Any]]:
+        """Settle a plan its page wrote as applied, recorded as the
+        approval's own path records it. The sidebar entry as written, or None
+        when the conversation is gone."""
         plan = item['plan']
         ops = plan.get('ops') or []
         summary = plan.get('summary') or self.summarize(ops)
@@ -1028,12 +1064,8 @@ class BaseAssistantService(BaseService):
         change = plan_settling(plan_id, 'applied', note, documents=plan.get('documents'),
                                expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **outcome)
         if not self._write(ctx.store, ctx.conv_id, change, None):
-            ctx.helper.error('The changes were applied, but this conversation was deleted.')
-            return True
-        ctx.helper.complete({'kind': 'applied', 'applied': sum(counts.values()),
-                             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
-                             'message': f'Applied {self.summarize(ops)}.'})
-        return True
+            return None
+        return ctx.store.meta(ctx.conv_id) or {}
 
     def _running_here(self, ctx) -> bool:
         """Whether this very request already runs in this process (core
@@ -1984,6 +2016,13 @@ def _lock_left(client, document_id: str, user_id: str) -> Optional[int]:
 #: core keeps 1,000 UTF-16 units of it, so a plan naming many rules stays
 #: well inside both.
 AUDIT_LABEL_MAX = 400
+
+
+#: On a plan the page writes, set by a ready preflight: the page may have
+#: written it since. Settling the plan clears it (`compact_plan`).
+PAGE_WRITING = 'page_writing'
+#: Why a discard of such a plan, written, settled it applied.
+ALREADY_WRITTEN = 'The settings were already written, so the plan is recorded as applied.'
 
 
 def decided_refusal(item: Dict[str, Any]) -> Optional[str]:

@@ -743,9 +743,10 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     rows = len(changes) - len(ruled)
     keeps_ops = bool(plan.get('page_writes'))
     if (('ops' not in plan or keeps_ops) and 'expansion' not in plan and 'writing' not in plan
-            and rows <= SETTLED_ROWS_MAX):
+            and 'page_writing' not in plan and rows <= SETTLED_ROWS_MAX):
         return item
-    dropped_keys = ('documents', 'expansion', 'writing') + (() if keeps_ops else ('ops',))
+    # ``page_writing`` (a ready preflight's mark, core.service) is over once settled.
+    dropped_keys = ('documents', 'expansion', 'writing', 'page_writing') + (() if keeps_ops else ('ops',))
     kept = {k: v for k, v in plan.items() if k not in dropped_keys}
     if 'ops' in plan and not keeps_ops:
         kept['op_count'] = len(plan.get('ops') or [])
