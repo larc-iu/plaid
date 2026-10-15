@@ -177,6 +177,9 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'retype_sentence':
         return f'Planned retyping {a.get("ref")}{in_doc(a)}'
 
+    if name == 'app_guide':
+        return 'Read the app guide' + (f' on {q(a["topic"])}' if a.get('topic') else ', its parts')
+
     # --- tagsets: one tool, the action says which ------------------------------
     if name == 'tagsets':
         act = a.get('action')
@@ -217,12 +220,14 @@ _PROGRESS = {
     'remove_example': lambda a: 'Dropping a usage example…',
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
+    'app_guide': lambda a: 'Reading the app guide…',
 }
 
 
 # The tagsets tool plans with edit and assign, and only reads with help (its
 # manual) and check.
-_READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(a.get('action'))}
+_READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(a.get('action')),
+            'app_guide': lambda a: META}
 
 TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'),
                     reading=_READING)

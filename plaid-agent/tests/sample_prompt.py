@@ -97,12 +97,24 @@ def _render(app: str) -> str:
     return '\n'.join(parts)
 
 
+def copy_igt_guide() -> None:
+    """The igt app's user guide into the package, for an install without the
+    app's sources (plaid_agent/igt/guide.py reads the repository's own where
+    it can)."""
+    from plaid_agent.igt.guide import PACKAGED_GUIDE, REPO_GUIDE
+    if REPO_GUIDE.is_file():
+        PACKAGED_GUIDE.write_text(REPO_GUIDE.read_text(encoding='utf-8'), encoding='utf-8')
+        print(f'wrote {os.path.normpath(str(PACKAGED_GUIDE))}')
+
+
 def main() -> None:
     for app in sys.argv[1:] or APPS:
         os.makedirs(os.path.dirname(out(app)), exist_ok=True)
         with open(out(app), 'w', encoding='utf-8') as fh:
             fh.write(render(app))
         print(f'wrote {os.path.normpath(out(app))}')
+    if not sys.argv[1:] or 'igt' in sys.argv[1:]:
+        copy_igt_guide()
 
 
 if __name__ == '__main__':

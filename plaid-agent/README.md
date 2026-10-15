@@ -453,6 +453,9 @@ The modules below are `igt/` unless they say otherwise.
   document, a sentence, a word, a morpheme, or a value), `plan_status`,
   `drop_planned` (by number, field or document), `resume_plan` (the plan an
   earlier message left waiting, carried into this turn's), and
+  `app_guide` (the app's user guide, `plaid-igt/docs/igt-guide.adoc`, a part
+  at a time by name, for "how do I ..." questions; `guide.py`, with a copy in
+  the package that `bb sample-prompts` refreshes), and
   the escape hatch `query` + `query_help` (Plaid's query language,
   project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field` (one field, or several at once with `values`, each on the refs

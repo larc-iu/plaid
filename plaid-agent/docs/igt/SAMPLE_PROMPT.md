@@ -97,7 +97,7 @@ Running code:
 
 ## Tools
 
-74 tools, in the order the model receives them: 44 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+75 tools, in the order the model receives them: 44 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -683,6 +683,12 @@ PLAN: set up tagsets (the value lists fields are held to): create, change, close
 - `field` (string)
 - `lexicon` (string)
 - `changes` (object)
+
+### app_guide
+
+The app's user guide, for "how do I ..." questions. No topic lists its parts.
+
+- `topic` (string)
 
 ### read_guideline
 

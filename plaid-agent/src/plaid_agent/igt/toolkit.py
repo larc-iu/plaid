@@ -31,6 +31,7 @@ from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon
                     t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
 from .scope import among_documents
+from .guide import t_app_guide
 from .tagsets import t_tagsets
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
@@ -537,6 +538,13 @@ TOOLS += [_fn('tagsets',
                'tagset': {'type': 'string'}, 'field': {'type': 'string'}, 'lexicon': {'type': 'string'},
                'changes': {'type': 'object'}}, ['action'])]
 _IMPL['tagsets'] = t_tagsets
+
+# The app's user guide behind one short schema: most conversations never ask
+# how the app is used (guide.py).
+TOOLS += [_fn('app_guide',
+              'The app\'s user guide, for "how do I ..." questions. No topic lists its parts.',
+              {'topic': {'type': 'string'}}, [])]
+_IMPL['app_guide'] = t_app_guide
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 
