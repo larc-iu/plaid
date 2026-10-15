@@ -901,7 +901,7 @@ def test_a_word_reference_reaches_its_token(ws):
 def test_reshaping_and_annotating_the_same_token_cannot_share_a_plan(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
     out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma',
-                                      'value': 'ir'})
+                                      'value': 'irse'})
     assert 'writes to one of its words' in out and len(ws.ops) == 1
     from plaid_agent.ud.plan import validate_ops
     with pytest.raises(ValueError, match='reshapes a token and annotates'):
@@ -919,9 +919,9 @@ def test_the_reshape_refusal_is_the_funnels_and_reads_the_same_in_both_orders(ws
     from plaid_agent.core.tools import ToolError
 
     run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
-    after = run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='NOUN')
+    after = run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='PROPN')
     ws.ops.clear()
-    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='NOUN')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='PROPN')
     before = run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
     assert before == after
     assert 'both reshapes a token and writes to one of its words' in after
@@ -954,7 +954,7 @@ def test_the_reshape_guards_read_the_registry_not_a_kind_name(ws, monkeypatch):
     # Annotating a word the other kind deletes.
     ws.ops.append(dict(recut))
     assert 'writes to one of its words' in call_tool(
-        ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'})
+        ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'irse'})
     assert len(ws.ops) == 1
 
     # And the other way round: reshaping a token the other kind already recuts.
@@ -1101,7 +1101,7 @@ def test_a_failed_parse_does_not_claim_that_nothing_was_written(ws, monkeypatch)
     import plaid_client.services as services
     from plaid_agent.core.plan import PlanError
 
-    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='lemma', value='ir')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='lemma', value='irse')
     # A parse of a DIFFERENT document, which is the combination the tools allow.
     ws.ops.append({'kind': 'run_parse', 'document_ids': ['ud-other'], 'project_id': PID,
                    'service_id': 'stanza-parser', 'language': 'es',

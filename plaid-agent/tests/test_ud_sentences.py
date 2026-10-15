@@ -482,7 +482,7 @@ def test_a_reshape_will_not_join_a_plan_that_annotates_the_token_it_deletes(ws):
     """Annotate-then-reshape was staged, shown on the card, approved, and only
     then refused by validate_ops. Both orders are the certain-delete funnel's
     now, and UD supplies the wording."""
-    run(ws, 'set_field', document='Viaje', refs=['s1.w2'], field='upos', value='ADP')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w2'], field='upos', value='ADV')
     out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'e', 'l'])
     assert 'writes to one of its words' in out, out
     assert not any(op.get('kind') == 'set_words' for op in ws.ops)

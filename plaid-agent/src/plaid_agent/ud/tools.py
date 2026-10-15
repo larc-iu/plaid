@@ -609,10 +609,21 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         return _set_features(ws, doc, layer_id, refs, value)
     value = unmark(value, field)
     words = _words(ws, doc, refs)
-    staged = []
+    staged, dropped, changed = [], [], []
     for w in words:
         sp = w.fields.get(field)
         old = sp.value if sp else ''
+        # A word that holds the value already, stored or planned, is left out:
+        # the write would restate it and restamp its provenance as the plan's
+        # (Eline 2026-10-07, igt's set_field skips it too). Set back to what
+        # is stored, the earlier planned change is dropped instead.
+        if _planned_value(ws, layer_id, w, field) == value:
+            continue
+        changed.append(w)
+        if old == value:
+            dropped += [op for op in ws.ops if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id
+                        and op.get('token_id') == w.id]
+            continue
         # The value it replaces, as igt's card says it: lemma "run" → "ran".
         label = (f'{field} {qv(old)} → {qv(value)}' if old and value else f'{field} = {qv(value)}' if value
                  else f'clear {field} {qv(old)}' if old else f'clear {field}')
@@ -622,9 +633,15 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
                        'label': label,
                        'ref': word_ref(ws.sentence_of(doc, w), w)})
     ws.add_ops(staged)
+    if dropped:
+        gone = {id(op) for op in dropped}
+        ws.ops[:] = [op for op in ws.ops if id(op) not in gone]
+    if not changed:
+        return (f'Nothing to change: {field} is already "{value}" on every word named.' if value
+                else f'Nothing to change: none of the words named has {field}.')
     what = f'{field} = "{value}"' if value else f'{field} cleared'
-    return f'Planned {what} on {len(words)} word(s): ' + ', '.join(
-        word_ref(ws.sentence_of(doc, w), w) for w in words) + _same_form_left(
+    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(
+        word_ref(ws.sentence_of(doc, w), w) for w in changed) + _same_form_left(
         ws, doc, words, lambda o: _planned_value(ws, layer_id, o, field) == value)
 
 
@@ -958,7 +975,7 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     stale = [] if relabel else [
         word.suppressor_id,
         doc.suppressor_over(head_lemma.id if head_lemma else None, lemma.id if lemma else None)]
-    ws.add_op({'kind': 'set_head', 'word_id': word.id, 'head_id': head_word.id,
+    op = {'kind': 'set_head', 'word_id': word.id, 'head_id': head_word.id,
                'lemma_layer_id': ws.project.layer('lemma'),
                'relation_layer_id': ws.project.relation_layer_id,
                'word_form': word.form, 'head_form': head_word.form,
@@ -972,7 +989,14 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
                **({'relabel': True} if relabel else {}),
                'label': (f'{word_ref(sentence, word)} root' if head == 0
                          else f'{word_ref(sentence, word)} {deprel} of word {head}'),
-               'ref': word_ref(sentence, word)})
+               'ref': word_ref(sentence, word)}
+    # The relation it already has, and nothing planned for it: the write would
+    # restate it and restamp its provenance as the plan's (Eline 2026-10-07).
+    if relabel and word.deprel == deprel and ws.replacing(op) is None:
+        return (f'Nothing to change: {word_ref(sentence, word)} ("{word.form}") is already '
+                + (f'the root of s{sentence.index}.' if head == 0
+                   else f'{deprel} of word {head} ("{head_word.form}").'))
+    ws.add_op(op)
     if head == 0:
         return f'Planned {word_ref(sentence, word)} ("{word.form}") as the root of s{sentence.index}.'
     return (f'Planned {word_ref(sentence, word)} ("{word.form}") as {deprel} of '

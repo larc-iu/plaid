@@ -140,8 +140,8 @@ def test_a_cut_at_a_sentences_first_word_says_where_a_cut_can_go(ws):
                                  's1.w4 "mar"', 's1.w4 (mar)', 's1.w4: mar', 's1.w4=mar', 's1."mar"',
                                  's1.mar', 's1.Mar', 's1.mar#1'])
 def test_every_spelling_of_one_word_names_it(ws, ref):
-    out = run(ws, 'set_field', document='Viaje', refs=[ref], field='lemma', value='mar')
-    assert out == 'Planned lemma = "mar" on 1 word(s): s1.w4', (ref, out)
+    out = run(ws, 'set_field', document='Viaje', refs=[ref], field='lemma', value='mar2')
+    assert out == 'Planned lemma = "mar2" on 1 word(s): s1.w4', (ref, out)
     assert [op['token_id'] for op in ws.ops] == ['uw-3']
 
 
@@ -244,9 +244,9 @@ def test_a_number_set_words_renumbers_is_refused_and_a_form_says_which(ws2):
     out = run(ws, 'set_field', document='Linea', refs=['s1.w5'], field='upos', value='ADV')
     assert out.endswith('A plan names words by their numbers now: "hoy" is s1.w2.'), out
     assert [op['kind'] for op in ws.ops] == ['set_words']
-    for refs in (['s1.w2 "hoy"'], ['s1."hoy"']):
-        out = run(ws, 'set_field', document='Linea', refs=refs, field='upos', value='ADV')
-        assert out.startswith('Planned upos = "ADV" on 1 word(s): s1.w2'), out
+    for refs, upos in ((['s1.w2 "hoy"'], 'ADV'), (['s1."hoy"'], 'INTJ')):
+        out = run(ws, 'set_field', document='Linea', refs=refs, field='upos', value=upos)
+        assert out.startswith(f'Planned upos = "{upos}" on 1 word(s): s1.w2'), out
     # A word before the reshape keeps its number: s2 has no reshape at all.
     assert run(ws, 'set_field', document='Linea', refs=['s2.w4'], field='upos', value='NOUN').startswith('Planned')
 

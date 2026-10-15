@@ -172,7 +172,7 @@ def test_a_ud_reshape_is_whole_in_its_batch_and_its_words_carry_the_plans_proven
     client = ud_client()
     ws = Workspace(client, load_project(client, PID))
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's2.w1', 'forms': ['co', 'rre']})
-    call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'upos', 'value': 'VERB'})
+    call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'upos', 'value': 'AUX'})
     assert [op['kind'] for op in ws.ops] == ['set_words', 'set_span']
     _budget(monkeypatch, 1)
     _nth_send_fails(monkeypatch, 2)
