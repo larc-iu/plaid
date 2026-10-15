@@ -586,14 +586,71 @@ def _tally_line(label: str, pairs, fmt=lambda k: k) -> Optional[str]:
     return f'  {label}: ' + ', '.join(f'{fmt(k)} ({n})' for k, n in sorted(pairs, key=lambda kv: (-kv[1], str(kv[0]))))
 
 
-def q_analyses_of(ws: Workspace, form: str, found: List[int]) -> str:
+#: The references analyses_of(value=...) lists per form and level.
+VALUE_REFS = 60
+
+
+def _value_refs(ws: Workspace, where: List[Any], var: str, value: str, morpheme: bool) -> List[str]:
+    """The lines naming every occurrence ``where`` finds (``var`` its word or
+    morpheme), as references grouped by document, up to :data:`VALUE_REFS`
+    and the documents a call may load, each cut said with how to see the
+    rest (survey item 7)."""
+    from .project import word_ref
+    c = ws.corpus
+    n = c.count(where, [var])
+    what = 'morpheme' if morpheme else 'word'
+    if not n:
+        return [f'  With the value {qv(value)}: none.']
+    rows = c.entities(where, [var], VALUE_REFS + 1, [[f'{var}.doc'], [f'{var}.begin']])
+    by_doc: Dict[str, List[str]] = {}
+    left: Counter = Counter()
+    loaded: set = set()
+    shown = 0
+    for row in rows[:VALUE_REFS]:
+        ent = row[0]
+        if not isinstance(ent, dict):
+            continue
+        d = ent['document']
+        if not c.may_load(d, loaded):
+            left[d] += 1
+            continue
+        _doc, s, w, m = c.locate(d, ent['id'])
+        if w is None:
+            continue
+        by_doc.setdefault(d, []).append(word_ref(s, w) + (f'.m{m.index}' if morpheme and m else ''))
+        shown += 1
+    lines = [f'  With the value {qv(value)}: {n} {what}{"s" if n != 1 else ""}'
+             + (f', the first {shown} by document:' if shown < n else ':')]
+    for d, refs in by_doc.items():
+        lines.append(f'    {c.tag(d)}' + ' '.join(refs))
+    if shown < n:
+        lines.append(f'    {n - shown} more' + (' (' + ', '.join(f'{c.ref_name(d)} {k}' for d, k in left.most_common())
+                                                 + ')' if left else '')
+                     + ': name a document to list them.')
+    return lines
+
+
+def _with_value(c: Corpus, var: str, spec: Dict[str, Any], morpheme: bool) -> List[Any]:
+    """``var`` (a word, or a morpheme) holds ``spec`` in some field. A word
+    also holds what any of its morphemes holds."""
+    own = [['span', '?vs', {'layer': '?vl', 'value': spec}], ['covers', '?vs', var]]
+    if morpheme or not c.M:
+        return own
+    inner = c.in_word('?vm', var, 'v') + [['span', '?vs2', {'layer': '?vl2', 'value': spec}], ['covers', '?vs2', '?vm']]
+    return [['or', own, inner]]
+
+
+def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[str] = None) -> str:
     """Precedent tallies for a form, from grouped queries: per field, per
     morpheme slot, links, and a few rendered examples. The occurrences
-    tallied are added to ``found``."""
+    tallied are added to ``found``. With ``value``, the references of the
+    occurrences holding that value in a field, so a minority analysis can be
+    reviewed or planned from."""
     from .project import render_word, word_ref
     c = ws.corpus
     p = c.p
     spec = rx(form, whole=True)
+    vspec = rx(value, whole=True, case_sensitive=True) if value else None
     item_form: Dict[str, str] = {}
     for v in p.vocabs:
         for it in ws.lexicon(v):
@@ -663,6 +720,8 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int]) -> str:
                     lines.append(line)
         lines.append('  Examples:')
         lines.extend(examples(word, ['?w'], [['?w.doc'], ['?w.begin']]))
+        if value:
+            lines.extend(_value_refs(ws, word + _with_value(c, '?w', vspec, False), '?w', value, False))
     # the morpheme
     if c.M:
         morph = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
@@ -708,6 +767,8 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int]) -> str:
                     lines.append(line)
             lines.append('  Examples:')
             lines.extend(examples(morph, ['?w', '?m'], [['?w.doc'], ['?w.begin']]))
+            if value:
+                lines.extend(_value_refs(ws, morph + _with_value(c, '?m', vspec, True), '?m', value, True))
     return '\n'.join(lines)
 
 

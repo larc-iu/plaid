@@ -42,7 +42,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'analyses_of':
         forms = [f for f in ([a.get('form')] if a.get('form') else []) + list(a.get('forms') or []) if f]
         what = q(forms[0]) if len(forms) == 1 else plural(len(forms), 'form') if forms else q(None)
-        return f'Tallied the analyses of {what}{in_doc(a)}'
+        held = f' and listed those holding {q(a["value"])}' if a.get('value') else ''
+        return f'Tallied the analyses of {what}{held}{in_doc(a)}'
     if name == 'lexicon_entry':
         return f'Looked up the entry {_entry(a)}'
     if name == 'check_consistency':

@@ -231,8 +231,10 @@ TOOLS = [
         'How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, '
         'glosses, link, position in the word): each distinct analysis with its count and example references. '
         'Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass '
-        'forms (a list, up to 40) to check every word of a sentence in one call.',
-        {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC}, []),
+        'forms (a list, up to 40) to check every word of a sentence in one call. value: also list the references '
+        'of the occurrences holding that field value (e.g. a minority gloss).',
+        {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC,
+         'value': {'type': 'string'}}, []),
     _fn('lexicon_entry',
         'One lexicon entry in full: all its fields, how many words and morphemes link to it (an entry with senses '
         'counts their links too, and each sense\'s own), and example occurrences. It also says where the entry '

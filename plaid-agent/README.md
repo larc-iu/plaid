@@ -434,7 +434,8 @@ The modules below are `igt/` unless they say otherwise.
   in one call), `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
   form or value), `analyses_of` (how a form, or a list of forms, has been
-  analyzed so far), `check_consistency` (spelling variants, forms with
+  analyzed so far, and with `value` the references of the occurrences holding
+  it), `check_consistency` (spelling variants, forms with
   several values, link gaps), `check_lexicon`, `check_integrity`,
   `corpus_stats`, `frequency_list`, `worklist` (unlinked / unglossed /
   unanalyzed / unverified / contributed, by frequency), `sequence_search`,

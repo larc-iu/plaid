@@ -266,11 +266,12 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 
 ### analyses_of
 
-How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example references. Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass forms (a list, up to 40) to check every word of a sentence in one call.
+How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example references. Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass forms (a list, up to 40) to check every word of a sentence in one call. value: also list the references of the occurrences holding that field value (e.g. a minority gloss).
 
 - `form` (string)
 - `forms` (array of string)
 - `document` (string): Document id or exact name (see project_overview).
+- `value` (string)
 
 ### lexicon_entry
 
@@ -745,9 +746,9 @@ Two tool results on the same project, so the positional addressing in the prompt
 
 ```text
 Project "Demo"
-Word fields: Gloss
-Morpheme fields: Morph Gloss
-Sentence fields: Translation
+Word fields: Gloss (1 of 6 words filled)
+Morpheme fields: Morph Gloss (2 of 5 morphemes filled)
+Sentence fields: Translation (1 of 2 sentences filled)
 Tagsets: the user sees a value outside a field's list as invalid, so use the listed spellings, and write an unlisted value only where no listed one means the same thing.
   "Leipzig" on Morph Gloss. A grammatical tag, written in capitals or digits, must be a listed value, and so must a known abbreviation written in lowercase beside a tag in the same morpheme (the pfv of sbj:3.pfv). A lexical gloss, an ordinary word in lowercase or in a script without capitals, may be anything. A composite value joins its parts with '.' or ':'.
     PL: plural

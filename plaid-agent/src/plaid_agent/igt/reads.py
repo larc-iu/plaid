@@ -383,7 +383,7 @@ MAX_FORMS_PER_CALL = 40
 
 
 def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[str] = None,
-                  forms: Optional[list] = None) -> str:
+                  forms: Optional[list] = None, value: Optional[str] = None) -> str:
     """How a word form and/or a morpheme form has been analyzed so far: the
     distinct analyses with counts and an example reference each. The same
     evidence the editor's precedent ranking uses. Several forms at once
@@ -398,16 +398,18 @@ def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[
         raise ToolError(f'At most {MAX_FORMS_PER_CALL} forms per call; split the list.')
     # The occurrences tallied, every form's together, for the step's label.
     found: List[int] = []
-    out = '\n\n'.join(_analyses_of_one(ws, f, document, found) for f in wanted)
+    value = str(value).strip() if value is not None and str(value).strip() else None
+    out = '\n\n'.join(_analyses_of_one(ws, f, document, found, value) for f in wanted)
     ws.note_read(sum(found), 'match')
     return truncate(out)
 
 
-def _analyses_of_one(ws: Workspace, form: str, document: Optional[str], found: List[int]) -> str:
+def _analyses_of_one(ws: Workspace, form: str, document: Optional[str], found: List[int],
+                     value: Optional[str] = None) -> str:
     """One form's tallies, with the occurrences tallied added to ``found``."""
     from .queries import q_analyses_of
     with ws.corpus.within(document):
-        return q_analyses_of(ws, form, found)
+        return q_analyses_of(ws, form, found, value)
 
 
 #: The most entries spelled alike that lexicon_entry shows in full at once.
