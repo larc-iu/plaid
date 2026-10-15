@@ -18,9 +18,13 @@
   The dry run (the default) reads the headers and writes nothing. It prints
   counts only: files, lengths already stored, lengths it would store, files
   of a format whose length is not read (by extension), and files with no
-  document. `--apply` writes each length in its own short statement, so the
+  document. `--apply` writes each length in its own short transaction, so the
   server's write lock is never waited on for long, and never replaces a
-  length already stored (an upload made meanwhile keeps its own). Running it
+  length already stored (an upload made meanwhile keeps its own). Nor does it
+  store a length for a file that stopped being the document's while its
+  header was read: the length is stored only when the same file (its inode,
+  modification time and size) is still there under the write lock, and such a
+  file is counted as `changed`. Running it
   again is safe: what is stored is not read again, so a run after a complete
   one finds nothing to store.
 
@@ -31,6 +35,8 @@
             [next.jdbc :as jdbc]
             [plaid.media.duration :as duration])
   (:import [java.io File]
+           [java.nio.file Files LinkOption]
+           [java.nio.file.attribute BasicFileAttributes]
            [java.util UUID]))
 
 (defn- document-id
@@ -47,12 +53,48 @@
   (let [name (.getName f)]
     (str/lower-case (subs name (inc (.lastIndexOf name "."))))))
 
+(defn- identity-of
+  "What tells this file from a replacement stored under the same name or
+  another: its inode, modification time and size, or nil when it is gone."
+  [^File f]
+  (try
+    (let [a (Files/readAttributes (.toPath f) BasicFileAttributes
+                                  ^"[Ljava.nio.file.LinkOption;" (make-array LinkOption 0))]
+      [(.fileKey a) (.toMillis (.lastModifiedTime a)) (.size a)])
+    (catch java.io.IOException _ nil)))
+
+(defn- store-if-same-file!
+  "Store `secs` for `id` when its recording is still the file `f` whose
+  header was read (`seen` is that file's identity before the read), the
+  document is still there and no length is stored. Under the write lock, so
+  an upload or delete either committed before (and is seen here) or comes
+  after (and replaces or removes this row as it would any). Returns whether
+  it stored."
+  [conn id ^File f seen secs]
+  (jdbc/execute! conn ["BEGIN IMMEDIATE"])
+  (try
+    (let [same? (and seen (= seen (identity-of f)))
+          n (if same?
+              (-> (jdbc/execute-one! conn [(str "INSERT INTO document_media (document_id, duration) "
+                                                "SELECT ?, ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ?) "
+                                                "ON CONFLICT (document_id) DO NOTHING")
+                                           id (double secs) id])
+                  :next.jdbc/update-count)
+              0)]
+      (jdbc/execute! conn ["COMMIT"])
+      (pos? (or n 0)))
+    (catch Throwable t
+      (try (jdbc/execute! conn ["ROLLBACK"]) (catch Throwable _ nil))
+      (throw t))))
+
 (defn backfill!
   "Read every media file's length and, when `apply?`, store each one not
   stored yet. Returns the counts printed."
   [conn ^File media-dir apply?]
   (let [files (->> (or (.listFiles media-dir) (make-array File 0))
                    (filter #(.isFile ^File %))
+                   ;; An upload being copied in (`<id>.<n>.upload`) is not a recording yet.
+                   (remove #(str/ends-with? (.getName ^File %) ".upload"))
                    (keep (fn [f] (when-let [id (document-id f)] [id f])))
                    (sort-by first))
         live? (fn [id] (seq (jdbc/execute! conn ["SELECT 1 FROM documents WHERE id = ?" id])))
@@ -64,21 +106,16 @@
            (not (live? id)) (update counts :no-document inc)
            (known? id) (update counts :already-stored inc)
            :else
-           (if-let [secs (duration/seconds f (extension f))]
-             (do
-               (when apply?
-                 ;; Only for a document that is still there, and never over
-                 ;; a length an upload stored since the check above.
-                 (jdbc/execute! conn [(str "INSERT INTO document_media (document_id, duration) "
-                                           "SELECT ?, ? WHERE EXISTS (SELECT 1 FROM documents WHERE id = ?) "
-                                           "ON CONFLICT (document_id) DO NOTHING")
-                                      id (double secs) id]))
-               (-> counts
-                   (update (if apply? :stored :to-store) inc)
-                   (update :seconds + secs)))
-             (update-in counts [:unknown-format (extension f)] (fnil inc 0))))))
-     {:files 0 :already-stored 0 (if apply? :stored :to-store) 0 :seconds 0.0
-      :unknown-format {} :no-document 0}
+           (let [seen (identity-of f)]
+             (if-let [secs (duration/seconds f (extension f))]
+               (cond
+                 (not apply?) (-> counts (update :to-store inc) (update :seconds + secs))
+                 (store-if-same-file! conn id f seen secs) (-> counts (update :stored inc) (update :seconds + secs))
+                 :else (update counts :changed inc))
+               (update-in counts [:unknown-format (extension f)] (fnil inc 0)))))))
+     (cond-> {:files 0 :already-stored 0 (if apply? :stored :to-store) 0 :seconds 0.0
+              :unknown-format {} :no-document 0}
+       apply? (assoc :changed 0))
      files)))
 
 (defn- parse-args [args]
@@ -105,6 +142,10 @@
     (with-open [conn (jdbc/get-connection (str "jdbc:sqlite:" (.getPath db-file)))]
       ;; Wait for the server's write lock rather than fail on it.
       (jdbc/execute! conn ["PRAGMA busy_timeout = 30000"])
+      (when-not (seq (jdbc/execute! conn ["SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'document_media'"]))
+        (binding [*out* *err*]
+          (println "The database has no document_media table. Start the server with this version once first."))
+        (System/exit 2))
       (let [counts (backfill! conn media-dir apply?)]
         (println (if apply? "Applied." "Dry run, nothing written. --apply writes."))
         (doseq [[k v] counts]

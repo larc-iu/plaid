@@ -811,7 +811,7 @@ An upload is refused with 409 when the document already has a recording, and wit
 
 A document with a recording has `media-url` (`mediaUrl` in JavaScript, `media_url` in Python), the address to fetch it from.
 Beside it, `media-duration` (`mediaDuration`, `media_duration`) is the recording's length in seconds, read from the file when it is uploaded.
-The length is read for WAV, MP4, M4A, MOV, FLAC and MP3.
+The length is read for WAV, MP4, M4A, M4V, MOV, FLAC and MP3.
 A recording in another format, such as WebM or Ogg, has no `media-duration`.
 
 A server upgraded from a version before the length was stored can store it for recordings uploaded before, with the server running:
@@ -823,6 +823,7 @@ java -cp plaid.jar clojure.main -m plaid.media.backfill --db data/plaid.db --app
 ----
 
 Running it again stores nothing new.
+A recording replaced while the tool reads it gets no length from it, and is counted as `changed`.
 
 == Texts
 

@@ -71,7 +71,9 @@
                                    (box "moov" (box "mvhd" mvhd))))]
       (is (near? (secs (mp4 v0) "mp4") 83.5))
       (is (near? (secs (mp4 v1) "m4a") 90))
-      (is (near? (secs (mp4 v0) "mov") 83.5))))
+      (is (near? (secs (mp4 v0) "mov") 83.5))
+      (testing "an M4V, stored as x-m4v, is an MP4"
+        (is (near? (secs (mp4 v0) "x-m4v") 83.5)))))
   (testing "a FLAC by its STREAMINFO"
     (let [info (byte-array 34)
           rate 16000
@@ -169,6 +171,8 @@
                      ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
         (Files/write (.toPath (File. media-dir (str (random-uuid) ".webm")))
                      (byte-array 10) (make-array java.nio.file.OpenOption 0))
+        (Files/write (.toPath (File. media-dir (str old ".12345.upload")))
+                     ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
         (with-open [conn (jdbc/get-connection db)]
           (testing "a dry run counts and writes nothing"
             (let [counts (backfill/backfill! conn media-dir false)]
@@ -180,3 +184,46 @@
             (is (near? (duration/stored db old) 2.0))
             (is (near? (duration/stored db new) 1.0))
             (is (= 0 (:stored (backfill/backfill! conn media-dir true))))))))))
+
+(deftest an-m4v-upload-gets-its-length
+  (with-media-dir
+    (fn [tmp]
+      (let [pid (create-test-project admin-request "M4V project")
+            did (create-test-document admin-request pid "M4V")
+            mvhd (bytes-of (byte-array 4) (be 0 4) (be 0 4) (be 1000 4) (be 12345 4) (byte-array 80))
+            m4v (bytes-of (box "ftyp" (bytes-of "M4V " (byte-array [0 0 2 0]) "M4V " "isom"))
+                          (box "moov" (box "mvhd" mvhd))
+                          (box "mdat" (byte-array 2000)))]
+        (is (= 201 (:status (upload! did "clip.m4v" m4v))))
+        (let [body (read-doc did)]
+          (is (= [(str did ".x-m4v")] (vec (.list (.toFile (.resolve tmp "media"))))))
+          (is (near? (length-of body) 12.345)))))))
+
+(deftest the-backfill-stores-no-length-for-a-file-replaced-while-it-was-read
+  (with-media-dir
+    (fn [tmp]
+      (let [pid (create-test-project admin-request "Backfill race project")
+            did (create-test-document admin-request pid "Replaced")
+            media-dir (.toFile (.resolve tmp "media"))
+            read-header duration/seconds
+            replaced (atom false)]
+        (is (= 201 (:status (upload! did "old.wav" (wav-bytes 99.0)))))
+        (jdbc/execute! db ["DELETE FROM document_media WHERE document_id = ?" (str did)])
+        ;; While the backfill reads the WAV's header, the recording is
+        ;; deleted and a WebM, a format of no stored length, takes its place.
+        (with-redefs [duration/seconds
+                      (fn [f ext]
+                        (let [secs (read-header f ext)]
+                          (when (compare-and-set! replaced false true)
+                            (is (= 204 (:status (rest-handler (admin-request :delete (str "/api/v1/documents/" did "/media"))))))
+                            (is (= 201 (:status (upload! did "new.webm"
+                                                         (bytes-of (byte-array (map unchecked-byte [0x1A 0x45 0xDF 0xA3]))
+                                                                   (byte-array 4000)))))))
+                          secs))]
+          (with-open [conn (jdbc/get-connection db)]
+            (let [counts (backfill/backfill! conn media-dir true)]
+              (is @replaced)
+              (is (= 0 (:stored counts)))
+              (is (= 1 (:changed counts))))))
+        (is (nil? (duration/stored db did)))
+        (is (nil? (length-of (read-doc did))))))))

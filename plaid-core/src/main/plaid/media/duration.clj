@@ -155,7 +155,7 @@
   of its own (any two bytes FF Ex pass for a frame sync), so it is read only
   when the file is stored as one."
   {"wav" wav
-   "mp4" mp4 "m4a" mp4 "mov" mp4 "x-m4a" mp4 "3gpp" mp4 "3gpp2" mp4
+   "mp4" mp4 "m4a" mp4 "mov" mp4 "x-m4a" mp4 "x-m4v" mp4 "3gpp" mp4 "3gpp2" mp4
    "flac" flac
    "mp3" mp3 "mpeg" mp3})
 
