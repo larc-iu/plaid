@@ -111,7 +111,7 @@ def test_ngrams_are_runs_of_adjacent_words_inside_a_sentence(ws):
     out = t_frequency_list(ws, what='form', ngram=2, document='Uno')
     assert sorted(tuple(r[1:]) for r in _rows(out)) == [
         ('a', 'el'), ('corre', '.'), ('el', 'mar'), ('mar', '.'), ('vamos', 'a')]
-    assert out.splitlines()[0] == 'form bigrams by frequency in "Uno": 5 distinct value(s), 5 in all.'
+    assert out.splitlines()[0] == 'form bigrams, case folded, by frequency in "Uno": 5 distinct value(s), 5 in all.'
     tags = t_frequency_list(ws, what='upos', ngram=2)
     assert ['3', 'VERB', 'ADP'] in _rows(tags) and ['2', 'NOUN', 'PUNCT'] in _rows(tags)
     assert ['1', 'NOUN', 'SYM'] in _rows(tags)
@@ -137,3 +137,28 @@ def test_the_trace_says_the_scope_and_the_kind_of_count():
         'Ranked lemmas by frequency of words with upos=NOUN'
     assert describe_step('worklist', {'kind': 'missing', 'documents': ['Uno']}) == \
         'Listed missing work in “Uno”'
+
+
+@pytest.mark.parametrize('args, line', [
+    # H16-UD-TOOLS-3: a name given twice is one document to the read.
+    ({'what': 'upos', 'documents': ['Uno', 'Uno']}, 'Ranked UPOS tags by frequency in “Uno”'),
+    ({'what': 'upos', 'documents': ['Uno', ' uno', 'Dos']}, 'Ranked UPOS tags by frequency in 2 documents'),
+    # The column in the plural, never "uposs" or "featuress".
+    ({'what': 'features'}, 'Ranked features by frequency'),
+    ({'what': 'feature-bundles'}, 'Ranked feature bundles by frequency'),
+    ({'what': 'xpos'}, 'Ranked XPOS tags by frequency'),
+    ({'what': 'deprel'}, 'Ranked deprels by frequency'),
+    ({'what': 'form'}, 'Ranked forms by frequency'),
+    ({}, 'Ranked lemmas by frequency'),
+    # ngram as the tool reads it: "2" is bigrams.
+    ({'what': 'upos', 'ngram': '2'}, 'Ranked upos bigrams by frequency'),
+    ({'what': 'form', 'ngram': 3}, 'Ranked form 3-grams by frequency'),
+    ({'what': 'form', 'ngram': 1}, 'Ranked forms by frequency'),
+])
+def test_the_trace_counts_documents_and_names_the_column_as_the_read_does(args, line):
+    assert describe_step('frequency_list', args) == line
+
+
+def test_grew_search_counts_a_doubled_name_once():
+    assert describe_step('grew_search', {'pattern': 'X', 'documents': ['French 1', 'French 1']}) == \
+        'Searched with Grew for “X” in “French 1”'

@@ -14,12 +14,21 @@ from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
+def _named(docs: Any) -> List[str]:
+    """The documents a ``documents`` argument names, each once: a name given
+    twice, or in another case, is one document to the read (core/scope.py)."""
+    docs = [docs] if isinstance(docs, str) else list(docs) if isinstance(docs, list) else []
+    out: Dict[str, str] = {}
+    for d in docs:
+        out.setdefault(str(d).strip().casefold(), str(d).strip())
+    return list(out.values())
+
+
 def in_docs(a: Dict[str, Any]) -> str:
     """For a read: ' in "<document>"', ' in 3 documents' when it is held to
     several (core/scope.py), or nothing when it was project-wide."""
-    docs = a.get('documents')
+    docs = _named(a.get('documents'))
     if docs and not a.get('document'):
-        docs = [docs] if isinstance(docs, str) else list(docs)
         return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
     return in_doc(a)
 
@@ -31,7 +40,22 @@ def across(a: Dict[str, Any]) -> str:
         return ''
     if isinstance(docs, str) or (len(docs) == 1 and str(docs[0]).lower() == 'all'):
         return ' across every document with something waiting'
-    return f' across {plural(len(docs), "document")}'
+    return f' across {plural(len(_named(docs)), "document")}'
+
+
+# What frequency_list ranks, in the plural ("Ranked UPOS tags").
+_RANKED = {'lemma': 'lemmas', 'form': 'forms', 'upos': 'UPOS tags', 'xpos': 'XPOS tags',
+           'deprel': 'deprels', 'features': 'features', 'feature-bundles': 'feature bundles'}
+
+
+def _ngram(a: Dict[str, Any]) -> Optional[int]:
+    """frequency_list's ``ngram`` as the tool reads it (``"2"`` is 2), when
+    it asks for runs of words."""
+    try:
+        n = int(str(a.get('ngram')).strip())
+    except ValueError:
+        return None
+    return n if n > 1 else None
 
 
 def _forms(a: Dict[str, Any]) -> List[str]:
@@ -66,9 +90,9 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'grew_search':
         return f'Searched with Grew for {q(" ".join(str(a.get("pattern") or "").split()))}{in_docs(a)}'
     if name == 'frequency_list':
-        n = a.get('ngram') if isinstance(a.get('ngram'), int) and a.get('ngram') > 1 else None
-        unit = (f'{a.get("what") or "lemma"} {"bigrams" if n == 2 else f"{n}-grams"}' if n
-                else f'{a.get("what") or "lemma"}s')
+        n, what = _ngram(a), a.get('what') or 'lemma'
+        unit = (f'{what} {"bigrams" if n == 2 else f"{n}-grams"}' if n
+                else _RANKED.get(what, f'{what} values'))
         where = a.get('where')
         held = (' of words with ' + ', '.join(f'{k}={v}' for k, v in where.items())
                 if isinstance(where, dict) and where else '')
