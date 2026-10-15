@@ -4,6 +4,7 @@ import { type, focus, blur, press } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
 import { testCells } from '../../../test/cells.js';
+import { wordShapeOf, wordRecutOf } from './wordShape.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // A value refused because someone else split or joined its word meanwhile
@@ -13,13 +14,27 @@ import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 // the other word. It is now a conflict: the cell shows what is stored, the
 // refused value is under it, and leaving the cell sends nothing.
 
-// The editor's shape and re-cut check (AnnotationEditor), on a word alone.
+// The tokens around t1 ("sing") after b's change to `word`: split ("si"
+// with a new token "ng" after it), joined with the next ("sing along"),
+// respelled in place ("sinng"), or as it was.
+const orderFor = (word) => {
+  const t = (id, form) => ({ token: { id, begin: 0, end: [...form].length }, wordForm: form });
+  const forms = {
+    sing: [t('t0', 'we'), t('t1', 'sing'), t('t2', 'along')],
+    si: [t('t0', 'we'), t('t1', 'si'), t('tn', 'ng'), t('t2', 'along')],
+    'sing along': [t('t0', 'we'), t('t1', 'sing along')],
+    sinng: [t('t0', 'we'), t('t1', 'sinng'), t('t2', 'along')],
+  };
+  return forms[word];
+};
+
+// The editor's shape and re-cut check (AnnotationEditor, wordShape.js), on
+// the word t1.
 const wordCells = (stored, shape, heard) =>
   testCells({
     read: (key) => stored.get(key),
-    shape: () => shape.word,
-    recut: (snapshot) =>
-      snapshot != null && snapshot !== shape.word ? { unit: 'word', text: shape.word } : null,
+    shape: () => wordShapeOf(orderFor(shape.word), 1),
+    recut: (snapshot) => wordRecutOf(snapshot, orderFor(shape.word), 1),
     heard,
   });
 
@@ -102,12 +117,31 @@ describe('a value refused because its word was re-cut meanwhile', () => {
   // does not write it.
   it('keeps nothing on Enter: the note stays and nothing is written', async () => {
     const { view, input, onAnnotationUpdate } = await refusedAfter({ word: 'si' });
+    input.focus();
     await view.step(async () => focus(input));
     await view.step(async () => press(input, 'Enter'));
     expect(onAnnotationUpdate).not.toHaveBeenCalled();
     expect(view.container.querySelector('.editable-field-conflict')?.textContent).toBe(
       'Yours: sing · Esc to keep theirs',
     );
+    await view.unmount();
+  });
+
+  // A word only respelled is the same word: the conflict is the plain one,
+  // and Enter keeps the value typed for it (H16-UI-CORE-3).
+  it('a respelled word is the plain conflict, and Enter keeps yours', async () => {
+    const { view, input, onAnnotationUpdate, heard } = await refusedAfter({ word: 'sinng' });
+    expect(input.value).toBe('sang');
+    expect(view.container.querySelector('.editable-field-conflict')?.textContent).toBe(
+      'Yours: sing · Enter to keep yours',
+    );
+    expect(heard).toMatchObject([{ recut: { unit: 'word', text: 'sinng', reshaped: false } }]);
+    input.focus();
+    await view.step(async () => focus(input));
+    await view.step(async () => press(input, 'Enter'));
+    expect(onAnnotationUpdate).toHaveBeenCalledTimes(1);
+    expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sing');
+    expect(view.container.querySelector('.editable-field-conflict')).toBeNull();
     await view.unmount();
   });
 

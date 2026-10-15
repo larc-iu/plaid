@@ -1038,7 +1038,9 @@ export function TranscriptList({
       const recut =
         (timeBeginOf(token) !== shape.timeBegin && before !== shape.before) ||
         (timeEndOf(token) !== shape.timeEnd && after !== shape.after);
-      return recut && text !== shape.text ? { unit: 'segment', text, ids: [token.id] } : null;
+      return recut && text !== shape.text
+        ? { unit: 'segment', text, ids: [token.id], reshaped: true }
+        : null;
     },
     entityIds: (key) => {
       const token = segmentAt(key);

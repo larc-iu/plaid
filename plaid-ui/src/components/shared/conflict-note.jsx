@@ -2,8 +2,8 @@ import { conflictNoteParts } from '../../lib/cellConflict.js';
 
 /**
  * The note under a grid cell whose edit lost to another user's: "Yours: X ·
- * Enter to keep yours", or "· Esc to keep theirs" after its row was split or
- * merged (`recut`), when Enter keeps nothing. The cell names it in its aria-describedby, so
+ * Enter to keep yours", or "· Esc to keep theirs" after its row was split,
+ * joined or merged (`recut.reshaped`), when Enter keeps nothing. The cell names it in its aria-describedby, so
  * arriving there reads it. It has no `dir` of its own, so it hangs from the
  * cell's start in the sentence's direction. Its words are chrome and read
  * left to right, the value its own way.

@@ -208,6 +208,59 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
     expect(note('ma:m-1:Gloss')).toBeNull();
   });
 
+  // A word or morpheme only respelled is the same row: the conflict is the
+  // plain one, and Enter keeps the gloss typed for it (H16-UI-CORE-3).
+  for (const [what, served, toast] of [
+    [
+      'word',
+      () =>
+        buildRawDoc({
+          body: 'thee cat',
+          words: [
+            { id: 'w-1', begin: 0, end: 4 },
+            { id: 'w-2', begin: 5, end: 8 },
+          ],
+          morphemes: [
+            { id: 'm-1', begin: 0, end: 4, precedence: 1, metadata: {} },
+            { id: 'm-2', begin: 5, end: 8, precedence: 1, metadata: {} },
+          ],
+        }),
+      'b changed this word to thee.',
+    ],
+    [
+      'morpheme',
+      () =>
+        buildRawDoc({
+          morphemes: [
+            { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'teh' } },
+            { id: 'm-2', begin: 4, end: 7, precedence: 1, metadata: {} },
+          ],
+        }),
+      'b changed this morpheme to teh.',
+    ],
+  ]) {
+    it(`a respelled ${what} keeps the gloss on Enter`, async () => {
+      const { client } = mount();
+      const restore = refuseWith(client, served());
+      const c = cell('ma:m-1:Gloss');
+      c.focus();
+      type(c, 'THE');
+      c.blur();
+      await settle(30);
+      restore();
+
+      const after = cell('ma:m-1:Gloss');
+      expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Enter to keep yours');
+      expect(notifyWarning).toHaveBeenCalledWith(toast);
+      after.focus();
+      key(after, 'Enter');
+      await settle(30);
+      expect(writes(client)).toHaveLength(1);
+      expect(JSON.stringify(writes(client)[0])).toContain('THE');
+      expect(note('ma:m-1:Gloss')).toBeNull();
+    });
+  }
+
   it('is put back to be sent again when the word was not re-cut', async () => {
     const { client } = mount();
     const restore = refuseWith(client, elsewhere());

@@ -140,10 +140,10 @@ const NOT_SAVED = (typed) => `Not saved: ${typed}`;
 export const conflictNoteParts = (typed, recut = null) => ({
   before: 'Yours: ',
   value: typed || '(none)',
-  // After a split or merge of its row the refused value was typed for a row
-  // that is gone: it is shown to copy from, and only the stored one is kept
-  // (Luke, 2026-10-15).
-  after: recut ? ' · Esc to keep theirs' : ' · Enter to keep yours',
+  // After a split, join or merge of its row the refused value was typed for
+  // a row that is gone: it is shown to copy from, and only the stored one is
+  // kept (Luke, 2026-10-15). A row only respelled keeps it on Enter.
+  after: recut?.reshaped ? ' · Esc to keep theirs' : ' · Enter to keep yours',
 });
 
 /**

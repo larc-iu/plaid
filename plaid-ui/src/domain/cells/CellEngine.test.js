@@ -12,14 +12,17 @@ afterEach(() => {
 });
 
 // `stored` is the document: key -> value, a missing key a row that is gone.
-// `shapes` is key -> what the value is typed for, and a change to it a re-cut.
-function setup({ stored = {}, shapes = {}, views = {}, ...opts } = {}) {
+// `shapes` is key -> what the value is typed for, and a change to it a re-cut:
+// a split, join or merge, or with `reshaped` false a respelling.
+function setup({ stored = {}, shapes = {}, views = {}, reshaped = true, ...opts } = {}) {
   const heard = [];
   const engine = new CellEngine({
     read: (key) => stored[key],
     shape: (key) => shapes[key] ?? null,
     recut: (snapshot, key) =>
-      snapshot != null && shapes[key] !== snapshot ? { unit: 'word', text: shapes[key] } : null,
+      snapshot != null && shapes[key] !== snapshot
+        ? { unit: 'word', text: shapes[key], reshaped }
+        : null,
     view: (key) => views[key] ?? null,
     announce: (event) => heard.push(event),
     ...opts,
@@ -241,6 +244,21 @@ describe('a refused edit', () => {
     expect(engine.dismiss('k')).toBe(true);
   });
 
+  it('whose word was only respelled meanwhile is a conflict that Enter keeps (H16-UI-CORE-3)', () => {
+    const { engine, heard, shapes } = setup({
+      stored: { k: '' },
+      shapes: { k: 'walked' },
+      reshaped: false,
+    });
+    const t = engine.sending('k', { saved: '', typed: 'VERB' });
+    shapes.k = 'walkd';
+    const d = engine.settle(t, refused());
+    expect(d).toMatchObject({ kind: 'conflict', recut: { unit: 'word', text: 'walkd' } });
+    expect(heard[0]).toMatchObject({ kind: 'conflict', recut: { text: 'walkd' } });
+    expect(engine.keepYours('k')).toBe('VERB');
+    expect(engine.conflictOf('k')).toBe(null);
+  });
+
   it('refused for good (403, 404) is dropped and the cell shows what is stored', () => {
     for (const status of [403, 404]) {
       const views = { k: cellView() };
@@ -340,7 +358,7 @@ describe('a value waiting unsent', () => {
     expect(engine.conflictOf('k')).toEqual({
       typed: 'b',
       stored: 'a',
-      recut: { unit: 'word', text: 'w2' },
+      recut: { unit: 'word', text: 'w2', reshaped: true },
     });
   });
 

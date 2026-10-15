@@ -6,6 +6,7 @@ import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { announceCells } from '@ui/lib/cellConflict.js';
+import { wordShapeOf, wordRecutOf } from './annotation/wordShape.js';
 import { useCellEngine } from '@ui/hooks/useCellEngine.js';
 import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
@@ -326,25 +327,31 @@ export const AnnotationEditor = () => {
   const tokenData = useMemo(() => {
     let version = -1;
     let byId = new Map();
-    return (tokenId) => {
-      if (!doc) return undefined;
-      if (doc.dataVersion !== version) {
-        version = doc.dataVersion;
-        byId = new Map();
-        for (const sentence of doc.sentences || []) {
-          for (const data of sentence.tokens || []) byId.set(String(data.token?.id), data);
+    let order = [];
+    const read = () => {
+      if (doc.dataVersion === version) return;
+      version = doc.dataVersion;
+      byId = new Map();
+      order = [];
+      for (const sentence of doc.sentences || []) {
+        for (const data of sentence.tokens || []) {
+          byId.set(String(data.token?.id), { data, at: order.length });
+          order.push(data);
         }
       }
-      return byId.get(String(tokenId));
+    };
+    return (tokenId) => {
+      if (!doc) return undefined;
+      read();
+      const hit = byId.get(String(tokenId));
+      return hit && { ...hit, order };
     };
   }, [doc]);
   const cellOf = (key) => {
     const at = key.lastIndexOf(':');
-    return { data: tokenData(key.slice(0, at)), field: key.slice(at + 1) };
+    const hit = tokenData(key.slice(0, at));
+    return { data: hit?.data, hit, field: key.slice(at + 1) };
   };
-  // A word split or joined since a value was typed for it: its text, or how
-  // much of it the token covers, changed.
-  const shapeOf = (data) => `${data.wordForm}\u0000${data.token.end - data.token.begin}`;
   const conflictContext = useRef(null);
   conflictContext.current = { client: getClient(), documentId, me: user?.id };
   const cells = useCellEngine(doc, {
@@ -353,14 +360,12 @@ export const AnnotationEditor = () => {
       return data ? data[field]?.value || '' : undefined;
     },
     shape: (key) => {
-      const { data } = cellOf(key);
-      return data ? shapeOf(data) : null;
+      const { hit } = cellOf(key);
+      return hit ? wordShapeOf(hit.order, hit.at) : null;
     },
     recut: (snapshot, key) => {
-      const { data } = cellOf(key);
-      return snapshot != null && data && shapeOf(data) !== snapshot
-        ? { unit: 'word', text: data.wordForm, ids: [data.token.id] }
-        : null;
+      const { hit } = cellOf(key);
+      return hit ? wordRecutOf(snapshot, hit.order, hit.at) : null;
     },
     entityIds: (key) => {
       const { data, field } = cellOf(key);

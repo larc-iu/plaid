@@ -65,9 +65,10 @@ export class CellEngine {
    *   row is gone.
    * - `shape(key)`: an opaque snapshot of what the value is typed for (the
    *   word, the morpheme, the sentence), or null.
-   * - `recut(snapshot, key)`: `{ unit, text, ids }` when what the cell is on
-   *   was split, joined or respelled since `snapshot` (`ids` the row's, so the
-   *   toast can name who), else null.
+   * - `recut(snapshot, key)`: `{ unit, text, ids, reshaped }` when what the
+   *   cell is on was split, joined or respelled since `snapshot` (`ids` the
+   *   row's, so the toast can name who, `reshaped` true for a split, join or
+   *   merge, see recut.js), else null.
    * - `view(key, canonical)`: the drawn cell, a CellView, or null.
    * - `announce(event)`: hears `{ kind: 'conflict', key, typed, stored, recut,
    *   entityIds, since }`, `{ kind: 'keptInCell', key, field }` and `{ kind: 'lost',
@@ -418,14 +419,15 @@ export class CellEngine {
 
   /**
    * Enter in a cell that lost: its value is kept. Answers it, or null. Not
-   * after a re-cut of the cell's row (a split or merge): the value was typed
-   * for a row that is gone, so it stays under the cell to copy from and only
-   * Escape lets it go (Luke, 2026-10-15).
+   * after a split, join or merge of the cell's row (`recut.reshaped`): the
+   * value was typed for a row that is gone, so it stays under the cell to
+   * copy from and only Escape lets it go (Luke, 2026-10-15). A row only
+   * respelled keeps the typed value on Enter.
    */
   keepYours(key) {
     const k = this._canonical(key);
     const c = this._conflicts.get(k);
-    if (!c || c.recut != null) return null;
+    if (!c || c.recut?.reshaped) return null;
     this._conflicts.delete(k);
     this._changed(key);
     return c.typed;

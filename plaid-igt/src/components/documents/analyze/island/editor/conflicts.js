@@ -34,12 +34,14 @@ export const conflicts = {
     // After a split or merge the note is there to copy from, so a press on it
     // selects its text instead of going to the cell.
     return html`<span
-      class=${c.recut ? 'igt-field-conflict igt-field-conflict--copy' : 'igt-field-conflict'}
+      class=${c.recut?.reshaped
+        ? 'igt-field-conflict igt-field-conflict--copy'
+        : 'igt-field-conflict'}
       role="status"
       id=${noteId(this._cells, key)}
       title=${`${before}${value}${after}`}
       @mousedown=${(e) => {
-        if (c.recut) return;
+        if (c.recut?.reshaped) return;
         e.preventDefault();
         e.currentTarget.parentElement?.querySelector('.igt-field')?.focus();
       }}
@@ -74,7 +76,7 @@ export const conflicts = {
     if (el.value !== (el.dataset.orig ?? '')) return;
     // After a split or merge only the stored value is kept: Enter goes on as
     // in any cell.
-    if (c.recut != null) return;
+    if (c.recut?.reshaped) return;
     // The value goes in before the engine lets the conflict go, so the render
     // that follows finds the cell typed into and leaves it be.
     el.value = c.typed;

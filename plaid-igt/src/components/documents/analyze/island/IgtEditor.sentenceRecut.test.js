@@ -102,7 +102,9 @@ afterEach(() => {
 });
 
 describe('a translation refused because its sentence changed meanwhile', () => {
-  for (const [what, served, now] of [
+  // A split or join keeps nothing on Enter. A respelling is the plain
+  // conflict, whose Enter keeps yours (H16-UI-CORE-3).
+  for (const [what, served, now, hint = 'Esc to keep theirs'] of [
     [
       'split',
       () =>
@@ -123,7 +125,7 @@ describe('a translation refused because its sentence changed meanwhile', () => {
         }),
       'the cat. a dog.',
     ],
-    ['respelled', () => shape({ body: 'the cat. a hog.' }), 'a hog.'],
+    ['respelled', () => shape({ body: 'the cat. a hog.' }), 'a hog.', 'Enter to keep yours'],
   ]) {
     it(`shows what is stored with yours under it, and leaving sends nothing (${what})`, async () => {
       const { client } = mount();
@@ -137,7 +139,7 @@ describe('a translation refused because its sentence changed meanwhile', () => {
 
       const after = cell('sa:s-2:Translation');
       expect(after.value).toBe('');
-      expect(note('sa:s-2:Translation')?.textContent).toBe('Yours: A dog. · Esc to keep theirs');
+      expect(note('sa:s-2:Translation')?.textContent).toBe(`Yours: A dog. · ${hint}`);
       after.focus();
       after.blur();
       await settle(30);
@@ -149,6 +151,27 @@ describe('a translation refused because its sentence changed meanwhile', () => {
       expect(notifyError).not.toHaveBeenCalledWith(KEPT_IN_CELL, expect.anything());
     });
   }
+
+  it('a respelled sentence keeps the translation on Enter (H16-UI-CORE-3)', async () => {
+    const { client } = mount();
+    const restore = refuseWith(client, shape({ body: 'the cat. a hog.' }));
+    const c = cell('sa:s-2:Translation');
+    c.focus();
+    type(c, 'A dog.');
+    c.blur();
+    await settle(30);
+    restore();
+
+    const after = cell('sa:s-2:Translation');
+    after.focus();
+    after.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await settle(30);
+    expect(writes(client)).toHaveLength(1);
+    expect(JSON.stringify(writes(client)[0])).toContain('A dog.');
+    expect(note('sa:s-2:Translation')).toBeNull();
+  });
 
   it('goes back into the cell to be sent again when the sentence reads as it did', async () => {
     const { client } = mount();
