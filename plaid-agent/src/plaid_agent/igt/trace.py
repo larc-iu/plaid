@@ -18,8 +18,16 @@ def in_doc(a: Dict[str, Any]) -> str:
     (core/scope.py), or nothing when the call was project-wide."""
     docs = a.get('documents')
     if docs and not a.get('document'):
-        docs = [docs] if isinstance(docs, str) else list(docs)
-        return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
+        docs = [docs] if isinstance(docs, str) else list(docs) if isinstance(docs, list) else []
+        # A name given twice, or in another case, is one document to the read.
+        # The turn hands over the documents as resolved (core.agent), so an
+        # id and a name of one document are one too.
+        named: Dict[str, str] = {}
+        for d in docs:
+            named.setdefault(str(d).strip().casefold(), str(d).strip())
+        docs = list(named.values())
+        if docs:
+            return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
     return _in_one_doc(a)
 
 

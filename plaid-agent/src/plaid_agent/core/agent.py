@@ -1058,6 +1058,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 why = ws.garbled(args) if plan_call and hasattr(ws, 'garbled') else None
                 # What the call reads is noted here (`BaseWorkspace.note_read`).
                 ws.reads = []
+                ws.scoped_documents = None
                 cuts_before = cuts()
                 try:
                     result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
@@ -1092,7 +1093,13 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             failed = str(result).startswith('Error')
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
             first = not rnd['calls']
-            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned, saved=saved,
+            # A read held to documents is traced by the documents it resolved
+            # to (core.scope), each once, not by how the call spelled them.
+            scoped = getattr(ws, 'scoped_documents', None)
+            traced = ({**args, 'documents': list(scoped)}
+                      if scoped and isinstance(args, dict) and args.get('documents') is not None else args)
+            ws.scoped_documents = None
+            trace.append(trace_step(kit.tracer, c['id'], name, traced, failed=failed, planned=planned, saved=saved,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
                                     said=rnd.get('said') if first else None,
                                     thought=first and keeper is not None and bool(rnd.get('thinking')),

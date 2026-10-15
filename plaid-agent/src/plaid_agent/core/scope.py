@@ -47,6 +47,9 @@ def among_documents(fn: Callable) -> Callable:
         if bound.arguments.get('document'):
             raise ToolError('Give document or documents, not both.')
         ids = resolve_documents(ws, documents)
+        # The documents as resolved, for the trace to count each once
+        # (`core.agent`): an id and a name of one document are one.
+        ws.scoped_documents = [doc_label(ws, i) for i in ids]
         if len(ids) == 1:
             bound.arguments['document'] = ids[0]
             return fn(*bound.args, **bound.kwargs)

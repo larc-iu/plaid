@@ -228,6 +228,9 @@ class BaseWorkspace:
         # the service. None where nothing is stored, and then resume_plan
         # refuses.
         self.load_plan_state = None
+        # The documents a call's ``documents`` argument resolved to, by the
+        # name a reply uses (core.scope), for its trace. Reset per call.
+        self.scoped_documents: Optional[List[str]] = None
         # Whether this turn's plan starts with the waiting plan's changes
         # (:meth:`resume`), each of them by its content -> (the documents it
         # lands in or None, the work of a person's it replaces), and the
