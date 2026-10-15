@@ -522,3 +522,45 @@ def test_set_attributes_says_plainly_what_a_line_leaves_out(ws):
     out = run(ws, 'set_attributes', document='Story', sentence=1, var='s1d',
               line=':refer-number plural :polarity -')
     assert 'REMOVES' not in out, out
+
+
+def _with_concept_do():
+    """The fixture with s2t's concept "do", which "dog" also holds."""
+    from umr_fixtures import document_raw
+    raw = document_raw()
+    concepts = next(sl for tl in raw['text_layers'][0]['token_layers']
+                    for sl in tl.get('span_layers', []) if sl['id'] == 'm-concept')
+    next(sp for sp in concepts['spans'] if sp['id'] == 'mc-t')['value'] = 'do'
+    w = umr_ws(umr_client(documents={'umr1': raw}))
+    w.client.query = lambda body: {'return': 'aggregate', 'results': [['umr1', 2]]}
+    return w
+
+
+def test_find_nodes_shows_the_concept_itself_first_and_says_how_many_only_contain_it():
+    """find_nodes(concept="pe") found 26 nodes on the bench, mostly person,
+    raepe and yatukupe, the 6 pe nodes among them, and said nothing of it
+    (build-q38-1 umr-hard-mixed-path, all three runs)."""
+    out = run(_with_concept_do(), 'find_nodes', concept='do')
+    lines = out.splitlines()
+    assert lines[1] == '1 of the 2 are "do" itself, shown first, and 1 only contain it: whole=true finds "do" alone.'
+    assert lines[2] == '"Story" s2.s2t  (do)' and lines[3] == '"Story" s1.s1d  (dog)', out
+    # Asked for whole, or when every hit is the concept itself, nothing is said.
+    out = run(_with_concept_do(), 'find_nodes', concept='do', whole=True)
+    assert 'itself' not in out and '(dog)' not in out
+    out = run(_with_concept_do(), 'find_nodes', concept='dog')
+    assert 'itself' not in out
+
+
+def test_find_nodes_by_role_counts_the_role_itself_apart_too():
+    from umr_fixtures import document_raw
+    raw = document_raw()
+    rel_layer = next(rl for tl in raw['text_layers'][0]['token_layers']
+                     for sl in tl.get('span_layers', [])
+                     for rl in sl.get('relation_layers', []) if rl['id'] == 'm-rel')
+    next(r for r in rel_layer['relations'] if r['id'] == 'mr-1')['value'] = ':ARG0-of'
+    w = umr_ws(umr_client(documents={'umr1': raw}))
+    w.client.query = lambda body: {'return': 'aggregate', 'results': [['umr1', 2]]}
+    out = run(w, 'find_nodes', role=':ARG0')
+    lines = out.splitlines()
+    assert lines[1].startswith('1 of the 2 are ":ARG0" itself, shown first'), out
+    assert lines[2].startswith('"Story" s2.s2r'), out

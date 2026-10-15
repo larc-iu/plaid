@@ -128,29 +128,43 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
                                                         whole, case_sensitive)
                    for a in node.attrs)
 
+    # A plain pattern finds every value holding it ("pe" finds person and
+    # raepe), so the values that ARE it are shown first and counted apart.
+    # Only the concept and the role: an attribute is matched on its line.
+    plain = not regex and not whole and (concept or role)
+
+    def exact(node) -> bool:
+        if not plain:
+            return False
+        if concept:
+            return _matches(node.concept, concept, False, True, case_sensitive)
+        return any(_matches(e.role, role, False, True, case_sensitive) for e in node.out)
+
     ws.read_ahead(doc_ids)
-    shown: List[str] = []
-    found = 0
+    shown: List[tuple] = []
+    found = itself = 0
     for did, quota in picks:
         doc = ws.doc(did)
         here = 0
-        for s in doc.sentences:
-            for node in s.nodes:
-                if not matches(node):
-                    continue
-                found += 1
-                if len(shown) < limit and here < quota:
-                    here += 1
-                    extra = ''
-                    if role:
-                        extra = ' ' + ' '.join(f'{e.role} {doc.nodes_by_id[e.target].var}'
-                                               for e in node.out
-                                               if e.target in doc.nodes_by_id
-                                               and _matches(e.role, role, regex, whole,
-                                                            case_sensitive))
-                    elif attribute and node.attrs:
-                        extra = ' ' + node.attr_line()
-                    shown.append(f'"{doc.name}" s{s.number}.{node.var}  ({node.concept}){extra}')
+        hits = [(s, node) for s in doc.sentences for node in s.nodes if matches(node)]
+        is_it = {node.id: exact(node) for _s, node in hits}
+        itself += sum(is_it.values())
+        for s, node in sorted(hits, key=lambda h: not is_it[h[1].id]):
+            found += 1
+            if len(shown) < limit and here < quota:
+                here += 1
+                extra = ''
+                if role:
+                    extra = ' ' + ' '.join(f'{e.role} {doc.nodes_by_id[e.target].var}'
+                                           for e in node.out
+                                           if e.target in doc.nodes_by_id
+                                           and _matches(e.role, role, regex, whole,
+                                                        case_sensitive))
+                elif attribute and node.attrs:
+                    extra = ' ' + node.attr_line()
+                line = f'"{doc.name}" s{s.number}.{node.var}  ({node.concept}){extra}'
+                shown.append((not is_it[node.id], line))
+    shown = [line for _later, line in sorted(shown, key=lambda x: x[0])]
     total = sum(totals.values()) if totals else found
     ws.note_read(len(shown), 'node', of=max(total, found))
     if not shown:
@@ -159,6 +173,10 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
     if totals and len(totals) > len(doc_ids):
         head += f'; the corpus has {total} hit(s) in {len(totals)} documents'
     out = [head + ':']
+    if plain and 0 < itself < found:
+        what = concept or role
+        out.append(f'{itself} of the {found} are "{what}" itself, shown first, and {found - itself} only '
+                   f'contain it: whole=true finds "{what}" alone.')
     out += shown
     if found > len(shown):
         out.append(f'... and {found - len(shown)} more in the documents read.')
