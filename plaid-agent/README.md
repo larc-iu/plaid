@@ -429,7 +429,7 @@ The modules below are `igt/` unless they say otherwise.
   a document, an entry, or the change history), `tools.py` (the plan tools that
   annotate), `lexicon.py` (the plan tools that change a lexicon), `shape.py`,
   `stats.py`, `bulk.py`, `query.py` and `sandbox.py`. Reads run immediately:
-  `project_overview`, `list_documents`, `read_document` (all of a sentence or
+  `project_overview` (with how many items hold a value in each field), `list_documents`, `read_document` (all of a sentence or
   the `fields` named), `read_sentences` (chosen sentences of several documents
   in one call), `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a

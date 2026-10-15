@@ -21,7 +21,7 @@ from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
 from plaid_client.workflows.messages import setup_incomplete
@@ -1002,12 +1002,15 @@ def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[
     return lines
 
 
-def render_overview(project: IgtProject, documents: List[dict]) -> str:
+def render_overview(project: IgtProject, documents: List[dict], fill: Optional[Dict[str, Any]] = None) -> str:
+    """The project at a glance. ``fill`` (:func:`.queries.q_field_fill`) adds
+    how many of a scope's items hold a value in each field, so an empty field
+    is seen before it is searched (survey item 9)."""
     lines = [f'Project "{project.name}"']
     for scope in SCOPES:
         fs = project.fields_by_scope(scope)
         if fs:
-            lines.append(f'{scope} fields: ' + ', '.join(f.name for f in fs))
+            lines.append(f'{scope} fields: ' + ', '.join(f.name + _filled(f, scope, fill) for f in fs))
     if not project.morpheme_layer_id:
         lines.append('No morpheme layer: words cannot be segmented in this project.')
     defaults = [f'{scope.lower()}: {f.name}' for scope in SCOPES for f in [project.gloss_field(scope)] if f]
@@ -1024,6 +1027,17 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
                                                      if len(documents) > OVERVIEW_DOCS else ''))
     lines.extend(document_lines(sorted(documents, key=lambda d: (d.get('name') or '').lower())[:OVERVIEW_DOCS]))
     return '\n'.join(lines)
+
+
+def _filled(f, scope: str, fill: Optional[Dict[str, Any]]) -> str:
+    """`` (120 of 992 words filled)``, `` (empty)``, or '' without counts."""
+    if not fill:
+        return ''
+    n = fill['filled'].get(f.layer_id, 0)
+    of = fill['of'].get(scope, 0)
+    if not n:
+        return ' (empty)'
+    return f' ({n:,} of {of:,} {scope.lower()}s filled)'
 
 
 def document_lines(documents: List[dict]) -> List[str]:

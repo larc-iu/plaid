@@ -227,6 +227,24 @@ def _chunks(items: List[Any], n: int = 200):
         yield items[i:i + n]
 
 
+# --- project_overview --------------------------------------------------------------
+
+def q_field_fill(ws: Workspace) -> Dict[str, Dict[str, int]]:
+    """How full each field is, in two grouped reads whatever the number of
+    fields: ``filled`` maps a field's layer to its values that are not empty,
+    ``of`` a scope (Sentence, Word, Morpheme) to its stored items. Counted
+    over the whole project."""
+    c = ws.corpus
+    p = ws.project
+    layers = {f.layer_id for f in p.fields.values()}
+    filled = {layer: n for layer, n in c.group([['span', '?s', {'layer': '?sl'}], ['!=', '?s.value', '']], ['?sl'])
+              if layer in layers}
+    scopes = {c.S: 'Sentence', c.W: 'Word', c.M: 'Morpheme'}
+    of = {scopes[layer]: n for layer, n in c.group([['token', '?t', {'layer': '?tl'}]], ['?tl'])
+          if layer in scopes and layer}
+    return {'filled': filled, 'of': of}
+
+
 # --- frequency_list ---------------------------------------------------------------
 
 def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int):

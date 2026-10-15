@@ -28,7 +28,8 @@ from .workspace import Workspace, _hits_in, _matcher, _meta_of
 # --- read tools ---------------------------------------------------------------
 
 def t_project_overview(ws: Workspace) -> str:
-    return render_overview(ws.project, ws.documents())
+    from .queries import q_field_fill
+    return render_overview(ws.project, ws.documents(), fill=q_field_fill(ws))
 
 
 def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_field: Optional[str] = None,
