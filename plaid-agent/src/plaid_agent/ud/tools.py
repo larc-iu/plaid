@@ -624,14 +624,26 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     ws.add_ops(staged)
     what = f'{field} = "{value}"' if value else f'{field} cleared'
     return f'Planned {what} on {len(words)} word(s): ' + ', '.join(
-        word_ref(ws.sentence_of(doc, w), w) for w in words) + _same_form_left(ws, doc, words)
+        word_ref(ws.sentence_of(doc, w), w) for w in words) + _same_form_left(
+        ws, doc, words, lambda o: _planned_value(ws, layer_id, o, field) == value)
 
 
-def _same_form_left(ws: Workspace, doc: UdDoc, words: List[Word]) -> str:
+def _planned_value(ws: Workspace, layer_id: str, w: Word, field: str) -> str:
+    """The word's value of a single-valued field once the plan runs."""
+    for op in reversed(ws.ops):
+        if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id and op.get('token_id') == w.id:
+            return op.get('value') or ''
+    sp = w.fields.get(field)
+    return sp.value if sp else ''
+
+
+def _same_form_left(ws: Workspace, doc: UdDoc, words: List[Word], holds=lambda o: False) -> str:
     """The words of the same form in the same sentence that a change by
     reference leaves out, said after it. Asked to retag "de" in a sentence
     holding six, a model changed the first and never saw the other five, so
-    the user was neither asked which one nor told."""
+    the user was neither asked which one nor told. A word that ``holds``
+    the value written already, stored or planned, is as the user wants it
+    either way, and is not named (the bench's commas found by their UPOS)."""
     named = {w.id for w in words}
     notes = []
     seen = set()
@@ -641,7 +653,7 @@ def _same_form_left(ws: Workspace, doc: UdDoc, words: List[Word]) -> str:
         if key in seen:
             continue
         seen.add(key)
-        rest = [o for o in s.words if o.id not in named and o.form.casefold() == key[1]]
+        rest = [o for o in s.words if o.id not in named and o.form.casefold() == key[1] and not holds(o)]
         if rest:
             notes.append(f's{s.index} also has "{clip(w.form)}" at ' + ', '.join(f'w{o.index}' for o in rest))
     if not notes:
@@ -798,7 +810,8 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
         return (f'Nothing to change: {feature}={value} is already set on every word named.' if value
                 else f'Nothing to change: none of the words named has {feature}.')
     what = f'{feature}={value}' if value else f'{feature} removed'
-    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed) + _same_form_left(ws, doc, words)
+    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed) + _same_form_left(
+        ws, doc, words, lambda o: _planned_features(ws, layer_id, o).get(feature) == (value or None))
 
 
 def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = None,

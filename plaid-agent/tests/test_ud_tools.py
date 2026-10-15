@@ -1715,3 +1715,30 @@ def test_a_change_by_reference_says_which_words_of_the_same_form_it_leaves(ws):
     out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4', 's1.w5'], 'field': 'upos',
                                       'value': 'X'})
     assert 'Not in this plan' not in out, out
+
+
+def test_a_same_form_word_that_already_holds_the_value_is_not_named(ws):
+    """ud-fr-form-upos-fix (bench build-q38-1, every run): the three commas
+    tagged AUX were found by their UPOS and set to PUNCT, and the note named
+    the other commas of the sentence, already PUNCT, as words the plan left
+    out. r1 then told the user of "five" commas. A word that already holds,
+    or is planned to hold, the value written is left as the user wants it, so
+    it is not named."""
+    s = ws.doc('Viaje').sentences[0]
+    s.words[4].form = 'MAR'  # two words "mar" in s1
+    held = s.words[4].fields['upos'].value
+    assert s.words[3].fields['upos'].value != held, 'the fixture writes a change to w4'
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'upos', 'value': held})
+    assert 'Not in this plan' not in out, out
+    # Planned to hold it counts as holding it.
+    call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w5'], 'field': 'xpos', 'value': 'Q'})
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'xpos', 'value': 'Q'})
+    assert 'Not in this plan' not in out, out
+    # One feature: the same.
+    call_tool(ws, 'set_feature', {'document': 'Viaje', 'refs': ['s1.w5'], 'feature': 'Gender', 'value': 'Fem'})
+    out = call_tool(ws, 'set_feature', {'document': 'Viaje', 'refs': ['s1.w4'], 'feature': 'Gender',
+                                        'value': 'Fem'})
+    assert 'Not in this plan' not in out, out
+    out = call_tool(ws, 'set_feature', {'document': 'Viaje', 'refs': ['s1.w4'], 'feature': 'Number',
+                                        'value': 'Plur'})
+    assert 'Not in this plan: s1 also has "mar" at w5.' in out, out
