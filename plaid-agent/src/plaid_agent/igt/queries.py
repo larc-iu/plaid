@@ -222,6 +222,11 @@ def _casefold_tally(rows: List[list], keyfn) -> Tuple[Counter, Dict[str, set]]:
     return counts, raw
 
 
+#: A span value that is not empty: a span holding '' is an empty field to
+#: every read, as project_overview counts it (H16-IGT-TOOLS-8).
+FILLED = {'regex': '[\\s\\S]'}
+
+
 def _chunks(items: List[Any], n: int = 200):
     for i in range(0, len(items), n):
         yield items[i:i + n]
@@ -230,18 +235,27 @@ def _chunks(items: List[Any], n: int = 200):
 # --- project_overview --------------------------------------------------------------
 
 def q_field_fill(ws: Workspace) -> Dict[str, Dict[str, int]]:
-    """How full each field is, in two grouped reads whatever the number of
+    """How full each field is, in four grouped reads whatever the number of
     fields: ``filled`` maps a field's layer to its values that are not empty,
     ``of`` a scope (Sentence, Word, Morpheme) to its stored items. Counted
-    over the whole project."""
+    over the whole project. Words are counted as every other read counts
+    them, punctuation left out (H16-REVIEW-2), and so are a word field's
+    values."""
     c = ws.corpus
     p = ws.project
     layers = {f.layer_id for f in p.fields.values()}
     filled = {layer: n for layer, n in c.group([['span', '?s', {'layer': '?sl'}], ['!=', '?s.value', '']], ['?sl'])
               if layer in layers}
+    word_layers = {f.layer_id for f in p.fields_by_scope('Word')}
+    for layer, value, n in c.group([['span', '?s', {'layer': '?sl'}], ['!=', '?s.value', ''], ['covers', '?s', '?t'],
+                                    c.word('?t')], ['?sl', '?t.value']):
+        if layer in word_layers and c.ignored(value):
+            filled[layer] = filled.get(layer, 0) - n
     scopes = {c.S: 'Sentence', c.W: 'Word', c.M: 'Morpheme'}
     of = {scopes[layer]: n for layer, n in c.group([['token', '?t', {'layer': '?tl'}]], ['?tl'])
           if layer in scopes and layer}
+    if c.W:
+        of['Word'] = c.word_count([c.word('?t')])
     return {'filled': filled, 'of': of}
 
 
@@ -292,7 +306,7 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
         unit = [c.span('?s', field.layer_id)] + held
         counts, raw = _casefold_tally(c.group(unit, ['?s.value']),
                                       lambda r: ((r[0], r[0]) if r[0] not in (None, '') else (None, None)))
-        where = [['token', '?t', {'layer': layer}], ['not', c.span('?s', field.layer_id), ['covers', '?s', '?t']]]
+        where = [['token', '?t', {'layer': layer}], ['not', c.span('?s', field.layer_id, value=FILLED), ['covers', '?s', '?t']]]
         where += target_condition(c, cond, '?t', field.scope)
         empty = c.word_count(where) if field.scope == 'Word' else c.count(where, ['?t'])
     items = sorted(((k, n) for k, n in counts.items() if n >= min_count), key=lambda kv: (-kv[1], kv[0]))
@@ -441,7 +455,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         return (s.index, w.index, mi), word_ref(s, w) + (f'.m{mi}' if mi else '')
 
     if lvl == 'sentence':
-        rows = c.group([c.sent('?t'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?t']]], [at('?t')])
+        rows = c.group([c.sent('?t'), ['not', c.span('?s', f.layer_id, value=FILLED), ['covers', '?s', '?t']]], [at('?t')])
         if not refs:
             return {names.get(d, d): n for d, n in rows}, examples
         found = sorted(r for r in (ref(sid) for sid, _n in rows) if r)
@@ -488,7 +502,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         if kind == 'unlinked':
             where = [c.word('?w'), ['not', ['vocab-link', '?w', '?v']]]
         else:
-            where = [c.word('?w'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?w']]]
+            where = [c.word('?w'), ['not', c.span('?s', f.layer_id, value=FILLED), ['covers', '?s', '?w']]]
         counts = c.word_tally(where, '?w')
         by_doc = c.group(where, ['?w.value', at('?w')])
     else:
@@ -499,7 +513,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
                 ['not', ['vocab-link', '?m', '?v']], ['not', ['vocab-link', '?w', '?v2']]]
             bare = c.bare_word('?w') + [['not', ['vocab-link', '?w', '?v2']]]
         else:
-            where = c.shown_morph('?m') + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
+            where = c.shown_morph('?m') + [['not', c.span('?s', f.layer_id, value=FILLED), ['covers', '?s', '?m']]]
             bare = c.bare_word('?w')
         rows = c.group(where, ['?m.metadata.form', '?m.value', at('?m')])
         # A word nobody has segmented has the derived morpheme the editor
@@ -984,7 +998,7 @@ def q_consistency(ws: Workspace, f):
     where = covered + [['!=', '?s.value', ''], ['not', ['vocab-link', '?u', '?v']]]
     n = c.count(where, ['?u'])
     unlinked = (n, examples(where, ['?u', '?s'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} ({row[1].get("value")})') if n else [])
-    where = [unit, ['vocab-link', '?u', '?v'], ['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]]
+    where = [unit, ['vocab-link', '?u', '?v'], ['not', c.span('?s', f.layer_id, value=FILLED), ['covers', '?s', '?u']]]
     n = c.count(where, ['?u'])
     from .reads import linked_form
     linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {linked_form(u)}') if n else [])
