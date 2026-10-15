@@ -33,6 +33,7 @@ for (const b of ['tokenLayers', 'spanLayers', 'relationLayers']) {
 // Reads that travel as a POST take no audit message.
 const READ_POSTS = new Set([
   'tokenLayers.checkConstraints', 'spanLayers.checkConstraints', 'relationLayers.checkConstraints',
+  'spanLayers.refusedValues', 'relationLayers.refusedValues',
   'documents.mediaLink', 'users.avatarToken', 'users.avatarUrl',
 ]);
 // CRUD bundles whose writes hit document state. `messages`/services are

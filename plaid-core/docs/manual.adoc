@@ -1685,6 +1685,23 @@ Three kinds of write may keep a value outside a `value-set` list: an unverified 
 Any later edit of such a value is checked against the list.
 Imported relations are likewise exempt from `acyclic` and `max-in-degree`, so a file that has a cycle can still be read in.
 
+=== Values a list would refuse
+
+Before declaring a `value-set` list, an app can ask which stored values of a span or relation layer it would refuse.
+`refused_values` (`refusedValues` in JavaScript) takes the list as a declaration does, with `values`, `delimiters` and `parts`, and writes nothing.
+It reads the stored values the way a declaration of the list would, with the exemptions above, so what it names is exactly what a declaration would be refused for.
+Anyone who may read the layer may ask.
+
+[source,python]
+----
+client.span_layers.refused_values(pos_layer_id, {"values": ["N", "V", "ADJ"]}, limit=5)
+# {'count': 12, 'value_count': 2,
+#  'values': [{'value': 'NOUN', 'parts': ['NOUN'], 'count': 9},
+#             {'value': 'X', 'parts': ['X'], 'count': 3}]}
+----
+
+`count` is how many stored values the list would refuse, `value_count` how many distinct ones, and `values` the most frequent of them with the parts the list does not hold, 20 unless `limit` (at most 100) says otherwise.
+
 == References in Metadata
 
 An app sometimes needs to point from one of its rows to another row of the same document, in a way no relation can express.

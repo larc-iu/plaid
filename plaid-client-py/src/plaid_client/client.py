@@ -167,6 +167,33 @@ class _ConstraintMethods:
                              body=body, audit_message=audit_message)
 
 
+class _ValueSetMethods:
+    """The value-set read of a span or relation layer resource, on
+    ``/api/v1/<_kind>/<layer_id>/constraints/refused-values``."""
+
+    _kind = None
+
+    def refused_values(self, layer_id: str, rule: dict, limit: int = None) -> Any:
+        """The stored values of this layer that a value-set rule would refuse,
+        before it is declared: exactly what a declaration of it would meet,
+        with the rule's exemptions (an unconfirmed machine value, a value an
+        import, a document copy or a restore set). Writes nothing, and a
+        reader may ask. Answers ``{'count', 'value_count', 'values'}``: how
+        many stored values it refuses, how many distinct ones, and the most
+        frequent as ``{'value', 'parts', 'count'}``.
+
+        Args:
+            layer_id: The layer ID
+            rule: The list as a value-set declaration takes it: ``values``,
+                and optionally ``delimiters`` and ``parts`` (``'all'`` or ``'first'``)
+            limit: How many values to list, the most frequent first (default 20, at most 100)
+        """
+        body = {k: rule[k] for k in ('values', 'delimiters', 'parts') if rule.get(k) is not None}
+        if limit is not None:
+            body['limit'] = limit
+        return self._request('POST', f'/api/v1/{self._kind}/{layer_id}/constraints/refused-values', body=body)
+
+
 class _MetadataMethods:
     """The three metadata methods of a resource whose entities carry
     metadata, on ``/api/v1/<_kind>/<id>/metadata``. Metadata is opaque, so no
@@ -670,7 +697,7 @@ class RelationsResource(_MetadataMethods, _Resource):
         return self._request('PATCH', f'/api/v1/relations/{relation_id}',
                              body=_body_of(value=value), audit_message=audit_message)
 
-    def create(self, layer_id: str, source_id: str, target_id: str, value: Any,
+    def create(self, relation_layer_id: str, source: str, target: str, value: Any,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None) -> Any:
         """Create a new relation.
 
@@ -678,9 +705,9 @@ class RelationsResource(_MetadataMethods, _Resource):
         for expressing phenomena such as syntactic or semantic relations.
 
         Args:
-            layer_id: The relation layer ID
-            source_id: The source span ID
-            target_id: The target span ID
+            relation_layer_id: The relation layer ID
+            source: The source span ID
+            target: The target span ID
             value: The value
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
@@ -690,8 +717,8 @@ class RelationsResource(_MetadataMethods, _Resource):
                 id was used before).
         """
         return self._request('POST', '/api/v1/relations',
-                             body=_body_of(id=_UNSET if id is None else id, layer_id=layer_id, source_id=source_id,
-                                           target_id=target_id, value=value, metadata=metadata), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, relation_layer_id=relation_layer_id,
+                                           source=source, target=target, value=value, metadata=metadata), audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple relations in a single operation.
@@ -734,7 +761,7 @@ class RelationsResource(_MetadataMethods, _Resource):
         return self._request('PATCH', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
 
-class SpanLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
+class SpanLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _ValueSetMethods, _Resource):
     _kind = 'span-layers'
 
     def create(self, token_layer_id: str, name: str, audit_message=None, *,
@@ -2881,7 +2908,7 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         return self._request('PATCH', f'/api/v1/vocab-items/{id}',
                              body=_body_of(form=form), audit_message=audit_message)
 
-class RelationLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
+class RelationLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _ValueSetMethods, _Resource):
     _kind = 'relation-layers'
 
     def create(self, span_layer_id: str, name: str, audit_message=None, *,

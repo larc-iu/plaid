@@ -109,3 +109,22 @@ test("valueSetAllows reads a value as the server does, trimming what trim() trim
     );
   }
 });
+
+for (const [bundle, kind] of [["spanLayers", "span-layers"], ["relationLayers", "relation-layers"]]) {
+  test(`${bundle}.refusedValues posts the rule and the limit, values as given`, () => {
+    const [op] = queued((b) =>
+      b[bundle].refusedValues("L1", { values: ["snake_case", "1SG"], delimiters: ".", parts: "all" }, { limit: 5 }),
+    );
+    assert.equal(op.method, "POST");
+    assert.ok(op.path.startsWith(`/api/v1/${kind}/L1/constraints/refused-values`), op.path);
+    assert.ok(!op.path.includes("audit-message"), op.path);
+    assert.deepEqual(op.body, { values: ["snake_case", "1SG"], delimiters: ".", parts: "all", limit: 5 });
+    const [plain] = queued((b) => b[bundle].refusedValues("L1", { values: ["N"] }));
+    assert.deepEqual(plain.body, { values: ["N"] });
+  });
+}
+
+test("a token layer has no value-set, so no refusedValues", () => {
+  const client = new PlaidClient("http://localhost:0", "dummy-token");
+  assert.equal(client.tokenLayers.refusedValues, undefined);
+});

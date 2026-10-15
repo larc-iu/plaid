@@ -106,6 +106,30 @@
       (select-keys (lc/violation-body db vs) [:violations :violation-count])
       {:violations [] :violation-count 0})))
 
+(def refused-values-shown
+  "How many refused values `refused-values` lists when not told."
+  20)
+
+(defn refused-values
+  "The stored values of the layer that a value-set rule (`rule`: values,
+  delimiters, parts, as a declaration takes them) would refuse, read by the
+  rule's own check with its exemptions (an unconfirmed machine value, a value
+  an import, a document copy or a restore set), so the answer is what a
+  declaration of it would meet. As `{:count :value-count :values}`: how many
+  stored values it refuses, how many distinct ones, and the `limit` most
+  frequent as `{:value :parts :count}`. Writes nothing."
+  [db kind id rule limit]
+  (let [row (layer-row! db kind id)
+        cs (lc/validate-list db kind row [(assoc rule :type "value-set")])
+        layer (lc/layer-record-by-id db kind id)
+        vs (lc/check-layer db layer nil cs)
+        by-value (->> (group-by :value vs)
+                      (map (fn [[v rs]] {:value v :parts (:parts (first rs)) :count (count rs)}))
+                      (sort-by (juxt (comp - :count) (comp str :value))))]
+    {:count (count vs)
+     :value-count (count by-value)
+     :values (vec (take (or limit refused-values-shown) by-value))}))
+
 (defn document-standing
   "Where `document` stands for a repair of the layer: `:unknown` when no
   document has that id, `:elsewhere` when it is in another project than the

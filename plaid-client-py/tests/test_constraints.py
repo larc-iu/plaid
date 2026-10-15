@@ -116,3 +116,22 @@ VALUE_SET_CASES = json.loads(
 def test_value_set_allows_reads_a_value_as_the_server_does(case):
     constraint = VALUE_SET_CASES['constraints'][case['constraint']]
     assert value_set_allows(constraint, case['value']) is case['allowed']
+
+
+def test_the_fake_answers_refused_values_from_its_documents():
+    """The fake reads its documents as core reads the layer: blank values and
+    listed parts pass, an unconfirmed machine value stays, a confirmed one
+    is refused, the most frequent first."""
+    layer = {'id': 'L1', 'spans': [
+        {'id': 's1', 'value': '1SG.NOM'}, {'id': 's2', 'value': 'dog.PL'}, {'id': 's3', 'value': 'dog.PL'},
+        {'id': 's4', 'value': ' '}, {'id': 's5', 'value': 'XM', 'metadata': {'prov': 'inferred'}},
+        {'id': 's6', 'value': 'XC', 'metadata': {'prov': 'inferred', 'provConfirmed': True}}]}
+    fake = FakeClient([{'id': 'd1', 'text_layers': [{'token_layers': [{'span_layers': [layer]}]}]}])
+    rule = {'values': ['1SG', 'NOM', 'PL'], 'delimiters': '.'}
+    assert fake.span_layers.refused_values('L1', rule) == {
+        'count': 3, 'value_count': 2,
+        'values': [{'value': 'dog.PL', 'parts': ['dog'], 'count': 2}, {'value': 'XC', 'parts': ['XC'], 'count': 1}]}
+    assert fake.span_layers.refused_values('L1', rule, limit=1)['values'] == [
+        {'value': 'dog.PL', 'parts': ['dog'], 'count': 2}]
+    assert fake.span_layers.refused_values('L2', rule) == {'count': 0, 'value_count': 0, 'values': []}
+    assert not hasattr(PlaidClient('http://localhost:0', 'dummy-token').token_layers, 'refused_values')

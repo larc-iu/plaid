@@ -162,6 +162,22 @@ import {
  */
 
 /**
+ * A value-set rule as `refusedValues` takes it: the list, the characters a
+ * value is split on, and whether every part (`"all"`, the default) or only
+ * the first must be listed.
+ * @typedef {{values: string[], delimiters?: string, parts?: "all" | "first"}} ValueSetRule
+ */
+
+/**
+ * What a value-set rule would refuse in a layer's stored values: how many,
+ * how many distinct, and the most frequent with the parts not listed.
+ * @typedef {object} RefusedValues
+ * @property {number} count
+ * @property {number} valueCount
+ * @property {Array<{value: any, parts: string[], count: number}>} values
+ */
+
+/**
  * Entities that can carry a comment.
  * @typedef {"document" | "text" | "token" | "span" | "relation" | "vocab-item"} CommentableType
  */
@@ -1054,9 +1070,9 @@ class PlaidClient {
        * Create a new relation. A relation is a directed edge between two spans
        * with a value, useful for expressing phenomena such as syntactic or
        * semantic relations.
-       * @param {string} layerId - The relation layer ID
-       * @param {string} sourceId - The source span ID
-       * @param {string} targetId - The target span ID
+       * @param {string} relationLayerId - The relation layer ID
+       * @param {string} source - The source span ID
+       * @param {string} target - The target span ID
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        * @param {string} [auditMessage] - Audit message for this write
@@ -1064,9 +1080,9 @@ class PlaidClient {
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
        */
       create: (
-        layerId,
-        sourceId,
-        targetId,
+        relationLayerId,
+        source,
+        target,
         value,
         metadata,
         auditMessage,
@@ -1076,9 +1092,9 @@ class PlaidClient {
           auditMessage,
           body: bodyOf({
             id,
-            "layer-id": layerId,
-            "source-id": sourceId,
-            "target-id": targetId,
+            "relation-layer-id": relationLayerId,
+            source,
+            target,
             value,
             metadata,
           }),
@@ -1118,6 +1134,7 @@ class PlaidClient {
     this.spanLayers = {
       ...configMethods(this, "span-layers"),
       ...constraintMethods(this, "span-layers"),
+      ...valueSetMethods(this, "span-layers"),
       ...layerMethods(this, "span-layers"),
       /**
        * Create a new span layer.
@@ -3075,6 +3092,7 @@ class PlaidClient {
         }),
       ...configMethods(this, "relation-layers"),
       ...constraintMethods(this, "relation-layers"),
+      ...valueSetMethods(this, "relation-layers"),
     };
 
     this.tokens = {
@@ -4584,6 +4602,38 @@ function constraintMethods(client, kind) {
       client._request("POST", `${base(layerId)}/repair`, {
         auditMessage,
         body: options?.document ? { constraints, document: options.document } : { constraints },
+      }),
+  };
+}
+
+/**
+ * The value-set read of a span or relation layer bundle, on
+ * `/api/v1/<kind>/<layerId>/constraints/refused-values`.
+ * @param {PlaidClient} client
+ * @param {string} kind
+ */
+function valueSetMethods(client, kind) {
+  return {
+    /**
+     * The stored values of this layer that a value-set rule would refuse,
+     * before it is declared: exactly what a declaration of it would meet,
+     * with the rule's exemptions (an unconfirmed machine value, a value an
+     * import, a document copy or a restore set). Writes nothing, and a
+     * reader may ask.
+     * @param {string} layerId - The layer ID
+     * @param {ValueSetRule} rule - The list as a value-set declaration takes it
+     * @param {{limit?: number}} [options] - `limit`: how many values to list, the most frequent first
+     *   (default 20, at most 100)
+     * @returns {Promise<RefusedValues>}
+     */
+    refusedValues: (layerId, rule, options) =>
+      client._request("POST", `/api/v1/${kind}/${layerId}/constraints/refused-values`, {
+        body: bodyOf({
+          values: rule?.values,
+          delimiters: rule?.delimiters,
+          parts: rule?.parts,
+          limit: options?.limit,
+        }),
       }),
   };
 }

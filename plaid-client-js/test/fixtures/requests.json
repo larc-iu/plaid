@@ -372,6 +372,19 @@
     "sends": [{"method": "PATCH", "path": "/api/v1/relations/bulk", "body": [{"id": "r1", "value": "nsubj"}]}]
   },
   {
+    "name": "a relation create names its layer, source and target as a bulk create entry does",
+    "js": ["relations.create", "rl1", "s1", "s2", "nsubj"],
+    "sends": [{"method": "POST", "path": "/api/v1/relations",
+               "body": {"relation-layer-id": "rl1", "source": "s1", "target": "s2", "value": "nsubj"}}]
+  },
+  {
+    "name": "a relation bulk create entry has the single create's names",
+    "js": ["relations.bulkCreate", [{"relationLayerId": "rl1", "source": "s1", "target": "s2", "value": "nsubj"}]],
+    "py": ["relations.bulk_create", [{"relation_layer_id": "rl1", "source": "s1", "target": "s2", "value": "nsubj"}]],
+    "sends": [{"method": "POST", "path": "/api/v1/relations/bulk",
+               "body": [{"relation-layer-id": "rl1", "source": "s1", "target": "s2", "value": "nsubj"}]}]
+  },
+  {
     "name": "a token bulk update is one PATCH",
     "js": ["tokens.bulkUpdate", [{"id": "t1", "metadata": [{"op": "set", "path": ["form"], "value": "cd"}]}]],
     "sends": [{"method": "PATCH", "path": "/api/v1/tokens/bulk", "body": [{"id": "t1", "metadata": [{"op": "set", "path": ["form"], "value": "cd"}]}]}]
@@ -381,5 +394,14 @@
     "js": ["messages.sendMessage", "p1", {"case-marker": "ERG", "camelCaseKey": 1, "snake_case_key": 2, "nested": {"another-key": [1, {"deep-key": "v"}]}}],
     "sends": [{"method": "POST", "path": "/api/v1/projects/p1/message",
                "body": {"body": {"case-marker": "ERG", "camelCaseKey": 1, "snake_case_key": 2, "nested": {"another-key": [1, {"deep-key": "v"}]}}}}]
+  },
+  {
+    "name": "refusedValues posts a value-set rule and the limit, the values as given",
+    "each": [["spanLayers", "span-layers"], ["relationLayers", "relation-layers"]],
+    "js": ["<bundle>.refusedValues", "L1", {"values": ["1SG", "snake_case"], "delimiters": ".", "parts": "all"}, {"limit": 5}],
+    "py": ["<bundle>.refused_values", "L1", {"values": ["1SG", "snake_case"], "delimiters": ".", "parts": "all"}],
+    "py_kw": {"limit": 5},
+    "sends": [{"method": "POST", "path": "/api/v1/<kind>/L1/constraints/refused-values",
+               "body": {"values": ["1SG", "snake_case"], "delimiters": ".", "parts": "all", "limit": 5}}]
   }
 ]

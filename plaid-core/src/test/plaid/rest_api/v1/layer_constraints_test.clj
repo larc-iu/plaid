@@ -3,6 +3,7 @@
   validates, the refusal of a list the stored data breaks, the
   compare-and-set, check and repair, and constraints on every read."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [plaid.rest-api.v1.auth :as auth]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request user1-request user2-request with-admin with-test-users
@@ -11,7 +12,8 @@
                                         create-text-layer create-token-layer-opts
                                         create-span-layer create-relation-layer
                                         create-text create-token create-span create-relation
-                                        add-project-reader add-project-writer]]))
+                                        add-project-reader add-project-writer]]
+            [ring.mock.request :as mock]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -242,3 +244,66 @@
     (is (= ["Set umr rules on relation layer Deps: max-in-degree"]
            (map :description (ops-of "layer/set-constraints"))))
     (assert-status 204 (call admin-request :delete (str "/api/v1/span-layers/" lemma "/constraints/igt")))))
+
+(defn- refused [req kind layer body]
+  (call req :post (str "/api/v1/" kind "-layers/" layer "/constraints/refused-values") body))
+
+(deftest refused-values-answers-what-a-close-would-refuse
+  (let [{:keys [proj lemma deps wl txt spans]} (setup!)
+        [sa sb sc] spans
+        more (for [i (range 3)] (id (create-token admin-request wl txt 5 5 i)))
+        import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")]
+    ;; Stored on Lemma: x, y, z, then three more: y.Q, y.Q, a machine value.
+    (create-span admin-request lemma [(nth more 0)] "y.Q")
+    (create-span admin-request lemma [(nth more 1)] "y.Q")
+    (create-span admin-request lemma [(nth more 2)] "M" {"prov" "inferred"})
+    (testing "a reader is told the count, the distinct count and the values, most frequent first"
+      (let [r (refused user2-request "span" lemma {:values ["x" "y"] :delimiters "."})]
+        (assert-status 200 r)
+        (is (= {:count 3 :value-count 2
+                :values [{:value "y.Q" :parts ["Q"] :count 2} {:value "z" :parts ["z"] :count 1}]}
+               (:body r))
+            "the unconfirmed machine value is let stay")))
+    (testing "parts first, and the limit"
+      (let [r (refused user2-request "span" lemma {:values ["x" "y"] :delimiters "." :parts "first" :limit 1})]
+        (assert-status 200 r)
+        (is (= {:count 1 :value-count 1 :values [{:value "z" :parts ["z"] :count 1}]} (:body r)))))
+    (testing "a value an import set is let stay, as the declaration lets it"
+      (assert-status 200 (api-call admin-request {:method :patch :path (str "/api/v1/spans/" sc import-q)
+                                                  :body {:value "IMP"}}))
+      (is (= 2 (-> (refused user2-request "span" lemma {:values ["x" "y"] :delimiters "."}) :body :count)))
+      (assert-status 200 (put admin-request "span" lemma "igt"
+                              {:constraints [{:type "value-set" :values ["x" "y" "Q"] :delimiters "."}]})))
+    (testing "it writes nothing"
+      (let [n (count (psc/q db {:select [:id] :from :operations}))]
+        (refused user2-request "span" lemma {:values ["q"]})
+        (is (= n (count (psc/q db {:select [:id] :from :operations}))))))
+    (testing "a relation layer"
+      (create-relation admin-request deps sa sb "nsubj:pass")
+      (let [r (refused user2-request "relation" deps {:values ["nsubj"] :delimiters ":" :parts "first"})]
+        (assert-status 200 r)
+        (is (= 0 (-> r :body :count))))
+      (is (= 1 (-> (refused user2-request "relation" deps {:values ["obj"]}) :body :count))))
+    (testing "a rule a declaration would refuse is a 400"
+      (assert-status 400 (refused user2-request "span" lemma {:values [""]}))
+      (assert-status 400 (refused user2-request "span" lemma {:values "x"}))
+      (assert-status 400 (refused user2-request "span" lemma {:values ["x"] :delimiters " "}))
+      (assert-status 400 (refused user2-request "span" lemma {:values ["x"] :parts "some"}))
+      (assert-status 400 (refused user2-request "span" lemma {:values ["x"] :limit 0})))
+    (testing "a token layer has no value-set, so no such route"
+      (is (#{404 405} (:status (refused admin-request "token" wl {:values ["x"]})))))
+    (testing "a non-member is refused, an unknown layer is a 403 to a member and a 404 to an admin"
+      (let [other (create-test-project admin-request "Other")
+            otl (id (create-text-layer admin-request other "T"))
+            owl (id (create-token-layer-opts admin-request otl "W" {}))
+            osl (id (create-span-layer admin-request owl "L"))]
+        (assert-status 403 (refused user2-request "span" osl {:values ["x"]})))
+      (assert-status 403 (refused user2-request "span" (random-uuid) {:values ["x"]}))
+      (assert-status 404 (refused admin-request "span" (random-uuid) {:values ["x"]})))
+    (testing "a delegated token may ask, as a read"
+      (let [token (auth/issue-delegated-token! db "fake-secret" "user2@example.com" [proj])
+            req (fn [method path]
+                  (-> (mock/request method path)
+                      (mock/header "accept" "application/edn")
+                      (mock/header "Authorization" (str "Bearer " token))))]
+        (assert-status 200 (refused req "span" lemma {:values ["x"]}))))))

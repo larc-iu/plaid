@@ -29,6 +29,16 @@ export async function use(c: PlaidClient): Promise<void> {
   const igt = set.constraints["igt"];
   notAny(igt, true);
   const types: string[] = (igt ?? []).map((k) => k.type);
+  const refused = await c.spanLayers.refusedValues(
+    "L",
+    { values: ["N"], delimiters: ".", parts: "all" },
+    { limit: 5 },
+  );
+  const refusedN: number = refused.count + refused.valueCount;
+  const refusedParts: string[][] = refused.values.map((v) => v.parts);
+  const refusedTimes: number[] = refused.values.map((v) => v.count);
+  // @ts-expect-error a token layer holds no value-set rule
+  c.tokenLayers.refusedValues;
 
   // audit.tally's rows.
   const rows = await c.audit.tally();

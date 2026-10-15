@@ -3,6 +3,7 @@
   middleware that puts a constraint refusal's violations on the answer."
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.constraints.layer :as lc]
             [plaid.sql.layer-constraints :as slc]
             [plaid.sql.user :as user]))
 
@@ -62,11 +63,12 @@
   [:sequential [:map-of [:or :keyword :string] any?]])
 
 (defn constraint-routes
-  "The four routes on one layer of `kind` (:token, :span or :relation).
+  "The routes on one layer of `kind` (:token, :span or :relation).
   `id-key` is the layer's path parameter and `project-fn` resolves the
   project the maintainer gate checks."
   [kind id-key project-fn]
   (let [maintainer [[pra/wrap-maintainer-required project-fn]]
+        reader [[pra/wrap-reader-required project-fn]]
         writer [[pra/wrap-writer-required project-fn]]
         id-of (fn [request] (get-in request [:parameters :path id-key]))]
     ["/constraints"
@@ -83,6 +85,30 @@
                              (if-let [code (:code (ex-data e))]
                                {:status code :body {:error (ex-message e)}}
                                (throw e)))))}}]
+     (when (#{:span :relation} kind)
+       ["/refused-values"
+        {:conflicting true
+         :post {:summary (str "The stored values of this layer that a value-set rule would refuse, before it is "
+                              "declared: what a declaration of it would meet, with the rule's exemptions (an "
+                              "unconfirmed machine value, a value an import, a document copy or a restore set). "
+                              "Writes nothing, and a reader may ask. Body {values, delimiters?, parts?, limit?}, "
+                              "the rule as a value-set declaration takes it. Answers {count, value-count, values}: "
+                              "how many stored values it refuses, how many distinct ones, and the limit (default "
+                              slc/refused-values-shown ", at most " lc/max-listed ") most frequent as {value, parts, count}.")
+                :middleware reader
+                :parameters {:body [:map
+                                    [:values any?]
+                                    [:delimiters {:optional true} any?]
+                                    [:parts {:optional true} any?]
+                                    [:limit {:optional true} [:int {:min 1 :max lc/max-listed}]]]}
+                :handler (fn [{{body :body} :parameters db :db :as request}]
+                           (try
+                             {:status 200
+                              :body (slc/refused-values db kind (id-of request) (dissoc body :limit) (:limit body))}
+                             (catch clojure.lang.ExceptionInfo e
+                               (if-let [code (:code (ex-data e))]
+                                 {:status code :body {:error (ex-message e)}}
+                                 (throw e)))))}}])
      ["/repair"
       {:conflicting true
        :post {:summary (str "Apply the remedies of the given constraints' remediable types (coextensive, "

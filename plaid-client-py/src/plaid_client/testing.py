@@ -240,6 +240,42 @@ def _find_entity(tree, entity_id):
     return None
 
 
+def _refused_values(documents, layer_id, rule, limit):
+    """What core's ``refused-values`` answers for the layer ``layer_id`` of
+    the fixture ``documents``: the stored values a value-set ``rule`` would
+    refuse, an unconfirmed machine value let stay. The fake keeps no audit
+    log, so it knows no import, copy or restore, and refuses those values."""
+    from plaid_client.constraints import value_parts, value_set_allows
+    counts, parts_of = {}, {}
+    stack = [documents]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if node.get('id') == layer_id:
+                for row in (node.get('spans') or []) + (node.get('relations') or []):
+                    v, meta = row.get('value'), row.get('metadata') or {}
+                    prov = meta.get('prov')
+                    if value_set_allows(rule, v) or (
+                            prov is not None and prov != 'contributed' and meta.get('provConfirmed') is not True):
+                        continue
+                    key = json.dumps(v, sort_keys=True)
+                    counts[key] = counts.get(key, 0) + 1
+                    if not isinstance(v, str):
+                        parts_of[key] = []
+                    elif rule.get('parts') == 'first':
+                        parts_of[key] = value_parts(v, rule.get('delimiters'))[:1]
+                    else:
+                        parts_of[key] = [p for p in value_parts(v, rule.get('delimiters'))
+                                         if p not in set(rule.get('values') or [])]
+            stack.extend(v for k, v in node.items() if k != 'metadata')
+        elif isinstance(node, (list, tuple)):
+            stack.extend(node)
+    rows = sorted(counts.items(), key=lambda kv: (-kv[1], str(json.loads(kv[0]))))
+    return {'count': sum(counts.values()), 'value_count': len(rows),
+            'values': [{'value': json.loads(k), 'parts': parts_of[k], 'count': n}
+                       for k, n in rows[:limit or 20]]}
+
+
 def _refusal(root, status, text, method, path):
     """An error spelled as the real client spells one the server sent."""
     url = f'{root.base_url}{path}'
@@ -551,6 +587,10 @@ class Resource:
             # write here is ever refused with 422: a test on this fake covers
             # no constraint refusal.
             answer = {'violations': [], 'violation_count': 0}
+            return _payload(args, kwargs), {'body': answer}, answer
+        if method == 'refused_values':
+            answer = _refused_values(_root(self._client)._documents, first, arguments.get('rule') or {},
+                                     arguments.get('limit'))
             return _payload(args, kwargs), {'body': answer}, answer
         if method == 'repair_constraints':
             answer = {'repaired': [], 'locked': [], 'violations': [], 'violation_count': 0}
