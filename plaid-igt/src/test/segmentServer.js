@@ -557,6 +557,29 @@ export function segmentServer(raw) {
         };
       });
     },
+    // Another user's split of the segment `id` at `at` code points into its
+    // text and at `time`, as the Media tab makes it: `id` keeps the left
+    // half and ends at `time`, the right half is a new segment.
+    otherSplits(id, at, time, user = 'b') {
+      return other(user, (on) => {
+        const segment = layerOf(stored, 'alignL').tokens.find((t) => t.id === id);
+        const { begin, end, metadata } = segment;
+        on['tokens.update'](id, begin, begin + at);
+        on['tokens.patchMetadata'](id, [{ op: 'set', path: ['timeEnd'], value: time }]);
+        const { id: made } = on['tokens.create'](
+          'alignL',
+          textOf(stored).id,
+          begin + at,
+          end,
+          undefined,
+          { ...metadata, timeBegin: time },
+        );
+        return {
+          value: made,
+          ops: [{ description: `Update token ${id}` }, { description: `Create token ${made}` }],
+        };
+      });
+    },
     // Another user's change of the segment `id`'s speaker or times: token
     // metadata, the body as it was.
     otherRelabels(id, patch, user = 'b') {

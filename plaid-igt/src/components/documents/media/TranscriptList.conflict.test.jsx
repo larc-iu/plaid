@@ -151,6 +151,74 @@ describe('a transcript row whose edit lost to a merge of its segment', () => {
   });
 });
 
+describe('a transcript row whose edit lost to a split of its segment', () => {
+  it('says the segment changed, and keeps nothing on Enter', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    server.otherSplits('a-2', 1, 1.5);
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+
+    expect(row(r.container, 2).value).toBe('t');
+    expect(noteOf(r.container, 2)).toBe('Yours: dos · Esc to keep theirs');
+    const before = writes(server);
+    await r.step(() => row(r.container, 2).focus());
+    await r.step(async () => {
+      press(row(r.container, 2), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(writes(server)).toBe(before);
+    expect(server.body).toBe('one two three');
+    await r.unmount();
+  });
+});
+
+// A neighbour split, deleted or merged leaves this segment's own extent as it
+// was: a retype of it meanwhile is the plain conflict, and Enter keeps yours
+// (H16-UI-CORE-2).
+describe('a transcript row retyped elsewhere while a neighbour was re-cut', () => {
+  // `n` is the row a-2 is drawn in once the change elsewhere is read.
+  const keepsYours = async (server, r, drain, n) => {
+    expect(row(r.container, n).value).toBe('deux');
+    expect(noteOf(r.container, n)).toBe('Yours: dos · Enter to keep yours');
+    await r.step(() => row(r.container, n).focus());
+    await r.step(async () => {
+      press(row(r.container, n), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(noteOf(r.container, n)).toBe(null);
+    expect(server.segments().find((t) => t.id === 'a-2')).toBeTruthy();
+  };
+
+  it('the segment before split: Enter keeps yours', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    server.otherSplits('a-1', 1, 0.5, 'c');
+    server.otherRetypes('a-2', 'deux', 'c');
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+    await keepsYours(server, r, drain, 3);
+    expect(server.body).toBe('one dos three');
+    await r.unmount();
+  });
+
+  it('the segment after deleted with its text: Enter keeps yours', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    server.otherRetypes('a-2', 'deux', 'c');
+    const layer = server.stored.textLayers[0].tokenLayers.find((l) => l.id === 'alignL');
+    layer.tokens = layer.tokens.filter((t) => t.id !== 'a-3');
+    server.otherSaves([{ type: 'delete', index: 8, value: 6 }], 'c');
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+    await keepsYours(server, r, drain, 2);
+    expect(server.body).toBe('one dos');
+    await r.unmount();
+  });
+});
+
 describe('a transcript row whose edit lost to another change of its segment', () => {
   it('shows the stored text, the refused one under it, and a toast naming the change', async () => {
     const server = segmentServer(RAW());

@@ -1012,21 +1012,32 @@ export function TranscriptList({
       const token = segmentAt(key);
       return token ? textOf(token) : undefined;
     },
-    // A segment split or merged meanwhile has a new neighbour (the half cut
-    // off, or none where the one merged into it was) as well as new text. Its
-    // toast says the segment changed ("c changed this segment to …"), and the
-    // text typed for it is only shown, never written. A text edit or a
-    // boundary dragged elsewhere leaves the neighbours as they were.
+    // A segment split or merged meanwhile has one of its ends moved, and on
+    // that side a new neighbour (the half cut off) or none where the one
+    // merged into it was. Its toast says the segment changed ("c changed
+    // this segment to …"), and the text typed for it is only shown, never
+    // written. A text edit, a boundary dragged (the neighbour stays) or a
+    // neighbour's own split or delete (this segment's times stay) is the
+    // plain conflict, whose typed text Enter keeps.
     shape: (key) => {
       const token = segmentAt(key);
-      return token ? { text: textOf(token), ...neighboursOf(token) } : null;
+      return token
+        ? {
+            text: textOf(token),
+            timeBegin: timeBeginOf(token),
+            timeEnd: timeEndOf(token),
+            ...neighboursOf(token),
+          }
+        : null;
     },
     recut: (shape, key) => {
       const token = segmentAt(key);
       if (!shape || !token) return null;
       const text = textOf(token);
       const { before, after } = neighboursOf(token);
-      const recut = before !== shape.before || after !== shape.after;
+      const recut =
+        (timeBeginOf(token) !== shape.timeBegin && before !== shape.before) ||
+        (timeEndOf(token) !== shape.timeEnd && after !== shape.after);
       return recut && text !== shape.text ? { unit: 'segment', text, ids: [token.id] } : null;
     },
     entityIds: (key) => {
