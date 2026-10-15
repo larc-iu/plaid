@@ -3,7 +3,8 @@
   header readers on synthetic files, then the length through the routes that
   write and read it (upload, read, as-of read, copy, delete) and the one-off
   backfill for files uploaded before."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [next.jdbc :as jdbc]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     rest-handler with-admin with-test-users db
@@ -87,7 +88,13 @@
     (let [sync (byte-array (map unchecked-byte [0xFF 0xFB 0x90 0x00]))
           xing (bytes-of sync (byte-array 32) "Xing" (be 1 4) (be 100 4) (byte-array 400))]
       (is (near? (secs (bytes-of "ID3" (byte-array [3 0 0 0 0 0 0]) xing) "mp3") (/ (* 100 1152) 44100.0)))
-      (is (near? (secs (bytes-of sync (byte-array (- 16000 4))) "mp3") (/ (* 16000 8) 128000.0)))))
+      (testing "a constant bit rate only when the next frame follows the first"
+        (let [frame (bytes-of sync (byte-array (- 417 4)))
+              frames (byte-array (take 16000 (cycle frame)))]
+          (is (near? (secs frames "mp3") (/ (* 16000 8) 128000.0))))
+        (is (nil? (secs (bytes-of sync (byte-array (- 16000 4))) "mp3")) "one frame header, then nothing")
+        (is (nil? (duration/seconds (io/file (io/resource "plaid/media/garbage.mp3")) "mp3"))
+            "3 KB of noise that opens with FF FB (REV-UI)"))))
   (testing "another format or a broken header is of unknown length"
     (is (nil? (secs (bytes-of "OggS" (byte-array 200)) "ogg")))
     (is (nil? (secs (bytes-of (byte-array (map unchecked-byte [0x1A 0x45 0xDF 0xA3])) (byte-array 200)) "webm")))

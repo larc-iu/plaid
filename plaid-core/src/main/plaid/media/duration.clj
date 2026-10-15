@@ -147,8 +147,24 @@
                                        nil))
                                    [(+ 4 side) 36])]
                 (or from-tag
+                    ;; With no Xing, Info or VBRI header the length is the
+                    ;; size over the bit rate, and only when the next frame's
+                    ;; header follows where this frame ends: two bytes FF Ex
+                    ;; alone are as likely noise as a frame (REV-UI).
                     (when (pos? kbps)
-                      (/ (* (- size at) 8.0) (* kbps 1000))))))))))))
+                      (let [bits (* kbps 1000)
+                            pad (bit-and (bit-shift-right b2 1) 1)
+                            length (cond
+                                     (= layer 3) (* 4 (+ (quot (* 12 bits) rate) pad))
+                                     (and (= layer 1) (not mpeg1?)) (+ (quot (* 72 bits) rate) pad)
+                                     :else (+ (quot (* 144 bits) rate) pad))
+                            ^bytes next (read (+ at length) (+ at length 4))]
+                        (when (and (= 4 (alength next))
+                                   (= 0xFF (u8 next 0))
+                                   (= (bit-and b1 0xFE) (bit-and (u8 next 1) 0xFE))
+                                   (= (bit-and b2 0x0C) (bit-and (u8 next 2) 0x0C))
+                                   (< 0 (bit-shift-right (u8 next 2) 4) 15))
+                          (/ (* (- size at) 8.0) bits)))))))))))))
 
 (def ^:private readers-by-extension
   "Which header each stored extension is read as. An MP3 has no magic number
