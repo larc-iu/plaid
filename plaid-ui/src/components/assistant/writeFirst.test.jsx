@@ -85,3 +85,19 @@ describe('an approval the app writes first', () => {
     expect(notifyError.mock.calls.some(([m]) => /Nothing was written/.test(String(m)))).toBe(false);
   });
 });
+
+describe('the operation the app’s write of a plan is in', () => {
+  it('is the one the service opens for a plan: label, kind and ref', async () => {
+    const { planOperation } = await import('./jobs.js');
+    expect(
+      planOperation('c1', { id: 'p9', summary: 'Tagset ⁨Leipzig⁩ closed' }, 'igt:assist:m'),
+    ).toEqual({
+      message: 'Assistant: Tagset Leipzig closed',
+      kind: 'assistant-plan',
+      ref: 'conv:c1/plan:p9/service:igt:assist:m',
+    });
+    const long = planOperation('c1', { id: 'p9', summary: 'x'.repeat(500) }, 's');
+    expect(Array.from(long.message)).toHaveLength(400);
+    expect(long.message.endsWith('…')).toBe(true);
+  });
+});

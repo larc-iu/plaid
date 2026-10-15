@@ -245,14 +245,27 @@ const queueOwner = (b, projectId, owner, ops, live) => {
   queueFieldDeclarations(b, fields, after);
 };
 
+// A client of its own on the approver's session, so the write is an
+// operation of its own: it neither joins one the shared client holds open
+// nor is joined by one that opens on it meanwhile. A client that cannot be
+// made again (a test double) is used as it is.
+const apart = (client) => {
+  const Own = client?.constructor;
+  return typeof Own === 'function' && Own !== Object && typeof client.baseUrl === 'string'
+    ? new Own(client.baseUrl, client.token, { onAuthError: client.onAuthError })
+    : client;
+};
+
 /**
  * Write a plan of tagset changes with `client` (the approver's own), before
  * its approval is sent. Throws, writing nothing, when settings it changes
  * moved since the plan was made, or when core refuses the batch (a closed
  * list the stored values break: the error's message says which). Settings
- * that already read as planned are left as they are.
+ * that already read as planned are left as they are. `operation`
+ * ({message, kind, ref}, plaid-ui `planOperation`) is the plan's own
+ * operation, as the service opens one for every other plan it applies.
  */
-export const writeTagsetPlan = async (client, projectId, plan) => {
+export const writeTagsetPlan = async (client, projectId, plan, operation = null) => {
   const ops = (plan?.ops || []).filter((op) => SETTINGS_KINDS.includes(op?.kind));
   if (!ops.length) return false;
   const owners = [...new Set(ops.map((op) => op.owner))];
@@ -265,8 +278,9 @@ export const writeTagsetPlan = async (client, projectId, plan) => {
       'The tagset settings this plan changes were changed since it was made, so nothing was written. Ask the assistant to plan it again.',
     );
   }
-  try {
-    await client.batched((b) => {
+  const own = apart(client);
+  const write = () =>
+    own.batched((b) => {
       for (const owner of owners) {
         queueOwner(
           b,
@@ -277,6 +291,15 @@ export const writeTagsetPlan = async (client, projectId, plan) => {
         );
       }
     });
+  try {
+    if (operation) {
+      await own.withOperation(operation.message, write, {
+        kind: operation.kind,
+        ref: operation.ref,
+      });
+    } else {
+      await write();
+    }
   } catch (error) {
     const words = tagsetRefusal(error);
     if (words) throw new Error(`${words} Nothing was written.`, { cause: error });

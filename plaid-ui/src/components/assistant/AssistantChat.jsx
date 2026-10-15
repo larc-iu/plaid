@@ -57,6 +57,7 @@ import {
   nothingLanded,
   readConv,
   settleApplyToasts,
+  planOperation,
   startApply,
   startTurn,
   stopJob,
@@ -819,7 +820,7 @@ export const AssistantChat = ({
     return stopJob(client, projectId, jobFor(activeRef.current?.id));
   };
 
-  const approve = (plan, { asHuman = false } = {}) => {
+  const approve = (plan, { asHuman = false } = {}, proposer = null) => {
     const conv = activeRef.current;
     if (!conv || !canSend) return;
     setStopped(null);
@@ -834,7 +835,13 @@ export const AssistantChat = ({
         docked: !toastOnApply,
         tab: held.tab,
         writeFirst: adapter.writeFirst
-          ? () => adapter.writeFirst({ client, projectId, plan })
+          ? () =>
+              adapter.writeFirst({
+                client,
+                projectId,
+                plan,
+                operation: planOperation(conv.id, plan, proposer || service.serviceId),
+              })
           : null,
       }),
     );
@@ -1143,7 +1150,7 @@ export const AssistantChat = ({
                   nothingWritten={!!d.plan && unwritten.has(d.plan.id)}
                   applying={applyingHere(d)}
                   onDownloadFile={downloadFile}
-                  onApprove={(opts) => approve(d.plan, opts)}
+                  onApprove={(opts) => approve(d.plan, opts, d.service)}
                   onDiscard={() => discard(i)}
                   onOpenPlan={() =>
                     client.events?.record?.('plan.opened', {

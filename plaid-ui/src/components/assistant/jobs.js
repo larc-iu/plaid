@@ -556,6 +556,23 @@ export const settleApplyToasts = (display) => {
   }
 };
 
+// The operation an applied plan is in the audit log, as the service opens
+// it (plaid-agent core/service.py `audit_label` and its ref): the app's own
+// write of a plan (`writeFirst`) is one of these too, so History names it
+// and a study can tie it to its plan.
+const AUDIT_LABEL_MAX = 400;
+export const planOperation = (convId, plan, serviceId) => {
+  const label = Array.from(`Assistant: ${plan?.summary ?? ''}`.replace(/[\u2066-\u2069]/g, ''));
+  return {
+    message:
+      label.length <= AUDIT_LABEL_MAX
+        ? label.join('')
+        : `${label.slice(0, AUDIT_LABEL_MAX - 1).join('')}…`,
+    kind: 'assistant-plan',
+    ref: `conv:${convId}/plan:${plan?.id}/service:${serviceId}`,
+  };
+};
+
 export const WROTE_FIRST =
   'The settings were written, but the approval was not recorded. Approve again to record it.';
 

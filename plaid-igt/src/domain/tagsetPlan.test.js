@@ -251,3 +251,67 @@ describe('a plan of tagset changes, written with the approver’s session', () =
     expect(await writeTagsetPlan(fakeClient(project), 'proj-1', plan)).toBe(false);
   });
 });
+
+describe('the approver’s write of a plan of tagset changes in the audit log', () => {
+  const closed = { ...LEIPZIG, mode: 'closed' };
+  const operation = {
+    message: 'Assistant: Tagset Leipzig closed',
+    kind: 'assistant-plan',
+    ref: 'conv:c1/plan:p1/service:igt:assist:m',
+  };
+
+  it('is the plan’s own operation, with its label, kind and ref', async () => {
+    const c = fakeClient(projectWith());
+    const seen = [];
+    c.withOperation = async (message, fn, opts) => {
+      seen.push({ message, ...opts, batchesBefore: c.batches });
+      return fn(() => {});
+    };
+    expect(await writeTagsetPlan(c, 'proj-1', { ops: [setTagset(closed)] }, operation)).toBe(true);
+    expect(seen).toEqual([
+      {
+        message: operation.message,
+        kind: 'assistant-plan',
+        ref: operation.ref,
+        batchesBefore: 0,
+      },
+    ]);
+    expect(c.batches).toBe(1);
+  });
+
+  it('stays out of an operation the shared client holds open', async () => {
+    const { default: PlaidClient } = await import('@larc-iu/plaid-client');
+    const project = projectWith();
+    const writes = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => {
+      const json = (body) => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      });
+      if ((opts.method || 'GET') === 'GET') return json(project);
+      // Each op of the batch carries the operation it joins on its own path.
+      const ops = JSON.parse(opts.body);
+      for (const op of ops) {
+        writes.push(Object.fromEntries(new URLSearchParams(String(op.path).split('?')[1] ?? '')));
+      }
+      return json(ops.map(() => ({ status: 200, body: {} })));
+    };
+    try {
+      const shared = new PlaidClient('http://plaid.test', 'token');
+      shared.beginOperation('Save word', {});
+      await writeTagsetPlan(shared, 'proj-1', { ops: [setTagset(closed)] }, operation);
+      expect(writes.length).toBeGreaterThan(0);
+      for (const w of writes) {
+        expect(w).toMatchObject({ 'group-kind': 'assistant-plan', 'group-ref': operation.ref });
+        expect(w['group-message']).toBe(operation.message);
+        expect(w['group-id']).not.toBe(shared.operationGroup.id);
+      }
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
