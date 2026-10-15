@@ -266,3 +266,18 @@
         (testing "an upload is not refused as if a recording were there"
           (is (= 201 (:status (upload! did "talk.wav" (wav-bytes 2.0)))))
           (is (near? (length-of (read-doc did)) 2.0)))))))
+
+(deftest a-recording-whose-extension-holds-a-dot-is-the-recording
+  ;; REV-UI-4: `<id>.prs.sid`, as core names a SID file, is the document's
+  ;; recording: the read names it and a second upload is refused.
+  (with-media-dir
+    (fn [tmp]
+      (let [pid (create-test-project admin-request "Dotted project")
+            did (create-test-document admin-request pid "Dotted")
+            media-dir (.toFile (.resolve tmp "media"))]
+        (.mkdirs media-dir)
+        (Files/write (.toPath (File. media-dir (str did ".prs.sid")))
+                     (bytes-of "PSID" (byte-array 200)) (make-array java.nio.file.OpenOption 0))
+        (is (some (read-doc did) [:document/media-url :media-url]))
+        (is (= 409 (:status (upload! did "talk.wav" (wav-bytes 1.0)))))
+        (is (= [(str did ".prs.sid")] (vec (.list media-dir))))))))

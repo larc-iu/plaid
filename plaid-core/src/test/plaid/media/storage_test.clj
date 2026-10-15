@@ -97,3 +97,17 @@
   (is (nil? (media/canonicalize-content-type nil)))
   ;; The canonical WAV type must also map to a sane on-disk extension.
   (is (= "wav" (media/get-extension-from-content-type "audio/wav"))))
+
+(deftest a-recording-is-any-extension-but-a-staged-name
+  ;; REV-UI-4: core names a recording's extension from the content type's
+  ;; subtype, which may hold a dot, a plus or capitals.
+  (let [id "01a140c7-f4ca-7000-9413-4d54d065a53e"]
+    (doseq [ext ["wav" "WAV" "prs.sid" "vnd.dlna.mpeg-tts" "amr-wb+" "x-m4v"]]
+      (is (media/recording-name? (str id "." ext)) ext)
+      (is (media/recording-name? (str id "." ext) id) ext)
+      (is (= ext (media/recording-extension (str id "." ext)))))
+    (doseq [staged ["955191104604315271.upload" "8932601735559940386.copy" "1.upload"]]
+      (is (not (media/recording-name? (str id "." staged))) staged))
+    (is (not (media/recording-name? "README.txt")))
+    (is (not (media/recording-name? (str id "."))))
+    (is (not (media/recording-name? (str id ".wav") "01a140c7-f4ca-7000-9413-4d54d065a53f")))))

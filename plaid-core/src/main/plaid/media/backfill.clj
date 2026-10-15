@@ -51,8 +51,7 @@
         (catch IllegalArgumentException _ nil)))))
 
 (defn- extension [^File f]
-  (let [name (.getName f)]
-    (str/lower-case (subs name (inc (.lastIndexOf name "."))))))
+  (str/lower-case (storage/recording-extension (.getName f))))
 
 (defn- identity-of
   "What tells this file from a replacement stored under the same name or
