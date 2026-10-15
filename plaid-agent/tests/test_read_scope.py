@@ -90,7 +90,7 @@ def test_document_and_documents_together_or_a_bad_name_are_refused():
 def test_where_holds_a_frequency_list_to_the_words_meeting_it():
     w = _ws()
     out = call_tool(w, 'frequency_list', {'where': {'Morph Gloss': 'ERG'}, 'document': 'Text 1'})
-    assert out.startswith('1 wordforms, case folded, where Morph Gloss is "ERG", 1 tokens'), out
+    assert out.startswith('1 wordforms, case folded, where Morph Gloss is "ERG" (ignoring case), 1 tokens'), out
     assert _row(out, 'ali-di') == (1, 1)
     out = call_tool(w, 'frequency_list', {'what': 'Morph Gloss', 'where': {'form': 'Ali-di'}})
     assert _row(out, 'ERG') == (3, 3) and _row(out, 'Ali') == (3, 3)

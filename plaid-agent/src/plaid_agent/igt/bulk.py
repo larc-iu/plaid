@@ -140,6 +140,10 @@ def condition_of(where) -> Optional[Dict[str, str]]:
     for k, v in where.items():
         if not isinstance(k, str) or not k.strip() or v is None or isinstance(v, (dict, list)):
             raise ToolError(f'where: {k!s} must name a key with one value, e.g. {{"form": "di"}}.')
+        if not str(v).strip():
+            # An empty value matches nothing, silently (H16-REVIEW-7).
+            raise ToolError(f'where: {k.strip()} is empty, which matches nothing. A condition is a value the word '
+                            'holds. For the words with no value in a field use worklist.')
         out[k.strip()] = str(v)
     return out
 
@@ -148,7 +152,7 @@ def condition_words(cond: Optional[Dict[str, str]]) -> str:
     """A condition as the card and the result say it: ``, where form is "di"``."""
     if not cond:
         return ''
-    return ', where ' + ' and '.join(f'{k} is {qv(v)}' for k, v in cond.items())
+    return ', where ' + ' and '.join(f'{k} is {qv(v)}' for k, v in cond.items()) + ' (ignoring case)'
 
 
 def _planned_meeting(ws: Workspace, cond, f, scope: str) -> Optional[set]:
@@ -314,6 +318,8 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
                 rewrites.append((i, new))
     if not kept:
         out = '' if quiet_when_empty and not rewrites else f'Nothing to change: no {what} matched.'
+        if not quiet_when_empty and not rewrites and args.get('where'):
+            out = _condition_left_none(ws, tool, args, what) or out
         if rewrites:
             with ws.staging():
                 _rewrite_planned(ws, rewrites)
@@ -356,8 +362,29 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             + _by_document(ws, kept) + '\nFor example:\n  ' + '\n  '.join(sample)
             + (f'\n  … {n - len(sample)} more' if n > len(sample) else '')
             + '\nStored as a rule, found again when the user approves.'
+            # Its field reads the plan's earlier values, its condition the
+            # stored ones (H16-IGT-TOOLS-6).
+            + (' The condition reads the values stored now, not the ones this plan writes.'
+               if args.get('where') and len(ws.ops) > 1 else '')
             + (f' {_rewritten(len(rewrites))}' if rewrites else '')
             + left_for_analysis(left))
+
+
+def _condition_left_none(ws: Workspace, tool: str, args: Dict[str, Any], what: str) -> str:
+    """Why a rule with a condition found nothing, when the condition is why:
+    how many it finds without it (H16-IGT-TOOLS-5). '' when it finds none
+    then either."""
+    bare = {k: v for k, v in args.items() if k != 'where'}
+    try:
+        n = len(resolve_rule(ws, tool, bare, ws.rule_found_before(rules.target({'tool': tool, 'args': bare}))))
+    except ToolError:
+        return ''
+    finally:
+        ws.partial_read = None
+    if not n:
+        return ''
+    return (f'Nothing to change: {n} {what} match without the condition, none{condition_words(args["where"])}. '
+            'A condition matches a whole value, ignoring case, never as a pattern.')
 
 
 def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, change: str, head: str, earlier,

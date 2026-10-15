@@ -27,7 +27,7 @@ def test_a_condition_on_a_morpheme_field_of_the_word_holds_the_replacement():
     assert out.startswith('Planned 1 value in 1 document, as one row on the card'), out
     [op] = w.ops
     assert rules.is_rule(op) and op['args']['where'] == {'Morph Gloss': 'erg'}
-    assert op['head'].endswith(', where Morph Gloss is "erg"')
+    assert op['head'].endswith(', where Morph Gloss is "erg" (ignoring case)')
     # A word with no enclitic: the same replacement finds nothing.
     _client, w = _ws()
     out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
@@ -47,7 +47,7 @@ def test_a_condition_on_the_word_form_holds_set_field_for_form_and_survives_appr
     assert op['args']['where'] == {'form': 'gam'}
     payload = w.plan_payload()
     [row] = payload['changes']
-    assert row['change'].endswith(', where form is "gam"') and row['rule']['total'] == 1
+    assert row['change'].endswith(', where form is "gam" (ignoring case)') and row['rule']['total'] == 1
     # Without the condition both are changed.
     _c2, w2 = _ws()
     assert call_tool(w2, 'set_field_for_form', {'form': 'gam', 'field': 'Morph Gloss', 'value': 'fish'}) \
@@ -108,3 +108,39 @@ def test_a_condition_holds_a_replacement_in_stored_morpheme_forms():
     assert out.startswith('Planned 1 morpheme form'), out
     _client, w = _ws()
     assert call_tool(w, 'replace_in_field', {**base, 'where': {'form': 'gam'}}).startswith('Nothing to change')
+
+
+def test_nothing_found_for_the_condition_alone_says_so_and_how_many_without_it():
+    """H16-IGT-TOOLS-5: the condition, not the pattern, left nothing."""
+    _client, w = _ws()
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+                                            'whole': True, 'where': {'type': 'enclitic'}})
+    assert out == ('Nothing to change: 1 Morph Gloss values match without the condition, none, where type is '
+                   '"enclitic" (ignoring case). A condition matches a whole value, ignoring case, never as a '
+                   'pattern.'), out
+    out = call_tool(w, 'set_field_for_form', {'form': 'gam', 'field': 'Morph Gloss', 'value': 'fish',
+                                              'where': {'form': 'nothing'}})
+    assert out.startswith('Nothing to change: 2 occurrences of "gam" without a value match without the '
+                          'condition'), out
+    # A pattern that matches nothing is still said to.
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'QQQ', 'replacement': 'PN',
+                                            'where': {'type': 'enclitic'}})
+    assert out == 'Nothing to change: no Morph Gloss values matched.', out
+    assert w.ops == []
+
+
+def test_an_empty_condition_is_refused_pointing_to_worklist():
+    _client, w = _ws()
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+                                            'where': {'Gloss': ' '}})
+    assert out.startswith('Error: where: Gloss is empty, which matches nothing.') and 'worklist' in out, out
+
+
+def test_a_condition_says_it_ignores_case_and_reads_the_values_stored():
+    """H16-IGT-TOOLS-10 and -6."""
+    _client, w = _ws()
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
+    out = for_model(call_tool(w, 'set_field_for_form', {'form': 'gam', 'field': 'Morph Gloss', 'value': 'fish',
+                                                        'where': {'form': 'GAM'}}))
+    assert 'The condition reads the values stored now, not the ones this plan writes.' in out, out
+    assert w.ops[-1]['head'].endswith(', where form is "GAM" (ignoring case)'), w.ops[-1]['head']
