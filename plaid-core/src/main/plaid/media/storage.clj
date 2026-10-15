@@ -127,6 +127,16 @@
         filename (str doc-id "." extension)]
     (str media-dir File/separator filename)))
 
+(defn recording-name?
+  "Whether `filename` names a document's recording, `<id>.<ext>` with one
+  dot, and not a file being staged beside it (`<id>.<n>.upload` while an
+  upload is copied in, `<id>.<n>.copy` while a document copy is), which is
+  not the document's recording until it is moved into place."
+  ([filename] (boolean (re-matches #"[0-9a-fA-F-]{36}\.[A-Za-z0-9-]+" (str filename))))
+  ([filename doc-id]
+   (and (recording-name? filename)
+        (str/starts-with? filename (str doc-id ".")))))
+
 (defn find-existing-media-file
   "Find existing media file for document, return [path extension] or nil"
   [doc-id]
@@ -136,7 +146,7 @@
       (->> (.listFiles dir-file)
            (filter #(.isFile %))
            (map #(.getName %))
-           (filter #(str/starts-with? % (str doc-id ".")))
+           (filter #(recording-name? % doc-id))
            first
            (#(when %
                (let [extension (last (str/split % #"\."))]

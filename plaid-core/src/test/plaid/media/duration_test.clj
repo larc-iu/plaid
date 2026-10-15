@@ -173,6 +173,8 @@
                      (byte-array 10) (make-array java.nio.file.OpenOption 0))
         (Files/write (.toPath (File. media-dir (str old ".12345.upload")))
                      ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
+        (Files/write (.toPath (File. media-dir (str old ".678.copy")))
+                     ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
         (with-open [conn (jdbc/get-connection db)]
           (testing "a dry run counts and writes nothing"
             (let [counts (backfill/backfill! conn media-dir false)]
@@ -227,3 +229,33 @@
               (is (= 1 (:changed counts))))))
         (is (nil? (duration/stored db did)))
         (is (nil? (length-of (read-doc did))))))))
+
+(deftest a-staged-upload-or-copy-is-not-the-recording
+  ;; REV-UI-2: while an upload or a copy is staged in the media directory as
+  ;; `<id>.<n>.upload` or `<id>.<n>.copy`, the document has no recording yet.
+  (with-media-dir
+    (fn [tmp]
+      (let [pid (create-test-project admin-request "Staged project")
+            did (create-test-document admin-request pid "Staged")
+            media-dir (.toFile (.resolve tmp "media"))
+            _ (.mkdirs media-dir)
+            staged (vec (for [n ["123.upload" "456.copy"]]
+                          (doto (File. media-dir (str did "." n))
+                            (-> .toPath (Files/write ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))))))]
+        (testing "a read names no recording"
+          (is (nil? (some (read-doc did) [:document/media-url :media-url])))
+          (is (= 404 (:status (rest-handler (admin-request :get (str "/api/v1/documents/" did "/media")))))))
+        (testing "a delete finds nothing to delete and leaves the staged files"
+          (is (= 404 (:status (rest-handler (admin-request :delete (str "/api/v1/documents/" did "/media"))))))
+          (is (every? #(.exists ^File %) staged)))
+        (testing "a copy carries no recording"
+          (let [res (parse-response-body
+                     (rest-handler (-> (admin-request :post (str "/api/v1/documents/" did "/copy"))
+                                       (assoc :body-params {:name "Copy"}))))
+                copy-id (some res [:id :document/id])]
+            (is copy-id)
+            (is (nil? (some (read-doc copy-id) [:document/media-url :media-url])))
+            (is (empty? (filter #(.startsWith ^String % (str copy-id)) (.list media-dir))))))
+        (testing "an upload is not refused as if a recording were there"
+          (is (= 201 (:status (upload! did "talk.wav" (wav-bytes 2.0)))))
+          (is (near? (length-of (read-doc did)) 2.0)))))))

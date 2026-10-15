@@ -33,7 +33,8 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [next.jdbc :as jdbc]
-            [plaid.media.duration :as duration])
+            [plaid.media.duration :as duration]
+            [plaid.media.storage :as storage])
   (:import [java.io File]
            [java.nio.file Files LinkOption]
            [java.nio.file.attribute BasicFileAttributes]
@@ -93,8 +94,9 @@
   [conn ^File media-dir apply?]
   (let [files (->> (or (.listFiles media-dir) (make-array File 0))
                    (filter #(.isFile ^File %))
-                   ;; An upload being copied in (`<id>.<n>.upload`) is not a recording yet.
-                   (remove #(str/ends-with? (.getName ^File %) ".upload"))
+                   ;; Not an upload or a copy being staged (`<id>.<n>.upload`,
+                   ;; `<id>.<n>.copy`), which is not a recording yet.
+                   (filter #(storage/recording-name? (.getName ^File %)))
                    (keep (fn [f] (when-let [id (document-id f)] [id f])))
                    (sort-by first))
         live? (fn [id] (seq (jdbc/execute! conn ["SELECT 1 FROM documents WHERE id = ?" id])))
