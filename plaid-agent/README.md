@@ -438,8 +438,8 @@ The modules below are `igt/` unless they say otherwise.
   it), `check_consistency` (spelling variants, forms with
   several values, link gaps), `check_lexicon`, `check_integrity`,
   `corpus_stats` (with the minutes transcribed and recorded where a document
-  has a time alignment, read only: `media.py` reads a recording's length from
-  its header through the media link, and `read_document` puts each sentence's
+  has a time alignment, read only: a recording's length is the one core
+  stored at upload, `media_duration` on the document, and `read_document` puts each sentence's
   time after it, `load()` in run_code gives the segments and `recording()` the
   length), `frequency_list` (held by `where` to words meeting one
   `sequence_search` step's conditions, or counting adjacent words with
