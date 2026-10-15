@@ -247,22 +247,31 @@ def q_field_fill(ws: Workspace) -> Dict[str, Dict[str, int]]:
 
 # --- frequency_list ---------------------------------------------------------------
 
-def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int):
-    """(items [(key, n)], spread {key: documents}, empty) over the whole project."""
+def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int,
+                     cond: Optional[Dict[str, Any]] = None):
+    """(items [(key, n)], spread {key: documents}, empty) over the whole project,
+    or over what ``cond`` holds it to: the words meeting one word's
+    conditions, and the morphemes and values on them."""
     c = ws.corpus
     empty = 0
     c.forget_clipping()
     if what_l in ('wordform', 'word'):
-        counts, raw = _casefold_tally(c.group([c.word('?t')], ['?t.value']),
+        unit = [c.word('?t')] + target_condition(c, cond, '?t', 'Word')
+        counts, raw = _casefold_tally(c.group(unit, ['?t.value']),
                                       lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)))
     elif what_l == 'morpheme':
-        counts, raw = _casefold_tally(c.group(c.shown_morph('?m'), ['?m.metadata.form', '?m.value']),
+        unit = c.shown_morph('?m') + target_condition(c, cond, '?m', 'Morpheme')
+        counts, raw = _casefold_tally(c.group(unit, ['?m.metadata.form', '?m.value']),
                                       lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1])) if not c.ignored(r[1]) else (None, None)))
     else:
-        counts, raw = _casefold_tally(c.group([c.span('?s', field.layer_id)], ['?s.value']),
-                                      lambda r: ((r[0], r[0]) if r[0] not in (None, '') else (None, None)))
         layer = c.scope_layer(field.scope)
+        held = ([['covers', '?s', '?ft'], ['token', '?ft', {'layer': layer}]]
+                + target_condition(c, cond, '?ft', field.scope)) if cond else []
+        unit = [c.span('?s', field.layer_id)] + held
+        counts, raw = _casefold_tally(c.group(unit, ['?s.value']),
+                                      lambda r: ((r[0], r[0]) if r[0] not in (None, '') else (None, None)))
         where = [['token', '?t', {'layer': layer}], ['not', c.span('?s', field.layer_id), ['covers', '?s', '?t']]]
+        where += target_condition(c, cond, '?t', field.scope)
         empty = c.word_count(where) if field.scope == 'Word' else c.count(where, ['?t'])
     items = sorted(((k, n) for k, n in counts.items() if n >= min_count), key=lambda kv: (-kv[1], kv[0]))
     shown = items[:limit]
@@ -271,24 +280,59 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
     if what_l in ('wordform', 'word'):
         values = [v for k, _ in shown for v in raw[k]]
         for chunk in _chunks(values):
-            for value, doc, _n in c.group([c.word('?t'), ['in', '?t.value', chunk]], ['?t.value', '?t.doc']):
+            for value, doc, _n in c.group(unit + [['in', '?t.value', chunk]], ['?t.value', '?t.doc']):
                 spread[value.casefold()].add(doc)
     elif what_l == 'morpheme':
         forms = [f for k, _ in shown for f, v in raw[k] if f not in (None, '')]
         values = [v for k, _ in shown for f, v in raw[k] if f in (None, '')]
+        held = target_condition(c, cond, '?m', 'Morpheme')
         for chunk in _chunks(forms):
-            for form, doc, _n in c.group([c.morph('?m'), ['in', '?m.metadata.form', chunk]], ['?m.metadata.form', '?m.doc']):
+            for form, doc, _n in c.group([c.morph('?m'), ['in', '?m.metadata.form', chunk]] + held,
+                                         ['?m.metadata.form', '?m.doc']):
                 spread[form.casefold()].add(doc)
         for chunk in _chunks(values):
-            for value, doc, _n in c.group(c.shown_morph('?m') + [['not', c.has_form('?m')], ['in', '?m.value', chunk]],
-                                          ['?m.value', '?m.doc']):
+            for value, doc, _n in c.group(c.shown_morph('?m') + [['not', c.has_form('?m')], ['in', '?m.value', chunk]]
+                                          + held, ['?m.value', '?m.doc']):
                 spread[value.casefold()].add(doc)
     else:
         values = [k for k, _ in shown]
         for chunk in _chunks(values):
-            for value, doc, _n in c.group([c.span('?s', field.layer_id), ['in', '?s.value', chunk]], ['?s.value', '?s.doc']):
+            for value, doc, _n in c.group(unit + [['in', '?s.value', chunk]], ['?s.value', '?s.doc']):
                 spread[value].add(doc)
     return items, spread, empty
+
+
+def q_ngrams(ws: Workspace, field, n: int):
+    """(items [(key, n)], spread {key: documents}) for every sequence of ``n``
+    adjacent words inside one sentence: their forms (case folded, never across
+    punctuation), or the values of the word field ``field`` they hold, joined
+    by spaces. One grouped read."""
+    c = ws.corpus
+    c.forget_clipping()
+    gv = [f'?g{i}' for i in range(n)]
+    where: List[Any] = [['seq', {'layer': c.W}, *[['token', {}, 'as', v] for v in gv]], c.sent('?gs')]
+    where += [['within', v, '?gs'] for v in gv]
+    if field is not None:
+        for i, v in enumerate(gv):
+            where += [c.span(f'?gv{i}', field.layer_id), ['covers', f'?gv{i}', v]]
+        keys = [f'?gv{i}.value' for i in range(n)]
+    else:
+        keys = [f'{v}.value' for v in gv]
+    counts: Counter = Counter()
+    spread: Dict[str, set] = defaultdict(set)
+    for row in c.group(where, keys + [f'{gv[0]}.doc']):
+        values, doc, k = row[:n], row[n], row[-1]
+        if any(v in (None, '') for v in values):
+            continue
+        if field is None:
+            if any(c.ignored(v) for v in values):
+                continue
+            values = [v.casefold() for v in values]
+        key = ' '.join(values)
+        counts[key] += k
+        spread[key].add(doc)
+    items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return items, spread
 
 
 # --- worklist ---------------------------------------------------------------------

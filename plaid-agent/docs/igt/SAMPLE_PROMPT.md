@@ -142,6 +142,7 @@ Find words, morphemes, field values, or lexicon entries matching a pattern (case
 - `regex` (boolean): Treat pattern as a regular expression.
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `limit` (integer): Max hits to return (default 30, max 200).
+- `documents` (array of string)
 
 ### read_lexicon
 
@@ -263,6 +264,7 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 - `regex` (boolean)
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `limit` (integer): Max occurrences to list (default 60). The pattern and value tallies cover the occurrences listed.
+- `documents` (array of string)
 
 ### analyses_of
 
@@ -271,6 +273,7 @@ How a form has been analyzed so far, as a word (segmentation, glosses, links) an
 - `form` (string)
 - `forms` (array of string)
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `value` (string)
 
 ### lexicon_entry
@@ -289,6 +292,7 @@ A consistency report for a field: values that are case/spelling variants of one 
 
 - `field` (string, required)
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 
 ### recent_changes
 
@@ -460,6 +464,7 @@ PLAN: drop one of an entry's usage examples, by the number lexicon_entry shows b
 Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the share of words analysed and linked, and every field's fill rate. by="document" gives a per-document table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.
 
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `by` (string)
 
 ### frequency_list
@@ -468,8 +473,11 @@ Ranked counts with document dispersion for wordforms (default), morpheme forms, 
 
 - `what` (string): "wordform" (default), "morpheme", or a field name.
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `limit` (integer): Rows (default 30, max 1000).
 - `min_count` (integer)
+- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
+- `ngram` (integer): 2 counts adjacent word pairs (forms, or a word field's values, e.g. POS for word order), 3 triples.
 
 ### worklist
 
@@ -480,6 +488,7 @@ The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (
 - `level` (one of `word`, `morpheme`): For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field's scope decides.
 - `user` (string): For contributed: only this contributor (their user id, an email).
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `limit` (integer): Rows to show (default 20, max 500).
 
 ### check_lexicon
@@ -494,6 +503,7 @@ Lexicon hygiene report, worst first with counts. section: "unused" (entries neve
 Data-shape report: segmentations that do not add up to the word, duplicate and empty sentences, non-NFC text, mixed apostrophe characters, and unusual characters in the baseline. Reads every document; on a large project name one.
 
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 
 ### sequence_search
 
@@ -502,6 +512,7 @@ Sentences containing a sequence of words, each described by conditions on its fo
 - `sequence` (array of object of string, required)
 - `adjacent` (boolean)
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `regex` (boolean)
 - `limit` (integer)
 

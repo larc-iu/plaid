@@ -9,8 +9,18 @@ declared tool reaches that fallback.
 
 from typing import Any, Dict, Optional
 
-from ..core.trace import META, READ, count, in_doc, plural, q, tracer_for
+from ..core.trace import META, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
+
+
+def in_doc(a: Dict[str, Any]) -> str:
+    """' in "<document>"', ' in 3 documents' for a read held to several
+    (scope.py), or nothing when the call was project-wide."""
+    docs = a.get('documents')
+    if docs and not a.get('document'):
+        docs = [docs] if isinstance(docs, str) else list(docs)
+        return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
+    return _in_one_doc(a)
 
 
 def _entry(a: Dict[str, Any]) -> str:
@@ -51,7 +61,10 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'corpus_stats':
         return 'Counted the corpus' + (f' by {a["by"]}' if a.get('by') else '') + in_doc(a)
     if name == 'frequency_list':
-        return f'Ranked {a.get("what") or "wordform"}s by frequency{in_doc(a)}'
+        n = a.get('ngram') if isinstance(a.get('ngram'), int) and a.get('ngram') > 1 else None
+        unit = f'{a.get("what") or "wordform"} {"bigrams" if n == 2 else f"{n}-grams"}' if n else \
+            f'{a.get("what") or "wordform"}s'
+        return f'Ranked {unit} by frequency{_held(a)}{in_doc(a)}'
     if name == 'worklist':
         field = f'{a["field"]} ' if a.get('field') else ''
         return f'Listed {a.get("kind") or "unglossed"} {field}work{in_doc(a)}'

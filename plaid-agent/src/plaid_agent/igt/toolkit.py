@@ -30,6 +30,7 @@ from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon
                     t_list_documents, t_project_overview,
                     t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
+from .scope import among_documents
 from .tagsets import t_tagsets
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
@@ -52,6 +53,7 @@ _SHARED = toolkit.shared_schemas(ref='sN, sN.wN, or sN.wN.mN.', comment_field=Tr
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
+_DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (scope.py)
 _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
                                            'its fields has (e.g. its gloss).'}
 _ENTRY_FORM = {'type': 'string',
@@ -127,7 +129,7 @@ TOOLS = [
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
          'document': _DOC,
          'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'limit': limit_arg('search', 'Max hits to return')},
+         'limit': limit_arg('search', 'Max hits to return'), 'documents': _DOCS},
         ['pattern']),
     _fn('read_lexicon',
         'List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a '
@@ -225,7 +227,8 @@ TOOLS = [
         {'pattern': {'type': 'string'},
          'where': {'type': 'string', 'description': '"morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.'},
          'document': _DOC, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60). The pattern and value tallies cover the occurrences listed.'}},
+         'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60). The pattern and value tallies cover the occurrences listed.'},
+         'documents': _DOCS},
         ['pattern']),
     _fn('analyses_of',
         'How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, '
@@ -234,7 +237,7 @@ TOOLS = [
         'forms (a list, up to 40) to check every word of a sentence in one call. value: also list the references '
         'of the occurrences holding that field value (e.g. a minority gloss).',
         {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC,
-         'value': {'type': 'string'}}, []),
+         'documents': _DOCS, 'value': {'type': 'string'}}, []),
     _fn('lexicon_entry',
         'One lexicon entry in full: all its fields, how many words and morphemes link to it (an entry with senses '
         'counts their links too, and each sense\'s own), and example occurrences. It also says where the entry '
@@ -246,7 +249,7 @@ TOOLS = [
     _fn('check_consistency',
         'A consistency report for a field: values that are case/spelling variants of one another, forms that carry '
         'several different values, and items annotated but not linked to the lexicon (or linked but empty).',
-        {'field': {'type': 'string'}, 'document': _DOC}, ['field']),
+        {'field': {'type': 'string'}, 'document': _DOC, 'documents': _DOCS}, ['field']),
     _SHARED['recent_changes'],
     _SHARED['comments'],
     _fn('add_comment',
@@ -381,12 +384,14 @@ TOOLS += [
         'Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the '
         'share of words analysed and linked, and every field\'s fill rate. by="document" gives a per-document '
         'table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.',
-        {'document': _DOC, 'by': {'type': 'string'}}, []),
+        {'document': _DOC, 'documents': _DOCS, 'by': {'type': 'string'}}, []),
     _fn('frequency_list',
         'Ranked counts with document dispersion for wordforms (default), morpheme forms, or a field\'s values.',
         {'what': {'type': 'string', 'description': '"wordform" (default), "morpheme", or a field name.'},
-         'document': _DOC, 'limit': limit_arg('frequency_list', 'Rows'),
-         'min_count': {'type': 'integer'}}, []),
+         'document': _DOC, 'documents': _DOCS, 'limit': limit_arg('frequency_list', 'Rows'),
+         'min_count': {'type': 'integer'}, 'where': _WHERE,
+         'ngram': {'type': 'integer', 'description': '2 counts adjacent word pairs (forms, or a word field\'s '
+                                                     'values, e.g. POS for word order), 3 triples.'}}, []),
     _fn('worklist',
         'The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), '
         '"unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), '
@@ -398,7 +403,7 @@ TOOLS += [
          'field': {'type': 'string'},
          'level': {'type': 'string', 'enum': ['word', 'morpheme'], 'description': 'For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field\'s scope decides.'},
          'user': {'type': 'string', 'description': 'For contributed: only this contributor (their user id, an email).'},
-         'document': _DOC, 'limit': limit_arg('worklist', 'Rows to show')}, []),
+         'document': _DOC, 'documents': _DOCS, 'limit': limit_arg('worklist', 'Rows to show')}, []),
     _fn('check_lexicon',
         'Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing '
         'gloss/pos), "homographs" (same form; groups with the same gloss first), "near" (forms one character apart), '
@@ -411,14 +416,14 @@ TOOLS += [
         'Data-shape report: segmentations that do not add up to the word, duplicate and empty sentences, non-NFC '
         'text, mixed apostrophe characters, and unusual characters in the baseline. Reads every document; on a large '
         'project name one.',
-        {'document': _DOC}, []),
+        {'document': _DOC, 'documents': _DOCS}, []),
     _fn('sequence_search',
         'Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, '
         'or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]; conditions match whole '
         'values (regex=true for patterns). A name a word field and a morpheme field share matches either. adjacent=false lets other words come between, in order. Counts are '
         'sentences (first match per sentence). For constituent-order and construction questions.',
         {'sequence': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
-         'adjacent': {'type': 'boolean'}, 'document': _DOC, 'regex': {'type': 'boolean'},
+         'adjacent': {'type': 'boolean'}, 'document': _DOC, 'documents': _DOCS, 'regex': {'type': 'boolean'},
          'limit': {'type': 'integer'}}, ['sequence']),
     _fn('replace_in_field',
         'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
@@ -533,6 +538,11 @@ TOOLS += [_fn('tagsets',
 _IMPL['tagsets'] = t_tagsets
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
+
+# Every read that takes a document takes several in its place (scope.py).
+SCOPED_READS = ('search', 'concordance', 'analyses_of', 'check_consistency', 'corpus_stats', 'frequency_list',
+                'worklist', 'check_integrity', 'sequence_search')
+_IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
     web='this corpus and its lexicons', code='the texts and lexicons',

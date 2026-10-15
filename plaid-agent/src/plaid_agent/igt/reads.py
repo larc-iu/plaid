@@ -615,7 +615,7 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     f = ws.project.field(field)
     from .queries import q_consistency
     with ws.corpus.within(document) as held:
-        ws.note_read(1 if held else len(ws.documents()), 'document')
+        ws.note_read(1 if held else len(ws.corpus.documents or ws.documents()), 'document')
         values, by_form, (unlinked_n, unlinked), (linked_empty_n, linked_empty) = q_consistency(ws, f)
     return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
                               ws.corpus.clipped_note(f'{f.name} values'))

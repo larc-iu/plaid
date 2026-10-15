@@ -22,7 +22,12 @@ def _pct(n, d):
 
 
 def _docs(ws: Workspace, document: Optional[str]) -> List[IgtDoc]:
-    return [ws.doc(document)] if document else ws.all_docs()
+    """The documents a walk reads: the one named, those a ``documents``
+    argument holds the call to, or all."""
+    if document:
+        return [ws.doc(document)]
+    held = ws.corpus.documents
+    return [ws.doc(i) for i in held] if held else ws.all_docs()
 
 
 def _tag(ws, docs, doc):
@@ -74,7 +79,8 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
     lines: List[str] = []
     from .queries import q_corpus_numbers
     with ws.corpus.within(document) as held:
-        names = {held: ws.corpus.doc_name(held)} if held else ws.corpus.doc_names()
+        names = {held: ws.corpus.doc_name(held)} if held else {
+            i: n for i, n in ws.corpus.doc_names().items() if not ws.corpus.documents or i in ws.corpus.documents}
         n_docs = len(names)
         if by is None:
             whole = q_corpus_numbers(ws, per_doc=False)
@@ -147,21 +153,55 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
 # --- frequency_list -----------------------------------------------------------------
 
+#: The longest sequence frequency_list(ngram=...) counts.
+NGRAM_MAX = 3
+
+
 def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[str] = None,
-                     limit: Optional[int] = None, min_count: int = 1) -> str:
+                     limit: Optional[int] = None, min_count: int = 1, where: Optional[dict] = None,
+                     ngram: Optional[int] = None) -> str:
     """Counts with document dispersion for wordforms, morpheme forms, or a
-    field's values."""
+    field's values. ``where`` counts only the words meeting one word's
+    conditions (as a sequence_search step takes them) and the morphemes and
+    values on them. ``ngram`` counts sequences of adjacent words in a
+    sentence instead (their forms, or a word field's values), for word-order
+    questions (survey item 8)."""
+    from .bulk import condition_of
     limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
     min_count = read_int(min_count, 'min_count', 1, minimum=1)
     what_l = (what or 'wordform').lower()
     field = None
     if what_l not in ('wordform', 'word', 'morpheme'):
         field = ws.project.field(what)
-    from .queries import q_frequency_list
+    cond = condition_of(where)
+    n = read_int(ngram, 'ngram', 1, minimum=1) if ngram is not None else 1
+    if n > NGRAM_MAX:
+        raise ToolError(f'ngram is at most {NGRAM_MAX}. For longer patterns use sequence_search.')
+    if n > 1:
+        if what_l == 'morpheme' or (field is not None and field.scope != 'Word'):
+            raise ToolError('ngram counts sequences of words: what="wordform" or a word field '
+                            '(' + (', '.join(f.name for f in ws.project.fields_by_scope('Word')) or 'none') + ').')
+        if cond:
+            raise ToolError('where and ngram do not combine. For sequences with conditions on their words use '
+                            'sequence_search.')
+    from .queries import q_frequency_list, q_ngrams
     with ws.corpus.within(document):
-        items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count)
+        if n > 1:
+            items, spread = q_ngrams(ws, field, n)
+            empty = None
+        else:
+            items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count, cond)
+    if n > 1:
+        items = [(k, c) for k, c in items if c >= min_count]
+    noun = _freq_noun(field, what_l) if n == 1 else \
+        f'{field.name if field else "word"} {"bigrams" if n == 2 else f"{n}-grams"}'
     return _frequency_lines(ws, items, spread, empty, field, what_l, limit,
-                            ws.corpus.clipped_note(_freq_noun(field, what_l)))
+                            ws.corpus.clipped_note(noun), noun=noun, held=condition_words_of(cond))
+
+
+def condition_words_of(cond) -> str:
+    from .bulk import condition_words
+    return condition_words(cond)
 
 
 def _with_note(lines, clipped: str) -> str:
@@ -178,10 +218,12 @@ def _freq_noun(field, what_l: str) -> str:
     return field.name + ' values' if field else ('wordforms' if what_l != 'morpheme' else 'morpheme forms')
 
 
-def _frequency_lines(ws, items, spread, empty, field, what_l, limit, clipped: str = '') -> str:
-    noun = _freq_noun(field, what_l)
+def _frequency_lines(ws, items, spread, empty, field, what_l, limit, clipped: str = '', noun: Optional[str] = None,
+                     held: str = '') -> str:
+    noun = noun or _freq_noun(field, what_l)
     ws.note_read(min(len(items), limit), 'row', of=len(items))
-    lines = [f'{len(items)} {noun}, {sum(n for _, n in items)} tokens' + (f', {empty} empty' if field else '')
+    lines = [f'{len(items)} {noun}{held}, {sum(n for _, n in items)} tokens'
+             + (f', {empty} empty' if field and empty is not None else '')
              + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform' + clipped]
     for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:
         lines.append(f'  {n}\t{len(spread.get(k) or ())}\t{k}')

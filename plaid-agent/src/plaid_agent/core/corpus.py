@@ -164,6 +164,8 @@ class Corpus(Clipping):
         self.p = ws.project
         #: The one document every read is held to (:meth:`within`), or None.
         self.document: Optional[str] = None
+        #: The documents every read is held to (:meth:`among`), or None.
+        self.documents: Optional[List[str]] = None
 
     # --- running ----------------------------------------------------------
 
@@ -181,10 +183,29 @@ class Corpus(Clipping):
         finally:
             self.document = saved
 
+    @contextmanager
+    def among(self, documents: Optional[List[str]]):
+        """Hold every read made inside the block to these documents (ids), as
+        :meth:`within` holds them to one. None or [] leaves the reads as they
+        were. A tool's ``documents`` argument (several documents in place of
+        one) runs the tool inside this block."""
+        saved = self.documents
+        self.documents = list(documents) if documents else None
+        try:
+            yield self.documents
+        finally:
+            self.documents = saved
+
+    def held_documents(self) -> Optional[List[str]]:
+        """The documents reads are held to now: the one :meth:`within`
+        names, else those :meth:`among` names, else None for all."""
+        return [self.document] if self.document else self.documents
+
     def _held(self, where: List[Any]) -> List[Any]:
-        if not self.document:
+        docs = self.held_documents()
+        if not docs:
             return where
-        return list(where) + [['in', f'{v}.doc', [self.document]] for v in _bound(where)]
+        return list(where) + [['in', f'{v}.doc', list(docs)] for v in _bound(where)]
 
     def run(self, body: Dict[str, Any]) -> Dict[str, Any]:
         body = dict(body)
