@@ -15,7 +15,7 @@ from .workspace import Workspace
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
 from ..core.limits import NGRAM_MAX, READ_LIMITS
-from .media import clock, recording_seconds
+from .media import clock, recording_of
 
 
 def _pct(n, d):
@@ -165,14 +165,13 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
 def recordings(ws: Workspace, names: Dict[str, str]) -> Dict[str, Optional[float]]:
     """The documents among ``names`` that have a recording, each with its
-    length in seconds (None when it cannot be read). One light read of each
-    document not loaded this turn, then the recording's header (media.py)."""
+    length in seconds as core stored it (None when unknown). One light read
+    of each document not loaded this turn (media.py)."""
     out: Dict[str, Optional[float]] = {}
     for did in names:
-        doc = ws._docs.get(did)
-        url = doc.media_url if doc is not None else (ws.client.documents.get(did) or {}).get('media_url')
-        if url:
-            out[did] = recording_seconds(ws, did, url)
+        has, seconds = recording_of(ws, did)
+        if has:
+            out[did] = seconds
     return out
 
 

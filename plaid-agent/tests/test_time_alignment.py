@@ -5,7 +5,6 @@ call. Nothing here writes."""
 
 import copy
 import io
-import struct
 import wave
 
 import pytest
@@ -15,7 +14,7 @@ from fixtures import FakeClient, fake_ws, project_raw, document_raw, lexicon_raw
 from live import live_client, require_sandbox, seed  # noqa: F401 - fixture
 
 from plaid_agent.core.bidi import for_model
-from plaid_agent.igt import media, stats
+from plaid_agent.igt import media
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import Workspace
@@ -23,11 +22,7 @@ from plaid_agent.igt.workspace import Workspace
 ALIGN = 'tk-align'
 
 
-# --- the headers --------------------------------------------------------------------
-
-def _reader(data: bytes):
-    return (lambda a, b: data[a:b]), len(data)
-
+# --- the clocks ---------------------------------------------------------------------
 
 def _wav(seconds: float, rate: int = 8000) -> bytes:
     buf = io.BytesIO()
@@ -37,48 +32,6 @@ def _wav(seconds: float, rate: int = 8000) -> bytes:
         w.setframerate(rate)
         w.writeframes(b'\x00\x00' * int(rate * seconds))
     return buf.getvalue()
-
-
-def _box(kind: bytes, body: bytes) -> bytes:
-    return struct.pack('>I', 8 + len(body)) + kind + body
-
-
-def test_a_wav_says_its_length_in_its_fmt_and_data_chunks():
-    assert media.duration(*_reader(_wav(2.5))) == pytest.approx(2.5)
-
-
-@pytest.mark.parametrize('version', [0, 1])
-def test_an_mp4_says_its_length_in_mvhd_even_after_a_large_mdat(version):
-    if version == 0:
-        mvhd = bytes([0, 0, 0, 0]) + struct.pack('>IIII', 0, 0, 1000, 83500) + b'\x00' * 80
-    else:
-        mvhd = bytes([1, 0, 0, 0]) + struct.pack('>QQIQ', 0, 0, 600, 600 * 90) + b'\x00' * 80
-    data = _box(b'ftyp', b'isom\x00\x00\x02\x00') + _box(b'mdat', b'\x00' * 200000) \
-        + _box(b'moov', _box(b'mvhd', mvhd))
-    assert media.duration(*_reader(data)) == pytest.approx(83.5 if version == 0 else 90)
-
-
-def test_an_mp3_by_its_xing_frame_count_or_its_bit_rate():
-    # MPEG-1 layer III, 128 kbps, 44.1 kHz, stereo: FF FB 90 00.
-    frame = b'\xff\xfb\x90\x00' + b'\x00' * 32 + b'Xing' + struct.pack('>II', 1, 100) + b'\x00' * 400
-    assert media.duration(*_reader(b'ID3\x03\x00\x00\x00\x00\x00\x00' + frame)) == pytest.approx(100 * 1152 / 44100)
-    cbr = b'\xff\xfb\x90\x00' + b'\x00' * (16000 - 4)
-    assert media.duration(*_reader(cbr)) == pytest.approx(16000 * 8 / 128000)
-
-
-def test_a_flac_by_its_streaminfo():
-    info = bytearray(34)
-    rate, samples = 16000, 16000 * 7
-    info[10], info[11], info[12] = rate >> 12, (rate >> 4) & 0xFF, (rate & 0x0F) << 4
-    info[13] = (samples >> 32) & 0x0F
-    info[14:18] = struct.pack('>I', samples & 0xFFFFFFFF)
-    data = b'fLaC' + bytes([0, 0, 0, 34]) + bytes(info) + b'\x00' * 100
-    assert media.duration(*_reader(data)) == pytest.approx(7)
-
-
-@pytest.mark.parametrize('data', [b'OggS' + b'\x00' * 200, b'\x1aE\xdf\xa3' + b'\x00' * 200, b'', b'RIFF'])
-def test_another_format_or_a_broken_header_is_of_unknown_length(data):
-    assert media.duration(*_reader(data)) is None
 
 
 def test_clocks():
@@ -111,9 +64,15 @@ def _ws(monkeypatch, seconds=None):
     client._documents['d1'] = doc
     if seconds is not None:
         client._documents['d1']['media_url'] = '/api/v1/documents/d1/media?v=1-2'
-        monkeypatch.setattr(media, 'recording_seconds', lambda ws, did, url: seconds)
-        monkeypatch.setattr(stats, 'recording_seconds', lambda ws, did, url: seconds)
+        client._documents['d1']['media_duration'] = seconds
     return fake_ws(client)
+
+
+def test_a_recording_of_unknown_length_says_so(monkeypatch):
+    w = _ws(monkeypatch, seconds=125.0)
+    w.client._documents['d1']['media_duration'] = None
+    out = for_model(call_tool(w, 'corpus_stats', {'by': 'document'}))
+    assert '\t3\t0:04\t?\t2020' in out, out
 
 
 def test_corpus_stats_says_the_minutes_transcribed_and_the_recordings(monkeypatch):
@@ -170,14 +129,14 @@ def proj(live_client):
     s.delete()
 
 
-def test_the_recording_is_read_through_its_media_link_and_the_segments_by_query(proj):
+def test_the_recording_length_is_the_one_core_stored_at_upload_and_the_segments_by_query(proj):
     c = proj.client
     ws = Workspace(c, load_project(c, proj.project_id))
     out = for_model(call_tool(ws, 'corpus_stats', {}))
     assert ('Time alignment: 2 segments in 1 document, 0:03 transcribed (segment lengths summed); '
             'recordings: 1 document, 0:04 in all.') in out, out
     doc = proj.ids['d1']
-    url = c.documents.get(doc)['media_url']
-    assert media.recording_seconds(ws, doc, url) == pytest.approx(3.5)
+    assert c.documents.get(doc)['media_duration'] == pytest.approx(3.5)
+    assert media.recording_of(ws, doc) == (True, pytest.approx(3.5))
     out = for_model(call_tool(ws, 'read_document', {'document': 'Text 1'}))
     assert 'recording 0:04; 2 time-aligned segments' in out and '@0:04.0-0:05.2' in out, out

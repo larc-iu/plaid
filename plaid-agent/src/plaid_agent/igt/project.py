@@ -513,9 +513,11 @@ class IgtDoc:
     metadata: dict
     version: Optional[int] = None
     _index: Optional[dict] = field(default=None, repr=False, compare=False)
-    # The recording's URL (its version in ``?v=``), or None without one, and
+    # The recording's URL (its version in ``?v=``), or None without one, its
+    # length in seconds as core stored it at upload (None when unknown), and
     # the time-aligned segments in text order (media.py).
     media_url: Optional[str] = None
+    media_duration: Optional[float] = None
     segments: List['Segment'] = field(default_factory=list)
 
     def sentence_time(self, s: 'Sentence') -> Optional[Tuple[float, float]]:
@@ -677,7 +679,8 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                     seen.add(l.id)
                     l.members = [at[t] for t in l.tokens if t in at]
     return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences, raw.get('metadata') or {},
-                  raw.get('version'), media_url=raw.get('media_url'), segments=_segments(raw, project, chars))
+                  raw.get('version'), media_url=raw.get('media_url'),
+                  media_duration=raw.get('media_duration'), segments=_segments(raw, project, chars))
 
 
 def _segments(raw: dict, project: IgtProject, chars: List[str]) -> List['Segment']:

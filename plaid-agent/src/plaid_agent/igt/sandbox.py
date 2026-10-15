@@ -139,14 +139,12 @@ def view(doc: IgtDoc) -> Dict[str, Any]:
 
 def recording_api(ws: Workspace) -> Callable:
     """``recording(document)``: the length in seconds of a document's
-    recording, read from its header (media.py), None without one."""
-    from .media import recording_seconds
+    recording as core stored it at upload (media.py), None without one or
+    when its length is unknown."""
+    from .media import recording_of
 
     def recording(document) -> Optional[float]:
-        did = ws.resolve_document_id(document)
-        doc = ws._docs.get(did)
-        url = doc.media_url if doc is not None else (ws.client.documents.get(did) or {}).get('media_url')
-        return recording_seconds(ws, did, url)
+        return recording_of(ws, ws.resolve_document_id(document))[1]
     return recording
 
 
