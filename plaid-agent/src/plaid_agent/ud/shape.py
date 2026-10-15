@@ -280,15 +280,23 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
     elif 'form' in (token.metadata or {}):
         meta = ('delete', None)
 
+    # A Form span is the one value a split most surely leaves wrong: it
+    # spelled the whole token, and the kept part is now shorter.
+    stale_forms = [] if dealt else [w.value('form') for w in words
+                                    if w.value('form') and w.value('form') != texts[keep]]
     where = f's{sentence.index}.{token.ref_range}'
     shown = ' | '.join(qv(t) for t in texts)
     if dealt:
         what = 'each word on its own token, with its values and dependencies'
     else:
-        whose = (f'its {len(words)} words' if len(words) > 1 else f'its word {word_ref(sentence, words[0])}')
-        what = f'{qv(texts[keep])} keeps {whose} with their values and dependencies'
+        many = len(words) > 1
+        whose = f'its {len(words)} words' if many else f'its word {word_ref(sentence, words[0])}'
+        forms = ', '.join(qv(f) for f in stale_forms)
+        held = (f'{"forms" if len(stale_forms) > 1 else "form"} {forms}, ' if stale_forms else '')
+        what = f'{qv(texts[keep])} keeps {whose} with {"their" if many else "its"} {held}values and dependencies'
         if new_parts:
-            what += ', ' + ', '.join(qv(texts[i]) for i in new_parts) + ' gets a new word with none'
+            what += (', ' + ', '.join(qv(texts[i]) for i in new_parts)
+                     + (' gets a new word with none' if len(new_parts) == 1 else ' each get a new word with none'))
     ws.add_op({
         'kind': 'split_token', 'token_id': token.id, 'text_id': doc.text_id,
         'begin': token.begin, 'end': token.end, 'surface': token.surface,
@@ -318,8 +326,9 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
     if new_parts:
         out += (', '.join(f'"{visible(texts[i])}"' for i in new_parts)
                 + (' gets' if len(new_parts) == 1 else ' each get') + ' a new word with no annotation. ')
-    annotated = [f'{f} "{clip(w.value(f))}"' for w in words for f in ('lemma', 'upos', 'xpos', 'features')
-                 if w.value(f)]
+    annotated = ([f'form "{clip(f)}"' for f in stale_forms]
+                 + [f'{f} "{clip(w.value(f))}"' for w in words for f in ('lemma', 'upos', 'xpos', 'features')
+                    if w.value(f)])
     if annotated or any(w.relation_id for w in words):
         out += (f'What {"they hold" if len(words) > 1 else "it holds"} was made for "{visible(token.surface)}"'
                 + (f' ({", ".join(annotated[:6])}{", …" if len(annotated) > 6 else ""})' if annotated else '')

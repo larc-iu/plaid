@@ -116,6 +116,46 @@ def test_one_word_stays_on_the_longest_part_and_says_what_it_holds(ws):
     assert op['forms'] == ['Mi', 'casa'] and op['after_ids'][0] is None
 
 
+def _ws_with_forms(spans):
+    """The document with more Form spans: ``{word id: value}``."""
+    doc = _doc()
+    form = doc['text_layers'][0]['token_layers'][2]['span_layers'][0]
+    form['spans'] += [{'id': 'f' + w, 'value': v, 'tokens': [w]} for w, v in spans.items()]
+    client = FakeClient(documents={'sd1': doc})
+    from ud_fixtures import PID
+    return Workspace(client, load_project(client, PID))
+
+
+def test_a_form_span_the_kept_part_no_longer_spells_is_named_first():
+    """H16-UD-TOOLS-1: the word's Form span spelled the whole token. The kept
+    part is shorter, so of what it holds the Form span is surely wrong, and
+    the reply and the card both name it."""
+    ws = _ws_with_forms({'w5': 'Mi kaza'})
+    out = t_split_token(ws, document='Partes', ref='s2.w1')
+    assert out.endswith('What it holds was made for "Mi casa" (form "Mi kaza", lemma "mi casa", upos "NOUN"): '
+                        'check it against "casa" once this is applied.')
+    assert ws.ops[0]['label'] == ('split "Mi casa" into "Mi" | "casa" ("casa" keeps its word s2.w1 with its form '
+                                  '"Mi kaza", values and dependencies, "Mi" gets a new word with none)')
+
+
+def test_a_form_span_that_spells_the_kept_part_is_not_named():
+    ws = _ws_with_forms({'w5': 'casa'})
+    t_split_token(ws, document='Partes', ref='s2.w1')
+    assert ws.ops[0]['label'] == ('split "Mi casa" into "Mi" | "casa" ("casa" keeps its word s2.w1 with its '
+                                  'values and dependencies, "Mi" gets a new word with none)')
+
+
+def test_a_multiword_token_kept_whole_names_its_forms_and_counts_its_new_words(ws):
+    """H16-UD-TOOLS-1 and 2: more parts than words keeps every word on the
+    longest part, their Form spans with them, and two new parts each get a
+    word."""
+    out = t_split_token(ws, document='Partes', ref='s1.w2-3', parts=['ven', 'de', 'pan'])
+    assert ws.ops[0]['label'] == ('split "vende pan" into "ven" | "de" | "pan" ("ven" keeps its 2 words with '
+                                  'their forms "vende", "pan", values and dependencies, "de", "pan" each get a '
+                                  'new word with none)')
+    assert '(form "vende", form "pan", lemma "vender", upos "VERB", lemma "pan", upos "NOUN", …)' in out
+
+
 def test_parts_cut_a_token_with_no_space(ws):
     out = t_split_token(ws, document='Partes', ref='s3.w1', parts=['can', 'not'])
     assert out.startswith('Planned splitting s3.w1 "cannot" into 2 tokens: "can", "not". "can" keeps its word')
