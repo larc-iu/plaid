@@ -39,3 +39,28 @@ def test_apply_penman_refuses_a_new_poss_with_the_new_name():
                                           ':aspect performance\n    :poss (s1x / person)')})
     assert "s1b: Unknown relation ':poss': UMR 2.0 renamed it :possessor." in out
     assert ws.ops == []
+
+
+def test_a_stored_poss_edge_restated_unchanged_is_not_judged_again():
+    """The Kukama texts store :poss (kukama_umr-0002 s9, s10, s12, s13). A
+    graph restated with one of them unchanged plans its other change, and
+    the stored edge is left as it is: only an edge the text adds or changes
+    is judged. (The two bench refusals, umr-hard-mixed-path r3 and
+    umr-draft-negated r3 of build-q38-1, each added a new :poss: s14p2 held no
+    possessor, and the setup deletes s13's graph.)"""
+    from umr_fixtures import document_raw
+    raw = document_raw()
+    rel_layer = next(rl for tl in raw['text_layers'][0]['token_layers']
+                     for sl in tl.get('span_layers', [])
+                     for rl in sl.get('relation_layers', []) if rl['id'] == 'm-rel')
+    next(r for r in rel_layer['relations'] if r['id'] == 'mr-1')['value'] = ':poss'
+    ws = umr_ws(umr_client(documents={'umr1': raw}))
+    stored = '(s1b / bark-01\n    :poss (s1d / dog\n        :refer-number singular)\n    :aspect performance)'
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
+                                         'text': stored.replace(':aspect performance', ':aspect state')})
+    assert [op['kind'] for op in ws.ops] == ['set_attrs'], out
+    # A second :poss beside it is new, and refused with the new name.
+    ws.ops.clear()
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': stored.replace(
+        ':aspect performance', ':aspect performance\n    :poss (s1x / person)')})
+    assert "Unknown relation ':poss': UMR 2.0 renamed it :possessor." in out and ws.ops == []
