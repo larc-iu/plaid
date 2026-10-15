@@ -38,6 +38,15 @@ def test_a_multiword_token_row_names_its_text(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w2-3', 'forms': ['al']})
     [row] = describe_changes(ws, ws.ops)
     assert row['where']['ref'] == 's1.w2-3' and row['where']['surface'] == 'al'
+    # H16-UD-TOOLS-4: the range stands for its word number, so the card
+    # names the token and its reference, never "Sentence 1".
+    assert row['where']['word'] == '2-3'
+
+
+def test_a_split_multiword_token_row_names_its_range(ws):
+    call_tool(ws, 'split_token', {'document': 'Viaje', 'ref': 's1.w2-3', 'parts': ['a', 'l']})
+    [row] = describe_changes(ws, ws.ops)
+    assert row['where']['ref'] == 's1.w2-3' and row['where']['word'] == '2-3' and row['where']['surface'] == 'al'
 
 
 def test_a_relabel_is_written_as_an_update_of_the_relation(ws):

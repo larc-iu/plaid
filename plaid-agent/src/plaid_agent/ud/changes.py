@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core import opkind, work
 from .plan import KIND
-from .project import resolve
+from .project import Token, resolve
 
 # Changes that replace prose a person wrote. UD annotates values rather than
 # prose, so until guidelines there was nothing here and the card's Rewrite
@@ -76,7 +76,11 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # A word has a form, a multiword token a surface, a sentence a text.
         where['surface'] = (getattr(target, 'form', None) or getattr(target, 'surface', None)
                             or getattr(target, 'text', '') or '')
+        # Its word's number, or a multi-word token's range ("1-3"), so its row
+        # names it as every other word's row does rather than the sentence.
         index = getattr(target, 'index', None)
         if '.' in ref and index is not None:
             where['word'] = index
+        elif '.' in ref and isinstance(target, Token) and target.words:
+            where['word'] = target.ref_range[1:]
     return where

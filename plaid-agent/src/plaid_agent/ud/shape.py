@@ -292,8 +292,8 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
         many = len(words) > 1
         whose = f'its {len(words)} words' if many else f'its word {word_ref(sentence, words[0])}'
         forms = ', '.join(qv(f) for f in stale_forms)
-        held = (f'{"forms" if len(stale_forms) > 1 else "form"} {forms}, ' if stale_forms else '')
-        what = f'{qv(texts[keep])} keeps {whose} with {"their" if many else "its"} {held}values and dependencies'
+        spelt = (f'{"forms" if len(stale_forms) > 1 else "form"} {forms}, ' if stale_forms else '')
+        what = f'{qv(texts[keep])} keeps {whose} with {"their" if many else "its"} {spelt}values and dependencies'
         if new_parts:
             what += (', ' + ', '.join(qv(texts[i]) for i in new_parts)
                      + (' gets a new word with none' if len(new_parts) == 1 else ' each get a new word with none'))
