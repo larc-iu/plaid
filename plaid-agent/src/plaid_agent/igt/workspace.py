@@ -65,6 +65,9 @@ MAX_DOCS_PER_SEARCH = 1000
 _SUFFIXES = frozenset({'suffix', 'suffixing interfix'})
 _PREFIXES = frozenset({'prefix', 'prefixing interfix'})
 _INFIXES = frozenset({'infix', 'infixing interfix'})
+# What an entry_id is, said where one names nothing. The model is shown ids
+# only where a tool gave them.
+_ENTRY_ID_IS = 'entry_id takes only an id a tool gave (create_entry, or a list of candidates).'
 AFFIX_TYPES = _SUFFIXES | _PREFIXES | _INFIXES | frozenset({'circumfix', 'simulfix', 'suprafix', 'clitic',
                                                             'enclitic', 'proclitic'})
 
@@ -476,7 +479,20 @@ class Workspace(BaseWorkspace):
                 raise ToolError(f'No entry in this plan has id {entry_id}. A new: id names an entry only within '
                                 'the plan that created it. Once that plan is approved, name the entry by its '
                                 'form, with its number if several share it ("gam#2"), as read_lexicon shows it.')
-            raise ToolError(f'No lexicon entry with id {entry_id}')
+            # A value one of the entry's fields holds, which read_lexicon
+            # prints like an id (an import's "cldfEntry=e107/e107-1"): the
+            # bench saw it passed as entry_id 21 times in two runs.
+            for v in self.project.vocabs:
+                view = self.view(v)
+                for it in view.items:
+                    for k, val in (it.get('metadata') or {}).items():
+                        if k not in RESERVED_ITEM_KEYS and isinstance(val, (str, int)) \
+                                and str(val).strip() == entry_id.strip():
+                            name = view.label(it['id'])
+                            raise ToolError(f'"{entry_id}" is the {k} field of {name}, not an id. Name it with '
+                                            f'entry_form {name}, as read_lexicon numbers it. {_ENTRY_ID_IS}')
+            raise ToolError(f'No lexicon entry with id {entry_id}. {_ENTRY_ID_IS} Name an entry by its form with '
+                            'entry_form ("gam", "gam#2", "kwatha#1.2" for a sense), as read_lexicon shows it.')
 
         if not form:
             raise ToolError('Give entry_form (or entry_id).')
