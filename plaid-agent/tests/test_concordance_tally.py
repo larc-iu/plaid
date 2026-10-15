@@ -30,3 +30,17 @@ def test_a_morpheme_field_hit_and_a_sentence_edge():
 def test_when_every_occurrence_is_shown_the_tallies_are_of_them():
     out = for_model(call_tool(_ws(), 'concordance', {'pattern': 'di'}))
     assert 'Across all' not in out and 'The hit\'s own Morph Gloss: ERG 3.' in out, out
+
+
+def test_the_neighbour_is_the_nearest_word_past_punctuation():
+    """H16-REVIEW-4: a punctuation token is no neighbour, as the occurrence
+    lines show it: the word past it is, or the sentence edge."""
+    w = _ws()
+    raw = w.client._documents['d1']['text_layers'][0]
+    raw['text']['body'] = raw['text']['body'][:10] + ',' + raw['text']['body'][11:]
+    words = next(tl for tl in raw['token_layers'] if tl['id'] == 'tk-word')
+    words['tokens'].insert(2, {'id': 'w-c', 'begin': 10, 'end': 11})
+    out = for_model(call_tool(w, 'concordance', {'pattern': 'akuna', 'where': 'baseline', 'limit': 1}))
+    assert 'Word before: gam 3.\n  Word after: # 3.' in out, out
+    out = for_model(call_tool(w, 'concordance', {'pattern': 'gam', 'where': 'baseline', 'limit': 1}))
+    assert 'Word after: akuna 3' in out and ', 3' not in out and '. 3' not in out, out

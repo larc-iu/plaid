@@ -677,6 +677,10 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
     return hits, total, cut
 
 
+#: The most punctuation tokens in a row a concordance's neighbour is read past.
+PUNCT_RUN = 4
+
+
 def q_concordance_tally(ws: Workspace, where: List[Any], wvar: str, mvar: Optional[str], top: int = 25):
     """The tallies a concordance gives over EVERY occurrence ``where`` finds,
     not the ones shown (survey item 10), each one grouped read: the hit's own
@@ -716,13 +720,20 @@ def q_concordance_tally(ws: Workspace, where: List[Any], wvar: str, mvar: Option
         lines.append('In words' + (' (form, slot)' if mvar else '') + ': '
                      + ', '.join(f'{k} {n}' for k, n in words.most_common(top))
                      + (f', and {len(words) - top} more' if len(words) > top else '') + '.')
+    # The neighbour is the nearest word, past any punctuation token, as the
+    # occurrence lines show it (H16-REVIEW-4): the punctuation the corpus
+    # holds may stand between, up to PUNCT_RUN tokens of it (the engine takes
+    # only a bounded run), and a row naming punctuation is the same
+    # occurrence again.
+    skip = sorted({v for v, _n in c.group([c.word('?pt')], ['?pt.value']) if v and c.ignored(v)})
+    gap = [['rep', 0, PUNCT_RUN, ['token', {'value': skip}]]] if skip else []
     for label, first in (('Word before', True), ('Word after', False)):
-        pair = [['token', {}, 'as', '?nb'], ['token', {}, 'as', wvar]] if first else \
-            [['token', {}, 'as', wvar], ['token', {}, 'as', '?nb']]
+        pair = [['token', {}, 'as', '?nb'], *gap, ['token', {}, 'as', wvar]] if first else \
+            [['token', {}, 'as', wvar], *gap, ['token', {}, 'as', '?nb']]
         near: Counter = Counter()
         for form, n in c.group(where + [['seq', {'layer': c.W}, *pair], c.sent('?ns'), ['within', '?nb', '?ns'],
                                         ['within', wvar, '?ns']], ['?nb.value']):
-            if form:
+            if form and not c.ignored(form):
                 near[form.casefold()] += n
         edge = total - sum(near.values())
         if edge > 0:
