@@ -361,6 +361,12 @@
 
       :else (do (storable/assert-storable! "Name" s) true))))
 
+(defn counted
+  "`n` and `noun`, the noun plural unless `n` is one: \"1 token\", \"3 tokens\".
+  For the descriptions History shows."
+  [n noun]
+  (str n " " noun (when (not= 1 n) "s")))
+
 (defn err-msg-not-found [kind id]
   (str kind " not found with id `" id "`"))
 

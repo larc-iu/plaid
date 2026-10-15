@@ -315,7 +315,7 @@
              :project (when layer-id
                         (:project_id (psc/fetch-by-id db :relation_layers layer-id)))
              :document outer-doc-id
-             :description (str "Bulk create " (count attrs-vec) " relations in layer " layer-id)
+             :description (str "Create " (psc/counted (count attrs-vec) "relation") " in layer " layer-id)
              :user user-id}]
      (create-relations! tx attrs-vec))))
 
@@ -339,7 +339,7 @@
      [tx db {:type :relation/bulk-delete
              :project outer-project
              :document outer-doc-id
-             :description (str "Bulk delete " (count eids) " relations")
+             :description (str "Delete " (psc/counted (count eids) "relation"))
              :user user-id}]
      (when (seq eids)
        (let [doc-ids (->> rel-rows (map :document_id) distinct)]

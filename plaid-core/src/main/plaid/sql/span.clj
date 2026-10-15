@@ -377,7 +377,7 @@
              :project (when layer-id
                         (:project_id (psc/fetch-by-id db :span_layers layer-id)))
              :document outer-doc-id
-             :description (str "Bulk create " (count attrs-vec) " spans in layer " layer-id)
+             :description (str "Create " (psc/counted (count attrs-vec) "span") " in layer " layer-id)
              :user user-id}]
      (create-spans! tx attrs-vec))))
 
@@ -408,7 +408,7 @@
      [tx db {:type :span/bulk-delete
              :project outer-project
              :document outer-doc-id
-             :description (str "Bulk delete " (count eids) " spans")
+             :description (str "Delete " (psc/counted (count eids) "span"))
              :user user-id}]
      ;; Re-fetch inside the tx so the existence check is consistent
      ;; with the rows we then delete. Filter the caller's eids down to

@@ -282,7 +282,7 @@
    (submit-operation! [tx db {:type :vocab-item/bulk-create
                               :project nil
                               :document nil
-                              :description (str "Bulk create " (count attrs-vec) " vocab items")
+                              :description (str "Create " (psc/counted (count attrs-vec) "vocab item"))
                               :user user-id}]
                      ;; Validation runs inside the tx so submit-operation* projects
                      ;; ExceptionInfo to a structured 4xx response.
@@ -351,7 +351,7 @@
     (submit-operation! [tx db {:type :vocab-item/bulk-merge
                                :project nil
                                :document nil
-                               :description (str "Bulk update " (count items) " vocab items")
+                               :description (str "Update " (psc/counted (count items) "vocab item"))
                                :user user-id}]
                        ;; Validation runs inside the tx so submit-operation* projects
                        ;; ExceptionInfo to a structured 4xx response.
@@ -401,7 +401,7 @@
     (submit-operation! [tx db {:type :vocab-item/bulk-delete
                                :project nil
                                :document nil
-                               :description (str "Bulk delete " (count eids) " vocab items")
+                               :description (str "Delete " (psc/counted (count eids) "vocab item"))
                                :user user-id}]
                        (let [existing-ids (->> (psc/fetch-ids tx :vocab_items eids)
                                                (keep :id) vec)

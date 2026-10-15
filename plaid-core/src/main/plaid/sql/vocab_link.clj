@@ -111,10 +111,13 @@
     (when (nil? vi-row)
       (throw (ex-info (psc/err-msg-not-found "Vocab item" vocab-item-id)
                       {:code 400 :id vocab-item-id})))
-    (when (or (empty? token-ids)
-              (not (every? some? token-rows)))
+    (when (empty? token-ids)
       (throw (ex-info "Vocab link must reference at least one token"
                       {:code 400})))
+    (when-let [missing (some (fn [[tid row]] (when (nil? row) tid))
+                             (map vector token-ids token-rows))]
+      (throw (ex-info (psc/err-msg-not-found "Token" missing)
+                      {:code 400 :id missing})))
     ;; Mirror span/check-tokens!: the PK is (vocab_link_id, order_idx),
     ;; so duplicates are representable but never meaningful — reject.
     (when-not (apply distinct? token-ids)
@@ -273,7 +276,7 @@
      [tx db {:type :vocab-link/bulk-create
              :project project-id
              :document doc-id
-             :description (str "Bulk create " (count attrs-vec) " vocab mappings")
+             :description (str "Create " (psc/counted (count attrs-vec) "vocab mapping"))
              :user user-id}]
      (create-vocab-links! tx attrs-vec))))
 
@@ -340,7 +343,7 @@
      [tx db {:type :vocab-link/bulk-delete
              :project outer-project
              :document outer-doc-id
-             :description (str "Bulk delete " (count rows) " vocab mappings")
+             :description (str "Delete " (psc/counted (count rows) "vocab mapping"))
              :user user-id}]
      ;; Re-fetch inside the tx so the existence check matches the rows we
      ;; delete (a concurrent delete between the outer read and here is fine).

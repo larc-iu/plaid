@@ -106,6 +106,8 @@
                     {:code 400 :precedence precedence}))))
 
 (defn- check-tokens-consistency! [tokens-attrs]
+  (when (empty? tokens-attrs)
+    (throw (ex-info "Token list is empty" {:code 400})))
   (when-not (= 1 (->> tokens-attrs (map :token/text) distinct count))
     (throw (ex-info "Tokens must all belong to the same text" {:code 400})))
   (when-not (= 1 (->> tokens-attrs (map :token/layer) distinct count))
@@ -731,7 +733,7 @@
              :project (when layer-id
                         (:project_id (psc/fetch-by-id db :token_layers layer-id)))
              :document doc-id
-             :description (str "Bulk create " (count attrs-vec) " tokens in layer " layer-id)
+             :description (str "Create " (psc/counted (count attrs-vec) "token") " in layer " layer-id)
              :user user-id}]
      (create-tokens! tx attrs-vec doc-id :bulk-create))))
 
@@ -760,7 +762,7 @@
              :project (when first-t
                         (:project_id (psc/fetch-by-id db :token_layers (:token/layer first-t))))
              :document (:token/document first-t)
-             :description (str "Bulk delete " (count eids) " tokens")
+             :description (str "Delete " (psc/counted (count eids) "token"))
              :user user-id}]
      ;; Document consistency (mirrors span/relation bulk-delete). One
      ;; document also means one project, which is what makes the

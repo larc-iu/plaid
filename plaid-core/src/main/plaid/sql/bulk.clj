@@ -64,7 +64,7 @@
      [tx db {:type op-type
              :project (project-id-of-row db spec (first pre-rows))
              :document (when (= 1 (count pre-doc-ids)) (first pre-doc-ids))
-             :description (str "Bulk update " (count items) " " noun "s")
+             :description (str "Update " (psc/counted (count items) noun))
              :user user-id}]
      (when (empty? items)
        (throw (ex-info (str Noun " list is empty") {:code 400})))

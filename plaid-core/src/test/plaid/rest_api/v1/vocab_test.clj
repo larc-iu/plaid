@@ -473,8 +473,8 @@
       (let [fake-token-id (java.util.UUID/randomUUID)
             res (create-vocab-link admin-request item-id [fake-token-id])]
         (assert-bad-request res)
-        (is (clojure.string/includes? (-> res :body :error) "token")
-            "Error should be about the invalid token reference"))
+        (is (= (str "Token not found with id `" fake-token-id "`") (-> res :body :error))
+            "Error should name the token that does not exist"))
 
       ;; Create link with empty token list — must fail *because the list is empty*
       (let [res (create-vocab-link admin-request item-id [])]
