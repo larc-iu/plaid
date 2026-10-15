@@ -60,7 +60,7 @@
         {:id id :text-layer-id (:tl s) :document-id doc :body "x"}))]
    ["token" :tokens "/api/v1/tokens" (fn [s id] {:id id :token-layer-id (:tkl s) :text (:text s) :begin 10 :end 14})]
    ["span" :spans "/api/v1/spans" (fn [s id] {:id id :span-layer-id (:sl s) :tokens [(:tok s)] :value "N"})]
-   ["relation" :relations "/api/v1/relations" (fn [s id] {:id id :layer-id (:rl s) :source-id (:span s) :target-id (:span2 s) :value "r"})]
+   ["relation" :relations "/api/v1/relations" (fn [s id] {:id id :relation-layer-id (:rl s) :source (:span s) :target (:span2 s) :value "r"})]
    ["vocab item" :vocab_items "/api/v1/vocab-items" (fn [s id] {:id id :vocab-layer-id (:vocab s) :form "cat"})]
    ["vocab link" :vocab_links "/api/v1/vocab-links" (fn [s id] {:id id :vocab-item (:item s) :tokens [(:tok s)]})]
    ["guideline" :guidelines (fn [s] (str "/api/v1/projects/" (:proj s) "/guidelines")) (fn [_ id] {:id id :title "G"})]

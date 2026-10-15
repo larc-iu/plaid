@@ -249,16 +249,16 @@
   ([user-request-fn layer-id source-id target-id value]
    (api-call user-request-fn {:method :post
                               :path "/api/v1/relations"
-                              :body {:layer-id layer-id
-                                     :source-id source-id
-                                     :target-id target-id
+                              :body {:relation-layer-id layer-id
+                                     :source source-id
+                                     :target target-id
                                      :value value}}))
   ([user-request-fn layer-id source-id target-id value metadata]
    (api-call user-request-fn {:method :post
                               :path "/api/v1/relations"
-                              :body {:layer-id layer-id
-                                     :source-id source-id
-                                     :target-id target-id
+                              :body {:relation-layer-id layer-id
+                                     :source source-id
+                                     :target target-id
                                      :value value
                                      :metadata metadata}})))
 
@@ -659,7 +659,7 @@
                    (id (api-call admin-request {:method :post :path "/api/v1/spans"
                                                 :body {:span-layer-id sl :tokens [t] :value "x"}}))))]
     (assert-status 201 (api-call admin-request {:method :post :path "/api/v1/relations"
-                                                :body {:layer-id rl :source-id (sps 0) :target-id (sps 1) :value "x"}}))
+                                                :body {:relation-layer-id rl :source (sps 0) :target (sps 1) :value "x"}}))
     (psc/execute! db ["ANALYZE"])))
 
 ;; Temporary files

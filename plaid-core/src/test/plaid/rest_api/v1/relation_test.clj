@@ -89,7 +89,7 @@
               request schema and not by the write"
       (doseq [v [{"a" 1} ["a" "b"]]]
         (let [create (raw-call :post "/api/v1/relations"
-                               {:layer-id rl :source-id sid1 :target-id sid2 :value v})
+                               {:relation-layer-id rl :source sid1 :target sid2 :value v})
               patch (raw-call :patch (str "/api/v1/relations/" rid) {:value v})
               bulk (raw-call :patch "/api/v1/relations/bulk" [{:id rid :value v}])
               span (raw-call :post "/api/v1/spans" {:span-layer-id sl :tokens [id1] :value v})]
@@ -100,6 +100,33 @@
 
     (is (= nil (-> (get-relation admin-request rid) :body :relation/value))
         "the last accepted write stands; none of the refused ones landed")))
+
+(deftest single-and-bulk-create-take-one-set-of-field-names
+  ;; The single create took `layer-id`/`source-id`/`target-id` where the bulk
+  ;; create took `relation-layer-id`/`source`/`target`. Both take the bulk
+  ;; names now, the way a span's create names its layer `span-layer-id` and
+  ;; its tokens `tokens`, and the old names are refused.
+  (let [proj (create-test-project admin-request "RelNamesProj")
+        doc (create-test-document admin-request proj "RelNamesDoc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tid (-> (create-text admin-request tl doc "abcdef") :body :id)
+        tkl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        id1 (-> (create-token admin-request tkl tid 0 2) :body :id)
+        id2 (-> (create-token admin-request tkl tid 2 4) :body :id)
+        sl (-> (create-span-layer admin-request tkl "Spans") :body :id)
+        sid1 (-> (create-span admin-request sl [id1] "A") :body :id)
+        sid2 (-> (create-span admin-request sl [id2] "B") :body :id)
+        rl (-> (create-relation-layer admin-request sl "Rels") :body :id)
+        entry {:relation-layer-id rl :source sid1 :target sid2 :value "R"}
+        single (api-call admin-request {:method :post :path "/api/v1/relations" :body entry})
+        bulk (api-call admin-request {:method :post :path "/api/v1/relations/bulk" :body [entry]})
+        old (raw-call :post "/api/v1/relations"
+                      {:layer-id rl :source-id sid1 :target-id sid2 :value "R"})]
+    (is (= 201 (:status single)) "the single create takes the bulk entry's names")
+    (is (= 201 (:status bulk)))
+    (is (= 400 (:status old)) "the old names are refused")
+    (let [made (:body (get-relation admin-request (-> single :body :id)))]
+      (is (= [rl sid1 sid2] (map made [:relation/layer :relation/source :relation/target]))))))
 
 (deftest relation-metadata-functionality
   (let [proj (create-test-project admin-request "RelMetadataProj")

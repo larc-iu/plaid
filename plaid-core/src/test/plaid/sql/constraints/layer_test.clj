@@ -110,9 +110,9 @@
     (testing "a batch is refused at its end, at the top level, and rolls back"
       (let [n (count-rows :relations [:= :relation_layer_id deps])
             r (batch [{:path "/api/v1/relations" :method "POST"
-                       :body {:layer-id deps :source-id ((:span s) "sat") :target-id ((:span s) "Dogs") :value "x"}}
+                       :body {:relation-layer-id deps :source ((:span s) "sat") :target ((:span s) "Dogs") :value "x"}}
                       {:path "/api/v1/relations" :method "POST"
-                       :body {:layer-id deps :source-id ((:span s) "ran") :target-id ((:span s) "cat") :value "x"}}])]
+                       :body {:relation-layer-id deps :source ((:span s) "ran") :target ((:span s) "cat") :value "x"}}])]
         (assert-status 422 r)
         (is (= "max-in-degree" (-> r :body :violations first :constraint)))
         (is (= n (count-rows :relations [:= :relation_layer_id deps])))))
@@ -120,8 +120,8 @@
       (let [old (-> (psc/q1 db {:select [:id] :from :relations
                                 :where [:= :target_span_id ((:span s) "cat")]}) :id str)]
         (assert-status 200 (batch [{:path "/api/v1/relations" :method "POST"
-                                    :body {:layer-id deps :source-id ((:span s) "sat")
-                                           :target-id ((:span s) "cat") :value "x"}}
+                                    :body {:relation-layer-id deps :source ((:span s) "sat")
+                                           :target ((:span s) "cat") :value "x"}}
                                    {:path (str "/api/v1/relations/" old) :method "DELETE"}]))
         (is (= 1 (count-rows :relations [:= :target_span_id ((:span s) "cat")])))))))
 
@@ -137,7 +137,7 @@
 (deftest an-import-a-copy-or-a-restore-keeps-a-second-head
   (let [{:keys [deps doc span] :as s} (setup!)
         rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
-                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})
+                          :body {:relation-layer-id deps :source (span a) :target (span b) :value "x"}})
         import-q (fn [] (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import"))]
     (testing "a restore to before a second head was removed"
       (assert-status 201 (rel! s "The" "cat"))
@@ -206,7 +206,7 @@
     (let [pairs (concat (repeat 58 ["The" "cat"]) [["cat" "sat"] ["sat" "The"]])
           r (batch (for [[a b] pairs]
                      {:path "/api/v1/relations" :method "POST"
-                      :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}}))]
+                      :body {:relation-layer-id deps :source (span a) :target (span b) :value "x"}}))]
       (assert-status 422 r)
       (is (= "acyclic" (-> r :body :violations first :constraint))))))
 
@@ -217,7 +217,7 @@
   (let [{:keys [deps doc span] :as s} (setup!)
         import-q (fn [] (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import"))
         rel-op (fn [a b v] {:path "/api/v1/relations" :method "POST"
-                            :body {:layer-id deps :source-id (span a) :target-id (span b) :value v}})]
+                            :body {:relation-layer-id deps :source (span a) :target (span b) :value v}})]
     (assert-status 200 (declare! "relation" deps "umr" [{:type "acyclic" :except-values [":quote"]}]))
     (testing "an import's cycle is stored"
       (assert-status 200 (batch [(rel-op "The" "cat" ":ARG1-of") (rel-op "cat" "sat" ":ARG2")
@@ -262,7 +262,7 @@
   (let [{:keys [deps span] :as s} (setup!)
         import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
         rel-op (fn [a b v] {:path "/api/v1/relations" :method "POST"
-                            :body {:layer-id deps :source-id (span a) :target-id (span b) :value v}})
+                            :body {:relation-layer-id deps :source (span a) :target (span b) :value v}})
         r (batch [(rel-op "The" "cat" ":ARG0") (rel-op "cat" "The" ":ARG1")] import-q)
         [a b] (-> r :body (->> (map (comp :id :body))))]
     (assert-status 200 r)
@@ -287,7 +287,7 @@
   (let [{:keys [deps span]} (setup!)
         import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
         rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
-                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})
+                          :body {:relation-layer-id deps :source (span a) :target (span b) :value "x"}})
         heads (fn [] (set (map (comp str :source_span_id)
                                (psc/q db {:select [:source_span_id] :from :relations
                                           :where [:= :target_span_id (span "sat")]}))))]
@@ -322,7 +322,7 @@
   (let [{:keys [deps span]} (setup!)
         import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
         rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
-                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})]
+                          :body {:relation-layer-id deps :source (span a) :target (span b) :value "x"}})]
     (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
     (let [r (batch [(rel-op "The" "sat") (rel-op "cat" "sat")] import-q)
           [a _c] (map (comp str :id :body) (:body r))]
@@ -361,7 +361,7 @@
         (let [{:keys [deps span tok]} (setup!)
               import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
               rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
-                                :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})
+                                :body {:relation-layer-id deps :source (span a) :target (span b) :value "x"}})
               check (fn [] (-> (call :post (str "/api/v1/relation-layers/" deps "/constraints/check")
                                      {:constraints [{:type "max-in-degree" :max 1}]})
                                :body :violation-count))]
@@ -383,7 +383,7 @@
   (let [{:keys [deps span]} (setup!)
         import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
         rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
-                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})]
+                          :body {:relation-layer-id deps :source (span a) :target (span b) :value "x"}})]
     (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
     (let [r (batch [(rel-op "The" "ran") (rel-op "sat" "ran")] import-q)]
       (assert-status 200 r)

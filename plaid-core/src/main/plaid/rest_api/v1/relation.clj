@@ -11,7 +11,7 @@
 (defn get-project-id
   "Derive the project ID from a relation-layer or existing relation."
   [{db :db params :parameters}]
-  (let [rl-id (-> params :body :layer-id)
+  (let [rl-id (-> params :body :relation-layer-id)
         relation-id (-> params :path :relation-id)]
     (cond
       rl-id (rl/project-id db rl-id)
@@ -20,7 +20,7 @@
 
 (def bulk-get-project-id
   "The project the writer gate checks for a bulk create (entries carry
-  `:relation-layer-id`) or a bulk delete (an entry is a relation id),
+  `:relation-layer-id`, as a single create's body does) or a bulk delete (an entry is a relation id),
   resolved from the first entry that resolves (`pra/bulk-resolver`)."
   (pra/bulk-resolver (fn [db entry]
                        (if-let [rl-id (:relation-layer-id entry)]
@@ -30,7 +30,7 @@
 (defn get-document-id
   "Get document ID from relation's source span."
   [{db :db params :parameters}]
-  (let [source-id (-> params :body :source-id)
+  (let [source-id (-> params :body :source)
         span-id (-> params :body :span-id)
         relation-id (-> params :path :relation-id)]
     (cond
@@ -83,9 +83,9 @@
                              "must at all times have both a valid source and target span. These spans must also "
                              "belong to a single span layer which is linked to the relation's relation layer."
                              "\n"
-                             "\n<body>layer-id</body>: the relation layer"
-                             "\n<body>source-id</body>: the source span this relation originates from"
-                             "\n<body>target-id</body>: the target span this relation goes to"
+                             "\n<body>relation-layer-id</body>: the relation layer"
+                             "\n<body>source</body>: the source span this relation originates from"
+                             "\n<body>target</body>: the target span this relation goes to"
                              "\n<body>value</body>: the label for the relation (must be string, number, boolean, or null)."
                              "\n<body>id</body>: optional, the new relation's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a relation since deleted, is refused with 409 and <body>id-taken</body>.")
                :middleware [[pra/wrap-writer-required get-project-id]
@@ -94,15 +94,15 @@
                :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
                                    [:id {:optional true} :uuid]
-                                   [:layer-id :uuid]
-                                   [:source-id :uuid]
-                                   [:target-id :uuid]
+                                   [:relation-layer-id :uuid]
+                                   [:source :uuid]
+                                   [:target :uuid]
                                    [:value schema/atomic-value]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [id layer-id source-id target-id value metadata]} :body} :parameters db :db user-id :user/id :as request}]
-                          (let [attrs (cond-> {:relation/layer layer-id
-                                               :relation/source source-id
-                                               :relation/target target-id
+               :handler (fn [{{{:keys [id relation-layer-id source target value metadata]} :body} :parameters db :db user-id :user/id :as request}]
+                          (let [attrs (cond-> {:relation/layer relation-layer-id
+                                               :relation/source source
+                                               :relation/target target
                                                :relation/value value}
                                         (some? id) (assoc :relation/id id))
                                 doc-id (get-document-id request)

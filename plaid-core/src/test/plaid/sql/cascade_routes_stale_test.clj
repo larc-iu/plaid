@@ -57,7 +57,7 @@
         {:keys [sl rl toks]} (annotated-document p v "d" 2)
         sps (ids (call :post "/api/v1/spans/bulk" (mapv (fn [t] {:span-layer-id sl :tokens [t] :value "x"}) toks)))
         item (id (create-vocab-item admin-request v "x"))]
-    (assert-status 201 (call :post "/api/v1/relations" {:layer-id rl :source-id (sps 0) :target-id (sps 1) :value "x"}))
+    (assert-status 201 (call :post "/api/v1/relations" {:relation-layer-id rl :source (sps 0) :target (sps 1) :value "x"}))
     (assert-status 201 (call :post "/api/v1/vocab-links" {:vocab-item item :tokens [(first toks)]}))
     (psc/execute! db ["ANALYZE"])))
 

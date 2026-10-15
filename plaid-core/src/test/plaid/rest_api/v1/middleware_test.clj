@@ -183,7 +183,7 @@
             ;; First write with v0
             r1 (api-call admin-request {:method :post
                                         :path (str "/api/v1/relations?document-version=" v0)
-                                        :body {:layer-id rl :source-id s1 :target-id s2 :value "rel1"}})
+                                        :body {:relation-layer-id rl :source s1 :target s2 :value "rel1"}})
             _ (assert-created r1)
             r1-id (-> r1 :body :id)
             v1 (get (parse-version-header r1) doc)]
@@ -194,7 +194,7 @@
         ;; that was failing (client sent stale v0 for second request → 409)
         (let [r2 (api-call admin-request {:method :post
                                           :path (str "/api/v1/relations?document-version=" v1)
-                                          :body {:layer-id rl :source-id s2 :target-id s3 :value "rel2"}})
+                                          :body {:relation-layer-id rl :source s2 :target s3 :value "rel2"}})
               _ (assert-created r2)
               v2 (get (parse-version-header r2) doc)]
           (is (some? v2) "Second write must return updated version")
@@ -240,13 +240,13 @@
             ;; First write succeeds, version advances
             r1 (api-call admin-request {:method :post
                                         :path (str "/api/v1/relations?document-version=" v0)
-                                        :body {:layer-id rl :source-id s1 :target-id s2 :value "dep"}})
+                                        :body {:relation-layer-id rl :source s1 :target s2 :value "dep"}})
             _ (assert-created r1)]
 
         ;; Second write with the SAME (now stale) version must fail
         (let [r2 (api-call admin-request {:method :post
                                           :path (str "/api/v1/relations?document-version=" v0)
-                                          :body {:layer-id rl :source-id s2 :target-id s1 :value "dep2"}})]
+                                          :body {:relation-layer-id rl :source s2 :target s1 :value "dep2"}})]
           (assert-status 409 r2))))))
 
 (deftest document-version-must-be-an-integer
@@ -518,7 +518,7 @@
       (is (= 409 (:status (versioned "/api/v1/spans/bulk" [{:span-layer-id sl :tokens [t2] :value "B"}])))))
 
     (testing "a relation from a deleted span"
-      (is (= 409 (:status (versioned "/api/v1/relations" {:layer-id rl :source-id s1 :target-id s3
+      (is (= 409 (:status (versioned "/api/v1/relations" {:relation-layer-id rl :source s1 :target s3
                                                           :value "dep"})))))
 
     (testing "a link on a deleted word is refused at the writer gate, which cannot tell a gone id from another project's"

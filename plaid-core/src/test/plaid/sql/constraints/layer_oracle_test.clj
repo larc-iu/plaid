@@ -426,7 +426,7 @@
           {:path (str "/api/v1/spans/" s) :method "DELETE"})
       3 (when (seq lemmas)
           {:path "/api/v1/relations" :method "POST"
-           :body {:layer-id (pick r [deps deps enh]) :source-id (pick r lemmas) :target-id (pick r lemmas)
+           :body {:relation-layer-id (pick r [deps deps enh]) :source (pick r lemmas) :target (pick r lemmas)
                   :value (pick r (conj deprels "nsubj:pass" "bad"))}})
       4 (when-let [rel (pick r (of-layer snap :relations deps))]
           {:path (str "/api/v1/relations/" rel "/target") :method "PUT" :body {:span-id (pick r lemmas)}})
@@ -498,7 +498,7 @@
     (when (seq lemmas)
       (vec (for [_ (range (inc (n-of r 3)))]
              {:path "/api/v1/relations" :method "POST"
-              :body {:layer-id deps :source-id (pick r lemmas) :target-id (pick r lemmas)
+              :body {:relation-layer-id deps :source (pick r lemmas) :target (pick r lemmas)
                      :value (pick r deprels)}})))))
 
 (defn- note-exempt!
