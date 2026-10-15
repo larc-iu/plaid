@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CommentStore, normalizeCommentEvent, isPending } from './CommentStore.js';
 
 const PROJECT = 'p1';
@@ -201,9 +201,9 @@ describe('CommentStore writes', () => {
     expect(store.countFor('t1')).toBe(1);
     expect(isPending(store.threadFor('t1')[0])).toBe(true);
     expect(store.canEdit(store.threadFor('t1')[0], { canWrite: true })).toBe(false);
-    expect(
-      store.canDelete(store.threadFor('t1')[0], { canWrite: true, canDeleteAny: true }),
-    ).toBe(false);
+    expect(store.canDelete(store.threadFor('t1')[0], { canWrite: true, canDeleteAny: true })).toBe(
+      false,
+    );
 
     resolve();
     await posting;
@@ -539,6 +539,9 @@ describe('CommentStore live stream', () => {
     return c;
   };
 
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
   it('opens one connection however many watchers there are, and closes on the last release', () => {
     const client = liveClient();
     const store = makeStore(client);
@@ -549,12 +552,38 @@ describe('CommentStore live stream', () => {
     expect(store.isLive).toBe(true);
 
     releaseA();
+    vi.advanceTimersByTime(1);
     expect(client.closed).toBe(0);
     expect(store.isLive).toBe(true);
 
     releaseB();
+    vi.advanceTimersByTime(1);
     expect(client.closed).toBe(1);
     expect(store.isLive).toBe(false);
+  });
+
+  it('keeps its one connection when the last claim is given up and taken again in one turn', async () => {
+    // React's StrictMode runs the Comments tab's effect, its cleanup and the
+    // effect again: that opened a second stream, aborted the first and read
+    // every comment twice (H15-IGT polish).
+    const client = liveClient();
+    const store = makeStore(client);
+    await store.load();
+    const reads = client.comments.list.mock.calls.length;
+
+    store.watchLive()();
+    const release = store.watchLive();
+    vi.advanceTimersByTime(1);
+    await Promise.resolve();
+    expect(client.opened).toBe(1);
+    expect(client.closed).toBe(0);
+    expect(store.isLive).toBe(true);
+    expect(client.comments.list.mock.calls.length).toBe(reads + 1);
+
+    release();
+    vi.advanceTimersByTime(1);
+    expect(client.closed).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('ignores a double release rather than dropping someone else s connection', () => {
@@ -565,9 +594,11 @@ describe('CommentStore live stream', () => {
 
     releaseA();
     releaseA();
+    vi.advanceTimersByTime(1);
     expect(store.isLive).toBe(true);
 
     releaseB();
+    vi.advanceTimersByTime(1);
     expect(client.closed).toBe(1);
   });
 
@@ -610,6 +641,7 @@ describe('CommentStore live stream', () => {
       expect(store.isLive).toBe(true);
       release();
       again();
+      vi.advanceTimersByTime(1);
       expect(streams[1].close).toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
     } finally {

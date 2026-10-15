@@ -90,3 +90,19 @@ test('deleting a comment from the grid asks first', async ({ page }) => {
   await badge.click();
   await expect(page.locator('.igt-cmt-pop').getByText(body)).toHaveCount(0);
 });
+
+// H15-IGT polish: the switch to Comments opened the project's stream twice
+// (one aborted at once) and read every comment twice, since the tab's claim on
+// the stream was given up and taken again in one turn.
+test('the Comments tab opens one stream and reads the comments once', async ({ page }) => {
+  await openAnalyze(page);
+  const seen = { listen: 0, comments: 0 };
+  page.on('request', (r) => {
+    if (/\/listen(\?|$)/.test(r.url())) seen.listen += 1;
+    if (/\/comments\?/.test(r.url())) seen.comments += 1;
+  });
+  await page.getByRole('tab', { name: 'Comments' }).click();
+  await expect(page).toHaveURL(/tab=comments/);
+  await page.waitForTimeout(1500);
+  expect(seen).toEqual({ listen: 1, comments: 1 });
+});

@@ -553,6 +553,11 @@ export class CommentStore {
   watchLive() {
     if (!this._projectId) return () => {};
     this._liveRefs = (this._liveRefs || 0) + 1;
+    // A claim given up in this same turn (React's StrictMode runs an effect,
+    // its cleanup and the effect again, and one tab's claim can end as
+    // another's begins) left the stream open: it is the same one.
+    clearTimeout(this._closeTimer);
+    this._closeTimer = null;
     // The first claim opens the stream, and so does a later one after the
     // server closed it (see `_openLive`). What was said while no stream was
     // open is read in once.
@@ -565,7 +570,14 @@ export class CommentStore {
       if (released) return;
       released = true;
       this._liveRefs -= 1;
-      if (this._liveRefs === 0) this._closeLive();
+      if (this._liveRefs > 0) return;
+      // Closed once this turn is over, unless a claim came back in it: an
+      // aborted stream and a second read of every comment otherwise.
+      clearTimeout(this._closeTimer);
+      this._closeTimer = setTimeout(() => {
+        this._closeTimer = null;
+        if (!this._liveRefs) this._closeLive();
+      }, 0);
     };
   }
 
