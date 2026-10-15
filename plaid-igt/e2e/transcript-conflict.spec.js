@@ -161,3 +161,32 @@ test('an edit of another segment made meanwhile does not stop a row saving', asy
     await B.ctx.close();
   }
 });
+
+// H15-IGT polish: an edit refused because its segment was merged (or split)
+// meanwhile said "changed this to …", which reads as a text edit. It says the
+// segment changed.
+test('a row edit refused after its segment was merged elsewhere says the segment changed', async ({
+  browser,
+}) => {
+  const A = await openTab(browser);
+  const B = await openTab(browser);
+  try {
+    const before = await storedText(0);
+    const rowA = A.page.getByLabel('Segment 1 text');
+    await rowA.click();
+    await rowA.press('Alt+m');
+    await expect.poll(() => storedText(0)).not.toBe(before);
+    const merged = await storedText(0);
+
+    const row = B.page.getByLabel('Segment 1 text');
+    await row.click();
+    await row.fill(`${before}!`);
+    await row.press('Enter');
+    await expect(row).toHaveValue(merged, { timeout: 15000 });
+    await expect(B.page.getByText(`changed this segment to ${merged}.`)).toBeVisible();
+    expect(await storedText(0)).toBe(merged);
+  } finally {
+    await A.ctx.close();
+    await B.ctx.close();
+  }
+});

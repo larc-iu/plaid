@@ -218,6 +218,24 @@ describe('a refused edit', () => {
     expect(heard[0]).toMatchObject({ kind: 'conflict', recut: { unit: 'word', text: 'si' } });
   });
 
+  it('over a value that changed with the re-cut of its row is said as the re-cut', () => {
+    // A transcript segment split meanwhile: its text is the value, so the
+    // value changed too (H15-IGT polish: the toast read as a text edit).
+    const { engine, heard, stored, shapes } = setup({
+      stored: { k: 'the woman walked home' },
+      shapes: { k: 'seg 0-4' },
+    });
+    const t = engine.sending('k', {
+      saved: 'the woman walked home',
+      typed: 'the woman walked home today',
+    });
+    stored.k = 'the woman';
+    shapes.k = 'seg 0-2';
+    const d = engine.settle(t, refused());
+    expect(d).toMatchObject({ kind: 'conflict', stored: 'the woman', recut: { text: 'seg 0-2' } });
+    expect(heard[0]).toMatchObject({ kind: 'conflict', recut: { text: 'seg 0-2' } });
+  });
+
   it('refused for good (403, 404) is dropped and the cell shows what is stored', () => {
     for (const status of [403, 404]) {
       const views = { k: cellView() };

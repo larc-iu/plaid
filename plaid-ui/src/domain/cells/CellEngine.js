@@ -345,8 +345,11 @@ export class CellEngine {
     // Still showing the edit itself: the read after the refusal did not come.
     const stored = same(now, typed) ? base : now;
     if (!same(stored, base)) {
-      this.conflict(key, typed, stored, null, ticket.entityIds, outcome.since);
-      return { kind: 'conflict', typed, stored, recut: null, status };
+      // A value that changed because what the cell is on was re-cut (a
+      // transcript segment split or merged) is said as the re-cut.
+      const recut = this._recutSince(ticket.shape, key);
+      this.conflict(key, typed, stored, recut, ticket.entityIds, outcome.since);
+      return { kind: 'conflict', typed, stored, recut, status };
     }
     const final = this._final.has(status);
     const recut = final ? null : this._recutSince(ticket.shape, key);

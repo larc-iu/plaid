@@ -999,10 +999,28 @@ export function TranscriptList({
   // The segments' text cells. What a cell holds is read from the document,
   // by the segment that names it.
   const segmentAt = (key) => doc.alignmentTokens.find((t) => segmentKey(t) === key);
+  const textOf = (token) => cpSlice(doc.body || '', token.begin, token.end);
   const cells = useCellEngine(doc, {
     read: (key) => {
       const token = segmentAt(key);
-      return token ? cpSlice(doc.body || '', token.begin, token.end) : undefined;
+      return token ? textOf(token) : undefined;
+    },
+    // A segment split or merged meanwhile has new times as well as new text,
+    // and its toast says the segment changed: "c changed this segment to …".
+    // New times alone (a boundary dragged) leave the text as it was.
+    shape: (key) => {
+      const token = segmentAt(key);
+      return token
+        ? { from: token.metadata?.timeBegin, to: token.metadata?.timeEnd, text: textOf(token) }
+        : null;
+    },
+    recut: (shape, key) => {
+      const token = segmentAt(key);
+      if (!shape || !token) return null;
+      const text = textOf(token);
+      const retimed =
+        token.metadata?.timeBegin !== shape.from || token.metadata?.timeEnd !== shape.to;
+      return retimed && text !== shape.text ? { unit: 'segment', text, ids: [token.id] } : null;
     },
     entityIds: (key) => {
       const token = segmentAt(key);
