@@ -311,3 +311,16 @@ def test_help_and_check_are_reads_so_a_repeat_gets_its_answer():
     assert TRACER.call_kind('tagsets', {'action': 'edit', 'tagset': 'L'}) == PLAN
     item = trace_step(TRACER, 'c1', 'tagsets', {'action': 'help'})
     assert item['label'] == 'Read how to set up tagsets' and item['kind'] == META
+
+
+@pytest.mark.parametrize('action, kind', [('Help', 'META'), (' help', 'META'), ('CHECK', 'READ'), (' Check ', 'READ'),
+                                          ('Edit', 'PLAN')])
+def test_the_trace_reads_the_action_as_the_tool_does(action, kind):
+    """H16-REVIEW-6: an action in another case or with a space is the read it
+    answers, so a repeat gets its answer and the step is no "Nothing to change"."""
+    from plaid_agent.core import trace
+    from plaid_agent.igt.trace import TRACER
+    assert TRACER.call_kind('tagsets', {'action': action, 'tagset': 'L'}) == getattr(trace, kind)
+    label = TRACER.describe('tagsets', {'action': action, 'tagset': 'L'})
+    assert label == {'META': 'Read how to set up tagsets', 'READ': 'Checked the tagset “L”',
+                     'PLAN': 'Planned a change to the tagset “L”'}[kind]

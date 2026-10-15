@@ -31,6 +31,11 @@ def in_doc(a: Dict[str, Any]) -> str:
     return _in_one_doc(a)
 
 
+def _action(a: Dict[str, Any]) -> str:
+    """The tagsets action as the tool reads it (`tagsets.t_tagsets`)."""
+    return str(a.get('action') or '').strip().lower()
+
+
 def _entry(a: Dict[str, Any]) -> str:
     return q(a.get('entry_form') or a.get('entry_id'))
 
@@ -190,7 +195,7 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
 
     # --- tagsets: one tool, the action says which ------------------------------
     if name == 'tagsets':
-        act = a.get('action')
+        act = _action(a)
         if act == 'help':
             return 'Read how to set up tagsets'
         if act == 'check':
@@ -218,7 +223,7 @@ _PROGRESS = {
     'frequency_list': lambda a: 'Counting frequencies…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
     'check_lexicon': lambda a: 'Checking the lexicon…',
-    'tagsets': lambda a: 'Checking a tagset…' if a.get('action') == 'check' else 'Working on tagsets…',
+    'tagsets': lambda a: 'Checking a tagset…' if _action(a) == 'check' else 'Working on tagsets…',
     'add_sense': lambda a: 'Adding a sense…',
     'move_sense': lambda a: 'Renumbering a sense…',
     'make_sense_of': lambda a: 'Moving an entry under another…',
@@ -234,7 +239,7 @@ _PROGRESS = {
 
 # The tagsets tool plans with edit and assign, and only reads with help (its
 # manual) and check.
-_READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(a.get('action')),
+_READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
             'app_guide': lambda a: META}
 
 TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'),
