@@ -16,7 +16,7 @@ from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 def in_docs(a: Dict[str, Any]) -> str:
     """For a read: ' in "<document>"', ' in 3 documents' when it is held to
-    several (scope.py), or nothing when it was project-wide."""
+    several (core/scope.py), or nothing when it was project-wide."""
     docs = a.get('documents')
     if docs and not a.get('document'):
         docs = [docs] if isinstance(docs, str) else list(docs)

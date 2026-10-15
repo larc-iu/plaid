@@ -446,7 +446,7 @@ The modules below are `igt/` unless they say otherwise.
   `ngram`), `worklist` (unlinked / unglossed /
   unanalyzed / unverified / contributed, by frequency), `sequence_search`
   (each read from `search` to here that takes a `document` also takes
-  `documents`, several in its place: `scope.py`, `Corpus.among`),
+  `documents`, several in its place: `core/scope.py`, `Corpus.among`),
   `recent_changes` (the audit log, read in widening windows from the most
   recent week, each entry with the `as_of` instant a restore takes),
   `comments` (what people have written to each other, anchored to the

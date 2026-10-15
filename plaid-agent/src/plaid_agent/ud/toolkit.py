@@ -20,7 +20,7 @@ from .query import t_query, t_query_help
 from .restore import t_restore_document
 from .sandbox import t_code_help, t_run_code
 from .sentences import t_merge_sentences, t_split_sentence
-from .scope import among_documents
+from ..core.scope import among_documents
 from .shape import t_set_words, t_split_token
 from ..core.history import add_comment as t_add_comment, comments as t_comments
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
@@ -43,7 +43,7 @@ _SHARED = toolkit.shared_schemas(ref='One sentence, e.g. "s3".')
 # --- the tool table -------------------------------------------------------------
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
-_DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (scope.py)
+_DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (core/scope.py)
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Word references in the same document, e.g. ["s3.w2", "s3.w5"].'}
 _FIELD = {'type': 'string', 'enum': list(FIELDS),
@@ -328,7 +328,7 @@ _IMPL['merge_sentences'] = t_merge_sentences
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 
-# Every read that takes a document takes several in its place (scope.py).
+# Every read that takes a document takes several in its place (core/scope.py).
 SCOPED_READS = ('search', 'grew_search', 'frequency_list', 'check_consistency', 'worklist')
 _IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(

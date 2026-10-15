@@ -30,7 +30,7 @@ from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon
                     t_list_documents, t_project_overview,
                     t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
-from .scope import among_documents
+from ..core.scope import among_documents
 from .guide import t_app_guide
 from .tagsets import t_tagsets
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
@@ -54,7 +54,7 @@ _SHARED = toolkit.shared_schemas(ref='sN, sN.wN, or sN.wN.mN.', comment_field=Tr
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
-_DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (scope.py)
+_DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (core/scope.py)
 _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
                                            'its fields has (e.g. its gloss).'}
 _ENTRY_FORM = {'type': 'string',
@@ -548,7 +548,7 @@ _IMPL['app_guide'] = t_app_guide
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 
-# Every read that takes a document takes several in its place (scope.py).
+# Every read that takes a document takes several in its place (core/scope.py).
 SCOPED_READS = ('search', 'concordance', 'analyses_of', 'check_consistency', 'corpus_stats', 'frequency_list',
                 'worklist', 'check_integrity', 'sequence_search')
 _IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
