@@ -43,6 +43,12 @@ def _shape(ws: Workspace) -> str:
                else f'w["fields"].get({json.dumps(w.name)})' if w else 'w["fields"].get("Gloss")')
     return IGT_SHAPE.replace('{example}', example).replace('{fields}', project.field_list())
 
+# What lexicon() returns, in the help and in the answer to code that reads it
+# as a dict (twice on the bench: lexicon()["entries"]).
+LEXICON_RETURNS = '''\
+  [{"id", "lexicon", "form", "address", "type", "fields": {"<entry field>": ...}, "parent": "<id>" or None,
+    "senses": ["<id>", ...], "links": n}, ...]'''
+
 IGT_HELP = '''
 THE SHAPE load(document) RETURNS:
   {"id", "name", "metadata": {...}, "segments": [{"start": 12.3, "end": 15.0, "speaker": "...", "text": "..."}, ...],
@@ -62,8 +68,7 @@ THE SHAPE load(document) RETURNS:
 
 THE LEXICON
   lexicon(name=None) -> every entry of the named lexicon, or of every lexicon, as the plan would leave it:
-  [{"id", "lexicon", "form", "address", "type", "fields": {"<entry field>": ...}, "parent": "<id>" or None,
-    "senses": ["<id>", ...], "links": n}, ...]
+{lexicon_returns}
   "address" is the form a tool takes ("gam#2" where several entries share a form), "type" the morph type,
   "fields" every entry field by its exact name ("" when empty, a list of entry ids for a reference field),
   "links" the words and morphemes linked to the entry itself (not its senses). A word's or morpheme's
@@ -227,7 +232,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
-    return sandbox.run_tool(ws, code, api, _shape(ws), counted={'lexicon': 'entry'})
+    return sandbox.run_tool(ws, code, api, _shape(ws), counted={'lexicon': 'entry'},
+                            returns={'lexicon': LEXICON_RETURNS})
 
 
 def _lexicon_help(ws: Workspace) -> str:
@@ -240,7 +246,7 @@ def _lexicon_help(ws: Workspace) -> str:
                                                        if f['name'] != 'morphType') for v in vocabs]
     listed = ('  Entry fields by lexicon, spelled as the code must spell them:\n' + '\n'.join(names) + '\n'
               if names else '  This project has no lexicon yet.\n')
-    return IGT_HELP.replace('{pos}', json.dumps(pos)).replace('{entry_fields}', listed)
+    return IGT_HELP.replace('{lexicon_returns}', LEXICON_RETURNS).replace('{pos}', json.dumps(pos)).replace('{entry_fields}', listed)
 
 
 def t_code_help(ws: Workspace) -> str:

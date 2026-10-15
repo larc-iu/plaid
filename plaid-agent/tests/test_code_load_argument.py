@@ -78,6 +78,20 @@ print(n, doc.sentences[0].words[0].ref == doc["sentences"][0]["words"][0]["ref"]
                 'try:\n    getattr(w, "zz")\nexcept AttributeError:\n    print("raised")')
         assert call_tool(w, 'run_code', {'code': code}) == 'True False True 5\nraised'
 
+    def test_lexicon_read_as_a_dict_says_what_it_returns(self):
+        """Twice on the bench (build-q38-1): lexicon()["entries"], answered
+        with a bare TypeError, where a load() misuse shows load's shape."""
+        w = fake_ws(FakeClient())
+        out = call_tool(w, 'run_code', {'code': 'lex = lexicon()\nfor e in lex["entries"]:\n    print(e)'})
+        assert 'list indices must be integers' in out
+        assert 'What lexicon() returns is a list, one dict per item, not a dict:' in out
+        assert '"address", "type", "fields"' in out
+        out = call_tool(w, 'run_code', {'code': 'lexicon().get("entries")'})
+        assert 'What lexicon() returns is a list' in out
+        # A list misread that is not lexicon()'s says nothing of it.
+        out = call_tool(w, 'run_code', {'code': 'x = [1]\nx["a"]'})
+        assert 'list indices must be integers' in out and 'lexicon()' not in out
+
     def test_a_guessed_key_names_the_keys_there_are_and_the_shape(self):
         w = fake_ws(FakeClient())
         out = call_tool(w, 'run_code', {'code': 'load(documents()[0]).sentences[0].n'})

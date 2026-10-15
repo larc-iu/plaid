@@ -304,10 +304,16 @@ _METHOD_MISSING = re.compile(r"AttributeError: '(\w+)' object has no attribute '
 _BUILTIN_TYPES = {t.__name__: t for t in (str, bytes, list, tuple, dict, set, frozenset, int, float)}
 
 
-def _explain(e, shape: str = '') -> str:
+#: The errors of code that reads a list as a dict (``items()["all"]``).
+_LIST_MISREAD = ('list indices must be integers', "'list' object has no attribute")
+
+
+def _explain(e, shape: str = '', code: str = '', returns: Optional[Dict[str, str]] = None) -> str:
     """The sandbox's error, with a line about what the sandbox has where the
     error is about what it lacks, and the shape of a loaded document where
-    the error is a key the code guessed."""
+    the error is a key the code guessed. ``returns`` is an app's shape of
+    what a host function that returns a list gives, by its name, said when
+    code that calls it read a list as a dict."""
     text = e.display(format='traceback') if hasattr(e, 'display') else str(e)
     text = text.strip()
     if 'ModuleNotFoundError' in text or 'ImportError' in text:
@@ -332,11 +338,15 @@ def _explain(e, shape: str = '') -> str:
                  'gone: build it again in this code.')
     if shape and ('KeyError' in text or 'Its keys:' in text):
         text += '\nWhat load() returns:\n' + shape
+    if any(m in text for m in _LIST_MISREAD):
+        for name, what in (returns or {}).items():
+            if re.search(r'\b' + re.escape(name) + r'\s*\(', code or ''):
+                text += f'\nWhat {name}() returns is a list, one dict per item, not a dict:\n{what}'
     return text
 
 
 def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '',
-        tally: Optional['Tally'] = None) -> str:
+        tally: Optional['Tally'] = None, returns: Optional[Dict[str, str]] = None) -> str:
     """Run ``code`` with ``api`` as its host functions, in ``session``: the
     turn's own worker, so names persist from one call to the next. Returns
     what it printed and the value of its last expression, capped. Raises
@@ -358,7 +368,7 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     from pydantic_monty import CollectString
     printed = CollectString(max_bytes=4 * 1024 * 1024)
     try:
-        out = _run(code, api, session, shape, tally, printed)
+        out = _run(code, api, session, shape, tally, printed, returns)
     finally:
         # What the code's own reads cut was cut for the code, not for the
         # model, on every way out: an error or an empty run too.
@@ -366,7 +376,8 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     return _truncate(out)
 
 
-def _run(code: str, api: Dict[str, Callable], session: Session, shape: str, tally, printed) -> str:
+def _run(code: str, api: Dict[str, Callable], session: Session, shape: str, tally, printed,
+         returns: Optional[Dict[str, str]] = None) -> str:
     from pydantic_monty import MontyCrashedError, MontyRuntimeError, MontySyntaxError, MontyTypingError
     worker, source = session.get(), keyed(code)
     try:
@@ -380,7 +391,7 @@ def _run(code: str, api: Dict[str, Callable], session: Session, shape: str, tall
             # it was written.
             value = worker.feed_run(code, external_lookup=dict(api), print_callback=printed)
     except MontyRuntimeError as e:
-        raise CodeError(_unkeyed(_explain(e, shape)) + _partial(printed))
+        raise CodeError(_unkeyed(_explain(e, shape, code, returns)) + _partial(printed))
     except (MontySyntaxError, MontyTypingError) as e:
         # Code that does not parse is the code's fault, said in the parser's
         # words. It used to fall through to "a fault in the tool".
@@ -722,11 +733,12 @@ class Tally:
 
 
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]], shape: str = '',
-             counted: Optional[Dict[str, str]] = None) -> str:
+             counted: Optional[Dict[str, str]] = None, returns: Optional[Dict[str, str]] = None) -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what
     the app lets the code see, and ``shape`` its short example of a loaded
-    document, and ``counted`` the app's own reads a step label counts. What
+    document, and ``counted`` the app's own reads a step label counts, and
+    ``returns`` the shape of what its own list-returning functions give. What
     the run read and printed is noted (:class:`Tally`), and
     what its plan() calls did is said after its output, on an error too."""
     if getattr(ws, 'code', None) is None:
@@ -734,7 +746,8 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
     tally = Tally(counted)
     tally.waiting_unsaid = bool(getattr(ws, 'waiting', None)) and not getattr(ws, 'reported_waiting', False)
     try:
-        out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally)
+        out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally,
+                  returns=returns)
     except CodeError as e:
         raise ToolError(str(e) + tally.plan_note(ws))
     tally.note(ws)
