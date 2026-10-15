@@ -1,16 +1,22 @@
 """A plan the app writes before it sends the approval (tagset changes, which
-the assistant's delegated token may not write) is applied once its changes
-read as planned, whatever the approval would otherwise refuse: the app has
-written by then, so a refusal would leave the changes in force under a plan
-that reads not approved (H16 review, the refused-after-write order). Against
-a live core, with the app's write in Python (``write_settings``)."""
+the assistant's delegated token may not write). The page asks a read-only
+preflight first, which runs every check the approval runs and writes
+nothing; only on ``ready`` does it write, and then it sends the approval with
+``wrote_first``. Such an approval is applied once the changes read as planned,
+whatever landed after the preflight (a discard, a newer plan, another turn),
+and records the approver as the approval's own path does. Settings that read
+as planned by any other route take the approval's own path, and a discard of
+them is allowed (H16 review and REV-AGENT-1 to -3, -5). Against a live core,
+with the app's write in Python (``write_settings``)."""
 
 import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
 from live import _Session, live_client, seed  # noqa: F401 - fixture
 from test_service_flow import Helper, _service
+from test_tagset_tools import _user
 
-from plaid_agent.core.conversation import ConversationStore, assistant_item, build_meta, user_item
+from plaid_agent.core.conversation import (ConversationStore, assistant_item, build_meta, replace_undecided,
+                                           user_item)
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.tagsets import write_settings
 from plaid_agent.igt.toolkit import call_tool
@@ -25,73 +31,171 @@ def proj(live_client):
     s.delete()
 
 
-def _planned(s):
+def _planned(s, add='NOM'):
     ws = Workspace(s.client, load_project(s.client, s.project_id))
-    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': [add]}})
     return ws, ws.plan_payload()
 
 
-def _seed(s, plan, status=None, pending=None):
-    user = _Session.user
-    store = ConversationStore(s.client, user, s.project_id, 'igt')
+def _seed(s, plan, status=None, pending=None, conv_id='c1', user=None, client=None):
+    store = ConversationStore(client or s.client, user or _Session.user, s.project_id, 'igt')
     item = assistant_item('Planned.', plan, [], [], '', 'fake/model', service='igt:assist:fake')
     item['status'] = status
     conv = {'messages': [{'role': 'user', 'content': 'add NOM'}, {'role': 'assistant', 'content': 'Planned.'}],
             'display': [user_item('add NOM'), item]}
-    store.save('c1', conv, build_meta(None, 'c1', conv, 'igt:assist:fake', 'fake/model', pending=pending))
+    store.save(conv_id, conv, build_meta(None, conv_id, conv, 'igt:assist:fake', 'fake/model', pending=pending))
     return store
 
 
-def _approve(s, svc, plan, request_id='r9', op='approve', tab='t1'):
-    helper = Helper(request_id=request_id, requester_id=_Session.user)
-    svc.process_request({'requester_client': s.client, 'requester_id': _Session.user, 'project_id': s.project_id,
-                         'delegated_projects': [s.project_id], 'conversation_id': 'c1', 'tab': tab, 'op': op,
-                         'plan_id': plan['id']}, helper)
+def _ask(s, plan, op='approve', request_id='r9', svc=None, conv_id='c1', tab='t1', user=None, client=None, **data):
+    user = user or _Session.user
+    helper = Helper(request_id=request_id, requester_id=user)
+    (svc or _service()).process_request({
+        'requester_client': client or s.client, 'requester_id': user, 'project_id': s.project_id,
+        'delegated_projects': [s.project_id], 'conversation_id': conv_id, 'tab': tab, 'op': op,
+        'plan_id': plan['id'], **data}, helper)
     return helper
 
 
-def _item(store):
-    conv, meta = store.load('c1')
+def _item(store, conv_id='c1'):
+    conv, meta = store.load(conv_id)
     return conv['display'][1], meta
 
 
-def test_written_by_the_app_while_a_turn_runs_it_is_applied_and_the_turn_keeps_its_marker(proj):
-    ws, plan = _planned(proj)
-    turn = {'kind': 'turn', 'request_id': 'rT', 'service_id': 'igt:assist:fake'}
-    store = _seed(proj, plan, pending=turn)
-    svc = _service()
-    svc._busy[(_Session.user, proj.project_id, 'c1')] = {'request_id': 'rT', 'kind': 'turn'}
-    write_settings(proj.client, ws.project, ws.ops)  # the app's write, then the approval
-    helper = _approve(proj, svc, plan)
-    assert not helper.errors and helper.done[0]['kind'] == 'applied', (helper.errors, helper.done)
-    item, meta = _item(store)
-    assert item['status'] == 'applied'
-    assert meta['pending']['request_id'] == 'rT', 'the running turn keeps its marker'
+def _ready(h):
+    return not h.errors and h.done and h.done[0].get('kind') == 'ready'
 
 
-def test_written_by_the_app_after_a_discard_in_another_tab_it_is_applied(proj):
-    ws, plan = _planned(proj)
-    store = _seed(proj, plan, status='discarded')
-    write_settings(proj.client, ws.project, ws.ops)
-    helper = _approve(proj, _service(), plan)
-    assert helper.done and helper.done[0]['kind'] == 'applied', (helper.errors, helper.done)
-    assert _item(store)[0]['status'] == 'applied'
+def _applied(h):
+    return not h.errors and h.done and h.done[0].get('kind') == 'applied'
 
 
-def test_a_plan_the_app_wrote_is_not_discarded(proj):
-    ws, plan = _planned(proj)
-    store = _seed(proj, plan)
-    write_settings(proj.client, ws.project, ws.ops)
-    helper = _approve(proj, _service(), plan, op='discard')
-    assert helper.done[0]['kind'] == 'refused' and helper.done[0]['why'] == 'written', helper.done
-    assert _item(store)[0]['status'] is None
-    assert _approve(proj, _service(), plan, request_id='r10').done[0]['kind'] == 'applied'
-    assert _item(store)[0]['status'] == 'applied'
+# --- the preflight -------------------------------------------------------------------
 
-
-def test_not_written_by_the_app_the_approval_is_refused_as_before(proj):
+def test_the_preflight_is_ready_for_an_undecided_plan_and_writes_nothing(proj):
     _ws, plan = _planned(proj)
     store = _seed(proj, plan)
-    helper = _approve(proj, _service(), plan)
-    assert any('Approve it from the app' in e for e in helper.errors), (helper.errors, helper.done)
+    before = store.load('c1')
+    assert _ready(_ask(proj, plan, preflight=True))
+    assert store.load('c1') == before
+    assert 'NOM' not in str(proj.client.projects.get(proj.project_id)['config'])
+
+
+@pytest.mark.parametrize('how, said', [
+    ('discard', 'The plan was discarded'),
+    ('replace', 'A newer plan replaced this one. Approve the newer plan.'),
+])
+def test_the_preflight_refuses_a_plan_decided_otherwise(proj, how, said):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    if how == 'discard':
+        assert _ask(proj, plan, op='discard').done[0]['kind'] == 'done'
+    else:
+        store.write('c1', lambda st: {'messages': st['messages'], 'display': replace_undecided(st['display'])},
+                    lambda c, prev: prev, None)
+    h = _ask(proj, plan, request_id='r10', preflight=True)
+    assert h.errors == [said] and not h.done, (h.errors, h.done)
+
+
+def test_the_preflight_refuses_a_gone_conversation_a_held_one_and_a_busy_one(proj):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan, pending={'kind': 'turn', 'request_id': 'rT', 'service_id': 'igt:assist:fake'})
+    svc = _service()
+    svc._busy[(_Session.user, proj.project_id, 'c1')] = {'request_id': 'rT', 'kind': 'turn'}
+    h = _ask(proj, plan, svc=svc, preflight=True)
+    assert h.done[0]['kind'] == 'refused' and h.done[0]['why'] == 'busy', h.done
+    from plaid_agent.core.conversation import now_iso
+    store.write_meta('c1', lambda m: {**m, 'pending': None, 'holder': {'tab': 't2', 'at': now_iso()}})
+    h = _ask(proj, plan, request_id='r11', preflight=True)
+    assert h.done[0]['kind'] == 'refused' and h.done[0]['why'] == 'held', h.done
+    store.delete('c1')
+    h = _ask(proj, plan, request_id='r10', preflight=True)
+    assert h.done[0]['kind'] == 'refused' and h.done[0]['why'] == 'gone', h.done
+
+
+def test_the_preflight_refuses_an_approver_who_maintains_nothing(proj):
+    _user(proj.client, 'tagset-preflight-writer@x.org')
+    proj.client.projects.add_writer(proj.project_id, 'tagset-preflight-writer@x.org')
+    writer = _user(proj.client, 'tagset-preflight-writer@x.org')
+    _ws, plan = _planned(proj)
+    _seed(proj, plan, user='tagset-preflight-writer@x.org', client=writer)
+    h = _ask(proj, plan, user='tagset-preflight-writer@x.org', client=writer, preflight=True)
+    assert h.errors == ['Only a maintainer of this project may approve its tagset changes. Nothing was written.'], \
+        (h.errors, h.done)
+
+
+# --- what lands between the preflight and the write loses to the write -----------------
+
+@pytest.mark.parametrize('between', ['discard', 'replace', 'turn'])
+def test_a_decision_after_the_preflight_loses_to_the_pages_write(proj, between):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    svc = _service()
+    assert _ready(_ask(proj, plan, svc=svc, preflight=True))
+    if between == 'discard':
+        assert _ask(proj, plan, op='discard', request_id='rD', tab='t2').done[0]['kind'] == 'done'
+        assert 'ops' in _item(store)[0]['plan'], 'a plan the page writes keeps its ops when settled'
+    elif between == 'replace':
+        store.write('c1', lambda st: {'messages': st['messages'], 'display': replace_undecided(st['display'])},
+                    lambda c, prev: prev, None)
+    else:
+        store.write_meta('c1', lambda m: {**m, 'pending': {'kind': 'turn', 'request_id': 'rT',
+                                                            'service_id': 'igt:assist:fake'}})
+        svc._busy[(_Session.user, proj.project_id, 'c1')] = {'request_id': 'rT', 'kind': 'turn'}
+    write_settings(proj.client, ws.project, ws.ops)  # the page's write
+    h = _ask(proj, plan, svc=svc, request_id='r10', wrote_first=True)
+    assert _applied(h), (h.errors, h.done)
+    item, meta = _item(store)
+    assert item['status'] == 'applied'
+    if between == 'turn':
+        assert meta['pending']['request_id'] == 'rT', 'the running turn keeps its marker'
+
+
+def test_a_reviewed_approvers_approval_is_recorded_as_a_contribution(proj):
+    from plaid_client.provenance import REVIEW_KEY
+    proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [_Session.user], 'roles': []})
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    write_settings(proj.client, ws.project, ws.ops)
+    assert _applied(_ask(proj, plan, wrote_first=True, as_human=True))
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and item.get('contributed') is True and item.get('as_human') is False, item
+
+
+# --- settings that read as planned by any other route -----------------------------------
+
+def test_settings_written_by_hand_leave_the_plan_discardable(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    write_settings(proj.client, ws.project, ws.ops)  # by hand, no plan, no approval
+    h = _ask(proj, plan, op='discard')
+    assert h.done[0]['kind'] == 'done', h.done
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_without_wrote_first_a_discarded_plan_is_not_applied(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ask(proj, plan, op='discard').done[0]['kind'] == 'done'
+    write_settings(proj.client, ws.project, ws.ops)
+    h = _ask(proj, plan, request_id='r10')
+    assert h.errors == ['The plan was discarded']
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_a_page_that_says_it_wrote_and_did_not_is_refused_as_before(proj):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    h = _ask(proj, plan, wrote_first=True)
+    assert any('Approve it from the app' in e for e in h.errors), (h.errors, h.done)
     assert _item(store)[0]['status'] is None
+
+
+def test_settings_written_to_another_value_are_not_applied(proj):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    other = Workspace(proj.client, load_project(proj.client, proj.project_id))
+    call_tool(other, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM', 'ACC']}})
+    write_settings(proj.client, other.project, other.ops)
+    h = _ask(proj, plan, wrote_first=True)
+    assert not _applied(h) and _item(store)[0]['status'] != 'applied', (h.errors, h.done)

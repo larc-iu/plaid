@@ -75,6 +75,27 @@ class AssistantService(BaseAssistantService):
         except (PlanError, PlanOutOfDate):
             return None
 
+    def may_approve(self, client, project_id: str, user_id: str, ops) -> Optional[str]:
+        # Settings are a maintainer's: of the project, or of the lexicon whose
+        # tagsets they are. An administrator may approve any.
+        if not ops or not all(op.get('kind') in SETTINGS_KINDS for op in ops):
+            return None
+        try:
+            if (client.users.get(user_id) or {}).get('is_admin'):
+                return None
+        except Exception:  # noqa: BLE001 - a delegated token may not read users: counted by role
+            pass
+        for owner in dict.fromkeys(op.get('owner') for op in ops):
+            if owner == 'project':
+                held, what = client.projects.get(project_id) or {}, 'this project'
+            else:
+                held = client.vocab_layers.get(owner) or {}
+                what = f'the lexicon "{held.get("name") or owner}"'
+            if user_id not in (held.get('maintainers') or []):
+                return (f'Only a maintainer of {what} may approve its tagset changes. '
+                        'Nothing was written.')
+        return None
+
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
         where = where or {}
         # The Entries screen docks the assistant too, and what is in front of

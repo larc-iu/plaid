@@ -1019,9 +1019,15 @@ class Workspace(BaseWorkspace):
         changes = describe_changes(self, ops)
         for op in ops:
             op.pop(CARD, None)
-        return {'id': uuid7(), 'summary': summarize(self.ops), 'ops': ops,
-                'changes': changes,
-                'documents': self.touched_documents()}
+        out = {'id': uuid7(), 'summary': summarize(self.ops), 'ops': ops,
+               'changes': changes,
+               'documents': self.touched_documents()}
+        # Tagset changes are written by the app before their approval, which
+        # may come after a discard or a newer plan: their ops stay with the
+        # settled plan (core.conversation.compact_plan).
+        if all(op.get('kind') in SETTINGS_KINDS for op in ops):
+            out['page_writes'] = True
+        return out
 
     def touched_documents(self) -> List[Dict[str, Any]]:
         """The documents the plan's ops refer to, with the version each was

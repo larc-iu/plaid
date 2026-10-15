@@ -338,7 +338,14 @@ class BaseAssistantService(BaseService):
         it sends the approval (what a delegated token may not write): the
         per-kind counts when what it changes already reads as planned, else
         None. Such a plan is applied once that is so, whatever else the
-        approval would refuse (`_op_approve`). No plan of the base is one."""
+        approval would refuse, once the page says it wrote it
+        (`_settle_page_written`). No plan of the base is one."""
+        return None
+
+    def may_approve(self, client, project_id: str, user_id: str, ops: List[Dict[str, Any]]) -> Optional[str]:
+        """Why ``user_id`` may not approve ``ops``, asked before a page
+        writes a plan of its own (`_preflight`), or None. The base leaves it to
+        the server."""
         return None
 
     def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
@@ -710,9 +717,7 @@ class BaseAssistantService(BaseService):
             elif item.get('status') is not None:
                 self._refuse(ctx, 'decided', meta=meta)
                 return
-            elif ((may_have_written(item) and not nothing_landed(ctx.client, item))
-                  or self._page_wrote(ctx, item)):
-                # Its changes are in force: approving it again settles it.
+            elif may_have_written(item) and not nothing_landed(ctx.client, item):
                 self._refuse(ctx, 'written', meta=meta)
                 return
             out = {}
@@ -907,7 +912,10 @@ class BaseAssistantService(BaseService):
             if self._running_here(ctx):
                 return
             conv, meta = self._prepare(ctx)
-            if self._settle_page_written(ctx, conv, plan_id):
+            if ctx.data.get('preflight'):
+                self._preflight(ctx, conv, meta, plan_id)
+                return
+            if ctx.data.get('wrote_first') and self._settle_page_written(ctx, conv, plan_id):
                 return
             if not self._gate(ctx, conv, meta):
                 return
@@ -940,6 +948,35 @@ class BaseAssistantService(BaseService):
         finally:
             self._leave(ctx)
 
+    def _preflight(self, ctx, conv, meta, plan_id) -> None:
+        """What a page asks before it writes a plan of its own (`page_wrote`):
+        every check approval makes before it writes, answered ``ready`` or
+        refused as the approval would be, writing nothing. The page writes
+        only after ``ready``, then sends the approval with ``wrote_first``.
+        Under the lock."""
+        if not self._gate(ctx, conv, meta):
+            return
+        _, item = find_plan(conv, plan_id) if plan_id else (-1, None)
+        if item is None:
+            ctx.helper.error('No such plan in this conversation')
+            return
+        why = decided_refusal(item)
+        if why:
+            ctx.helper.error(why)
+            return
+        ops = (item.get('plan') or {}).get('ops') or []
+        if not ops and item.get('status') is None:
+            ctx.helper.error('Nothing to apply')
+            return
+        try:
+            refusal = self.may_approve(ctx.client, ctx.store.project_id, ctx.store.user_id, ops)
+        except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
+            refusal = f'Nothing was written. Who may approve it could not be read: {" ".join(str(e).split())[:200]}'
+        if refusal:
+            ctx.helper.error(refusal)
+            return
+        ctx.helper.complete({'kind': 'ready'})
+
     def _page_wrote(self, ctx, item) -> Optional[Dict[str, int]]:
         """:meth:`page_wrote` of a plan item, None on any failure to tell."""
         ops = ((item or {}).get('plan') or {}).get('ops') or []
@@ -952,16 +989,17 @@ class BaseAssistantService(BaseService):
             return None
 
     def _settle_page_written(self, ctx, conv, plan_id) -> bool:
-        """Settle as applied a plan the page has written before sending its
-        approval, and answer so. True when it did.
+        """Settle as applied a plan whose page said it wrote it
+        (``wrote_first``) after a ``ready`` preflight, when its changes read
+        as planned, and answer so. True when it did.
 
-        The page writes first, so a refusal after it (another request under
-        way, another tab holding the conversation, the plan discarded or
-        replaced meanwhile) would leave its changes in force under a plan
-        that reads not approved. So nothing the approval checks can refuse a
-        plan whose changes read as planned: the record follows what is
-        written, as a run that wrote settles applied over a discard. Another
-        request's marker is kept. Under the lock."""
+        The page has written by now, so nothing the approval checks may
+        refuse it: another request under way, another tab holding the
+        conversation, a discard or a newer plan that landed after the
+        preflight. The record follows what is written, as a run that wrote
+        settles applied over a discard. Another request's marker is kept.
+        A plan whose changes read as planned by any other route takes the
+        approval's own path. Under the lock."""
         if conv is None or not plan_id:
             return False
         _, item = find_plan(conv, plan_id)
@@ -974,7 +1012,18 @@ class BaseAssistantService(BaseService):
         ops = plan.get('ops') or []
         summary = plan.get('summary') or self.summarize(ops)
         note = f'(note) The plan was approved and applied: {summary}.'
-        outcome = {'as_human': bool(ctx.data.get('as_human'))}
+        # Recorded as the approval's own path records it: a reviewed
+        # approver's approval is a contribution, whatever the box said.
+        try:
+            contributor = ctx.store.user_id if self._reviewed(ctx.client, ctx.store.project_id,
+                                                              ctx.store.user_id) else None
+        except Exception:  # noqa: BLE001 - unreadable: recorded by the box, as an unreviewed approver's
+            traceback.print_exc()
+            contributor = None
+        earlier = stamp_of(plan.get(WRITING))
+        stamp_mode = earlier[0] if earlier else ('contributed' if contributor else 'human'
+                                                 if ctx.data.get('as_human') else 'verified')
+        outcome = {'as_human': stamp_mode == 'human', **({'contributed': True} if stamp_mode == 'contributed' else {})}
         self._remember_applied(plan_id, 'applied', note, outcome)
         change = plan_settling(plan_id, 'applied', note, documents=plan.get('documents'),
                                expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **outcome)
@@ -1428,7 +1477,7 @@ class BaseAssistantService(BaseService):
         # A plan that stopped partway is settled: finishing it is a new plan.
         if item.get('status') == 'partial':
             settled()
-            response_helper.error('This plan was partly applied. Ask the assistant to finish it.')
+            response_helper.error(decided_refusal(item))
             return
         # A second approval of the same plan (a retried request, a double
         # click) does not write it twice.
@@ -1437,17 +1486,9 @@ class BaseAssistantService(BaseService):
             response_helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'duplicate': True,
                                       'message': 'This plan was already applied. Nothing was written again.'})
             return
-        if item.get('status') == 'replaced':
+        if item.get('status') in ('replaced', 'discarded', 'stale'):
             settled()
-            response_helper.error('A newer plan replaced this one. Approve the newer plan.')
-            return
-        if item.get('status') == 'discarded':
-            settled()
-            response_helper.error('The plan was discarded')
-            return
-        if item.get('status') == 'stale':
-            settled()
-            response_helper.error('The plan is out of date. Ask the assistant to plan again.')
+            response_helper.error(decided_refusal(item))
             return
         ops = plan.get('ops') or []
         if not ops:
@@ -1943,6 +1984,16 @@ def _lock_left(client, document_id: str, user_id: str) -> Optional[int]:
 #: core keeps 1,000 UTF-16 units of it, so a plan naming many rules stays
 #: well inside both.
 AUDIT_LABEL_MAX = 400
+
+
+def decided_refusal(item: Dict[str, Any]) -> Optional[str]:
+    """Why a plan settled otherwise may not be approved, as the approval
+    says it, or None (undecided, or applied, which a second approval answers
+    as a duplicate)."""
+    return {'partial': 'This plan was partly applied. Ask the assistant to finish it.',
+            'replaced': 'A newer plan replaced this one. Approve the newer plan.',
+            'discarded': 'The plan was discarded',
+            'stale': 'The plan is out of date. Ask the assistant to plan again.'}.get(item.get('status'))
 
 
 def audit_label(summary: str) -> str:

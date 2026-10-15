@@ -726,6 +726,10 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     What each change targeted and proposed stays, small, as ``proposed``
     (`proposed_changes`, written when the plan was staged), since a plan that
     wrote nothing is in no log.
+    A plan the page writes itself (``page_writes``, see
+    `BaseAssistantService.page_wrote`) keeps its ``ops``: they are small, and
+    an approval whose page wrote after a discard or a newer plan landed reads
+    them to settle it applied.
     An undecided plan is never compacted: it can still be approved.
     Every write of the record runs this over every settled plan, and it
     answers the same item when there is nothing to drop.
@@ -737,10 +741,13 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     rest = [(i, c) for i, c in enumerate(changes) if i >= SETTLED_ROWS_MAX]
     ruled = [{'row': i, **c} for i, c in rest if isinstance(c, dict) and c.get('rule') is not None]
     rows = len(changes) - len(ruled)
-    if 'ops' not in plan and 'expansion' not in plan and 'writing' not in plan and rows <= SETTLED_ROWS_MAX:
+    keeps_ops = bool(plan.get('page_writes'))
+    if (('ops' not in plan or keeps_ops) and 'expansion' not in plan and 'writing' not in plan
+            and rows <= SETTLED_ROWS_MAX):
         return item
-    kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents', 'expansion', 'writing')}
-    if 'ops' in plan:
+    dropped_keys = ('documents', 'expansion', 'writing') + (() if keeps_ops else ('ops',))
+    kept = {k: v for k, v in plan.items() if k not in dropped_keys}
+    if 'ops' in plan and not keeps_ops:
         kept['op_count'] = len(plan.get('ops') or [])
     if rows > SETTLED_ROWS_MAX:
         dropped = [c for _, c in rest if isinstance(c, dict) and c.get('rule') is None]
