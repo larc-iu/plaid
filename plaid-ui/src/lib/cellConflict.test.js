@@ -100,7 +100,7 @@ describe('announceCells', () => {
       time,
       ops: [
         { type: 'text/update-body', description: 'Update body of text t1' },
-        { type: 'token/bulk-update', description: 'Bulk update 26 tokens' },
+        { type: 'token/bulk-update', description: 'Update 26 tokens' },
       ],
     });
     const gloss = (id, span, time) => ({
@@ -184,7 +184,7 @@ describe('announceCells', () => {
         user: { id: 'admin@x.com', displayName: 'admin' },
         kind: 'repair',
         time: '2026-10-05T01:00:05Z',
-        ops: [{ description: 'Bulk update 26 tokens' }],
+        ops: [{ description: 'Update 26 tokens' }],
       },
       { user: { id: 'b@x.com', displayName: 'b' }, time: '2026-10-05T01:00:00Z', ops: [] },
     ]);
