@@ -805,7 +805,7 @@ def _value_refs(ws: Workspace, where: List[Any], var: str, value: str, morpheme:
     for d, refs in by_doc.items():
         lines.append(f'    {c.tag(d)}' + ' '.join(refs))
     if shown < n:
-        lines.append(f'    {n - shown} more' + (' (' + ', '.join(f'{c.ref_name(d)} {k}' for d, k in left.most_common())
+        lines.append(f'    {n - shown} more' + (' (' + ', '.join(f'"{c.ref_name(d)}" {k}' for d, k in left.most_common())
                                                  + ')' if left else '')
                      + ': name a document to list them.')
     return lines

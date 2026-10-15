@@ -572,7 +572,7 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
     for d in docs:
         tag = _tag(ws, docs, d)
         if unicodedata.normalize('NFC', d.body) != d.body:
-            non_nfc.append(d.name)
+            non_nfc.append(ws.doc_label(d.id, quote=True))
         for c in d.body:
             if c in APOSTROPHES:
                 apos[c] += 1
