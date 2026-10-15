@@ -486,10 +486,12 @@ class Workspace(BaseWorkspace):
                 view = self.view(v)
                 for it in view.items:
                     for k, val in (it.get('metadata') or {}).items():
+                        # A part of a sense's key ("e236-1" of "e236/e236-1") names it too.
                         if k not in RESERVED_ITEM_KEYS and isinstance(val, (str, int)) \
-                                and str(val).strip() == entry_id.strip():
+                                and entry_id.strip() in (str(val).strip(), *str(val).strip().split('/')[1:]):
                             name = view.label(it['id'])
-                            raise ToolError(f'"{entry_id}" is the {k} field of {name}, not an id. Name it with '
+                            part = '' if str(val).strip() == entry_id.strip() else 'part of '
+                            raise ToolError(f'"{entry_id}" is {part}the {k} field of {name}, not an id. Name it with '
                                             f'entry_form {name}, as read_lexicon numbers it. {_ENTRY_ID_IS}')
             raise ToolError(f'No lexicon entry with id {entry_id}. {_ENTRY_ID_IS} Name an entry by its form with '
                             'entry_form ("gam", "gam#2", "kwatha#1.2" for a sense), as read_lexicon shows it.')

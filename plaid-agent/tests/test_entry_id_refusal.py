@@ -59,3 +59,10 @@ def test_every_tool_that_names_an_entry_by_id_says_the_same():
     w = fake_ws(FakeClient(lexicon=_lexicon()))
     out = call_tool(w, 'set_entry_field', {'entry_id': 'e107/e107-2', 'field': 'gloss', 'value': 'x'})
     assert out.startswith('Error: "e107/e107-2" is the cldfEntry field of "t#1.2", not an id.'), out
+
+
+def test_the_last_part_of_a_sense_key_names_that_sense():
+    """igt-lex-relink-senses r1 (build-q38-fix2) passed "e236-1", the part of
+    "e236/e236-1" after the slash, eight times."""
+    _w, out = _link('e107-2')
+    assert out.startswith('Error: "e107-2" is part of the cldfEntry field of "t#1.2", not an id.'), out
