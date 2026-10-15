@@ -129,6 +129,7 @@ export const IGT_ASSISTANT = {
   // A plan of tagset changes is settings, which the assistant's delegated
   // token may not write: written here, with the user's session, before the
   // approval goes (domain/tagsetPlan.js).
+  writesFirst: isTagsetPlan,
   writeFirst: async ({ client, projectId, plan, operation }) =>
     isTagsetPlan(plan) ? writeTagsetPlan(client, projectId, plan, operation) : false,
   examples: [

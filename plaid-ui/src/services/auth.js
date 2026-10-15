@@ -337,4 +337,13 @@ export const authService = {
   newClient(token = sessionToken()) {
     return track(new PlaidClient(BASE_URL, token, { onAuthError }));
   },
+
+  // A client of its own on `client`'s token, so its writes are an operation
+  // of their own: tracked like every other, and its retries told to
+  // `client`'s listeners (the retrying pill).
+  clientApart(client) {
+    const own = this.newClient(client.token);
+    own.onRetry?.((info) => client._noteRetry?.(info));
+    return own;
+  },
 };

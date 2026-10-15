@@ -279,7 +279,7 @@ describe('the approver’s write of a plan of tagset changes in the audit log', 
     expect(c.batches).toBe(1);
   });
 
-  it('stays out of an operation the shared client holds open', async () => {
+  it('carries the operation on every write of its batch', async () => {
     const { default: PlaidClient } = await import('@larc-iu/plaid-client');
     const project = projectWith();
     const writes = [];
@@ -301,14 +301,12 @@ describe('the approver’s write of a plan of tagset changes in the audit log', 
       return json(ops.map(() => ({ status: 200, body: {} })));
     };
     try {
-      const shared = new PlaidClient('http://plaid.test', 'token');
-      shared.beginOperation('Save word', {});
-      await writeTagsetPlan(shared, 'proj-1', { ops: [setTagset(closed)] }, operation);
+      const own = new PlaidClient('http://plaid.test', 'token');
+      await writeTagsetPlan(own, 'proj-1', { ops: [setTagset(closed)] }, operation);
       expect(writes.length).toBeGreaterThan(0);
       for (const w of writes) {
         expect(w).toMatchObject({ 'group-kind': 'assistant-plan', 'group-ref': operation.ref });
         expect(w['group-message']).toBe(operation.message);
-        expect(w['group-id']).not.toBe(shared.operationGroup.id);
       }
     } finally {
       globalThis.fetch = realFetch;

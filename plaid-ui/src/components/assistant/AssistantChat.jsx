@@ -35,6 +35,7 @@ import { DisclosureButton, DisclosureNotice } from './AssistantDisclosure.jsx';
 import { latestUsage, totalSpend } from './usage.js';
 import { UsageMeter } from './UsageMeter.jsx';
 import { RetryLine } from './RetryLine.jsx';
+import { authService } from '../../services/auth.js';
 import { turnContext } from './transcript.js';
 import { useReadable, useRounds } from './rounds.js';
 import { TraceSteps } from './WorkTrace.jsx';
@@ -834,15 +835,18 @@ export const AssistantChat = ({
         asHuman,
         docked: !toastOnApply,
         tab: held.tab,
-        writeFirst: adapter.writeFirst
-          ? () =>
-              adapter.writeFirst({
-                client,
-                projectId,
-                plan,
-                operation: planOperation(conv.id, plan, proposer || service.serviceId),
-              })
-          : null,
+        // On a client of its own (tracked by the session, its retries shown
+        // as the shared one's), so the write is an operation of its own.
+        writeFirst:
+          adapter.writeFirst && adapter.writesFirst?.(plan)
+            ? () =>
+                adapter.writeFirst({
+                  client: authService.clientApart(client),
+                  projectId,
+                  plan,
+                  operation: planOperation(conv.id, plan, proposer || service.serviceId),
+                })
+            : null,
       }),
     );
   };

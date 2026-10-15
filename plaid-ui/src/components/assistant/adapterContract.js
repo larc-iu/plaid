@@ -47,11 +47,13 @@ export const ADAPTER_MEMBERS = [
 ];
 // Optional: `rowText(row)`, what a plan row says beside its place, where the
 // default (`change`, else `label`) does not fit (PLAIN_ASSISTANT).
-// Optional: `writeFirst({client, projectId, plan, operation})`, the app's own
+// Optional: `writesFirst(plan)`, whether `writeFirst` writes this plan, so a
+// preflight is asked before it. Optional: `writeFirst({client, projectId, plan,
+// operation})`, the app's own
 // write of a plan the service may not make with its delegated token (igt's
 // tagset settings), made with the user's session before the approval is
 // sent, as the one operation `operation` names ({message, kind, ref}, as the
-// service opens one for a plan, `planOperation`). It returns at once for any
+// service opens one for a plan, `planOperation`), on `client`, one of its own. It returns at once for any
 // other plan, and an error it throws is the approval's, with nothing sent. It
 // resolves true when it wrote something.
 

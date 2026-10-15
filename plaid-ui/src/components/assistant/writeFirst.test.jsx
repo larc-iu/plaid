@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import PlaidClient from '@larc-iu/plaid-client';
 
 // A plan the service may not write with its delegated token (igt's tagset
@@ -12,15 +12,12 @@ vi.mock('../../lib/notify.js', () => ({
   notifyWarning: vi.fn(),
 }));
 
-const { startApply, WROTE_FIRST } = await import('./jobs.js');
-const { notifyError } = await import('../../lib/notify.js');
+const { startApply, WROTE_FIRST, WROTE_GONE } = await import('./jobs.js');
+const { notifyError, notifyWarning } = await import('../../lib/notify.js');
 
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
-
-const setup = () => {
+// The service, as the page meets it: the preflight answers `preflight`, the
+// approval `approval` (an Error rejects).
+const setup = ({ preflight = { kind: 'ready' }, approval = new Error('nope') } = {}) => {
   const client = new PlaidClient('http://plaid.test', 'token');
   const records = new Map();
   client.userData = {
@@ -28,9 +25,11 @@ const setup = () => {
     get: vi.fn(async (_u, key) => (records.has(key) ? { value: records.get(key) } : null)),
   };
   const sent = [];
-  globalThis.fetch = vi.fn(async (url, opts) => {
-    if (String(url).includes('/services/')) sent.push(JSON.parse(opts.body));
-    return { ok: false, status: 500, statusText: 'nope', text: async () => 'nope' };
+  client.messages.requestService = vi.fn(async (_p, _s, data) => {
+    sent.push(data);
+    const answer = data.preflight ? preflight : approval;
+    if (answer instanceof Error) throw answer;
+    return answer;
   });
   return { client, sent };
 };
@@ -53,16 +52,50 @@ const approve = (client, writeFirst) =>
   });
 
 describe('an approval the app writes first', () => {
-  it('is sent after the app’s write', async () => {
-    const { client, sent } = setup();
+  it('asks a preflight, writes, then sends the approval saying it wrote', async () => {
+    const { client, sent } = setup({ approval: { kind: 'applied', applied: 1, counts: [] } });
     const order = [];
     const j = approve(client, async () => {
       order.push(`wrote with ${sent.length} sent`);
+      return true;
     });
     await j.promise;
-    expect(order).toEqual(['wrote with 0 sent']);
+    expect(order).toEqual(['wrote with 1 sent']);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toMatchObject({ op: 'approve', planId: 'plan1', preflight: true });
+    expect(sent[1]).toMatchObject({ op: 'approve', planId: 'plan1', wroteFirst: true });
+    expect(sent[1].preflight).toBeUndefined();
+  });
+
+  it('says nothing of a write when the page wrote nothing (the settings already read as planned)', async () => {
+    const { client, sent } = setup({ approval: { kind: 'applied', applied: 1, counts: [] } });
+    await approve(client, async () => false).promise;
+    expect(sent).toHaveLength(2);
+    expect(sent[1].wroteFirst).toBeUndefined();
+  });
+
+  it.each([
+    ['refused', { kind: 'refused', why: 'held', message: 'Open in another tab.' }],
+    ['gone', { kind: 'refused', why: 'gone' }],
+  ])('writes nothing and sends no approval when the preflight is %s', async (_n, answer) => {
+    const { client, sent } = setup({ preflight: answer });
+    const wrote = vi.fn(async () => true);
+    const j = approve(client, wrote);
+    await j.promise;
+    expect(wrote).not.toHaveBeenCalled();
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ op: 'approve', 'plan-id': 'plan1' });
+    expect(j.outcome).toEqual(answer);
+    expect(j.wroteFirst).toBeFalsy();
+  });
+
+  it('writes nothing when the preflight is turned down (a discarded plan), and the job carries why', async () => {
+    const { client, sent } = setup({ preflight: new Error('The plan was discarded') });
+    const wrote = vi.fn(async () => true);
+    const j = approve(client, wrote);
+    await j.promise;
+    expect(wrote).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(1);
+    expect(j.error?.message).toMatch(/discarded/);
   });
 
   it('is not sent when the app’s write fails, and the job carries why', async () => {
@@ -71,7 +104,8 @@ describe('an approval the app writes first', () => {
       throw new Error('1 value in Gloss is not in the tagset: dog. Nothing was written.');
     });
     await j.promise;
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].preflight).toBe(true);
     expect(j.error?.message).toMatch(/not in the tagset/);
   });
 
@@ -80,9 +114,16 @@ describe('an approval the app writes first', () => {
     notifyError.mockClear();
     const j = approve(client, async () => true);
     await j.promise;
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
     expect(notifyError).toHaveBeenCalledWith(WROTE_FIRST, 'Not recorded', { duration: Infinity });
     expect(notifyError.mock.calls.some(([m]) => /Nothing was written/.test(String(m)))).toBe(false);
+  });
+
+  it('says the settings stand when the conversation was deleted after the write', async () => {
+    const { client } = setup({ approval: { kind: 'refused', why: 'gone' } });
+    notifyWarning.mockClear();
+    await approve(client, async () => true).promise;
+    expect(notifyWarning).toHaveBeenCalledWith(WROTE_GONE, 'Not recorded');
   });
 });
 

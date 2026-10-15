@@ -21,6 +21,10 @@ vi.mock('@larc-iu/plaid-client', () => {
       this.baseUrl = baseUrl;
       this.token = token;
       this.options = options;
+      this.retryListeners = [];
+    }
+    onRetry(listener) {
+      this.retryListeners.push(listener);
     }
     static login = (...args) => login(...args);
     static lookupInvite = (...args) => lookupInvite(...args);
@@ -290,6 +294,22 @@ describe('a 401', () => {
     expect(other.token).toBe(fresh);
     expect(c._authErrorFired).toBe(false);
     expect(dismiss).toHaveBeenCalledWith('toast-1');
+  });
+
+  it('makes a client apart on the same token, tracked and telling its retries to the shared one', () => {
+    const c = signedIn();
+    c._noteRetry = vi.fn();
+    const own = authService.clientApart(c);
+    expect(own).not.toBe(c);
+    expect(own.token).toBe(c.token);
+    own.retryListeners.forEach((l) => l({ attempt: 1 }));
+    expect(c._noteRetry).toHaveBeenCalledWith({ attempt: 1 });
+    // Tracked: a sign-in in another tab hands it the new token too.
+    c._authErrorFired = true;
+    refuse(c, 'PATCH');
+    const fresh = `${tokenFor('ada@example.com')}3`;
+    otherTabSignsIn(fresh);
+    expect(own.token).toBe(fresh);
   });
 
   // localStorage is shared by every tab of the origin, so once another tab

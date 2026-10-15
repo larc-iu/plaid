@@ -573,6 +573,9 @@ export const planOperation = (convId, plan, serviceId) => {
   };
 };
 
+export const WROTE_GONE =
+  'The settings were written. The conversation was deleted, so the approval was not recorded.';
+
 export const WROTE_FIRST =
   'The settings were written, but the approval was not recorded. Approve again to record it.';
 
@@ -626,7 +629,11 @@ export const changesTheView = (j) =>
 // runs there, and settles the plan in the record. `writeFirst` is the app's
 // own write for a plan the service may not make with its delegated token
 // (settings): made with the user's session before the approval is sent, which
-// is not sent when it throws.
+// is not sent when it throws. Before it, the service is asked a read-only
+// preflight (`preflight: true`), which runs every check the approval runs: on
+// anything but `ready` nothing is written and the answer is the approval's.
+// The approval then says whether the page wrote (`wroteFirst`), so the
+// service settles the plan applied whatever landed since the preflight.
 export const startApply = ({
   store,
   service,
@@ -653,11 +660,38 @@ export const startApply = ({
   jobs.set(conv.id, j);
   j.promise = (async () => {
     await watch(j, async () => {
-      if (writeFirst) j.wroteFirst = !!(await writeFirst());
+      if (writeFirst) {
+        const ready = await client.messages.requestService(
+          projectId,
+          service.serviceId,
+          {
+            projectId,
+            conversationId: conv.id,
+            tab,
+            op: 'approve',
+            planId: plan.id,
+            preflight: true,
+          },
+          REQUEST_TIMEOUT_MS,
+          undefined,
+          undefined,
+          { requestId: newId(), noOperation: true },
+        );
+        if (ready?.kind !== 'ready') return ready;
+        j.wroteFirst = !!(await writeFirst());
+      }
       return client.messages.requestService(
         projectId,
         service.serviceId,
-        { projectId, conversationId: conv.id, tab, op: 'approve', planId: plan.id, asHuman },
+        {
+          projectId,
+          conversationId: conv.id,
+          tab,
+          op: 'approve',
+          planId: plan.id,
+          asHuman,
+          ...(j.wroteFirst ? { wroteFirst: true } : {}),
+        },
         REQUEST_TIMEOUT_MS,
         // The first word from the service comes once the record names the
         // approval, which the other tabs then read.
@@ -676,6 +710,9 @@ export const startApply = ({
     });
     if (j.outcome?.kind !== 'refused' || j.outcome.why !== 'gone') {
       applyToasts(j, plan.summary, { docked });
+    } else if (j.wroteFirst) {
+      // Deleted between the page's write and its approval: what it wrote stands.
+      notifyWarning(WROTE_GONE, 'Not recorded');
     }
     return finishJob(j, store);
   })();

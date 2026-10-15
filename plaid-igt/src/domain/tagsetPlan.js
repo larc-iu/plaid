@@ -245,17 +245,6 @@ const queueOwner = (b, projectId, owner, ops, live) => {
   queueFieldDeclarations(b, fields, after);
 };
 
-// A client of its own on the approver's session, so the write is an
-// operation of its own: it neither joins one the shared client holds open
-// nor is joined by one that opens on it meanwhile. A client that cannot be
-// made again (a test double) is used as it is.
-const apart = (client) => {
-  const Own = client?.constructor;
-  return typeof Own === 'function' && Own !== Object && typeof client.baseUrl === 'string'
-    ? new Own(client.baseUrl, client.token, { onAuthError: client.onAuthError })
-    : client;
-};
-
 /**
  * Write a plan of tagset changes with `client` (the approver's own), before
  * its approval is sent. Throws, writing nothing, when settings it changes
@@ -278,9 +267,11 @@ export const writeTagsetPlan = async (client, projectId, plan, operation = null)
       'The tagset settings this plan changes were changed since it was made, so nothing was written. Ask the assistant to plan it again.',
     );
   }
-  const own = apart(client);
+  // `client` is one of the page's own (plaid-ui `authService.clientApart`),
+  // so the operation neither joins one open on the shared client nor is
+  // joined by one.
   const write = () =>
-    own.batched((b) => {
+    client.batched((b) => {
       for (const owner of owners) {
         queueOwner(
           b,
@@ -293,7 +284,7 @@ export const writeTagsetPlan = async (client, projectId, plan, operation = null)
     });
   try {
     if (operation) {
-      await own.withOperation(operation.message, write, {
+      await client.withOperation(operation.message, write, {
         kind: operation.kind,
         ref: operation.ref,
       });
