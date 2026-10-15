@@ -209,3 +209,13 @@ def test_search_and_replace_read_a_pattern_alike():
         rx('[[:alpha:]]', regex=True)
     with pytest.raises(ToolError, match='cannot be used: Nested'):
         replacer('[[:alpha:]]', 'x', True, False)
+
+
+def test_a_group_number_followed_by_a_digit_says_how_to_write_it():
+    """replace_in_field "\\13NSG" meant group 1 then 3NSG, and Python reads
+    group 13 (bench build-q38-1, igt-migrate-glosses-hard, twice)."""
+    with pytest.raises(ToolError) as e:
+        replacer(r'(^|[.-])3AUG(?=[.-]|$)', r'\13NSG', True, False)('RL.3AUG')
+    assert str(e.value) == ('The replacement is not valid for that pattern: invalid group reference. '
+                            'Write \\g<1> for group 1 when a digit follows it, as in \\g<1>3NSG.')
+    assert replacer(r'(^|[.-])3AUG(?=[.-]|$)', r'\g<1>3NSG', True, False)('RL.3AUG') == 'RL.3NSG'

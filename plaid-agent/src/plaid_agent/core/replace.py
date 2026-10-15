@@ -83,6 +83,16 @@ def _mapper(s: str):
     return (lambda x: at(x, False)), (lambda x: at(x, True))
 
 
+def _group_hint(template: str) -> str:
+    """How to write a group followed by a digit, where the template has one:
+    "\\13NSG" is read as group 13 (bench, twice, meant group 1 then 3NSG)."""
+    m = regex.search(r'\\(\d)(\d[^\\]*)', template)
+    if not m:
+        return ''
+    n, rest = m.group(1), m.group(2)
+    return f' Write \\g<{n}> for group {n} when a digit follows it, as in \\g<{n}>{rest}.'
+
+
 def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
              case_sensitive: bool = False, error=None) -> Callable[[str], str]:
     """A function from a stored value to its replacement.
@@ -124,5 +134,5 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
             out.append(value[last:])
             return ''.join(out)
         except (regex.error, IndexError) as e:
-            raise error(f'The replacement is not valid for that pattern: {e}')
+            raise error(f'The replacement is not valid for that pattern: {e}.{_group_hint(template)}')
     return apply
