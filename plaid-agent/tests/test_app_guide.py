@@ -53,3 +53,35 @@ def test_it_is_one_short_schema_and_a_read_of_the_manual():
     assert TRACER.call_kind('app_guide', {'topic': 'Media'}) == 'meta'
     line = describe_step('app_guide', {'topic': 'Media'})
     assert (line['text'] if isinstance(line, dict) else str(line)) == 'Read the app guide on “Media”'
+
+
+def test_no_answer_carries_asciidoc_markup():
+    """H16-IGT-TOOLS-11: a cross reference reads as the name of the part it
+    points to, which app_guide takes as a topic, and a table as rows of
+    cells. Every part of the guide."""
+    import re
+    root = guide.parse(guide.guide_source())
+    every = list(guide._walk(root))
+    for s in every:
+        text = s.text()
+        assert not re.search(r'<<|>>|\|===|\[cols=|^----$|\[\[', text, re.M), (s.path, text)
+        assert not re.search(r'(?<![\w"])_[a-z]+_[a-z_]+', text), (s.path, text)
+        # Every quoted part name a reference left is one app_guide finds.
+    out = _call({'topic': 'Services'})
+    assert '"Services"' in out or 'Services' in out
+    sentences = _call({'topic': 'Sentences, words, and morphemes'})
+    assert '| Scope | What it is' not in sentences and 'Scope | What it is' in sentences, sentences
+    assert 'Sentence | A stretch of the baseline text.' in sentences.replace('**', ''), sentences
+
+
+def test_a_reference_names_a_part_app_guide_finds():
+    import re
+    root = guide.parse(guide.guide_source())
+    refs = set()
+    for s in guide._walk(root):
+        for line in s.lines:
+            refs.update(re.findall(r'\(see "([^"]+)"\)', line))
+    assert refs, 'the guide has references'
+    for r in refs:
+        named, _ = guide.find(root, r)
+        assert named and named[0].path.endswith(r.split(' > ')[-1]), r
