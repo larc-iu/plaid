@@ -56,8 +56,8 @@ def test_more_matches_in_a_document_name_the_rule_the_counts_and_the_place():
     now = then + [_span(f'n{i}', 'VASP', 'ASP', 'd4') for i in range(2)]
     with pytest.raises(PlanOutOfDate) as e:
         _check(then, now)
-    assert e.value.reasons == ['"VASP" → "ASP" in Gloss now matches 32 places in 2 documents, not the 30 shown '
-                               'when it was planned (2 more in "Text 4")']
+    assert e.value.reasons == ['Since it was planned, "VASP" → "ASP" in Gloss matches 32 places in 2 documents, '
+                               'not the 30 shown (2 more in "Text 4")']
 
 
 def test_a_document_gained_or_lost_and_a_value_edited_are_each_named():
@@ -71,8 +71,17 @@ def test_a_document_gained_or_lost_and_a_value_edited_are_each_named():
     # The same count, another value: someone retyped one of them.
     with pytest.raises(PlanOutOfDate) as e:
         _check(then, [_span('t1', 'VASP.PL', 'ASP.PL'), _span('t2', 'VASP', 'ASP', 'd2')])
-    assert e.value.reasons == ['"VASP" → "ASP" in Gloss now matches other values than the 2 shown when it was '
-                               'planned (other values in "Text 1")']
+    assert e.value.reasons == ['Since it was planned, "VASP" → "ASP" in Gloss matches other values than the 2 '
+                               'shown (other values in "Text 1")']
+
+
+def test_a_field_named_in_lower_case_keeps_its_case_in_the_refusal_on_screen():
+    from plaid_agent.core.service import _sentence
+    then = [_span('t1', 'S', 'Z')]
+    with pytest.raises(PlanOutOfDate) as e:
+        _check(then, then + [_span('t2', 'S', 'Z')], change='ge "S" → "Z"')
+    assert _sentence(e.value.reasons[0]) == ('Since it was planned, ge "S" → "Z" matches 2 places in 1 document, '
+                                             'not the 1 shown (1 more in "Text 1").')
 
 
 def test_a_value_verified_since_changes_the_digest():

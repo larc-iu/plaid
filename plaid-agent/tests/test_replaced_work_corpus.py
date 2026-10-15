@@ -127,8 +127,8 @@ def test_igt_a_rule_applies_after_an_edit_that_leaves_what_it_matched_and_is_ref
     _igt_engine(client, [_gloss_row('sp-g1', 'Ali.PL', 'w-1')])
     helper = _approve(spec, client, plan)
     [said] = helper.errors
-    assert said == ('Nothing was written. Gloss "Ali" → "Bob" now matches other values than the 1 shown when it '
-                    'was planned (other values in "Text 1"). Ask the assistant to plan again.'), said
+    assert said == ('Nothing was written. Since it was planned, Gloss "Ali" → "Bob" matches other values than the 1 '
+                    'shown (other values in "Text 1"). Ask the assistant to plan again.'), said
     conv, _meta = ConversationStore(client, 'u@x', igt_fx.PID, 'igt').load('c1')
     assert conv['display'][1]['status'] == 'stale'
     assert conv['display'][1]['reason'] == said[len('Nothing was written. '):-len(' Ask the assistant to plan again.')]

@@ -156,12 +156,12 @@ def test_a_rule_that_matches_differently_at_approval_refuses_the_whole_plan_and_
     finally:
         del SPANS['sp-new']
     [said] = helper.errors
-    assert said == ('Nothing was written. Gloss "VASP" → "ASP" now matches 6 places in 2 documents, not the 5 '
-                    'shown when it was planned (1 more in "Text 2"). Ask the assistant to plan again.'), said
+    assert said == ('Nothing was written. Since it was planned, Gloss "VASP" → "ASP" matches 6 places in 2 '
+                    'documents, not the 5 shown (1 more in "Text 2"). Ask the assistant to plan again.'), said
     assert [k for k, _ in client.writes[before:] if not k.startswith('user_data')] == []
     conv, _ = ConversationStore(client, 'u@x', igt_fx.PID, 'igt').load('c1')
     item = conv['display'][1]
-    assert item['status'] == 'stale' and item['reason'].startswith('Gloss "VASP" → "ASP" now matches 6 places')
+    assert item['status'] == 'stale' and item['reason'].startswith('Since it was planned, Gloss "VASP" → "ASP" matches 6 places')
     assert 'Nothing was written' in conv['messages'][-1]['content']
 
 

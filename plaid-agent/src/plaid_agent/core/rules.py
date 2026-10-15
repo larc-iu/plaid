@@ -126,10 +126,11 @@ def check_matched(op: Dict[str, Any], now: List[list], name_of: Callable[[str], 
 
 def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tuple],
                  name_of: Callable[[str], str]) -> str:
-    """The refusal in the user's words: ``"VASP" → "ASP" in Field now matches
-    1,180 places in 17 documents, not the 1,171 shown when it was planned (9
-    more in "Text 4")``."""
-    what = op.get('change') or op.get('label') or 'A change over the whole project'
+    """The refusal in the user's words: ``Since it was planned, Field "VASP" →
+    "ASP" matches 1,180 places in 17 documents, not the 1,171 shown (9 more in
+    "Text 4")``. It opens with words of its own, so a field name written in
+    lower case (ge) is not capitalized as the sentence's first word."""
+    what = op.get('change') or op.get('label') or 'a change over the whole project'
     t_then = sum(n for n, _ in then.values())
     t_now = sum(n for n, _ in now.values())
     docs_now = len([d for d in now if d is not None])
@@ -151,11 +152,9 @@ def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tupl
         shown.append(f'and {_plural(rest, "more document", "more documents")}')
     detail = f' ({", ".join(shown)})' if shown else ''
     if t_now == t_then:
-        return (f'{what} now matches other values than the {t_then:,} shown when it was '
-                f'planned{detail}')
-    return (f'{what} now matches {_plural(t_now, "place", "places")} in '
-            f'{_plural(docs_now, "document", "documents")}, not the {t_then:,} shown when it was '
-            f'planned{detail}')
+        return f'Since it was planned, {what} matches other values than the {t_then:,} shown{detail}'
+    return (f'Since it was planned, {what} matches {_plural(t_now, "place", "places")} in '
+            f'{_plural(docs_now, "document", "documents")}, not the {t_then:,} shown{detail}')
 
 
 # --- what a plan may hold ----------------------------------------------------------

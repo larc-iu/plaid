@@ -57,8 +57,8 @@ def test_the_stale_sentence_isolates_the_document_it_names():
     op = {'matched': _matched(then), 'change': f'Gloss {iso("كتاب")} → {iso("كتب")}'}
     with pytest.raises(PlanOutOfDate) as e:
         rules.check_matched(op, _matched(now), lambda d: {'d1': 'قصة', 'd2': 'Сказка'}[d])
-    assert e.value.reasons == [f'Gloss {iso("كتاب")} → {iso("كتب")} now matches 2 places in 2 documents, '
-                               f'not the 1 shown when it was planned (1 more in {iso("Сказка")})']
+    assert e.value.reasons == [f'Since it was planned, Gloss {iso("كتاب")} → {iso("كتب")} matches 2 places in 2 '
+                               f'documents, not the 1 shown (1 more in {iso("Сказка")})']
 
 
 def test_a_trace_line_isolates_its_values():
