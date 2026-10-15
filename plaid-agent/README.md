@@ -440,9 +440,9 @@ The modules below are `igt/` unless they say otherwise.
   `corpus_stats`, `frequency_list` (held by `where` to words meeting one
   `sequence_search` step's conditions, or counting adjacent words with
   `ngram`), `worklist` (unlinked / unglossed /
-  unanalyzed / unverified / contributed, by frequency), `sequence_search`.
-  Each of these reads that takes a `document` also takes `documents`, several
-  in its place (`scope.py`, `Corpus.among`),
+  unanalyzed / unverified / contributed, by frequency), `sequence_search`
+  (each read from `search` to here that takes a `document` also takes
+  `documents`, several in its place: `scope.py`, `Corpus.among`),
   `recent_changes` (the audit log, read in widening windows from the most
   recent week, each entry with the `as_of` instant a restore takes),
   `comments` (what people have written to each other, anchored to the
