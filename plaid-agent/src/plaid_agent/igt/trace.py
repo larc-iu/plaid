@@ -55,6 +55,9 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
 
     # --- plans: one item at a time -------------------------------------------
     if name == 'set_field':
+        if isinstance(a.get('values'), dict) and a['values']:
+            sets = ', '.join(f'{k} = {q(v)}' for k, v in a['values'].items())
+            return f'Planned {sets} on {plural(count(a), "item")}{in_doc(a)}'
         return f'Planned {a.get("field")} = {q(a.get("value"))} on {plural(count(a), "item")}{in_doc(a)}'
     if name == 'set_analysis':
         many = a.get('analyses') if isinstance(a.get('analyses'), list) else []

@@ -446,7 +446,8 @@ The modules below are `igt/` unless they say otherwise.
   earlier message left waiting, carried into this turn's), and
   the escape hatch `query` + `query_help` (Plaid's query language,
   project-scoped, layers by name). Writes append resolved operations to the turn's plan:
-  `set_field`, `set_analysis` (one word, or a whole sentence's words in one
+  `set_field` (one field, or several at once with `values`, each on the refs
+  of its scope), `set_analysis` (one word, or a whole sentence's words in one
   call), `set_morpheme` (one morpheme's form or type, chain kept),
   `set_orthography`, `respell`, `link_entry`, `unlink_entry`, `link_phrase`
   and `unlink_phrase` (a multi-word expression: one lexicon link shared by

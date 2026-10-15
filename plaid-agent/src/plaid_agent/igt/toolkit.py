@@ -139,9 +139,11 @@ TOOLS = [
         []),
     _fn('set_field',
         'PLAN: set a field\'s value on words, morphemes, or sentences (the references must match the field\'s '
-        'scope). Empty value clears it. Nothing is written until the user approves the plan.',
-        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}, 'value': {'type': 'string'}},
-        ['document', 'refs', 'field', 'value']),
+        'scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope '
+        '(refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves.',
+        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}, 'value': {'type': 'string'},
+         'values': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
+        ['document', 'refs']),
     _fn('set_analysis',
         'PLAN: replace a word\'s morpheme segmentation and morpheme-level fields. Morphemes are given in order; '
         'each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and '

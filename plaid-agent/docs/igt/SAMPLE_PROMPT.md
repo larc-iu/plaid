@@ -153,12 +153,13 @@ List lexicon entries (form, morph type, and their fields such as gloss), optiona
 
 ### set_field
 
-PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Nothing is written until the user approves the plan.
+PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope (refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
-- `field` (string, required)
-- `value` (string, required)
+- `field` (string)
+- `value` (string)
+- `values` (object of string)
 
 ### set_analysis
 

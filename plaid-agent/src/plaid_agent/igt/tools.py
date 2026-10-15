@@ -32,29 +32,84 @@ from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 
 # --- write tools (plan only) ---------------------------------------------------
 
-def t_set_field(ws: Workspace, document: str, refs, field: str, value: str) -> str:
-    f = ws.project.field(field)
+def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None, value: Optional[str] = None,
+                values: Optional[dict] = None) -> str:
+    """PLAN: one field's value on ``refs``, or several fields at once
+    (``values``: field name to value), each on the refs of its own scope, so
+    retagging a word and its morpheme is one call (survey item 3). One plan
+    step per field and target, staged together: a bad field or ref leaves
+    nothing planned."""
+    refs = _refs(refs)
+    if values is not None:
+        if not isinstance(values, dict) or not values:
+            raise ToolError('values maps field names to values, e.g. {"Gloss": "conj", "POS": "conj"}.')
+        if field is not None:
+            raise ToolError('Give field and value, or values, not both.')
+        pairs = [(ws.project.field(name), val) for name, val in values.items()]
+    else:
+        if field is None:
+            raise ToolError('Give field and value, or values (a map of field names to values).')
+        if value is None:
+            raise ToolError('Give value ("" clears the field).')
+        pairs = [(ws.project.field(field), value)]
     doc = ws.doc(document)
-    value = '' if value is None else unmark(str(value), f.name)
-    kind = {'Word': Word, 'Morpheme': Morpheme, 'Sentence': Sentence}[f.scope]
+    several = values is not None
+    if several:
+        _refuse_unmatched_scopes(doc, refs, [f for f, _ in pairs])
     staged: List[Dict[str, Any]] = []
     edits = 0
     with ws.staging():
-        for ref in _refs(refs):
-            # A morpheme of a word whose analysis the plan writes is one of
-            # the PLANNED chain, and its value goes into that analysis.
-            place = _planned_place(ws, doc, ref) if f.scope == 'Morpheme' else None
-            if place is not None:
-                edits += edit_planned_morpheme(ws, doc, ref, place, field=f, value=value)
-                continue
-            obj = _need(resolve(doc, ref), kind, ref)
-            old = obj.fields.get(f.name)
-            if (old.value if old else '') == value:
-                continue
-            what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
-            staged.append(span_op(ws, doc, ref, what, f, obj.id, old, value))
+        for f, val in pairs:
+            val = '' if val is None else unmark(str(val), f.name)
+            kind = {'Word': Word, 'Morpheme': Morpheme, 'Sentence': Sentence}[f.scope]
+            for ref in refs:
+                if several and _scope_of(doc, ref) != f.scope:
+                    continue
+                # A morpheme of a word whose analysis the plan writes is one of
+                # the PLANNED chain, and its value goes into that analysis.
+                place = _planned_place(ws, doc, ref) if f.scope == 'Morpheme' else None
+                if place is not None:
+                    edits += edit_planned_morpheme(ws, doc, ref, place, field=f, value=val)
+                    continue
+                obj = _need(resolve(doc, ref), kind, ref)
+                old = obj.fields.get(f.name)
+                if (old.value if old else '') == val:
+                    continue
+                what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
+                staged.append(span_op(ws, doc, ref, what, f, obj.id, old, val))
         ws.add_ops(staged)
     return ws.planned_note(len(staged) + edits)
+
+
+def _scope_of(doc, ref: str) -> str:
+    """The scope a reference names: Sentence, Word or Morpheme. A morpheme of
+    a planned analysis need not exist yet, so the shape of the reference
+    decides, and resolving it is left to the caller."""
+    r = read_ref(ref, 'wm')
+    if r is None or r.by_form:
+        obj = resolve(doc, ref)
+        return type(obj).__name__
+    _wi, mi = r.parts
+    return 'Sentence' if _wi is None else 'Word' if mi is None else 'Morpheme'
+
+
+def _refuse_unmatched_scopes(doc, refs: List[str], fields) -> None:
+    """With several fields, each goes to the refs of its scope. A field with
+    no ref of its scope, or a ref no field applies to, is a mistake to say
+    rather than skip."""
+    scopes = {ref: _scope_of(doc, ref) for ref in refs}
+    for f in fields:
+        if f.scope not in scopes.values():
+            raise ToolError(f'"{f.name}" is a {f.scope} field and no ref is a {f.scope.lower()} '
+                            f'({_REF_SHAPE[f.scope]}). Refs given: {", ".join(refs) or "none"}.')
+    named = {f.scope for f in fields}
+    for ref, scope in scopes.items():
+        if scope not in named:
+            raise ToolError(f'{ref} is a {scope.lower()}, and no field in values is a {scope} field. Fields given: '
+                            + ', '.join(f'{f.name} ({f.scope})' for f in fields) + '.')
+
+
+_REF_SHAPE = {'Sentence': 'sN', 'Word': 'sN.wN', 'Morpheme': 'sN.wN.mN'}
 
 
 def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, value: str) -> Dict[str, Any]:
