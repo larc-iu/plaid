@@ -28,6 +28,11 @@
       :else (recur (next a) m))))
 
 (defn -main [& args]
+  ;; Core never draws: AWT (the avatar resizing in plaid.media.avatar) must
+  ;; not look at DISPLAY, or a shell whose X server is gone makes every
+  ;; picture upload a 500. A manifest cannot carry a system property, so a
+  ;; bare `java -jar` gets it here, before anything touches AWT.
+  (System/setProperty "java.awt.headless" "true")
   ;; Run mount :stop fns on SIGTERM / Ctrl-C so the datasource gets a
   ;; chance to checkpoint the WAL and close cleanly before the JVM exits.
   ;; Bounded: systemd's default TimeoutStopSec and k8s'

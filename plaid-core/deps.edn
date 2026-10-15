@@ -76,11 +76,13 @@
                                  :manifest {:add-opens "java.base/java.nio"
                                             :enable-native-access "ALL-UNNAMED"}}
                      :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"
-                                "--enable-native-access=ALL-UNNAMED"]
+                                "--enable-native-access=ALL-UNNAMED"
+                                "-Djava.awt.headless=true"]
                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}
            :test {:extra-paths ["src/test" "src/test-runner"]
                   :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"
-                             "--enable-native-access=ALL-UNNAMED"]
+                             "--enable-native-access=ALL-UNNAMED"
+                             "-Djava.awt.headless=true"]
                   :main-opts ["-m" "plaid.test-runner"]
                   :extra-deps {eftest/eftest {:mvn/version "0.6.0"}
                                ring/ring-mock {:mvn/version "0.6.2"}}}
@@ -92,7 +94,8 @@
                             ;; working tree (plaid.server.middleware/wrap-client-js).
                             "-Dplaid.client-js-dir=../plaid-client-js"
                             "--add-opens" "java.base/java.nio=ALL-UNNAMED"
-                            "--enable-native-access=ALL-UNNAMED"]
+                            "--enable-native-access=ALL-UNNAMED"
+                            "-Djava.awt.headless=true"]
                  :exec-fn user/start
                  :exec-args {}
 
@@ -109,5 +112,6 @@
                                 org.clojure/tools.namespace {:mvn/version "1.5.1"}}
                    :jvm-opts ["-Djdk.attach.allowAttachSelf"
                               "--add-opens" "java.base/java.nio=ALL-UNNAMED"
-                              "--enable-native-access=ALL-UNNAMED"]
+                              "--enable-native-access=ALL-UNNAMED"
+                              "-Djava.awt.headless=true"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}}}
