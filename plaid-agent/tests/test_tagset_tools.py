@@ -324,3 +324,27 @@ def test_the_trace_reads_the_action_as_the_tool_does(action, kind):
     label = TRACER.describe('tagsets', {'action': action, 'tagset': 'L'})
     assert label == {'META': 'Read how to set up tagsets', 'READ': 'Checked the tagset “L”',
                      'PLAN': 'Planned a change to the tagset “L”'}[kind]
+
+
+def test_check_sets_numerals_and_bracketed_parts_apart_from_tags(monkeypatch):
+    """igt-tagset-close-hard r3 (build-q38-1) read "Tags: YON) (14), HITHER)
+    (2), 03 (1), 1941 (1)" from values like bz(PDIR.YON).o(1MINI) and years
+    glossed as themselves, and spent four searches on "YON)". They are parts
+    as core reads them (it splits on the delimiters only, so a close needs
+    them listed), but no tags: said apart, with what splits a bracket."""
+    from plaid_agent.igt import tagsets as T
+    ws = _fake_ws()
+    monkeypatch.setattr(T, '_attested', lambda ws, f: [('bz(PDIR.YON).o(1MINI)', 14), ('1941', 1), ('03', 1),
+                                                       ('3AUG', 2), ('go', 5)])
+    monkeypatch.setattr(T, '_machine', lambda ws, f: {})
+    out = call_tool(ws, 'tagsets', {'action': 'check', 'tagset': 'Leipzig', 'field': 'Morph Gloss'})
+    lines = out.splitlines()
+    tags = next(line for line in lines if line.startswith('  Tags: '))
+    assert 'YON)' not in tags and '1941' not in tags and '3AUG (2)' in tags, out
+    assert ('  Parts holding a bracket, which the delimiters do not split (add "()" to the delimiters to split '
+            'them): YON) (14)') in lines, out
+    assert '  Parts without a letter: 03 (1), 1941 (1)' in lines, out
+    # add_used still lists the parts core reads, so a close after it holds.
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add_used': 'tags',
+                                                                                  'from_fields': ['Morph Gloss']}})
+    assert {'YON)', '1941', '3AUG'} <= {v['value'] for v in ws.ops[-1]['after']['values']}

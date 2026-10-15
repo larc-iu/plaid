@@ -32,6 +32,9 @@ SPAN, METADATA, ENTRY_FIELD = 'span', 'metadata', 'entry_field'
 
 # Unlisted parts and refused values a check shows per field.
 SHOWN = 40
+# The brackets a part may hold when the delimiters do not split on them.
+_PAIRS = ('()', '[]', '{}')
+_BRACKETS = frozenset(''.join(_PAIRS))
 
 HELP = '''Tagsets are the value lists fields are held to. Each has a mode:
 - suggest: the list is offered and any value is accepted;
@@ -270,11 +273,24 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
         if not rows:
             lines.append(head + ', every part listed.')
         else:
-            tags = [r for r in rows if not r[2]]
             words = [r for r in rows if r[2]]
+            # Parts core reads that are no tag: a year glossed as itself, or
+            # "YON)" of bz(PDIR.YON) when brackets are no delimiter. A close
+            # needs them listed all the same.
+            bracketed = [r for r in rows if not r[2] and _BRACKETS.intersection(r[0])]
+            letterless = [r for r in rows if not r[2] and not any(c.isalpha() for c in r[0])
+                          and not _BRACKETS.intersection(r[0])]
+            tags = [r for r in rows if not r[2] and r not in bracketed and r not in letterless]
             lines.append(head + f', {len(rows)} unlisted parts.')
             if tags:
                 lines.append('  Tags: ' + _listing(tags, lambda r: f'{r[0]} ({r[1]})'))
+            if bracketed:
+                held = set(''.join(r[0] for r in bracketed))
+                split = ''.join(pair for pair in _PAIRS if held.intersection(pair))
+                lines.append(f'  Parts holding a bracket, which the delimiters do not split (add "{split}" to the '
+                             'delimiters to split them): ' + _listing(bracketed, lambda r: f'{r[0]} ({r[1]})'))
+            if letterless:
+                lines.append('  Parts without a letter: ' + _listing(letterless, lambda r: f'{r[0]} ({r[1]})'))
             if words:
                 lines.append('  Lexical glosses: ' + _listing(words, lambda r: f'{r[0]} ({r[1]})'))
         if f['kind'] != SPAN:
