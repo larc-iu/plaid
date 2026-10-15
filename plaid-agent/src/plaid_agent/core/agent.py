@@ -31,7 +31,7 @@ from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
 from .plan import plan_changes
-from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
+from .trace import META, META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
     from openai import OpenAIError as _ProviderError
@@ -527,6 +527,45 @@ ALREADY_PLANNED = ('Nothing was staged again: the same call earlier in this turn
                    'Do not repeat it. Plan the next change or reply to the user.')
 
 
+# A reply that says this turn planned changes, when it planned none: the user
+# is told to approve a card that does not exist. Seen in every app on a 27B
+# model (bench build-q38-1: ten of 35 failed runs). The phrases are the ones
+# those replies used. Read sentence by sentence, and an offer ("I'll plan it",
+# "say the word") is not a claim that it was done.
+_CLAIMED = [re.compile(p, re.I) for p in (
+    # "I've staged", "I have planned the change", "I've prepared a plan".
+    r"\b(?:i['’]ve|i have|we['’]ve|we have)\s+(?:now\s+|just\s+|also\s+)?(?:staged|planned|prepared|queued)\b",
+    # "Here's the staged plan", "Staged plan:".
+    r"\bstaged (?:plan|change|changes|edit|edits)\b",
+    # "**Plan:**", "**Planned (1 change):**".
+    r"\*\*(?:plan|planned|proposed changes?)(?: \(\d+ changes?\))?:\*\*",
+    # "approve the pending split".
+    r"\b(?:the|a|your) pending (?:plan|split|merge|change|changes|card|edit|edits)\b",
+)]
+_APPROVE = re.compile(r"\bapprove (?:it|the|this|that|them|to|and|when|once)\b", re.I)
+_OFFER = re.compile(r"\b(?:i['’]ll|i will|i can|i could|i would|i['’]d|shall i|should i|want me|would you like"
+                    r"|if you['’]d like|if you want|say the word|let me know|tell me)\b", re.I)
+_SENTENCE = re.compile(r"(?<=[.!?:])\s+|\n+")
+
+
+def claims_a_plan(text: Optional[str]) -> bool:
+    """Whether ``text`` tells the user a plan was made: says it staged,
+    planned or prepared changes, or tells them to approve (unless the same
+    sentence offers to plan, "I'll plan it and you approve it")."""
+    for s in _SENTENCE.split(text or ''):
+        if any(p.search(s) for p in _CLAIMED) or (_APPROVE.search(s) and not _OFFER.search(s)):
+            return True
+    return False
+
+
+#: What a turn that claimed a plan it never made is sent back with, once.
+NOTHING_PLANNED = ('(system) Nothing is planned in this turn: no plan card will show. Make the changes with '
+                   'the plan tools now, or tell the user you have not planned them.')
+#: The step that note is in the trace, and its line.
+NOTHING_PLANNED_STEP = 'nothing_planned'
+NOTHING_PLANNED_LABEL = 'Told the assistant that nothing was planned'
+
+
 def _plan_snapshot(ws: Any) -> List[str]:
     """The plan as it stands, to tell whether a call changed it. In any order:
     a change staged again over itself may move to the end of the plan."""
@@ -894,6 +933,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     # arguments), so the same one again can be told apart.
     made: set = set()
     spend = Spend()
+    # Whether this turn's model was told it planned nothing (`claims_a_plan`).
+    nudged = False
+
+    def claimed_nothing(text: str) -> bool:
+        """The reply says it planned, and this turn planned nothing: no plan
+        call went through, none was resumed, and no card from an earlier
+        message still waits (the reply may be about that one)."""
+        return (not made and not plan_changes(getattr(ws, 'ops', None) or [])
+                and not getattr(ws, 'waiting', None) and not getattr(ws, 'resumed', False)
+                and claims_a_plan(text))
 
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str):
         """One more call, without tools, when the model owes the user words.
@@ -1009,6 +1058,35 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
                                                        'Reply now with your answer to the user.')
                 thinking = _joined(thinking, more)
+            if not nudged and claimed_nothing(text):
+                # Said it planned, and planned nothing: once, the model is
+                # told and gets its tools back. Its reply and the note stay
+                # in the transcript, and the trace has a step for them,
+                # whose round holds the reply and the note as sent.
+                nudged = True
+                rnd['said'] = text
+                step_id = f'{NOTHING_PLANNED_STEP}-{rnd["id"]}'
+                rnd['calls'].append(call_record(step_id, NOTHING_PLANNED_STEP, '{}', NOTHING_PLANNED))
+                step = {'id': step_id, 'name': NOTHING_PLANNED_STEP, 'kind': META,
+                        'label': NOTHING_PLANNED_LABEL, 'said': text}
+                if keeper is not None:
+                    step['round'] = rnd['id']
+                    if rnd.get('thinking'):
+                        step['thought'] = True
+                    keeper.text = ''
+                    keeper.thinking = ''
+                trace.append(step)
+                new.append({'role': 'user', 'content': NOTHING_PLANNED})
+                if keeper is not None and not keeper.store(rnd):
+                    _unstored(trace, rnd)
+                rounds += 1
+                if rounds >= cfg.max_steps:
+                    text, thinking = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this '
+                                                               'turn. Reply now with what you found and what '
+                                                               'remains to do.')
+                    return TurnResult(text + '\n\n*(Stopped at the step limit.)*',
+                                      new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
+                continue
             # The reply's own round holds something only on a turn that
             # called no tool (the question as received) or when the model
             # reasoned. Its text is the reply.
