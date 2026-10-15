@@ -181,3 +181,48 @@ test('Escape lets a lost gloss go, and the stored value stays', async ({ browser
     await B.ctx.close();
   }
 });
+
+// REV-UI-1: a gloss lost to a split of its word that also re-cases the kept
+// part ("tres" to "Tr" + "es") keeps nothing on Enter: it was typed for a word
+// that is gone.
+test('a gloss lost to a split that re-cases the kept part keeps nothing on Enter', async ({
+  browser,
+}) => {
+  const B = await openTab(browser);
+  const morphId = morphs[2];
+  try {
+    const release = B.hold();
+    await glossCell(B.page, morphId).click();
+    await B.page.keyboard.type('three');
+    await B.page.keyboard.press('Tab');
+
+    const raw = await client.documents.get(documentId, true);
+    const base = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+    const layer = (role) => base.tokenLayers.find((l) => roleOf(l) === role);
+    const word = layer(ROLES.WORD).tokens.find((t) => t.begin === 8);
+    await client.texts.update(base.text.id, [
+      { type: 'delete', index: 8, value: 1 },
+      { type: 'insert', index: 8, value: 'T' },
+    ]);
+    await client.tokens.update(word.id, 8, 10);
+    await client.tokens.update(morphId, 8, 10);
+    await client.tokens.create(layer(ROLES.WORD).id, base.text.id, 10, 12);
+    await client.tokens.create(layer(ROLES.MORPHEME).id, base.text.id, 10, 12, 1);
+    release();
+    await settled(B.page);
+
+    const note = B.page
+      .locator('.igt-cell__face')
+      .filter({ has: glossCell(B.page, morphId) })
+      .locator('.igt-field-conflict');
+    await expect(note).toHaveText('Yours: three · Esc to keep theirs');
+    const before = B.writes;
+    await glossCell(B.page, morphId).click();
+    await B.page.keyboard.press('Enter');
+    await B.page.waitForTimeout(1000);
+    expect(B.writes).toBe(before);
+    expect(await glossOf(morphId)).toBe(null);
+  } finally {
+    await B.ctx.close();
+  }
+});

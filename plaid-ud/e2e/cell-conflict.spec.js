@@ -159,3 +159,62 @@ test('Escape lets a lost lemma go, and the stored value stays', async ({ browser
     await B.ctx.close();
   }
 });
+
+// A's Text Editor replaces [begin, end) of the text with `value` and saves.
+async function editText(page, begin, end, value) {
+  await page
+    .getByRole('tab', { name: 'Text Editor' })
+    .or(page.getByRole('link', { name: 'Text Editor' }))
+    .first()
+    .click();
+  const box = page.getByPlaceholder('Type or paste the text. One sentence per line.');
+  await box.waitFor();
+  await page.waitForTimeout(800);
+  await box.focus();
+  await box.evaluate((el, [s, e]) => el.setSelectionRange(s, e), [begin, end]);
+  await page.keyboard.type(value);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText(/^Saved: /).waitFor({ timeout: 15000 });
+}
+
+// H16-UI-CORE-3 and REV-UI-1: B's lemma is refused after A changed the word
+// in the Text Editor. A respelling (both neighbours kept) is the plain
+// conflict, whose Enter keeps yours. A split that also re-cases the kept part
+// keeps nothing on Enter.
+test('a lemma lost to a respelling keeps yours on Enter, one lost to a split does not', async ({
+  browser,
+}) => {
+  const A = await openTab(browser);
+  const B = await openTab(browser);
+  try {
+    // "fast" (13-17) respelled "fastt".
+    const fast = S.morphIds[3];
+    let release = B.hold();
+    await typeInto(B.page, fast, 'lemma', 'quick');
+    await editText(A.page, 13, 17, 'fastt');
+    release();
+    const fastNote = B.page.locator(`[id="${fast}-lemma-conflict"]`);
+    await expect(fastNote).toHaveText('Yours: quick · Enter to keep yours');
+    await cellOf(B.page, fast, 'lemma').click();
+    await B.page.keyboard.press('Enter');
+    await expect.poll(() => stored(fast, 'lemma')).toBe('quick');
+
+    // "runs" (8-12) split and re-cased "Run s": the larger part keeps the token.
+    const runs = S.morphIds[2];
+    const before = await stored(runs, 'lemma');
+    release = B.hold();
+    await typeInto(B.page, runs, 'lemma', 'sprint');
+    await editText(A.page, 8, 12, 'Run s');
+    release();
+    const runsNote = B.page.locator(`[id="${runs}-lemma-conflict"]`);
+    await expect(runsNote).toHaveText('Yours: sprint · Esc to keep theirs');
+    await cellOf(B.page, runs, 'lemma').click();
+    await B.page.keyboard.press('Enter');
+    await B.page.waitForTimeout(1500);
+    expect(await stored(runs, 'lemma')).toBe(before);
+    await expect(runsNote).toHaveText('Yours: sprint · Esc to keep theirs');
+  } finally {
+    await A.ctx.close();
+    await B.ctx.close();
+  }
+});
