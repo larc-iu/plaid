@@ -258,7 +258,7 @@ TOOLS += [
          'limit': limit_arg('frequency_list', 'Rows')}, ['what']),
     _fn('check_consistency',
         'Places where the corpus disagrees with itself: one lemma under several UPOS, one form under '
-        'several lemmas, deprel and UPOS pairs seen once or twice. Every hit is a question, not a '
+        'several lemmas or several UPOS, deprel and UPOS pairs seen once or twice. Every hit is a question, not a '
         'verdict: read the sentences before planning anything.',
         {'kind': {'type': 'string', 'enum': list(CONSISTENCY)}, 'limit': {'type': 'integer'}}, []),
     _fn('worklist',

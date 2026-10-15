@@ -203,7 +203,7 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     return truncate('\n'.join(out))
 
 
-CONSISTENCY = ('lemma-upos', 'form-lemma', 'rare-pairs')
+CONSISTENCY = ('lemma-upos', 'form-lemma', 'form-upos', 'rare-pairs')
 
 
 def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str:
@@ -245,17 +245,40 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
                 by[form].append((lemma, n))
         multi = [(k, sorted(v, key=lambda x: -x[1])) for k, v in by.items() if len(v) > 1]
         multi.sort(key=lambda kv: -sum(n for _, n in kv[1]))
-        out.append('')
+        if out:
+            out.append('')
         out.append(f'Forms with more than one lemma: {len(multi)}.')
         for form, vs in multi[:limit]:
             out.append(f'  {form!r}: ' + ', '.join(f'{l} x{n}' for l, n in vs))
         if len(multi) > limit:
             out.append(f'  … and {len(multi) - limit} more')
 
+    if 'form-upos' in kinds:
+        by = defaultdict(list)
+        for form, upos, n in c.form_pairs('upos'):
+            if form and upos:
+                by[form].append((upos, n))
+        multi = [(k, sorted(v, key=lambda x: (-x[1], x[0]))) for k, v in by.items() if len(v) > 1]
+        # The most one-sided first: a form tagged one way 735 times and
+        # another way 9 times is where a slip hides.
+        multi.sort(key=lambda kv: (-kv[1][0][1] / sum(n for _, n in kv[1]), -sum(n for _, n in kv[1]), kv[0]))
+        if out:
+            out.append('')
+        out.append(f'Forms with more than one UPOS: {len(multi)}, the most one-sided first.')
+        out.append('  The rarer tags of a one-sided form are where to look: grew_search with '
+                   '[form="...", upos=...] lists those words.')
+        for form, vs in multi[:limit]:
+            total = sum(n for _, n in vs)
+            out.append(f'  {form!r}: {vs[0][0]} x{vs[0][1]} ({round(100 * vs[0][1] / total)}%), '
+                       + ', '.join(f'{u} x{n}' for u, n in vs[1:]))
+        if len(multi) > limit:
+            out.append(f'  … and {len(multi) - limit} more')
+
     if 'rare-pairs' in kinds:
         pairs = _deprel_upos_pairs(c)
         rare = [(d, u, n) for (d, u), n in sorted(pairs.items(), key=lambda kv: kv[1]) if n <= 2]
-        out.append('')
+        if out:
+            out.append('')
         out.append(f'deprel and UPOS pairs seen once or twice: {len(rare)}.')
         out.append('  Each is either a genuine rarity or a slip.')
         for d, u, n in rare[:limit]:

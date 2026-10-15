@@ -304,9 +304,9 @@ The commonest values of one column, with counts. Across the project, or inside o
 
 ### check_consistency
 
-Places where the corpus disagrees with itself: one lemma under several UPOS, one form under several lemmas, deprel and UPOS pairs seen once or twice. Every hit is a question, not a verdict: read the sentences before planning anything.
+Places where the corpus disagrees with itself: one lemma under several UPOS, one form under several lemmas or several UPOS, deprel and UPOS pairs seen once or twice. Every hit is a question, not a verdict: read the sentences before planning anything.
 
-- `kind` (one of `lemma-upos`, `form-lemma`, `rare-pairs`)
+- `kind` (one of `lemma-upos`, `form-lemma`, `form-upos`, `rare-pairs`)
 - `limit` (integer)
 
 ### worklist

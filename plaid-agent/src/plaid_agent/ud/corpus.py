@@ -98,10 +98,15 @@ class Corpus(BaseCorpus):
 
     def form_lemma_pairs(self) -> List[list]:
         """[[form, lemma, count]] over the corpus."""
+        return self.form_pairs('lemma')
+
+    def form_pairs(self, field: str) -> List[list]:
+        """[[form, value of ``field``, count]] over the corpus: one grouped
+        read for the words with a Form span and one for those without."""
         surface = self.group([self.word('?t'), self.no_form_span('?t'),
-                              self.field('lemma', '?l'), self.on('?l')], ['?t.value', '?l.value'])
+                              self.field(field, '?l'), self.on('?l')], ['?t.value', '?l.value'])
         spans = self.group([self.word('?t'), self.field('form', '?f'), self.on('?f'),
-                            self.field('lemma', '?l'), self.on('?l')], ['?f.value', '?l.value'])
+                            self.field(field, '?l'), self.on('?l')], ['?f.value', '?l.value'])
         return self._merged_groups(surface, spans)
 
     # --- size -------------------------------------------------------------
