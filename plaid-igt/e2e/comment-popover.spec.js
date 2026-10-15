@@ -106,3 +106,28 @@ test('the Comments tab opens one stream and reads the comments once', async ({ p
   await page.waitForTimeout(1500);
   expect(seen).toEqual({ listen: 1, comments: 1 });
 });
+
+// H16-UI-CORE-4: with an Analyze comment popover open, the switch to Comments
+// gave up the popover's claim on the stream when Analyze unmounted, and the
+// tab's claim came about 60 ms later: the stream was aborted, opened again,
+// and every comment read again.
+test('the Comments tab keeps the stream an open comment popover holds', async ({ page }) => {
+  await openAnalyze(page);
+  const seen = { listen: 0, comments: 0, aborted: 0 };
+  page.on('request', (r) => {
+    if (/\/listen(\?|$)/.test(r.url())) seen.listen += 1;
+    if (/\/comments\?/.test(r.url())) seen.comments += 1;
+  });
+  page.on('requestfailed', (r) => {
+    if (/\/listen(\?|$)/.test(r.url())) seen.aborted += 1;
+  });
+  await page.locator('.igt-token-form .igt-cmt-badge').first().click();
+  await expect(page.locator('.igt-cmt-pop')).toBeVisible();
+  await page.waitForTimeout(500);
+  const before = { ...seen };
+  await page.getByRole('tab', { name: 'Comments' }).click();
+  await expect(page).toHaveURL(/tab=comments/);
+  await page.waitForTimeout(1500);
+  expect(before.listen).toBe(1);
+  expect(seen).toEqual(before);
+});
