@@ -105,9 +105,10 @@ def test_run_code_sees_the_segments_and_the_recording(monkeypatch):
     w = _ws(monkeypatch, seconds=125.0)
     code = ('d = load("Text 1")\n'
             'print(round(sum(g["end"] - g["start"] for g in d["segments"]), 2), d["sentences"][1]["time"], '
-            'recording("Text 1"), d["segments"][0]["speaker"])')
+            'recording("Text 1"), d["segments"][0]["speaker"])\n'
+            'print([recording(e) for e in documents()])')
     out = call_tool(w, 'run_code', {'code': code})
-    assert '3.75 [4.0, 5.0] 125.0 A' in out, out
+    assert '3.75 [4.0, 5.0] 125.0 A' in out and '[125.0]' in out, out
 
 
 # --- over the wire, against a real core -----------------------------------------------

@@ -144,6 +144,9 @@ def recording_api(ws: Workspace) -> Callable:
     from .media import recording_of
 
     def recording(document) -> Optional[float]:
+        # An entry of documents() names its document, as load() takes it.
+        if isinstance(document, dict) and ('id' in document or 'name' in document):
+            document = document.get('id') or document.get('name')
         return recording_of(ws, ws.resolve_document_id(document))[1]
     return recording
 
