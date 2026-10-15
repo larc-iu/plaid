@@ -126,6 +126,26 @@ describe('a translation refused because its sentence changed meanwhile', () => {
       'the cat. a dog.',
     ],
     ['respelled', () => shape({ body: 'the cat. a hog.' }), 'a hog.', 'Enter to keep yours'],
+    // REV-UI-1: a split with a period typed at the cut.
+    [
+      'split, a period typed at the cut',
+      () =>
+        buildRawDoc({
+          body: 'the cat. a. dog.',
+          sentences: [
+            { id: 's-1', begin: 0, end: 8 },
+            { id: 's-2', begin: 9, end: 11 },
+            { id: 's-3', begin: 12, end: 16 },
+          ],
+          words: [
+            { id: 'w-1', begin: 0, end: 3 },
+            { id: 'w-2', begin: 4, end: 8 },
+            { id: 'w-3', begin: 9, end: 11 },
+            { id: 'w-4', begin: 12, end: 16 },
+          ],
+        }),
+      'a.',
+    ],
   ]) {
     it(`shows what is stored with yours under it, and leaving sends nothing (${what})`, async () => {
       const { client } = mount();

@@ -24,6 +24,8 @@ const orderFor = (word) => {
     si: [t('t0', 'we'), t('t1', 'si'), t('tn', 'ng'), t('t2', 'along')],
     'sing along': [t('t0', 'we'), t('t1', 'sing along')],
     sinng: [t('t0', 'we'), t('t1', 'sinng'), t('t2', 'along')],
+    // REV-UI-1: split, and the kept half re-cased in the same save.
+    Si: [t('t0', 'we'), t('t1', 'Si'), t('tn', 'ng'), t('t2', 'along')],
   };
   return forms[word];
 };
@@ -142,6 +144,18 @@ describe('a value refused because its word was re-cut meanwhile', () => {
     expect(onAnnotationUpdate).toHaveBeenCalledTimes(1);
     expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sing');
     expect(view.container.querySelector('.editable-field-conflict')).toBeNull();
+    await view.unmount();
+  });
+
+  it('a split that also re-cases the kept half keeps nothing on Enter (REV-UI-1)', async () => {
+    const { view, input, onAnnotationUpdate } = await refusedAfter({ word: 'Si' });
+    expect(view.container.querySelector('.editable-field-conflict')?.textContent).toBe(
+      'Yours: sing · Esc to keep theirs',
+    );
+    input.focus();
+    await view.step(async () => focus(input));
+    await view.step(async () => press(input, 'Enter'));
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
     await view.unmount();
   });
 

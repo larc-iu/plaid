@@ -208,6 +208,40 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
     expect(note('ma:m-1:Gloss')).toBeNull();
   });
 
+  // REV-UI-1: a split that also re-cases the kept half is still a split.
+  it('a split that also re-cases the kept half keeps nothing on Enter', async () => {
+    const { client } = mount();
+    const restore = refuseWith(
+      client,
+      buildRawDoc({
+        body: 'The cat',
+        words: [
+          { id: 'w-1', begin: 0, end: 2 },
+          { id: 'w-3', begin: 2, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+        ],
+        morphemes: [
+          { id: 'm-1', begin: 0, end: 2, precedence: 1, metadata: {} },
+          { id: 'm-3', begin: 2, end: 3, precedence: 1, metadata: {} },
+          { id: 'm-2', begin: 4, end: 7, precedence: 1, metadata: {} },
+        ],
+      }),
+    );
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'THE');
+    c.blur();
+    await settle(30);
+    restore();
+
+    const after = cell('ma:m-1:Gloss');
+    expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Esc to keep theirs');
+    after.focus();
+    key(after, 'Enter');
+    await settle(30);
+    expect(writes(client)).toEqual([]);
+  });
+
   // A word or morpheme only respelled is the same row: the conflict is the
   // plain one, and Enter keeps the gloss typed for it (H16-UI-CORE-3).
   for (const [what, served, toast] of [
