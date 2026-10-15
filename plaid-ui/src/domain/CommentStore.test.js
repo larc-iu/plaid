@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CommentStore, normalizeCommentEvent, isPending } from './CommentStore.js';
+import { CommentStore, normalizeCommentEvent, isPending, LIVE_GRACE_MS } from './CommentStore.js';
 
 const PROJECT = 'p1';
 const DOC = 'd1';
@@ -552,12 +552,12 @@ describe('CommentStore live stream', () => {
     expect(store.isLive).toBe(true);
 
     releaseA();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
     expect(client.closed).toBe(0);
     expect(store.isLive).toBe(true);
 
     releaseB();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
     expect(client.closed).toBe(1);
     expect(store.isLive).toBe(false);
   });
@@ -573,7 +573,7 @@ describe('CommentStore live stream', () => {
 
     store.watchLive()();
     const release = store.watchLive();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
     await Promise.resolve();
     expect(client.opened).toBe(1);
     expect(client.closed).toBe(0);
@@ -581,6 +581,32 @@ describe('CommentStore live stream', () => {
     expect(client.comments.list.mock.calls.length).toBe(reads + 1);
 
     release();
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
+    expect(client.closed).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps its one connection when the next screen claims it a while after the last one let go', async () => {
+    // Analyze's comment popover lets go when Analyze unmounts, and the
+    // Comments tab claims in an effect about 60 ms later (H16-UI-CORE-4).
+    const client = liveClient();
+    const store = makeStore(client);
+    await store.load();
+    const reads = client.comments.list.mock.calls.length;
+
+    store.watchLive()();
+    vi.advanceTimersByTime(60);
+    const release = store.watchLive();
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
+    await Promise.resolve();
+    expect(client.opened).toBe(1);
+    expect(client.closed).toBe(0);
+    // The one read is the first claim's catch-up, none for the second.
+    expect(client.comments.list.mock.calls.length).toBe(reads + 1);
+
+    release();
+    vi.advanceTimersByTime(LIVE_GRACE_MS - 1);
+    expect(client.closed).toBe(0);
     vi.advanceTimersByTime(1);
     expect(client.closed).toBe(1);
     expect(vi.getTimerCount()).toBe(0);
@@ -594,11 +620,11 @@ describe('CommentStore live stream', () => {
 
     releaseA();
     releaseA();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
     expect(store.isLive).toBe(true);
 
     releaseB();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(LIVE_GRACE_MS);
     expect(client.closed).toBe(1);
   });
 
@@ -641,7 +667,7 @@ describe('CommentStore live stream', () => {
       expect(store.isLive).toBe(true);
       release();
       again();
-      vi.advanceTimersByTime(1);
+      vi.advanceTimersByTime(LIVE_GRACE_MS);
       expect(streams[1].close).toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
     } finally {

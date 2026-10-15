@@ -23,6 +23,13 @@ const byCreated = (a, b) =>
 // How often an open live stream is checked for having been closed by the
 // server, and the `readyState` a closed one reports.
 const LIVE_CHECK_MS = 5000;
+// How long the stream is held after its last claim is given up, so the next
+// screen's claim finds it open. A tab switch gives up the old screen's claim
+// when it unmounts and takes the new one's in an effect React runs a task or
+// more later (the Comments tab after an Analyze comment popover, about 60 ms,
+// longer while the tab's code loads): closed at once, the stream was opened
+// again and every comment read again (H16-UI-CORE-4).
+export const LIVE_GRACE_MS = 2000;
 const CLOSED = 2;
 
 // An optimistic comment is shown under the id its post names (pendingIds.js),
@@ -553,9 +560,9 @@ export class CommentStore {
   watchLive() {
     if (!this._projectId) return () => {};
     this._liveRefs = (this._liveRefs || 0) + 1;
-    // A claim given up in this same turn (React's StrictMode runs an effect,
-    // its cleanup and the effect again, and one tab's claim can end as
-    // another's begins) left the stream open: it is the same one.
+    // A claim given up a moment ago (React's StrictMode runs an effect, its
+    // cleanup and the effect again, and one tab's claim ends before the next
+    // tab's begins) left the stream open: it is the same one.
     clearTimeout(this._closeTimer);
     this._closeTimer = null;
     // The first claim opens the stream, and so does a later one after the
@@ -571,13 +578,13 @@ export class CommentStore {
       released = true;
       this._liveRefs -= 1;
       if (this._liveRefs > 0) return;
-      // Closed once this turn is over, unless a claim came back in it: an
-      // aborted stream and a second read of every comment otherwise.
+      // Closed after a grace, unless a claim came back in it: an aborted
+      // stream and a second read of every comment otherwise.
       clearTimeout(this._closeTimer);
       this._closeTimer = setTimeout(() => {
         this._closeTimer = null;
         if (!this._liveRefs) this._closeLive();
-      }, 0);
+      }, LIVE_GRACE_MS);
     };
   }
 
