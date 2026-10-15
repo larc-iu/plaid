@@ -319,6 +319,8 @@ REPLACES = {
     'del_relation': lambda ws, op: [op.get('relation_id')],
     'set_deprel': lambda ws, op: [op.get('relation_id')],
     'set_words': _words_work,
+    # A split moves the words with everything on them, and replaces nothing.
+    'split_token': _NONE,
     # The relations a cut leaves spanning two sentences go with it.
     'split_sentence': lambda ws, op: list(op.get('relation_ids') or []),
     # A join only widens a sentence, so it takes no relation.
@@ -472,6 +474,7 @@ def _after_plan(ws: Workspace, doc: UdDoc, s: Sentence) -> List[tuple]:
                 ops[wid] = op
     if not any(w.id in ops for w in s.words):
         return []
+    by_id = {w.id: w for w in s.words}
     out, done = [], set()
     for w in s.words:
         op = ops.get(w.id)
@@ -479,8 +482,20 @@ def _after_plan(ws: Workspace, doc: UdDoc, s: Sentence) -> List[tuple]:
             out.append((w.form, w))
         elif id(op) not in done:
             done.add(id(op))
-            out.extend((f, None) for f in op['forms'])
+            # A split keeps its words, and says which they are (`after_ids`).
+            # A set_words of another number makes every one of them anew.
+            kept = op.get('after_ids') or [None] * len(op['forms'])
+            out.extend((f, by_id.get(i)) for f, i in zip(op['forms'], kept))
     return out
+
+
+def _reshaper(ws: Workspace, doc: UdDoc, s: Sentence) -> str:
+    """The tool whose planned reshape changes the words of ``s``, as the
+    refusals name it."""
+    ids = {w.id for w in s.words}
+    return next((op['kind'] for op in ws.ops if op.get('kind') in RESHAPES_TOKEN
+                 and op.get('document_id') == doc.id and ids & set(op.get('existing_word_ids') or [])),
+                'set_words')
 
 
 def _listing_after(after: List[tuple]) -> str:
@@ -498,7 +513,7 @@ def planned_word_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref
         return None
     form, now = after[index - 1]
     out = (f'{ref} does not exist yet: s{s.index} has {len(s.words)} word'
-           f'{"s" if len(s.words) != 1 else ""} now, and once this plan\'s set_words runs its words are '
+           f'{"s" if len(s.words) != 1 else ""} now, and once this plan\'s {_reshaper(ws, doc, s)} runs its words are '
            + _listing_after(after) + '. ')
     if now is not None:
         return out + (f'A plan names words by their numbers now: "{clip(form)}" is '
@@ -520,7 +535,7 @@ def renumbered_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref: 
         return None
     form = clip(word.form)
     then = f' and w{index} is "{clip(after[index - 1][0])}"' if index <= len(after) else ''
-    out = (f'{ref} is "{form}" now, but this plan\'s set_words renumbers s{s.index}: once it is applied, '
+    out = (f'{ref} is "{form}" now, but this plan\'s {_reshaper(ws, doc, s)} renumbers s{s.index}: once it is applied, '
            f'"{form}" is w{new}{then}. A plan names words by their numbers now, so add the form to say '
            f'which you mean: s{s.index}.w{index} "{form}".')
     if index <= len(after) and after[index - 1][1] is None:

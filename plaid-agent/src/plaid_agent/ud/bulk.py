@@ -273,7 +273,7 @@ def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],
 # uses. The SET is the registry's (every kind that reshapes a document or a
 # token, and the parser, which replaces both), so a new one is never left out;
 # only its phrase is written here.
-_REWRITES = {'run_parse': 'parses', 'set_words': 'reshapes a token in',
+_REWRITES = {'run_parse': 'parses', 'set_words': 'reshapes a token in', 'split_token': 'splits a token in',
              'split_sentence': 'moves a sentence boundary in',
              'merge_sentences': 'moves a sentence boundary in'}
 

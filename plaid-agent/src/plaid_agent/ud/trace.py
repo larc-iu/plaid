@@ -92,6 +92,10 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
         if len(forms) == 1:
             return f'Planned {a.get("ref")} as one word {q(forms[0])}{in_doc(a)}'
         return f'Planned {a.get("ref")} as {plural(len(forms), "word")}{in_doc(a)}'
+    if name == 'split_token':
+        parts = _forms({'forms': a.get('parts')})
+        into = f' into {" + ".join(q(p) for p in parts)}' if parts else ' at its spaces'
+        return f'Planned splitting {a.get("ref")}{into}{in_doc(a)}'
     if name == 'run_parse':
         n = count(a, 'documents')
         over = ', overwriting human work' if a.get('overwrite') else ''
@@ -117,6 +121,7 @@ _PROGRESS = {
     'check_consistency': lambda a: 'Checking the corpus for disagreements…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
     'run_parse': lambda a: 'Checking the parser…',
+    'split_token': lambda a: 'Splitting a token…',
     'set_words': lambda a: 'Respelling a token…' if _respells(a) else 'Reshaping a token…',
 }
 

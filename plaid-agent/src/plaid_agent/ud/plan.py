@@ -183,6 +183,12 @@ def _apply_set_words(ctx: Context, op) -> int:
     return 1
 
 
+def _apply_split_token(ctx: Context, op) -> int:
+    from .shape import apply_split_token
+    apply_split_token(op, ctx.b, ctx.stamp)
+    return 1
+
+
 def _apply_split_sentence(ctx: Context, op) -> int:
     from .sentences import apply_split_sentence
     apply_split_sentence(op, ctx.b, ctx.stamp)
@@ -476,6 +482,12 @@ KIND = ok.registry([
            deletes=lambda op: list(op.get('relation_ids') or []),
            # The new words cover their token, wherever an edit before it has
            # moved it since (core.fingerprint).
+           extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
+    # One token made several. Nothing is deleted: the words move to their
+    # parts with what is on them, so it names the words only for the guard
+    # against a second reshape of the same token.
+    OpKind('split_token', ('split token', 'split tokens'), apply=_apply_split_token, shape=WORD_SHAPE,
+           required=('token_id', 'text_id', 'pieces', 'word_ids', 'word_layer_id'),
            extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
            required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,

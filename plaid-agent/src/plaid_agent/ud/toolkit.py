@@ -20,7 +20,7 @@ from .query import t_query, t_query_help
 from .restore import t_restore_document
 from .sandbox import t_code_help, t_run_code
 from .sentences import t_merge_sentences, t_split_sentence
-from .shape import t_set_words
+from .shape import t_set_words, t_split_token
 from ..core.history import add_comment as t_add_comment, comments as t_comments
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
                     t_frequency_list, t_search, t_worklist)
@@ -171,6 +171,17 @@ TOOLS = [
          'forms': {'type': 'array', 'items': {'type': 'string'},
                    'description': 'The words, in order, e.g. ["a", "el"].'}},
         ['document', 'ref', 'forms']),
+    _fn('split_token',
+        'PLAN: make one token several tokens, cut at its spaces or into the parts given (set_words makes '
+        'words inside ONE token). Values and dependencies stay: a multi-word token with as many words as '
+        'parts gives one word to each part, else its words stay on the longest part and each other part '
+        'gets a new word with no annotation.',
+        {'document': _DOC,
+         'ref': {'type': 'string', 'description': 'The token: "s3.w2", or "s3.w2-3" for a multi-word token.'},
+         'parts': {'type': 'array', 'items': {'type': 'string'},
+                   'description': 'The new tokens\' texts in order, e.g. ["can", "not"]. Leave out to cut at '
+                                  'spaces.'}},
+        ['document', 'ref']),
     _fn('split_sentence',
         'PLAN: start a new sentence at this word, so the sentence it is in becomes two. Any '
         'dependency relation that would end up spanning the two is deleted, because a relation '
@@ -299,6 +310,7 @@ _IMPL = {
 _IMPL['run_parse'] = t_run_parse
 
 _IMPL['set_words'] = t_set_words
+_IMPL['split_token'] = t_split_token
 _IMPL['replace_in_field'] = t_replace_in_field
 _IMPL['split_sentence'] = t_split_sentence
 _IMPL['restore_document'] = t_restore_document

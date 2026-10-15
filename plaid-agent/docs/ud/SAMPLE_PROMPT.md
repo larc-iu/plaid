@@ -96,7 +96,7 @@ Running code:
 
 ## Tools
 
-38 tools, in the order the model receives them: 16 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+39 tools, in the order the model receives them: 17 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -203,6 +203,14 @@ PLAN: say which WORDS a token holds, and how each is spelled. Two or more makes 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The token: "s3.w2", or "s3.w2-3" if it is already a multi-word token.
 - `forms` (array of string, required): The words, in order, e.g. ["a", "el"].
+
+### split_token
+
+PLAN: make one token several tokens, cut at its spaces or into the parts given (set_words makes words inside ONE token). Values and dependencies stay: a multi-word token with as many words as parts gives one word to each part, else its words stay on the longest part and each other part gets a new word with no annotation.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string, required): The token: "s3.w2", or "s3.w2-3" for a multi-word token.
+- `parts` (array of string): The new tokens' texts in order, e.g. ["can", "not"]. Leave out to cut at spaces.
 
 ### split_sentence
 

@@ -399,7 +399,7 @@ def test_the_ud_registry_declares_what_every_table_is_read_off():
     assert plan.KIND['del_relation'].noun == ('removed dependency', 'removed dependencies')
     assert set(SCOPES) == {'confirm_scope', 'discard_scope', 'replace_scope'}
     assert set(RESHAPES_DOCUMENT) == {'split_sentence', 'merge_sentences'}
-    assert set(RESHAPES_TOKEN) == {'set_words'}
+    assert set(RESHAPES_TOKEN) == {'set_words', 'split_token'}
     # The tools' view of a scope is the plan's: one table, not two that drifted
     # (replace_scope had to be spelled out beside SCOPE_KINDS at every site).
     assert set(SCOPE_KINDS) == set(SCOPES)

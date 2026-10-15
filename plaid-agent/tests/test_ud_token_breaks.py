@@ -19,8 +19,15 @@ def test_set_words_over_a_token_with_whitespace_is_refused():
     w = _ws()
     out = call_tool(w, 'set_words', {'document': 'Viaje', 'ref': 's2.w1', 'forms': ['Co', 're']})
     assert out.startswith('Error: "Co\\nre" in s2 holds whitespace')
-    assert 'ONE multi-word token of 2 words, not 2 tokens' in out and 'Edit text' in out
+    assert 'ONE multi-word token of 2 words, not 2 tokens' in out and out.endswith('use split_token on s2.w1.')
     assert w.ops == []
+
+
+def test_split_token_cuts_it_at_the_line_break():
+    w = _ws()
+    out = call_tool(w, 'split_token', {'document': 'Viaje', 'ref': 's2.w1'})
+    assert out.startswith('Planned splitting s2.w1 "Co\\nre" into 2 tokens: "Co", "re".')
+    assert w.ops[0]['pieces'] == [[0, 2], [3, 5]]
 
 
 def test_a_read_prints_a_line_break_as_a_mark():
