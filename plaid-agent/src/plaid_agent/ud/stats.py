@@ -4,17 +4,18 @@ These go through the query engine (see :mod:`.corpus`) and load a document
 only to print the hits it actually has.
 """
 
+import re
 from collections import defaultdict
 from typing import Dict, List, Optional
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
-from .project import Sentence, UdDoc, Word, feats_order, kwic, word_ref
+from .project import FEATURES, Sentence, UdDoc, Word, feats_order, kwic, word_ref
 from ..core.corpus import spread
 from ..core.java_regex import matcher
 from ..core.tools import ToolError, truncate
 from .tools import FIELDS, Workspace
-from ..core.args import clamp_limit
-from ..core.limits import READ_LIMITS
+from ..core.args import clamp_limit, read_int
+from ..core.limits import NGRAM_MAX, READ_LIMITS
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
@@ -140,12 +141,12 @@ def _split_features(rows: List[tuple]) -> List[tuple]:
     return sorted(counts.items(), key=lambda kv: -kv[1])
 
 
-def _bundles(c: Corpus) -> List[tuple]:
+def _bundles(c: Corpus, cond: List[list] = ()) -> List[tuple]:
     """Whole FEATS strings over the corpus, by how many words carry each. A
     feature is a span of its own, so a word's bundle is the join of its spans,
     sorted as the export sorts them."""
     by_word: Dict[str, List[str]] = defaultdict(list)
-    for word, value, _n in c.group([c.word('?t'), c.field('features', '?s'), c.on('?s')],
+    for word, value, _n in c.group([c.word('?t'), c.field('features', '?s'), c.on('?s'), *cond],
                                    ['?t', '?s.value']):
         if value:
             by_word[word].append(value)
@@ -155,15 +156,134 @@ def _bundles(c: Corpus) -> List[tuple]:
     return sorted(counts.items(), key=lambda kv: -kv[1])
 
 
+#: The columns a ``where`` condition names by name. Any other key is a
+#: feature (Number, Case), matched as its Feature=Value span.
+WHERE_COLUMNS = ('form', 'lemma', 'upos', 'xpos', 'deprel')
+NGRAM_COLUMNS = ('form', 'lemma', 'upos', 'xpos', 'deprel')
+
+
+def where_clauses(c: Corpus, where, word: str = '?t') -> tuple:
+    """``(clauses, words)`` for one word's conditions, ``{column or feature:
+    value}``, each a whole value: the query clauses on ``word``, and the
+    conditions as a reply says them. ``({}, '')`` for none."""
+    if where is None or where == {}:
+        return [], ''
+    if not isinstance(where, dict) or not all(isinstance(k, str) and k.strip() and isinstance(v, str) and v.strip()
+                                              for k, v in where.items()):
+        raise ToolError('where is one word\'s conditions, column or feature to a whole value, e.g. '
+                        '{"upos": "NOUN", "Number": "Plur"}. Columns: ' + ', '.join(WHERE_COLUMNS)
+                        + '; any other key is a feature.')
+    out: List[list] = []
+    said: List[str] = []
+    for i, (key, value) in enumerate(where.items()):
+        key, value = key.strip(), value.strip()
+        col = key.lower()
+        v = f'?w{i}'
+        if col == 'form':
+            out.append(['or', [c.field('form', v, value=value), c.on(v, word)],
+                        [['token', word, {'value': value}], ['not', c.field('form', v + 'x'), c.on(v + 'x', word)]]])
+        elif col in ('lemma', 'upos', 'xpos'):
+            out += [c.field(col, v, value=value), c.on(v, word)]
+        elif col == 'deprel':
+            out += [c.field('lemma', v), c.on(v, word), c.dep(v + 'r', target=v, value=value)]
+        else:
+            if not re.match(r'^[A-Za-z][A-Za-z0-9\[\]:_]*$', key) or '=' in value or '|' in value:
+                raise ToolError(f'"{key}" is not a column or a feature. Columns: ' + ', '.join(WHERE_COLUMNS)
+                                + '; a feature is written {"Number": "Plur"}.')
+            out += [c.field(FEATURES, v, value=f'{key}={value}'), c.on(v, word)]
+            col = key
+        said.append(f'{col}={value}')
+    return out, ', '.join(said)
+
+
+def _column_rows(c: Corpus, column: str, cond: List[list]) -> List[tuple]:
+    """[(value, count)] of one column over the words ``cond`` holds (all
+    when it is empty), from grouped reads."""
+    if column == 'form':
+        if not cond:
+            return [(r[0], r[-1]) for r in c.form_values()]
+        surface = c.group([c.word('?t'), c.no_form_span('?t'), *cond], ['?t.value'])
+        spans = c.group([c.word('?t'), c.field('form', '?f'), c.on('?f'), *cond], ['?f.value'])
+        return [(r[0], r[-1]) for r in c._merged_groups(surface, spans)]
+    if column == 'deprel':
+        if not cond:
+            return [(r[0], r[-1]) for r in c.group([c.dep('?r')], ['?r.value'])]
+        return [(r[0], r[-1]) for r in c.group([c.word('?t'), c.field('lemma', '?l'), c.on('?l'),
+                                                c.dep('?r', target='?l'), *cond], ['?r.value'])]
+    if column == 'feature-bundles':
+        return _bundles(c, cond)
+    col = 'features' if column == 'features' else column
+    if not cond:
+        return [(r[0], r[-1]) for r in c.group([c.field(col, '?s')], ['?s.value'])]
+    return [(r[0], r[-1]) for r in c.group([c.word('?t'), c.field(col, '?s'), c.on('?s'), *cond], ['?s.value'])]
+
+
+def _ngram_rows(c: Corpus, column: str, n: int) -> List[tuple]:
+    """[(values joined by spaces, count)] for every run of ``n`` adjacent words
+    inside one sentence: their forms (case folded), or their values of
+    ``column``. A form is a Form span or the word's text, so every mix of the
+    two is its own grouped read, summed."""
+    import itertools
+    gv = [f'?g{i}' for i in range(n)]
+    base: List[list] = [['seq', {'layer': c.p.word_layer_id}, *[['token', {}, 'as', v] for v in gv]],
+                        ['token', '?gs', {'layer': c.p.sentence_layer_id}]]
+    base += [['within', v, '?gs'] for v in gv]
+    reads: List[tuple] = []
+    if column == 'form':
+        for spans in itertools.product((False, True), repeat=n):
+            where, keys = list(base), []
+            for i, (v, span) in enumerate(zip(gv, spans)):
+                if span:
+                    where += [c.field('form', f'?gf{i}'), c.on(f'?gf{i}', v)]
+                    keys.append(f'?gf{i}.value')
+                else:
+                    where.append(c.no_form_span(v))
+                    keys.append(f'{v}.value')
+            reads.append((where, keys))
+    else:
+        where, keys = list(base), []
+        for i, v in enumerate(gv):
+            if column == 'deprel':
+                where += [c.field('lemma', f'?gl{i}'), c.on(f'?gl{i}', v), c.dep(f'?gv{i}', target=f'?gl{i}')]
+            else:
+                where += [c.field(column, f'?gv{i}'), c.on(f'?gv{i}', v)]
+            keys.append(f'?gv{i}.value')
+        reads.append((where, keys))
+    counts: Dict[str, int] = defaultdict(int)
+    for where, keys in reads:
+        for row in c.group(where, keys):
+            values = row[:n]
+            if any(x in (None, '') for x in values):
+                continue
+            if column == 'form':
+                values = [x.casefold() for x in values]
+            counts[' '.join(values)] += int(row[-1] or 0)
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
 def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
-                     limit: int = None) -> str:
-    """The commonest values of one column."""
+                     limit: int = None, where: dict = None, ngram: int = None) -> str:
+    """The commonest values of one column, of the words meeting ``where``, or
+    of runs of ``ngram`` adjacent words (survey item 8: word-order questions).
+    Grouped reads, held to the document or documents named."""
     if what not in COUNTABLE:
         raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
     limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
+    n = read_int(ngram, 'ngram', 1, minimum=1) if ngram is not None else 1
+    if n > NGRAM_MAX:
+        raise ToolError(f'ngram is at most {NGRAM_MAX}. For longer patterns use grew_search.')
+    if n > 1 and what not in NGRAM_COLUMNS:
+        raise ToolError('ngram counts runs of words by one column: what is one of ' + ', '.join(NGRAM_COLUMNS) + '.')
+    if n > 1 and where:
+        raise ToolError('where and ngram do not combine. For runs of words with conditions use grew_search '
+                        '(X < Y is the next word).')
     column = 'features' if what == 'feature-bundles' else what
-    clipped = ''
-    if document:
+    c = ws.corpus
+    cond, said = where_clauses(c, where)
+    noun = f'{what} {"bigrams" if n == 2 else f"{n}-grams"}' if n > 1 else f'{what} values'
+    if document and n == 1 and not cond:
+        # One document's plain count, off the parsed document: the same
+        # values the grouped reads give (a Form span, else the word's text).
         doc = ws.doc(document)
         counts: Dict[str, int] = defaultdict(int)
         for s in doc.sentences:
@@ -172,32 +292,31 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
                 if v:
                     counts[v] += 1
         rows = sorted(counts.items(), key=lambda kv: -kv[1])
-        where = f' in "{doc.name}"'
+        clipped, place = '', f' in "{doc.name}"'
     else:
-        c = ws.corpus
-        if what == 'form':
-            rows = [(r[0], r[-1]) for r in c.form_values()]
-        elif what == 'deprel':
-            rows = [(r[0], r[-1]) for r in c.group([c.dep('?r')], ['?r.value'])]
-        elif what == 'feature-bundles':
-            rows = _bundles(c)
-        else:
-            rows = [(r[0], r[-1]) for r in c.group([c.field(column, '?s')], ['?s.value'])]
-        rows = [(v, n) for v, n in rows if v]
-        clipped = c.clipped_note(f'{what} values')
-        where = ' across the project'
+        with c.within(document) as held:
+            c.forget_clipping()
+            rows = _ngram_rows(c, what, n) if n > 1 else _column_rows(c, what, cond)
+            rows = [(v, k) for v, k in rows if v]
+            clipped = c.clipped_note(noun)
+            place = (f' in "{c.doc_name(held)}"' if held
+                     else '' if c.held_documents() else ' across the project')
+    of = f' of the words with {said}' if said else ''
     if what == 'features':
         rows = _split_features(rows)
     ws.note_read(min(len(rows), limit), 'row', of=len(rows))
     if not rows:
         # With the note: a clipped read that came back empty is the most
         # misleading of all, and this one says the column is unused.
-        return f'Nothing has a {column} yet{where}.' + clipped
-    total = sum(n for _, n in rows)
+        if said:
+            return f'No word with {said} has a {column}{place}.' + clipped
+        return f'Nothing has a {column} yet{place}.' + clipped
+    total = sum(k for _, k in rows)
     unit = 'feature(s)' if what == 'features' else 'in all'
-    out = [f'{what} by frequency{where}: {len(rows)} distinct value(s), {total} {unit}.' + clipped]
-    for v, n in rows[:limit]:
-        out.append(f'  {n:>7}  {v}')
+    head = (f'{noun} by frequency{place}' if n > 1 else f'{what} by frequency{of}{place}')
+    out = [f'{head}: {len(rows)} distinct value(s), {total} {unit}.' + clipped]
+    for v, k in rows[:limit]:
+        out.append(f'  {k:>7}  {v}')
     if len(rows) > limit:
         out.append(f'  … and {len(rows) - limit} more')
     return truncate('\n'.join(out))
@@ -206,16 +325,23 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
 CONSISTENCY = ('lemma-upos', 'form-lemma', 'form-upos', 'rare-pairs')
 
 
-def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str:
+def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25, document: str = None) -> str:
     """Places where the corpus disagrees with itself. Every one of these is a
-    question, not a verdict: a lemma really can take two parts of speech."""
+    question, not a verdict: a lemma really can take two parts of speech.
+    Over the project, or held to a document (or several, scope.py)."""
     kinds = [kind] if kind else list(CONSISTENCY)
     for k in kinds:
         if k not in CONSISTENCY:
             raise ToolError(f'Unknown check "{k}". One of: ' + ', '.join(CONSISTENCY))
     limit = clamp_limit(limit, 25, 100)
     c = ws.corpus
-    ws.note_read(len(ws.documents()), 'document')
+    with c.within(document) as held:
+        ws.note_read(len(c.held_documents() or ws.documents()), 'document')
+        out = _consistency(c, kinds, limit)
+    return (f'In "{c.doc_name(held)}":\n' if held else '') + out
+
+
+def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:
     out: List[str] = []
     # Every check here states a count as a fact, so a clipped read has to be
     # said out loud: the engine's row limit makes "the commonest" the top of an

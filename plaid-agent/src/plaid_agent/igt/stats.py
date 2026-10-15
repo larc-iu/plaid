@@ -14,7 +14,7 @@ from .lexview import entry_line
 from .workspace import Workspace
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
-from ..core.limits import READ_LIMITS
+from ..core.limits import NGRAM_MAX, READ_LIMITS
 
 
 def _pct(n, d):
@@ -153,8 +153,6 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
 # --- frequency_list -----------------------------------------------------------------
 
-#: The longest sequence frequency_list(ngram=...) counts.
-NGRAM_MAX = 3
 
 
 def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[str] = None,

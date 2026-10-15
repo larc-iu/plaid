@@ -285,6 +285,7 @@ Words whose column matches a pattern, each shown in its context with the hit in 
 - `regex` (boolean)
 - `limit` (integer): Max hits to return (default 30, max 200).
 - `case_sensitive` (boolean): Match case too (off: "the" finds "The"). The same switch replace_in_field takes.
+- `documents` (array of string)
 
 ### grew_search
 
@@ -292,6 +293,7 @@ Sentences matching a Grew pattern, the language of the Search tab: the structura
 
 - `pattern` (string, required): A Grew request: pattern { ... }, optionally with without { ... } and global { ... } blocks.
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `limit` (integer): Max sentences to show (default 30, max 200).
 
 ### frequency_list
@@ -300,7 +302,10 @@ The commonest values of one column, with counts. Across the project, or inside o
 
 - `what` (one of `form`, `lemma`, `upos`, `xpos`, `features`, `feature-bundles`, `deprel`, required)
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `limit` (integer): Rows (default 30, max 1000).
+- `where` (object of string): Only words with these whole values, e.g. {"upos": "NOUN", "Number": "Plur"}.
+- `ngram` (integer): 2 counts adjacent word pairs by the column (upos for word order), 3 triples.
 
 ### check_consistency
 
@@ -308,6 +313,8 @@ Places where the corpus disagrees with itself: one lemma under several UPOS, one
 
 - `kind` (one of `lemma-upos`, `form-lemma`, `form-upos`, `rare-pairs`)
 - `limit` (integer)
+- `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 
 ### worklist
 
@@ -316,6 +323,7 @@ What is unfinished. kind "unverified" is machine output nobody has confirmed, "c
 - `kind` (one of `unverified`, `contributed`, `missing`)
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`): One column; without it, all five including the tree (deprel).
 - `document` (string): Document id or exact name (see project_overview).
+- `documents` (array of string)
 - `limit` (integer): How many rows per column (default 20, max 500).
 
 ### recent_changes

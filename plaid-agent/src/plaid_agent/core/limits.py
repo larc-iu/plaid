@@ -164,3 +164,7 @@ PLAN_MAX_CHANGES = 20000
 # Documents one plan may reach. Approval locks each of them, one call each,
 # and holds every lock until the last write (Luke, 2026-10-08).
 PLAN_MAX_DOCUMENTS = 500
+
+# The longest run of adjacent words frequency_list(ngram=...) counts, in
+# every app: past a triple, a pattern search says more than a count.
+NGRAM_MAX = 3

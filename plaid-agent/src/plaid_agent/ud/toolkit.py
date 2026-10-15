@@ -20,6 +20,7 @@ from .query import t_query, t_query_help
 from .restore import t_restore_document
 from .sandbox import t_code_help, t_run_code
 from .sentences import t_merge_sentences, t_split_sentence
+from .scope import among_documents
 from .shape import t_set_words, t_split_token
 from ..core.history import add_comment as t_add_comment, comments as t_comments
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
@@ -42,6 +43,7 @@ _SHARED = toolkit.shared_schemas(ref='One sentence, e.g. "s3".')
 # --- the tool table -------------------------------------------------------------
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
+_DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (scope.py)
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Word references in the same document, e.g. ["s3.w2", "s3.w5"].'}
 _FIELD = {'type': 'string', 'enum': list(FIELDS),
@@ -231,7 +233,8 @@ TOOLS += [
          'document': _DOC, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'},
          'regex': {'type': 'boolean'}, 'limit': limit_arg('search', 'Max hits to return'),
          'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off: "the" finds "The"). '
-                                                              'The same switch replace_in_field takes.'}},
+                                                              'The same switch replace_in_field takes.'},
+         'documents': _DOCS},
         ['field', 'pattern']),
     _fn('grew_search',
         'Sentences matching a Grew pattern, the language of the Search tab: the structural '
@@ -248,19 +251,24 @@ TOOLS += [
         {'pattern': {'type': 'string', 'description': 'A Grew request: pattern { ... }, '
                                                       'optionally with without { ... } and '
                                                       'global { ... } blocks.'},
-         'document': _DOC, 'limit': limit_arg('search', 'Max sentences to show')},
+         'document': _DOC, 'documents': _DOCS, 'limit': limit_arg('search', 'Max sentences to show')},
         ['pattern']),
     _fn('frequency_list',
         'The commonest values of one column, with counts. Across the project, or inside one document. '
         '"features" counts each Feature=Value on its own; "feature-bundles" counts whole FEATS strings '
         'as stored.',
-        {'what': {'type': 'string', 'enum': list(COUNTABLE)}, 'document': _DOC,
-         'limit': limit_arg('frequency_list', 'Rows')}, ['what']),
+        {'what': {'type': 'string', 'enum': list(COUNTABLE)}, 'document': _DOC, 'documents': _DOCS,
+         'limit': limit_arg('frequency_list', 'Rows'),
+         'where': {'type': 'object', 'additionalProperties': {'type': 'string'},
+                   'description': 'Only words with these whole values, e.g. {"upos": "NOUN", "Number": "Plur"}.'},
+         'ngram': {'type': 'integer', 'description': '2 counts adjacent word pairs by the column (upos for word '
+                                                     'order), 3 triples.'}}, ['what']),
     _fn('check_consistency',
         'Places where the corpus disagrees with itself: one lemma under several UPOS, one form under '
         'several lemmas or several UPOS, deprel and UPOS pairs seen once or twice. Every hit is a question, not a '
         'verdict: read the sentences before planning anything.',
-        {'kind': {'type': 'string', 'enum': list(CONSISTENCY)}, 'limit': {'type': 'integer'}}, []),
+        {'kind': {'type': 'string', 'enum': list(CONSISTENCY)}, 'limit': {'type': 'integer'},
+         'document': _DOC, 'documents': _DOCS}, []),
     _fn('worklist',
         'What is unfinished. kind "unverified" is machine output nobody has confirmed, '
         '"contributed" a contributor\'s unreviewed work, "missing" words with no value in a '
@@ -271,7 +279,7 @@ TOOLS += [
         {'kind': {'type': 'string', 'enum': list(WORKLIST_KINDS)},
          'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel'],
                    'description': 'One column; without it, all five including the tree (deprel).'},
-         'document': _DOC,
+         'document': _DOC, 'documents': _DOCS,
          'limit': limit_arg('worklist', 'How many rows per column')}, []),
     _SHARED['recent_changes'],
     _SHARED['comments'],
@@ -319,6 +327,10 @@ _IMPL['query_help'] = t_query_help
 _IMPL['merge_sentences'] = t_merge_sentences
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
+
+# Every read that takes a document takes several in its place (scope.py).
+SCOPED_READS = ('search', 'grew_search', 'frequency_list', 'check_consistency', 'worklist')
+_IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='this treebank: how this project annotates, and what it has decided about hard cases',
     web='this corpus', code='the treebank')

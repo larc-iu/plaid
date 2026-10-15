@@ -14,6 +14,16 @@ from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 
+def in_docs(a: Dict[str, Any]) -> str:
+    """For a read: ' in "<document>"', ' in 3 documents' when it is held to
+    several (scope.py), or nothing when it was project-wide."""
+    docs = a.get('documents')
+    if docs and not a.get('document'):
+        docs = [docs] if isinstance(docs, str) else list(docs)
+        return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
+    return in_doc(a)
+
+
 def across(a: Dict[str, Any]) -> str:
     """The documents a review covers when several are named at once."""
     docs = a.get('documents')
@@ -52,17 +62,23 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
         return f'Planned joining {q(a.get("ref"))} onto the sentence before it{in_doc(a)}'
     if name == 'search':
         where = a.get('field') or 'the corpus'
-        return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
+        return f'Searched {where} for {q(a.get("pattern"))}{in_docs(a)}'
     if name == 'grew_search':
-        return f'Searched with Grew for {q(" ".join(str(a.get("pattern") or "").split()))}{in_doc(a)}'
+        return f'Searched with Grew for {q(" ".join(str(a.get("pattern") or "").split()))}{in_docs(a)}'
     if name == 'frequency_list':
-        return f'Ranked {a.get("what") or "lemma"}s by frequency{in_doc(a)}'
+        n = a.get('ngram') if isinstance(a.get('ngram'), int) and a.get('ngram') > 1 else None
+        unit = (f'{a.get("what") or "lemma"} {"bigrams" if n == 2 else f"{n}-grams"}' if n
+                else f'{a.get("what") or "lemma"}s')
+        where = a.get('where')
+        held = (' of words with ' + ', '.join(f'{k}={v}' for k, v in where.items())
+                if isinstance(where, dict) and where else '')
+        return f'Ranked {unit} by frequency{held}{in_docs(a)}'
     if name == 'check_consistency':
         what = f' ({a["kind"]})' if a.get('kind') else ''
-        return f'Checked the corpus against itself{what}'
+        return f'Checked the corpus against itself{what}{in_docs(a)}'
     if name == 'worklist':
         field = f'{a["field"]} ' if a.get('field') else ''
-        return f'Listed {a.get("kind") or "unverified"} {field}work{in_doc(a)}'
+        return f'Listed {a.get("kind") or "unverified"} {field}work{in_docs(a)}'
 
     # --- plans ---------------------------------------------------------------
     if name == 'set_field':
