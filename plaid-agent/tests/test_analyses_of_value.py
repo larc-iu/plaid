@@ -51,3 +51,19 @@ def test_without_value_nothing_is_listed_and_the_trace_says_the_value():
     line = describe_step('analyses_of', {'form': 'thuh', 'value': 'n'})
     text = line['text'] if isinstance(line, dict) else str(line)
     assert text == 'Tallied the analyses of “thuh” and listed those holding “n”'
+
+
+def test_the_value_named_is_the_one_asked_whatever_the_word_tally_read_last():
+    # The word block tallies every morpheme value of Ali-di, ERG last (H16-IGT-TOOLS-2).
+    out = for_model(call_tool(_ws(), 'analyses_of', {'form': 'Ali-di'}))
+    assert 'With the value' not in out, out
+    out = for_model(call_tool(_ws(), 'analyses_of', {'form': 'Ali-di', 'value': 'erg'}))
+    assert 'With the value "erg": none.' in out and '"ERG": none' not in out, out
+    out = for_model(call_tool(_ws(), 'analyses_of', {'form': 'Ali-di', 'value': 'Ali'}))
+    assert 'With the value "Ali": 1 word:\n    s1.w1' in out, out
+
+
+def test_an_empty_value_tallied_last_does_not_drop_the_value_lines():
+    w = _ws([{'id': 'sp-e1', 'value': '', 'tokens': ['m-2']}])
+    out = for_model(call_tool(w, 'analyses_of', {'form': 'gam', 'value': 'fish'}))
+    assert out.count('With the value "fish": none.') == 2, out

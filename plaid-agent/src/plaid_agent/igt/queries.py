@@ -812,9 +812,9 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
                 lines.append(line)
         if c.M:
             slots: Dict[int, Counter] = defaultdict(Counter)
-            for prec, mform, value, mtype, k in c.group(word + c.in_word('?m', '?w'),
-                                                       ['?m.precedence', '?m.metadata.form', '?m.value', '?m.metadata.morphType']):
-                key = Corpus.morph_key(mform, value) + (f' ({mtype})' if mtype else '')
+            for prec, mform, mvalue, mtype, k in c.group(word + c.in_word('?m', '?w'),
+                                                        ['?m.precedence', '?m.metadata.form', '?m.value', '?m.metadata.morphType']):
+                key = Corpus.morph_key(mform, mvalue) + (f' ({mtype})' if mtype else '')
                 slots[prec or 0][key] += k
             if slots:
                 lines.append('  Segmentation by slot: ' + '; '.join(
@@ -822,11 +822,11 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
                     for prec, cnt in sorted(slots.items())))
             # One query for every morpheme field, by slot.
             fslots: Dict[str, Dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
-            for layer, prec, value, k in c.group(word + c.in_word('?m', '?w') + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']],
-                                                 ['?sl', '?m.precedence', '?s.value']):
+            for layer, prec, svalue, k in c.group(word + c.in_word('?m', '?w') + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']],
+                                                  ['?sl', '?m.precedence', '?s.value']):
                 f = p.field_by_layer(layer)
-                if f and value not in (None, ''):
-                    fslots[f.name][prec or 0][value] += k
+                if f and svalue not in (None, ''):
+                    fslots[f.name][prec or 0][svalue] += k
             for f in p.fields_by_scope('Morpheme'):
                 if fslots.get(f.name):
                     lines.append(f'  {f.name} by slot: ' + '; '.join(
