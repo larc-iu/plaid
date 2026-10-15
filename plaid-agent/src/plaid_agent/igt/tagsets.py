@@ -302,6 +302,14 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
                 lines.append(f'  Off the closed list, kept as core lets them stay: {_stored_n(len(kept))}: '
                              + _listing(kept, lambda r: f'{qv(r[0])} ({r[1]})'))
             continue
+        # Said before any staging: a close that adds every part in use would
+        # list the word glosses as tags (the edit refuses that in one call).
+        every = _unlisted(attested, {**t, 'mode': CLOSED})
+        words_n = sum(1 for r in every if r[2])
+        if every and words_n * 2 > len(every):
+            lines.append(f'  {words_n} of the {len(every)} unlisted parts of {f["name"]} are word glosses. Closing the '
+                         'list with add_used would list them as tags: ask the user whether they mean mixed (tags '
+                         'enforced, word glosses free) before planning a close.')
         off, machine = _off_list(ws, f, attested, t)
         if off:
             unknown = True
@@ -483,6 +491,14 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
         clip = ws.corpus.clipped_note()
         notes.append(f'{len(added) - before} values in use added from {", ".join(f["name"] for f in sources)}'
                      + (f', {skipped} lexical glosses left out' if skipped else '') + '.' + (f' {clip}' if clip else ''))
+        n_added = len(added) - before
+        if words and t['mode'] == CLOSED and 'mode' in changes and words * 2 > n_added:
+            # Closed with every part in use at once, most of them word glosses:
+            # the user is asked first (bench igt-tagset-close-hard).
+            raise ToolError(f'Nothing planned: {words} of the {n_added} values add_used would add are word glosses, '
+                            'which a closed list would hold as tags. First ask the user whether they mean mixed (tags '
+                            'enforced, word glosses free). Then call again, listing in add the values they want '
+                            'listed.')
         if words:
             notes.append(f'{words} of them are ordinary word glosses, which make a tag list a word list: say so '
                          'to the user, and ask before planning it unless they asked for exactly that.')
