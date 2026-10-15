@@ -37,7 +37,7 @@ def test_corpus_stats_totals_and_tables():
 
 def test_frequency_list():
     out = call_tool(ws(), 'frequency_list', {'what': 'morpheme'})
-    assert out.startswith('4 morpheme forms, 5 tokens. count\tdocuments\tform')
+    assert out.startswith('4 morpheme forms, case folded, 5 tokens. count\tdocuments\tform')
     assert '  1\t1\tali' in out
     out = call_tool(ws(), 'frequency_list', {'what': 'Morph Gloss', 'limit': 1})
     assert '2 Morph Gloss values, 2 tokens, 3 empty (showing 1)' in out

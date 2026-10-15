@@ -273,13 +273,13 @@
    }
   ]
  },
- "proj frequency_list {\"limit\": 2}": "4 wordforms, 4 tokens (showing 2). count\tdocuments\tform\n  1\t1\takuna\n  1\t1\tali-di",
- "proj frequency_list {\"min_count\": 2}": "0 wordforms, 0 tokens. count\tdocuments\tform",
+ "proj frequency_list {\"limit\": 2}": "4 wordforms, case folded, 4 tokens (showing 2). count\tdocuments\tform\n  1\t1\takuna\n  1\t1\tali-di",
+ "proj frequency_list {\"min_count\": 2}": "0 wordforms, case folded, 0 tokens. count\tdocuments\tform",
  "proj frequency_list {\"what\": \"Gloss\"}": "1 Gloss values, 1 tokens, 3 empty. count\tdocuments\tform\n  1\t1\tAli",
  "proj frequency_list {\"what\": \"Morph Gloss\"}": "2 Morph Gloss values, 2 tokens, 3 empty. count\tdocuments\tform\n  1\t1\tAli\n  1\t1\tERG",
  "proj frequency_list {\"what\": \"Translation\"}": "1 Translation values, 1 tokens, 1 empty. count\tdocuments\tform\n  1\t1\tAli saw a fish.",
- "proj frequency_list {\"what\": \"morpheme\"}": "4 morpheme forms, 5 tokens. count\tdocuments\tform\n  2\t1\tgam\n  1\t1\tali\n  1\t1\tar\n  1\t1\tdi",
- "proj frequency_list {}": "4 wordforms, 4 tokens. count\tdocuments\tform\n  1\t1\takuna\n  1\t1\tali-di\n  1\t1\tgam\n  1\t1\tgam-ar",
+ "proj frequency_list {\"what\": \"morpheme\"}": "4 morpheme forms, case folded, 5 tokens. count\tdocuments\tform\n  2\t1\tgam\n  1\t1\tali\n  1\t1\tar\n  1\t1\tdi",
+ "proj frequency_list {}": "4 wordforms, case folded, 4 tokens. count\tdocuments\tform\n  1\t1\takuna\n  1\t1\tali-di\n  1\t1\tgam\n  1\t1\tgam-ar",
  "proj lexicon_entry {\"entry_form\": \"-di\"}": "Headword \"-di\" (id vi-erg, entry_form \"-di\")\n  gloss: ERG\n  morphType: suffix\nLinked from 0 words and 1 morpheme.\nExamples:\n  \"Text 1\" s1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
  "proj lexicon_entry {\"entry_form\": \"Ali\"}": "Headword \"Ali\" (id vi-ali, entry_form \"Ali\")\n  gloss: Ali\n  pos: N\nLinked from 1 word and 0 morphemes.\nExamples:\n  \"Text 1\" s1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
  "proj lexicon_entry {\"entry_form\": \"gam\", \"entry_gloss\": \"fish\"}": "Headword \"gam\" (1 of 2 spelled that way) (id vi-gam, entry_form \"gam#1\")\n  gloss: fish\nLinked from 0 words and 0 morphemes.",

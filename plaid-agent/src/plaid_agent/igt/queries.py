@@ -326,9 +326,11 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
 
 def q_ngrams(ws: Workspace, field, n: int):
     """(items [(key, n)], spread {key: documents}) for every sequence of ``n``
-    adjacent words inside one sentence: their forms (case folded, never across
-    punctuation), or the values of the word field ``field`` they hold, joined
-    by spaces. One grouped read."""
+    adjacent words inside one sentence: their forms (case folded), or the
+    values of the word field ``field`` they hold, joined by spaces. Never
+    across punctuation: a punctuation token, or punctuation in the text
+    between two words, which is where a FLEx import or text typed in the app
+    keeps it (H16-IGT-TOOLS-4). One grouped read, and one of the texts."""
     c = ws.corpus
     c.forget_clipping()
     gv = [f'?g{i}' for i in range(n)]
@@ -340,9 +342,13 @@ def q_ngrams(ws: Workspace, field, n: int):
         keys = [f'?gv{i}.value' for i in range(n)]
     else:
         keys = [f'{v}.value' for v in gv]
+    # The text between each pair of neighbours, by its offsets.
+    gaps = [k for i in range(n - 1) for k in (f'{gv[i]}.end', f'{gv[i + 1]}.begin')]
+    rows = c.group(where, keys + [f'{gv[0]}.doc'] + gaps)
+    texts = _texts(c, {row[n] for row in rows if row[n]})
     counts: Counter = Counter()
     spread: Dict[str, set] = defaultdict(set)
-    for row in c.group(where, keys + [f'{gv[0]}.doc']):
+    for row in rows:
         values, doc, k = row[:n], row[n], row[-1]
         if any(v in (None, '') for v in values):
             continue
@@ -350,11 +356,37 @@ def q_ngrams(ws: Workspace, field, n: int):
             if any(c.ignored(v) for v in values):
                 continue
             values = [v.casefold() for v in values]
+        offsets = row[n + 1:n + 1 + len(gaps)]
+        if any(_punctuated(c, texts.get(doc), offsets[j], offsets[j + 1]) for j in range(0, len(gaps), 2)):
+            continue
         key = ' '.join(values)
         counts[key] += k
         spread[key].add(doc)
     items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     return items, spread
+
+
+def _texts(c, docs) -> Dict[str, str]:
+    """{document id: the text body its words are cut from}."""
+    out: Dict[str, str] = {}
+    docs = sorted(docs)
+    for chunk in _chunks(docs):
+        for doc, body, _n in c.group([['text', '?x', {'doc': chunk}]], ['?x.doc', '?x.body']):
+            if isinstance(body, str):
+                # A document has one baseline text, which the words are cut from.
+                out.setdefault(doc, body)
+    return out
+
+
+def _punctuated(c, body: Optional[str], begin, end) -> bool:
+    """Whether the text from ``begin`` to ``end`` holds punctuation: a
+    character the project's ignored-token rule calls punctuation, or any P or
+    S character where the project has no such rule."""
+    from plaid_client.workflows.igt.ignored import is_letter_like, is_punct_char
+    if not isinstance(body, str) or not isinstance(begin, int) or not isinstance(end, int) or end <= begin:
+        return False
+    cfg = c.p.ignored_cfg
+    return any(is_punct_char(ch) and not is_letter_like(ch, cfg) for ch in body[begin:end])
 
 
 # --- worklist ---------------------------------------------------------------------

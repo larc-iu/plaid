@@ -235,8 +235,11 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
         items = [(k, c) for k, c in items if c >= min_count]
     noun = _freq_noun(field, what_l) if n == 1 else \
         f'{field.name if field else "word"} {"bigrams" if n == 2 else f"{n}-grams"}'
+    # Forms are counted case folded, a field's values as stored, and the
+    # header says which. A sequence's count is of its occurrences.
     return _frequency_lines(ws, items, spread, empty, field, what_l, limit,
-                            ws.corpus.clipped_note(noun), noun=noun, held=condition_words_of(cond))
+                            ws.corpus.clipped_note(noun), noun=noun, held=condition_words_of(cond),
+                            folded=field is None, unit='tokens' if n == 1 else 'occurrences')
 
 
 def condition_words_of(cond) -> str:
@@ -259,10 +262,10 @@ def _freq_noun(field, what_l: str) -> str:
 
 
 def _frequency_lines(ws, items, spread, empty, field, what_l, limit, clipped: str = '', noun: Optional[str] = None,
-                     held: str = '') -> str:
+                     held: str = '', folded: bool = False, unit: str = 'tokens') -> str:
     noun = noun or _freq_noun(field, what_l)
     ws.note_read(min(len(items), limit), 'row', of=len(items))
-    lines = [f'{len(items)} {noun}{held}, {sum(n for _, n in items)} tokens'
+    lines = [f'{len(items)} {noun}' + (', case folded' if folded else '') + f'{held}, {sum(n for _, n in items)} {unit}'
              + (f', {empty} empty' if field and empty is not None else '')
              + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform' + clipped]
     for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:

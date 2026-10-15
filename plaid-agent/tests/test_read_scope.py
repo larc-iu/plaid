@@ -90,7 +90,7 @@ def test_document_and_documents_together_or_a_bad_name_are_refused():
 def test_where_holds_a_frequency_list_to_the_words_meeting_it():
     w = _ws()
     out = call_tool(w, 'frequency_list', {'where': {'Morph Gloss': 'ERG'}, 'document': 'Text 1'})
-    assert out.startswith('1 wordforms, where Morph Gloss is "ERG", 1 tokens'), out
+    assert out.startswith('1 wordforms, case folded, where Morph Gloss is "ERG", 1 tokens'), out
     assert _row(out, 'ali-di') == (1, 1)
     out = call_tool(w, 'frequency_list', {'what': 'Morph Gloss', 'where': {'form': 'Ali-di'}})
     assert _row(out, 'ERG') == (3, 3) and _row(out, 'Ali') == (3, 3)
@@ -102,7 +102,7 @@ def test_ngram_counts_adjacent_words_inside_a_sentence():
     w = _ws()
     out = call_tool(w, 'frequency_list', {'ngram': 2})
     # Ali-di gam akuna . | Gam-ar . : no pair across punctuation or sentences.
-    assert out.startswith('2 word bigrams, 6 tokens'), out
+    assert out.startswith('2 word bigrams, case folded, 6 occurrences'), out
     assert _row(out, 'ali-di gam') == (3, 3) and _row(out, 'gam akuna') == (3, 3)
     out = call_tool(w, 'frequency_list', {'ngram': 3, 'document': 'Text 1'})
     assert _row(out, 'ali-di gam akuna') == (1, 1)
@@ -134,3 +134,20 @@ def test_the_wrapped_reads_keep_their_own_arguments():
     for name in SCOPED_READS:
         params = inspect.signature(_IMPL[name]).parameters
         assert 'document' in params and 'documents' in params, name
+
+
+def test_ngrams_never_pair_across_punctuation_in_the_text_between_words():
+    """H16-IGT-TOOLS-4: a FLEx import and text typed in the app keep
+    punctuation between the word tokens, not in a token of its own."""
+    w = _ws()
+    for did in ('d1', 'd2'):
+        text = w.client._documents[did]['text_layers'][0]['text']
+        # "Ali-di,gam akuna." in two documents: the comma is no token.
+        text['body'] = text['body'][:6] + ',' + text['body'][7:]
+    out = call_tool(w, 'frequency_list', {'ngram': 2})
+    assert _row(out, 'ali-di gam') == (1, 1) and _row(out, 'gam akuna') == (3, 3), out
+    out = call_tool(w, 'frequency_list', {'ngram': 3})
+    assert _row(out, 'ali-di gam akuna') == (1, 1), out
+    # The project calls a character a letter: it joins words as a letter does.
+    w.project.ignored_cfg = {'type': 'unicodePunctuation', 'whitelist': [',']}
+    assert _row(call_tool(w, 'frequency_list', {'ngram': 2}), 'ali-di gam') == (3, 3)
