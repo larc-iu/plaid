@@ -134,7 +134,7 @@ def test_the_commonest_forms_can_be_asked_for_project_wide(ws):
 
     ws.client.query = engine
     out = call_tool(ws, 'frequency_list', {'what': 'form'})
-    assert out.startswith('form by frequency across the project: 3 distinct value(s), 9 in all.')
+    assert out.startswith('form, case sensitive, by frequency across the project: 3 distinct value(s), 9 in all.')
     assert out.split('\n')[1:] == ['        5  the', '        3  a', '        1  el']
     assert len(asked) == 2 and asked[0]['where'][1][0] == 'not'  # tokens WITHOUT a Form span
 

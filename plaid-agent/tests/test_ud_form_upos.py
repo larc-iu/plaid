@@ -75,3 +75,10 @@ def test_every_check_runs_when_none_is_named(ws):
     assert 'form-upos' in CONSISTENCY
     out = t_check_consistency(ws)
     assert 'Forms with more than one UPOS: 2' in out and 'Forms with more than one lemma' in out
+
+
+def test_no_disagreement_is_one_line_with_no_hint(ws):
+    """H16-UD-TOOLS-5: the grew_search hint is for forms found, so a check
+    that found none says so in one line."""
+    assert t_check_consistency(ws, kind='form-upos', document='Uno') == \
+        'In "Uno":\nNo form has more than one UPOS.'

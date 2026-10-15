@@ -313,7 +313,14 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
         return f'Nothing has a {column} yet{place}.' + clipped
     total = sum(k for _, k in rows)
     unit = 'feature(s)' if what == 'features' else 'in all'
-    head = (f'{noun} by frequency{place}' if n > 1 else f'{what} by frequency{of}{place}')
+    # A form is counted as written, a run of forms case folded ("de la" counts
+    # "De la"), and the header says which, so two counts are never compared
+    # as if they were one kind.
+    if what == 'form':
+        head = (f'{noun}, case folded, by frequency{place}' if n > 1
+                else f'{what}, case sensitive, by frequency{of}{place}')
+    else:
+        head = (f'{noun} by frequency{place}' if n > 1 else f'{what} by frequency{of}{place}')
     out = [f'{head}: {len(rows)} distinct value(s), {total} {unit}.' + clipped]
     for v, k in rows[:limit]:
         out.append(f'  {k:>7}  {v}')
@@ -390,9 +397,12 @@ def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:
         multi.sort(key=lambda kv: (-kv[1][0][1] / sum(n for _, n in kv[1]), -sum(n for _, n in kv[1]), kv[0]))
         if out:
             out.append('')
-        out.append(f'Forms with more than one UPOS: {len(multi)}, the most one-sided first.')
-        out.append('  The rarer tags of a one-sided form are where to look: grew_search with '
-                   '[form="...", upos=...] lists those words.')
+        if not multi:
+            out.append('No form has more than one UPOS.')
+        else:
+            out.append(f'Forms with more than one UPOS: {len(multi)}, the most one-sided first.')
+            out.append('  The rarer tags of a one-sided form are where to look: grew_search with '
+                       '[form="...", upos=...] lists those words.')
         for form, vs in multi[:limit]:
             total = sum(n for _, n in vs)
             out.append(f'  {form!r}: {vs[0][0]} x{vs[0][1]} ({round(100 * vs[0][1] / total)}%), '
