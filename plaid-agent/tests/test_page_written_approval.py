@@ -79,7 +79,8 @@ def test_the_preflight_is_ready_for_an_undecided_plan_and_only_marks_it(proj):
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True))
     item, meta = _item(store)
-    assert item['status'] is None and item['plan']['page_writing'] is True, 'marked: the page writes next'
+    assert item['status'] is None and item['plan']['page_writing'] == {'as_human': False, 'reviewed': False}, \
+        'marked: the page writes next'
     assert meta.get('pending') is None
     assert 'NOM' not in str(proj.client.projects.get(proj.project_id)['config'])
 
@@ -246,3 +247,51 @@ def test_an_approval_clears_the_mark(proj):
     write_settings(proj.client, ws.project, ws.ops)
     assert _applied(_ask(proj, plan, request_id='r10', wrote_first=True))
     assert 'page_writing' not in _item(store)[0]['plan']
+
+
+# --- the mark after a failed write, and what it remembers (R3-1, R3-2) ----------------------
+
+def test_a_failed_write_takes_the_mark_off_so_a_later_hand_write_leaves_it_discardable(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    # The page's write threw: it says so.
+    assert _ask(proj, plan, op='unmark', request_id='r10').done[0]['kind'] == 'done'
+    assert 'page_writing' not in _item(store)[0]['plan']
+    write_settings(proj.client, ws.project, ws.ops)  # later, by hand
+    assert _ask(proj, plan, op='discard', request_id='r11').done[0]['kind'] == 'done'
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_an_unmark_after_the_settings_read_as_planned_keeps_the_mark(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    write_settings(proj.client, ws.project, ws.ops)  # the write landed, its answer did not
+    assert _ask(proj, plan, op='unmark', request_id='r10').done[0]['kind'] == 'done'
+    assert _item(store)[0]['plan']['page_writing']
+    h = _ask(proj, plan, op='discard', request_id='r11')
+    assert h.done[0]['why'] == 'decided' and _item(store)[0]['status'] == 'applied'
+
+
+def test_a_discard_records_the_lost_approvals_box(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True, as_human=True))
+    write_settings(proj.client, ws.project, ws.ops)
+    _ask(proj, plan, op='discard', request_id='r10')
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and item['as_human'] is True and not item.get('contributed'), item
+
+
+def test_a_discard_records_a_reviewed_approver_as_the_preflight_read_them(proj):
+    from plaid_client.provenance import REVIEW_KEY
+    proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [_Session.user], 'roles': []})
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True, as_human=True))
+    proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [], 'roles': []})
+    write_settings(proj.client, ws.project, ws.ops)
+    _ask(proj, plan, op='discard', request_id='r10')
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and item.get('contributed') is True and item['as_human'] is False, item

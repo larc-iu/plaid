@@ -726,7 +726,10 @@ class BaseAssistantService(BaseService):
                 # as a run that wrote settles applied over a discard.
                 counts = self._page_wrote(ctx, item)
                 if counts:
-                    written = self._settle_written(ctx, item, plan_id)
+                    facts = item['plan'][PAGE_WRITING]
+                    facts = facts if isinstance(facts, dict) else {}
+                    written = self._settle_written(ctx, item, plan_id, as_human=bool(facts.get('as_human')),
+                                                   reviewed=bool(facts.get('reviewed')))
                     self._refuse(ctx, 'decided', ALREADY_WRITTEN,
                                  meta=written if written is not None else meta)
                     return
@@ -985,20 +988,55 @@ class BaseAssistantService(BaseService):
         if refusal:
             ctx.helper.error(refusal)
             return
-        if item.get('status') is None and not (item.get('plan') or {}).get(PAGE_WRITING):
+        if item.get('status') is None:
             # The page writes next: a discard of the plan from now on asks
-            # whether it did (`_op_discard`).
-            def mark(stored):
-                index, it = find_plan(stored, plan_id)
-                if it is None or it.get('status') is not None:
-                    return None
-                display = list(stored['display'])
-                display[index] = {**it, 'plan': {**it['plan'], PAGE_WRITING: True}}
-                return {'messages': stored['messages'], 'display': display}
-            if not self._write(ctx.store, ctx.conv_id, mark, None):
+            # whether it did (`_op_discard`), and records it as this approval
+            # would have: the box as ticked, the approver's review as read now.
+            facts = {'as_human': bool(ctx.data.get('as_human')),
+                     'reviewed': self._reviewed_now(ctx)}
+            if not self._set_mark(ctx, plan_id, facts):
                 self._refuse(ctx, 'gone')
                 return
         ctx.helper.complete({'kind': 'ready'})
+
+    def _set_mark(self, ctx, plan_id, facts) -> bool:
+        """Write ``facts`` as the plan's :data:`PAGE_WRITING` mark (None
+        takes it off), on an undecided plan. False when the conversation is
+        gone."""
+        def mark(stored):
+            index, it = find_plan(stored, plan_id)
+            if it is None or it.get('status') is not None:
+                return None
+            plan = {k: v for k, v in it['plan'].items() if k != PAGE_WRITING}
+            if facts is not None:
+                plan[PAGE_WRITING] = facts
+            display = list(stored['display'])
+            display[index] = {**it, 'plan': plan}
+            return {'messages': stored['messages'], 'display': display}
+        return bool(self._write(ctx.store, ctx.conv_id, mark, None))
+
+    def _op_unmark(self, ctx) -> None:
+        """The page's write after a ready preflight failed: the mark comes
+        off, unless the settings read as planned after all (then a discard
+        still records the plan applied). Answers done either way."""
+        plan_id = ctx.data.get('plan_id')
+        with ctx.lock:
+            conv, meta = self._prepare(ctx)
+            if conv is None:
+                self._refuse(ctx, 'gone')
+                return
+            _, item = find_plan(conv, plan_id) if plan_id else (-1, None)
+            if (item is not None and item.get('status') is None and (item.get('plan') or {}).get(PAGE_WRITING)
+                    and not self._page_wrote(ctx, item)):
+                self._set_mark(ctx, plan_id, None)
+            self._done(ctx, ctx.store.meta(ctx.conv_id) or meta)
+
+    def _reviewed_now(self, ctx) -> bool:
+        try:
+            return bool(self._reviewed(ctx.client, ctx.store.project_id, ctx.store.user_id))
+        except Exception:  # noqa: BLE001 - unreadable: recorded by the box, as an unreviewed approver's
+            traceback.print_exc()
+            return False
 
     def _page_wrote(self, ctx, item) -> Optional[Dict[str, int]]:
         """:meth:`page_wrote` of a plan item, None on any failure to tell."""
@@ -1040,25 +1078,25 @@ class BaseAssistantService(BaseService):
                              'message': f'Applied {self.summarize(ops)}.'})
         return True
 
-    def _settle_written(self, ctx, item, plan_id) -> Optional[Dict[str, Any]]:
+    def _settle_written(self, ctx, item, plan_id, as_human: Optional[bool] = None,
+                        reviewed: Optional[bool] = None) -> Optional[Dict[str, Any]]:
         """Settle a plan its page wrote as applied, recorded as the
-        approval's own path records it. The sidebar entry as written, or None
-        when the conversation is gone."""
+        approval's own path records it: by this approval's box and the
+        approver's review now, or by ``as_human`` and ``reviewed`` as the
+        preflight of an approval that never came stored them. The sidebar
+        entry as written, or None when the conversation is gone."""
         plan = item['plan']
         ops = plan.get('ops') or []
         summary = plan.get('summary') or self.summarize(ops)
         note = f'(note) The plan was approved and applied: {summary}.'
         # Recorded as the approval's own path records it: a reviewed
         # approver's approval is a contribution, whatever the box said.
-        try:
-            contributor = ctx.store.user_id if self._reviewed(ctx.client, ctx.store.project_id,
-                                                              ctx.store.user_id) else None
-        except Exception:  # noqa: BLE001 - unreadable: recorded by the box, as an unreviewed approver's
-            traceback.print_exc()
-            contributor = None
+        if reviewed is None:
+            reviewed = self._reviewed_now(ctx)
+        if as_human is None:
+            as_human = bool(ctx.data.get('as_human'))
         earlier = stamp_of(plan.get(WRITING))
-        stamp_mode = earlier[0] if earlier else ('contributed' if contributor else 'human'
-                                                 if ctx.data.get('as_human') else 'verified')
+        stamp_mode = earlier[0] if earlier else ('contributed' if reviewed else 'human' if as_human else 'verified')
         outcome = {'as_human': stamp_mode == 'human', **({'contributed': True} if stamp_mode == 'contributed' else {})}
         self._remember_applied(plan_id, 'applied', note, outcome)
         change = plan_settling(plan_id, 'applied', note, documents=plan.get('documents'),
