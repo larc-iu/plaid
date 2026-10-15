@@ -66,8 +66,8 @@ def test_forms_under_several_upos_are_listed_one_sided_first(ws):
         'Forms with more than one UPOS: 2, the most one-sided first.',
         '  The rarer tags of a one-sided form are where to look: grew_search with [form="...", upos=...] '
         'lists those words.',
-        "  '.': PUNCT x3 (75%), SYM x1",
-        "  'el': DET x3 (75%), PRON x1",
+        '  ".": PUNCT x3 (75%), SYM x1',
+        '  "el": DET x3 (75%), PRON x1',
     ]
 
 

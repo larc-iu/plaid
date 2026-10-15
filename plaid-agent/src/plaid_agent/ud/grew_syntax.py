@@ -102,6 +102,14 @@ def bare_label(label: Any) -> str:
     return str(label if label is not None else '')
 
 
+def grew_string(value: Any) -> str:
+    """A form, a lemma or a name in double quotes as a Grew pattern writes a
+    string, a quotation mark inside it escaped: ``"qu'"``, ``"\\""``,
+    ``"French \\"3\\""``. One style for every value an answer quotes, so it
+    can be pasted into a pattern or an argument as it reads."""
+    return '"' + ('' if value is None else str(value)).replace('"', '\\"') + '"'
+
+
 def compact_label(value: Any, enhanced: bool) -> str:
     """The label as Grew writes it."""
     v = '' if value is None else str(value)

@@ -87,7 +87,7 @@ def test_documents_hold_a_count_to_the_ones_named(ws):
     ('search', {'field': 'upos', 'pattern': 'SYM'}, '1 match(es) for upos "SYM" in 1 document(s)'),
     ('grew_search', {'pattern': 'pattern { X [upos=VERB] }'}, '2 matches in 2 sentences, 2 documents.'),
     ('worklist', {'kind': 'unverified', 'field': 'upos'}, 'upos: 2 unconfirmed machine value(s), in 2 document(s)'),
-    ('check_consistency', {'kind': 'form-upos'}, "'.': PUNCT x1 (50%), SYM x1"),
+    ('check_consistency', {'kind': 'form-upos'}, '".": PUNCT x1 (50%), SYM x1'),
 ])
 def test_every_read_that_takes_a_document_takes_several(ws, tool, args, says):
     out = call_tool(ws, tool, {**args, 'documents': ['Uno', 'Tres']})

@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
+from .grew_syntax import grew_string
 from .project import FEATURES, Sentence, UdDoc, Word, feats_order, kwic, word_ref
 from ..core.corpus import spread
 from ..core.java_regex import matcher
@@ -345,7 +346,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25, docume
     with c.within(document) as held:
         ws.note_read(len(c.held_documents() or ws.documents()), 'document')
         out = _consistency(c, kinds, limit)
-    return (f'In "{c.doc_name(held)}":\n' if held else '') + out
+    return (f'In {grew_string(c.doc_name(held))}:\n' if held else '') + out
 
 
 def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:
@@ -366,7 +367,7 @@ def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:
         out.append(f'Lemmas with more than one UPOS: {len(multi)}.')
         out.append('  A rare tag beside a common one is usually the error.')
         for lemma, vs in multi[:limit]:
-            out.append(f'  {lemma!r}: ' + ', '.join(f'{u} x{n}' for u, n in vs))
+            out.append(f'  {grew_string(lemma)}: ' + ', '.join(f'{u} x{n}' for u, n in vs))
         if len(multi) > limit:
             out.append(f'  … and {len(multi) - limit} more')
 
@@ -382,7 +383,7 @@ def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:
             out.append('')
         out.append(f'Forms with more than one lemma: {len(multi)}.')
         for form, vs in multi[:limit]:
-            out.append(f'  {form!r}: ' + ', '.join(f'{l} x{n}' for l, n in vs))
+            out.append(f'  {grew_string(form)}: ' + ', '.join(f'{l} x{n}' for l, n in vs))
         if len(multi) > limit:
             out.append(f'  … and {len(multi) - limit} more')
 
@@ -405,7 +406,7 @@ def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:
                        '[form="...", upos=...] lists those words.')
         for form, vs in multi[:limit]:
             total = sum(n for _, n in vs)
-            out.append(f'  {form!r}: {vs[0][0]} x{vs[0][1]} ({round(100 * vs[0][1] / total)}%), '
+            out.append(f'  {grew_string(form)}: {vs[0][0]} x{vs[0][1]} ({round(100 * vs[0][1] / total)}%), '
                        + ', '.join(f'{u} x{n}' for u, n in vs[1:]))
         if len(multi) > limit:
             out.append(f'  … and {len(multi) - limit} more')

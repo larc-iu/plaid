@@ -19,7 +19,7 @@ from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 from .corpus import RENDER_DOC_BUDGET
 from .grew import GrewParseError, GrewUnsupportedError, layers_of, parse_and_compile
-from .grew_syntax import compact_label
+from .grew_syntax import compact_label, grew_string
 from .project import Sentence, UdDoc, Word
 from .tools import Workspace
 
@@ -141,7 +141,7 @@ def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limi
 
     if not rows:
         ws.note_read(0, 'match')
-        where = f' in "{ws.doc(doc_id).name}"' if doc_id else ''
+        where = f' in {grew_string(ws.doc(doc_id).name)}' if doc_id else ''
         return f'{echo}\nNo matches{where}.{_direction_hint(pattern)}{notes}'
 
     # Rows come ordered by document and position: group them by sentence.
@@ -164,7 +164,7 @@ def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limi
         doc = ws.doc(did)
         sents = by_doc.get(did) or {}
         matches = sum(len(m) for m in sents.values())
-        out.append(f'"{doc.name}" ({matches} match{"es" if matches != 1 else ""} in '
+        out.append(f'{grew_string(doc.name)} ({matches} match{"es" if matches != 1 else ""} in '
                    f'{len(sents)} sentence{"s" if len(sents) != 1 else ""}'
                    + (', of those fetched' if truncated else '') + ')')
         take = min(quota, limit - shown)
