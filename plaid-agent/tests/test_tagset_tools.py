@@ -88,13 +88,13 @@ def igt_config(s):
 def test_check_names_what_a_closed_list_would_refuse(proj):
     out = call_tool(ws_of(proj), 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
     assert 'Morph Gloss: 2 values' in out
-    assert 'Closed, core would refuse 1 stored values: "Ali" (1)' in out
+    assert 'Off the list if closed: 1 stored value: "Ali" (1).' in out
 
 
 def test_closing_a_list_the_data_breaks_is_refused_whole(proj):
     ws = ws_of(proj)
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
-    assert 'Core will refuse this approval' in out and 'Morph Gloss (1: "Ali")' in out
+    assert 'off the closed list: Morph Gloss (1: "Ali")' in out and 'Core refuses the approval' in out
     assert 'Ask the user whether they mean mixed' in out
     with pytest.raises(PlaidAPIError) as e:
         run(proj, ws)

@@ -41,7 +41,7 @@ delimiters are the characters that join a composite value's parts ("1SG.NOM" wit
 A project has its own tagsets for annotation fields and document metadata fields. A lexicon has its own for its entry fields: pass lexicon= for those.
 
 Actions of the tagsets tool:
-- check (tagset, optional field): the fields the tagset governs, the parts their stored values use that it does not list, with counts, and the stored values a closed list would refuse. A field named with field= is checked as though the tagset governed it.
+- check (tagset, optional field): the fields the tagset governs, the parts their stored values use that it does not list, with counts, and the stored values off the list if it were closed. A field named with field= is checked as though the tagset governed it.
 - edit (tagset, changes): plans a new tagset, or a change to one. changes holds any of:
   mode, delimiters,
   add: values, as strings or {"value", "description"}; a listed value takes the new description,
@@ -53,7 +53,7 @@ Actions of the tagsets tool:
 - assign (field, tagset): plans a field's tagset. Pass tagset "" for none. field is an annotation field, a document metadata field, or with lexicon= a lexicon entry field.
 
 Tagset changes are settings: they are a plan of their own, which holds no other change, and only a maintainer may approve one.
-Core refuses to close a list, or to assign a closed list, while a stored value in an annotation field breaks it, and then nothing in the plan is written. So check before closing. Plan fixes to those values first, as a separate plan the user approves, then the close.'''
+Core refuses to close a list, or to assign a closed list, while a stored value in an annotation field that a person or an approved plan wrote breaks it, and then nothing in the plan is written. It lets stay a value an import, a document copy or a restore set, and an unconfirmed machine value. So check before closing, and tell the user what is off the list. Should core refuse, the values to fix are in its answer: plan fixes to them as a separate plan the user approves, then the close.'''
 
 
 def t_tagsets(ws, action: str, tagset: Optional[str] = None, field: Optional[str] = None,
@@ -196,9 +196,46 @@ def _unlisted(attested, t: dict) -> List[Tuple[str, int, bool]]:
 
 
 def _refused(attested, t: dict) -> List[Tuple[str, int]]:
-    """The stored values a closed ``t`` refuses, as core reads them."""
+    """The stored values off a closed ``t``, as core's rule reads them."""
     rule = {'values': [v['value'] for v in t['values']], 'delimiters': t['delimiters'], 'parts': 'all'}
     return [(v, n) for v, n in attested if not value_set_allows(rule, v)]
+
+
+# Core's value-set rule lets some stored values stay off a closed list
+# (plaid-core sql/constraints/layer.clj `check-value-set`): an unconfirmed
+# machine value (``prov`` other than contributed, no ``provConfirmed``), read
+# here from its metadata, and a value an import, a document copy or a restore
+# set, which only the audit log knows. So no refusal is ever predicted: what
+# may break the list is said, and the approval asks core (H16-IGT-TOOLS-3).
+EXEMPT = 'an import, a document copy or a restore'
+
+
+def _machine(ws, f: dict) -> Dict[str, int]:
+    """{value: count} of a span field's unconfirmed machine values."""
+    c = ws.corpus
+    out: Dict[str, int] = {}
+    for v, prov, confirmed, n in c.group([c.span('?s', f['key'], metadata={'prov': {'regex': '.'}})],
+                                         ['?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed']):
+        if isinstance(v, str) and prov not in (None, 'contributed') and confirmed is not True:
+            out[v] = out.get(v, 0) + n
+    return out
+
+
+def _off_list(ws, f: dict, attested, t: dict) -> Tuple[List[Tuple[str, int]], int]:
+    """The stored values of span field ``f`` off a closed ``t`` that core may
+    refuse, [(value, count)], and how many more are unconfirmed machine
+    values, which it lets stay."""
+    refused = _refused(attested, t)
+    if not refused:
+        return [], 0
+    machine = _machine(ws, f)
+    rows = [(v, n - min(n, machine.get(v, 0))) for v, n in refused]
+    return [r for r in rows if r[1] > 0], sum(min(n, machine.get(v, 0)) for v, n in refused)
+
+
+def _machine_note(m: int) -> str:
+    return (f' Besides, {m} unconfirmed machine value{"s" if m != 1 else ""}, which core lets stay.'
+            if m else '')
 
 
 def _listing(rows, fmt) -> str:
@@ -217,6 +254,9 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
     governed = [f for f in fields if f['tagset'] == key]
     if field:
         governed = [_field(ws, owner, fields, field)]
+    old = _stored_tagsets(ws, owner).get(key) if owner == PROJECT else None
+    in_force = t['mode'] == CLOSED and old is not None and old == {**t, 'name': old['name']}
+    unknown = False
     lines = [f'Tagset {qv(key)} of {where} ({"as planned" if _ops(ws, "set_tagset", owner) else "as stored"}): '
              f'{t["mode"]}, {len(t["values"])} values, delimiters {qv(t["delimiters"]) if t["delimiters"] else "none"}. '
              + mode_rule(t)]
@@ -237,13 +277,31 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
                 lines.append('  Tags: ' + _listing(tags, lambda r: f'{r[0]} ({r[1]})'))
             if words:
                 lines.append('  Lexical glosses: ' + _listing(words, lambda r: f'{r[0]} ({r[1]})'))
-        if f['kind'] == SPAN:
-            refused = _refused(attested, t)
-            if refused:
-                lines.append(f'  Closed, core would refuse {len(refused)} stored values: '
-                             + _listing(refused, lambda r: f'{qv(r[0])} ({r[1]})'))
+        if f['kind'] != SPAN:
+            continue
+        if in_force and f['field'].tagset_name == key:
+            # Core holds every write to it, so what is off it now is what core let stay.
+            kept = _refused(attested, t)
+            if kept:
+                lines.append(f'  Off the closed list, kept as core lets them stay: {_stored_n(len(kept))}: '
+                             + _listing(kept, lambda r: f'{qv(r[0])} ({r[1]})'))
+            continue
+        off, machine = _off_list(ws, f, attested, t)
+        if off:
+            unknown = True
+            lines.append(f'  Off the list if closed: {_stored_n(len(off))}: '
+                         + _listing(off, lambda r: f'{qv(r[0])} ({r[1]})') + '.' + _machine_note(machine))
+        elif machine:
+            lines.append(f'  Off the list if closed:{_machine_note(machine)}')
+    if unknown:
+        lines.append(f'Core refuses a close while a value off the list was written by a person or an approved plan, '
+                     f'and lets stay one {EXEMPT} set, which this check cannot tell apart.')
     note = ws.corpus.clipped_note()
     return '\n'.join(lines) + (f'\n{note}' if note else '')
+
+
+def _stored_n(n: int) -> str:
+    return f'{n} stored value{"s" if n != 1 else ""}'
 
 
 def _field(ws, owner: str, fields: List[dict], name: str) -> dict:
@@ -525,16 +583,17 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
         if old is not None and old == {**t, 'name': old['name']}:
             continue  # in force already, so stored values keep to it
         attested = _attested(ws, f)
-        refused = _refused(attested, t)
+        refused, _machine_n = _off_list(ws, f, attested, t)
         refused_n += len(refused)
         words += sum(1 for v, _ in refused if all(is_lexical_part(p) for p in _parts(v, t['delimiters'])))
         if refused:
             breaks.append(f'{f["name"]} ({len(refused)}: '
                           + _listing(refused, lambda r: qv(r[0])) + ')')
     if breaks:
-        out += (' Core will refuse this approval, writing nothing, while these stored values break the closed '
-                'list: ' + '; '.join(breaks) + '. Add them to the list, leave it open, or drop this and plan '
-                'changes to the values first (a plan of their own), and tell the user.')
+        out += (' These stored values are off the closed list: ' + '; '.join(breaks) + '. Core refuses the '
+                'approval, writing nothing, if a person or an approved plan wrote any of them, and lets stay '
+                f'those {EXEMPT} set, which cannot be told here. Tell the user. Should core refuse, add them '
+                'to the list, leave it open, or plan changes to them first (a plan of their own).')
         if words * 2 > refused_n:
             out += (f' {words} of them are ordinary word glosses: a closed list would have to list every word '
                     'gloss. Ask the user whether they mean mixed (tags enforced, word glosses free) before '
