@@ -39,19 +39,29 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
     retagging a word and its morpheme is one call (survey item 3). One plan
     step per field and target, staged together: a bad field or ref leaves
     nothing planned."""
-    refs = _refs(refs)
+    # A ref named twice is one target (H16-IGT-TOOLS-9).
+    refs = list(dict.fromkeys(_refs(refs)))
     if values is not None:
         if not isinstance(values, dict) or not values:
             raise ToolError('values maps field names to values, e.g. {"Gloss": "conj", "POS": "conj"}.')
-        if field is not None:
+        if field is not None or value is not None:
             raise ToolError('Give field and value, or values, not both.')
-        pairs = [(ws.project.field(name), val) for name, val in values.items()]
+        pairs, named = [], {}
+        for name, val in values.items():
+            f = _field_named(ws, name)
+            if val is None:
+                raise ToolError(f'values: "{name}" has no value. Give it one ("" clears the field).')
+            if f.layer_id in named:
+                raise ToolError(f'values: "{named[f.layer_id]}" and "{name}" both name the field {f.name}. '
+                                'Give it once.')
+            named[f.layer_id] = name
+            pairs.append((f, val))
     else:
         if field is None:
             raise ToolError('Give field and value, or values (a map of field names to values).')
         if value is None:
             raise ToolError('Give value ("" clears the field).')
-        pairs = [(ws.project.field(field), value)]
+        pairs = [(_field_named(ws, field), value)]
     doc = ws.doc(document)
     several = values is not None
     if several:
@@ -79,6 +89,19 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                 staged.append(span_op(ws, doc, ref, what, f, obj.id, old, val))
         ws.add_ops(staged)
     return ws.planned_note(len(staged) + edits)
+
+
+def _field_named(ws: Workspace, name: str):
+    """The field ``name`` names, or a refusal that points an orthography's
+    name to set_orthography."""
+    try:
+        return ws.project.field(name)
+    except ValueError as e:
+        try:
+            ortho = ws.project.orthography(name)
+        except ValueError:
+            raise e from None
+        raise ToolError(f'"{ortho}" is an orthography, not a field: set it with set_orthography.') from None
 
 
 def _scope_of(doc, ref: str) -> str:
