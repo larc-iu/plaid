@@ -15,6 +15,7 @@ from .workspace import Workspace
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
 from ..core.limits import NGRAM_MAX, READ_LIMITS
+from .media import clock, recording_seconds
 
 
 def _pct(n, d):
@@ -77,11 +78,15 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
     metadata field (`by="Genre"`)."""
     project = ws.project
     lines: List[str] = []
-    from .queries import q_corpus_numbers
+    from .queries import q_corpus_numbers, q_segments
     with ws.corpus.within(document) as held:
         names = {held: ws.corpus.doc_name(held)} if held else {
             i: n for i, n in ws.corpus.doc_names().items() if not ws.corpus.documents or i in ws.corpus.documents}
         n_docs = len(names)
+        # The time alignment, and the recordings' lengths where there is one
+        # (survey item 11). A project with no segments reads no recording.
+        times = q_segments(ws)
+        recs = recordings(ws, names) if times else {}
         if by is None:
             whole = q_corpus_numbers(ws, per_doc=False)
             # One document is loaded whole, so its longest words can be named.
@@ -98,7 +103,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
                 return merge_numbers([rows[i] for i in ids])
         clipped = ws.corpus.clipped_note('counts')
 
-    def describe(n: Dict[str, Any], docs_n: int, head: str):
+    def describe(n: Dict[str, Any], docs_n: int, head: str, ids=None):
         lines.append(head)
         lines.append(f'  {docs_n} document{"s" if docs_n != 1 else ""}, {n["sentences"]} sentences, {n["words"]} words '
                      f'({n["forms"]} distinct forms, {n["hapax"]} hapax, type/token {n["ttr"]:.2f}), '
@@ -116,6 +121,8 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         if longest and longest[0].morphemes and len(longest[0].morphemes) > 1:
             lines.append('  Longest words: ' + ', '.join(f'{w.surface} ({len(w.morphemes)}: {segmentation(w)})'
                                                         for w in longest if len(w.morphemes) > 1))
+        if times:
+            lines.append('  ' + time_line(times, recs, list(names) if ids is None else ids))
 
     ws.note_read(n_docs, 'document')
     if by is None:
@@ -127,6 +134,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         first_m, first_s = (gm.name if gm else None), (gs.name if gs else None)
         head = ['document', 'sentences', 'words', 'analyzed', 'linked' if project.vocabs else None,
                 f'{first_m}' if first_m else None, f'{first_s}' if first_s else None, 'hapax', 'TTR']
+        head += ['segments', 'transcribed', 'recording'] if times else []
         head += project.document_metadata
         lines.append('\t'.join(h for h in head if h))
         for did in sorted(rows, key=lambda i: (names.get(i) or '').lower()):
@@ -136,6 +144,10 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
                      _pct(*n[f'field:{first_m}']) if first_m else None,
                      _pct(*n[f'field:{first_s}']) if first_s else None,
                      _pct(n['hapax'], n['words']), f'{n["ttr"]:.2f}']
+            if times:
+                t = times.get(did) or {}
+                cells += [str(t.get('segments', 0)), clock(t['seconds']) if t else '',
+                          clock(recs[did]) if did in recs else '']
             cells += [str((metas.get(did) or {}).get(k, '') or '') for k in project.document_metadata]
             lines.append('\t'.join(c for c in cells if c is not None))
         return truncate(_with_note(lines, clipped))
@@ -147,8 +159,39 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
     for did in rows:
         groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)
     for val, ids in sorted(groups.items(), key=lambda kv: -len(kv[1])):
-        describe(total(ids), len(ids), f'{key} = {val}')
+        describe(total(ids), len(ids), f'{key} = {val}', ids)
     return truncate(_with_note(lines, clipped))
+
+
+def recordings(ws: Workspace, names: Dict[str, str]) -> Dict[str, Optional[float]]:
+    """The documents among ``names`` that have a recording, each with its
+    length in seconds (None when it cannot be read). One light read of each
+    document not loaded this turn, then the recording's header (media.py)."""
+    out: Dict[str, Optional[float]] = {}
+    for did in names:
+        doc = ws._docs.get(did)
+        url = doc.media_url if doc is not None else (ws.client.documents.get(did) or {}).get('media_url')
+        if url:
+            out[did] = recording_seconds(ws, did, url)
+    return out
+
+
+def time_line(times: Dict[str, Dict[str, float]], recs: Dict[str, Optional[float]], ids: List[str]) -> str:
+    """``Time alignment: 1,030 segments in 3 documents, 18:02 transcribed
+    (segment lengths summed); recordings: 3 documents, 1:02:13 in all.``"""
+    held = [times[i] for i in ids if i in times]
+    n = sum(t['segments'] for t in held)
+    secs = sum(t['seconds'] for t in held)
+    line = (f'Time alignment: {n:,} segment{"s" if n != 1 else ""} in {len(held)} document'
+            f'{"s" if len(held) != 1 else ""}, {clock(secs)} transcribed (segment lengths summed)')
+    have = [i for i in ids if i in recs]
+    known = [recs[i] for i in have if recs[i] is not None]
+    if have:
+        line += (f'; recordings: {len(have)} document{"s" if len(have) != 1 else ""}, {clock(sum(known))} in all'
+                 + (f' ({len(have) - len(known)} of unknown length, left out)' if len(known) < len(have) else ''))
+    else:
+        line += '; no recordings'
+    return line + '.'
 
 
 # --- frequency_list -----------------------------------------------------------------

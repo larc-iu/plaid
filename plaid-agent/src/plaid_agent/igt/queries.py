@@ -245,6 +245,28 @@ def q_field_fill(ws: Workspace) -> Dict[str, Dict[str, int]]:
     return {'filled': filled, 'of': of}
 
 
+# --- time alignment (media.py) -----------------------------------------------------
+
+def q_segments(ws: Workspace) -> Dict[str, Dict[str, float]]:
+    """Per document, its time-aligned segments: how many, the seconds they
+    cover summed (overlapping cross-talk counted for each voice), and the
+    first start and last end. One grouped read. {} without an alignment layer."""
+    layer = ws.project.alignment_layer_id
+    if not layer:
+        return {}
+    c = ws.corpus
+    seg = '?ta'
+    where = [['token', seg, {'layer': layer}], ['>=', f'{seg}.metadata.timeEnd', f'{seg}.metadata.timeBegin']]
+    out: Dict[str, Dict[str, float]] = {}
+    for doc, n, ends, begins, first, last in c.group(
+            where, [f'{seg}.doc'], [['count'], ['sum', f'{seg}.metadata.timeEnd'], ['sum', f'{seg}.metadata.timeBegin'],
+                                    ['min', f'{seg}.metadata.timeBegin'], ['max', f'{seg}.metadata.timeEnd']]):
+        if doc and n:
+            out[doc] = {'segments': int(n), 'seconds': float(ends or 0) - float(begins or 0),
+                        'first': float(first or 0), 'last': float(last or 0)}
+    return out
+
+
 # --- frequency_list ---------------------------------------------------------------
 
 def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int,

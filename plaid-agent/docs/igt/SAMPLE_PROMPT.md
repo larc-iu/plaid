@@ -461,7 +461,7 @@ PLAN: drop one of an entry's usage examples, by the number lexicon_entry shows b
 
 ### corpus_stats
 
-Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the share of words analysed and linked, and every field's fill rate. by="document" gives a per-document table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.
+Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the share of words analysed and linked, every field's fill rate, and minutes transcribed and recorded where there is a time alignment. by="document" gives a per-document table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `documents` (array of string)
@@ -741,7 +741,7 @@ Read a file attached to this conversation, a slice of lines at a time. The note 
 
 ### run_code
 
-Run Python over a plain-data view of the project, for a question the other reads do not answer in one call: a loop over many documents, a join between columns, a tally under your own conditions, a check across the corpus. Code sees the texts and lexicons through load(document), documents(), query(q), lexicon() and plan(tool, ...), and nothing else: no filesystem, no network, no packages. Call code_help first for the shape of a document and examples. Print what you want to see.
+Run Python over a plain-data view of the project, for a question the other reads do not answer in one call: a loop over many documents, a join between columns, a tally under your own conditions, a check across the corpus. Code sees the texts and lexicons through load(document), documents(), query(q), lexicon(), recording() and plan(tool, ...), and nothing else: no filesystem, no network, no packages. Call code_help first for the shape of a document and examples. Print what you want to see.
 
 - `code` (string, required): The Python to run.
 

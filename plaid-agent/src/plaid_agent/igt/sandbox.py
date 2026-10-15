@@ -45,8 +45,9 @@ def _shape(ws: Workspace) -> str:
 
 IGT_HELP = '''
 THE SHAPE load(document) RETURNS:
-  {"id", "name", "metadata": {...}, "sentences": [
-     {"ref": "s3", "text": "...", "fields": {"Translation": "...", ...}, "words": [
+  {"id", "name", "metadata": {...}, "segments": [{"start": 12.3, "end": 15.0, "speaker": "...", "text": "..."}, ...],
+   "sentences": [
+     {"ref": "s3", "text": "...", "time": [12.3, 15.0] or None, "fields": {"Translation": "...", ...}, "words": [
         {"ref": "s3.w2", "surface": "...", "orthographies": {"<name>": "..."}, "fields": {"<word field>": "..."},
          "link": "<lexicon headword>" or None, "link_id": "<its entry's id>" or None, "mwes": ["<headword>", ...],
          "review": {"<field>": "human"|"machine"|"contributed"|"verified"},
@@ -54,7 +55,10 @@ THE SHAPE load(document) RETURNS:
                         "link": "<headword>" or None, "link_id": ..., "review": {...}}, ...]}, ...]}, ...]}
   Field names are the project's own (project_overview lists them; a name shared by a word field and a
   morpheme field is written "Gloss (Word)" and "Gloss (Morpheme)"). A missing value is "". review names,
-  per field, who made the value and whether it has been confirmed.
+  per field, who made the value and whether it has been confirmed. "segments" is the time alignment, in seconds
+  (empty without one); a sentence's "time" spans the segments inside it, or the one segment around it.
+  recording(document) -> the length in seconds of the document's recording, None without one or when its
+  length cannot be read. Minutes transcribed: sum(g["end"] - g["start"] for g in load(d)["segments"]).
 
 THE LEXICON
   lexicon(name=None) -> every entry of the named lexicon, or of every lexicon, as the plan would leave it:
@@ -123,10 +127,27 @@ def view(doc: IgtDoc) -> Dict[str, Any]:
                 'link_id': w.link.item_id if w.link else None,
                 'mwes': [l.form for l in (w.mwes or [])],
                 'review': _review(w.fields), 'morphemes': morphemes})
-        sentences.append({'ref': f's{s.index}', 'text': s.text,
+        time = doc.sentence_time(s) if doc.segments else None
+        sentences.append({'ref': f's{s.index}', 'text': s.text, 'time': list(time) if time else None,
                           'fields': {name: sp.value or '' for name, sp in s.fields.items()},
                           'words': words})
-    return {'id': doc.id, 'name': doc.name, 'metadata': dict(doc.metadata or {}), 'sentences': sentences}
+    return {'id': doc.id, 'name': doc.name, 'metadata': dict(doc.metadata or {}),
+            'segments': [{'start': g.start, 'end': g.stop, 'speaker': g.speaker, 'text': g.text}
+                         for g in doc.segments],
+            'sentences': sentences}
+
+
+def recording_api(ws: Workspace) -> Callable:
+    """``recording(document)``: the length in seconds of a document's
+    recording, read from its header (media.py), None without one."""
+    from .media import recording_seconds
+
+    def recording(document) -> Optional[float]:
+        did = ws.resolve_document_id(document)
+        doc = ws._docs.get(did)
+        url = doc.media_url if doc is not None else (ws.client.documents.get(did) or {}).get('media_url')
+        return recording_seconds(ws, did, url)
+    return recording
 
 
 def entry(view: LexView, it: dict, links: int) -> Dict[str, Any]:
@@ -201,7 +222,7 @@ def api(ws: Workspace) -> Dict[str, Callable]:
     from .query import _layer_index
     from .toolkit import WRITE_TOOLS, call_tool
     return {**sandbox.api(ws, view, call_tool, WRITE_TOOLS, _layer_index, _display),
-            'lexicon': lexicon_api(ws)}
+            'lexicon': lexicon_api(ws), 'recording': recording_api(ws)}
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:

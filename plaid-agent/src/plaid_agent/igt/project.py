@@ -143,6 +143,9 @@ class IgtProject:
     # "Tokenize new text" on the word layer (``igt.tokenizeNewText``): the text
     # a plan adds gets words (``project_new_words``). On unless set to false.
     tokenize_new_text: bool = True
+    # The time alignment's token layer (role ``time-alignment``), read only
+    # (media.py), or None.
+    alignment_layer_id: Optional[str] = None
 
     def field(self, name: str) -> Field:
         """Case-insensitive field lookup by display name, falling back to the
@@ -255,6 +258,8 @@ class IgtProject:
         ids = [self.text_layer_id, self.sentence_layer_id, self.word_layer_id]
         if self.morpheme_layer_id:
             ids.append(self.morpheme_layer_id)
+        if self.alignment_layer_id:
+            ids.append(self.alignment_layer_id)
         ids.extend(f.layer_id for f in self.fields.values())
         return [i for i in dict.fromkeys(ids) if i]
 
@@ -302,6 +307,7 @@ def load_project(client, project_id: str) -> IgtProject:
     sent = find_by_role(token_layers, ROLES.SENTENCE)
     word = find_by_role(token_layers, ROLES.WORD)
     morph = find_by_role(token_layers, ROLES.MORPHEME)
+    aligned = find_by_role(token_layers, ROLES.TIME_ALIGNMENT)
     if not sent or not word:
         raise setup_incomplete('no sentence or word token layer (not set up for IGT?)')
     tagsets = read_tagsets(p.get('config'))
@@ -338,6 +344,7 @@ def load_project(client, project_id: str) -> IgtProject:
         metadata_tagsets=metadata_tagsets,
         tagsets=tagsets, metadata_tagset_names=metadata_tagset_names,
         guidelines=guidelines,
+        alignment_layer_id=aligned['id'] if aligned else None,
     )
 
 
@@ -484,6 +491,19 @@ class Sentence:
 
 
 @dataclass
+class Segment:
+    """One time-aligned stretch of the transcript: ``start`` and ``stop`` in
+    seconds, ``begin`` and ``end`` in the text."""
+    id: str
+    start: float
+    stop: float
+    speaker: str
+    begin: int
+    end: int
+    text: str
+
+
+@dataclass
 class IgtDoc:
     id: str
     name: str
@@ -493,6 +513,22 @@ class IgtDoc:
     metadata: dict
     version: Optional[int] = None
     _index: Optional[dict] = field(default=None, repr=False, compare=False)
+    # The recording's URL (its version in ``?v=``), or None without one, and
+    # the time-aligned segments in text order (media.py).
+    media_url: Optional[str] = None
+    segments: List['Segment'] = field(default_factory=list)
+
+    def sentence_time(self, s: 'Sentence') -> Optional[Tuple[float, float]]:
+        """(start, end) seconds of a sentence: over the segments wholly
+        inside it, else the one segment that contains it, else None. The rule
+        the ELAN export uses (plaid-igt export/elan.js ``sentenceTiming``)."""
+        inside = [g for g in self.segments if g.begin >= s.begin and g.end <= s.end]
+        if inside:
+            return min(g.start for g in inside), max(g.stop for g in inside)
+        around = [g for g in self.segments if g.begin <= s.begin and g.end >= s.end]
+        if len(around) == 1:
+            return around[0].start, around[0].stop
+        return None
 
     def word_count(self):
         return sum(len(s.words) for s in self.sentences)
@@ -641,7 +677,24 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                     seen.add(l.id)
                     l.members = [at[t] for t in l.tokens if t in at]
     return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences, raw.get('metadata') or {},
-                  raw.get('version'))
+                  raw.get('version'), media_url=raw.get('media_url'), segments=_segments(raw, project, chars))
+
+
+def _segments(raw: dict, project: IgtProject, chars: List[str]) -> List['Segment']:
+    """The document's time-aligned segments in text order, each with a real
+    stretch of time (the editor's ``hasValidTimes``), or []."""
+    if not project.alignment_layer_id:
+        return []
+    _, layer = find_layer(raw.get('text_layers'), project.alignment_layer_id)
+    out = []
+    for t in sorted((layer or {}).get('tokens') or [], key=lambda t: (t['begin'], t['end'])):
+        md = t.get('metadata') or {}
+        b, e = md.get('timeBegin'), md.get('timeEnd')
+        if not (isinstance(b, (int, float)) and isinstance(e, (int, float)) and e >= b):
+            continue
+        out.append(Segment(t['id'], float(b), float(e), str(md.get('speaker') or '').strip(), t['begin'], t['end'],
+                           ''.join(chars[t['begin']:t['end']])))
+    return out
 
 
 # --- addressing -------------------------------------------------------------
@@ -870,10 +923,13 @@ def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = No
     return ' | '.join(parts)
 
 
-def render_sentence(s: Sentence, project: IgtProject, view: Optional[View] = None) -> str:
+def render_sentence(s: Sentence, project: IgtProject, view: Optional[View] = None,
+                    time: Optional[Tuple[float, float]] = None) -> str:
     """A sentence, its fields and a line per word. A ``view`` that names
-    only sentence fields leaves the word lines out."""
-    lines = [f'[s{s.index}] {s.text}']
+    only sentence fields leaves the word lines out. ``time``: where the
+    sentence is in the recording (``IgtDoc.sentence_time``), shown after it."""
+    from .media import at_time
+    lines = [f'[s{s.index}] {s.text}' + (f' @{at_time(time[0])}-{at_time(time[1])}' if time else '')]
     for f in project.fields_by_scope('Sentence'):
         sp = s.fields.get(f.name) if view is None or view.shows(f) else None
         if sp and sp.value != '':
@@ -906,7 +962,7 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
                     max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
                     budget: Optional[int] = None, indexes: Optional[List[int]] = None,
                     shown_out: Optional[List[int]] = None, legend: Optional[bool] = True,
-                    view: Optional[View] = None) -> str:
+                    view: Optional[View] = None, recording: Optional[Tuple[bool, Optional[float]]] = None) -> str:
     """Either a range (``start`` to ``end``) or the sentences numbered in
     ``indexes``, in that order. ``legend`` False points at the legend an
     earlier read printed instead of printing it again, and None, for a
@@ -923,6 +979,7 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     shown = {k: v for k, v in doc.metadata.items() if k in project.document_metadata and v not in (None, '')}
     if shown:
         head += ' | ' + ', '.join(f'{k}={v}' for k, v in shown.items())
+    head += time_head(doc, recording)
     if n == 0:
         return head + '\n(no sentences yet)'
     if indexes is not None:
@@ -944,7 +1001,8 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         format_lines.append(view.line())
     used = len(head) + sum(len(x) + 1 for x in format_lines) + 250  # the showing line and the trailing note
     for i in wanted:
-        text = render_sentence(doc.sentences[i - 1], project, view)
+        s = doc.sentences[i - 1]
+        text = render_sentence(s, project, view, doc.sentence_time(s) if doc.segments else None)
         if budget is not None and rendered and used + len(text) + 1 > budget:
             break
         rendered.append(text)
@@ -964,6 +1022,21 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     if end < n:
         lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')
     return '\n'.join(lines)
+
+
+def time_head(doc: IgtDoc, recording: Optional[Tuple[bool, Optional[float]]] = None) -> str:
+    """What a read's header says of the recording and the time alignment,
+    or ''. ``recording``: (has one, its length in seconds or None)."""
+    from .media import clock
+    bits = []
+    if recording and recording[0]:
+        bits.append(f'recording {clock(recording[1])}' if recording[1] is not None
+                    else 'recording of unknown length')
+    if doc.segments:
+        secs = sum(g.stop - g.start for g in doc.segments)
+        bits.append(f'{len(doc.segments)} time-aligned segment{"s" if len(doc.segments) != 1 else ""}, '
+                    f'{clock(secs)} transcribed; @start-end after a sentence is where it is in the recording')
+    return (' | ' + '; '.join(bits)) if bits else ''
 
 
 def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[str]:

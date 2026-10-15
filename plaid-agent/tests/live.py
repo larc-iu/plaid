@@ -29,7 +29,11 @@ from plaid_client.ids import uuid7
 
 import private_core
 
-OVERLAP = {'sentence': 'partitioning', 'word': 'non-overlapping', 'morpheme': 'any'}
+OVERLAP = {'sentence': 'partitioning', 'word': 'non-overlapping', 'morpheme': 'any',
+           'time-alignment': 'non-overlapping'}
+# The order a document's token layers are made in: sentences, words,
+# morphemes, then any other (a time alignment).
+LAYER_ORDER = {'sentence': 0, 'word': 1, 'morpheme': 2}
 
 
 # These tests are the only coverage of the real query engine, and a skip turns
@@ -251,7 +255,7 @@ class Seeded:
             b.texts.create(self.ids[tl['id']], did, body, id=tid)
             layers = tl.get('token_layers') or []
             # Sentences first, then words, then morphemes.
-            order = sorted(layers, key=lambda tk: ('sentence', 'word', 'morpheme').index(self.roles.get(tk['id'], 'morpheme')))
+            order = sorted(layers, key=lambda tk: LAYER_ORDER.get(self.roles.get(tk['id'], 'morpheme'), 3))
             for tk in order:
                 layer = self.ids[tk['id']]
                 toks = tk.get('tokens') or []

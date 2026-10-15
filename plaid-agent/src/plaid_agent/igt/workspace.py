@@ -304,9 +304,11 @@ class Workspace(BaseWorkspace):
         # document of the same read (``pointer`` False) says nothing.
         view = read_view(self.project, fields) if fields is not None else None
         legend = True if not self.legend_shown else False if pointer else None
+        from .media import recording_seconds
+        recording = (True, recording_seconds(self, doc.id, doc.media_url)) if doc.media_url else None
         out = render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out,
-                              legend=legend, view=view)
+                              legend=legend, view=view, recording=recording)
         self.legend_shown = self.legend_shown or FORMAT_LEGEND in out
         return out
 

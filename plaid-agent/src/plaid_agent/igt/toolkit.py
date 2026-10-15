@@ -382,7 +382,8 @@ _ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entr
 TOOLS += [
     _fn('corpus_stats',
         'Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the '
-        'share of words analysed and linked, and every field\'s fill rate. by="document" gives a per-document '
+        'share of words analysed and linked, every field\'s fill rate, and minutes transcribed and recorded where '
+        'there is a time alignment. by="document" gives a per-document '
         'table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.',
         {'document': _DOC, 'documents': _DOCS, 'by': {'type': 'string'}}, []),
     _fn('frequency_list',
@@ -546,4 +547,4 @@ _IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
     web='this corpus and its lexicons', code='the texts and lexicons',
-    code_functions=', lexicon()', rewrite=entry_form_named_form)
+    code_functions=', lexicon(), recording()', rewrite=entry_form_named_form)
