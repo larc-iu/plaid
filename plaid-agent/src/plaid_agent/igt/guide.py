@@ -126,15 +126,18 @@ def t_app_guide(ws, topic: Optional[str] = None) -> str:
     root = parse(guide_source())
     topic = (topic or '').strip()
     if not topic:
+        ws.note_read(len(root.children), 'row', which='the guide\'s parts')
         return outline(root)
     named, mentions = find(root, topic)
     if not named:
+        ws.note_read(len(mentions[:12]), 'row', which='parts that mention it')
         if mentions:
             return (f'No part of the guide is called "{topic}". Parts that mention it: '
                     + '; '.join(f'"{s.path}"' for s in mentions[:12]) + '. Ask for one with topic.')
         return (f'No part of the guide is called "{topic}" or mentions it. Its parts:\n'
                 + outline(root).split('\n', 1)[1])
     s = named[0]
+    ws.note_read(1, 'row', which=s.path)
     body = s.text()
     head = f'From the Plaid IGT user guide, "{s.path}":'
     others = '' if len(named) == 1 else ('\nAlso named like it: ' + '; '.join(f'"{o.path}"' for o in named[1:6]) + '.')
