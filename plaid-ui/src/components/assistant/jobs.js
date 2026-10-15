@@ -629,8 +629,9 @@ export const changesTheView = (j) =>
 // runs there, and settles the plan in the record. `writeFirst` is the app's
 // own write for a plan the service may not make with its delegated token
 // (settings): made with the user's session before the approval is sent, which
-// is not sent when it throws. Before it, the service is asked a read-only
-// preflight (`preflight: true`), which runs every check the approval runs: on
+// is not sent when it throws. Before it, the service is asked a preflight
+// (`preflight: true`), which runs every check the approval runs and marks the
+// plan as the page's to write, with the box as ticked: on
 // anything but `ready` nothing is written and the answer is the approval's.
 // The approval then says whether the page wrote (`wroteFirst`), so the
 // service settles the plan applied whatever landed since the preflight.
@@ -670,6 +671,7 @@ export const startApply = ({
             tab,
             op: 'approve',
             planId: plan.id,
+            asHuman,
             preflight: true,
           },
           REQUEST_TIMEOUT_MS,
@@ -678,7 +680,25 @@ export const startApply = ({
           { requestId: newId(), noOperation: true },
         );
         if (ready?.kind !== 'ready') return ready;
-        j.wroteFirst = !!(await writeFirst());
+        try {
+          j.wroteFirst = !!(await writeFirst());
+        } catch (e) {
+          // The preflight marked the plan as written by this page: it was
+          // not, so the mark comes off (the service keeps it if the settings
+          // read as planned after all). A tab closed here leaves it.
+          await client.messages
+            .requestService(
+              projectId,
+              service.serviceId,
+              { projectId, conversationId: conv.id, tab, op: 'unmark', planId: plan.id },
+              REQUEST_TIMEOUT_MS,
+              undefined,
+              undefined,
+              { requestId: newId(), noOperation: true },
+            )
+            .catch(() => {});
+          throw e;
+        }
       }
       return client.messages.requestService(
         projectId,

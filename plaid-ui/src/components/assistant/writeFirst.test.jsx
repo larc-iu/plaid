@@ -98,15 +98,29 @@ describe('an approval the app writes first', () => {
     expect(j.error?.message).toMatch(/discarded/);
   });
 
-  it('is not sent when the app’s write fails, and the job carries why', async () => {
+  it('is not sent when the app’s write fails: the mark comes off, and the job carries why', async () => {
     const { client, sent } = setup();
     const j = approve(client, async () => {
       throw new Error('1 value in Gloss is not in the tagset: dog. Nothing was written.');
     });
     await j.promise;
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
     expect(sent[0].preflight).toBe(true);
+    expect(sent[1]).toMatchObject({ op: 'unmark', planId: 'plan1' });
     expect(j.error?.message).toMatch(/not in the tagset/);
+  });
+
+  it('tells the preflight the box, for a discard that records a lost approval', async () => {
+    const { client, sent } = setup({ approval: { kind: 'applied', applied: 1, counts: [] } });
+    await startApply({
+      store: { client, userId: 'u1', app: 'igt', projectId: 'p1' },
+      service: { serviceId: 'igt:assist' },
+      conv: { id: 'c1', messages: [], display: [{ kind: 'assistant', plan, status: null }] },
+      plan,
+      asHuman: true,
+      writeFirst: async () => true,
+    }).promise;
+    expect(sent[0]).toMatchObject({ preflight: true, asHuman: true });
   });
 
   it('says the settings stand when the approval that records them fails', async () => {
