@@ -74,6 +74,24 @@ ORDER BY w.ts, w.seq
 """
 
 
+#: The rows of an assistant plan that writes settings (tagset changes, which
+#: the app writes as the plan's own operation): its project's or its
+#: lexicon's configuration and its fields' rules. Counted on the plan's unit,
+#: never followed as a fate.
+SETTINGS_SQL = """
+SELECT w.ts, w.seq, w.target_table, w.target_id, w.change_type, w.post_image, w.document_id, w.vocab_layer_id,
+       o.id, o.user_id, o.token_id, {credential}, o.group_id, o.batch_id, o.project_id,
+       g.kind, g.ref, g.message, g.user_id, g.created_at
+FROM audit_writes w
+JOIN operations o ON o.id = w.op_id
+JOIN operation_groups g ON g.id = o.group_id
+WHERE g.kind = 'assistant-plan' AND w.document_id IS NULL AND w.change_type != 'doc-version-bump'
+  AND w.target_table NOT IN ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items')
+  AND (o.project_id IN ({projects}) OR w.vocab_layer_id IN ({vocabs}))
+ORDER BY w.ts, w.seq
+"""
+
+
 def decoded(v):
     """A span's or a relation's value as the API gives it. The column holds
     it as JSON text, and so does the audit image ('"kai"' for kai)."""
@@ -291,6 +309,20 @@ class Fates:
             w['_anchors'] = self._anchors(rows, idx, by_target)
             self.writes.append(w)
 
+    def settings(self, rows: Iterable[tuple]) -> None:
+        """The settings rows of assistant plans (:data:`SETTINGS_SQL`), on
+        their units: a plan that wrote only settings has a unit its plan is
+        linked to, with what it wrote counted, and no fate to follow."""
+        units: Dict[str, Unit] = {}
+        for r in (Row(r) for r in rows):
+            u = units.get(r.unit)
+            if u is None:
+                u = units[r.unit] = Unit(r)
+            u.take(r)
+        for u in units.values():
+            if u.cls in self.track:
+                self._unit_row(u)
+
     @staticmethod
     def _anchors(rows: List[Row], idx: List[int], by_target) -> List[str]:
         """The ids a write is ABOUT, so a proposed change that names a word
@@ -471,7 +503,8 @@ def project_streams(db, project_ids: List[str]) -> Tuple[List[str], List[str]]:
     return sorted(docs), sorted(vocabs)
 
 
-def run(db, fates: Fates, documents: List[str], vocabs: List[str], progress=None) -> None:
+def run(db, fates: Fates, documents: List[str], vocabs: List[str], progress=None,
+        projects: Optional[List[str]] = None) -> None:
     credential = credential_column(db)
     for n, doc in enumerate(documents):
         fates.stream(db.execute(ROW_SQL.format(where='w.document_id = ?', credential=credential), (doc,)))
@@ -480,3 +513,7 @@ def run(db, fates: Fates, documents: List[str], vocabs: List[str], progress=None
     for vocab in vocabs:
         fates.stream(db.execute(ROW_SQL.format(where='w.vocab_layer_id = ? AND w.document_id IS NULL',
                                                credential=credential), (vocab,)))
+    if projects or vocabs:
+        sql = SETTINGS_SQL.format(credential=credential, projects=','.join('?' * len(projects or [])) or 'NULL',
+                                  vocabs=','.join('?' * len(vocabs)) or 'NULL')
+        fates.settings(db.execute(sql, [*(projects or []), *vocabs]))

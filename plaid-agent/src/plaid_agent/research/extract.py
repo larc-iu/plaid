@@ -410,7 +410,7 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
 
     fates = F.Fates(pseudo, horizon, track or F.DEFAULT_TRACK)
     docs, vocabs = F.project_streams(db, scope) if scope else ([], [])
-    F.run(db, fates, docs, vocabs)
+    F.run(db, fates, docs, vocabs, projects=scope)
     link = link_plans(conv, fates)
     commented = link_comments(db, conv, scope)
     link['linked_by_comments'] = commented['plans_with_comments']

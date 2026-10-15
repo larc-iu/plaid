@@ -207,7 +207,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 | via_token | some of its writes were made with an API token |
 | credentials | its audit rows by the kind of credential that made them: `login` (a session from signing in with a password), `named-token` (a named API token, such as a script or a service run on its owner's token), `service` (only from 2026-10-06 to 2026-10-08: a named token holding a service connection), `delegated` (a token a service was handed to act for its requester). Empty before 2026-10-06 |
 | documents | documents it wrote |
-| counts | its audit rows by `table.change`. A created entity is one `insert` (see above for older bulk creates) |
+| counts | its audit rows by `table.change`. A created entity is one `insert` (see above for older bulk creates). An assistant plan of tagset changes, which the app writes as the plan's own operation, counts its settings rows (`projects`, `vocab_layers`, `span_layers`), which are not followed as writes |
 | sources | the provSource of its machine or verified writes, counted |
 | writes | its audit rows |
 
