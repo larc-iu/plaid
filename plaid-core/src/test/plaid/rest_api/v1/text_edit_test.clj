@@ -462,14 +462,23 @@
 
 (deftest an-empty-row-in-whitespace-after-a-row-saves
   ;; REV5 L3, answered 409 until REV-r4d: legacy data with an empty row
-  ;; inside the whitespace after a row, text typed there. The row takes the
-  ;; text as its sentence does and the empty row goes to its end.
+  ;; inside the whitespace after a row, text typed there. A row takes the
+  ;; text as its sentence does: typed past the space, the next one (Luke,
+  ;; 2026-10-15), and the empty row stays before it. A line typed there goes
+  ;; to the row before, and the empty row to its end.
   (let [{:keys [text rows points]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
                                                [[0 3] [5 8] [9 13]] [4])
         r (edit-text text {:edits [(ins 4 "x")]})]
     (is (= 200 (:status r)) (pr-str (:body r)))
     (is (= "Hi. x Yo. End." (:text/body (:body r))))
-    (is (= [[0 5] [6 9] [10 14]] (map #(take 2 (extent %)) rows)))
+    (is (= [[0 3] [4 9] [10 14]] (map #(take 2 (extent %)) rows)))
+    (is (= [4 4] (take 2 (extent (first points))))))
+  (let [{:keys [text rows points]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
+                                               [[0 3] [5 8] [9 13]] [4])
+        r (edit-text text {:edits [(ins 4 "x\n")]})]
+    (is (= 200 (:status r)) (pr-str (:body r)))
+    (is (= "Hi. x\n Yo. End." (:text/body (:body r))))
+    (is (= [[0 5] [7 10] [11 15]] (map #(take 2 (extent %)) rows)))
     (is (= [5 5] (take 2 (extent (first points)))))))
 
 (deftest an-overlap-refusal-names-the-layer
@@ -479,7 +488,7 @@
   (let [{:keys [text]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
                                    [[0 3] [5 8] [9 13]] [4])
         r (with-redefs [plaid.algos.text/pin-points-to-edges (fn [_ _ points] points)]
-            (edit-text text {:edits [(ins 4 "x")]}))]
+            (edit-text text {:edits [(ins 4 "x\n")]}))]
     (is (= 409 (:status r)))
     (is (re-find #"layer \"Rows\"" (str (:error (:body r)))) (pr-str (:body r)))
     (is (not (re-find #"[0-9a-f]{8}-[0-9a-f]{4}-" (str (:body r)))) (pr-str (:body r)))))
@@ -640,3 +649,26 @@
                                 :base (digest/text-digest "see the area now")}))
     (is (= [4 6 "tl"] (extent (words 1)) (extent (nodes 1))))
     (is (= [6 9 "aak"] (extent (words 2)) (extent (nodes 2))))))
+
+(deftest text-typed-at-a-sentences-start-belongs-to-that-sentence
+  ;; Luke (2026-10-15): text typed after the space between two sentences
+  ;; belongs to the sentence that follows, edits and a whole-body save
+  ;; alike, and each sentence keeps its id and what is on it
+  (doseq [[label change] [["edits" (fn [_] {:edits [(ins 13 "Then ")]})]
+                          ["edits typed a key at a time" (fn [_] {:edits (mapv #(ins (+ 13 %) (str (nth "Then " %))) (range 5))})]
+                          ["a whole-body save" (fn [_] {:body "The dog ran. Then The cat sat."})]]]
+    (testing label
+      (let [old "The dog ran. The cat sat."
+            {:keys [text sentences words glosses]} (setup old :sents [[0 13] [13 25]])
+            sent-ids (->> (psc/q db {:select [:id :begin] :from [:tokens]
+                                     :where [:and [:= :text_id (str text)] [:= :token_layer_id (str sentences)]]})
+                          (sort-by :begin) (mapv :id))
+            translations (-> (create-span-layer admin-request sentences "Translation") :body :id)
+            ts (mapv (fn [s v] (-> (create-span admin-request translations [s] v) :body :id)) sent-ids ["T1" "T2"])
+            res (edit-text text (assoc (change old) :base (digest/text-digest old)))]
+        (assert-ok res)
+        (is (= "The dog ran. Then The cat sat." (-> (get-text admin-request text) :body :text/body)))
+        (is (= [[0 13 "The dog ran. "] [13 30 "Then The cat sat."]] (map extent sent-ids)))
+        (is (= [[0 3 "The"] [4 7 "dog"] [8 12 "ran."] [18 21 "The"] [22 25 "cat"] [26 30 "sat."]] (map extent words)))
+        (is (= ["T1" "T2"] (map #(-> (get-span admin-request %) :body :span/value) ts)))
+        (is (every? #(= 200 (:status (get-span admin-request %))) glosses))))))

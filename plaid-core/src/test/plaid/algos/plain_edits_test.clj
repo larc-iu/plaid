@@ -198,11 +198,15 @@
             at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
         (is (= [6 8] (at [:w 1]) (at [:m 1])))))))
 
-(deftest text-typed-between-two-sentences-goes-by-the-caret
-  ;; Luke (2026-09-30): right after the last letter of a sentence, it joins
-  ;; that sentence; right before the first letter of the next, it joins the
-  ;; next; in the middle of a longer run of whitespace, or with no caret (a
-  ;; whole-body save), the sentence before.
+(deftest text-typed-between-two-sentences-goes-to-the-next-past-the-whitespace
+  ;; Luke (2026-10-15, superseding 2026-09-30): text typed after the space
+  ;; (or other separator) between two sentences belongs to the sentence that
+  ;; follows, in an edit and a whole-body save alike, and so does text typed
+  ;; right after the punctuation that ends a sentence with no whitespace
+  ;; after it. Between two letters it goes to the sentence before. Right after a
+  ;; sentence's last letter it stays in that sentence. Text holding a line
+  ;; break, or with a line break between it and the next letter, leaves the
+  ;; boundary where it was (a line typed is split off the sentence before).
   (let [sents (fn [s ops & [body-new]]
                 (let [{:keys [body tokens]} (doc s)
                       r (if body-new
@@ -214,14 +218,35 @@
                       ss (map-indexed (fn [i [b e]] [(if (zero? i) 0 b) (if (= i (dec (count ss))) (cp/cp-count nb) (first (nth ss (inc i))))]) ss)]
                   (mapv (fn [[b e]] (cp/cp-subs nb b e)) ss)))]
     (testing "right before the next sentence's first letter"
+      (is (= ["The dog ran. " "Then The cat sat."] (sents "|The| |dog| |ran.| /|The| |cat| |sat.|" [(ins 13 "Then ")])))
       (is (= ["Hi. " "New The end."] (sents "|Hi.| /|The| |end.|" [(ins 4 "New ")]))))
-    (testing "right after the last letter of a sentence whose whitespace is the next one's"
-      (is (= ["Hi. And more." " The end."] (sents "|Hi.|/ |The| |end.|" [(ins 3 " And more.")]))))
+    (testing "the next sentence holding the whitespace before it"
+      (is (= ["Hi." " New The end."] (sents "|Hi.|/ |The| |end.|" [(ins 4 "New ")]))))
+    (testing "right after the last letter of a sentence"
+      (is (= ["Hi. And more." " The end."] (sents "|Hi.|/ |The| |end.|" [(ins 3 " And more.")])))
+      (is (= ["Hi. And more. " "The end."] (sents "|Hi.| /|The| |end.|" [(ins 3 " And more.")]))))
     (testing "in the middle of a longer run of whitespace"
-      (is (= ["Hi.  X  " "  The end."] (sents "|Hi.|  /  |The| |end.|" [(ins 5 "X  ")]))
-          "a boundary inside the run: the sentence before"))
-    (testing "a whole-body save knows no caret: the sentence before"
-      (is (= ["Hi. New " "The end."] (sents "|Hi.| /|The| |end.|" nil "Hi. New The end."))))))
+      (is (= ["Hi. " "X     The end."] (sents "|Hi.|  /  |The| |end.|" [(ins 4 "X  ")])))
+      (is (= ["Hi.  " "X    The end."] (sents "|Hi.|  /  |The| |end.|" [(ins 5 "X  ")]))))
+    (testing "no whitespace between the two"
+      (is (= ["Hi." "New The end."] (sents "|Hi.|/|The| |end.|" [(ins 3 "New ")])))
+      (is (= ["你好。" "他我很好。"] (sents "|你|好|。|/|我|很|好|。|" [(ins 3 "他")])))
+      (testing "but between two letters the sentence before, as between two words"
+        (is (= ["你好他" "我很好。"] (sents "|你|好|/|我|很|好|。|" [(ins 2 "他")])))))
+    (testing "a line typed, or a line break before the next letter: the boundary stays"
+      (is (= ["Hi. New\n" "The end."] (sents "|Hi.| /|The| |end.|" [(ins 4 "New\n")])))
+      (is (= ["Hi.\nX\n" "The end."] (sents "|Hi.|\n\n/|The| |end.|" [(ins 4 "X")])))
+      (is (= ["Hi.\nX" "\nThe end."] (sents "|Hi.|\n/\n|The| |end.|" [(ins 4 "X")]))))
+    (testing "a line break before the whitespace on the next letter's line"
+      (is (= ["Hi.\n " "X  The end."] (sents "|Hi.|\n  /|The| |end.|" [(ins 5 "X ")]))))
+    (testing "a whole-body save reads the same"
+      (is (= ["Hi. " "New The end."] (sents "|Hi.| /|The| |end.|" nil "Hi. New The end.")))
+      ;; which reads the new text after the text the two bodies share, here
+      ;; after the space
+      (is (= ["Hi." " And more. The end."] (sents "|Hi.|/ |The| |end.|" nil "Hi. And more. The end."))))
+    (testing "the start and end of the text"
+      (is (= ["Oh The end."] (sents "|The| |end.|" [(ins 0 "Oh ")])))
+      (is (= ["The end. Bye."] (sents "|The| |end.|" [(ins 8 " Bye.")]))))))
 
 (deftest a-split-cuts-only-at-the-whitespace-typed
   ;; REV2 M1: a word that already held a space is cut only at the space the

@@ -796,6 +796,22 @@
     (and (not (<= 0x1C c 0x1F))
          (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF)))))
 
+(defn- line-break?
+  "Whether code point `c` ends a line."
+  [c]
+  (contains? #{0x0A 0x0D 0x85 0x2028 0x2029} (int c)))
+
+(defn- separator?
+  "Whether code point `c` parts what stands either side of it, as
+  punctuation or a symbol does: not a letter, a mark or a number."
+  [c]
+  (let [t (Character/getType (int c))]
+    (not (contains? #{Character/UPPERCASE_LETTER Character/LOWERCASE_LETTER Character/TITLECASE_LETTER
+                      Character/MODIFIER_LETTER Character/OTHER_LETTER Character/NON_SPACING_MARK
+                      Character/ENCLOSING_MARK Character/COMBINING_SPACING_MARK Character/DECIMAL_DIGIT_NUMBER
+                      Character/LETTER_NUMBER Character/OTHER_NUMBER}
+                    (byte t)))))
+
 (def ^:private slide-reach
   "How far an edit is moved at most, in code points each way. A word edit's
   equivalent places lie within about a word of each other, and the bound
@@ -820,12 +836,14 @@
   ties and never outweighs a token the text would go inside.
 
   A layer in `partitioning` has no gaps, so text inserted where two of its
-  tokens meet goes into the one that ends there (and at the start of the
-  text into the first). That token counts as disturbed there, as it does for
-  an insert inside it, and the one beginning there when its letter before
-  changes. Doubling the `a` of `tat! a. tat` before the `a` gives it to the
-  sentence before and puts the sentence boundary inside `aa`, where doubling
-  it after the `a` keeps both sentences on their words.
+  tokens meet goes into one of them (see `apply-plain-gaps`): the one
+  beginning there when the text stands past whitespace on that token's
+  first line, or right after the punctuation the token before ends on, else
+  the one ending there (and at the start of the text the first). That token
+  counts as disturbed there, as it does for an insert inside it, and the
+  one beginning there, when the one ending there takes the text, if its
+  letter before changes. Doubling the `a` of `tat! a. tat` before the `a`
+  gives it to the second sentence, as doubling it after the `a` does.
 
   A delete that cuts a token at one end and leaves it ending (or beginning)
   on a space it did not have there counts that token half again, so of the
@@ -886,6 +904,18 @@
                              (not-any? #(and (< (:token/begin %) (:token/end %)) (= a (:token/end %))
                                              (not (partitioning (:token/layer %))))
                                        tokens))
+            ;; Where two tokens of a partition meet, the text goes into the
+            ;; one beginning there when it is typed past whitespace on the
+            ;; next letter's line, or right after punctuation with no
+            ;; whitespace, and else into the one ending there (see `apply-plain-gaps`).
+            to-next? (and (pos? a) (< a n)
+                          (not-any? line-break? v)
+                          (if (space? (aget o (dec a)))
+                            (loop [x a] (cond (>= x n) false
+                                              (not (space? (aget o x))) true
+                                              (line-break? (aget o x)) false
+                                              :else (recur (inc x))))
+                            (and (not (space? (aget o a))) (separator? (aget o (dec a))))))
             met (if (or new-after? new-before? (= :apart (at (dec a))) (= :apart (at a)))
                   #{}
                   (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
@@ -901,8 +931,8 @@
                               (= begin end) false
                               (< begin a end) true
                               (partitioning layer) (cond
-                                                     (= end a) true
-                                                     (= begin a) (or (zero? a) new-before?)
+                                                     (= end a) (not to-next?)
+                                                     (= begin a) (or (zero? a) to-next? new-before?)
                                                      :else false)
                               (= end a) new-after?
                               (= begin a) new-before?
@@ -2477,6 +2507,11 @@
     `word-layers` (else every token on no layer in `partitioning`), and the
     other tokens follow them, so a sentence or a time-alignment segment
     keeps to the words' edges and no two tokens of a layer overlap.
+  - Text a gap only types between two tokens of a partition (sentences)
+    goes to the one after when typed after whitespace with no line break
+    between it and that token's first letter, or right after punctuation
+    the one before ends on with no whitespace, and else to the one before
+    (Luke, 2026-10-15). Text holding a line break goes to the one before.
   - A gap that takes all of it, and more, deletes it.
   - The new text between the letters given to the tokens either side
     belongs to neither.
@@ -2487,7 +2522,7 @@
   A zero-width token is moved as `apply-text-edits` moves it."
   ([old tokens gaps partitioning word-layers]
    (apply-plain-gaps old tokens gaps partitioning word-layers nil))
-  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children dealt exclusive head-layers]}]
+  ([^String old tokens gaps partitioning word-layers {:keys [split-on-space children dealt exclusive head-layers]}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
          partitioning (set partitioning)
@@ -2577,13 +2612,22 @@
                                                       (row-ends [(:token/layer %) (:token/begin %)])))
                                          (map :token/begin))
                                wide)
+         part-starts (into #{} (comp (filter #(partitioning (:token/layer %))) (map :token/begin)) wide)
+         ;; text holding a line break is a line typed: it goes to the
+         ;; sentence before, to be split off there, which leaves the next
+         ;; sentence and what it holds where they were
+         line? (fn [g] (boolean (re-find #"[\n\r\u0085\u2028\u2029]" (:value (gaps g)))))
+         ;; where no whitespace stands between two sentences and the first
+         ;; ends on punctuation, text typed where they meet with no side
+         ;; said goes to the one after
          side-of (fn [g]
                    (let [{:keys [a b]} (info g)]
                      (when (and (= a b) (pos? a) (< a len)
                                 (not (ws? (aget o (dec a)))) (not (ws? (aget o a)))
                                 (or (and (flag? g :before) (flag? g :after))
                                     (sentence-starts a)))
-                       (:side (gaps g)))))
+                       (or (:side (gaps g))
+                           (when (and (part-starts a) (not (line? g)) (separator? (aget o (dec a)))) :after)))))
          new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
         ;; [the letters the tokens ending at the gap take, the letters those
         ;; beginning after it take], the same for every layer, so that a
@@ -2618,17 +2662,24 @@
                  (mapv (fn [g [x y]] (let [h (held g)] [(if (get h 0) 0 x) (if (get h 1) 0 y)])) (range k) given))
          given-before (fn [g] (first (given g)))
          given-after (fn [g] (second (given g)))
-        ;; text typed where two sentences meet, between whitespace and the
-        ;; next sentence's first letter, goes to that sentence when the
-        ;; caret put it there
-         by-caret? (fn [g {:token/keys [layer]}]
-                     (let [{:keys [a b]} (info g)]
-                       (and caret (= a b) (pos? a) (< a len) (partitioning layer)
-                            (ws? (aget o (dec a))) (not (ws? (aget o a)))
-                           ;; text holding a line break goes to the sentence
-                           ;; before: a line added before a sentence is a
-                           ;; sentence of its own, to be split off
-                            (not (re-find #"[\n\r\u0085\u2028\u2029]" (:value (gaps g)))))))
+        ;; Text typed after whitespace, on the line of the next letter, goes
+        ;; to the sentence that letter begins (Luke, 2026-10-15): the
+        ;; position of that letter, `q`, for a gap that only types, after
+        ;; whitespace, holds no line break, and has none between it and `q`,
+        ;; else nil. A boundary of a partition at or after the gap, up to
+        ;; `q`, moves to the gap's new text.
+         next-letter (mapv (fn [g]
+                             (let [{:keys [a b]} (info g)]
+                               (when (and (= a b) (pos? a) (< a len) (ws? (aget o (dec a))) (not (line? g)))
+                                 (loop [x a]
+                                   (cond (>= x len) nil
+                                         (not (ws? (aget o x))) x
+                                         (line-break? (aget o x)) nil
+                                         :else (recur (inc x)))))))
+                           (range k))
+         to-next? (fn [g x] (when (>= g 0)
+                              (let [q (next-letter g)]
+                                (and q (<= (:a (info g)) x q)))))
          placed (mapv (fn [{:token/keys [begin end layer] :as t}]
                         (if-let [[g off len] (keep-at [begin end])]
                           ;; one of the gap's words typed over: it goes on
@@ -2643,6 +2694,9 @@
                                 inner (fn [g] (filter (fn [[kb ke]] (and (<= begin kb) (<= ke end) (keep-at [kb ke]))) (:keeps (gaps g))))
                                 nb (cond
                                      (neg? gb) begin
+                                     ;; a sentence beginning in the whitespace
+                                     ;; after text typed there begins at it
+                                     (and (partitioning layer) (to-next? gb begin)) (new-at gb)
                                      (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
                                      (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
@@ -2651,7 +2705,6 @@
                                      (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
                                      (= a begin)
                                      (cond
-                                       (and (= a b) (by-caret? gb t)) (new-at gb)
                                      ;; the text typed where two words meet
                                      ;; goes whole to the side the caret said
                                        (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
@@ -2664,6 +2717,8 @@
                                 {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
                                 ne (cond
                                      (neg? ge) end
+                                     ;; and the one before it ends there
+                                     (and (partitioning layer) (< begin a2) (to-next? ge end)) (new-at ge)
                                      (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
                                      (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole
@@ -2874,8 +2929,7 @@
   letters of only to keep another (REV2-one-rule): where two readings each
   delete one word, the diff's is taken."
   [^String old tokens gaps gaps0 partitioning word-layers opts]
-  (let [opts (dissoc opts :caret)
-        run #(apply-plain-gaps old tokens % partitioning word-layers opts)
+  (let [run #(apply-plain-gaps old tokens % partitioning word-layers opts)
         layer-of (into {} (map (juxt :token/id :token/layer)) tokens)
         children (set (:children opts))
         counted (fn [r] (into #{} (remove #(children (layer-of %))) (:deleted r)))
@@ -3014,7 +3068,7 @@
                       w-made [(-> g (update :start - lo) (update :end - lo))]
                       ;; (a layer that splits on space splits what either
                       ;; reading gives alike, so the choice does not depend on it)
-                      run #(apply-plain-gaps w-old w-tokens % partitioning word-layers (dissoc opts :caret :split-on-space))
+                      run #(apply-plain-gaps w-old w-tokens % partitioning word-layers (dissoc opts :split-on-space))
                       rr (run w-read)
                       made (run w-made)
                       ;; the words and sentences a reading deletes
@@ -3068,7 +3122,7 @@
   ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
   ([^String old tokens ops partitioning word-layers opts]
    (apply-plain-gaps old tokens (plain-edit-gaps old ops tokens partitioning word-layers opts)
-                     partitioning word-layers (assoc opts :caret true))))
+                     partitioning word-layers opts)))
 
 (defn layer-roles
   "What each token layer of a text is to a body save, from `layers`, each

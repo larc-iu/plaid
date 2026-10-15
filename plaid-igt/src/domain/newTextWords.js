@@ -32,6 +32,8 @@ import { isTokenIgnored } from './igtConfig.js';
 import { isSpacelessScript } from './spacelessScripts.js';
 
 const isSpace = (c) => /\s/u.test(c);
+const isLineBreak = (c) => /[\n\r\u0085\u2028\u2029]/u.test(c);
+const isPunct = (c) => !/[\p{L}\p{M}\p{N}]/u.test(c);
 
 /** Whether a stretch holds a letter of a script written without spaces. */
 export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpacelessScript);
@@ -148,9 +150,23 @@ export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
   }
   // The sentence boundaries, moved by the edit, cut every candidate: a word
   // is never made across one (the word layer lies inside the sentences).
-  // Text typed at a boundary goes to the sentence before, as the server puts
-  // it. Where a gap that deletes reaches a boundary, which sentence its typed
-  // text lands in is the server's to say, so that text gets no word.
+  // Text typed between two sentences goes where the server puts it: to the
+  // one after when typed past whitespace on that sentence's first line, or
+  // right after the punctuation the one before ends on, else to the one
+  // before (plaid-core `apply-plain-gaps`). Where a gap that deletes reaches
+  // a boundary, which sentence its typed text lands in is the server's to
+  // say, so that text gets no word.
+  const toNext = (j, p) => {
+    const { start: a, end: b, value } = sorted[j];
+    if (a !== b || a > p || !(a > 0 && a < old.length)) return false;
+    if (Array.from(value ?? '').some(isLineBreak)) return false;
+    if (!isSpace(old[a - 1])) return a === p && !isSpace(old[a]) && isPunct(old[a - 1]);
+    for (let x = a; x < old.length; x++) {
+      if (!isSpace(old[x])) return x >= p;
+      if (isLineBreak(old[x])) return false;
+    }
+    return false;
+  };
   const cut = new Uint8Array(n + 1);
   for (const s of sentences || []) {
     const p = s.begin;
@@ -161,9 +177,10 @@ export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
       if (j >= 0 && sorted[j].start <= p && p <= sorted[j].end) touching.push(j);
     }
     if (!touching.length) {
-      cut[startOf(p)] = 1;
+      cut[i >= 0 && toNext(i, p) ? at[i] : startOf(p)] = 1;
     } else if (touching.every((j) => sorted[j].start === p && sorted[j].end === p)) {
-      cut[at[touching.at(-1)] + lens[touching.at(-1)]] = 1;
+      const j = touching.at(-1);
+      cut[toNext(j, p) ? at[j] : at[j] + lens[j]] = 1;
     } else {
       for (const j of touching) {
         cut[at[j]] = 1;

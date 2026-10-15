@@ -93,6 +93,14 @@ NEW_WORDS = [
     # A sentence boundary between letters, text typed at it (REV-R4-TOK F3).
     {'base': 'Hello.World', 'gaps': [{'start': 6, 'end': 6, 'value': 'x'}], 'words': [], 'ignored': PUNCT,
      'sentences': [{'begin': 0, 'end': 6}, {'begin': 6, 'end': 11}]},
+    # Between two letters, and past the space before the next sentence
+    # (Luke, 2026-10-15).
+    {'base': 'HelloWorld', 'gaps': [{'start': 5, 'end': 5, 'value': 'x'}], 'words': [], 'ignored': PUNCT,
+     'sentences': [{'begin': 0, 'end': 5}, {'begin': 5, 'end': 10}]},
+    {'base': 'Hi.  Yo', 'gaps': [{'start': 4, 'end': 4, 'value': 'x'}], 'words': [], 'ignored': PUNCT,
+     'sentences': [{'begin': 0, 'end': 5}, {'begin': 5, 'end': 7}]},
+    {'base': 'Hi.\n\nYo', 'gaps': [{'start': 4, 'end': 4, 'value': 'x y'}], 'words': [], 'ignored': PUNCT,
+     'sentences': [{'begin': 0, 'end': 5}, {'begin': 5, 'end': 7}]},
 ]
 
 
@@ -239,7 +247,12 @@ def test_the_new_words_cases_reach_every_answer(app):
     assert texts[11] == ['plus']
     assert texts[12] == ['new']
     assert texts[13] == []
-    assert texts[14] == ['x']
+    # typed right after the punctuation a sentence ends on: the next one's
+    assert texts[14] == ['xWorld']
+    # between two letters: the sentence before's, past the space: the next one's
+    assert texts[15] == ['Hellox']
+    assert texts[16] == ['x']
+    assert texts[17] == ['x', 'y']
 
 
 def test_the_cases_reach_every_answer(app):

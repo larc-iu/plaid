@@ -23,6 +23,7 @@ case table and compares.
 """
 
 import re
+import unicodedata
 from bisect import bisect_right
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -59,6 +60,15 @@ def _is_break_char(c: str, cfg) -> bool:
 # information separators U+001C to U+001F and U+0085, and not U+FEFF.
 _JS_SPACE = frozenset('\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006'
                       '\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')
+
+
+def _is_line_break(c: str) -> bool:
+    return c in "\n\r\u0085\u2028\u2029"
+
+
+def _is_punct(c: str) -> bool:
+    """Neither a letter, a mark nor a number."""
+    return unicodedata.category(c)[0] not in 'LMN'
 
 
 def is_js_space(c: str) -> bool:
@@ -230,9 +240,27 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
 
     # The sentence boundaries, moved by the edit, cut every candidate: a word
     # is never made across one (the word layer lies inside the sentences).
-    # Text typed at a boundary goes to the sentence before, as the server puts
-    # it. Where a gap that deletes reaches a boundary, which sentence its
-    # typed text lands in is the server's to say, so that text gets no word.
+    # Text typed between two sentences goes where the server puts it: to the
+    # one after when typed past whitespace on that sentence's first line, or
+    # right after the punctuation the one before ends on, else to the one
+    # before (plaid-core `apply-plain-gaps`). Where a gap that deletes reaches
+    # a boundary, which sentence its typed text lands in is the server's to
+    # say, so that text gets no word.
+    def to_next(j: int, p: int) -> bool:
+        a, b, value = srt[j]
+        if a != b or a > p or not 0 < a < len(old):
+            return False
+        if any(_is_line_break(c) for c in value):
+            return False
+        if not is_js_space(old[a - 1]):
+            return a == p and not is_js_space(old[a]) and _is_punct(old[a - 1])
+        for x in range(a, len(old)):
+            if not is_js_space(old[x]):
+                return x >= p
+            if _is_line_break(old[x]):
+                return False
+        return False
+
     cut = bytearray(n + 1)
     for snt in sentences or ():
         p = snt['begin'] if isinstance(snt, dict) else snt[0]
@@ -241,9 +269,10 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
         i = last_starting(p, False)
         touching = [j for j in range(max(0, i - 1), i + 1) if j >= 0 and srt[j][0] <= p <= srt[j][1]]
         if not touching:
-            cut[start_of(p)] = 1
+            cut[at[i] if i >= 0 and to_next(i, p) else start_of(p)] = 1
         elif all(srt[j][0] == p and srt[j][1] == p for j in touching):
-            cut[at[touching[-1]] + lens[touching[-1]]] = 1
+            j = touching[-1]
+            cut[at[j] if to_next(j, p) else at[j] + lens[j]] = 1
         else:
             for j in touching:
                 cut[at[j]] = 1

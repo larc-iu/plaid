@@ -45,8 +45,33 @@ describe('newTextWords', () => {
       { begin: 0, end: 6 },
       { begin: 6, end: 11 },
     ];
-    // Typed at the boundary: it goes to the sentence before, so `x` alone.
-    expect(at('Hello.World', [{ start: 6, end: 6, value: 'x' }], two)).toEqual([[6, 7]]);
+    // Typed at the boundary right after the punctuation: it goes to the
+    // sentence after, with its first word (Luke, 2026-10-15).
+    expect(at('Hello.World', [{ start: 6, end: 6, value: 'x' }], two)).toEqual([[6, 12]]);
+    // Between two letters it goes to the sentence before, with its word.
+    expect(
+      at(
+        'HelloWorld',
+        [{ start: 5, end: 5, value: 'x' }],
+        [
+          { begin: 0, end: 5 },
+          { begin: 5, end: 10 },
+        ],
+      ),
+    ).toEqual([[0, 6]]);
+    // Typed past the space in the whitespace before the next sentence, the
+    // boundary moves to the typed text, so `x` is not joined to what is
+    // before it.
+    expect(
+      at(
+        'Hi.  Yo',
+        [{ start: 4, end: 4, value: 'x' }],
+        [
+          { begin: 0, end: 5 },
+          { begin: 5, end: 7 },
+        ],
+      ),
+    ).toEqual([[4, 5]]);
     // Without the sentences, the old prediction: one word across it.
     expect(at('Hello.World', [{ start: 6, end: 6, value: 'x' }], [])).toEqual([[6, 12]]);
     // Typed before the boundary, the boundary moves on with it.

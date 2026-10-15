@@ -211,6 +211,11 @@
 
 (defn- ws? [c] (or (Character/isWhitespace (int c)) (Character/isSpaceChar (int c))))
 
+(defn- punct?
+  "Whether code point `c` is neither a letter, a mark nor a number."
+  [c]
+  (not (re-find #"[\p{L}\p{M}\p{N}]" (String. (Character/toChars (int c))))))
+
 (defn- gap-fill
   "The sentences as `compensate-partition-layers!` leaves them."
   [sents n]
@@ -333,7 +338,14 @@
                 (when-not (and (<= nb p) (< p ne)) (bad! id " lost its letter at " k " (" (pr-str (text-of now)) ")")))
               (doseq [p (range nb ne)]
                 (when (and (not (aget inserted p))
-                           (let [k (aget oldpos p)] (or (< k begin) (>= k end))))
+                           (let [k (aget oldpos p)] (or (< k begin) (>= k end)))
+                           ;; a sentence typed ahead of, past whitespace, begins
+                           ;; at the typed text and takes the whitespace between
+                           ;; (Luke, 2026-10-15)
+                           (not (let [k (aget oldpos p)]
+                                  (and (= :s layer) (< k begin)
+                                       (every? #(ws? (aget o %)) (range k begin))
+                                       (some (fn [{a :start b :end}] (and (= a b) (<= a k))) gaps)))))
                   (bad! id " took old text outside it at " p " (" (pr-str (text-of now)) ")")))
               (when (and (ws? (aget nw nb)) (not (ws? (aget o begin))))
                 (bad! id " begins on whitespace " (pr-str (text-of now))))
@@ -375,9 +387,18 @@
           (when (and (aget inserted p) (not (ws? (aget nw p))) (not (aget word-at p))
                      (not-any? (fn [g] (let [na (gap-new g)]
                                          (and (<= na p) (< p (+ na (cp/cp-count (:value g))))
-                                              (some #(and (= (:start g) (:token/begin %)) (= (:end g) (:token/end %))
-                                                          (< (:start g) (:end g)))
-                                                    tokens))))
+                                              (or (some #(and (= (:start g) (:token/begin %)) (= (:end g) (:token/end %))
+                                                              (< (:start g) (:end g)))
+                                                        tokens)
+                                                  ;; typed where two sentences meet with
+                                                  ;; punctuation and no whitespace, it goes to the one
+                                                  ;; after, and its letters before its
+                                                  ;; whitespace to no word (Luke, 2026-10-15)
+                                                  (let [a (:start g)]
+                                                    (and (= a (:end g)) (pos? a) (< a (alength o))
+                                                         (not (ws? (aget o (dec a)))) (not (ws? (aget o a)))
+                                                         (punct? (aget o (dec a)))
+                                                         (some #(and (= :s (:token/layer %)) (= a (:token/begin %))) tokens)))))))
                                gaps))
             (let [reach (fn [step]
                           (loop [q (step p)]
@@ -491,7 +512,7 @@
         o (cps old)]
     (ta/apply-plain-gaps old tokens (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))
                          partitioning deciders
-                         (assoc (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]) :caret true))))
+                         (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
 
 (defn- lost-problems
   "The words and sentences `r` deletes that `x`, the edit taken exactly as
@@ -1171,17 +1192,20 @@
               (conj! out (str "head " (pr-str got) ", want " (pr-str want) " for " (pr-str prefix))))))))
     (persistent! out)))
 
-(deftest text-typed-where-two-sentences-meet-goes-by-the-caret
-  ;; Luke (2026-09-30), REV2 H1, REV3: no word taking it, text typed right
-  ;; before the next sentence's first letter joins that sentence unless it
-  ;; holds a line break, right after a sentence's last letter or in a longer
-  ;; run of whitespace the sentence before. A line typed before the first
+(deftest text-typed-where-two-sentences-meet-goes-to-the-next-past-the-whitespace
+  ;; Luke (2026-10-15, superseding 2026-09-30), REV2 H1, REV3: text typed
+  ;; after the whitespace between two sentences, anywhere in it, joins the
+  ;; sentence after, and right after punctuation with no whitespace between
+  ;; them too (between two letters, the one before). Right after a
+  ;; sentence's last letter, the sentence before. Text holding a line break,
+  ;; or with one between it and the next letter, leaves the boundary where
+  ;; it was. Edits and a whole-body save alike. A line typed before the first
   ;; sentence is a sentence of its own. A segment over a sentence follows it,
   ;; and a node over several words keeps to them. Sentences never begin on
   ;; whitespace they did not have. Every other rule judged as ever.
   (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true :sentence-segments true :nodes true
               :points 0.2 :lead " "
-              :sentence-seps [" " "  " "\n" ". " " \n "]
+              :sentence-seps [" " "  " "\n" ". " " \n " "" "\n  "]
               :typed ["Q" "Oh " "XZ XZ " " Q" "  " "Q\nR" "\n" "-" "Q R" "Oh.\n"]}
         fails (atom [])]
     (dotimes [seed cases-per-config]
@@ -1210,18 +1234,40 @@
                                                (take-while #(not= % g) server))))
                 ps (into ps
                          (keep (fn [{a :start b :end v :value :as g}]
-                                 (when-let [[x y] (and (= a b) (seq v)
-                                                       (some (fn [[x y]] (when (= a (:token/begin y)) [x y]))
-                                                             (partition 2 1 sents)))]
+                                 (when-let [[x y L F] (and (= a b) (seq v) (pos? a) (< a (alength o))
+                                                           (let [L (loop [i (dec a)] (cond (neg? i) nil (ws? (aget o i)) (recur (dec i)) :else i))
+                                                                 F (loop [i a] (cond (>= i (alength o)) nil (ws? (aget o i)) (recur (inc i)) :else i))
+                                                                 at (fn [i] (some #(when (and (<= (:token/begin %) i) (< i (:token/end %))) %) sents))
+                                                                 x (some-> L at)
+                                                                 y (some-> F at)]
+                                                             ;; between two sentences, no other change in the run
+                                                             (when (and x y (not= x y)
+                                                                        (not-any? #(and (not= % g) (<= L (:end %)) (<= (:start %) (inc F))) server))
+                                                               [x y L F])))]
+                                   ;; Luke (2026-10-15): text typed after the
+                                   ;; whitespace between two sentences belongs to
+                                   ;; the one after, typed right after the earlier
+                                   ;; one's last letter to that one. With no
+                                   ;; whitespace between, the one after. A line
+                                   ;; typed, or a line break between the text and
+                                   ;; the next letter, leaves the boundary where it
+                                   ;; was.
                                    (let [lead-ws (count (take-while ws? (cps v)))
+                                         brk? #(re-find #"[\n\r\u0085\u2028\u2029]" %)
                                          want (cond
-                                                (re-find #"[\n\r\u0085\u2028\u2029]" v) (:token/id x)
-                                                (not (ws? (aget o (dec a)))) (:token/id x)
-                                                (and (< a (alength o)) (not (ws? (aget o a)))) (:token/id y)
-                                                :else (:token/id x))
+                                                ;; between two letters, text holding a
+                                                ;; space goes where the word rules put it
+                                                (= a (inc L) F) (cond (brk? v) (:token/id x)
+                                                                      (punct? (aget o L)) (:token/id y)
+                                                                      (re-find #"\s" v) nil
+                                                                      :else (:token/id x))
+                                                (= a (inc L)) (:token/id x)
+                                                (or (brk? v) (brk? (cp/cp-subs body a F)))
+                                                (if (> a (:token/begin y)) (:token/id y) (:token/id x))
+                                                :else (:token/id y))
                                          p (+ a (shift g) lead-ws)
                                          got (some #(when (and (<= (:token/begin %) p) (< p (:token/end %))) (:token/id %)) ss)]
-                                     (when (and (< lead-ws (cp/cp-count v)) (not= want got)
+                                     (when (and want (< lead-ws (cp/cp-count v)) (not= want got)
                                                 ;; the sentence it should join is left
                                                 (some #(= want (:token/id %)) (:tokens r)))
                                        (str "text typed at " a " went to " got ", not " want))))))
@@ -1235,7 +1281,8 @@
 (deftest text-typed-where-two-words-meet-goes-to-the-side-it-says
   ;; REV2 M2, REV3 N6 N7: letters typed where two words meet with no space,
   ;; the insert saying `side`, go into the word on that side, with what hangs
-  ;; off it and its sentence; with no side, into the word before. A side
+  ;; off it and its sentence; with no side, into the word before, or where a
+  ;; sentence begins after punctuation, the word after (Luke, 2026-10-15). A side
   ;; where the words do not meet counts for nothing. Every other rule judged
   ;; as ever.
   (let [opts {:carets 3 :spaced 0.2 :glue 0.6 :points 0.2}
@@ -1256,7 +1303,11 @@
                 op (cond-> {:type :insert :index a :value v} side (assoc :side side))
                 r (run body tokens [op])
                 r0 (run body tokens [(dissoc op :side)])
-                eff (when glued? side)
+                ;; with no side, where a sentence begins the one after
+                ;; (Luke, 2026-10-15)
+                eff (when glued? (or side (when (and (punct? (aget o (dec a)))
+                                                     (some #(and (= :s (:token/layer %)) (= a (:token/begin %))) tokens))
+                                            "after")))
                 ;; the part of sided text away from its side belongs to
                 ;; the side's row, not to the word it touches
                 ps (vec (cond->> (problems body tokens [(cond-> {:start a :end a :value v} side (assoc :side (keyword side)))] r)

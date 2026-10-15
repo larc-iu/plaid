@@ -904,7 +904,7 @@
 ;; inserted where two sentences of a partition meet goes into the sentence
 ;; that ends there, so a place there is not free for that layer.
 
-(deftest the-slide-counts-an-insert-at-a-partition-boundary-as-growing-the-sentence-before
+(deftest the-slide-counts-an-insert-at-a-partition-boundary-as-growing-the-sentence-it-joins
   (let [old "tat! a. tat big"
         new "tot! aa. tat big"
         tokens (map #(assoc % :token/layer :w)
@@ -914,8 +914,10 @@
         ops (ta/diff old new)]
     (testing "editscript puts the doubled `a` before the word, in the same save as another edit"
       (is (= 5 (:index (peek ops)))))
-    (testing "told that the sentences are a partition, the slide puts it after"
-      (is (= 6 (:index (peek (ta/slide-to-tokens ops old all #{:s})))))
+    (testing "told that the sentences are a partition, the second sentence takes it whole"
+      ;; typed after the space, at 5 it joins the second sentence (Luke,
+      ;; 2026-10-15), as it does after the `a`
+      (is (#{5 6} (:index (peek (ta/slide-to-tokens ops old all #{:s})))))
       (let [{:keys [text tokens]} (body-edit old new all #{:s})
             at (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
         (is (= new (:text/body text)))
