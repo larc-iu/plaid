@@ -763,7 +763,7 @@ Two tool results on the same project, so the positional addressing in the prompt
 
 ```text
 Project "Demo"
-Word fields: Gloss (1 of 6 words filled)
+Word fields: Gloss (1 of 4 words filled)
 Morpheme fields: Morph Gloss (2 of 5 morphemes filled)
 Sentence fields: Translation (1 of 2 sentences filled)
 Tagsets: the user sees a value outside a field's list as invalid, so use the listed spellings, and write an unlisted value only where no listed one means the same thing.
