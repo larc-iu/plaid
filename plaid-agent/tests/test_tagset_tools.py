@@ -88,13 +88,14 @@ def igt_config(s):
 def test_check_names_what_a_closed_list_would_refuse(proj):
     out = call_tool(ws_of(proj), 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
     assert 'Morph Gloss: 2 values' in out
-    assert 'Off the list if closed: 1 stored value: "Ali" (1).' in out
+    assert '  Closed, core would refuse 1 stored value: "Ali" (1).' in out.splitlines(), out
 
 
 def test_closing_a_list_the_data_breaks_is_refused_whole(proj):
     ws = ws_of(proj)
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
-    assert 'off the closed list: Morph Gloss (1: "Ali")' in out and 'Core refuses the approval' in out
+    assert ('Core will refuse this approval, writing nothing, while these stored values break the closed list: '
+            'Morph Gloss (1 stored value: "Ali" (1)).') in out, out
     assert 'Ask the user whether they mean mixed' in out
     with pytest.raises(PlaidAPIError) as e:
         run(proj, ws)
@@ -336,7 +337,8 @@ def test_check_sets_numerals_and_bracketed_parts_apart_from_tags(monkeypatch):
     ws = _fake_ws()
     monkeypatch.setattr(T, '_attested', lambda ws, f: [('bz(PDIR.YON).o(1MINI)', 14), ('1941', 1), ('03', 1),
                                                        ('3AUG', 2), ('go', 5)])
-    monkeypatch.setattr(T, '_machine', lambda ws, f: {})
+    monkeypatch.setattr(T, '_core_refused', lambda ws, f, t, limit=T.SHOWN: {'count': 0, 'value_count': 0,
+                                                                            'values': []})
     out = call_tool(ws, 'tagsets', {'action': 'check', 'tagset': 'Leipzig', 'field': 'Morph Gloss'})
     lines = out.splitlines()
     tags = next(line for line in lines if line.startswith('  Tags: '))
