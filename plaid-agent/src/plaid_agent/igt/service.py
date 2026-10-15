@@ -6,12 +6,14 @@ project it loads, the workspace its tools run against, its prompt, how a
 citation resolves to an example card, and how an approved plan is applied.
 """
 
-from typing import Optional
+from typing import Dict, Optional
 
 from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
+from ..core.plan import PlanError, PlanOutOfDate
 from . import plan, prompt, toolkit
 from .citations import resolve_citations
 from .project import load_project
+from .tagsets import SETTINGS_KINDS, verify_settings
 from .prompt import lexicon_focus_note
 from .trace import TRACER
 from .workspace import Workspace
@@ -62,6 +64,16 @@ class AssistantService(BaseAssistantService):
                      # merge takes in.
                      {'link': 'item_id', 'link_phrase': 'item_id', 'merge_entries': 'remove_id',
                       'merge_words': 'other_ids', 'merge_sentences': 'other_id'})
+
+    def page_wrote(self, client, project_id: str, ops) -> Optional[Dict[str, int]]:
+        # Tagset changes, always a plan of their own, are written by the app
+        # (plaid-igt domain/tagsetPlan.js) before it sends the approval.
+        if not ops or not all(op.get('kind') in SETTINGS_KINDS for op in ops):
+            return None
+        try:
+            return verify_settings(client, self.load_project(client, project_id), ops)
+        except (PlanError, PlanOutOfDate):
+            return None
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
         where = where or {}

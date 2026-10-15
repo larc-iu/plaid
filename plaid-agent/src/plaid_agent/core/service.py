@@ -333,6 +333,14 @@ class BaseAssistantService(BaseService):
             return for_model(f'Assistant, partly applied: {self.summarize(done)}')
         return for_model(f'Assistant, partly applied: part of {summary}')
 
+    def page_wrote(self, client, project_id: str, ops: List[Dict[str, Any]]) -> Optional[Dict[str, int]]:
+        """For a plan the app writes itself, with the user's session, before
+        it sends the approval (what a delegated token may not write): the
+        per-kind counts when what it changes already reads as planned, else
+        None. Such a plan is applied once that is so, whatever else the
+        approval would refuse (`_op_approve`). No plan of the base is one."""
+        return None
+
     def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
         """The documents an approval holds locked from its staleness check to
         its last write: every one the plan writes. An app whose plan hands a
@@ -702,7 +710,9 @@ class BaseAssistantService(BaseService):
             elif item.get('status') is not None:
                 self._refuse(ctx, 'decided', meta=meta)
                 return
-            elif may_have_written(item) and not nothing_landed(ctx.client, item):
+            elif ((may_have_written(item) and not nothing_landed(ctx.client, item))
+                  or self._page_wrote(ctx, item)):
+                # Its changes are in force: approving it again settles it.
                 self._refuse(ctx, 'written', meta=meta)
                 return
             out = {}
@@ -897,6 +907,8 @@ class BaseAssistantService(BaseService):
             if self._running_here(ctx):
                 return
             conv, meta = self._prepare(ctx)
+            if self._settle_page_written(ctx, conv, plan_id):
+                return
             if not self._gate(ctx, conv, meta):
                 return
             marker = meta.get('pending')
@@ -927,6 +939,52 @@ class BaseAssistantService(BaseService):
                         {'plan_id': plan_id, 'as_human': ctx.data.get('as_human')}, ctx.request_id, ctx.helper)
         finally:
             self._leave(ctx)
+
+    def _page_wrote(self, ctx, item) -> Optional[Dict[str, int]]:
+        """:meth:`page_wrote` of a plan item, None on any failure to tell."""
+        ops = ((item or {}).get('plan') or {}).get('ops') or []
+        if not ops:
+            return None
+        try:
+            return self.page_wrote(ctx.client, ctx.store.project_id, ops)
+        except Exception:  # noqa: BLE001 - not known to be written: the approval goes as any other
+            traceback.print_exc()
+            return None
+
+    def _settle_page_written(self, ctx, conv, plan_id) -> bool:
+        """Settle as applied a plan the page has written before sending its
+        approval, and answer so. True when it did.
+
+        The page writes first, so a refusal after it (another request under
+        way, another tab holding the conversation, the plan discarded or
+        replaced meanwhile) would leave its changes in force under a plan
+        that reads not approved. So nothing the approval checks can refuse a
+        plan whose changes read as planned: the record follows what is
+        written, as a run that wrote settles applied over a discard. Another
+        request's marker is kept. Under the lock."""
+        if conv is None or not plan_id:
+            return False
+        _, item = find_plan(conv, plan_id)
+        if item is None or item.get('status') in WROTE:
+            return False
+        counts = self._page_wrote(ctx, item)
+        if not counts:
+            return False
+        plan = item['plan']
+        ops = plan.get('ops') or []
+        summary = plan.get('summary') or self.summarize(ops)
+        note = f'(note) The plan was approved and applied: {summary}.'
+        outcome = {'as_human': bool(ctx.data.get('as_human'))}
+        self._remember_applied(plan_id, 'applied', note, outcome)
+        change = plan_settling(plan_id, 'applied', note, documents=plan.get('documents'),
+                               expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **outcome)
+        if not self._write(ctx.store, ctx.conv_id, change, None):
+            ctx.helper.error('The changes were applied, but this conversation was deleted.')
+            return True
+        ctx.helper.complete({'kind': 'applied', 'applied': sum(counts.values()),
+                             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
+                             'message': f'Applied {self.summarize(ops)}.'})
+        return True
 
     def _running_here(self, ctx) -> bool:
         """Whether this very request already runs in this process (core
