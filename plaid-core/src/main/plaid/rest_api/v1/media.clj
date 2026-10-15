@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.middleware :as prm]
+            [plaid.media.duration :as duration]
             [plaid.media.storage :as media]
             [plaid.sql.document :as doc]
             [plaid.sql.common :as psc]
@@ -43,7 +44,9 @@
   "Store `temp-file` as the media of `document-id`, and record it as one
   operation in the audit log (`:media/upload`), so History and Activity say
   who added a recording and when, and the document's version moves, which
-  tells a page holding the document that it changed. The file is stored
+  tells a page holding the document that it changed. The recording's length,
+  when its header says, is kept in the same transaction
+  (`plaid.media.duration`). The file is stored
   before the operation, so the write lock is not held while hundreds of
   megabytes are copied, and taken back out when the operation is refused."
   [db document-id temp-file filename user-id]
@@ -60,11 +63,12 @@
                      (assoc :media-exists true
                             :media-url (media/media-url document-id)))}
       (let [result (op/submit-operation!
-                    [_tx db {:type :media/upload
-                             :project (doc/project-id db document-id)
-                             :document document-id
-                             :description (str "Upload media file \"" filename "\" to document " document-id)
-                             :user user-id}]
+                    [tx db {:type :media/upload
+                            :project (doc/project-id db document-id)
+                            :document document-id
+                            :description (str "Upload media file \"" filename "\" to document " document-id)
+                            :user user-id}]
+                    (duration/store! tx document-id (:duration stored))
                     (select-keys stored [:extension :content-type]))]
         (when-not (:success result)
           (media/delete-media-file! document-id))
@@ -94,11 +98,11 @@
   ([db document-id user-id] (delete! db document-id user-id nil))
   ([db document-id user-id media-version]
    (let [result (op/submit-operation!
-                 [_tx db {:type :media/delete
-                          :project (doc/project-id db document-id)
-                          :document document-id
-                          :description (str "Delete media file of document " document-id)
-                          :user user-id}]
+                 [tx db {:type :media/delete
+                         :project (doc/project-id db document-id)
+                         :document document-id
+                         :description (str "Delete media file of document " document-id)
+                         :user user-id}]
                  (when (or (not (media/media-exists? document-id))
                            (deleting-in-this-batch? document-id))
                    (refused! {:error-kind :not-found :error "No media file found"}))
@@ -108,6 +112,7 @@
                                    {:code 409
                                     :plaid/body {:media-changed true
                                                  :media-url (media/media-url document-id)}})))
+                 (duration/store! tx document-id nil)
                  nil)]
      (when (:success result)
        (op/after-commit! (with-meta (fn [] (media/delete-media-file! document-id))

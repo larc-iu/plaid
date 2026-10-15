@@ -2577,6 +2577,10 @@ class PlaidClient {
       /**
        * Get a document. Set `includeBody` to true to include all data.
        *
+       * A document with a recording has `mediaUrl`, and `mediaDuration`, the
+       * recording's length in seconds, when the server could read it from the
+       * file at upload (WAV, MP4, M4A, MOV, FLAC, MP3).
+       *
        * `layers` narrows a body read to the layers you name (ids of any kind:
        * text, token, span, or relation). A layer comes back when it is named
        * or is an ancestor of a named layer, and carries its own

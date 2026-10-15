@@ -139,6 +139,8 @@
    "token_layers"
    "texts"
    "text_layers"
+   ;; document_media: FK-cascades off documents, listed for the same reason.
+   "document_media"
    "documents"
    "project_users"
    ;; seen_services: persistent service-discovery rows (FK → projects).

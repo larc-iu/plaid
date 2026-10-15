@@ -809,6 +809,21 @@ A document may carry one audio or video recording, which the apps use for transc
 Uploading or deleting it appears in the audit log, but the file itself is not kept there, so a deleted recording cannot be brought back.
 An upload is refused with 409 when the document already has a recording, and with 415 when the file is not audio or video that a browser can play.
 
+A document with a recording has `media-url` (`mediaUrl` in JavaScript, `media_url` in Python), the address to fetch it from.
+Beside it, `media-duration` (`mediaDuration`, `media_duration`) is the recording's length in seconds, read from the file when it is uploaded.
+The length is read for WAV, MP4, M4A, MOV, FLAC and MP3.
+A recording in another format, such as WebM or Ogg, has no `media-duration`.
+
+A server upgraded from a version before the length was stored can store it for recordings uploaded before, with the server running:
+
+[source,bash]
+----
+java -cp plaid.jar clojure.main -m plaid.media.backfill --db data/plaid.db           # counts only
+java -cp plaid.jar clojure.main -m plaid.media.backfill --db data/plaid.db --apply
+----
+
+Running it again stores nothing new.
+
 == Texts
 
 For each **text layer**, each document may have at most one **text**, which consists of a single string.

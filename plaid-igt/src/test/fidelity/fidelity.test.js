@@ -432,6 +432,9 @@ const TABLES = {
   audit_writes: notData('the audit log, document history is not carried by any format'),
   client_events: notData('research telemetry, outside the audit log'),
   data_migrations: notData('schema bookkeeping'),
+  document_media: notData(
+    'a recording’s length, read again from the file when an archive’s recording is uploaded',
+  ),
   idempotency_keys: notData('stored answers to retried writes, kept a day'),
   invites: notData('access, not data'),
   operation_groups: notData('the audit log'),

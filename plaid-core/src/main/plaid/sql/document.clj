@@ -11,6 +11,7 @@
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
+            [plaid.media.duration :as duration]
             [plaid.media.storage :as media])
   (:refer-clojure :exclude [get merge]))
 
@@ -36,12 +37,15 @@
 
 (defn get
   "Get a document by ID, formatted for external consumption.
-  Attaches :document/media-url when a media file is present, and
+  Attaches :document/media-url when a media file is present, with
+  :document/media-duration (seconds) when its length is known, and
   :metadata when entity_metadata has rows for the document."
   [db id]
   (when-let [doc (row->document (psc/fetch-by-id db :documents id))]
     (let [with-media (if-let [url (media/media-url id)]
-                       (assoc doc :document/media-url url)
+                       (let [secs (duration/stored db id)]
+                         (cond-> (assoc doc :document/media-url url)
+                           secs (assoc :document/media-duration secs)))
                        doc)]
       (metadata/add-metadata-to-response db with-media "document" id))))
 
@@ -578,6 +582,8 @@
                                                :modified_at now})
                                 (when (seq doc-metadata)
                                   (metadata/insert-metadata! tx "document" new-id doc-metadata))
+                                (when include-media?
+                                  (duration/copy! tx src-id new-id))
                                 (drows/insert-rows!
                                  tx :texts
                                  (mapv (fn [r] (assoc (with-refs r) :id (text-ids (:id r))

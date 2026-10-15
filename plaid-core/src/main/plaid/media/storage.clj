@@ -1,6 +1,7 @@
 (ns plaid.media.storage
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [plaid.media.duration :as duration]
             [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
             [taoensso.timbre :as log])
@@ -318,7 +319,9 @@
   (nth upload-locks (mod (hash doc-id) (count upload-locks))))
 
 (defn store-media-file!
-  "Store a media file for a document. Returns {:success true ...} or
+  "Store a media file for a document. Returns {:success true ...}, with the
+  recording's `:duration` in seconds when its header says (see
+  `plaid.media.duration`), or
   {:success false :error-kind <kind> :error <msg>}. See `error-kinds`."
   [doc-id temp-file filename]
   (locking (upload-lock-for doc-id)
@@ -357,7 +360,9 @@
                     (Files/move temp-path final-path (make-array StandardCopyOption 0))
                     (vreset! staged-path nil)
                     (log/info "Stored media file:" file-path "method:" (:method validation))
-                    {:success true :file-path file-path :extension extension :content-type content-type})
+                    {:success true :file-path file-path :extension extension :content-type content-type
+                     ;; nil for a format whose header is not read here
+                     :duration (duration/seconds (io/file file-path) extension)})
                   {:success false :error-kind :unsupported
                    :error "Could not determine file extension"}))
               {:success false :error-kind :unsupported :error (:error validation)})))

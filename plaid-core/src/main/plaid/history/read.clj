@@ -32,6 +32,7 @@
   the exact key set."
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
+            [plaid.media.duration :as duration]
             [plaid.media.storage :as media]
             [plaid.sql.common :as psc]
             [plaid.sql.document-rows :as drows])
@@ -266,14 +267,17 @@
 
 (defn- attach-media-url
   "Media files are not versioned (one file on disk per doc-id), so this
-  is a current-filesystem probe — same as the OLTP read. For a doc
+  is a current-filesystem probe — same as the OLTP read, and so is the
+  recording's stored length. For a doc
   deleted from OLTP the URL is omitted: the media route's auth resolves
   the project from OLTP and would 403/404."
   [m db doc-id]
   (let [doc-deleted? (nil? (psc/fetch-by-id db :documents doc-id))
-        url (when-not doc-deleted? (media/media-url doc-id))]
+        url (when-not doc-deleted? (media/media-url doc-id))
+        secs (when url (duration/stored db doc-id))]
     (cond-> m
-      url (assoc :document/media-url url))))
+      url (assoc :document/media-url url)
+      secs (assoc :document/media-duration secs))))
 
 (defn- build-document
   [db entity]
