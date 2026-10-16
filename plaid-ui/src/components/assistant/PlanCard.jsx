@@ -14,6 +14,8 @@ import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
 import {
   collapseGroups,
+  changeCount,
+  changesOmitted,
   groupRows,
   omittedLine,
   planRows,
@@ -279,9 +281,12 @@ export const PlanCard = ({
                       {/* A settled plan cut to its first rows does not know
                           how many of the rest were here: it says how many it
                           shows, above "and n more changes". */}
-                      <span className="ml-1.5 font-normal text-muted-foreground">
-                        {omitted > 0 ? `${g.rows.length} shown` : g.rows.length}
-                      </span>
+                      {/* Changes only: a kept value writes nothing. */}
+                      {changeCount(g.rows) > 0 && (
+                        <span className="ml-1.5 font-normal text-muted-foreground">
+                          {omitted > 0 ? `${changeCount(g.rows)} shown` : changeCount(g.rows)}
+                        </span>
+                      )}
                     </th>
                   </tr>
                 )}
@@ -304,10 +309,10 @@ export const PlanCard = ({
                   ))}
               </Fragment>
             ))}
-            {omitted > 0 && shown.hidden === 0 && (
+            {changesOmitted(plan) > 0 && shown.hidden === 0 && (
               <tr>
                 <td colSpan={2} className="pt-2 text-muted-foreground" data-testid="rows-omitted">
-                  {omittedLine(omitted)}
+                  {omittedLine(changesOmitted(plan))}
                 </td>
               </tr>
             )}
@@ -324,7 +329,7 @@ export const PlanCard = ({
           className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ChevronDown className="h-3 w-3" />{' '}
-          {omitted > 0 ? `Show ${allRows.length}` : `Show all ${allRows.length}`}
+          {omitted > 0 ? `Show ${changeCount(allRows)}` : `Show all ${changeCount(allRows)}`}
         </button>
       )}
       {stale && !dismissed && !readOnly && (

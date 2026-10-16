@@ -114,6 +114,10 @@ export const staleLine = (reason) =>
 // How many rows a settled plan's record no longer holds (planRecord.js).
 export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
 
+// How many of those rows were changes: a kept value is not one.
+export const changesOmitted = (plan) =>
+  Math.max(0, rowsOmitted(plan) - (Number(plan?.omitted?.kept) || 0));
+
 // The line that ends such a plan's list of changes, on the card and in the
 // exports.
 export const omittedLine = (n) =>
@@ -146,6 +150,9 @@ export const planRows = (plan) => {
       // One stored change standing for many (core/rules.py in plaid-agent):
       // its tool and arguments, total, count per document and a sample.
       rule: c.rule || null,
+      // A value the plan keeps out of a corpus-wide change: listed, and
+      // written nothing, so no count of changes counts it.
+      kept: !!c.kept,
     }));
   }
   return changes.map((c, i) => ({
@@ -156,8 +163,12 @@ export const planRows = (plan) => {
     writesText: false,
     replacesWork: 0,
     rule: null,
+    kept: false,
   }));
 };
+
+/** How many of these rows are changes: a kept value is not one. */
+export const changeCount = (rows) => (rows || []).filter((r) => !r.kept).length;
 
 // Rows grouped by the place they change, groups in order of first appearance,
 // rows in plan order within each.

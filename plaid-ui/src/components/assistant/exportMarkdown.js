@@ -7,7 +7,7 @@ import { fencedLines, linkifyCitations, markdownText } from './citations.js';
 import {
   omittedLine,
   planRows,
-  rowsOmitted,
+  changesOmitted,
   ruleCountLine,
   ruleDocuments,
   ruleMoreLine,
@@ -107,7 +107,7 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) =
     (r.rule.sample || []).forEach((c) => lines.push(`   - For example: ${c.label}`));
   });
   // A long settled plan keeps its first rows only (planRecord.js).
-  const omitted = rowsOmitted(plan);
+  const omitted = changesOmitted(plan);
   if (omitted > 0) lines.push('', omittedLine(omitted));
   return lines.join('\n');
 };

@@ -286,6 +286,58 @@ describe('expanding a long plan', () => {
   });
 });
 
+// A value kept out of a corpus-wide change is a row that writes nothing, so
+// no count of changes counts it (FX-C, after REV2-AGENT-4).
+describe('a kept value', () => {
+  const kept = (n, keeps) =>
+    plan([
+      ...Array.from({ length: n }, (_, i) => ({ label: `change ${i}` })),
+      ...Array.from({ length: keeps }, (_, i) => ({ label: `upos stays "N${i}"`, kept: true })),
+    ]);
+  const header = (root) => root.querySelector('th span');
+
+  it('is listed and left out of its group header', async () => {
+    const view = await mount(kept(1, 1));
+    expect(texts(view.container, 'td').join(' ')).toContain('upos stays "N0"');
+    expect(header(view.container).textContent).toBe('1');
+    await view.unmount();
+  });
+
+  it('leaves a group of only kept values without a count', async () => {
+    const view = await mount(kept(0, 2));
+    expect(header(view.container)).toBeNull();
+    await view.unmount();
+  });
+
+  it('is left out of "Show all"', async () => {
+    const view = await mount(kept(13, 2));
+    const show = all(view.container, 'button').find((b) =>
+      b.textContent.trim().startsWith('Show all'),
+    );
+    expect(show.textContent.trim()).toBe('Show all 13');
+    await view.unmount();
+  });
+
+  it('is left out of "and n more changes" on a settled plan cut short', async () => {
+    const p = {
+      ...plan([{ label: 'change 0' }]),
+      ops: undefined,
+      opCount: 4,
+      omitted: { count: 3, kept: 1 },
+    };
+    const view = await mount(p, { status: 'applied' });
+    expect(view.container.querySelector('[data-testid=rows-omitted]').textContent).toBe(
+      'and 2 more changes',
+    );
+    await view.unmount();
+  });
+
+  it('is read off the service row', () => {
+    const rows = planRows(kept(1, 1));
+    expect(rows.map((r) => r.kept)).toEqual([false, true]);
+  });
+});
+
 // REV-FX3-AGENT-4: a reviewed contributor's confirmation verifies nothing,
 // and what it did is on the card, not only in the model's record.
 describe('an applied plan recorded as human-made', () => {
