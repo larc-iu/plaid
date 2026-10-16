@@ -92,15 +92,21 @@ class PipelineProvider:
         self.processors = processors
         self._cache = {}
 
-    def get(self, language, pretokenized=False):
+    def get(self, language, pretokenized=False, words_only=False):
         # Pretokenized pipelines honor caller-supplied sentence/word splits
         # (used by the substrate-preserving parse mode). Cached separately:
         # tokenize_pretokenized is a pipeline-construction option.
-        key = (language, pretokenized)
+        # `words_only` is a pipeline that only finds the words (tokenize and
+        # multi-word tokens), for a sentence that has none: the parse after it
+        # runs pretokenized, so tagging and parsing there would be thrown away.
+        # Stanza skips `mwt` for a language that has no such model.
+        key = (language, pretokenized, words_only)
         pipe = self._cache.get(key)
         if pipe is None:
-            print(f"Loading Stanza pipeline for '{language}' (pretokenized={pretokenized})…", flush=True)
-            pipe = stanza.Pipeline(language, processors=self.processors,
+            processors = 'tokenize,mwt' if words_only else self.processors
+            print(f"Loading Stanza pipeline for '{language}' ({processors}, "
+                  f"pretokenized={pretokenized})…", flush=True)
+            pipe = stanza.Pipeline(language, processors=processors,
                                    tokenize_pretokenized=pretokenized)
             self._cache[key] = pipe
         return pipe
@@ -813,7 +819,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             log(f"  {len(unworded)} sentence(s) have no words; tokenizing them")
             progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
             with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
-                tokenizer = pipeline_provider.get(language)
+                tokenizer = pipeline_provider.get(language, words_only=True)
             for n, idx in enumerate(unworded):
                 progress.report(ParseProgress.PARSE, n / len(unworded),
                                 f"Finding the words of sentence {n + 1} of {len(unworded)}…")

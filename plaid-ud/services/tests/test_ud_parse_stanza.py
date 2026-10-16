@@ -85,8 +85,9 @@ class _PipelineProvider:
         self._starts = sentence_starts or [0]
         self._on_parse = on_parse
 
-    def get(self, language, pretokenized=False):
-        self.asked.append((language, pretokenized))
+    def get(self, language, pretokenized=False, words_only=False):
+        self.asked.append((language, pretokenized) if not words_only
+                          else (language, pretokenized, 'words'))
 
         def pipeline(value):
             self.inputs.append(value)
@@ -821,8 +822,9 @@ class _TwoPipelines(_PipelineProvider):
     (one sentence, offsets from its start); the pretokenized one parses each
     sentence it is handed as ROWS."""
 
-    def get(self, language, pretokenized=False):
-        self.asked.append((language, pretokenized))
+    def get(self, language, pretokenized=False, words_only=False):
+        self.asked.append((language, pretokenized) if not words_only
+                          else (language, pretokenized, 'words'))
 
         def pipeline(value):
             self.inputs.append(value)
@@ -847,7 +849,9 @@ def test_a_sentence_with_no_words_is_tokenized_and_parsed_with_its_words():
     assert helper.errors == []
     [result] = helper.results
     assert result['mode'] == 'preserve' and result['parsed_sentences'] == 2
-    assert ('en', False) in provider.asked and ('en', True) in provider.asked
+    # The words come from a pipeline that only finds words, the parse from
+    # the pretokenized one.
+    assert provider.asked == [('en', False, 'words'), ('en', True)]
     assert 'the dog barks' in provider.inputs
     [batch] = service.client.batches
     words = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL')
