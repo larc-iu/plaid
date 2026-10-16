@@ -481,6 +481,27 @@
     (is (= [[0 5] [7 10] [11 15]] (map #(take 2 (extent %)) rows)))
     (is (= [5 5] (take 2 (extent (first points)))))))
 
+(deftest rows-over-sentences-with-their-whitespace-save-text-typed-between-them
+  ;; REV2-TEXT-1 and -2: rows as a script or an import may make them, each a
+  ;; sentence with its whitespace. Text typed inside the whitespace between
+  ;; two of them answered 409 (the next row took it with its sentence, the
+  ;; row before kept its end past it), and a row over a sentence of only
+  ;; whitespace left the text that sentence took in no row.
+  (doseq [[label change want-body want-rows]
+          [["one insert" {:edits [(ins 4 "X")]} "Hi. X  The end." [[0 4] [4 15]]]
+           ["two inserts" {:edits [(ins 4 "X") (ins 6 "Y")]} "Hi. X Y The end." [[0 4] [4 16]]]
+           ["a whole-body save" {:body "Hi. X  The end."} "Hi. X  The end." [[0 4] [4 15]]]]]
+    (testing label
+      (let [{:keys [text rows]} (rows-setup "Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 6] [6 14]] [])
+            r (edit-text text change)]
+        (is (= 200 (:status r)) (pr-str (:body r)))
+        (is (= want-body (:text/body (:body r))))
+        (is (= want-rows (map #(vec (take 2 (extent %))) rows))))))
+  (let [{:keys [text rows]} (rows-setup "Hi.  The end." [[0 4] [4 5] [5 13]] [[0 3] [5 8] [9 13]] [[0 4] [4 5] [5 13]] [])
+        r (edit-text text {:edits [(ins 4 "X")]})]
+    (is (= 200 (:status r)) (pr-str (:body r)))
+    (is (= [[0 4 "Hi. "] [4 6 "X "] [6 14 "The end."]] (map extent rows)))))
+
 (deftest an-overlap-refusal-names-the-layer
   ;; REV5 L3: should a rule ever leave two rows over the same text (here the
   ;; step that keeps an empty row at a row's edge is taken away), the save

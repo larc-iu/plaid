@@ -133,6 +133,10 @@
           (let [e (if (and (:bound-early opts) (< (.nextDouble rng) (:bound-early opts))) before @pos)]
             (vreset! nstart e)
             (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end e})
+            ;; a row over the whole sentence, its whitespace included, as
+            ;; a script or an import may make one (REV2-TEXT-1)
+            (when (:sentence-rows opts)
+              (conj! toks {:token/id [:rw si] :token/layer :rw :token/begin sb0 :token/end e}))
             ;; a time-alignment segment over the whole sentence (a transcript row)
             (when (:sentence-segments opts)
               ;; less the whitespace at the sentence's edges, as a row is
@@ -143,7 +147,7 @@
           ;; the last sentence ends at the end of the text
           n (cp/cp-count body)]
       {:body body
-       :tokens (mapv #(if (= [:s (dec nsent)] (:token/id %))
+       :tokens (mapv #(if (#{[:s (dec nsent)] [:rw (dec nsent)]} (:token/id %))
                         (assoc % :token/end n) %)
                      tokens)})))
 
@@ -424,7 +428,7 @@
                  (not= ((juxt :token/begin :token/end) (by-id id)) ((juxt :token/begin :token/end) (by-id w))))
             (bad! id " off its word"))))
       ;; no two tokens of a layer without overlaps overlap, nor two sentences
-      (doseq [layer [:w :a :s :ms]]
+      (doseq [layer [:w :a :s :ms :rw]]
         (let [ts (sort-by (juxt :token/begin :token/end) (filter #(and (if (= :ms layer) (= :ms (first (:token/id %))) (= layer (:token/layer %)))
                                                                        (not (gone (:token/id %))))
                                                                  (:tokens result)))]
@@ -460,6 +464,7 @@
           {:id :x :overlap-mode "non-overlapping" :parent :w}
           {:id :a :overlap-mode "non-overlapping"}
           {:id :ss :overlap-mode "non-overlapping"}
+          {:id :rw :overlap-mode "non-overlapping"}
           {:id :u :overlap-mode "any"}]
    ;; the same with the layer under the words that holds several tokens as
    ;; long as a word marked as ud's syntactic words, whose multi-word tokens
@@ -1161,6 +1166,18 @@
                   got (some-> (by-id id) ((juxt :token/begin :token/end)))]
             :when (and want got (not= want got))]
       (conj! out (str id " at " got ", its sentence at " want)))
+    ;; rows over sentences with their whitespace (REV2-TEXT-1): each on its
+    ;; sentence as the gap-fill leaves it, off the whitespace it had none of
+    (let [nw (cps nb)]
+      (doseq [{:token/keys [id begin end]} tokens :when (= :rw (first id))
+              :let [st (some #(when (= [begin end] [(:token/begin %) (:token/end %)]) %) sents)
+                    want (when-let [[b e] (some-> st :token/id filled)]
+                           (let [b (if (ws? (aget o begin)) b (loop [x b] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x)))
+                                 e (if (ws? (aget o (dec end))) e (loop [x e] (if (and (> x b) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
+                             (when (< b e) [b e])))
+                    got (some-> (by-id id) ((juxt :token/begin :token/end)))]
+              :when (and want got (not= want got))]
+        (conj! out (str id " at " got ", its sentence at " want))))
     ;; nodes over several words, not over a sentence, keep to their words
     (doseq [{:token/keys [id begin end]} tokens :when (#{:un :us} (first id))
             :let [n (by-id id)
@@ -1204,7 +1221,7 @@
   ;; and a node over several words keeps to them. Sentences never begin on
   ;; whitespace they did not have. Every other rule judged as ever.
   (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true :sentence-segments true :nodes true
-              :points 0.2 :lead " "
+              :sentence-rows true :points 0.2 :lead " "
               :sentence-seps [" " "  " "\n" ". " " \n " "" "\n  "]
               :typed ["Q" "Oh " "XZ XZ " " Q" "  " "Q\nR" "\n" "-" "Q R" "Oh.\n"]}
         fails (atom [])]

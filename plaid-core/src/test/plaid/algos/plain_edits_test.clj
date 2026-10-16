@@ -280,7 +280,37 @@
     (testing "REV-TEXT-3: a whole-body save with several sentence starts typed reads each past the whitespace"
       (is (= ["The dog ran. " "Then The cat sat. " "So A cow mooed."]
              (raw "|The| |dog| |ran.| /|The| |cat| |sat.| /|A| |cow| |mooed.|" "The dog ran. Then The cat sat. So A cow mooed.")))
-      (is (= ["A. " "x B. " "y C. " "z D."] (raw "|A.| /|B.| /|C.| /|D.|" "A. x B. y C. z D."))))))
+      (is (= ["A. " "x B. " "y C. " "z D."] (raw "|A.| /|B.| /|C.| /|D.|" "A. x B. y C. z D."))))
+    (testing "REV2-TEXT-3: two sentences of only whitespace each take the text typed at their start, alone or together"
+      (is (= ["Hi. " "X " " " "The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 4 "X")])))
+      (is (= ["Hi. " " " "Y " "The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 5 "Y")])))
+      (is (= ["Hi. " "X " "Y " "The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 4 "X") (ins 6 "Y")])))
+      (is (= ["Hi. " "X  " "Y  " "Z The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 4 "X ") (ins 7 "Y ") (ins 10 "Z ")]))))))
+
+(deftest a-row-over-sentences-with-their-whitespace-follows-the-boundary-it-shares
+  ;; REV2-TEXT-1 and -2: rows of a layer that forbids overlap whose edges are
+  ;; the sentences' edges, whitespace included (a script's or an import's
+  ;; rows), move with the sentence boundary they share, so two rows never
+  ;; overlap and the text a sentence takes is in its row
+  (let [rows (fn [s extents ops]
+               (let [{:keys [body tokens]} (doc s)
+                     rs (map-indexed (fn [i [b e]] {:token/id [:r i] :token/layer :r :token/begin b :token/end e}) extents)
+                     r (ta/plain-edits body (into tokens rs) ops #{:s} #{:w} {:children #{:m} :exclusive #{:r}})
+                     nb (:text/body (:text r))
+                     at (fn [l] (sort-by first (keep #(when (= l (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))
+                     rr (at :r)]
+                 (is (every? (fn [[[_ e] [b _]]] (<= e b)) (partition 2 1 rr)) (str "rows overlap: " (pr-str rr)))
+                 (mapv (fn [[b e]] (cp/cp-subs nb b e)) rr)))]
+    (testing "REV2-TEXT-1: text typed inside the whitespace between two rows"
+      (is (= ["Hi. " "X  The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 4 "X")])))
+      (is (= ["Hi. " "X Y The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 4 "X") (ins 6 "Y")])))
+      (testing "a row over two sentences ends where the second one now ends"
+        (is (= ["A. B.  " "X C."] (rows "|A.| /|B.|   /|C.|" [[0 8] [8 10]] [(ins 7 "X")]))))
+      (testing "rows that leave the whitespace out keep it out"
+        (is (= ["Hi." "X  The end."] (rows "|Hi.|   /|The| |end.|" [[0 3] [6 14]] [(ins 4 "X")])))))
+    (testing "REV2-TEXT-2: a row over a sentence of only whitespace takes the text that sentence takes"
+      (is (= ["Hi. " "X " "The end."] (rows "|Hi.| / /|The| |end.|" [[0 4] [4 5] [5 13]] [(ins 4 "X")])))
+      (is (= ["Hi. " "X " "Y " "The end."] (rows "|Hi.| / / /|The| |end.|" [[0 4] [4 5] [5 6] [6 14]] [(ins 4 "X") (ins 6 "Y")]))))))
 
 (deftest a-split-cuts-only-at-the-whitespace-typed
   ;; REV2 M1: a word that already held a space is cut only at the space the

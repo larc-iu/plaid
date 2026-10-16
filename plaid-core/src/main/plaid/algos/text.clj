@@ -2305,13 +2305,16 @@
 (defn follow-sentences
   "`kept` (tokens as a text edit left them) with each follower (`follower?`)
   whose old extent was a sentence's (a token of a layer in `partitioning`),
-  less the whitespace at the sentence's edges, set to that sentence's extent
-  as the partition's gap-fill will leave it (see
-  `compensate-partition-layers!`), less the whitespace at its edges,
-  whatever text the sentence took. A time-alignment segment over its
-  sentence keeps covering it. `heads` are the sentences to be made at the
-  start of the text (see `apply-plain-gaps`), `nw` the new text's code
-  points."
+  with or without the whitespace at the sentence's edges, set to that
+  sentence's extent as the partition's gap-fill will leave it (see
+  `compensate-partition-layers!`), less the whitespace at an edge where the
+  follower had none, whatever text the sentence took. A time-alignment
+  segment over its sentence keeps covering it. A follower's edge on
+  whitespace at a sentence's boundary (a row over several sentences and
+  their whitespace) goes where that boundary goes, so two such rows never
+  overlap and the text a sentence takes there is in a row. `heads` are the
+  sentences to be made at the start of the text (see `apply-plain-gaps`),
+  `nw` the new text's code points."
   [^ints o old-tokens kept heads ^ints nw partitioning follower?]
   (let [n (alength nw)
         trim (fn [^ints cs [b e]]
@@ -2333,14 +2336,43 @@
                                                   (if (= i (dec c)) n (:token/begin (live (inc i))))]])
                                               live))))
                      (group-by :token/layer parts))
-        by-extent (group-by #(trim o [(:token/begin %) (:token/end %)]) parts)]
+        by-extent (group-by #(trim o [(:token/begin %) (:token/end %)]) parts)
+        by-full (group-by (juxt :token/begin :token/end) parts)
+        ;; each boundary of the partitions, whitespace included, to where the
+        ;; gap-fill leaves it, where every partition agrees
+        edge (fn [f i]
+               (into {}
+                     (keep (fn [[x ys]] (when (= 1 (count ys)) [x (first ys)])))
+                     (reduce (fn [m t]
+                               (if-let [ext (filled (:token/id t))]
+                                 (update m (f t) (fnil conj #{}) (nth ext i))
+                                 m))
+                             {} parts)))
+        begins (edge :token/begin 0)
+        ends (edge :token/end 1)]
     (mapv (fn [{:token/keys [id] :as t}]
             (let [{:token/keys [begin end]} (was id)
-                  sentence (when (and begin (< begin end) (follower? t))
-                             (some #(filled (:token/id %)) (by-extent [begin end])))]
-              (if-let [[b e] (some->> sentence (trim nw))]
-                (if (< b e) (assoc t :token/begin b :token/end e) t)
-                t)))
+                  follows? (and begin (< begin end) (follower? t))
+                  [tb te] (when follows? (trim o [begin end]))
+                  sentence (when follows?
+                             (or (some #(filled (:token/id %)) (by-full [begin end]))
+                                 (when (< tb te) (some #(filled (:token/id %)) (by-extent [tb te])))))
+                  ;; an edge on whitespace keeps the sentence's whitespace
+                  ;; there, an edge on a letter is moved off it
+                  fit (fn [[b e]]
+                        (let [b (if (space? (aget o begin)) b (loop [x b] (if (and (< x e) (space? (aget nw x))) (recur (inc x)) x)))
+                              e (if (space? (aget o (dec end))) e (loop [x e] (if (and (> x b) (space? (aget nw (dec x)))) (recur (dec x)) x)))]
+                          (when (< b e) [b e])))]
+              (if sentence
+                (if-let [[b e] (fit sentence)] (assoc t :token/begin b :token/end e) t)
+                ;; an edge on the whitespace at a boundary of the
+                ;; partition, a row holding its sentences' whitespace, goes
+                ;; where that boundary goes
+                (let [nb (when (and follows? (space? (aget o begin))) (begins begin))
+                      ne (when (and follows? (space? (aget o (dec end)))) (ends end))
+                      b (or nb (:token/begin t))
+                      e (or ne (:token/end t))]
+                  (if (and (or nb ne) (< b e)) (assoc t :token/begin b :token/end e) t)))))
           kept)))
 
 (defn- split-spaced-words
@@ -2531,10 +2563,12 @@
     between it and that token's first letter, or right after punctuation
     the one before ends on with no whitespace, and else to the one before
     (Luke, 2026-10-15), and so does the text of every other gap that only
-    types in the same whitespace before it. Where a token of the partition
-    holding only whitespace begins between the text and the next letter,
-    the text goes to the first such token instead, so that none is left
-    empty. Text holding a line break goes to the one before.
+    types in the same whitespace before it. Each such text goes to the
+    first token of the partition beginning at or after it, so a token
+    holding only whitespace there takes it and none is left empty, alone
+    or with the others. A gap in that whitespace that deletes ends the
+    run: text typed before it goes to the one before. Text holding a line
+    break goes to the one before.
   - A gap that takes all of it, and more, deletes it.
   - The new text between the letters given to the tokens either side
     belongs to neither.
@@ -2701,8 +2735,8 @@
                                          :else (recur (inc x)))))))
                            (range k))
         ;; the first gap of the run of such gaps that `g` ends, every one
-        ;; of them typing before the same letter: all their text goes to
-        ;; that letter's sentence, not only the last one's
+        ;; of them typing before the same letter: their text goes to the
+        ;; sentences beginning at or after each, up to that letter's
          run-start (let [r (long-array k)]
                      (dotimes [g k]
                        (aset r g (if (and (pos? g) (next-letter g) (= (next-letter (dec g)) (next-letter g)))
@@ -2715,17 +2749,26 @@
                                (if (partitioning layer) (update m layer (fnil conj (sorted-set)) begin) m))
                              {} wide)
         ;; whether a token of partition `layer` beginning (or ending) at
-        ;; `x` begins (or ends) at the text typed in the run gap `g` ends,
+        ;; `x` begins (or ends) at the text typed in gap `g`, the last gap
         ;; at or before `x`: `x` is no later than the next letter, and no
-        ;; other token of the layer begins between the typed text and `x`.
-        ;; A sentence of only whitespace there takes the text, so none is
-        ;; left empty and the sentences keep their order.
+        ;; other token of the layer begins between the gap and `x`. A
+        ;; sentence of only whitespace there takes the text, so none is left
+        ;; empty and the sentences keep their order.
+         no-begin? (fn [layer a x] (empty? (subseq (get part-begins layer (sorted-set)) >= a < x)))
          to-next? (fn [g layer x]
                     (when (>= g 0)
-                      (let [q (next-letter g)
-                            a (:a (info (aget run-start g)))]
-                        (and q (<= a x q) (empty? (subseq (get part-begins layer (sorted-set)) >= a < x))))))
-         run-at (fn [g] (new-at (aget run-start g)))
+                      (let [q (next-letter g)]
+                        (and q (<= (:a (info g)) x q) (no-begin? layer (:a (info g)) x)))))
+        ;; where that token begins (or ends): at the first gap of the run
+        ;; with no other token of the layer beginning between it and `x`, so
+        ;; each gap's text goes to the first sentence beginning at or after
+        ;; it, alone or with the others
+         run-at (fn [g layer x]
+                  (let [s (aget run-start g)]
+                    (loop [h g]
+                      (if (and (> h s) (no-begin? layer (:a (info (dec h))) x))
+                        (recur (dec h))
+                        (new-at h)))))
          placed (mapv (fn [{:token/keys [begin end layer] :as t}]
                         (if-let [[g off len] (keep-at [begin end])]
                           ;; one of the gap's words typed over: it goes on
@@ -2742,7 +2785,7 @@
                                      (neg? gb) begin
                                      ;; a sentence beginning in the whitespace
                                      ;; after text typed there begins at it
-                                     (and (partitioning layer) (to-next? gb layer begin)) (run-at gb)
+                                     (and (partitioning layer) (to-next? gb layer begin)) (run-at gb layer begin)
                                      (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
                                      (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
@@ -2764,7 +2807,7 @@
                                 ne (cond
                                      (neg? ge) end
                                      ;; and the one before it ends there
-                                     (and (partitioning layer) (< begin a2) (to-next? ge layer end)) (run-at ge)
+                                     (and (partitioning layer) (< begin a2) (to-next? ge layer end)) (run-at ge layer end)
                                      (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
                                      (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole
