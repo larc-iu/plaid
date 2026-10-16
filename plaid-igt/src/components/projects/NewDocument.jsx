@@ -14,7 +14,6 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
-import { isUnknownOutcome } from '@ui/lib/errors.js';
 import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 
@@ -52,16 +51,17 @@ export const NewDocument = ({ projectId, client, canManage }) => {
       const newDocument = await createOnce(mint, (id) =>
         client.documents.create(projectId, name, undefined, undefined, { id }),
       );
-      const projectData = await client.projects.get(projectId);
-      const primaryTextLayer = findBaselineTextLayer(projectData?.textLayers);
-      if (primaryTextLayer) {
-        try {
+      // The document is made. Its first Baseline save makes a text it lacks,
+      // so a failure from here on opens it all the same: a second press of
+      // Create would make a second document.
+      try {
+        const projectData = await client.projects.get(projectId);
+        const primaryTextLayer = findBaselineTextLayer(projectData?.textLayers);
+        if (primaryTextLayer) {
           await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
-        } catch (error) {
-          // The document is made either way, and saving its Baseline makes a
-          // text it lacks.
-          if (!isUnknownOutcome(error)) throw error;
         }
+      } catch (error) {
+        console.error('Failed to give the new document its text:', error);
       }
       notifySuccess(`Document “${name}” created`);
       setDocumentName('');
