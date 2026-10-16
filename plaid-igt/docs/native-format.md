@@ -70,7 +70,7 @@ the upload's media type is validated from its filename.
 | `project` | `{id, name}` of the source project |
 | `schema.orthographies` | `[{name}]` — non-baseline orthographies on the word layer |
 | `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?, lang?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does; `lang` is the writing system the field records its values are in (`config.igt.lang`), absent when it records none |
-| `schema.ignoredTokens` | the word layer's ignored-token config (`{type: 'unicodePunctuation', whitelist?}` or `{type: 'blacklist', blacklist}`), or `null` |
+| `schema.ignoredTokens` | the word layer's ignored-token config (`{type, whitelist, blacklist}`: `type` is `'unicodePunctuation'` or `'blacklist'` and names the list in force, and the other list is kept for switching back), or `null` |
 | `schema.documentMetadata` | `[{name, tagset?}]` enabled document metadata fields, or `[]` |
 | `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset |
 | `schema.tagsets` | the project's tagsets, `{name: {delimiters, mode, values}}`, `null` when unset |

@@ -36,6 +36,9 @@ CONFIGS = [
     {'type': 'unicodePunctuation', 'whitelist': ["'", '?', '-ab']},
     {'type': 'unicodePunctuation'},
     {'type': 'blacklist', 'blacklist': ['.', '--', 'x']},
+    # Both lists are stored (ruling 21), and only the one `type` names is read.
+    {'type': 'unicodePunctuation', 'whitelist': ["'"], 'blacklist': ['.', 'x']},
+    {'type': 'blacklist', 'whitelist': ["'", '?'], 'blacklist': ["'", '--']},
     {'type': 'something-else'},
 ]
 TOKENS = [

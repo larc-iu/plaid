@@ -109,12 +109,13 @@ const isIgnorableChar = (c, cfg) => isPunctChar(c) && !isLetterLike(c, cfg);
 export const DEFAULT_IGNORED_TOKENS = Object.freeze({
   type: 'unicodePunctuation',
   whitelist: Object.freeze([]),
+  blacklist: Object.freeze([]),
 });
 
 /**
- * The two names the edited shape's `mode` may take. The shape a screen edits
- * holds BOTH lists, so switching mode and back does not lose what was typed,
- * which is why it is not the stored shape.
+ * The two names the edited shape's `mode` may take. Both the edited shape and
+ * the stored one hold BOTH lists, so switching mode and back, saved or not,
+ * finds the other list as it was left. Only `type`'s list is in force.
  */
 export const IGNORED_TOKEN_MODES = Object.freeze({
   punctuation: 'unicode-punctuation',
@@ -131,21 +132,21 @@ export const IGNORED_TOKEN_MODES = Object.freeze({
  * would have had to be taught to all of them. A fresh object every call, since
  * the caller edits what it is given.
  */
-export const ignoredTokensSetup = (stored) => {
-  const explicit = stored?.type === 'blacklist';
-  return {
-    mode: explicit ? IGNORED_TOKEN_MODES.explicit : IGNORED_TOKEN_MODES.punctuation,
-    unicodePunctuationExceptions: explicit ? [] : [...(stored?.whitelist || [])],
-    explicitIgnoredTokens: explicit ? [...(stored?.blacklist || [])] : [],
-  };
-};
+export const ignoredTokensSetup = (stored) => ({
+  mode:
+    stored?.type === 'blacklist' ? IGNORED_TOKEN_MODES.explicit : IGNORED_TOKEN_MODES.punctuation,
+  unicodePunctuationExceptions: [...(stored?.whitelist || [])],
+  explicitIgnoredTokens: [...(stored?.blacklist || [])],
+});
 
-/** The other way: what goes on the word layer. Anything but an explicit list
- * is the punctuation rule, which is the default and the safe fall-through. */
-export const storedIgnoredTokens = (setup) =>
-  setup?.mode === IGNORED_TOKEN_MODES.explicit
-    ? { type: 'blacklist', blacklist: setup.explicitIgnoredTokens || [] }
-    : { type: 'unicodePunctuation', whitelist: setup?.unicodePunctuationExceptions || [] };
+/** The other way: what goes on the word layer, both lists with `type` naming
+ * the one in force. Anything but an explicit list is the punctuation rule,
+ * which is the default and the safe fall-through. */
+export const storedIgnoredTokens = (setup) => ({
+  type: setup?.mode === IGNORED_TOKEN_MODES.explicit ? 'blacklist' : 'unicodePunctuation',
+  whitelist: setup?.unicodePunctuationExceptions || [],
+  blacklist: setup?.explicitIgnoredTokens || [],
+});
 
 export const defaultIgnoredTokensSetup = () => ignoredTokensSetup(DEFAULT_IGNORED_TOKENS);
 

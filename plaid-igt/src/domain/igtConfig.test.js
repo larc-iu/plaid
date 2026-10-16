@@ -349,15 +349,49 @@ describe('the ignored-tokens rule in its two shapes', () => {
 
   it('goes back to the stored shape either way', () => {
     for (const stored of [
-      { type: 'unicodePunctuation', whitelist: ['\u02bc'] },
-      { type: 'blacklist', blacklist: ['.'] },
+      { type: 'unicodePunctuation', whitelist: ['\u02bc'], blacklist: [] },
+      { type: 'blacklist', whitelist: [], blacklist: ['.'] },
     ]) {
       expect(storedIgnoredTokens(ignoredTokensSetup(stored))).toEqual(stored);
     }
     expect(storedIgnoredTokens(defaultIgnoredTokensSetup())).toEqual({
       type: 'unicodePunctuation',
       whitelist: [],
+      blacklist: [],
     });
+  });
+
+  // Ruling 21: switching mode and saving keeps the other mode's list, so
+  // switching back finds it. Only the list `type` names is in force.
+  it('stores both lists, and switching back finds the other one', () => {
+    const setup = ignoredTokensSetup({ type: 'unicodePunctuation', whitelist: ['\u02bc'] });
+    setup.explicitIgnoredTokens = ['.'];
+    setup.mode = IGNORED_TOKEN_MODES.explicit;
+    const stored = storedIgnoredTokens(setup);
+    expect(stored).toEqual({ type: 'blacklist', whitelist: ['\u02bc'], blacklist: ['.'] });
+    const back = ignoredTokensSetup(stored);
+    back.mode = IGNORED_TOKEN_MODES.punctuation;
+    expect(storedIgnoredTokens(back)).toEqual({
+      type: 'unicodePunctuation',
+      whitelist: ['\u02bc'],
+      blacklist: ['.'],
+    });
+  });
+
+  it('reads only the list in force', () => {
+    const both = { whitelist: ["'"], blacklist: ["'", 'x'] };
+    const punct = { type: 'unicodePunctuation', ...both };
+    const explicit = { type: 'blacklist', ...both };
+    // Under the punctuation rule the explicit list ignores nothing.
+    expect(isTokenIgnored('x', punct)).toBe(false);
+    expect(isTokenIgnored("'", punct)).toBe(false);
+    expect(trimIgnoredEdges("'ab.", punct)).toBe("'ab");
+    expect(wordValueSpec(punct).regex).toContain('\\p{P}');
+    // Under the explicit list the letter-like exceptions do nothing.
+    expect(isTokenIgnored("'", explicit)).toBe(true);
+    expect(isTokenIgnored('.', explicit)).toBe(false);
+    expect(trimIgnoredEdges("'ab.", explicit)).toBe("'ab.");
+    expect(wordValueSpec(explicit).regex).toMatch(/^\^\(\?!/);
   });
 
   it('falls to the punctuation rule for a mode it does not know', () => {
