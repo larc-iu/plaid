@@ -607,6 +607,36 @@ describe('rules not as the settings want, by state', () => {
     await unmount();
   });
 
+  // REV6-WIRE-2 and -3: a list on a field naming a tagset that is gone, and
+  // a unit holding two annotations. The list is named and Remove the list
+  // takes it off on its own, with one annotation a unit left to put in force.
+  it('a list whose tagset is gone, with a unit holding two: named, and Remove the list takes it off', async () => {
+    vi.clearAllMocks();
+    const proj = withFields([
+      {
+        id: 'msl-0',
+        name: 'Gloss',
+        config: { igt: { scope: 'Morpheme', tagset: 'Gone' } },
+        constraints: { igt: [leipzig] },
+      },
+    ]);
+    const { client, declared } = clientFor(proj, 1);
+    client.documents = { get: vi.fn(async () => ({ id: 'd-1', name: 'Text 1', textLayers: [] })) };
+    client.projects.listDocuments = vi.fn(async () => [{ id: 'd-1', name: 'Text 1' }]);
+    const { container, step, unmount } = await renderWith(client, proj);
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    expect(notice.textContent).toContain('In force with no closed tagset: the list on Gloss.');
+    expect(notice.textContent).toContain('Not in force: one annotation a morpheme on Gloss.');
+    await step(async () => {
+      byText(notice, 'button', 'Remove the list').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(declared).toEqual([['msl-0', []]]);
+    expect(notifySuccess).toHaveBeenCalledWith('The list on Gloss is removed');
+    expect(notifyWarning).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   it('a field holding no rules: one annotation a unit, named when its annotations would need joining', async () => {
     vi.clearAllMocks();
     const proj = withFields([
@@ -704,7 +734,10 @@ describe('units holding more than one annotation', () => {
   proj.textLayers[0].tokenLayers[0].spanLayers[0].constraints = { igt: [] };
   const client = {
     ...clientWith([[['PL', 3]], [['Song', 4]]]),
-    projects: { get: vi.fn(async () => structuredClone(proj)) },
+    projects: {
+      get: vi.fn(async () => structuredClone(proj)),
+      listDocuments: vi.fn(async () => [{ id: 'd-1', name: 'Text 1' }]),
+    },
     documents: { get: vi.fn(async () => structuredClone(doc)) },
     spanLayers: {
       refusedValues: vi.fn(async () => ({ count: 0, valueCount: 0, values: [] })),
@@ -743,5 +776,68 @@ describe('units holding more than one annotation', () => {
     );
     expect(client.documents.get).toHaveBeenCalledTimes(1);
     await unmount();
+  });
+  // REV6-WIRE-6: a document whose name another document shares is named
+  // with its id, as the assistant's reads name it.
+  it('names a document whose name is shared with its id', async () => {
+    vi.clearAllMocks();
+    client.projects.listDocuments.mockResolvedValueOnce([
+      { id: 'd-1', name: 'Text 1' },
+      { id: 'd-2', name: 'Text 1' },
+    ]);
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation
+          project={proj}
+          projectId="p-1"
+          client={client}
+          onProjectUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    const list = container.querySelector('[data-testid="doubled-units"]');
+    expect(list.textContent).toContain('Text 1 (d-1) · Ali');
+    await unmount();
+  });
+
+  // REV6-WIRE-5: Analyze shows no fields on an ignored token, so a unit
+  // there is not listed or counted.
+  it('leaves out a unit on an ignored token', async () => {
+    vi.clearAllMocks();
+    const withWords = structuredClone(doc);
+    withWords.textLayers[0].text.body = 'Ali-di .';
+    withWords.textLayers[0].tokenLayers.push({
+      id: 'wl-1',
+      config: { plaid: { role: 'word' } },
+      tokens: [
+        { id: 'w-1', begin: 0, end: 6 },
+        { id: 'w-2', begin: 7, end: 8 },
+      ],
+    });
+    withWords.textLayers[0].tokenLayers[1].tokens[1] = { id: 'm-2', begin: 7, end: 8 };
+    const ignoredClient = {
+      ...client,
+      documents: { get: vi.fn(async () => structuredClone(withWords)) },
+      spanLayers: {
+        ...client.spanLayers,
+        checkConstraints: vi.fn(async () => ({
+          violations: [
+            { constraint: 'single-span', document: 'd-1', at: 'm-2', ids: ['sp-3', 'sp-4'] },
+            { constraint: 'single-span', document: 'd-1', at: 'm-1', ids: ['sp-1', 'sp-2'] },
+          ],
+          violationCount: 2,
+        })),
+      },
+    };
+    const { locateDoubles } = await import('./locateDoubles.js');
+    const ignoring = structuredClone(withWords);
+    ignoring.textLayers[0].tokenLayers[2].config.igt = {
+      ignoredTokens: { type: 'unicodePunctuation', whitelist: [] },
+    };
+    ignoredClient.documents.get = vi.fn(async () => structuredClone(ignoring));
+    const out = await locateDoubles(ignoredClient, 'msl-0', { projectId: 'p-1' });
+    expect(out.count).toBe(1);
+    expect(out.rows.map((r) => r.form)).toEqual(['Ali']);
   });
 });

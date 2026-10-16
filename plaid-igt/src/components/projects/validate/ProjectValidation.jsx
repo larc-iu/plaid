@@ -187,7 +187,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     Promise.all(
       singles.map(async (f) => {
         try {
-          return [f.layerId, await locateDoubles(client, f.layerId)];
+          return [f.layerId, await locateDoubles(client, f.layerId, { projectId })];
         } catch (err) {
           console.error('Could not find the doubled annotations:', err);
           return [f.layerId, { failed: true }];
@@ -199,18 +199,21 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     return () => {
       live = false;
     };
-  }, [client, outOfForce]);
+  }, [client, outOfForce, projectId]);
   // Put the rules of `targets` (entries of `outOfForce`) in force, and say
-  // what changed: `done` names it when nothing was left out.
-  const putInForce = async (targets, done) => {
+  // what changed: `done` names it when nothing was left out. With `listOnly`
+  // (Remove the list), `done` is said once the heal ran: taking a list off
+  // is never refused, and what else stays out is on the screen already.
+  const putInForce = async (targets, done, { listOnly = false } = {}) => {
     setForcing(true);
     try {
       const ids = new Set(targets.map((f) => f.layerId));
       const notInForce = await putRulesInForce(client, projectId, {
         layers: (id) => ids.has(id),
         here: true,
+        quiet: listOnly,
       });
-      if (notInForce && !notInForce.length) notifySuccess(done);
+      if (notInForce && (listOnly || !notInForce.length)) notifySuccess(done);
       await onProjectUpdate?.();
     } finally {
       setForcing(false);
@@ -454,9 +457,10 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   const zeroRows = zeros || [];
   // Fields to put in force: a closed list not held, one annotation a unit
   // not held, or any other difference. Fields holding a list no closed
-  // tagset names: the list to remove.
+  // tagset names: the list to remove, and one annotation a unit with the
+  // rest when that is out too.
   const stale = outOfForce.filter((f) => f.stale);
-  const toForce = outOfForce.filter((f) => !f.stale);
+  const toForce = outOfForce.filter((f) => !f.stale || f.single);
   const unitOf = (f) =>
     ({ Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' })[f.scope] ?? 'word';
   // Each field once, with every rule of it not in force.
@@ -468,7 +472,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       return `the rules of ${f.field}`;
     })
     .join(', ')}.`;
-  const doubled = toForce.filter((f) => f.single && doubles[f.layerId]?.count > 0);
+  const doubled = outOfForce.filter((f) => f.single && doubles[f.layerId]?.count > 0);
   const listNames = (fs) => fs.map((f) => f.field).join(', ');
 
   return (
@@ -535,7 +539,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                   variant="outline"
                   className="ml-auto"
                   disabled={forcing}
-                  onClick={() => putInForce(stale, `The list on ${listNames(stale)} is removed`)}
+                  onClick={() =>
+                    putInForce(stale, `The list on ${listNames(stale)} is removed`, {
+                      listOnly: true,
+                    })
+                  }
                 >
                   Remove the list
                 </Button>
