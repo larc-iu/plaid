@@ -198,4 +198,35 @@ describe('matchRecordings and RecordingsSummary', () => {
     expect(shown).toContain('No text uses: x.wav.');
     expect(shown).not.toContain('0 of');
   });
+
+  it('removes a recording no text uses', async () => {
+    const x = media('x.wav');
+    const r = matchRecordings({
+      documents: [text('a', 'a.wav')],
+      selected: new Set(['a']),
+      mediaFiles: [x],
+    });
+    const onRemove = vi.fn();
+    const view = await renderComponent(
+      <RecordingsSummary recordings={r} locked={false} onRemove={onRemove} />,
+    );
+    const remove = view.container.querySelector('button[aria-label="Remove x.wav"]');
+    await view.step(() => remove.click());
+    expect(onRemove).toHaveBeenCalledWith(x);
+    await view.unmount();
+    const locked = await renderComponent(
+      <RecordingsSummary recordings={r} locked onRemove={onRemove} />,
+    );
+    expect(locked.container.querySelector('button[aria-label="Remove x.wav"]')).toBeNull();
+    await locked.unmount();
+  });
+
+  it('says which recording it is converting', async () => {
+    const r = matchRecordings({ documents: [], selected: new Set(), mediaFiles: [] });
+    const view = await renderComponent(
+      <RecordingsSummary recordings={r} locked={false} decoding="story.wav" />,
+    );
+    expect(view.container.textContent).toContain('Converting story.wav to PCM WAV.');
+    await view.unmount();
+  });
 });

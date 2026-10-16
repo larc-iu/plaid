@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileUp, RefreshCw } from 'lucide-react';
+import { FileUp, RefreshCw, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
@@ -108,6 +108,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   // Recordings picked with the backup or added on review. Each goes to the
   // text whose sentences FLEx timed against a file of that name.
   const [mediaFiles, setMediaFiles] = useState([]);
+  // The name of a chosen recording being converted to PCM WAV.
+  const [decoding, setDecoding] = useState(null);
   const mediaInputRef = useRef(null);
 
   // Survive retries within this page session (see header comment).
@@ -503,7 +505,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 <RecordingsSummary
                   recordings={recordings}
                   locked={locked}
+                  decoding={decoding}
                   onAdd={() => mediaInputRef.current?.click()}
+                  onRemove={(file) => setMediaFiles((prev) => prev.filter((p) => p !== file))}
                 />
               )}
               <input
@@ -515,7 +519,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 onChange={async (e) => {
                   const chosen = [...(e.target.files ?? [])].filter(isMediaFile);
                   e.target.value = '';
-                  const added = await readyRecordings(chosen);
+                  let added;
+                  try {
+                    added = await readyRecordings(chosen, { onConvert: setDecoding });
+                  } finally {
+                    setDecoding(null);
+                  }
                   // A file chosen again under a name already chosen replaces it.
                   setMediaFiles((prev) => [
                     ...prev.filter(
@@ -950,7 +959,7 @@ const MEDIA_EXTENSIONS =
 const isMediaFile = (f) => /^(audio|video)\//.test(f.type || '') || MEDIA_EXTENSIONS.test(f.name);
 
 // The chosen texts FLEx timed against a recording, and which of those have one.
-export const RecordingsSummary = ({ recordings, locked, onAdd }) => {
+export const RecordingsSummary = ({ recordings, locked, decoding = null, onAdd, onRemove }) => {
   const { wanted, byFile, missing, tooLarge, unmatched, maxBytes } = recordings;
   const have = wanted.filter((d) => byFile.has(d.guid)).length;
   const overlapping = wanted.reduce((n, d) => n + (d.timeWarnings?.length ?? 0), 0);
@@ -991,7 +1000,31 @@ export const RecordingsSummary = ({ recordings, locked, onAdd }) => {
       )}
       {unmatched.length > 0 && (
         <p className="mt-1 text-muted-foreground">
-          No text uses: {unmatched.map((f) => f.name).join(', ')}.
+          No text uses:{' '}
+          {unmatched.map((f, i) => (
+            <span key={`${i}:${f.name}`}>
+              {i > 0 && ', '}
+              {f.name}
+              {!locked && onRemove && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="ml-0.5 h-5 w-5 align-middle"
+                  aria-label={`Remove ${f.name}`}
+                  onClick={() => onRemove(f)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </span>
+          ))}
+          .
+        </p>
+      )}
+      {decoding && (
+        <p className="mt-1 text-muted-foreground" aria-live="polite">
+          Converting {decoding} to PCM WAV.
         </p>
       )}
       {!locked && (missing.length > 0 || tooLarge.length > 0) && (
