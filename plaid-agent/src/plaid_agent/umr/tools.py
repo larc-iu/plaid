@@ -29,6 +29,7 @@ from plaid_client.workflows.umr.inventory import (ATTRIBUTE_RELATIONS, ATTRIBUTE
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
+from ..core.requests import Replaying
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
 from .plan import (GRAPH_KINDS, KIND, attr_line, attrs_scope_held, attrs_scope_targets, graphs_of_op, holds,
@@ -58,7 +59,7 @@ def _closed_value_problem(rel, value) -> Optional[str]:
     return attribute_value_problem(rel, value)
 
 
-class Workspace(BaseWorkspace):
+class Workspace(Replaying, BaseWorkspace):
     """One turn's view of a UMR project: what it has loaded and the plan it is
     proposing."""
 
@@ -118,6 +119,15 @@ class Workspace(BaseWorkspace):
 
     def __init__(self, client, project: UmrProject, on_progress=None):
         super().__init__(client, project, on_progress)
+        # A drop asks the plan's remaining requests again (core/requests.py).
+        self.init_requests()
+
+    def call_tool(self, tool: str, args: Dict[str, Any]) -> str:
+        from .toolkit import call_tool
+        return call_tool(self, tool, args)
+
+    # Each call's tag (``_staged``), new on every call, and a scope's card.
+    REQUEST_BOOKKEEPING = ('staging', 'card')
 
     def make_corpus(self):
         from .corpus import Corpus

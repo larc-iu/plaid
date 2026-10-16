@@ -15,13 +15,14 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import uuid7
 
-from ..core import docload, keep, opkind
+from ..core import docload, keep, opkind, work
 from ..core.keep import is_keep
 from ..core.bidi import qname, qv
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label, doc_labels, plain_quote
 from ..core.plan import MANY, by_document, confirm_preview
+from ..core.requests import Replaying
 from ..core.workspace import BaseWorkspace
 from ..core.provenance import unmark
 from ..core.refs import clip, read_ref
@@ -58,7 +59,7 @@ _DOC_CACHE = docload.DocCache()
 
 # --- the workspace ------------------------------------------------------------
 
-class Workspace(BaseWorkspace):
+class Workspace(Replaying, BaseWorkspace):
     """One turn's view of a treebank project: what it has loaded and the plan
     it is proposing."""
 
@@ -115,6 +116,17 @@ class Workspace(BaseWorkspace):
 
     def __init__(self, client, project: UdProject, on_progress=None):
         super().__init__(client, project, on_progress)
+        # A drop asks the plan's remaining requests again (core/requests.py).
+        self.init_requests()
+
+    def call_tool(self, tool: str, args: Dict[str, Any]) -> str:
+        from .toolkit import call_tool
+        return call_tool(self, tool, args)
+
+    # A scope's card and what it found before the plan's named values were
+    # taken out of it (``settle``), and the counts and line those settle.
+    REQUEST_BOOKKEEPING = ('card', 'found')
+    REQUEST_SETTLED = ('count', 'per_field', 'label', 'matched', work.COUNTED, 'contributed_count')
 
     def make_corpus(self):
         from .corpus import Corpus
