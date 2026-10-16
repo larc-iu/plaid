@@ -9,6 +9,8 @@ detector finds 55 of Gemma's replies and none of the 4,083 replies of the
 other models, the false positives it must not have.
 """
 
+import json
+
 import pytest
 
 from plaid_agent.core import agent
@@ -92,3 +94,120 @@ def test_the_note_names_the_tool_and_says_nothing_ran():
     assert written_call_note('set_head') == ('(system) Your reply wrote a set_head call as text, so it did not run: '
                                              'nothing was done. Call the tool itself now, or reply to the user '
                                              'without the call.')
+
+
+# REV7-AGENT R7A-1 (parent 2026-10-16): a reply that restates a call that went
+# through this turn is not told it did not run. 11 of Gemma's 55 bench hits
+# were this shape, and a model obeying the note staged the change again.
+
+def test_a_restated_call_of_a_tool_that_ran_is_not_one():
+    text = 'Plan:\n`set_head(document="Russian 2", ref="s11.w5", head=3, deprel="iobj")`'
+    assert written_call(text, NAMES, ran={'set_head'}) is None
+    assert written_call(text, NAMES, ran={'query'}) == 'set_head'
+    # Another tool written beside it still counts.
+    both = text + '\n\nsplit_sentence(document="Russian 2", ref="s4.w8")'
+    assert written_call(both, NAMES, ran={'set_head'}) == 'split_sentence'
+
+
+def test_a_reply_restating_a_call_that_ran_is_the_reply(monkeypatch):
+    ws, kit, plan, _read = APPS['igt']()
+    restated = ('I have planned the gloss change.\n\n```python\n'
+                'set_field(document="Text 1", refs=["s1.w1"], field="Gloss", value="X")\n```\n\nPlease approve.')
+    out, sent = _run(monkeypatch, ws, kit, [_reply(plan), _reply(text=restated)])
+    assert len(sent) == 2 and out.text == restated
+    assert agent.WRITTEN_CALL_STEP not in [s['name'] for s in out.steps]
+    assert len(ws.ops) == 1
+
+
+def test_the_entry_is_not_staged_twice(monkeypatch):
+    ws, kit, _plan, _read = APPS['igt']()
+    create = ('create_entry', {'lexicon': 'Lexicon', 'form': 'wil', 'fields': {'Gloss': 'do'}})
+    restated = ('I have planned a new entry wil "do".\n\n```python\n'
+                'create_entry(lexicon="Lexicon", form="wil", fields={"gloss": "do"})\n```')
+    out, sent = _run(monkeypatch, ws, kit, [_reply(create), _reply(text=restated)])
+    assert len(sent) == 2 and out.text == restated
+    assert len(ws.ops) == 1
+
+
+# R7A-6: code a run_code call ran, shown in a reply, and a Grew pattern shown
+# under grew_search, are not calls written as text.
+
+SHOWN = 'I counted with:\n\n```python\nrows = query({"find": ["?t"], "where": [["?t", "layer", "Words"]]})\nprint(len(rows))\n```'
+RAN = 'rows = query({"find": ["?t"],\n  "where": [["?t", "layer", "Words"]]})\nprint(len(rows))'
+
+
+def test_code_that_ran_is_shown_code():
+    assert written_call(SHOWN, NAMES, code=[RAN]) is None
+    assert written_call(SHOWN, NAMES) == 'query'
+    assert written_call(SHOWN, NAMES, code=['print(1)']) == 'query'
+
+
+def test_a_grew_pattern_under_the_tools_name_is_not_a_call():
+    names = NAMES + ['grew_search']
+    assert written_call('I searched with:\n\n```\ngrew_search {\n  pattern { X -[nsubj]-> Y }\n}\n```', names) is None
+    assert written_call('grew_search {"pattern": "pattern { X [upos=NOUN] }"}', names) == 'grew_search'
+    assert written_call('grew_search {\n  "pattern": "pattern { X }"\n}', names) == 'grew_search'
+
+
+def test_run_code_of_reads_the_code_of_every_run_code_call():
+    msgs = [{'role': 'user', 'content': 'q'},
+            {'role': 'assistant', 'tool_calls': [
+                {'id': 'a', 'function': {'name': 'run_code', 'arguments': '{"code": "print(1)"}'}},
+                {'id': 'b', 'function': {'name': 'query', 'arguments': '{"q": {}}'}},
+                {'id': 'c', 'function': {'name': 'run_code', 'arguments': '{"code": '}}]}]
+    assert agent.run_code_of(msgs) == ['print(1)']
+
+
+def test_code_run_in_an_earlier_turn_is_shown_code(monkeypatch):
+    ws, kit, _plan, _read = APPS['igt']()
+    transcript = [{'role': 'user', 'content': 'how many words?'},
+                  {'role': 'assistant', 'content': '', 'tool_calls': [
+                      {'id': 'r1', 'type': 'function',
+                       'function': {'name': 'run_code', 'arguments': json.dumps({'code': RAN})}}]},
+                  {'role': 'tool', 'tool_call_id': 'r1', 'content': '120'},
+                  {'role': 'assistant', 'content': '120 words.'},
+                  {'role': 'user', 'content': 'how did you count?'}]
+    sent = []
+
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+        sent.append(kwargs)
+        return _reply(text=SHOWN)
+
+    monkeypatch.setattr(agent, '_complete', complete)
+    out = agent.run_turn(agent.ModelConfig(model='stub'), kit, ws, 'system', transcript)
+    assert len(sent) == 1 and out.text == SHOWN
+
+
+# R7A-8 (parent 2026-10-16): a staged plan survives any model-call failure
+# after it was staged, not only the call for the reply.
+
+def test_a_failure_of_the_next_round_keeps_the_staged_plan(monkeypatch):
+    ws, kit, plan, _read = APPS['igt']()
+    calls = iter([_reply(plan), RuntimeError('litellm.Timeout: read timed out')])
+
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+        x = next(calls)
+        if isinstance(x, Exception):
+            raise x
+        return x
+
+    monkeypatch.setattr(agent, '_complete', complete)
+    out = agent.run_turn(agent.ModelConfig(model='stub'), kit, ws, 'system', [{'role': 'user', 'content': 'x'}])
+    assert out.text == f'({agent.NO_ANSWER})' and len(ws.ops) == 1
+    assert [s['name'] for s in out.steps] == ['set_field']
+
+
+def test_a_failure_with_nothing_planned_still_fails_the_turn(monkeypatch):
+    ws, kit, _plan, read = APPS['igt']()
+    calls = iter([_reply(read), RuntimeError('litellm.Timeout: read timed out')])
+
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+        x = next(calls)
+        if isinstance(x, Exception):
+            raise x
+        return x
+
+    monkeypatch.setattr(agent, '_complete', complete)
+    with pytest.raises(RuntimeError):
+        agent.run_turn(agent.ModelConfig(model='stub'), kit, ws, 'system', [{'role': 'user', 'content': 'x'}])
+    assert not ws.ops

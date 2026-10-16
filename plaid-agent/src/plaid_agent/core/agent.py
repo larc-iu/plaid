@@ -577,18 +577,57 @@ def _call_shapes(names: Iterable[str]) -> List[re.Pattern]:
         rf'<\s*({n})(?=[\s>/])',
         rf'<(?:action|tool|tool_name|function|name)>\s*({n})\s*</',
         rf'"(?:name|tool|tool_name|function|action)"\s*:\s*"({n})"',
-        rf'(?m)^[ \t]*`?({n})`?[ \t]*\{{',
+        # A JSON object after the name, not a Grew pattern a ud reply shows
+        # under the tool's name (`grew_search {` then `pattern { ... }`).
+        rf'(?m)^[ \t]*`?({n})`?[ \t]*\{{\s*"',
     )]
 
 
-def written_call(text: Optional[str], names: Iterable[str]) -> Optional[str]:
+def _squashed(text: str) -> str:
+    return ' '.join(text.split())
+
+
+def written_call(text: Optional[str], names: Iterable[str], ran: Iterable[str] = (),
+                 code: Iterable[str] = ()) -> Optional[str]:
     """The tool ``text`` writes out as a call rather than calling it, or None.
-    ``names`` are the tools the turn offers."""
+    ``names`` are the tools the turn offers.
+
+    A call of a tool in ``ran`` (the tools whose calls went through this
+    turn) is the reply restating what it did, not a call that did not run.
+    A line of code that ran (``code``, the code of the conversation's
+    run_code calls) is shown code: the sandbox's ``query(q)`` shares the
+    query tool's name."""
+    ran = set(ran)
+    code = [_squashed(c) for c in code if c]
+    text = text or ''
     for p in _call_shapes(names):
-        m = p.search(text or '')
-        if m:
+        for m in p.finditer(text):
+            if m.group(1) in ran:
+                continue
+            start = text.rfind('\n', 0, m.start()) + 1
+            end = text.find('\n', m.start())
+            line = _squashed(text[start:end if end >= 0 else len(text)].strip(' \t`'))
+            if line and any(line in c for c in code):
+                continue
             return m.group(1)
     return None
+
+
+def run_code_of(messages: Iterable[Dict[str, Any]]) -> List[str]:
+    """The code of every run_code call in ``messages``."""
+    out = []
+    for m in messages:
+        for c in m.get('tool_calls') or []:
+            f = c.get('function') or {}
+            if f.get('name') != 'run_code':
+                continue
+            try:
+                args = json.loads(f.get('arguments') or '{}')
+            except (TypeError, ValueError):
+                continue
+            if isinstance(args, dict) and isinstance(args.get('code'), str):
+                out.append(args['code'])
+    return out
 
 
 def written_call_note(name: str) -> str:
@@ -982,6 +1021,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     # and whether it was told a call it wrote as text did not run.
     nudged = False
     wrote_once = False
+    # The tools whose calls went through this turn: a reply that writes one
+    # out is restating it (REV7-AGENT R7A-1).
+    ran: set = set()
 
     def claimed_nothing(text: str) -> bool:
         """The reply says it planned, and this turn planned nothing: no plan
@@ -990,6 +1032,17 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         return (not made and not held_changes(ws)
                 and not getattr(ws, 'waiting', None) and not getattr(ws, 'resumed', False)
                 and claims_a_plan(text))
+
+    def keep_the_plan(e: Exception) -> None:
+        """After a model call failed with ``e``: re-raises it when nothing
+        is planned. The plan is the substance of this turn, as for an empty
+        reply: a failure of any model call after it was staged does not lose
+        it, and the turn's reply is NO_ANSWER (REV7-AGENT R7A-8)."""
+        if not getattr(ws, 'ops', None):
+            raise e
+        print(f'{cfg.model}: a model call after a staged plan failed, and the plan is kept:')
+        traceback.print_exception(e)
+        live['text'] = ''
 
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str):
         """One more call, without tools, when the model owes the user words.
@@ -1005,13 +1058,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         except TurnCancelled:
             raise
         except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
-            if not getattr(ws, 'ops', None):
-                raise
-            # The plan is the substance of this turn, as for an empty reply
-            # below: a failure of the call for its words does not lose it.
-            print(f'{cfg.model}: the reply after a staged plan failed, and the plan is kept:')
-            traceback.print_exception(e)
-            live['text'] = ''
+            keep_the_plan(e)
             return f'({NO_ANSWER})', None
         spend.add(resp)
         choice = resp.choices[0]
@@ -1098,7 +1145,27 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
         live['n'] = rounds + 1
-        resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new)
+        try:
+            resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new)
+        except TurnCancelled:
+            raise
+        except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
+            # What the failed call wrote and reasoned, which the reader saw
+            # stream, is kept in a round of its own, as a failed turn's is.
+            partial = live['text']
+            thought = clean_reasoning(keeper.thinking) if keeper is not None else None
+            keep_the_plan(e)
+            kept_round = None
+            if keeper is not None and (thought or partial):
+                kept = new_round(rounds + 1, cfg.model)
+                if thought:
+                    kept['thinking'] = thought
+                if partial:
+                    kept['said'] = partial
+                if keeper.store(kept):
+                    kept_round = kept['id']
+            return TurnResult(f'({NO_ANSWER})', new, trace, spend.usage(), kept_round,
+                              bool(kept_round and thought))
         spend.add(resp)
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
@@ -1123,7 +1190,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # stay in the transcript, and the trace has a step for them,
             # whose round holds the reply and the note as sent.
             wrote = None if wrote_once else written_call(
-                text, [t['function']['name'] for t in kwargs.get('tools') or [] if t.get('function')])
+                text, [t['function']['name'] for t in kwargs.get('tools') or [] if t.get('function')],
+                ran, run_code_of(history + new))
             if wrote:
                 wrote_once = True
                 back = (WRITTEN_CALL_STEP, WRITTEN_CALL_LABEL, written_call_note(wrote))
@@ -1252,6 +1320,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         # it was planned nothing, and its step says so.
                         nothing = unchanged
                         made[key] = told
+            if not failed:
+                ran.add(name)
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
             first = not rnd['calls']
             # A read held to documents is traced by the documents it resolved
