@@ -84,8 +84,8 @@ const lane = (ops) => (
 
 const needle = (h) => h.container.querySelector('[data-testid="needle"]').style.transform;
 // Where the needle stands for a time, at the fakes' zoom of 10 px/s unless
-// another is named.
-const at = (seconds, pps = 10) => `translateX(${seconds * pps}px)`;
+// another is named, on a whole pixel.
+const at = (seconds, pps = 10) => `translateX(${Math.round(seconds * pps)}px)`;
 
 // One pointer event, committed before the next one is sent. `clientX` is a
 // pixel on the lane, which starts at 0 in this environment, so at 10 px/s a
@@ -203,6 +203,22 @@ describe('useTimelineOperations: the needle', () => {
     // leaves the needle where the clock put it.
     await h.setInputs({ args: [{ ...ops, currentTime: 3.8 }] });
     expect(needle(h)).toBe(at(4));
+    await h.unmount();
+  });
+
+  it('stands on a whole device pixel', async () => {
+    const ops = makeOps({ isPlaying: true });
+    const h = await mount(ops);
+    ops.clock.set(4.26);
+    expect(needle(h)).toBe('translateX(43px)');
+    const dpr = window.devicePixelRatio;
+    window.devicePixelRatio = 2;
+    try {
+      ops.clock.set(4.24);
+      expect(needle(h)).toBe('translateX(42.5px)');
+    } finally {
+      window.devicePixelRatio = dpr;
+    }
     await h.unmount();
   });
 

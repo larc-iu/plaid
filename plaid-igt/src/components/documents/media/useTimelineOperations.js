@@ -577,7 +577,10 @@ export const useTimelineOperations = (mediaOps) => {
       const needle = needleRef.current;
       const duration = durationRef.current;
       if (!needle || !duration) return;
-      needle.style.transform = `translateX(${Math.min(time, duration) * pixelsPerSecondRef.current}px)`;
+      // On a whole device pixel: a 1 px line across two reads dark, not red.
+      const dpr = window.devicePixelRatio || 1;
+      const x = Math.round(Math.min(time, duration) * pixelsPerSecondRef.current * dpr) / dpr;
+      needle.style.transform = `translateX(${x}px)`;
       // While playing, keep the needle on screen, a tenth of the width in
       // from the edge it is heading for.
       const box = timelineContainerRef.current;
