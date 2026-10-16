@@ -57,3 +57,51 @@ describe('ProjectBulkEdit', () => {
     await unmount();
   });
 });
+
+// Validation's "Fix in Bulk Edit" names the field and the value in the link,
+// and the field replace opens with them filled in.
+describe('ProjectBulkEdit, a link that fills in the field replace', () => {
+  const WITH_GLOSS = {
+    ...PROJECT,
+    textLayers: [
+      {
+        ...PROJECT.textLayers[0],
+        tokenLayers: [
+          {
+            id: 'wl',
+            config: { plaid: { role: 'word' } },
+            spanLayers: [
+              { id: 'g1', name: 'Gloss', config: { igt: { scope: 'Word' } } },
+              { id: 'g2', name: 'Note', config: { igt: { scope: 'Word' } } },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const open = (url) =>
+    renderComponent(
+      <MemoryRouter initialEntries={[url]}>
+        <ProjectBulkEdit project={WITH_GLOSS} projectId="p1" client={{}} />
+      </MemoryRouter>,
+    );
+  const inputs = (c) => all(c, 'input').map((i) => i.value);
+
+  it('fills in the field, the value and the replacement', async () => {
+    const { container, unmount } = await open(
+      '/projects/p1?tab=bulk&op=field&in=span%3Ag2&q=1SG.ABL&match=exact&repl=%E2%88%85',
+    );
+    expect(container.textContent).toContain('Note (word)');
+    expect(container.textContent).toContain('is exactly');
+    expect(inputs(container)).toEqual(expect.arrayContaining(['1SG.ABL', '\u2205']));
+    await unmount();
+  });
+
+  it('opens empty without them', async () => {
+    const { container, unmount } = await open('/projects/p1?tab=bulk&op=field');
+    expect(container.textContent).toContain('Gloss (word)');
+    expect(container.textContent).toContain('contains');
+    expect(inputs(container).every((v) => v === '')).toBe(true);
+    await unmount();
+  });
+});

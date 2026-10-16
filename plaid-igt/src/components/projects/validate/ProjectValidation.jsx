@@ -56,6 +56,20 @@ const locateMetadata = async (client, projectId, field, value) => {
   };
 };
 
+// Bulk Edit's field replace, filled in for one row: the field (or the morpheme
+// form), the value matched whole, and a replacement when the row has one.
+// Only a field or a morpheme form can be replaced there.
+const bulkFixHref = (projectId, domain, value, replacement = '') => {
+  const p = new URLSearchParams({ tab: 'bulk', op: 'field' });
+  if (domain?.kind === 'span' || domain?.kind === 'morpheme') {
+    p.set('in', domain.id);
+    p.set('q', value);
+    p.set('match', 'exact');
+    if (replacement) p.set('repl', replacement);
+  }
+  return `/projects/${projectId}?${p}`;
+};
+
 const MODE_LABELS = { suggest: 'open', closed: 'closed', mixed: 'closed, plus lexical glosses' };
 
 const reasonText = (violations) => {
@@ -443,7 +457,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
               </Button>
             )}
             <Button size="sm" variant="ghost" asChild>
-              <Link to={`/projects/${projectId}?tab=bulk`}>Fix in Bulk Edit</Link>
+              <Link to={bulkFixHref(projectId, g.domain, row.value)}>Fix in Bulk Edit</Link>
             </Button>
           </div>
         </div>
@@ -612,7 +626,9 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                   </span>
                   <div className="ml-auto flex shrink-0 items-center gap-1">
                     <Button size="sm" variant="ghost" asChild>
-                      <Link to={`/projects/${projectId}?tab=bulk`}>Fix in Bulk Edit</Link>
+                      <Link to={bulkFixHref(projectId, morphemes.domain, row.value, ZERO_MORPH)}>
+                        Fix in Bulk Edit
+                      </Link>
                     </Button>
                   </div>
                 </div>

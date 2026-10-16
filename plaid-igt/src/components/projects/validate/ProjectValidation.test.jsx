@@ -217,6 +217,18 @@ describe('the scan', () => {
     expect(container.textContent).toContain('2 forms to check');
     // The real zero and an ordinary form are both left alone.
     expect(container.textContent).not.toContain('dog');
+    // Each row's Bulk Edit link replaces that form with the zero.
+    const links = all(container, 'a')
+      .filter((a) => a.textContent.includes('Fix in Bulk Edit'))
+      .map((a) => Object.fromEntries(new URL(a.getAttribute('href'), 'http://x').searchParams));
+    expect(links).toContainEqual({
+      tab: 'bulk',
+      op: 'field',
+      in: 'morphemes',
+      q: '0',
+      match: 'exact',
+      repl: '\u2205',
+    });
     await unmount();
   });
 
@@ -368,6 +380,21 @@ describe('what it offers to do about a violation', () => {
     const labels = all(container, 'button, a').map((n) => n.textContent);
     expect(labels.some((t) => t.includes('Add to tagset'))).toBe(true);
     expect(labels.some((t) => t.includes('Fix in Bulk Edit'))).toBe(true);
+    await unmount();
+  });
+
+  it('opens Bulk Edit with the field and the value filled in', async () => {
+    const client = clientWith([[['1SG.ABL', 3]], []]);
+    const { container, unmount } = await render(client);
+    const href = byText(container, 'a', 'Fix in Bulk Edit').getAttribute('href');
+    const params = new URL(href, 'http://x').searchParams;
+    expect(Object.fromEntries(params)).toEqual({
+      tab: 'bulk',
+      op: 'field',
+      in: 'span:msl-0',
+      q: '1SG.ABL',
+      match: 'exact',
+    });
     await unmount();
   });
 

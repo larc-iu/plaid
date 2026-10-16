@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';
 import { isolate } from '@ui/lib/bidi.js';
@@ -19,7 +20,7 @@ import {
   resolveTagset,
   tagsetEnforces,
 } from '@/domain/tagsets';
-import { searchDomains } from '../search/searchQueries.js';
+import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { blank, buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
 import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
@@ -94,10 +95,19 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     () => searchDomains(layerInfo, []).filter((d) => d.kind === 'span' || d.kind === 'morpheme'),
     [layerInfo],
   );
-  const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
-  const [find, setFind] = useState('');
-  const [matchType, setMatchType] = useState('contains');
-  const [repl, setRepl] = useState('');
+  // A link from Validation fills the form in: `in` the field, `q` what to
+  // find, `match` how, `repl` the replacement.
+  const [params] = useSearchParams();
+  const [targetId, setTargetId] = useState(() => {
+    const asked = params.get('in');
+    return targets.some((t) => t.id === asked) ? asked : (targets[0]?.id ?? '');
+  });
+  const [find, setFind] = useState(() => params.get('q') || '');
+  const [matchType, setMatchType] = useState(() => {
+    const asked = params.get('match');
+    return MATCH_TYPES.some((m) => m.id === asked) ? asked : 'contains';
+  });
+  const [repl, setRepl] = useState(() => params.get('repl') || '');
   const r = useRun();
   const target = targets.find((t) => t.id === targetId) ?? targets[0];
   const tagset = useMemo(
