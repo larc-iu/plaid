@@ -185,7 +185,7 @@
         (with-open [conn (jdbc/get-connection db)]
           (testing "a dry run counts and writes nothing"
             (let [counts (backfill/backfill! conn media-dir false)]
-              (is (= {:files 4 :already-stored 1 :to-store 1 :no-document 2 :unknown-format {}}
+              (is (= {:files 4 :already-stored 1 :to-store 1 :no-document 2 :unknown-format {} :unreadable {}}
                      (dissoc counts :seconds)))
               (is (nil? (duration/stored db old)))))
           (testing "--apply stores the missing length, and a second run finds nothing"
@@ -193,6 +193,27 @@
             (is (near? (duration/stored db old) 2.0))
             (is (near? (duration/stored db new) 1.0))
             (is (= 0 (:stored (backfill/backfill! conn media-dir true))))))))))
+
+(deftest the-backfill-counts-a-file-it-reads-but-cannot-time-as-unreadable
+  ;; A WAV, MP3, MP4 or FLAC whose header gives no length is a damaged or
+  ;; unusual file, not a format core never reads.
+  (with-media-dir
+    (fn [tmp]
+      (let [pid (create-test-project admin-request "Unreadable project")
+            bad (create-test-document admin-request pid "Bad WAV")
+            odd (create-test-document admin-request pid "WebM")
+            media-dir (.toFile (.resolve tmp "media"))]
+        (is (= 201 (:status (upload! bad "bad.wav" (wav-bytes 1.0)))))
+        (jdbc/execute! db ["DELETE FROM document_media WHERE document_id = ?" (str bad)])
+        (Files/write (.toPath (File. media-dir (str bad ".wav")))
+                     (byte-array 64) (make-array java.nio.file.OpenOption 0))
+        (Files/write (.toPath (File. media-dir (str odd ".webm")))
+                     (byte-array 64) (make-array java.nio.file.OpenOption 0))
+        (with-open [conn (jdbc/get-connection db)]
+          (let [counts (backfill/backfill! conn media-dir false)]
+            (is (= {"wav" 1} (:unreadable counts)))
+            (is (= {"webm" 1} (:unknown-format counts)))
+            (is (= 0 (:to-store counts)))))))))
 
 (deftest an-m4v-upload-gets-its-length
   (with-media-dir

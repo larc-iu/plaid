@@ -17,7 +17,9 @@
 
   The dry run (the default) reads the headers and writes nothing. It prints
   counts only: files, lengths already stored, lengths it would store, files
-  of a format whose length is not read (by extension), and files with no
+  of a format whose length is not read (`unknown-format`, by extension), files
+  of a format that is read but whose header gave no length (`unreadable`, by
+  extension, a damaged or unusual file worth a look), and files with no
   document. `--apply` writes each length in its own short transaction, so the
   server's write lock is never waited on for long, and never replaces a
   length already stored (an upload made meanwhile keeps its own). Nor does it
@@ -113,9 +115,12 @@
                  (not apply?) (-> counts (update :to-store inc) (update :seconds + secs))
                  (store-if-same-file! conn id f seen secs) (-> counts (update :stored inc) (update :seconds + secs))
                  :else (update counts :changed inc))
-               (update-in counts [:unknown-format (extension f)] (fnil inc 0)))))))
+               (update-in counts
+                          [(if (duration/reads-extension? (extension f)) :unreadable :unknown-format)
+                           (extension f)]
+                          (fnil inc 0)))))))
      (cond-> {:files 0 :already-stored 0 (if apply? :stored :to-store) 0 :seconds 0.0
-              :unknown-format {} :no-document 0}
+              :unknown-format {} :unreadable {} :no-document 0}
        apply? (assoc :changed 0))
      files)))
 

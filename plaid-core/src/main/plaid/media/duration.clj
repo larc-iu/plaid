@@ -175,6 +175,13 @@
    "flac" flac
    "mp3" mp3 "mpeg" mp3})
 
+(defn reads-extension?
+  "Whether a recording stored under `extension` has a header reader here, so
+  that a nil from `seconds` means the file did not say, not that its format is
+  never read."
+  [extension]
+  (contains? readers-by-extension (some-> extension str/lower-case)))
+
 (defn seconds
   "The length in seconds of the recording in `file`, stored under
   `extension` (as `plaid.media.storage` names it), or nil when the format is
