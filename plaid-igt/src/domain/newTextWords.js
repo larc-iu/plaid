@@ -33,6 +33,9 @@ import { isSpacelessScript } from './spacelessScripts.js';
 
 const isSpace = (c) => /\s/u.test(c);
 const isLineBreak = (c) => /[\n\r\u0085\u2028\u2029]/u.test(c);
+// Whitespace to the head rule: also NEL, which ends a line there though
+// JavaScript's `\s` leaves it out (plaid-core `blank?`).
+const isBlank = (c) => isSpace(c) || c === '\u0085';
 const isPunct = (c) => !/[\p{L}\p{M}\p{N}]/u.test(c);
 
 /** Whether a stretch holds a letter of a script written without spaces. */
@@ -216,8 +219,9 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
   // A line typed before the first sentence's first letter left, holding a
   // letter before its last line break, is a sentence of its own: the first
   // sentence begins at the first letter after that line (plaid-core
-  // `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace,
-  // so a line of only no-break or ideographic spaces (an indent) is not one.
+  // `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace
+  // or NEL, so a line of only no-break or ideographic spaces (an indent) or
+  // of NEL is not one.
   // Not where a word the save typed over with the line
   // ends inside it, which core keeps on its own text.
   const first = (sentences || []).find((s) => s.begin === 0);
@@ -225,7 +229,7 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
     const inGap = (x) => sorted.some((g) => g.start <= x && x < g.end);
     let q = -1;
     for (let x = 0; x < Math.min(first.end, old.length); x++) {
-      if (!isSpace(old[x]) && !inGap(x)) {
+      if (!isBlank(old[x]) && !inGap(x)) {
         q = x;
         break;
       }
@@ -239,7 +243,7 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
           break;
         }
       }
-      const letter = k > 0 && body.slice(0, k).some((c) => !isSpace(c));
+      const letter = k > 0 && body.slice(0, k).some((c) => !isBlank(c));
       const typedOver = (words || []).some(
         (w) =>
           w.begin < w.end &&

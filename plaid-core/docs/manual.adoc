@@ -899,7 +899,7 @@ Text typed between two tokens of a `partitioning` layer, such as two sentences, 
 * A deletion or a replacement in that whitespace counts as a change between the two: an insert before it in the same save stays with the first sentence.
 * Where no whitespace parts the two and the first ends on punctuation, as in `你好。我很好。`, it joins the second sentence. Between two letters it joins the first, as text typed between two words does.
 * Text holding a line break, or with a line break between it and the second sentence's first letter, leaves the boundary where it was. A line typed there can then be split off as a sentence of its own without moving the second sentence or what is on it.
-* At the start of the text it joins the first sentence, and a line typed there becomes a sentence of its own. A line of only whitespace does not, such as Enter typed after a paragraph indent of ideographic or no-break spaces, which counts as whitespace as an indent of ASCII spaces does. At the end it joins the last.
+* At the start of the text it joins the first sentence, and a line typed there becomes a sentence of its own. A line of only whitespace does not, such as Enter typed after a paragraph indent of ideographic or no-break spaces, which counts as whitespace as an indent of ASCII spaces does. A next-line character (U+0085) counts as whitespace there too. At the end it joins the last.
 
 An insert's `side` decides over these where it applies.
 

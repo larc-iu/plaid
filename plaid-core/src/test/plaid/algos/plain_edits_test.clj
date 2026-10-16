@@ -526,6 +526,16 @@
     (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u3000\n")])))
     (is (nil? (heads "\u00a0\u00a0|Ana| |runs.| /|Ben| |sits.|" [(ins 2 "\n")])))
     (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "题目\n")])))
+    ;; REV6-TEXT-3: NEL ends a line and is whitespace to this rule too, so
+    ;; Enter typed as NEL after an indent, or a line of only NEL, makes no
+    ;; sentence, and a title line ended by NEL does
+    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u0085")])))
+    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u0085\u0085")])))
+    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u0085")])))
+    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u3000\u0085")])))
+    (is (nil? (heads "\u0085|Hi.|\n/|The| |end.|" [(ins 1 "\n")])))
+    (is (= [{:token/layer :s :token/begin 0 :token/end 3}] (heads "\u0085|Hi.|\n/|The| |end.|" [(ins 1 "T\n")])))
+    (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "题目\u0085")])))
     (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (heads "|Hi.|\n/|The| |end.|" [(ins 0 "Oh.\n") (del 4 1)])))
     (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads " |Hi.|\n/|The| |end.|" [(ins 1 "Oh.\n")])))
     (let [[nb at] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n") (del 4 1)])]

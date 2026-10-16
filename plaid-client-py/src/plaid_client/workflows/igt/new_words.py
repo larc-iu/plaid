@@ -76,6 +76,12 @@ def is_js_space(c: str) -> bool:
     return c in _JS_SPACE
 
 
+def _is_head_blank(c: str) -> bool:
+    """Whitespace to the head rule: also NEL, which ends a line there though
+    JavaScript's ``\\s`` leaves it out (plaid-core ``blank?``)."""
+    return c in _JS_SPACE or c == "\u0085"
+
+
 def _blank(text: str, b: int, e: int) -> bool:
     return all(c in _JS_SPACE for c in text[b:e])
 
@@ -310,19 +316,20 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
     # A line typed before the first sentence's first letter left, holding a
     # letter before its last line break, is a sentence of its own: the first
     # sentence begins at the first letter after that line (plaid-core
-    # `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace,
-    # so a line of only no-break or ideographic spaces (an indent) is not one.
+    # `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace
+    # or NEL, so a line of only no-break or ideographic spaces (an indent) or
+    # of NEL is not one.
     # Not where a word the save typed over with the line
     # ends inside it, which core keeps on its own text.
     first = next((snt for snt in sentences or () if (snt['begin'] if isinstance(snt, dict) else snt[0]) == 0), None)
     if first is not None:
         first_end = first['end'] if isinstance(first, dict) else first[1]
         q = next((x for x in range(min(first_end, len(old)))
-                  if not is_js_space(old[x]) and not any(s <= x < e for s, e, _ in srt)), -1)
+                  if not _is_head_blank(old[x]) and not any(s <= x < e for s, e, _ in srt)), -1)
         if q >= 0:
             p = start_of(q)
             k = next((x + 1 for x in range(p - 1, -1, -1) if _is_line_break(body[x])), -1)
-            letter = k > 0 and any(not is_js_space(c) for c in body[:k])
+            letter = k > 0 and any(not _is_head_blank(c) for c in body[:k])
             spans = [(w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1]) for w in words or []]
             typed_over = any(wb < we and any(s <= wb and we <= e and v for s, e, v in srt) and end_of(we) <= k
                              for wb, we in spans)

@@ -801,6 +801,14 @@
   [c]
   (contains? #{0x0A 0x0D 0x85 0x2028 0x2029} (int c)))
 
+(defn- blank?
+  "Whether code point `c` is whitespace to the head rule (see `head-end` in
+  `apply-plain-gaps`): `space?`, and also U+0085 (NEL), which ends a line
+  there though neither Java nor JavaScript counts it as whitespace
+  (REV6-TEXT-3)."
+  [c]
+  (or (space? c) (= 0x85 (int c))))
+
 (defn- separator?
   "Whether code point `c` parts what stands either side of it, as
   punctuation or a symbol does: not a letter, a mark or a number."
@@ -2961,9 +2969,9 @@
          kept (filterv (complement ::gone) placed)
          was-token (let [m (into {} (map (juxt :token/id identity)) wide)] #(m (:token/id %)))
         ;; A line typed before the text's first sentence, one holding a
-        ;; letter (anything but whitespace, as `space?` reads it, so not a
-        ;; line of only no-break or ideographic spaces) before its last line
-        ;; break, is a sentence of its own
+        ;; letter (anything but whitespace, as `blank?` reads it, so not a
+        ;; line of only no-break or ideographic spaces or of NEL) before its
+        ;; last line break, is a sentence of its own
         ;; (`:heads`): the new text before the first sentence's first letter
         ;; left, whatever the save's shape.
          firsts (filter #(and (partitioning (:token/layer %)) (zero? (:token/begin %))
@@ -2972,14 +2980,14 @@
          head-end (when-let [{:token/keys [end]} (first firsts)]
                     (let [in-gap? (fn [i] (let [g (at-or-before i)]
                                             (and (>= g 0) (< i (:b (info g))) (<= (:a (info g)) i))))
-                          q (first (filter #(and (not (ws? (aget o %))) (not (in-gap? %))) (range 0 end)))]
+                          q (first (filter #(and (not (blank? (aget o %))) (not (in-gap? %))) (range 0 end)))]
                       (when q
                         (let [p (+ q (aget shift (inc (at-or-before q))))
                               p (if (neg? (at-or-before q)) q p)
                               prefix (String. nw 0 (int p))
                               m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" prefix))]
                           (when (and m (.anyMatch (.codePoints ^String m)
-                                                  (reify java.util.function.IntPredicate (test [_ c] (not (ws? c))))))
+                                                  (reify java.util.function.IntPredicate (test [_ c] (not (blank? c))))))
                             (let [k (cp/cp-count m)]
                              ;; not over a whole word the edit kept (one typed
                              ;; over with the line)

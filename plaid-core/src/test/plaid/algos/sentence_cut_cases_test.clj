@@ -8,7 +8,8 @@
   sentences, a line typed at the start beside other edits, up to 13 gaps,
   then FX-F-TEXT's 150 saves at the head of a text indented with
   ideographic, no-break or ASCII spaces: Enter after the indent, a line of
-  only such spaces, a title line, beside other edits)
+  only such spaces, a title line, beside other edits, and FX-G-TEXT's 120
+  such saves with NEL in the indents, the separators and the typed lines)
   with what core makes of each on
   the edits path, the body and the sentence begins and words after the save.
   igt's \"Tokenize new text\" (plaid-igt `newTextWords.js`) and its Python
