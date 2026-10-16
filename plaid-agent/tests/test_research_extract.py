@@ -2,6 +2,8 @@
 refusal, a turn's end and an audit change are classed, and the pseudonyms.
 The whole extractor runs against a real core in test_research_extract_live.py."""
 
+import json
+
 import pytest
 
 from plaid_agent.core.conversation import PROPOSED_VALUE_MAX
@@ -389,3 +391,46 @@ def test_the_models_reasoning_is_exported_only_with_include_rounds():
     assert [(r['kind'], r['step'], r['thinking']) for r in full.round_calls] == [
         ('call', 0, 'PONDER-ONE'), ('call', 1, None), ('reply', None, 'PONDER-TWO')]
     assert 'PONDER' not in repr([full.conversations, full.turns, full.tool_calls, full.private])
+
+
+def test_a_rule_row_is_a_plan_rules_row_with_ids_counts_and_clipped_values():
+    """R5 (P/design/RULE-PLANS.md): each rule of a plan (core/rules.py) is a
+    row of plan_rules.jsonl, with its document ids and counts and no names,
+    and its plan counts its rules and the changes they stand for."""
+    from plaid_agent.research.records import Conversations
+    rows = Conversations(Pseudonyms(b'salt'))
+    long = 'x' * 40
+    rule = {'tool': 'replace_in_field',
+            'args': {'field': 'lemma', 'pattern': long, 'replacement': 'mare', 'regex': False, 'document': None},
+            'total': 12, 'kinds': {'set_span': 12},
+            'documents': [['d1', 'Secret name', 9], ['d2', 'Other name', 3]], 'documents_more': [0, 0],
+            'sample': [{'label': 'lemma "mar" → "mare"'}], 'mode': 'anywhere in the value, case-sensitive',
+            'transitions': [{'from': 'mar', 'to': 'mare', 'count': 12, 'notes': []}], 'transitions_more': [0, 0],
+            'unit': ['value', 'values']}
+    confirm = {'tool': 'confirm', 'args': {'document': 'd1', 'fields': ['upos']}, 'total': 3,
+               'kinds': {'confirm': 3}, 'documents': [['d1', 'Secret name', 3]], 'documents_more': [0, 0],
+               'sample': []}
+    changes = [{'label': 'a'}, {'label': 'r', 'rule': rule, 'replaces_work': 4},
+               {'label': 'c', 'rule': confirm, 'replaces_work': 0}]
+    plan = {'id': '01a10fc5-61d6-7000-8588-500000000004', 'summary': 'x', 'changes': changes,
+            'proposed': [['set_span', 't1', 'v']], 'proposed_count': 16, 'op_count': 3}
+    conv = {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}],
+            'display': [{'kind': 'user', 'text': 'q'},
+                        {'kind': 'assistant', 'text': 'a', 'plan': plan, 'status': 'discarded'}]}
+    rows.add('u@x', 'ud', 'p1', 'c1', conv, {}, 10, None)
+    [p] = rows.plans
+    assert (p['rules'], p['rule_changes'], p['proposed_count'], p['rows']) == (2, 15, 16, 3)
+    first, second = rows.plan_rules
+    assert (first['row'], first['tool'], first['total'], first['plan_status']) == (1, 'replace_in_field', 12,
+                                                                                 'discarded')
+    assert first['args']['pattern'] == 'x' * 23 + '…' and first['args']['document'] is None
+    assert first['documents'] == [['d1', 9], ['d2', 3]] and first['replaces_accepted'] == 4
+    assert first['transitions'] == [{'from': 'mar', 'to': 'mare', 'count': 12, 'notes': []}]
+    assert 'Secret name' not in json.dumps(rows.plan_rules)
+    assert (second['row'], second['tool'], second['args']) == (2, 'confirm', {'document': 'd1', 'fields': ['upos']})
+    # A document id is kept whole, as every id is.
+    did = '01a146ee-aa82-7000-ab9a-6f3577019f21'
+    rule['args']['document'] = did
+    rows.add('u@x', 'ud', 'p1', 'c2', conv, {}, 10, None)
+    assert rows.plan_rules[2]['args']['document'] == did
+    assert first['conversation_id'] == 'c1' and first['app'] == 'ud'

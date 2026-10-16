@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '7'
+EXTRACTOR_VERSION = '8'
 HERE = Path(__file__).parent
 
 
@@ -338,6 +338,7 @@ def summarize(conv: Conversations, fates: F.Fates, units: List[Dict[str, Any]], 
         'seconds_to_settle': {s: _dist([p['seconds_to_settle'] for p in plans if p['status'] == s])
                               for s in sorted({p['status'] for p in plans})},
         'plans_with_proposal_time': sum(1 for p in plans if p['proposed_at']),
+        'plan_rules_by_tool': dict(Counter(f'{r["app"]}:{r["tool"]}' for r in conv.plan_rules)),
         'plans_with_settle_time': dict(Counter(p['settled_at_source'] or 'none' for p in plans)),
         'units_by_kind': dict(Counter(u['kind'] for u in units)),
         'writes_by_kind': {k: sum(c.values()) for k, c in w_by_kind.items()},
@@ -441,6 +442,7 @@ def extract(db_path: str, out: Path, salt_file: Path, projects: Optional[List[st
     write_jsonl(out / 'tool_calls.jsonl', conv.tool_calls)
     write_jsonl(out / 'plans.jsonl', conv.plans)
     write_jsonl(out / 'plan_changes.jsonl', conv.plan_changes)
+    write_jsonl(out / 'plan_rules.jsonl', conv.plan_rules)
     write_jsonl(out / 'units.jsonl', units)
     write_jsonl(out / 'writes.jsonl', [{k: v for k, v in w.items() if k != '_anchors'} for w in fates.writes])
     write_jsonl(out / 'telemetry.jsonl', events)

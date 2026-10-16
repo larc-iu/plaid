@@ -147,7 +147,7 @@ One row per plan.
 | proposed_at | when it was staged, from its UUIDv7 id |
 | settled_at, settled_at_source | when it was decided, from the record (`record`) or the start of its operation (`audit_group_start`) |
 | seconds_to_settle | settled_at less proposed_at |
-| proposed_count | how many changes it proposed (a bulk row counts each change) |
+| proposed_count | how many changes it proposed: a bulk row counts each change, and a rule (a change over the whole corpus or a whole document stored as one row, see `plan_rules.jsonl`) counts every change it stands for, which `plan_changes.jsonl` does not list |
 | proposed_kept | how many of them `plan_changes.jsonl` has (at most 500) |
 | proposed_source | `record`, `derived_from_ops` or `none` |
 | op_count | the plan's operations as the card stored them (a bulk row is one) |
@@ -159,6 +159,8 @@ One row per plan.
 | apply_notes | notes applying made (a change a later one superseded) |
 | unwritten_rows | rows that wrote nothing under this approval |
 | kinds | the kinds of change it proposed |
+| rules | how many of its rows are rules (`plan_rules.jsonl`) |
+| rule_changes | the changes those rules stand for, together |
 | group_id | its operation in the audit log (units.jsonl) |
 | group_link | how it was found: `ref` (the operation names the plan) or `label` (an older operation, matched by its label, owner, project and time) |
 | writes | the audit rows of that operation |
@@ -183,6 +185,28 @@ One row per proposed change.
 | matched_writes | how many of the operation's writes are about the target |
 | fate | the fate of the first matching write (writes.jsonl): the target itself first, then a write the plan left in place before one it deleted. For a comment, `comment_kept` or `comment_edited` |
 | fates | the fates of every matching write, counted |
+
+### plan_rules.jsonl
+
+One row per rule: a change over the whole corpus or a whole document (a replacement in a field, a value set for every word of a form, a confirmation or a discard of a document, an attribute over a concept) stored as one row of its plan and found again when it is approved. Its changes are not in `plan_changes.jsonl`. For an applied plan they are the writes of its operation (`writes.jsonl`). For a discarded or stale plan, this row is the whole record of what it proposed. Plans made before rules have none.
+
+| field | meaning |
+|---|---|
+| plan_id, conversation_id, app, project_id, project, user | the plan |
+| row | the rule's row on the plan card |
+| plan_status | the plan's status, which is the rule's: approval is whole-plan |
+| tool | the tool that planned it (`replace_in_field`, `set_field_for_form`, `copy_to_orthography`, `confirm`, `discard_predictions`, `set_attribute_for_concept`) |
+| args | its arguments, every value clipped, a document as its id |
+| total | the changes it stands for |
+| kinds | those changes by kind |
+| replaces_accepted | how many of them replace work a person made or accepted |
+| documents | `[document id, changes]` for each document it reaches, up to 200, most changes first |
+| documents_more | `[documents, changes]` past those |
+| mode | how a pattern matches, in words, when it has one |
+| transitions | its distinct changes, `{from, to, count, notes}`, values clipped, up to 12, those with a note first |
+| transitions_more | `[distinct changes, values]` past those |
+| partial | it covers only the first part of what it would change |
+| writes_nothing | the plan's own changes leave it nothing to write |
 
 ### units.jsonl
 
@@ -285,7 +309,7 @@ One row per client event (`client_events`), only in projects that switched telem
 
 ### manifest.json
 
-The extractor version, the database file name, the horizon, the options, how plans were linked to their operations (`linking`: by reference, by label, by their comments, applied plans with no operation found, those whose writes outside the log cannot be recovered, plan operations with no plan in any record and those whose conversation was deleted), and `summary`, the aggregate counts. In it `units_by_credential` counts the units that hold a write made with each kind of credential (a unit with two kinds counts under both), and `writes_by_credential` counts their audit rows.
+The extractor version, the database file name, the horizon, the options, how plans were linked to their operations (`linking`: by reference, by label, by their comments, applied plans with no operation found, those whose writes outside the log cannot be recovered, plan operations with no plan in any record and those whose conversation was deleted), and `summary`, the aggregate counts. In it `units_by_credential` counts the units that hold a write made with each kind of credential (a unit with two kinds counts under both), and `writes_by_credential` counts their audit rows. `plan_rules_by_tool` counts the rules of `plan_rules.jsonl` by app and tool.
 
 ### PRIVATE_rounds.jsonl (only with `--include-rounds`)
 

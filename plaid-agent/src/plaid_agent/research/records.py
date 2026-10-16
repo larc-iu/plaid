@@ -231,6 +231,7 @@ class Conversations:
         self.tool_calls: List[Dict[str, Any]] = []
         self.plans: List[Dict[str, Any]] = []
         self.plan_changes: List[Dict[str, Any]] = []
+        self.plan_rules: List[Dict[str, Any]] = []
         self.private: List[Dict[str, Any]] = []
         # Kept for linking plans to the audit log, never written out.
         self.owner_of_plan: Dict[str, str] = {}
@@ -428,6 +429,8 @@ class Conversations:
             source = 'none'
         proposed_at = uuid7_time(plan_id)
         settled_at = item.get('settled_at')
+        rules = [(c.get('row', i), c) for i, c in enumerate(plan.get('changes') or [])
+                 if isinstance(c, dict) and isinstance(c.get('rule'), dict)]
         op_count = plan.get('op_count')
         if op_count is None and isinstance(plan.get('ops'), list):
             op_count = len(plan['ops'])
@@ -452,6 +455,9 @@ class Conversations:
             'outcome_unknown': bool(item.get('unknown')),
             'apply_notes': len(item.get('apply_notes') or []), 'unwritten_rows': len(item.get('unwritten') or []),
             'kinds': sorted({str(c[0]) for c in proposed or [] if isinstance(c, list) and c}),
+            # A corpus-wide change stored as one row (core/rules.py): how many
+            # the plan holds and the changes they stand for.
+            'rules': len(rules), 'rule_changes': sum(int((c['rule'] or {}).get('total') or 0) for _i, c in rules),
             # Filled in by linking (extract.py).
             'group_id': None, 'group_link': None, 'writes': None,
             'comments_written': None, 'comment_link': None,
@@ -459,6 +465,8 @@ class Conversations:
         self.plans.append(row)
         self.owner_of_plan[plan_id] = user_id
         self.summary_of_plan[plan_id] = plan.get('summary') or ''
+        for row, c in rules:
+            self.plan_rules.append(_rule_row(base, plan_id, status, row, c))
         for i, c in enumerate(proposed or []):
             if not isinstance(c, list):
                 continue
@@ -470,6 +478,40 @@ class Conversations:
                 # Filled in by linking: what the plan's writes and later edits did to this target.
                 'target_written': None, 'matched_writes': None, 'fate': None, 'fates': None,
             })
+
+
+#: A rule's arguments that name a document by its id, kept whole as every id is.
+_ID_ARGS = ('document', 'document_id')
+
+
+def _rule_arg(v: Any) -> Any:
+    """A rule's argument as the dataset keeps it: a value clipped as any
+    value, a list or a condition value by value. A document is its id."""
+    if isinstance(v, dict):
+        return {clip(str(k)): _rule_arg(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_rule_arg(x) for x in v]
+    return clip(v) if v is not None else None
+
+
+def _rule_row(base: Dict[str, Any], plan_id: str, status: str, row: Any, change: Dict[str, Any]) -> Dict[str, Any]:
+    """One ``plan_rules.jsonl`` row: a corpus-wide change stored as one card
+    row (core/rules.py), with what it proposed. Documents are their ids, no
+    name, and every value is clipped."""
+    rule = change['rule']
+    more = rule.get('documents_more') or [0, 0]
+    transitions = rule.get('transitions') or []
+    return {**base, 'plan_id': plan_id, 'row': row, 'plan_status': status, 'tool': rule.get('tool'),
+            'args': {clip(str(k)): (v if k in _ID_ARGS and isinstance(v, str) else _rule_arg(v))
+                     for k, v in (rule.get('args') or {}).items()},
+            'total': rule.get('total'), 'kinds': dict(rule.get('kinds') or {}),
+            'replaces_accepted': int(change.get('replaces_work') or 0),
+            'documents': [[d[0], d[2]] for d in rule.get('documents') or [] if isinstance(d, list) and len(d) >= 3],
+            'documents_more': list(more), 'mode': rule.get('mode'),
+            'transitions': [{'from': clip(t.get('from')), 'to': clip(t.get('to')), 'count': t.get('count'),
+                             'notes': list(t.get('notes') or [])} for t in transitions if isinstance(t, dict)],
+            'transitions_more': list(rule.get('transitions_more') or [0, 0]),
+            'partial': bool(rule.get('partial')), 'writes_nothing': bool(change.get('writes_nothing'))}
 
 
 def iter_records(rows: Iterable[Tuple[str, str, str, str]]):
