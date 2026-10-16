@@ -268,10 +268,17 @@
       (is (= "Merged 3 morphemes" (:audit/message (entry-for (doc-audit-entries admin-request doc) gid)))))
 
     (testing "a different non-admin user is refused"
-      (assert-status 403 (api-call user2-request {:method :patch
-                                                  :path (str "/api/v1/operation-groups/" gid)
-                                                  :body {:message "hijack"}}))
+      (let [r (api-call user2-request {:method :patch
+                                       :path (str "/api/v1/operation-groups/" gid)
+                                       :body {:message "hijack"}})]
+        (assert-status 403 r)
+        (is (= "You can only relabel your own operation groups." (-> r :body :error))))
       (is (= "Merged 3 morphemes" (:message (group-row gid)))))
+
+    (testing "a stranger's read is refused as a read"
+      (let [r (api-call user2-request {:method :get :path (str "/api/v1/operation-groups/" gid)})]
+        (assert-status 403 r)
+        (is (= "You can only read your own operation groups." (-> r :body :error)))))
 
     (testing "admin may relabel anyone's group"
       (assert-ok (api-call admin-request {:method :patch

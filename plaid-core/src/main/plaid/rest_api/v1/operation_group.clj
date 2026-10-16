@@ -10,10 +10,10 @@
 
 (defn- wrap-owner-or-admin
   "The group's creator (the user whose write first stamped the id) or a
-  global admin may relabel it. Unknown id → 404 (checked here so the
+  global admin may read or relabel it. Unknown id → 404 (checked here so the
   ownership test has a row to look at)."
   [handler]
-  (fn [{{{:keys [id]} :path} :parameters db :db :as request}]
+  (fn [{{{:keys [id]} :path} :parameters db :db method :request-method :as request}]
     (let [group (og/get db id)]
       (cond
         (nil? group)
@@ -21,7 +21,9 @@
 
         (not (or (user/admin? (:user/record request))
                  (= (:operation-group/user group) (pra/->user-id request))))
-        {:status 403 :body {:error "You can only relabel your own operation groups."}}
+        {:status 403 :body {:error (if (= :get method)
+                                     "You can only read your own operation groups."
+                                     "You can only relabel your own operation groups.")}}
 
         :else
         (handler (cond-> (assoc request :operation-group group)
