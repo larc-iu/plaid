@@ -20,8 +20,6 @@ import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 // delete, what a pending comment looks like, so both read them off the store
 // rather than deciding for themselves.
 
-const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length
-
 const onMetaEnter = (fn) => (event) => {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
@@ -98,7 +96,7 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
       <li className="border-b px-3 py-2 last:border-b-0">
         <Textarea
           rows={3}
-          maxLength={MAX_BODY}
+          maxLength={store.bodyMax}
           aria-label="Edit your comment"
           value={draft}
           autoFocus
@@ -242,7 +240,7 @@ export const CommentThread = ({
         <div className="border-t bg-muted/20 px-3 py-2">
           <Textarea
             rows={2}
-            maxLength={MAX_BODY}
+            maxLength={store.bodyMax}
             placeholder="Add a comment…"
             aria-label="Add a comment"
             autoFocus={autoFocusComposer}

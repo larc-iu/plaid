@@ -68,6 +68,11 @@ export function normalizeCommentEvent(data) {
   };
 }
 
+// The longest comment body the server takes, until GET /info says
+// (`limits.commentBodyLength`, `plaid.sql.comment/max-body-length`), or for a
+// server that does not. Both sides count UTF-16 code units.
+export const COMMENT_BODY_MAX_FALLBACK = 10000;
+
 export class CommentStore {
   /**
    * One of two scopes: a document (`projectId` + `documentId`) or a
@@ -103,6 +108,7 @@ export class CommentStore {
     this._version = 0;
     // Posts, edits and deletes on their way to the server.
     this._writing = 0;
+    this._bodyMax = COMMENT_BODY_MAX_FALLBACK;
     this._listeners = new Set();
 
     // Optional sink for surfacing errors loudly (a toast). Framework-agnostic:
@@ -133,6 +139,11 @@ export class CommentStore {
   // ============================================================
   // Reads
   // ============================================================
+
+  /** The longest body a comment box takes, the server's own cap. */
+  get bodyMax() {
+    return this._bodyMax;
+  }
 
   get isLoaded() {
     return this._loaded;
@@ -273,12 +284,27 @@ export class CommentStore {
   // Loading
   // ============================================================
 
+  /** Take the server's comment cap from /info (cached by the client). */
+  _readBodyMax() {
+    Promise.resolve()
+      .then(() => this._client?.server?.limits?.())
+      .then((limits) => {
+        const n = limits?.commentBodyLength;
+        if (Number.isInteger(n) && n > 0 && n !== this._bodyMax) {
+          this._bodyMax = n;
+          this._emit();
+        }
+      })
+      .catch(() => {});
+  }
+
   /**
    * Fetch every comment in the document (or on the vocabulary's entries). ONE
    * request paints every badge — the list calls auto-paginate, and the server
    * indexes this read on (document_id, created_at, id) or its vocab twin.
    */
   async load() {
+    this._readBodyMax();
     try {
       const all = this._vocabId
         ? await this._client.comments.listInVocab(this._vocabId)

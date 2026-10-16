@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CommentStore, normalizeCommentEvent, isPending, LIVE_GRACE_MS } from './CommentStore.js';
+import {
+  CommentStore,
+  COMMENT_BODY_MAX_FALLBACK,
+  normalizeCommentEvent,
+  isPending,
+  LIVE_GRACE_MS,
+} from './CommentStore.js';
 
 const PROJECT = 'p1';
 const DOC = 'd1';
@@ -772,5 +778,38 @@ describe('vocabulary scope', () => {
     expect(client.messages.listen).not.toHaveBeenCalled();
     expect(store.isLive).toBe(false);
     release();
+  });
+});
+
+describe('bodyMax', () => {
+  it("takes the server's comment cap from /info once the store loads", async () => {
+    const client = fakeClient();
+    client.server = { limits: vi.fn(async () => ({ commentBodyLength: 1234 })) };
+    const store = makeStore(client);
+    expect(store.bodyMax).toBe(COMMENT_BODY_MAX_FALLBACK);
+    const heard = vi.fn();
+    store.subscribe(heard);
+    await store.load();
+    await vi.waitFor(() => expect(store.bodyMax).toBe(1234));
+    expect(heard).toHaveBeenCalled();
+  });
+
+  it('keeps the fallback when the server does not say or cannot be asked', async () => {
+    for (const server of [
+      { limits: vi.fn(async () => ({})) },
+      {
+        limits: vi.fn(async () => {
+          throw new Error('down');
+        }),
+      },
+      undefined,
+    ]) {
+      const client = fakeClient();
+      client.server = server;
+      const store = makeStore(client);
+      await store.load();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(store.bodyMax).toBe(COMMENT_BODY_MAX_FALLBACK);
+    }
   });
 });

@@ -272,6 +272,7 @@ import {
  * @property {number} [userDataValueBytes]
  * @property {number} [guidelineTitleLength]
  * @property {number} [guidelineBodyLength]
+ * @property {number} [commentBodyLength]
  * @property {number} [passwordMinLength]
  * @property {number} [lockExpirationMs]
  */

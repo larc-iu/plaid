@@ -10,6 +10,7 @@
   Unauthenticated on purpose. These are the shape of the API, not secrets, and
   a client needs them before it has a session to ask with."
   (:require [plaid.rest-api.v1.batch :as batch]
+            [plaid.sql.comment :as comment]
             [plaid.sql.metadata :as metadata]
             [plaid.server.config :refer [config]]
             [plaid.server.locks :as locks]
@@ -42,6 +43,9 @@
          ;; refused at save is a page of writing held in a draft.
          :guideline-title-length guideline/max-title-length
          :guideline-body-length  guideline/max-body-length
+         ;; A comment box caps what is typed at this, as the guideline
+         ;; editor does with the two above.
+         :comment-body-length    comment/max-body-length
          ;; The shortest password any account may be given, so a form can
          ;; say so before the person types it twice.
          :password-min-length    user/min-password-length

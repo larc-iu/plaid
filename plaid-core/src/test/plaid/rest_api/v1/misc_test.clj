@@ -6,6 +6,7 @@
                                     with-admin with-clean-db]]
             [plaid.server.config :as config]
             [plaid.server.locks :as locks]
+            [plaid.sql.comment :as comment]
             [plaid.sql.guideline :as guideline]
             [plaid.sql.user :as user]
             [plaid.test-helpers :refer :all]))
@@ -32,7 +33,7 @@
                  :metadata-string-length :metadata-total-bytes
                  :user-data-value-bytes :lock-expiration-ms
                  :guideline-title-length :guideline-body-length
-                 :password-min-length]]
+                 :comment-body-length :password-min-length]]
         (is (pos-int? (get limits k)) (str k " should be a positive number")))
       (doseq [[k v] limits]
         (is (pos-int? v) (str k " should be a positive number, not " (pr-str v))))
@@ -43,7 +44,8 @@
     ;; over-long body is only discovered by the save being refused.
     (let [limits (-> (get-info) :body :limits)]
       (is (= guideline/max-title-length (:guideline-title-length limits)))
-      (is (= guideline/max-body-length (:guideline-body-length limits)))))
+      (is (= guideline/max-body-length (:guideline-body-length limits)))
+      (is (= comment/max-body-length (:comment-body-length limits)))))
 
   (testing "the password minimum is the one every password write enforces"
     (is (= 8 user/min-password-length))

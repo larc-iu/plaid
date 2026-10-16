@@ -21,8 +21,6 @@ import { personDye } from '@ui/domain/projectTartan.js';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
 
-const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length
-
 // Keep a composer's submit button in step with what is typed.
 //
 // Neither host re-renders on keystroke — the island deliberately does not (it
@@ -89,7 +87,7 @@ function commentRow(comment, ctx) {
           class="igt-cmt__input"
           dir="auto"
           rows="3"
-          maxlength=${MAX_BODY}
+          maxlength=${store.bodyMax}
           aria-label="Edit your comment"
           .value=${live(editDraft)}
           @input=${onComposerInput(on.changeEdit, (v) => v.trim() && v.trim() !== comment.body)}
@@ -240,7 +238,7 @@ export function commentThread(opts) {
                 class="igt-cmt__input"
                 dir="auto"
                 rows="2"
-                maxlength=${MAX_BODY}
+                maxlength=${store.bodyMax}
                 placeholder="Add a comment…"
                 aria-label="Add a comment"
                 .value=${live(composerDraft)}
