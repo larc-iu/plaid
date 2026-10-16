@@ -536,6 +536,33 @@ describe('a sentence ending on its separator', () => {
   });
 });
 
+describe('a sentence with no words', () => {
+  // One piece, the sentence's text with the whitespace after it: the row over
+  // the letters times it, as ELAN does (REV7-TEXT, seen).
+  const row = { id: 'a', begin: 0, end: 9, metadata: { timeBegin: 0, timeEnd: 1.5 } };
+  const noWords = (content) => ({
+    begin: 0,
+    end: [...content].length,
+    pieces: [{ type: 'gap', begin: 0, end: [...content].length, content }],
+  });
+
+  it('takes the row over its letters when it ends in whitespace', () => {
+    expect(phraseTimingFor(noWords('ฉันไปตลาด\n'), [row])).toEqual({ beginMs: 0, endMs: 1500 });
+    expect(phraseTimingFor(noWords('ฉันไปตลาด \n'), [row])).toEqual({ beginMs: 0, endMs: 1500 });
+  });
+
+  it('reads a next-line character as whitespace, as core does', () => {
+    expect(phraseTimingFor(noWords('ฉันไปตลาด\u0085'), [row])).toEqual({ beginMs: 0, endMs: 1500 });
+  });
+
+  it('reads a sentence of only whitespace whole', () => {
+    expect(phraseTimingFor(noWords('  '), [{ ...row, end: 2 }])).toEqual({
+      beginMs: 0,
+      endMs: 1500,
+    });
+  });
+});
+
 describe('phraseSpeakerFor', () => {
   const sentence = { begin: 0, end: 14 };
   const tok = (begin, end, speaker) => ({

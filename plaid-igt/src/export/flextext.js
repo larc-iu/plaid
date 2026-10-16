@@ -334,16 +334,24 @@ function punctWordXml(indent, content, options) {
 // truthful in exactly the same cases.
 // A sentence's extent less the whitespace at its edges (the separator a
 // transcript row's sentence holds after the row's text), read from its pieces.
+// A sentence with no words is one piece, trimmed at both ends. Whitespace is
+// the head rule's: a next-line character (U+0085) counts, as in core.
+const isSpace = (c) => /\s/u.test(c) || c === '\u0085';
+const leadingSpace = (cps) => {
+  let n = 0;
+  while (n < cps.length && isSpace(cps[n])) n += 1;
+  return n;
+};
 function textExtent(sentence) {
   const pieces = sentence.pieces || [];
   let { begin, end } = sentence;
   const first = pieces[0];
   const last = pieces[pieces.length - 1];
   if (first?.type === 'gap' && typeof first.content === 'string') {
-    begin += [...first.content].length - [...first.content.trimStart()].length;
+    begin += leadingSpace([...first.content]);
   }
-  if (last?.type === 'gap' && typeof last.content === 'string' && last !== first) {
-    end -= [...last.content].length - [...last.content.trimEnd()].length;
+  if (last?.type === 'gap' && typeof last.content === 'string') {
+    end -= leadingSpace([...last.content].reverse());
   }
   return begin < end ? { begin, end } : { begin: sentence.begin, end: sentence.end };
 }
