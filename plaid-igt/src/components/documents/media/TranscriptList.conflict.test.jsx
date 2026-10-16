@@ -9,6 +9,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
 import { anyDocumentSaving, useSavingGuard } from '@ui/hooks/useSavingGuard.js';
+import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { buildRawDoc, resetIds, makeIgtDoc, settle } from '@/domain/test-helpers.js';
 import { digestOf, segmentServer } from '@/test/segmentServer.js';
 
@@ -496,16 +497,18 @@ describe('a refused row edit whose segment is gone (B1, F5)', () => {
     await r.unmount();
   });
 
-  it('the line goes when dismissed', async () => {
+  it('the line goes when dismissed, and leaving asks while it is there', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
     server.otherRemakes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
+    expect(hasUnsavedDraft()).toBe('The text of a transcript line');
     const dismiss = r.container.querySelector('ul[aria-label="Not saved"] button');
     expect(dismiss.getAttribute('aria-label')).toBe('Dismiss');
     await r.step(() => dismiss.click());
     expect(unsavedOf(r.container)).toEqual([]);
+    expect(hasUnsavedDraft()).toBe(null);
     await r.unmount();
   });
 

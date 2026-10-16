@@ -15,7 +15,7 @@ import { useConflictCell } from '@ui/hooks/useConflictCell.js';
 import { ConflictNote } from '@ui/components/shared/conflict-note.jsx';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { PLAYBACK_RATE_STEP } from './useMediaOperations';
-import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { formatTime } from './formatTime.js';
 import { MIN_SEGMENT, rangeProblem } from '../../../domain/alignmentTimes.js';
@@ -1067,6 +1067,12 @@ export function TranscriptList({
   // row to hold them, kept on the document so a switch of view keeps them
   // (`IgtDocument.keepUnsavedRow`).
   const unsaved = doc.unsavedRows ?? EMPTY;
+  // Leaving the document by an in-app link asks first while they are shown.
+  useUnsavedDraft(
+    unsaved.length
+      ? `The text of ${unsaved.length === 1 ? 'a transcript line' : `${unsaved.length} transcript lines`}`
+      : null,
+  );
 
   const handleCommit = useCallback(
     async (id, { text, speaker, edits, saved, what }) => {
