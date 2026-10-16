@@ -123,7 +123,7 @@ PIN_LOAD_MAX = 50
 
 #: The form of :meth:`Workspace.plan_state`. A plan stored in another form is
 #: not resumed.
-PLAN_STATE_FORMAT = 2
+PLAN_STATE_FORMAT = 3
 
 # The keys of a change that name the entry it writes a link to: a link's
 # entry, and the entry a merge moves every link onto.
@@ -234,6 +234,19 @@ class Workspace(BaseWorkspace):
         # rule of the plan found again is not refused for reaching where it
         # reaches itself (``bulk.scope_reaches``).
         self.finding_rule: Optional[tuple] = None
+        # The planning calls this turn's plan was made from, in order
+        # (``requests.Request``), and the plan with none of them asked, so a
+        # drop asks the rest again from scratch (Luke 2026-10-16). While one
+        # is asked again, it is ``replaying``.
+        self.requests: List[Dict[str, Any]] = []
+        self.empty_plan: Optional[Dict[str, Any]] = None
+        self.replaying: Optional[Dict[str, Any]] = None
+        # How many new entries the plan's requests have created, so a new
+        # entry asked again keeps the key the model was given for it.
+        self.entry_no = 0
+        # The rule a corpus-wide change staged in this call asks
+        # (``bulk._stage_rule``), which the request stands for.
+        self.rule_asked: Optional[tuple] = None
 
     # --- rules (core.rules) ---------------------------------------------------
 
@@ -819,7 +832,8 @@ class Workspace(BaseWorkspace):
                 # the state stored beside the conversation holds them.
                 'rule_found': [[list(k), copy.deepcopy(v)] for k, v in self.rule_found.items() if k in self._rule_keys()],
                 'rule_basis': [[list(k), v] for k, v in self.rule_basis.items() if k in self._rule_keys()],
-                'stored_values': [[*k, v] for k, v in self.stored_values.items()]}
+                'stored_values': [[*k, v] for k, v in self.stored_values.items()],
+                'entry_no': self.entry_no}
 
     def _rule_keys(self) -> set:
         from ..core import rules
@@ -837,6 +851,7 @@ class Workspace(BaseWorkspace):
         self.rule_found = {tuple(k): v for k, v in saved['rule_found']}
         self.rule_basis = {tuple(k): v for k, v in saved['rule_basis']}
         self.stored_values = {(layer, token): v for layer, token, v in saved['stored_values']}
+        self.entry_no = saved['entry_no']
         self._patch_version += 1
 
     def plan_state(self) -> Dict[str, Any]:
@@ -857,19 +872,31 @@ class Workspace(BaseWorkspace):
                         if hit and work.protected(md):
                             held[eid] = md
         state['rule_work'] = [[k, v] for k, v in held.items()]
+        state['requests'] = [dict(r) for r in self.requests] if self._asked_whole() else None
         state['format'] = PLAN_STATE_FORMAT
         return state
 
     def resume(self, state: Dict[str, Any], documents: List[Dict[str, Any]]) -> None:
         # A plan stored in another form than this one's is not taken over at
         # all: nothing of it is resumed (REV6-AGENT-8).
-        if state.get('format') != PLAN_STATE_FORMAT or not isinstance(state.get('rule_work'), list):
+        if state.get('format') != PLAN_STATE_FORMAT or not isinstance(state.get('rule_work'), list) \
+                or 'requests' not in state:
             raise ToolError('Resume is not available for that plan. Stage its changes again.')
+        empty = self.snapshot()
         super().resume(state, documents)
         for eid, md in state['rule_work']:
             self.note_metadata(eid, md)
+        from .requests import Request
+        if isinstance(state['requests'], list):
+            self.requests = [Request(r) for r in state['requests']]
+            self.empty_plan = empty
 
     def add_op(self, op: Dict[str, Any]) -> None:
+        if self.replaying is not None:
+            from .requests import held_out
+            op = held_out(self, op, self.replaying)
+            if op is None:
+                return
         self.place_virtual(op)
         self.place_morph_type(op)
         # When it was staged, among the named values and rules: a rule
@@ -886,6 +913,9 @@ class Workspace(BaseWorkspace):
                 self.unlink_orphans()
 
     def add_ops(self, ops: List[Dict[str, Any]]) -> None:
+        if self.replaying is not None:
+            from .requests import held_out
+            ops = [o for o in (held_out(self, op, self.replaying) for op in ops) if o is not None]
         # Before the funnel asks whether any of them clashes with the plan: a
         # value planned on a morpheme the analysis deletes is superseded by
         # it, not a reason to refuse it.
@@ -955,7 +985,9 @@ class Workspace(BaseWorkspace):
         on its own (a value, a form, a type), which an analysis of its word
         replaces along with the rest of the chain."""
         kind = op.get('kind')
-        return ((kind == 'set_span' and op.get('token_id') in rewritten)
+        # A value kept out of a corpus-wide change on such a morpheme too: the
+        # analysis deletes it, so nothing of it stays (REV7-PLAN-6).
+        return ((kind in ('set_span', 'keep') and op.get('token_id') in rewritten)
                 or (kind in MORPHEME_WRITERS and op.get(MORPHEME_KEY) in rewritten))
 
     @contextmanager
@@ -1014,6 +1046,7 @@ class Workspace(BaseWorkspace):
 
     def after_discard(self) -> None:
         self.new_entries.clear()
+        self.requests = []
 
     def keep_holds(self, op: Dict[str, Any]) -> bool:
         # A named change a rule set back to what is stored stays while that
@@ -1025,7 +1058,130 @@ class Workspace(BaseWorkspace):
         t = target(op)
         return t is not None and rule_taking(self, t) is not None
 
-    def after_drop(self, dropped: List[Dict[str, Any]]) -> str:
+    # --- the requests the plan was made from (requests.py) ------------------
+
+    def request_begin(self, tool: str, args: Dict[str, Any]) -> Any:
+        from .requests import Request, fingerprints, request
+        if self.replaying is not None:
+            rec = Request(self.replaying)
+        else:
+            if not self.requests and not self.ops:
+                self.empty_plan = copy.deepcopy(self.snapshot())
+            rec = request(tool, args, self.entry_no)
+        self.rule_asked = None
+        return rec, fingerprints(self.ops)
+
+    def request_end(self, asked: Any, answer: str) -> None:
+        from ..core.tools import Refusal
+        from .requests import entry_key, fingerprints, needs, owned
+        rec, before = asked
+        rule, self.rule_asked = self.rule_asked, None
+        if self.replaying is None and isinstance(answer, Refusal):
+            return
+        if self.replaying is not None:
+            # What a drop held out of it, wherever the tool put it.
+            out = set(rec.get('without') or ())
+            if out and any(entry_key(o) in out for o in self.ops):
+                self.ops[:] = [o for o in self.ops if entry_key(o) not in out]
+                self._gone_at = -1
+            made = {o.get('key') for o in self.ops if o.get('kind') == 'create_entry'}
+            for k in [k for k in self.new_entries if k not in made]:
+                self.new_entries.pop(k)
+        # A corpus-wide change stands for its own rule alone: what it rewrote
+        # elsewhere is another request's entry.
+        rec['owns'] = owned({}, {}, rule) if rule is not None else owned(before, fingerprints(self.ops), None)
+        rec['needs'] = needs(self.ops, rec['owns'])
+        self.requests.append(rec)
+
+    def _asked_whole(self, ops: Optional[List[Dict[str, Any]]] = None) -> bool:
+        """Whether the plan (``ops``, by default the plan's) is made of its
+        requests alone, so a drop may ask them again. A plan staged some
+        other way (a test that adds an op, a plan resumed without them) is
+        dropped from in place."""
+        from .requests import entry_key
+        if self.empty_plan is None:
+            return False
+        owns = {k for r in self.requests for k in r.get('owns') or ()}
+        return all(entry_key(o) in owns for o in (self.ops if ops is None else ops))
+
+    def after_drop(self, dropped: List[Dict[str, Any]], field: Optional[str] = None,
+                   document: Optional[str] = None) -> str:
+        if not self._asked_whole(self.ops + dropped):
+            return self._drop_in_place(dropped)
+        from . import requests as rq
+        from .bulk import analysis_values, values_changed
+        from ..core.workspace import _op_key
+        pre = self.ops + list(dropped)
+        # A drop by field keeps a planned analysis and takes only that
+        # field's values out of it (Luke 2026-10-16, PLAN-2).
+        narrow: Dict[str, set] = {}
+        if field is not None:
+            want = field.strip().casefold()
+            for o in list(dropped):
+                if o.get('kind') != 'set_analysis':
+                    continue
+                layers = {lid for lid, _v in self.staged_values(o)
+                          if lid and (self.value_rules(lid)[0] or '').casefold() == want}
+                if layers:
+                    narrow[rq.entry_key(o)] = layers
+                    dropped.remove(o)
+        gone_keys = {rq.entry_key(o) for o in dropped}
+        reqs = self.requests
+        if narrow:
+            reqs = [r for r in (rq.narrowed(self, r, set(narrow), narrow) for r in reqs) if r is not None]
+        reqs = rq.after_drop(gone_keys, reqs)
+        if field is not None or document is not None:
+            # A request that stands for nothing in the plan now, and asks for
+            # what the drop names, goes too: asked again, it would put back
+            # what the drop took out.
+            live = {rq.entry_key(o) for o in pre}
+            reqs = [r for r in reqs if set(r.get('owns') or ()) & live
+                    or not rq.asks_for(self, r, field, document)]
+        carried = {}
+        if self._carried:
+            for o in pre:
+                hit = self._carried.get(_op_key(o))
+                if hit is not None:
+                    carried[rq.entry_key(o)] = hit
+        analysed = analysis_values(self, pre)
+        left = {rq.entry_key(o): o for o in self.ops}
+        left.update({k: o for o in pre for k in [rq.entry_key(o)] if k in narrow})
+        rq.replay(self, reqs)
+        self.reported_left = len(settle_merges(self.ops)[1])
+        if carried:
+            self._carried = {_op_key(o): carried[rq.entry_key(o)] for o in self.ops if rq.entry_key(o) in carried}
+        now = {rq.entry_key(o): o for o in self.ops}
+        went = [o for k, o in left.items() if k not in now]
+        back = [k for k in now if k not in left]
+        changed = self.dropped_elsewhere = values_changed(analysed, analysis_values(self))
+        from ..core import rules
+        from ..core.keep import kept_value
+        n_rules = sum(1 for o in went if rules.is_rule(o))
+        n_keeps = sum(1 for o in went if kept_value(o))
+        links_new = any(o.get('new_entry_key') for o in went)
+        links_ana = any(o.get('analysis_word_id') for o in went)
+        others = len(went) - n_rules - n_keeps - sum(1 for o in went if not kept_value(o)
+                                                     and (o.get('new_entry_key') or o.get('analysis_word_id')))
+        n_narrow = len(narrow)
+        return ((f' Took {field.strip()} out of {n_narrow} planned analys{"is" if n_narrow == 1 else "es"}: '
+                 f'{"its" if n_narrow == 1 else "their"} morphemes and other values stay.' if n_narrow else '')
+                + (' Links to the dropped new entries were dropped with them.' if links_new else '')
+                + (f' {changed} {"value" if changed == 1 else "values"} in planned analyses changed with it.'
+                   if changed else '')
+                + (' Links to the morphemes of a dropped analysis were dropped with it.' if links_ana else '')
+                + (f' {n_rules} corpus-wide change{"s" if n_rules != 1 else ""} now '
+                   f'find{"" if n_rules != 1 else "s"} nothing to change and left the plan. A later drop that '
+                   f'leaves {"them" if n_rules != 1 else "it"} something to change brings '
+                   f'{"them" if n_rules != 1 else "it"} back.' if n_rules else '')
+                + (f' {n_keeps} {"value" if n_keeps == 1 else "values"} kept out of it went with it: nothing in '
+                   f'the plan would change {"it" if n_keeps == 1 else "them"} now.' if n_keeps else '')
+                + (f' {others} other entr{"ies" if others != 1 else "y"} went with it: what '
+                   f'{"they were" if others != 1 else "it was"} planned on was dropped.' if others else '')
+                + (f' {len(back)} entr{"ies" if len(back) != 1 else "y"} that the dropped '
+                   f'change{"s" if len(dropped) != 1 else ""} had held out of the plan '
+                   f'{"are" if len(back) != 1 else "is"} back in it.' if back else ''))
+
+    def _drop_in_place(self, dropped: List[Dict[str, Any]]) -> str:
         # A dropped new entry takes the links to it along: they could not be
         # written. Whatever links to one, a word's own link or a multi-word
         # expression's: the phrase link was left behind, and approval then

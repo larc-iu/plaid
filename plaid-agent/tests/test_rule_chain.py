@@ -73,7 +73,8 @@ def test_a_later_rule_left_finding_nothing_by_a_drop_goes_and_is_said():
     _replace(w, 'Ali', 'Bob', whole=True)
     _replace(w, 'Bob', 'Cy', whole=True)
     out = call_tool(w, 'drop_planned', {'indexes': [1]})
-    assert '1 later corpus-wide change that now finds nothing to change went with it.' in out, out
+    assert ('1 corpus-wide change now finds nothing to change and left the plan. A later drop that leaves it '
+            'something to change brings it back.') in out, out
     assert w.ops == []
 
 
@@ -213,5 +214,6 @@ def test_a_rule_that_only_rewrote_a_dropped_named_change_goes_with_it():
     _set(w, 's1.w1', 'Bob')
     _replace(w, 'Bob', 'Zed', whole=True)
     out = call_tool(w, 'drop_planned', {'indexes': [1]})
-    assert '1 later corpus-wide change that now finds nothing to change went with it.' in out, out
+    assert ('1 corpus-wide change now finds nothing to change and left the plan. A later drop that leaves it '
+            'something to change brings it back.') in out, out
     assert w.ops == []

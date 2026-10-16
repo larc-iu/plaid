@@ -423,7 +423,9 @@ The modules below are `igt/` unless they say otherwise.
   documents and lexicons, what a plan payload holds, and the helpers every tool
   module needs to read a reference. `lexview.py` is a lexicon as one turn reads
   it: the sense tree, the numbers a user is shown, and the line an entry prints
-  as.
+  as. `requests.py` keeps the planning calls a plan was made from, so a drop
+  asks every remaining one again from scratch, in order, a call answered
+  "Nothing to change" included (Luke 2026-10-16).
 - `toolkit.py`: the tool table and the dispatch behind it. Every tool is
   declared once beside the function that implements it, in `reads.py` (reading
   a document, an entry, or the change history), `tools.py` (the plan tools that
@@ -451,7 +453,8 @@ The modules below are `igt/` unless they say otherwise.
   recent week, each entry with the `as_of` instant a restore takes),
   `comments` (what people have written to each other, anchored to the
   document, a sentence, a word, a morpheme, or a value), `plan_status`,
-  `drop_planned` (by number, field or document), `resume_plan` (the plan an
+  `drop_planned` (by number, field or document, and by field a planned analysis
+  keeps its morphemes and loses only that field's values), `resume_plan` (the plan an
   earlier message left waiting, carried into this turn's), and
   `app_guide` (the app's user guide, `plaid-igt/docs/igt-guide.adoc`, a part
   at a time by name, for "how do I ..." questions; `guide.py`, with a copy in

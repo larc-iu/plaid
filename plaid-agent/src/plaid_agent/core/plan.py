@@ -1646,7 +1646,9 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
     dropped = [ws.ops[i - 1] for i in sorted(drop)]
     ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
     ws.dropped_elsewhere = 0
-    note = ws.after_drop(dropped)
+    note = ws.after_drop(dropped, field, document)
+    # The app kept every entry in part, and its note says what went.
+    in_part = not dropped and bool(note)
     # A value kept out of a corpus-wide change goes with the last change it
     # was kept out of: on its own it would read as a change that writes
     # nothing (Luke 2026-10-16).
@@ -1660,6 +1662,8 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
                  f'documents {"were" if kept != 1 else "was"} kept: drop {"them" if kept != 1 else "it"} by number '
                  f'if {"they" if kept != 1 else "it"} should go.')
     changes, keeps = plan_changes(dropped), kept_values(dropped)
+    if in_part:
+        return note.lstrip() + '\n' + plan_status(ws)
     if not dropped:
         # Every match also reaches another document (REV4-AGENT-5).
         said = 'Nothing dropped.'

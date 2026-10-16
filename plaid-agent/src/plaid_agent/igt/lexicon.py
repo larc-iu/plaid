@@ -64,7 +64,10 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     # CI runs Python 3.11, which refuses a backslash inside an f-string
     # expression, so the slug is made first.
     slug = re.sub(r'\s+', '_', form)
-    key = f'new:{v["id"]}:{slug}#{len(ws.new_entries) + 1}'
+    # Numbered by the plan's requests, not by the entries it holds now, so a
+    # drop that asks the requests again gives each the key it was given.
+    ws.entry_no += 1
+    key = f'new:{v["id"]}:{slug}#{ws.entry_no}'
     what = (f'new sense of {view.label(parent["id"])} ' if parent is not None else 'new entry ')
     # The entry every later tool in the turn resolves against and the op that
     # creates it are one change or none. Written first and staged after, a

@@ -1026,10 +1026,22 @@ class BaseWorkspace:
         corpus-wide change they were kept out of has gone."""
         return [op for op in self.ops if is_keep(op) and not self.keep_holds(op)]
 
-    def after_drop(self, dropped: List[Dict[str, Any]]) -> str:
+    def after_drop(self, dropped: List[Dict[str, Any]], field: Optional[str] = None,
+                   document: Optional[str] = None) -> str:
         """What the app drops along with ``dropped``, said in a sentence
-        (each starting with a space), or ''."""
+        (each starting with a space), or ''. ``field`` and ``document`` are
+        what a drop by field or document names. An app may take an entry back
+        out of ``dropped`` (in place) that it keeps in part, and says so."""
         return ''
+
+    def request_begin(self, tool: str, args: Dict[str, Any]) -> Any:
+        """A planning call about to run (``toolkit.build``): what the app
+        keeps of it, handed to :meth:`request_end` with the answer, or None
+        to keep nothing."""
+        return None
+
+    def request_end(self, asked: Any, answer: str) -> None:
+        """The planning call :meth:`request_begin` began has answered."""
 
     def superseded_note(self) -> str:
         """The earlier changes this turn superseded that nothing has reported

@@ -137,6 +137,12 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.
         after = (lambda out: out + ws.superseded_note()) if name in write else None
-        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after)
+        # Each planning call is a request the plan is made from, which an
+        # app may keep to ask again (``request_begin``, ``request_end``).
+        asked = ws.request_begin(name, args) if name in write else None
+        out = run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after)
+        if asked is not None:
+            ws.request_end(asked, out)
+        return out
 
     return Kit(tools, write, tools_for, call_tool)

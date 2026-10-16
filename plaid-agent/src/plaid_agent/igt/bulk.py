@@ -305,6 +305,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     sets one there, even if it finds nothing stored.
     """
     key = ('rule', tool, rules.fingerprint_args(args))
+    ws.rule_asked = key
     # The plan's rules as they stand and as they count, so this one reads
     # what they leave and the answer can say which it leaves with nothing.
     settle_rules(ws)
@@ -837,7 +838,8 @@ def _find_rules(ws: Workspace) -> bool:
         again = True
         new, found, _kept, _left = _build_rule(ws, op['tool'], op['args'], op.get('unit') or ['change', 'changes'],
                                                op.get('change') or '', op['head'],
-                                               [ws.rule_found[k] for k in earlier], removed=removed)
+                                               [ws.rule_found[k] for k in earlier], op.get('mode'),
+                                               removed=removed)
         if SEQ in op:
             new[SEQ] = op[SEQ]
         ws.ops[ws.ops.index(op)] = new
@@ -1470,11 +1472,12 @@ def settle_analyses(ws: Workspace) -> None:
     ws.analysis_hits, ws.analysis_last = hits, last
 
 
-def analysis_values(ws: Workspace) -> Dict[tuple, Any]:
-    """Every value of every planned analysis, by (word id, morpheme index,
-    what), for counting what a change to the plan changed there."""
+def analysis_values(ws: Workspace, ops: Optional[List[Dict[str, Any]]] = None) -> Dict[tuple, Any]:
+    """Every value of every planned analysis of ``ops`` (the plan's by
+    default), by (word id, morpheme index, what), for counting what a change
+    to the plan changed there."""
     out: Dict[tuple, Any] = {}
-    for op in ws.ops:
+    for op in ws.ops if ops is None else ops:
         if op.get('kind') != 'set_analysis':
             continue
         out[(op.get('word_id'), None, None)] = None
