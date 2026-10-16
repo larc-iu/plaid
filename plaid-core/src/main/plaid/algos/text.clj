@@ -2325,6 +2325,11 @@
     extent less that boundary whitespace: its old text left and the text
     typed strictly inside it), so text typed inside a row stays in it and
     no letter a row held leaves it (REV4-TEXT-2).
+  - Where a row's end sits in the whitespace before a sentence's first
+    letter (a row over part of the sentence before, or ending inside that
+    whitespace) and the next row's begin follows that sentence, text typed
+    in that whitespace that the sentence takes goes to the next row: the
+    sentence wins the crossing (FX-F-TEXT, REV5-TEXT-1).
   - Two rows of a layer that did not overlap do not: where two edges cross,
     they meet at the one that stayed put, else at the one that keeps what
     each row holds, else every row of the layer keeps the plain placement.
@@ -2377,6 +2382,16 @@
                    :ends (cond-> [(e end (if (or (space? (aget o (dec end))) (not new-letters?)) ne le))]
                            (and letters? (not= oe end)) (conj (e oe (if new-letters? le ne))))}))
         begin-at (agreed (mapcat :begins edges))
+        ;; each sentence's first letter, in the old text
+        first-letters (into #{} (keep (fn [{:token/keys [begin end]}]
+                                        (let [x (lead o begin end)] (when (< x end) x))))
+                            parts)
+        ;; where an end on whitespace sits in the whitespace before a
+        ;; sentence's first letter: that letter's old place, or nil
+        before-letter (fn [end]
+                        (when (and (< 0 end) (space? (aget o (dec end))))
+                          (let [x (lead o end (alength o))]
+                            (when (first-letters x) x))))
         end-at (agreed (mapcat :ends edges))
         ;; where an edge goes: a row over the whole of the sentence there
         ;; follows the sentence's edge, a row over part of it takes the text
@@ -2407,6 +2422,10 @@
                                hb* (if (and ba (whole? ba begin end)) (lead o begin end) begin)
                                he* (if (and ea (whole? ea begin end)) (tail o begin end) end)
                                [hb he] (when (< hb* he*) (held [hb* he*]))
+                               ;; an end in the whitespace before a sentence:
+                               ;; the end of the letters the row holds
+                               wx (before-letter end)
+                               hl (when wx (let [y (tail o hb* he*)] (when (< hb* y) (second (held [hb* y])))))
                                ;; every edge keeps what the row holds
                                pb (cond-> (:token/begin t) hb (min hb))
                                pe (cond-> (:token/end t) he (max he))
@@ -2416,7 +2435,7 @@
                                e (cond-> (or fe pe) he (max he))]
                            (if (< b e)
                              {:id id :layer (:token/layer t) :old begin :b b :e e :hb hb :he he
-                              :fb (and fb (= b fb)) :fe (and fe (= e fe))}
+                              :fb (and fb (= b fb)) :fe (and fe (= e fe)) :wx wx :hl hl}
                              {:id id :layer (:token/layer t) :old begin :b (:token/begin t) :e (:token/end t)
                               :hb hb :he he})))))
                    kept)
@@ -2432,7 +2451,10 @@
                                                       hi (or (:hb r) (dec (:e r)))
                                                       in? #(<= lo % hi)
                                                       c1 (:e p) c2 (:b r)
-                                                      cut (cond (and (in? c2) (not (:fb r))) c2
+                                                      cut (cond (and (:wx p) (:fb r) (<= (:old r) (:wx p))
+                                                                     (if (:hl p) (<= (:hl p) c2) (< (:b p) c2)) (<= c2 hi))
+                                                                c2
+                                                                (and (in? c2) (not (:fb r))) c2
                                                                 (and (in? c1) (not (:fe p))) c1
                                                                 (in? c2) c2
                                                                 (in? c1) c1

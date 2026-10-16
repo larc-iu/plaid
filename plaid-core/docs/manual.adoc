@@ -895,10 +895,11 @@ An insert's `side` decides over these where it applies.
 
 A row, a token of a layer that forbids overlap other than the words and the layers under them, such as a time-alignment segment, keeps to the sentences this way:
 
-* Text typed inside a row stays in it, wherever the sentence boundary near it goes, except in the whitespace at the edge of a row over whole sentences (below).
+* Text typed inside a row stays in it, wherever the sentence boundary near it goes, except in the whitespace at a row's edge, as the next two points say.
 * A row over whole sentences, with or without the whitespace at its edges, follows them. An edge at a sentence's start or end, or at its first or last letter, goes where that sentence's start or end goes, and keeps the whitespace it held there and no other. Text typed at that edge, or in the whitespace between the edge and the row's letters, counts as typed at the sentence boundary: it is in the row when that sentence takes it. In `Hi.  The end.` with a row over each sentence and its whitespace, `So` typed between the two spaces begins the second sentence and is in the second row.
+* Where a row ends in the whitespace before a sentence's first letter and the next row follows that sentence, text typed in that whitespace that the sentence takes is in the next row. This holds for a row over part of the sentence before that holds the whitespace after it, and for a row that ends inside the whitespace. In `Ab cd.   Ef gh.` with a row over `cd.   ` and one over `Ef gh.`, `So` typed between the second and third space begins the second sentence and is in the second row. A row with no letter left keeps the text typed in it.
 * A row over part of a sentence takes the text typed right at an edge it shares with that sentence when the sentence takes it, and no other text of the sentence. This includes text the sentence takes at the start or end of the text and a line typed after it.
-* Any other edge of a row stays where it was.
+* Any other edge of a row stays where it was, but for an end in the whitespace before a sentence, which goes where the next row now begins (above).
 * A row keeps every letter it held that the save leaves. A space typed inside a word that splits it (`splitOnSpace`) moves no row.
 * Rows that did not overlap before a save do not overlap after it.
 

@@ -17,13 +17,20 @@
      row over whole sentences meets a sentence boundary counts as typed at
      the boundary: it is in the row exactly when it is in one of the
      sentences the row reaches (FX-E-TEXT, REV4-TEXT-1), unless the save
-     deletes every sentence the row holds whole,
+     deletes every sentence the row holds whole. Where a row's end sits in
+     the whitespace before a sentence's first letter and the next row
+     follows that sentence (begins on its boundary and holds it whole),
+     text typed in that whitespace that the sentence takes is in the next
+     row, not this one: the sentence wins the crossing (FX-F-TEXT,
+     REV5-TEXT-1), unless no letter of the row is left,
   3. text typed where a row's edge meets a sentence boundary (a sentence's
      begin or first letter, its end or the end of its last letter) goes
      with the sentence the partition rule chooses, and the row on that
      sentence's side holds it,
   4. a row edge not on a sentence boundary stays where it was, among the
      text a gap typed there, or moved off whitespace onto the row's text,
+     or, at an end the sentence after it wins in (2), where the next row
+     now begins,
   5. an old letter left stays in the row it was in, and in no other."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
@@ -125,6 +132,25 @@
                              (boolean (if (< lb le)
                                         (or (and wb (<= a lb)) (and we (>= z le)))
                                         (or wb we)))))
+            ;; where row i's end sits in the whitespace before a sentence's
+            ;; first letter and the next row follows that sentence:
+            ;; `[next-row sentence]`
+            crossing (fn [i]
+                       (let [[b e] (rows i)
+                             x (loop [x e] (if (and (< x (alength oc)) (ws? (aget oc x))) (recur (inc x)) x))
+                             j (some (fn [k] (when (= x (first (trim-ws oc (sents k)))) k)) (range (count sents)))
+                             nx (first (sort-by (comp first rows) (filter #(<= e (first (rows %)) x) (range (count rows)))))]
+                         (when (and (pos? e) (< b e) (ws? (aget oc (dec e))) j nx
+                                    (= j (sb (first (rows nx))))
+                                    (some #{j} (whole nx)))
+                           [nx j])))
+            crossing-ws? (fn [i a]
+                           (let [[b e] (rows i)]
+                             ;; (a row with no letter left keeps what is
+                             ;; typed in it, as it would be left empty)
+                             (and (crossing i) (< a e)
+                                  (every? #(ws? (aget oc %)) (range a e))
+                                  (some #(and (not (ws? (aget oc %))) (not (gone? %))) (range b e)))))
             out (transient [])
             v! (fn [k msg] (conj! out [k msg]))]
         ;; 1. no overlap
@@ -141,10 +167,15 @@
                   :when (and (< b a) (if (= a z) (< a e) (< z e)) (pos? (vlen g)))
                   :when (not (boundary-ws? i a z))
                   :let [x (new-at gi)
+                        [nx j] (when (crossing-ws? i a) (crossing i))
                         ;; whitespace at an edge on a letter before is moved off
                         ;; (and a line made a sentence of its own at the
                         ;; start, which every token reaching over it leaves)
-                        out (remove (fn [p] (or (<= nb* p (dec ne*))
+                        out (remove (fn [p] (or (if nx
+                                                  (if (= j (sentence-at p))
+                                                    (or (ws? (aget nc p)) (let [[x y] (new-rows nx)] (and x (<= x p) (< p y))))
+                                                    (<= nb* p (dec ne*)))
+                                                  (<= nb* p (dec ne*)))
                                                 (= -1 (sentence-at p))
                                                 (and (< p nb*) (not (ws? (aget oc b))) (every? #(ws? (aget nc %)) (range p nb*)))
                                                 (and (>= p ne*) (not (ws? (aget oc (dec e)))) (every? #(ws? (aget nc %)) (range ne* (inc p))))))
@@ -179,6 +210,7 @@
                         lo (if (seq at) (reduce min (map first at)) (pm p))
                         hi (if (seq at) (reduce max (map second at)) (pm p))
                         ok? (or (<= lo q hi)
+                                (and (= edge :end) (crossing i) (= q (first (new-rows (first (crossing i))))))
                                 (and (= edge :begin) (> q hi) (every? #(ws? (aget nc %)) (range hi q)))
                                 (and (= edge :end) (< q lo) (every? #(ws? (aget nc %)) (range q lo))))]
                   :when (not ok?)]
@@ -198,7 +230,7 @@
 (def ^:private seps [" " "  " "   " "\n" "\n " "\t\n" " \n" "\n\n" "　　" "\r\n" "  \n  " " \t " "  \n"])
 (def ^:private last-seps ["" "" " " "  " "\n"])
 (def ^:private typed-vals ["X" "X " "So " "Y Z" "Q." "Q.\n" "\nX" "X\n" " X" "XY"])
-(def shapes [:full :trim :mixed :midws :span :span-trim :short :midws-begin :random])
+(def shapes [:full :trim :mixed :midws :span :span-trim :short :midws-begin :random :part-ws])
 
 (defn gen-case
   "A case as REV3-TEXT's generator made them: two to four sentences, with
@@ -260,6 +292,14 @@
                                        (let [a (.nextInt rng (count ws)) z (rint a (dec (count ws)))]
                                          [(first (ws a)) (second (ws z))]))))
                                  real))
+               ;; rows over the last words of a sentence and the whitespace
+               ;; after it, beside rows over whole sentences (REV5-TEXT-1)
+               :part-ws (vec (keep (fn [[sb se :as s]]
+                                     (let [ws (filterv (fn [[b e]] (and (<= sb b) (<= e se))) words)]
+                                       (if (and (seq ws) (< (.nextDouble rng) 0.5))
+                                         [(first (ws (.nextInt rng (count ws)))) se]
+                                         s)))
+                                   sents))
                :random (let [cuts (vec (sort (distinct (repeatedly (rint 2 6) #(.nextInt rng (inc (count body)))))))]
                          (vec (keep (fn [[a b]] (when (< (.nextDouble rng) 0.7) [a b])) (partition 2 1 cuts)))))
         rows (filterv (fn [[b e]] (< b e)) rows)
@@ -353,6 +393,21 @@
                                         ["Hi.  The end." [[0 5] [5 13]] [[0 3] [5 13]] 4 "So" [[0 3] [4 15]]]]
               path [:edits :body]
               :let [c {:o o :sents sents :words [[0 3] [5 8] [9 13]] :rows rows :gaps [{:start at :end at :value v}]}
+                    {r :r} (run-case c path)]]
+        (is (empty? (violations c path)) (pr-str o rows at path))
+        (is (= want (rows-of r)) (pr-str o rows at path))))
+    (testing "REV5-TEXT-1: the next row follows its sentence over text typed in a row's trailing whitespace"
+      (doseq [[o sents words rows at v want] [["Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 5] [6 14]] 4 "So" [[0 4] [4 16]]]
+                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [9 15]] 7 "So" [[3 7] [7 17]]]
+                                              ["Ab cd.\n Ef gh." [[0 8] [8 14]] [[0 2] [3 6] [8 10] [11 14]] [[3 8] [8 14]] 7 "So" [[3 7] [7 16]]]
+                                              ;; a typed line, which the sentence before takes, stays
+                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [9 15]] 7 "So.\n" [[3 13] [13 19]]]
+                                              ;; the next row over part of the sentence: the row keeps it
+                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [12 15]] 7 "So" [[3 11] [14 17]]]
+                                              ;; a row ending on its letters takes nothing
+                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 7]] 7 "So" [[3 7]]]]
+              path [:edits :body]
+              :let [c {:o o :sents sents :words words :rows rows :gaps [{:start at :end at :value v}]}
                     {r :r} (run-case c path)]]
         (is (empty? (violations c path)) (pr-str o rows at path))
         (is (= want (rows-of r)) (pr-str o rows at path))))
