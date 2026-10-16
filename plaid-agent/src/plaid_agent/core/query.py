@@ -146,8 +146,8 @@ def rewrite(node: Any, idx: Dict[str, List[tuple]], display: Callable[[str], str
                 out[k] = rewrite(v, idx, display, docs)
         return out
     if isinstance(node, list):
-        head = node[0] if node and isinstance(node[0], str) and node[0] in CLAUSE_LAYER else None
-        return [rewrite(x, idx, display, docs, head if isinstance(x, dict) else None) for x in node]
+        clause_kind = node[0] if node and isinstance(node[0], str) and node[0] in CLAUSE_LAYER else None
+        return [rewrite(x, idx, display, docs, clause_kind if isinstance(x, dict) else None) for x in node]
     return node
 
 
