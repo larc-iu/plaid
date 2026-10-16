@@ -108,6 +108,12 @@ export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = fa
   const vocabLinksByToken = collectSingleTokenVocabLinks(vocabularies);
   const entryTypes = collectEntryMorphTypes(vocabularies);
 
+  // A token the ignored-tokens rule excludes (punctuation, by default) is read
+  // as the text it covers, exactly as if no token were there: ud's Tokenize
+  // makes a token for each run of punctuation, and igt must look the same
+  // whether ud made one or not (Luke, 2026-10-16). Its text falls in the gap
+  // between words, so it is no word anywhere the sentences reach.
+  const ignoredCfg = readIgnoredTokens(primaryTokenLayer?.config);
   const sortedTokens = (primaryTokenLayer?.tokens || [])
     .map((t) => ({
       id: t.id,
@@ -121,6 +127,7 @@ export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = fa
       vocabItem: vocabLinksByToken[t.id] || null,
       morphemes: [],
     }))
+    .filter((t) => !isTokenIgnored(t.content, ignoredCfg))
     .sort((a, b) => a.begin - b.begin);
 
   // Per-layer tokenId -> span maps, built in ONE pass over each layer's spans
@@ -187,12 +194,8 @@ export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = fa
   // rather than stored (see virtualMorpheme.js). It is the word: same extent,
   // same text, no annotation. Consumers of `token.morphemes` therefore see one
   // morpheme per word whether or not anyone has segmented it, which is what
-  // they saw when reconcile-on-open wrote these rows into the database.
-  //
-  // Ignored tokens (punctuation, per the project's ignored-tokens config) are
-  // excluded, exactly as reconcile excluded them: they carry no annotation and
-  // the editor renders them as gaps, so a morpheme there would be invisible.
-  const ignoredCfg = readIgnoredTokens(primaryTokenLayer?.config);
+  // they saw when reconcile-on-open wrote these rows into the database. An
+  // ignored token is no word here (above), so it gets none.
   const emptyMorphAnnotations = annotationsFor(null, morphSpanMaps);
   const virtualMorpheme = (word) => ({
     id: virtualMorphemeId(word.id),
@@ -214,7 +217,6 @@ export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = fa
     const own = morphemesByWord.get(word.id);
     if (own && own.length) return own;
     if (!morphemeTokenLayer) return [];
-    if (isTokenIgnored(word.content, ignoredCfg)) return [];
     return [virtualMorpheme(word)];
   };
 

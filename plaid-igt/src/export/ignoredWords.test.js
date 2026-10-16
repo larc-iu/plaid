@@ -159,7 +159,10 @@ describe('an ignored word in a copy', () => {
     });
   }
 
-  it('the editor keeps the values stored on it', () => {
-    expect(sentence.tokens[0].annotations.Gloss?.value).toBe('FILLER');
+  it('the editor reads it as text between words, and its values stay stored', () => {
+    expect(sentence.tokens.map((t) => t.content)).toEqual(['dog']);
+    expect(sentence.pieces.map((p) => p.content)).toEqual(['uh ', 'dog']);
+    const gloss = doc.layerInfo.primaryTokenLayer.spanLayers[0].spans;
+    expect(gloss.find((g) => g.tokens[0] === 'w1').value).toBe('FILLER');
   });
 });

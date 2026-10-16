@@ -49,9 +49,7 @@ describe('derive', () => {
     expect(morphOf(doc).id).toBe('m-1');
   });
 
-  it('gives an ignored token none, the way reconcile never healed one onto it', () => {
-    // A punctuation token carries no annotation and renders as a gap, so a
-    // morpheme there would be invisible.
+  it('gives an ignored token none: it is no word, its text lies between words', () => {
     const raw = buildRawDoc({
       body: 'the , cat',
       words: [
@@ -64,10 +62,11 @@ describe('derive', () => {
     const wordLayer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
     wordLayer.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
     const doc = makeDoc(raw, makeFakeClient());
-    const [a, comma, b] = doc.sentences[0].tokens;
+    const [a, b] = doc.sentences[0].tokens;
+    expect(doc.sentences[0].tokens).toHaveLength(2);
     expect(a.morphemes).toHaveLength(1);
-    expect(comma.morphemes).toHaveLength(0);
     expect(b.morphemes).toHaveLength(1);
+    expect(doc.sentences[0].pieces.map((p) => p.content)).toEqual(['the', ' , ', 'cat']);
   });
 
   it('gives none at all when the project has no morpheme layer', () => {
