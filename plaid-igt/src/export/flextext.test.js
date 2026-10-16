@@ -659,3 +659,51 @@ describe('flextext time alignment', () => {
     expect(dom.querySelector('phrase').hasAttribute('begin-time-offset')).toBe(false);
   });
 });
+
+// Luke, 2026-09-17: unreviewed analyses go to FLEx as guesses.
+describe('analysisStatus', () => {
+  const MACHINE = { prov: 'inferred', provSource: 'svc' };
+  const CONTRIBUTED = { prov: 'contributed', provSource: 'user:a' };
+  const statusOf = (doc) => {
+    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    const words = [...dom.querySelectorAll('word')].filter((w) =>
+      w.querySelector(':scope > morphemes, :scope > item[type="pos"]'),
+    );
+    return words.map((w) => ({
+      morphemes: w.querySelector(':scope > morphemes')?.getAttribute('analysisStatus') ?? null,
+      pos: w.querySelector(':scope > item[type="pos"]')?.getAttribute('analysisStatus') ?? null,
+    }));
+  };
+
+  it('writes no status for human or verified work', () => {
+    const doc = makeFixtureDoc();
+    doc.sortedSentences[0].tokens[0].annotations.POS.metadata = { ...MACHINE, provConfirmed: true };
+    doc.sortedSentences[0].tokens[0].morphemes[0].metadata.prov = 'contributed';
+    doc.sortedSentences[0].tokens[0].morphemes[0].metadata.provConfirmed = true;
+    expect(statusOf(doc)).toEqual([
+      { morphemes: null, pos: null },
+      { morphemes: null, pos: null },
+    ]);
+  });
+
+  it('marks machine work guessByStatisticalAnalysis and contributed work guess', () => {
+    const doc = makeFixtureDoc();
+    const [w1, w2] = doc.sortedSentences[0].tokens;
+    w1.annotations.POS.metadata = CONTRIBUTED;
+    w1.morphemes[1].annotations.Gloss.metadata = MACHINE;
+    w2.annotations.POS.metadata = MACHINE;
+    expect(statusOf(doc)).toEqual([
+      { morphemes: 'guessByStatisticalAnalysis', pos: 'guess' },
+      { morphemes: null, pos: 'guessByStatisticalAnalysis' },
+    ]);
+  });
+
+  it('marks the morphemes by the morpheme itself and by its lexicon link', () => {
+    const doc = makeFixtureDoc();
+    const w1 = doc.sortedSentences[0].tokens[0];
+    w1.morphemes[1].metadata = { ...w1.morphemes[1].metadata, ...CONTRIBUTED };
+    expect(statusOf(doc)[0].morphemes).toBe('guess');
+    w1.morphemes[0].vocabItem.prov = 'machine';
+    expect(statusOf(doc)[0].morphemes).toBe('guessByStatisticalAnalysis');
+  });
+});

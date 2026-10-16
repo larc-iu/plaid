@@ -47,6 +47,7 @@ import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { lexiconViewOf } from '../domain/vocabLookup.js';
 import { resolveFieldLang, parseFieldName, isLangTag } from '../domain/fieldNames.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
+import { provState } from '@larc-iu/plaid-client';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
@@ -178,12 +179,42 @@ const metadataItems = (indent, metadata, options) => {
 
 // ---- element builders (each returns [] or [lines]) -------------------------
 
-const item = (indent, type, lang, value) => {
+const item = (indent, type, lang, value, status = null) => {
   if (value == null || value === '') return [];
+  const statusAttr = status ? ` analysisStatus="${status}"` : '';
   return [
-    `${indent}<item type="${xmlEscape(type)}" lang="${xmlEscape(lang)}">${xmlEscape(value)}</item>`,
+    `${indent}<item type="${xmlEscape(type)}" lang="${xmlEscape(lang)}"${statusAttr}>${xmlEscape(value)}</item>`,
   ];
 };
+
+// Unreviewed work goes to FLEx as a guess (Luke, 2026-09-17): a machine's as
+// guessByStatisticalAnalysis, a contributor's as guess. Human and verified
+// work carries no status, which FLEx reads as humanApproved. When one mark
+// covers both kinds, the machine's wins. Takes provState values.
+function guessStatus(states) {
+  let status = null;
+  for (const state of states) {
+    if (state === 'machine') return 'guessByStatisticalAnalysis';
+    if (state === 'contributed') status = 'guess';
+  }
+  return status;
+}
+
+// The status of a word's <morphemes>: its morphemes, their written
+// annotations and, when cf is written, their lexicon links.
+function morphemesStatus(morphemes, options) {
+  const states = [];
+  const fields = mappedFields(options, 'morpheme');
+  for (const m of morphemes) {
+    if (!m.virtual) states.push(provState(m.metadata));
+    for (const [field] of fields) {
+      const ann = m.annotations?.[field];
+      if (ann?.value != null && ann.value !== '') states.push(provState(ann.metadata));
+    }
+    if (options?.citationForms && m.vocabItem?.prov) states.push(m.vocabItem.prov);
+  }
+  return guessStatus(states);
+}
 
 function morphXml(indent, m, options, lex) {
   const morphType = m?.morphType ?? m?.metadata?.morphType;
@@ -262,12 +293,14 @@ function wordXml(indent, token, options, lex) {
         type,
         fieldLang(options, 'Word', field),
         token.annotations?.[field]?.value,
+        guessStatus([provState(token.annotations?.[field]?.metadata)]),
       ),
     );
   }
   const morphemes = token.morphemes || [];
   if (morphemes.length) {
-    lines.push(`${indent}  <morphemes>`);
+    const status = morphemesStatus(morphemes, options);
+    lines.push(`${indent}  <morphemes${status ? ` analysisStatus="${status}"` : ''}>`);
     for (const m of morphemes) lines.push(...morphXml(`${indent}    `, m, options, lex));
     lines.push(`${indent}  </morphemes>`);
   }
