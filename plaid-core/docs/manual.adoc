@@ -913,6 +913,7 @@ A row, a token of a layer that forbids overlap other than the words and the laye
 * Likewise where a row begins in the whitespace after a sentence's last letter and the row before follows that sentence, text typed in that whitespace that the sentence takes is in the row before. In a text of `Hi.`, a space, a line break and `The end.`, with a row over `Hi.` and one over the rest, `So` typed after the space joins the first sentence and is in the first row. A row with no letter keeps the text typed in it.
 * A row over part of a sentence takes the text typed right at an edge it shares with that sentence when the sentence takes it, and no other text of the sentence. This includes text the sentence takes at the start or end of the text and a line typed after it.
 * Any other edge of a row stays where it was, but for an end in the whitespace before a sentence, which goes where the next row now begins, and a begin in the whitespace after a sentence, which goes where the row before now ends (above).
+* A next-line character (U+0085) counts as whitespace at a row's edge, as it does at the start of the text.
 * A row keeps every letter it held that the save leaves. A space typed inside a word that splits it (`splitOnSpace`) moves no row.
 * Rows that did not overlap before a save do not overlap after it.
 

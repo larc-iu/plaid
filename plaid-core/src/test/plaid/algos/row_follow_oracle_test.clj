@@ -488,3 +488,19 @@
                     {r :r} (run-case c path)]]
         (is (empty? (violations c path)) (pr-str o rows at path))
         (is (= want (rows-of r)) (pr-str o rows at path))))))
+
+(deftest the-rev7-text-shapes
+  (let [texts (fn [r] (let [b (:text/body (:text r))]
+                        (vec (sort-by first (keep #(when (= :r (:token/layer %)) [(:token/begin %) (subs b (:token/begin %) (:token/end %))]) (:tokens r))))))]
+    (doseq [[label o sents words rows gaps want]
+            [;; REV7-TEXT-1: a NEL reads as whitespace at a row's edge, as LF does
+             ["mirror, LF" "Hi. \nThe end." [[0 5] [5 13]] [[0 2] [5 8] [9 12]] [[0 3] [3 13]] [[4 4 "So"]] ["Hi. So" "\nThe end."]]
+             ["mirror, NEL" "Hi. \u0085The end." [[0 5] [5 13]] [[0 2] [5 8] [9 12]] [[0 3] [3 13]] [[4 4 "So"]] ["Hi. So" "\u0085The end."]]
+             ["at the end, NEL" "Hi.\u0085The end." [[0 4] [4 12]] [[0 2] [4 7] [8 11]] [[0 3] [3 12]] [[3 3 " So"]] ["Hi. So" "\u0085The end."]]
+             ;; REV7-TEXT-4: in a text with no word the rows decide, and the
+             ;; edits and the body read a replace over a line break alike
+             ["no words, a replace over a line break" "abcd Ef ŋa \u2028ฉันไปตลาด" [[0 12] [12 21]] [] [[0 10] [10 21]] [[9 12 "x y"]] ["abcd Ef ŋx y" "ฉันไปตลาด"]]]
+            path [:edits :body]
+            :let [c {:o o :sents sents :words words :rows rows :gaps (mapv (fn [[a z v]] {:start a :end z :value v}) gaps)}
+                  {r :r} (run-case c path)]]
+      (is (= want (mapv second (texts r))) (str label " " path)))))

@@ -2377,8 +2377,8 @@
   inserted there, or nil."
   [^ints o old-tokens kept heads ^ints nw partitioning follower? held typed-at]
   (let [n (alength nw)
-        lead (fn [^ints cs b e] (loop [x b] (if (and (< x e) (space? (aget cs x))) (recur (inc x)) x)))
-        tail (fn [^ints cs b e] (loop [x e] (if (and (> x b) (space? (aget cs (dec x)))) (recur (dec x)) x)))
+        lead (fn [^ints cs b e] (loop [x b] (if (and (< x e) (blank? (aget cs x))) (recur (inc x)) x)))
+        tail (fn [^ints cs b e] (loop [x e] (if (and (> x b) (blank? (aget cs (dec x)))) (recur (dec x)) x)))
         was (into {} (map (juxt :token/id identity)) old-tokens)
         now (into {} (map (juxt :token/id identity)) kept)
         parts (filter #(partitioning (:token/layer %)) old-tokens)
@@ -2414,9 +2414,9 @@
                       new-letters? (< lb le)
                       e (fn [x to] [x {:to to :over (if letters? [ob oe] [begin end])
                                        :now [nb ne]}])]
-                  {:begins (cond-> [(e begin (if (or (space? (aget o begin)) (not new-letters?)) nb lb))]
+                  {:begins (cond-> [(e begin (if (or (blank? (aget o begin)) (not new-letters?)) nb lb))]
                              (and letters? (not= ob begin)) (conj (e ob (if new-letters? lb nb))))
-                   :ends (cond-> [(e end (if (or (space? (aget o (dec end))) (not new-letters?)) ne le))]
+                   :ends (cond-> [(e end (if (or (blank? (aget o (dec end))) (not new-letters?)) ne le))]
                            (and letters? (not= oe end)) (conj (e oe (if new-letters? le ne))))}))
         begin-at (agreed (mapcat :begins edges))
         ;; each sentence's first letter, in the old text
@@ -2426,7 +2426,7 @@
         ;; where an end on whitespace sits in the whitespace before a
         ;; sentence's first letter: that letter's old place, or nil
         before-letter (fn [end]
-                        (when (and (< 0 end) (space? (aget o (dec end))))
+                        (when (and (< 0 end) (blank? (aget o (dec end))))
                           (let [x (lead o end (alength o))]
                             (when (first-letters x) x))))
         end-at (agreed (mapcat :ends edges))
@@ -2437,7 +2437,7 @@
         ;; where a begin on whitespace sits in the whitespace after a
         ;; sentence's last letter: that letter's old end, or nil
         after-letter (fn [begin]
-                       (when (and (< begin (alength o)) (space? (aget o begin)))
+                       (when (and (< begin (alength o)) (blank? (aget o begin)))
                          (let [y (tail o 0 begin)]
                            (when (last-letters y) y))))
         ;; where an edge goes: a row over the whole of the sentence there
@@ -2451,8 +2451,8 @@
                   (when-let [[x y] (typed-at (if begin? begin end))]
                     (let [[x y] (reduce (fn [[x y] [nb ne]] [(max x nb) (min y ne)]) [x y] now)
                           [x y] (if begin?
-                                  [(if (space? (aget o begin)) x (lead nw x y)) y]
-                                  [x (if (space? (aget o (dec end))) y (tail nw x y))])]
+                                  [(if (blank? (aget o begin)) x (lead nw x y)) y]
+                                  [x (if (blank? (aget o (dec end))) y (tail nw x y))])]
                       (when (and (< x y) (<= x plain y))
                         (if begin? (min x plain) (max y plain)))))))
         ;; each follower, where its edges go: `:b` `:e`, what it holds,
@@ -3305,6 +3305,13 @@
                          (or (<= 2 w)
                              (and (= 1 w) (or (<= 2 (runs o start end)) (<= 2 (runs v 0 (alength v)))))))))
          word? (word-token? tokens partitioning word-layers)
+         ;; a word for `foreign?` below: a token of a word layer, where the
+         ;; text has one. In a text whose word layer holds no token yet the
+         ;; rows decide in the words' place, but a row holds runs of text
+         ;; with whitespace between as a matter of course, so it is never
+         ;; foreign, and the gap is read as a whole-body save reads it
+         ;; (REV7-TEXT-4)
+         word-of-layer? (if (seq word-layers) #(contains? (set word-layers) (:token/layer %)) word?)
          children (set (:children opts))
          ;; gap i read as a whole-body save of its window (the text between
          ;; its neighbours) reads it, the tokens cut to the window, when that
@@ -3386,7 +3393,7 @@
                                                arr)
                                        gone (set (:deleted r))]
                                    (some (fn [{:token/keys [id begin end] :as tk}]
-                                           (and (word? tk) (not (gone id))
+                                           (and (word-of-layer? tk) (not (gone id))
                                                 (let [rs (remove #(nth % 2) (cp-runs nw begin end))]
                                                   (and (< 1 (count rs))
                                                        (some (fn [[x y]] (every? #(aget typed %) (range x y))) rs)))))
