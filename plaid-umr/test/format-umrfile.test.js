@@ -322,6 +322,22 @@ describe('the sentence text', () => {
     assert.ok(!lines(s).some((line) => line.startsWith('Sentence')));
   });
 
+  test('a mapped Sentence line with more items than the Words line is left out', () => {
+    const s = withText('Tu viens ?', {
+      words: ['Tu', 'viens'],
+      ilg: [{ key: 'sentence', lang: null, header: 'Sentence', items: ['Tu', 'viens', '?'] }],
+    });
+    assert.ok(!lines(s).some((line) => line.startsWith('Sentence')));
+    const fits = withText('Tu viens ?', {
+      words: ['Tu', 'viens'],
+      ilg: [{ key: 'sentence', lang: null, header: 'Sentence', items: ['Tu', 'viens?'] }],
+    });
+    assert.deepEqual(
+      lines(fits).filter((line) => line.startsWith('Sentence')),
+      ['Sentence: Tu viens?'],
+    );
+  });
+
   test('read: a Sentence line is the text, and wins over text after the id', () => {
     const text = MINIMAL.replace('# :: snt1', '# :: snt1\tthe boy').replace(
       'Words: the boy',

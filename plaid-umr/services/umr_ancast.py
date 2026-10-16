@@ -317,7 +317,12 @@ def _ilg_lines_to_write(sentence):
     """A line with nothing on it is dropped: the standard's grammar requires at
     least one item after the header. The text goes before the sentence's
     translations, where the standard's example has it."""
-    lines = [line for line in (sentence.get('ilg') or []) if line['items']]
+    given = sentence.get('ilg') or []
+    words = next((line['items'] for line in given if line['key'] == 'words'), [])
+    # A Sentence line with more items than Words fails validate.py, as in
+    # ``ilgLinesToWrite``.
+    lines = [line for line in given if line['items']
+             and not (line['key'] == 'sentence' and len(line['items']) > len(words))]
     text = _sentence_text_line(sentence, lines)
     if text:
         at = next((i for i, line in enumerate(lines) if line['key'] == 'sentence-gloss'),

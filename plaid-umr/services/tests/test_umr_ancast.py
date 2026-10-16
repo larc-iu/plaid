@@ -94,6 +94,12 @@ def test_the_writer_puts_the_sentence_text_where_the_app_does():
     # More items than words (a word holding a space) fails validate.py.
     assert head(['New_York'], 'New York') == ['# :: snt1', 'Index: 1', 'Words: New_York']
     assert head(['x'], '   ') == ['# :: snt1', 'Index: 1', 'Words: x']
+    # A mapped Sentence line is held to the same count.
+    mapped = _written_sentence(['Tu', 'viens'], 'Tu viens ?')
+    mapped['ilg'].append({'header': 'Sentence', 'key': 'sentence', 'items': ['Tu', 'viens', '?']})
+    assert 'Sentence' not in umr.serialize_umr_file([mapped])
+    mapped['ilg'][-1]['items'] = ['Tu', 'viens?']
+    assert 'Sentence: Tu viens?' in umr.serialize_umr_file([mapped])
     # Decomposed text is the words once in NFC, and the file is written in NFC.
     written = umr.serialize_umr_file([_written_sentence(['cafe\u0301'], 'cafe\u0301',
                                                     '(s1x / cafe\u0301)')])

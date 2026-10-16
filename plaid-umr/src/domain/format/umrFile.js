@@ -496,7 +496,14 @@ function ilgLinesToWrite(sentence) {
   const rest = given.filter((line) => line.key !== 'index' && line.key !== 'words');
   // A line with nothing on it is dropped: the standard's grammar requires at
   // least one item after the header, and an empty gloss carries no annotation.
-  const lines = [index, wordsLine, ...rest].filter((line) => (line.items ?? []).length > 0);
+  // So is a Sentence line (a sentence field mapped to it) with more items than
+  // the Words line, which validate.py fails (`sentence-word-mismatch`), as
+  // `sentenceTextLine` leaves out the text in that case.
+  const wordCount = (wordsLine.items ?? []).length;
+  const lines = [index, wordsLine, ...rest].filter(
+    (line) =>
+      (line.items ?? []).length > 0 && !(line.key === 'sentence' && line.items.length > wordCount),
+  );
   // The text goes before the sentence's translations, where the standard's
   // example has it.
   const text = sentenceTextLine(sentence, lines);
