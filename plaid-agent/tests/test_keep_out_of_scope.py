@@ -65,7 +65,9 @@ def test_ud_a_value_kept_out_of_a_discard_survives_and_nothing_is_written_to_it(
     assert 'kept' not in payload['summary']
     result = _applied(ws)
     assert 'sp-u3' not in str(ws.client.writes)
-    assert any('keeps that value as it is' in n for n in result.get('notes') or []), result
+    # Counted out of the discard when it was kept, so the applied message
+    # has no drop to account for (REV2-AGENT-2).
+    assert not any('keeps that value' in n for n in result.get('notes') or []), result
 
 
 def test_ud_a_head_kept_out_of_a_discard_survives():
@@ -192,8 +194,8 @@ def test_igt_a_value_kept_out_of_a_rule_survives_and_the_rule_counts_without_it(
     assert rule['count'] == 1 and plan_changes(payload['ops']) == 1
     row = payload['changes'][1]
     assert row['change'] == 'Gloss stays "Ali"' and row['where']['kind'] == 'token'
-    assert call_igt(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss',
-                                     'value': 'Ali'}).startswith('Planned 0')
+    assert call_igt(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'Ali'}) == (
+        'Nothing to change: the plan already keeps Gloss "Ali" on s1.w1 out of the corpus-wide change.')
     plan, helper = R._approved(client, w)
     assert not helper.errors, helper.errors
     assert dict(client.updates('spans')) == {'sp-x2': 'Bob'}

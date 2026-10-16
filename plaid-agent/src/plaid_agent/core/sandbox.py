@@ -698,8 +698,8 @@ class Tally:
         19 (2026-10-12 survey)."""
         if not self.plans:
             return ''
-        from .plan import plan_changes
-        n, held = self.plans, plan_changes(getattr(ws, 'ops', None) or [])
+        from .plan import held_changes
+        n, held = self.plans, held_changes(ws)
         calls = f'plan() was called {n} time{"s" if n != 1 else ""}'
         if not self.refused:
             what = ' and staged each time' if n > 1 else ' and staged'

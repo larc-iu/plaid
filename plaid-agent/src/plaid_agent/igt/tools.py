@@ -19,7 +19,7 @@ from ..core import history, keep, opkind
 from ..core.keep import is_keep
 from ..core.bidi import qv
 from ..core.limits import MAX_SCOPE_DOCS
-from ..core.plan import by_document, change_of, confirm_preview, labelled, plan_changes
+from ..core.plan import by_document, change_of, confirm_preview, held_changes, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
@@ -71,6 +71,7 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
     dropped: List[Dict[str, Any]] = []
     kept: List[str] = []
     took: List[str] = []
+    already: List[str] = []
     edits = 0
     with ws.staging():
         for f, val in pairs:
@@ -98,25 +99,39 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                     # of the plan that would change it is the one exception:
                     # the user is keeping it out of that rule, which a keep
                     # says without writing (core.keep, Luke 2026-10-16).
+                    # An empty value is kept as well: a rule that fills
+                    # empty fields would write it (REV2-AGENT-1).
                     from .bulk import rule_taking
-                    if val and rule_taking(ws, target) is not None:
+                    shown = qv(val) if val else 'empty'
+                    if rule_taking(ws, target) is not None:
                         if not any(is_keep(op) for op in mine):
-                            lab = labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:40])}', f'{f.name} stays {qv(val)}')
+                            lab = labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:40])}', f'{f.name} stays {shown}')
                             staged.append(keep.op(target, lab['label'], change_at=lab['change_at'],
                                                   layer_id=f.layer_id, token_id=obj.id))
-                            kept.append(f'{f.name} {qv(val)} on {ref}')
+                            kept.append(f'{f.name} {shown} on {ref}')
+                        else:
+                            already.append(f'{f.name} {shown} on {ref}')
                     elif mine:
                         dropped += mine
-                        took.append(f'{f.name} on {ref}')
+                        # A keep left with nothing to keep the value out of
+                        # goes quietly: it planned nothing to take back.
+                        if any(not is_keep(op) for op in mine):
+                            took.append(f'{f.name} on {ref}')
                     continue
                 if any(op.get('kind') == 'set_span' and (op.get('value') or '') == val for op in mine):
                     continue
                 staged.append(span_op(ws, doc, ref, what, f, obj.id, old, val))
         ws.add_ops(staged)
         ws.take_back(dropped)
+        if any(is_keep(op) for op in staged + dropped):
+            from .bulk import after_keeps
+            after_keeps(ws)
     n = len([op for op in staged if not is_keep(op)]) + edits
     if not (n or kept or took):
-        return ws.planned_note(0)
+        if already:
+            return (f'Nothing to change: the plan already keeps {", ".join(already)} out of the corpus-wide '
+                    'change.')
+        return 'Nothing to change: every value named already holds what was given.' + ws.superseded_note()
     said, line = [], []
     if n:
         said.append(ws.planned_note(n))
@@ -132,7 +147,8 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
     if line:
         ws.step_label = '. '.join(([f'Planned {n} change{"s" if n != 1 else ""}'] if n else []) + line)
     if not n:
-        said.append(f'The plan now holds {plan_changes(ws.ops)} change{"s" if plan_changes(ws.ops) != 1 else ""}.')
+        held = held_changes(ws)
+        said.append(f'The plan now holds {held} change{"s" if held != 1 else ""}.')
     return ' '.join(said)
 
 

@@ -298,6 +298,16 @@ def nothing_label(label: str) -> str:
     return NOTHING + label
 
 
+AGAIN = 'Nothing staged again: '
+
+
+def again_label(label: str) -> str:
+    """The line for a plan call made a second time that left the plan as
+    the first left it: "Nothing staged again: " and the first call's own
+    line, never "Planned" a second time."""
+    return AGAIN + label
+
+
 def _the_named_document(s: Dict[str, Any], args: Dict[str, Any]) -> bool:
     """A note that the call read one document, on a call that named it: the
     label already names it, so "1 document" after it says nothing. The step
@@ -310,7 +320,7 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
                failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
                said: Optional[str] = None, thought: bool = False, nothing: bool = False,
-               told: Optional[str] = None) -> Dict[str, Any]:
+               told: Optional[str] = None, again: bool = False) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
@@ -328,7 +338,9 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     ``nothing`` marks a plan call that left the plan as it was. ``told`` is
     the line the tool gave for what it did (``BaseWorkspace.step_label``),
     where the arguments alone would misread it: a value kept out of a
-    corpus-wide change is not a change planned."""
+    corpus-wide change is not a change planned. ``again`` marks the same
+    plan call made a second time, which ``told`` already says
+    (:func:`again_label`)."""
     kind = tracer.call_kind(name, args)
     if told and not failed:
         label = told
@@ -340,7 +352,7 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     if shown and not failed:
         label = f'{label}: {say_saw(shown)}'
     item = {'id': call_id, 'name': name, 'kind': kind,
-            'label': failed_label(label) if failed else nothing_label(label) if nothing else label}
+            'label': failed_label(label) if failed else nothing_label(label) if nothing and not again else label}
     if failed:
         item['failed'] = True
     elif nothing:

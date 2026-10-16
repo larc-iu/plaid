@@ -943,6 +943,12 @@ class Workspace(BaseWorkspace):
     def after_discard(self) -> None:
         self.new_entries.clear()
 
+    def keep_holds(self, op: Dict[str, Any]) -> bool:
+        from .bulk import rule_taking
+        from ..core.keep import target
+        t = target(op)
+        return t is not None and rule_taking(self, t) is not None
+
     def after_drop(self, dropped: List[Dict[str, Any]]) -> str:
         # A dropped new entry takes the links to it along: they could not be
         # written. Whatever links to one, a word's own link or a multi-word
@@ -959,9 +965,15 @@ class Workspace(BaseWorkspace):
         self.reported_unlinked += self.unlinked - before
         # A later rule was found over the values a dropped one leaves.
         from ..core import rules
+        from ..core.keep import is_keep
         if any(rules.is_rule(op) for op in dropped):
             from .bulk import refresh_rules
             refresh_rules(self)
+        elif any(is_keep(op) for op in dropped):
+            # A later rule now reads the value the keep held as an earlier
+            # rule leaves it.
+            from .bulk import after_keeps
+            after_keeps(self)
         return ((' Links to the dropped new entries were dropped with them.' if keys else '')
                 + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else ''))
 

@@ -11,6 +11,7 @@ addressing inside a document: UD locates a change by its CoNLL-U reference
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind, work
+from ..core.keep import is_keep
 from .plan import KIND
 from .project import Token, resolve
 
@@ -35,7 +36,9 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
                 'rule': op['card']}
     return {'label': op.get('label') or '', 'where': locate(ws, op),
             'writes_text': op.get('kind') in _PROSE_KINDS,
-            'replaces_work': int(op.get(work.FLAG) or 0)}
+            'replaces_work': int(op.get(work.FLAG) or 0),
+            # A value kept out of a corpus-wide change: a row, not a change.
+            **({'kept': True} if is_keep(op) else {})}
 
 
 def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:

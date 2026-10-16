@@ -26,6 +26,7 @@ built by ``core.plan.labelled``, which records where its change starts.
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind, work
+from ..core.keep import is_keep
 from ..core.plan import change_of
 from .plan import ENTRY, KIND, SCOPES, TEXT_SHAPE, TOKEN
 from .project import Sentence, Word, Morpheme
@@ -62,7 +63,9 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     # it at shows the label whole, as a label with no place does.
     change = change_of(op) if where else None
     return {'label': label, 'where': where, 'change': change,
-            'writes_text': writes_text(op), 'replaces_work': int(op.get(work.FLAG) or 0)}
+            'writes_text': writes_text(op), 'replaces_work': int(op.get(work.FLAG) or 0),
+            # A value kept out of a corpus-wide change: a row, not a change.
+            **({'kept': True} if is_keep(op) else {})}
 
 
 def writes_text(op: Dict[str, Any]) -> bool:

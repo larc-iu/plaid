@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.workflows.igt import precedence
 
-from ..core import rules, work
+from ..core import keep as _keep, rules, work
 from ..core.bidi import qv
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
@@ -316,8 +316,15 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             new = restate(ws.ops[i], by_target.get(t))
             if new is not None:
                 rewrites.append((i, new))
+    held = _held_out(ws, found)
     if not kept:
-        out = '' if quiet_when_empty and not rewrites else f'Nothing to change: no {what} matched.'
+        out = '' if quiet_when_empty and not rewrites and not held else f'Nothing to change: no {what} matched.'
+        if held:
+            # It matched only values the plan keeps as they are: said, so
+            # "no match" never stands over a value that matches (REV2-AGENT-6).
+            out = (f'Nothing to change: the plan keeps every one of the {what} that match ({held}) as it is. '
+                   f'Drop {"that keep" if held == 1 else "those keeps"} (drop_planned) for this change to reach '
+                   f'{"it" if held == 1 else "them"}.')
         if not quiet_when_empty and not rewrites and args.get('where'):
             out = _condition_left_none(ws, tool, args, what) or out
         if rewrites:
@@ -370,7 +377,16 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             + (' The condition reads the values stored now, not the ones this plan writes.'
                if args.get('where') and len(ws.ops) > 1 else '')
             + (f' {_rewritten(len(rewrites))}' if rewrites else '')
+            + (f' {held} more match{"es" if held != 1 else ""} where the plan keeps the value as it is, left out.'
+               if held else '')
             + left_for_analysis(left))
+
+
+def _held_out(ws: Workspace, found: List[Dict[str, Any]]) -> int:
+    """How many of what a rule found are values the plan keeps out of
+    corpus-wide changes (core.keep), which approval leaves as they are."""
+    held = kept_targets(ws.ops)
+    return len({op_target(o) for o in found} & held) if held else 0
 
 
 def _condition_left_none(ws: Workspace, tool: str, args: Dict[str, Any], what: str) -> str:
@@ -620,10 +636,12 @@ def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
     return out
 
 
-def refresh_rules(ws: Workspace) -> None:
+def refresh_rules(ws: Workspace, drop_empty: bool = True) -> None:
     """Resolve every rule of the plan again, in plan order, after a change to
-    the plan that one of them may depend on (an earlier rule dropped), so what
-    each one stores is what approval will find."""
+    the plan that one of them may depend on (an earlier rule dropped, a value
+    kept or no longer kept), so what each one stores is what approval will
+    find. ``drop_empty`` drops a rule left with nothing to change. After a
+    keep it is False: the rule stays, as the row its value was kept out of."""
     for op in list(ws.ops):
         if not rules.is_rule(op) or op.get('head') is None:
             continue
@@ -632,7 +650,7 @@ def refresh_rules(ws: Workspace) -> None:
                                               op.get('change') or '', op['head'], ws.rule_found_before(key))
         i = ws.ops.index(op)
         ws.rule_found[key] = found
-        if kept:
+        if kept or not drop_empty:
             ws.ops[i] = new
         else:
             # Nothing left for it to change: a row of no changes says nothing.
@@ -671,15 +689,36 @@ def _rewrite_planned(ws: Workspace, rewrites) -> None:
         ws.ops[i] = {**op, key: new, **labelled(place, line)}
 
 
-def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier) -> List[Dict[str, Any]]:
+def after_keeps(ws: Workspace) -> None:
+    """After a keep is staged or dropped: a rule later in the plan reads the
+    value as approval will leave it, so with more than one rule each is
+    resolved again."""
+    if sum(1 for op in ws.ops if rules.is_rule(op) and op.get('head') is not None) > 1:
+        refresh_rules(ws, drop_empty=False)
+
+
+def kept_targets(ops: List[Dict[str, Any]]) -> set:
+    """What the keeps among ``ops`` hold out of every rule (core.keep)."""
+    return {_keep.target(op) for op in ops if _keep.is_keep(op)} - {None}
+
+
+def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier,
+                 kept: Optional[set] = None) -> List[Dict[str, Any]]:
     """What a rule resolves to now: its tool's resolver (``SCOPED``) over
     the stored values as the plan's earlier rules leave them (``earlier``,
     their found changes in plan order), never its enumerated changes. Staging
     and approval both resolve through here, so what approval finds is what
-    was counted unless the project changed."""
+    was counted unless the project changed.
+
+    A value the plan keeps (``kept``, by default the keeps of ``ws.ops``) is
+    left as stored by the earlier rules too, since approval leaves it so: a
+    later rule reads it as it is (REV2-AGENT-6)."""
     fn = SCOPED.get(tool)
     if fn is None:
         raise ToolError(f'unknown corpus-wide tool {tool!r}')
+    kept = kept_targets(ws.ops) if kept is None else kept
+    if kept:
+        earlier = [[o for o in found if op_target(o) not in kept] for found in earlier]
     with ws.resolving_rules(earlier), ws.corpus.within(args.get('document')):
         return fn(ws, dict(args), CANDIDATE_MAX)
 

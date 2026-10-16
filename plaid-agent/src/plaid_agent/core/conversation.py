@@ -39,7 +39,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from plaid_client.http import PlaidAPIError
 
-from .plan import expand_ops
+from .plan import changes_of, expand_ops
 from .trace import summarize_steps
 
 # What one stored record may weigh, when the server does not say. A turn's
@@ -675,7 +675,9 @@ def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str], valu
 
     A rule (``core.rules``) is not listed: ``[kind, None, None]`` would say
     nothing, and its card row says everything (tool, arguments, counts per
-    document, a sample), so it adds only its total to the count.
+    document, a sample), so it adds only its total to the count. Another op
+    standing for many values (``core.plan.MANY``) is listed once and counts
+    them all. A keep (``core.keep``) writes nothing and is neither.
     """
     out: List[list] = []
     total = 0
@@ -688,7 +690,13 @@ def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str], valu
         else:
             plain.append(op)
     for op in expand_ops(plain):
-        total += 1
+        # A value kept out of a corpus-wide change is no change and has no
+        # fate to follow, nor has a change left with none to make. A change
+        # standing for many counts them.
+        n = changes_of(op)
+        if not n:
+            continue
+        total += n
         if len(out) < PROPOSED_MAX:
             change = [op.get('kind'), _proposed_target(op, target_keys), _proposed_value(op, value_keys)]
             other = (other_keys or {}).get(op.get('kind'))
@@ -758,6 +766,11 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
             'writes_text': sum(1 for c in dropped if c.get('writes_text')),
             'replaces_work': sum(int(c.get('replaces_work') or 0) for c in dropped),
         }
+        # Rows that keep a value write nothing: the card's "and n more
+        # changes" leaves them out.
+        held = sum(1 for c in dropped if c.get('kept'))
+        if held:
+            kept['omitted']['kept'] = held
     return {**item, 'plan': kept}
 
 

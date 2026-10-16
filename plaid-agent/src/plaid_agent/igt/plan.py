@@ -681,6 +681,9 @@ class Resolution:
         # What each rule resolved to so far, in plan order: a later rule is
         # resolved over the values the earlier ones leave.
         self.found: List[List[Dict[str, Any]]] = []
+        # What the plan's keeps hold out of every rule (core.keep): set by
+        # `resolve_scopes`, since this workspace holds no plan.
+        self.kept: set = set()
 
 
 def _resolve_bulk_scope(res: Resolution, op):
@@ -688,7 +691,7 @@ def _resolve_bulk_scope(res: Resolution, op):
     from ..core.tools import ToolError
     try:
         # Over the values the plan's earlier rules leave, as when it was staged.
-        found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found))
+        found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found), res.kept)
         # Rebuilt now, outside add_op: held to the layers' lists as staged.
         for o in found:
             res.ws.refuse_off_list(o)
@@ -1370,6 +1373,8 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Option
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
     res = Resolution(client, project, requester)
+    from .bulk import kept_targets
+    res.kept = kept_targets(ops)
     keep = rule_keep(res.ws, ops, notes)
 
     def check(op, found):

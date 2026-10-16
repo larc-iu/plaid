@@ -87,6 +87,31 @@ def plan_changes(ops: List[Dict[str, Any]]) -> int:
     return sum(changes_of(op) for op in ops)
 
 
+def held_changes(ws) -> int:
+    """The changes a workspace's plan holds as its card counts them, each
+    corpus-wide change counted as approval writes it (``ws.plan_view``):
+    less the values the plan keeps out of it, or changes by name."""
+    view = getattr(ws, 'plan_view', None)
+    return plan_changes(view() if view is not None else (getattr(ws, 'ops', None) or []))
+
+
+def kept_values(ops: List[Dict[str, Any]]) -> int:
+    """How many of ``ops`` keep a value out of a corpus-wide change."""
+    return sum(1 for op in ops if is_keep(op))
+
+
+def _n(n: int, one: str, many: str) -> str:
+    return f'{n} {one if n == 1 else many}'
+
+
+def held_phrase(ops: List[Dict[str, Any]]) -> str:
+    """"7 planned changes", "1 planned change and 1 kept value": what
+    approval writes, and the values it leaves as they are, never one as the
+    other."""
+    n, k = plan_changes(ops), kept_values(ops)
+    return _n(n, 'planned change', 'planned changes') + (f' and {_n(k, "kept value", "kept values")}' if k else '')
+
+
 def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> None:
     """Refuse BEFORE staging what would not fit, so a tool never leaves half
     of its changes behind. ``note`` is the app's own sentence about what
@@ -1467,8 +1492,16 @@ def plan_status(ws) -> str:
         return 'Nothing is planned yet.'
     ops = ws.plan_view()
     n = len(ops)
-    out = [f'{n} planned change{"s" if n != 1 else ""} (nothing is written until the user approves them as one '
-           'plan):']
+    held, kept = plan_changes(ops), kept_values(ops)
+    if not held and kept:
+        # Only values kept out of a change that now finds nothing else.
+        top = (f'No planned changes: the plan only keeps {_n(kept, "value", "values")} as '
+                f'{"it is" if kept == 1 else "they are"}, and approval writes nothing. Its entries:')
+    else:
+        entries = '' if n == held + kept else f' in {_n(n, "numbered entry", "numbered entries")}'
+        top = (f'{held_phrase(ops)}{entries} (nothing is written until the user approves them as one '
+                'plan):')
+    out = [top]
     for i, op in enumerate(ops[:PLAN_STATUS_LINES], start=1):
         where = f' ({op["ref"]})' if op.get('ref') else ''
         out.append(f'  {i}. {op.get("label")}{where}')
@@ -1484,12 +1517,13 @@ def plan_status(ws) -> str:
 
 def discard_plan(ws) -> str:
     n = len(ws.ops)
+    held = held_phrase(ws.plan_view()) if n else ''
     ws.ops.clear()
     ws.after_discard()
     # What was resumed went with the rest, so the waiting card is replaced
     # again by whatever is staged next, and resume_plan may be called again.
     ws.forget_resumed()
-    said = f'Discarded {n} planned change{"s" if n != 1 else ""}.' if n else 'Nothing was planned.'
+    said = f'Discarded {held}.' if n else 'Nothing was planned.'
     waiting = getattr(ws, 'waiting', None)
     if waiting:
         said = said if n else 'Nothing was planned in this turn.'
@@ -1516,7 +1550,7 @@ def resume_plan(ws) -> str:
     if not waiting:
         raise ToolError('No plan from an earlier message is waiting on its card.')
     if ws.ops:
-        n = plan_changes(ws.ops)
+        n = held_changes(ws)
         raise ToolError(f'This turn has already planned {n} change{"s" if n != 1 else ""}, and resume_plan only '
                         'starts a plan. discard_plan, call resume_plan, then stage them again.')
     if any(d.get(HELD_FROM) is not None for d in waiting.get('documents') or ()):
@@ -1526,7 +1560,7 @@ def resume_plan(ws) -> str:
     if state is None:
         raise ToolError('Resume is not available for that plan. Stage its changes again.')
     ws.resume(state, waiting.get('documents') or [])
-    n = plan_changes(ws.ops)
+    n = held_changes(ws)
     return (f'Took over {n} change{"s" if n != 1 else ""} from {waiting_phrase(waiting)}. This turn\'s plan now '
             'holds them: what you stage next is added, and drop_planned takes any out. Nothing is written until '
             'the user approves.')
@@ -1582,6 +1616,9 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
         # the user, the earlier card then approved whole (2026-10-13 survey).
         raise ToolError(f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting on '
                         'its card: call resume_plan first to take it into this turn, then drop_planned.')
+    # Each corpus-wide change counted as approval writes it, so what is
+    # dropped is said in the card's numbers.
+    ws.plan_view()
     kept = 0
     if field is not None or document is not None:
         if indexes not in (None, []):
@@ -1603,12 +1640,27 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
     dropped = [ws.ops[i - 1] for i in sorted(drop)]
     ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
     note = ws.after_drop(dropped)
+    # A value kept out of a corpus-wide change goes with the last change it
+    # was kept out of: on its own it would read as a change that writes
+    # nothing (Luke 2026-10-16).
+    stale = ws.stale_keeps() if any(not is_keep(op) for op in dropped) else []
+    if stale:
+        ws.take_back(stale)
+        note += (f' {_n(len(stale), "value", "values")} kept out of it went with it: nothing in the plan would '
+                 f'change {"it" if len(stale) == 1 else "them"} now.')
     if kept:
         note += (f' {kept} change{"s" if kept != 1 else ""} that also reach{"" if kept != 1 else "es"} other '
                  f'documents {"were" if kept != 1 else "was"} kept: drop {"them" if kept != 1 else "it"} by number '
                  'if they should go.')
-    return (f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + note + '\n'
-            + plan_status(ws))
+    changes, keeps = plan_changes(dropped), kept_values(dropped)
+    if keeps and not changes and len(dropped) == keeps:
+        said = (f'Stopped keeping {_n(keeps, "value", "values")}: the corpus-wide change in the plan now '
+                f'includes {"it" if keeps == 1 else "them"}.')
+    elif not changes and not keeps:
+        said = f'Dropped {_n(len(dropped), "entry that changed", "entries that changed")} nothing.'
+    else:
+        said = f'Dropped {held_phrase(dropped)}.'
+    return said + note + '\n' + plan_status(ws)
 
 
 def _matching(ws, field, document) -> tuple:

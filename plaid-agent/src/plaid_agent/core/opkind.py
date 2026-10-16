@@ -477,8 +477,8 @@ def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], 
     target = target or (lambda op: target_of(reg, op))
     named = [op for op in ops if not resolver(reg, op)]
     explicit = {target(op) for op in named} - {None}
-    # A value the plan keeps by name (core.keep) wins the same way, and is
-    # said as what it is: nothing is written to it.
+    # A value the plan keeps by name (core.keep) wins the same way, and
+    # nothing is written to it.
     kept = {target(op) for op in named if is_keep(op)} - {None}
     gone = removed_ids(reg, named, only_certain=True)
 
@@ -497,7 +497,9 @@ def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], 
 
     def keep(op: Dict[str, Any]) -> bool:
         reason = why(op)
-        if reason and notes is not None:
+        # A kept value is left out of the scope's count when it is staged,
+        # so its drop is no news to the user.
+        if reason and notes is not None and target(op) not in kept:
             notes.append(f'dropped: {op.get("label") or op.get("kind")} ({reason})')
         return not reason
     return keep
@@ -531,7 +533,8 @@ def summarize(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
             continue
         n = count_of(spec, op) if count_of else 1
         for noun, k in (spec.summary(op, n) if spec.summary else [(spec.noun, n)]):
-            c[noun] += k
+            if k:
+                c[noun] += k
     if not c:
         return 'no changes'
     items = c.most_common() if common_first else list(c.items())
@@ -540,9 +543,11 @@ def summarize(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
 
 def stored_count(spec: OpKind, op: Dict[str, Any]) -> int:
     """How many changes one stored operation stands for: a folded group says
-    so, and a scope carries the count its preview found."""
+    so, and a scope carries the count its preview found, less what the plan
+    keeps out of it or changes by name, which may leave none."""
     if op.get('compact') or spec.shape == SCOPE:
-        return int(op.get('count') or 1)
+        n = op.get('count')
+        return int(n) if n is not None else 1
     return 1
 
 

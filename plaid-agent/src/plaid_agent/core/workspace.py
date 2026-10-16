@@ -25,7 +25,8 @@ from plaid_client.constraints import value_set_allows
 from . import docload, fingerprint as fp, garble, opkind, work
 from .java_regex import matcher
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
-from .plan import (PLAN_MAX_OPS, PlanFull, carried_pins, docs_of_op, keep_waiting, plan_changes,
+from .keep import is_keep
+from .plan import (PLAN_MAX_OPS, PlanFull, carried_pins, docs_of_op, keep_waiting, kept_values, plan_changes,
                    reserve as core_reserve, waiting_phrase)
 from .tools import ToolError
 from .trace import note as trace_note
@@ -978,6 +979,16 @@ class BaseWorkspace:
     def after_discard(self) -> None:
         """What the app clears with the plan's ops."""
 
+    def keep_holds(self, op: Dict[str, Any]) -> bool:
+        """Whether a corpus-wide change of the plan would still change the
+        value the keep ``op`` holds out of it (core.keep). The app answers."""
+        return True
+
+    def stale_keeps(self) -> List[Dict[str, Any]]:
+        """The plan's keeps that nothing in it would change any more: the
+        corpus-wide change they were kept out of has gone."""
+        return [op for op in self.ops if is_keep(op) and not self.keep_holds(op)]
+
     def after_drop(self, dropped: List[Dict[str, Any]]) -> str:
         """What the app drops along with ``dropped``, said in a sentence
         (each starting with a space), or ''."""
@@ -1085,10 +1096,12 @@ class BaseWorkspace:
         """What a tool that staged ``n`` changes says back. ``what`` says it
         instead when the changes are one row on the card (a rule's values).
         The plan's size is counted as the card counts it (``plan_changes``)."""
-        held, rows = plan_changes(self.ops), len(self.ops)
+        view = self.plan_view()
+        held, kept, rows = plan_changes(view), kept_values(view), len(view)
         # plan_status and drop_planned number the entries, not the changes.
-        entries = '' if rows == held else f' in {rows} numbered entr{"y" if rows == 1 else "ies"}'
+        entries = '' if rows == held + kept else f' in {rows} numbered entr{"y" if rows == 1 else "ies"}'
+        also = f' and {kept} kept value{"s" if kept != 1 else ""}' if kept else ''
         return (f'Planned {what or str(n) + " change" + ("s" if n != 1 else "")} (nothing is written until '
-                f'the user approves; the plan now holds {held} change{"s" if held != 1 else ""}{entries}). '
+                f'the user approves; the plan now holds {held} change{"s" if held != 1 else ""}{also}{entries}). '
                 'Describe the plan to the user in your reply.'
                 + self.superseded_note())

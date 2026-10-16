@@ -21,7 +21,7 @@ from ..core.bidi import qv
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label
-from ..core.plan import by_document, confirm_preview
+from ..core.plan import MANY, by_document, confirm_preview
 from ..core.workspace import BaseWorkspace
 from ..core.provenance import unmark
 from ..core.refs import clip, read_ref
@@ -273,6 +273,15 @@ class Workspace(BaseWorkspace):
                 'covers, and one of the two throws values away. Keep one of them (plan_status, '
                 'drop_planned), or plan them in separate turns.')
 
+    def plan_view(self) -> List[Dict[str, Any]]:
+        from .settle import settle_scopes
+        settle_scopes(self)
+        return self.ops
+
+    def keep_holds(self, op: Dict[str, Any]) -> bool:
+        from .settle import keep_holds
+        return keep_holds(self, op)
+
     def plan_payload(self) -> Optional[Dict[str, Any]]:
         if not self.ops:
             return None
@@ -282,12 +291,17 @@ class Workspace(BaseWorkspace):
         # A snapshot: the payload must not alias the live list, since it is
         # what the user approves later. Large groups of like ops are stored
         # as one (the summary still counts what they stand for).
+        from .settle import FOUND, settle_scopes
+        # Each discard or replacement counted as approval writes it: less
+        # what the plan names or keeps.
+        settle_scopes(self)
         ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)), compact_spec(self))
         # A replace's card row was built when it was staged and goes in
         # `changes` only.
         changes = describe_changes(self, ops)
         for op in ops:
             op.pop('card', None)
+            (op.get(FOUND) or {}).pop('card', None)
         return {'id': uuid7(), 'summary': summarize(self.ops),
                 'ops': ops,
                 'changes': changes,
@@ -633,7 +647,10 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
                     kept.append(ref)
             elif mine:
                 dropped += mine
-                took.append(ref)
+                # A keep left with nothing to keep the value out of goes
+                # quietly: it planned nothing to take back.
+                if any(not is_keep(op) for op in mine):
+                    took.append(ref)
             continue
         if _planned_value(ws, layer_id, w, field) == value:
             continue
@@ -826,7 +843,7 @@ def _stage_features(ws: Workspace, changes: List[tuple]) -> tuple:
     ws.take_back([op for _ref, _stage, drop in changes for op in drop])
     changed = [ref for ref, stage, drop in changes if any(not is_keep(op) for op in stage)]
     kept = [ref for ref, stage, drop in changes if any(is_keep(op) for op in stage)]
-    took = [ref for ref, stage, drop in changes if drop and not stage]
+    took = [ref for ref, stage, drop in changes if any(not is_keep(op) for op in drop) and not stage]
     return changed, kept, took
 
 
@@ -1087,6 +1104,9 @@ def _restated_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, op
             ws.step_label = f'Kept {ref} as {stays}'
             return (f'Kept {ref} ("{word.form}") as {stays}: the corpus-wide change in the plan leaves it out, '
                     'and approval writes nothing to it.')
+    elif at is not None and is_keep(ws.ops[at]):
+        # Nothing left to keep it out of: it planned nothing to take back.
+        ws.take_back([ws.ops[at]])
     elif at is not None:
         ws.take_back([ws.ops[at]])
         ws.step_label = f'Took back the planned change to the head of {ref}'
@@ -1318,10 +1338,10 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
         n = len(targets)
         if n:
             counts = per_field(targets)
+            from .settle import discard_label
             ws.add_op({'kind': 'discard_scope', 'document_id': doc.id, 'fields': fields,
-                       'count': n, 'per_field': counts, 'ref': None,
-                       'label': f'discard {n} unconfirmed machine values in {qv(doc.name)} '
-                                f'({counts_phrase(counts)})'})
+                       'count': n, MANY: True, 'per_field': counts, 'ref': None,
+                       'label': discard_label(ws, doc.id, n, counts)})
     spared_note = f' Left {spared} machine lemma(s) that anchor arcs a person drew.' if spared else ''
     if not n:
         if spared:

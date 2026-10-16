@@ -88,7 +88,8 @@ def test_set_field_plans_create_update_clear_and_respects_scope():
         'Took back the planned change to Gloss on s1.w1')
     assert [o['token_id'] for o in w.ops] == ['w-2']
     # the stored value with nothing planned: nothing to plan
-    assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith('Planned 0')
+    assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith(
+        'Nothing to change')
     # clearing: replaces the earlier planned op on that span (last wins)
     call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': ''})
     op = next(o for o in w.ops if o['token_id'] == 'w-1')

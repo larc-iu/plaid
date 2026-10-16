@@ -25,6 +25,7 @@ from ..core.plan import MANY, by_document
 from ..core.replace import replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
+from .settle import replace_label
 from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
 from .tools import FIELDS, ToolError, Workspace, _check_feature
 
@@ -187,14 +188,13 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     # a person made or accepted are counted now, from what the query returned.
     accepted = sum(1 for ch in found if work.protected(ch.get('metadata')))
     shown = qrx(pattern) if regex else qv(pattern)
-    ws.add_op({'kind': 'replace_scope', 'field': field, 'pattern': pattern, 'replacement': replacement,
-               'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
-               'document_id': document_id, 'documents': docs, 'count': len(found), MANY: True, 'ref': None,
-               work.COUNTED: accepted, 'change': f'{field} {shown} → {qv(replacement)}',
-               CARD: _card(field, pattern, replacement, bool(regex), bool(whole), bool(case_sensitive),
-                           found, names),
-               'label': f'{field}: replace {shown} with {qv(replacement)} on {len(found)} value(s){where}'
-                        + work.counted_phrase(accepted)})
+    op = {'kind': 'replace_scope', 'field': field, 'pattern': pattern, 'replacement': replacement,
+          'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
+          'document_id': document_id, 'documents': docs, 'count': len(found), MANY: True, 'ref': None,
+          work.COUNTED: accepted, 'change': f'{field} {shown} → {qv(replacement)}',
+          CARD: _card(field, pattern, replacement, bool(regex), bool(whole), bool(case_sensitive),
+                      found, names)}
+    ws.add_op({**op, 'label': replace_label(ws, op, len(found), len(docs), accepted)})
     # Counted by document, never by name: two documents may share one, and
     # their counts are then told apart by id.
     labels = {did: doc_label(ws, did) for did in docs}

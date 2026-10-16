@@ -30,8 +30,8 @@ from .bidi import for_model
 from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
-from .plan import plan_changes
-from .trace import META, META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
+from .plan import held_changes
+from .trace import META, META_TOOLS, PLAN, Tracer, again_label, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
     from openai import OpenAIError as _ProviderError
@@ -930,8 +930,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     # trying something else.
     failing: Dict[str, Any] = {'call': None, 'times': 0, 'repeated': False}
     # The plan calls this turn has made that went through, by (name,
-    # arguments), so the same one again can be told apart.
-    made: set = set()
+    # arguments), so the same one again can be told apart, each with the
+    # line its tool gave, which the repeat is traced after.
+    made: Dict[tuple, Optional[str]] = {}
     spend = Spend()
     # Whether this turn's model was told it planned nothing (`claims_a_plan`).
     nudged = False
@@ -940,7 +941,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         """The reply says it planned, and this turn planned nothing: no plan
         call went through, none was resumed, and no card from an earlier
         message still waits (the reply may be about that one)."""
-        return (not made and not plan_changes(getattr(ws, 'ops', None) or [])
+        return (not made and not held_changes(ws)
                 and not getattr(ws, 'waiting', None) and not getattr(ws, 'resumed', False)
                 and claims_a_plan(text))
 
@@ -1127,11 +1128,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             else:
                 key = (name, json.dumps(args, sort_keys=True, default=str))
                 plan_call = kit.tracer.call_kind(name, args) == PLAN and name not in META_TOOLS
+                # Counted as the card counts it, which settles each
+                # corpus-wide change first: before the snapshot, so settling
+                # is never read as the call's doing.
+                planned_before = held_changes(ws)
                 before = _plan_snapshot(ws) if plan_call else None
                 line = kit.tracer.progress(name, args)
                 on_progress(min(85, 8 + rounds * 5), line)
                 ws.announced = line
-                planned_before = plan_changes(ws.ops)
                 # A value typed in a rare script can come out garbled, and is
                 # refused before the tool sees it (see core.garble).
                 why = ws.garbled(args) if plan_call and hasattr(ws, 'garbled') else None
@@ -1159,18 +1163,22 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         ws.seen.add(result, unless=args, withheld=withheld)
                 # In changes as the card counts them, so a rule over 7 values
                 # is 7 planned changes in the summary, not 1.
-                planned = plan_changes(ws.ops) - planned_before
+                held = held_changes(ws)
+                planned = held - planned_before
                 if planned:
-                    on_progress(min(85, 8 + rounds * 5), planned_progress(plan_changes(ws.ops)))
+                    on_progress(min(85, 8 + rounds * 5), planned_progress(held))
                 if plan_call and not str(result).startswith('Error'):
                     unchanged = _plan_snapshot(ws) == before
                     if key in made and unchanged:
                         result, repeated = ALREADY_PLANNED, True
+                        # Traced as what it is, not as the first call's
+                        # change made again.
+                        told = again_label(made[key] or kit.tracer.describe(name, args))
                     else:
                         # A plan call that went through and left the plan as
                         # it was planned nothing, and its step says so.
                         nothing = unchanged
-                    made.add(key)
+                        made[key] = told
             failed = str(result).startswith('Error')
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
             first = not rnd['calls']
@@ -1184,7 +1192,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
                                     said=rnd.get('said') if first else None,
                                     thought=first and keeper is not None and bool(rnd.get('thinking')),
-                                    nothing=nothing and not failed, told=told))
+                                    nothing=(nothing or repeated) and not failed, told=told, again=repeated))
             if keeper is not None and first:
                 # The round's text and reasoning are on its first step now,
                 # not the call's.
