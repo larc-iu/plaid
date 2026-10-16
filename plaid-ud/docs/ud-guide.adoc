@@ -328,7 +328,7 @@ One plan makes at most 20,000 changes in at most 500 documents.
 
 Conversations are private to you and kept per project, though your server's administrator can read them.
 A reply arrives even if you close the tab, and is there when you open the conversation again.
-**Stop** ends a turn early, and **Retry** asks the question again.
+**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** asks the question again.
 
 A conversation can be downloaded or copied as Markdown, or saved with **Download as web page** as one HTML file that opens in any browser.
 The pencil beside a conversation in the list renames it, and deleting one asks first and cannot be undone.
@@ -343,6 +343,7 @@ Where the assistant's model runs, and where what you send it goes, depends on yo
 Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other UD projects you can open.
 Each project added is shown above the message box.
 The assistant only reads other projects, and plans changes in the conversation's own project only.
+A citation into another project carries that project's name.
 
 == Examples in a Reply
 

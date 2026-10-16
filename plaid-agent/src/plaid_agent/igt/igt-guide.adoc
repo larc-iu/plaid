@@ -702,7 +702,7 @@ One run by anyone else answers only the person who runs it.
 A reply lands whether or not the page stays open, so you can leave, reload, or close the browser and find the answer when you come back.
 A conversation is worked on in one tab at a time.
 Opened in a second tab it is read-only, and **Continue here** moves it to that tab.
-**Stop** ends a turn early, and **Retry** sends the question again.
+**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** sends the question again.
 
 Conversations are private to you, though your server's administrators can read them.
 They are kept per project, listed on the left of the tab, and each has its own link. **All projects** widens the list.
@@ -713,6 +713,7 @@ A conversation can be renamed with the pencil beside it, downloaded or copied as
 Where the assistant allows it, **Add project**, beside the paperclip, lets a question read other IGT projects you can open, to compare or to look something up there.
 Each project added is shown above the message box.
 The assistant only reads them, and plans changes in the conversation's own project alone.
+A citation into another project carries that project's name.
 
 == Files and PDFs
 
@@ -769,6 +770,7 @@ A run that writes to the document makes it read-only until it finishes, and only
 Speech detection writes nothing, so it can run while you work.
 A run also outlives the page that started it: reopen the document and the run is picked up where it got to.
 **Stop**, on the banner or in the dialog, ends a run, and whatever it wrote stays.
+A run that asks a model about each sentence stops early when the model gives no answer for two sentences in a row.
 
 There are six integration points:
 

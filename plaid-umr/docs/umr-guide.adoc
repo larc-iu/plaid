@@ -122,6 +122,7 @@ A document's **Export** tab shows it as a `.umr` file, to copy or download.
 A file name in the zip may spell a document's name differently, and the zip records each exact name in `plaid-documents.json`.
 
 Each sentence is written with its words and gloss lines, its graph in PENMAN, an alignment line for every node, and its document-level block.
+The Morphemes line joins the morphemes of a word with `-` or `=` as the canvas shows them, such as `ts- ɨmɨntsara -ra`.
 Sentences are numbered 1, 2, 3, unless the document came from a file that numbered them otherwise, in which case they keep the file's numbers.
 A part of a sentence that the root does not reach, such as a node made with no parent, is left out of the file.
 A document the file format cannot hold is not exported, and the tab lists each problem.
@@ -183,6 +184,7 @@ The project's **Validation** tab lists every problem in every document.
 
 The text, sentences and words can still be edited in Plaid IGT or Plaid UD after UMR annotation has begun.
 Each node follows the words it is anchored to.
+A node on a word split in two stays on the half with more letters, the first half on a tie.
 When those words are deleted, the node stays in its sentence without an anchor.
 
 When a sentence is split, its relations that would cross the split are deleted.
@@ -215,7 +217,7 @@ Open it by right-clicking the node, with the **⋯** button at its top right, or
 == Moving around
 
 * The arrows move between nodes: up to the parent, down to the first child, and left and right along a row. In a right-to-left document they follow the screen.
-* Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order used by the export and Text mode.
+* Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order used by the export and Text mode. In a right-to-left sentence the two keys trade places, so the node moves the way the arrow points.
 * PageDown and PageUp go to the next or previous sentence's root, turning the page when needed.
 * Shift+Tab leaves the block.
 
@@ -340,8 +342,9 @@ The usual drafting service is a language model working from the words and their 
 **UMR skeleton from glosses** needs no model and writes one node per glossed or linked word, with no relations.
 
 Sentences that already have a graph are skipped.
-**Overwrite existing graphs** redrafts only graphs a service wrote, and keeps any sentence with work a person made or accepted.
+**Overwrite existing graphs** redrafts only graphs a service wrote, including what a person deleted from them, and keeps any sentence with work a person made or accepted.
 The report names each sentence that could not be drafted and why, and **Stop** ends a run early.
+A run stops early when the model gives no answer for two sentences in a row.
 
 == Compare
 
@@ -379,7 +382,7 @@ Ask again to have it planned on the current text.
 A plan that stops partway reads **Partly applied**, and the assistant can be asked to finish it.
 
 A reply is saved as it arrives, so it is there when the conversation is next opened, even if you closed the tab.
-**Stop** ends a turn early, and **Retry** asks the question again.
+**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** asks the question again.
 A conversation is open for writing in one tab at a time, and **Continue here** in another tab moves it there.
 
 Conversations are private to you and kept per project, though your server's administrator can read them.
@@ -394,6 +397,7 @@ If they have said, **About this assistant** in the panel's header shows their st
 **Add project**, beside the paperclip, lets a question read other UMR projects you can open.
 Each project added is shown above the message box.
 The assistant only reads those projects, and plans changes in the conversation's own project only.
+A citation into another project carries that project's name.
 
 == Files and PDFs
 
