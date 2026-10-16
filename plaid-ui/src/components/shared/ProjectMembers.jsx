@@ -140,6 +140,7 @@ export const ProjectMembers = ({
 
   const setRole = async (userId, newRole) => {
     if (userId === currentUser?.id || sendingRole.has(userId)) return;
+    const current = rows.find((r) => r.id === userId)?.role ?? roleOf(project, userId);
     setShownRole((m) => withEntry(m, userId, newRole));
     setSendingRole((s) => new Set(s).add(userId));
     try {
@@ -151,6 +152,7 @@ export const ProjectMembers = ({
         newRole,
         currentUserId: currentUser?.id,
         onDataUpdate: refetch,
+        current,
       });
     } catch (err) {
       console.error('Error updating role:', err);

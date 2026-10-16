@@ -197,6 +197,22 @@ describe('ProjectMembers', () => {
     await unmount();
   });
 
+  it('changes a role from the one shown after a refetch failed, not the stale read', async () => {
+    const onDataUpdate = vi.fn(async () => {
+      throw new Error('Network error: Failed to fetch');
+    });
+    const { container, step, client, unmount } = await mount({ onDataUpdate });
+    await pickRole(step, container, 'Ada', 'Reader');
+    expect(client.projects.removeWriter).toHaveBeenCalledTimes(1);
+    expect(client.projects.addReader).toHaveBeenCalledTimes(1);
+    await pickRole(step, container, 'Ada', 'Maintainer');
+    // Ada is a reader now, whatever the project read last says.
+    expect(client.projects.removeReader).toHaveBeenCalledTimes(1);
+    expect(client.projects.removeWriter).toHaveBeenCalledTimes(1);
+    expect(client.projects.addMaintainer).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
   it('keeps a review mark that landed when the refetch after it fails, and says nothing', async () => {
     const onDataUpdate = vi.fn(async () => {
       throw new Error('Network error: Failed to fetch');

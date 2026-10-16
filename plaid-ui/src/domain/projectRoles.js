@@ -63,6 +63,11 @@ export const aclMemberIds = (project) => [
  * Refuses to change the caller's own role: the Select is disabled on that row,
  * but the search-to-add menu is another way in and a guard belongs where every
  * path reaches it.
+ *
+ * `current` is the role the screen shows for the user, when it knows better
+ * than `project`: after a change that landed and a refetch that failed, the
+ * project read is stale, and removing the role it names would leave the user
+ * holding two.
  */
 export const setProjectRole = async ({
   client,
@@ -72,12 +77,12 @@ export const setProjectRole = async ({
   newRole,
   currentUserId,
   onDataUpdate,
+  current = roleOf(project, userId),
 }) => {
   if (userId === currentUserId) {
     notifyError('You cannot change your own role.');
     return;
   }
-  const current = roleOf(project, userId);
   if (current === newRole) return;
 
   if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
