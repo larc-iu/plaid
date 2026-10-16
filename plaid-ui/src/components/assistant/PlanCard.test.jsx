@@ -35,7 +35,7 @@ const mount = (p, props = {}) =>
 
 describe('a plan refused as out of date', () => {
   // A2-UD polish: the card dropped Discard and said nothing about what next.
-  it('reads "Out of date", says what to do, and offers a disabled Approve and Discard', async () => {
+  it('reads "Out of date", says what to do, and offers only Discard', async () => {
     let discarded = 0;
     const view = await mount(plan([{ label: 's1b: :aspect state' }]), {
       status: 'stale',
@@ -46,10 +46,9 @@ describe('a plan refused as out of date', () => {
     expect(byText(view.container, 'span, div', 'Out of date')).not.toBeNull();
     expect(byText(view.container, 'p', 'Ask the assistant to plan again.')).not.toBeNull();
     const buttons = all(view.container, 'button');
-    expect(buttons.map((b) => b.textContent.trim())).toEqual(['Approve and apply', 'Discard']);
-    expect(buttons[0].disabled).toBe(true);
-    expect(buttons[1].disabled).toBe(false);
-    await view.step(() => buttons[1].click());
+    expect(buttons.map((b) => b.textContent.trim())).toEqual(['Discard']);
+    expect(buttons[0].disabled).toBe(false);
+    await view.step(() => buttons[0].click());
     expect(discarded).toBe(1);
     expect(view.container.querySelector('input[type=checkbox]')).toBeNull();
     await view.unmount();
@@ -508,6 +507,62 @@ describe('an approval interrupted after its run began writing (H10-RECORD-3)', (
     const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
     expect(buttons).toEqual(expect.arrayContaining(['Apply again', 'Discard']));
     expect(byText(view.container, 'p', 'Applying did not finish.')).not.toBeNull();
+    await view.unmount();
+  });
+});
+
+describe('a plan that writes nothing', () => {
+  // Luke 2026-10-16: a plan of only kept values offered Approve, which wrote
+  // nothing.
+  it('of kept values reads "Nothing to write" and offers only Discard', async () => {
+    let discarded = 0;
+    const view = await mount(
+      plan([
+        { label: 'Doc A s1.w2 "kan": Gloss stays "go"', kept: true },
+        { label: 'Doc A s1.w3 "ka": Gloss stays empty', kept: true },
+      ]),
+      { onDiscard: () => (discarded += 1) },
+    );
+    expect(byText(view.container, 'span', 'Nothing to write')).not.toBeNull();
+    const buttons = all(view.container, 'button');
+    expect(buttons.map((b) => b.textContent.trim())).toEqual(['Discard']);
+    expect(view.container.querySelector('input[type=checkbox]')).toBeNull();
+    await view.step(() => buttons[0].click());
+    expect(discarded).toBe(1);
+    await view.unmount();
+  });
+
+  it('of a kept value and a corpus-wide change left with none reads the same', async () => {
+    const view = await mount(
+      plan([
+        { label: 's2.w1: UPOS stays NOUN', kept: true },
+        { label: 'UPOS: replace NOUN with PROPN, 0 values', writesNothing: true },
+      ]),
+    );
+    expect(byText(view.container, 'span', 'Nothing to write')).not.toBeNull();
+    expect(all(view.container, 'button').map((b) => b.textContent.trim())).toEqual(['Discard']);
+    await view.unmount();
+  });
+
+  it('with one change among its keeps still offers Approve', async () => {
+    const view = await mount(
+      plan([
+        { label: 'Doc A s1.w2 "kan": Gloss stays "go"', kept: true },
+        { label: 'Doc A s1.w3: Gloss = "eat"' },
+      ]),
+    );
+    expect(byText(view.container, 'span', 'Nothing to write')).toBeNull();
+    expect(all(view.container, 'button').map((b) => b.textContent.trim())).toEqual([
+      'Approve and apply',
+      'Discard',
+    ]);
+    await view.unmount();
+  });
+
+  it('read by someone else reads "Waiting for approval" while undecided', async () => {
+    const view = await mount(plan([{ label: 'Doc A s1.w3: Gloss = "eat"' }]), { readOnly: true });
+    expect(byText(view.container, 'span, div', 'Waiting for approval')).not.toBeNull();
+    expect(all(view.container, 'button')).toEqual([]);
     await view.unmount();
   });
 });

@@ -282,7 +282,7 @@ describe('the web page export', () => {
     expect(text).toContain('Applied');
     expect(text).toContain('s3');
     expect(text).toContain('Gloss = drink');
-    expect(text).toContain('Not approved');
+    expect(text).toContain('Waiting for approval');
     expect(text).toContain('s5 Gloss = go');
     // Files: the chips with their sizes, and the made table shown in full.
     expect(text).toContain('wordlist.csv');

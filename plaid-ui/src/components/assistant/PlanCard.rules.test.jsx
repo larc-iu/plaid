@@ -172,7 +172,7 @@ describe('a rule on the plan card', () => {
 describe('a rule that matches differently at approval', () => {
   it('shows the card out of date with the reason, and that nothing was changed', async () => {
     const reason =
-      'Gloss "VASP" → "ASP" now matches 1,180 places in 17 documents, not the 1,171 shown when it was planned (9 more in "Text 4")';
+      'Since it was planned, gloss "VASP" → "ASP" matches 1,180 places in 17 documents, not the 1,171 shown (9 more in "Text 4")';
     const view = await mount(plan([ruleRow()]), { status: 'stale', reason });
     const said = view.container.querySelector('[data-testid=stale-reason]');
     expect(said.textContent).toBe(`${reason}. Nothing was written.`);

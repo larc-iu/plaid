@@ -72,7 +72,7 @@ describe('conversationToMarkdown', () => {
   // Markdown.
   it('gives the reason an out-of-date plan was refused, as the card does', () => {
     const reason =
-      'Gloss "kitab" → "kutub" now matches 7 places in 2 documents, not the 6 shown when it was planned (1 more in "Tale")';
+      'Since it was planned, gloss "kitab" → "kutub" matches 7 places in 2 documents, not the 6 shown (1 more in "Tale")';
     const out = md([
       {
         kind: 'assistant',
@@ -83,8 +83,6 @@ describe('conversationToMarkdown', () => {
       },
     ]);
     expect(out).toContain('(Out of date.)');
-    expect(out).toContain(
-      'not the 6 shown when it was planned \\(1 more in "Tale"). Nothing was written.',
-    );
+    expect(out).toContain('not the 6 shown \\(1 more in "Tale"). Nothing was written.');
   });
 });

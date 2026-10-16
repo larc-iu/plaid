@@ -137,6 +137,15 @@ export const PlanCard = ({
     () => new Set(applied ? unwritten || [] : []),
     [applied, unwritten],
   );
+  // Only values kept as they are, or corpus-wide changes left with none:
+  // approving it would write nothing, so it can only be discarded (Luke
+  // 2026-10-16).
+  const nothingToWrite =
+    undecided &&
+    !lost &&
+    allRows.length > 0 &&
+    changeCount(allRows) === 0 &&
+    changesOmitted(plan) === 0;
   return (
     <div
       className={cn(
@@ -189,7 +198,7 @@ export const PlanCard = ({
             buttons. */}
         {readOnly && undecided && !lost && !applying && (
           <Badge variant="outline" className="ml-auto">
-            Not approved
+            Waiting for approval
           </Badge>
         )}
       </div>
@@ -341,16 +350,23 @@ export const PlanCard = ({
               : 'Changed since this plan was made. Ask the assistant to plan again.'}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" disabled>
-              <Check className="h-4 w-4" /> Approve and apply
-            </Button>
             <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
               <X className="h-4 w-4" /> Discard
             </Button>
           </div>
         </>
       )}
-      {undecided && !readOnly && (
+      {nothingToWrite && !readOnly && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground" data-testid="nothing-to-write">
+            Nothing to write
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
+            <X className="h-4 w-4" /> Discard
+          </Button>
+        </div>
+      )}
+      {undecided && !nothingToWrite && !readOnly && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {canWrite ? (
             <Button
