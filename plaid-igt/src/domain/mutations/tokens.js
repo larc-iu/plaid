@@ -16,6 +16,8 @@ import { removeTokensLocally } from '../textEdits.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { builtinRun } from '../builtinVersion.js';
+import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
+import { cpSlice } from '@larc-iu/plaid-client';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../serviceDefaults.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
@@ -35,6 +37,18 @@ const pushWords = (infoNext, textId, words) => {
   if (!Array.isArray(layer.tokens)) layer.tokens = [];
   words.forEach((w) => layer.tokens.push({ ...w, text: textId, metadata: {} }));
   layer.tokens.sort((a, b) => a.begin - b.begin);
+};
+
+// The tokens a new word over [begin, end) takes in: every token the
+// ignored-tokens rule excludes that overlaps it. igt reads such a token as
+// text (punctuation ud's Tokenize made, say), so a word made over that text
+// takes its place, as it would over untokenized punctuation.
+export const absorbedTokens = (info, body, begin, end) => {
+  const layer = info.primaryTokenLayer;
+  const cfg = readIgnoredTokens(layer?.config);
+  return (layer?.tokens || []).filter(
+    (t) => t.begin < end && t.end > begin && isTokenIgnored(cpSlice(body, t.begin, t.end), cfg),
+  );
 };
 
 export const tokenMutations = {
@@ -177,19 +191,25 @@ export const tokenMutations = {
     const label = 'Failed to create token';
     if (!this._canWrite(label)) return false;
     const id = pendingId();
-    this._applyRawPatch((next, infoNext) => pushWords(infoNext, text.id, [{ id, begin, end }]));
+    const absorbed = absorbedTokens(info, this.body, begin, end).map((t) => t.id);
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      if (absorbed.length) removeTokensLocally(next, text.id, absorbed, vocabs);
+      pushWords(infoNext, text.id, [{ id, begin, end }]);
+    });
+    const create = (c) =>
+      c.tokens.create(primaryTokenLayer.id, text.id, begin, end, undefined, undefined, undefined, {
+        id,
+      });
     return this._queueWrite(label, async () => {
-      const result = await this._client.tokens.create(
-        primaryTokenLayer.id,
-        text.id,
-        begin,
-        end,
-        undefined,
-        undefined,
-        undefined,
-        { id },
-      );
-      this._settle(new Map([[id, createdId(result)]]));
+      if (!absorbed.length) {
+        this._settle(new Map([[id, createdId(await create(this._client))]]));
+        return;
+      }
+      await this._client.batched(async (b) => {
+        b.tokens.bulkDelete(absorbed.map(settledId));
+        create(b);
+      });
+      this._settle(new Map([[id, id]]));
     });
   },
 
