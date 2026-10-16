@@ -589,6 +589,16 @@ export function umrFileProblems(sentences) {
     const place = readable ? number : sentence.index;
     const at = (variable, message) => problems.push({ sentence: place, var: variable, message });
     if (!readable) at(null, `A sentence number cannot be written as it is: ${oneLine(number)}`);
+    // Shapes only the API can store, which the writer below would crash on.
+    if (sentence.meta != null && !Array.isArray(sentence.meta)) {
+      at(null, 'The metadata lines cannot be written as they are.');
+      return;
+    }
+    const lines = sentence.ilg ?? [];
+    if (!Array.isArray(lines) || lines.some((line) => !Array.isArray(line?.items))) {
+      at(null, 'A gloss line cannot be written as it is.');
+      return;
+    }
     (sentence.meta ?? []).forEach((line) => {
       const text = oneLine(line);
       if (!text.trimStart().startsWith('#') || isStructural(text)) {

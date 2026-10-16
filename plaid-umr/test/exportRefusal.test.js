@@ -270,3 +270,17 @@ test('a sentence number that is not a number is refused', () => {
   }
   assert.doesNotThrow(() => serializeUmrFile({ sentences: [sentence({ snt: '12' })] }));
 });
+
+// Shapes only the API can store: a string where the metadata lines or a gloss
+// line's items belong is listed, not a crash in the Export tab.
+test('metadata or gloss items that are not lists are refused, not thrown on', () => {
+  for (const over of [
+    { meta: '# :: note' },
+    { ilg: { key: 'words' } },
+    { ilg: [{ key: 'words', items: 'the dog' }] },
+  ]) {
+    const problems = umrFileProblems([sentence(over)]);
+    assert.equal(problems.length, 1, JSON.stringify(over));
+    assert.throws(() => serializeUmrFile({ sentences: [sentence(over)] }), UnwritableUmrError);
+  }
+});
