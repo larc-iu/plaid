@@ -623,6 +623,18 @@ export const TokenVisualizer = ({
       // can scroll to it. Read off the first word, since a block is exactly the
       // run of words between two sentence starts.
       const blockSentence = words.length ? sentenceTokenAt(words[0].begin) : null;
+      // The text after its last word that is still its sentence's (a final
+      // period no word holds) ends this block, not the next one's line. In
+      // the same order as the text, which selecting reads the offsets from.
+      const ends = blockSentence && blockSentence.end <= textLength ? blockSentence.end : null;
+      if (ends != null && ends > lastEnd) {
+        els.push(
+          <span key={`bt-${si}-end`} className={classes.plainText}>
+            {sliceText(lastEnd, ends)}
+          </span>,
+        );
+        lastEnd = ends;
+      }
       return (
         <div
           key={`s-${si}`}

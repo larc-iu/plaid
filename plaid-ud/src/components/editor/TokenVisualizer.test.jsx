@@ -74,3 +74,29 @@ describe('the Token Visualization', () => {
     await view.unmount();
   });
 });
+
+describe('a sentence whose final period no word holds', () => {
+  it('keeps the period on its own sentence line, not at the start of the next (N1-CASCADE)', async () => {
+    const text = 'the dog barks.\nall good.';
+    const view = await renderComponent(
+      <TokenVisualizer
+        text={text}
+        originalText={text}
+        sentenceTokens={[
+          { id: 's1', begin: 0, end: 15 },
+          { id: 's2', begin: 15, end: 24 },
+        ]}
+        wordTokens={[
+          { id: 'w1', begin: 0, end: 3 },
+          { id: 'w2', begin: 4, end: 7 },
+          { id: 'w3', begin: 8, end: 13 },
+          { id: 'w4', begin: 15, end: 18 },
+          { id: 'w5', begin: 19, end: 23 },
+        ]}
+      />,
+    );
+    const blocks = all(view.container, '[data-sentence-block]').map((b) => b.textContent);
+    expect(blocks).toEqual(['the dog barks.\n', 'all good.']);
+    await view.unmount();
+  });
+});
