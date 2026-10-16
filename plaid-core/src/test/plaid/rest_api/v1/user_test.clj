@@ -2,6 +2,8 @@
   (:require [clojure.test :refer :all]
             [clojure.string]
             [ring.mock.request :as mock]
+            [plaid.sql.common]
+            [plaid.sql.operation]
             [plaid.sql.user :as user]
             [plaid.fixtures :refer [db
                                     with-db
@@ -421,3 +423,31 @@
                                  (mock/header "accept" "application/edn")
                                  (mock/json-body {:user-id "old@b.com" :password "abc"})))]
       (is (= 200 (:status resp))))))
+
+(deftest the-password-hash-never-reaches-the-audit-log
+  ;; The audit log is read by more people and kept longer than the account.
+  ;; Every write path to `password_hash` (create, a PATCH of the password, the
+  ;; in-transaction reset that invites use) records an image without it.
+  (let [images (fn []
+                 (->> (plaid.sql.common/q db {:select [:post_image]
+                                              :from [:audit_writes]
+                                              :where [:= :target_table "users"]})
+                      (keep :post_image)))]
+    (is (= 201 (:status (rest-handler (-> (admin-request :post "/api/v1/users")
+                                          (mock/json-body {:email "hash@b.com" :password "first-pass"
+                                                           :is-admin false}))))))
+    (is (= 200 (:status (rest-handler (-> (admin-request :patch "/api/v1/users/hash@b.com")
+                                          (mock/json-body {:password "second-pass"}))))))
+    (is (:success
+         (plaid.sql.operation/submit-operation! [tx db {:type :user/update :project nil :document nil
+                                                        :description "reset" :user "hash@b.com"}]
+                                                (user/set-password-in-tx! tx "hash@b.com" "third-pass"))))
+    (let [stored (:password_hash (plaid.sql.common/fetch-by-id db :users :id "hash@b.com"))
+          all (clojure.string/join " " (images))]
+      (is (string? stored))
+      (is (<= 3 (count (filter #(clojure.string/includes? % "hash@b.com") (images))))
+          "create, PATCH and reset each still record an image")
+      (is (not (clojure.string/includes? all "password_hash")))
+      (is (not (clojure.string/includes? all stored)))
+      (is (clojure.string/includes? all "password_changes")
+          "the rest of the row is still recorded"))))

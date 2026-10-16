@@ -313,6 +313,19 @@
     (let [start @c] (swap! c + n) start)
     0))
 
+(def ^:private secret-columns
+  "Columns that hold a credential's verifier, by table. They never go into an
+  audit post-image: the audit log is readable by more people and kept far
+  longer than the row itself, and nothing reads the verifier back from it."
+  {"users"   #{:password_hash}
+   "invites" #{:code_hash}})
+
+(defn- redact-secrets
+  [target-table image]
+  (if-let [cols (and image (get secret-columns (name target-table)))]
+    (apply dissoc image cols)
+    image))
+
 (defn- audit-row-values
   "Build the column-keyed value map for one audit_writes row. Shared by the
   single-row (`record-audit-write!`) and batched (`record-audit-writes!`)
@@ -329,7 +342,7 @@
    :target_table (name target-table)
    :target_id target-id
    :change_type (name change-type)
-   :post_image (some-> post-image psc/write-json)
+   :post_image (some->> post-image (redact-secrets target-table) psc/write-json)
    ;; Per-row document attribution, from the row's OWN image — not the
    ;; op's :document, which is nil for multi-document cascade ops
    ;; (project/delete, vocab/delete) and was even once plain wrong
