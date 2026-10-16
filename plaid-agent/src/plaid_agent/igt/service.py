@@ -75,6 +75,23 @@ class AssistantService(BaseAssistantService):
         except (PlanError, PlanOutOfDate):
             return None
 
+    def page_operation_wrote(self, client, project_id: str, ops, plan_id: str, since) -> Optional[bool]:
+        # The page writes a plan's settings under the plan's own operation
+        # (plaid-ui planOperation): the project's settings land in the
+        # project's log, a lexicon's in that lexicon's.
+        if not ops or not all(op.get('kind') in SETTINGS_KINDS for op in ops):
+            return None
+        mine = f'/plan:{plan_id}/'
+        for owner in dict.fromkeys(op.get('owner') for op in ops):
+            if owner == 'project':
+                entries = client.projects.audit(project_id, start_time=since, kinds=['assistant-plan'])
+            else:
+                entries = client.vocab_layers.audit(owner, start_time=since, kinds=['assistant-plan'])
+            if any(mine in (e.get('ref') or '') and (e.get('ops') or e.get('op_count'))
+                   for e in entries or []):
+                return True
+        return False
+
     def may_approve(self, client, project_id: str, user_id: str, ops) -> Optional[str]:
         # Settings are a maintainer's: of the project, or of the lexicon whose
         # tagsets they are. An administrator may approve any.

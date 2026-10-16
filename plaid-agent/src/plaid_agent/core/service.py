@@ -61,6 +61,7 @@ import re
 import sys
 import time
 import traceback
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
@@ -90,7 +91,7 @@ from .conversation import (DISCARDED_NOTE, MESSAGE_ROOM, ConversationStore, Miss
 from .files import store_parts, sweep_orphans
 from .rounds import RoundKeeper
 from .ops import (ANOTHER_PROJECT, CONVERSATION_FULL, MESSAGE_TOO_LONG, OPS, RECORD_PROTOCOL, STALE_PAGE, about_of, busy_why,
-                  hold_free, refused)
+                  hold_free, parse_time, refused)
 from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
@@ -348,6 +349,15 @@ class BaseAssistantService(BaseService):
         None. Such a plan is applied once that is so, whatever else the
         approval would refuse, once the page says it wrote it
         (`_settle_page_written`). No plan of the base is one."""
+        return None
+
+    def page_operation_wrote(self, client, project_id: str, ops: List[Dict[str, Any]], plan_id: str,
+                             since: Optional[str]) -> Optional[bool]:
+        """For a plan the app writes itself (`page_wrote`): whether the
+        audit log holds a write the page made under the plan's own operation
+        (kind ``assistant-plan``, its ref naming ``plan_id``, plaid-ui
+        ``planOperation``) since ``since``. None when it cannot tell, which
+        is read as written. No plan of the base is one."""
         return None
 
     def may_approve(self, client, project_id: str, user_id: str, ops: List[Dict[str, Any]]) -> Optional[str]:
@@ -732,8 +742,11 @@ class BaseAssistantService(BaseService):
                 # A ready preflight let the page write, and its approval never
                 # came (lost, the service offline): written, it is applied,
                 # as a run that wrote settles applied over a discard.
+                # Its own page wrote them: settings that read as planned by
+                # another route (a tab closed before its write, the change
+                # then made by hand) leave it discardable.
                 counts = self._page_wrote(ctx, item)
-                if counts:
+                if counts and self._page_operation(ctx, item, plan_id) is not False:
                     facts = item['plan'][PAGE_WRITING]
                     facts = facts if isinstance(facts, dict) else {}
                     written = self._settle_written(ctx, item, plan_id, as_human=bool(facts.get('as_human')),
@@ -940,6 +953,8 @@ class BaseAssistantService(BaseService):
                 return
             if not self._gate(ctx, conv, meta):
                 return
+            if not ctx.data.get('wrote_first') and self._settle_in_force(ctx, conv, plan_id):
+                return
             marker = meta.get('pending')
             if not (isinstance(marker, dict) and marker.get('request_id') == ctx.request_id):
                 mark = {'kind': 'apply', 'request_id': ctx.request_id, 'service_id': self.service_id,
@@ -1057,6 +1072,41 @@ class BaseAssistantService(BaseService):
             traceback.print_exc()
             return None
 
+    def _page_operation(self, ctx, item, plan_id) -> Optional[bool]:
+        """:meth:`page_operation_wrote` of a plan item, read from a little
+        before the plan was made (the service's clock and core's may
+        differ). None on any failure to tell."""
+        ops = ((item or {}).get('plan') or {}).get('ops') or []
+        made = parse_time((item or {}).get('created_at'))
+        since = now_iso(made - PAGE_AUDIT_SLACK) if made else None
+        try:
+            return self.page_operation_wrote(ctx.client, ctx.store.project_id, ops, plan_id, since)
+        except Exception:  # noqa: BLE001 - not known: read as written, as before the log was asked
+            traceback.print_exc()
+            return None
+
+    def _settle_in_force(self, ctx, conv, plan_id) -> bool:
+        """Settle as applied an undecided plan the app writes itself whose
+        changes already read as planned, approved with nothing written by
+        its page (no ``wrote_first``, and no write under its operation in
+        the audit log): another route made them. It is applied, as ruled
+        (REV-AGENT R2-3), and the answer and the note say nothing was
+        written. A plan its page wrote, whose approval was lost, takes the
+        approval's own path. True when it settled. Under the lock."""
+        if conv is None or not plan_id:
+            return False
+        _, item = find_plan(conv, plan_id)
+        if item is None or item.get('status') is not None:
+            return False
+        counts = self._page_wrote(ctx, item)
+        if not counts or self._page_operation(ctx, item, plan_id) is not False:
+            return False
+        if self._settle_written(ctx, item, plan_id, note=f'(note) The plan was approved. {IN_FORCE}') is None:
+            self._refuse(ctx, 'gone')
+            return True
+        ctx.helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'message': IN_FORCE})
+        return True
+
     def _settle_page_written(self, ctx, conv, plan_id) -> bool:
         """Settle as applied a plan whose page said it wrote it
         (``wrote_first``) after a ``ready`` preflight, when its changes read
@@ -1087,7 +1137,7 @@ class BaseAssistantService(BaseService):
         return True
 
     def _settle_written(self, ctx, item, plan_id, as_human: Optional[bool] = None,
-                        reviewed: Optional[bool] = None) -> Optional[Dict[str, Any]]:
+                        reviewed: Optional[bool] = None, note: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Settle a plan its page wrote as applied, recorded as the
         approval's own path records it: by this approval's box and the
         approver's review now, or by ``as_human`` and ``reviewed`` as the
@@ -1096,7 +1146,7 @@ class BaseAssistantService(BaseService):
         plan = item['plan']
         ops = plan.get('ops') or []
         summary = plan.get('summary') or self.summarize(ops)
-        note = f'(note) The plan was approved and applied: {summary}.'
+        note = note or f'(note) The plan was approved and applied: {summary}.'
         # Recorded as the approval's own path records it: a reviewed
         # approver's approval is a contribution, whatever the box said.
         if reviewed is None:
@@ -2102,6 +2152,11 @@ AUDIT_LABEL_MAX = 400
 PAGE_WRITING = 'page_writing'
 #: Why a discard of such a plan, written, settled it applied.
 ALREADY_WRITTEN = 'The settings were already written, so the plan is recorded as applied.'
+#: What an approval of such a plan answers when its settings were already in
+#: force and its page wrote nothing (`_settle_in_force`).
+IN_FORCE = 'The settings were already in force. Nothing was written.'
+#: How far before a plan was made its page's operation is looked for.
+PAGE_AUDIT_SLACK = timedelta(minutes=10)
 
 
 def decided_refusal(item: Dict[str, Any]) -> Optional[str]:

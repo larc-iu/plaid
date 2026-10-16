@@ -64,6 +64,14 @@ def _item(store, conv_id='c1'):
     return conv['display'][1], meta
 
 
+def _page_write(s, ws, plan, conv_id='c1'):
+    """The page's write, under the plan's own operation as plaid-ui
+    ``planOperation`` opens it."""
+    with s.client.operation(f'Assistant: {plan.get("summary") or ""}', kind='assistant-plan',
+                            ref=f'conv:{conv_id}/plan:{plan["id"]}/service:igt:assist:fake'):
+        write_settings(s.client, ws.project, ws.ops)
+
+
 def _ready(h):
     return not h.errors and h.done and h.done[0].get('kind') == 'ready'
 
@@ -146,7 +154,7 @@ def test_a_decision_after_the_preflight_loses_to_the_pages_write(proj, between):
         store.write_meta('c1', lambda m: {**m, 'pending': {'kind': 'turn', 'request_id': 'rT',
                                                             'service_id': 'igt:assist:fake'}})
         svc._busy[(_Session.user, proj.project_id, 'c1')] = {'request_id': 'rT', 'kind': 'turn'}
-    write_settings(proj.client, ws.project, ws.ops)  # the page's write
+    _page_write(proj, ws, plan)  # the page's write
     h = _ask(proj, plan, svc=svc, request_id='r10', wrote_first=True)
     assert _applied(h), (h.errors, h.done)
     item, meta = _item(store)
@@ -211,7 +219,7 @@ def test_a_discard_after_a_lost_approval_records_the_written_plan_applied(proj):
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True))
-    write_settings(proj.client, ws.project, ws.ops)  # the page wrote; its approval never came
+    _page_write(proj, ws, plan)  # the page wrote; its approval never came
     h = _ask(proj, plan, op='discard', request_id='r10')
     assert h.done[0]['kind'] == 'refused' and h.done[0]['why'] == 'decided', h.done
     assert h.done[0]['message'] == 'The settings were already written, so the plan is recorded as applied.'
@@ -244,7 +252,7 @@ def test_an_approval_clears_the_mark(proj):
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True))
-    write_settings(proj.client, ws.project, ws.ops)
+    _page_write(proj, ws, plan)
     assert _applied(_ask(proj, plan, request_id='r10', wrote_first=True))
     assert 'page_writing' not in _item(store)[0]['plan']
 
@@ -267,7 +275,7 @@ def test_an_unmark_after_the_settings_read_as_planned_keeps_the_mark(proj):
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True))
-    write_settings(proj.client, ws.project, ws.ops)  # the write landed, its answer did not
+    _page_write(proj, ws, plan)  # the write landed, its answer did not
     assert _ask(proj, plan, op='unmark', request_id='r10').done[0]['kind'] == 'done'
     assert _item(store)[0]['plan']['page_writing']
     h = _ask(proj, plan, op='discard', request_id='r11')
@@ -278,7 +286,7 @@ def test_a_discard_records_the_lost_approvals_box(proj):
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True, as_human=True))
-    write_settings(proj.client, ws.project, ws.ops)
+    _page_write(proj, ws, plan)
     _ask(proj, plan, op='discard', request_id='r10')
     item, _ = _item(store)
     assert item['status'] == 'applied' and item['as_human'] is True and not item.get('contributed'), item
@@ -291,7 +299,58 @@ def test_a_discard_records_a_reviewed_approver_as_the_preflight_read_them(proj):
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True, as_human=True))
     proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [], 'roles': []})
-    write_settings(proj.client, ws.project, ws.ops)
+    _page_write(proj, ws, plan)
     _ask(proj, plan, op='discard', request_id='r10')
     item, _ = _item(store)
     assert item['status'] == 'applied' and item.get('contributed') is True and item['as_human'] is False, item
+
+
+# --- settings in force by another route, told apart by the page's operation (R7A-7) -------
+
+def test_a_marked_plan_whose_page_never_wrote_is_discarded_after_a_hand_write(proj):
+    # The tab closed before its write, and a person made the same change by
+    # hand: nothing under the plan's operation, so it is discarded.
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    write_settings(proj.client, ws.project, ws.ops)  # by hand, no operation of the plan
+    h = _ask(proj, plan, op='discard', request_id='r10')
+    assert h.done[0]['kind'] == 'done', h.done
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_another_plans_page_write_does_not_count(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    _page_write(proj, ws, {**plan, 'id': 'another-plan'})
+    assert _ask(proj, plan, op='discard', request_id='r10').done[0]['kind'] == 'done'
+    assert _item(store)[0]['status'] == 'discarded'
+
+
+def test_a_plain_approval_over_settings_already_in_force_says_nothing_was_written(proj):
+    from plaid_agent.core.service import IN_FORCE
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    write_settings(proj.client, ws.project, ws.ops)  # by hand
+    assert _ready(_ask(proj, plan, preflight=True))
+    h = _ask(proj, plan, request_id='r10')  # the page found nothing to write
+    assert _applied(h), (h.errors, h.done)
+    assert h.done[0]['message'] == IN_FORCE and h.done[0]['applied'] == 0
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and 'page_writing' not in item['plan'], item
+    conv, _ = store.load('c1')
+    assert any(IN_FORCE in (m.get('content') or '') for m in conv['messages']), conv['messages']
+    assert _ask(proj, plan, request_id='r11').done[0]['duplicate'] is True
+
+
+def test_approve_again_after_a_lost_answer_is_applied_as_written(proj):
+    from plaid_agent.core.service import IN_FORCE
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    _page_write(proj, ws, plan)  # its approval never came
+    assert _ready(_ask(proj, plan, preflight=True, request_id='r10'))
+    h = _ask(proj, plan, request_id='r11')  # the page's second write wrote nothing
+    assert _applied(h) and h.done[0]['message'] != IN_FORCE and h.done[0]['message'].startswith('Applied'), h.done
+    assert _item(store)[0]['status'] == 'applied'
