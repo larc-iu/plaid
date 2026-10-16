@@ -2948,14 +2948,19 @@ export class UmrDocument extends DocumentModel {
         // The text is the whole sentence: sent again on a later version, it
         // goes only while nobody else changed the sentence's graph (a node
         // renamed to a variable the text gives a new node, an edge that the
-        // text's edges would close a cycle with) or its words.
+        // text's edges would close a cycle with) or its words. Refused, the
+        // text is still in the box, so the refusal asks for it applied again
+        // rather than redone.
         recheck: (fresh) =>
-          fresh.penmanOf(sentenceIndex) === seen &&
-          this._sameWords(
-            fresh,
-            sentence,
-            sentence.words.map((w) => w.id),
-          ),
+          (fresh.penmanOf(sentenceIndex) === seen &&
+            this._sameWords(
+              fresh,
+              sentence,
+              sentence.words.map((w) => w.id),
+            )) ||
+          Object.assign(new Error('Changed elsewhere. Apply your text again.'), {
+            changedElsewhere: true,
+          }),
       },
     ).then((ok) => (ok ? plan.changes : false));
   }

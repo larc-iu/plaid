@@ -316,9 +316,11 @@ test('a sentence text sent again after another user changed that sentence is ref
   };
   assert.equal(await doc.applyPenman(1, text), false);
   assert.equal(sent, 1, 'not sent again');
+  // The text is still in the box, so it asks for the text applied again, not
+  // for the edit redone (H11-MULTI).
   assert.deepEqual(
-    errors.map((e) => e?.status),
-    [409],
+    errors.map((e) => [e?.message, e?.changedElsewhere]),
+    [['Changed elsewhere. Apply your text again.', true]],
   );
   void calls;
   release();
