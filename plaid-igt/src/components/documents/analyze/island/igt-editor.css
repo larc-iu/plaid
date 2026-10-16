@@ -285,11 +285,12 @@
   background: var(--igt-zebra);
 }
 
-/* Search click-through: flash the focused sentence. */
+/* Search click-through: flash the focused sentence, in the ring colour, as
+   the Tokenize tab flashes where it lands. */
 @keyframes igt-flash {
   0% {
-    box-shadow: inset 0 0 0 2px var(--igt-blue);
-    background: var(--igt-blue-50);
+    box-shadow: inset 0 0 0 2px var(--igt-ring);
+    background: hsl(var(--ring) / 0.08);
   }
   100% {
     box-shadow: inset 0 0 0 2px transparent;
@@ -1674,9 +1675,10 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid #9ab4ee;
+  /* Chrome, not a selection or a scope: the ring colour. */
+  border: 1px solid hsl(var(--ring) / 0.5);
   background: transparent;
-  color: var(--igt-blue-700);
+  color: var(--igt-ring);
   font-family: inherit;
   font-size: 9px;
   font-weight: 500;
@@ -1702,13 +1704,13 @@
 .igt-cmt-badge:hover,
 .igt-cmt-badge:focus-visible,
 .igt-cmt-badge.is-open {
-  background: var(--igt-blue);
-  border-color: var(--igt-blue);
-  color: #fff;
+  background: var(--igt-ring);
+  border-color: var(--igt-ring);
+  color: hsl(var(--primary-foreground));
 }
 
 .igt-cmt-badge:focus-visible {
-  outline: 2px solid var(--igt-blue);
+  outline: 2px solid var(--igt-ring);
   outline-offset: 1px;
 }
 
