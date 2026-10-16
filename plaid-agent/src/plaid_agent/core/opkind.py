@@ -487,13 +487,18 @@ def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], 
             return 'the plan keeps that value as it is'
         if target(op) in explicit:
             return 'the plan names its own change there'
+        # The app's own reason first: what it calls moot may also be
+        # something the plan deletes, and the app's reason is why.
+        reason = moot(op) if moot is not None else None
+        if reason:
+            return reason
         clash = delete_clash(reg, named, op, gone)
         if clash:
             if clash[0] is not op:
                 return 'another change in this plan writes to what it deletes'
             return ('the plan deletes what it confirms' if op.get('kind') == 'confirm'
                     else 'the plan deletes what it writes to')
-        return moot(op) if moot is not None else None
+        return None
 
     def keep(op: Dict[str, Any]) -> bool:
         reason = why(op)
