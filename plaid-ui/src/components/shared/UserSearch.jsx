@@ -26,7 +26,9 @@ export const UserSearch = ({ client, search, renderAction }) => {
         </p>
       ) : (
         active &&
-        (loading ? (
+        // Typed and not yet searched: no answer for the box as it reads is
+        // in, so "No matching users." for the text before it is not said.
+        (loading || (results.length === 0 && query !== debounced) ? (
           <Loading className="px-0 py-1" />
         ) : results.length === 0 ? (
           <p className="py-1 text-sm text-muted-foreground">
