@@ -2518,6 +2518,9 @@ describe("runNativeImport, igt's own layer rules", () => {
     );
     return archive;
   };
+  // The declarations, past the fields' rules taken off during the import.
+  const declared = (client) =>
+    argsOf(client, 'spanLayers.setConstraints').filter(([, , list]) => list.length);
   const leipzig = {
     type: 'value-set',
     values: ['dog', 'PL'],
@@ -2533,7 +2536,7 @@ describe("runNativeImport, igt's own layer rules", () => {
       archive: withTagset('closed'),
     });
     expect(result.warnings).toEqual([]);
-    expect(argsOf(client, 'spanLayers.setConstraints')).toEqual([
+    expect(declared(client)).toEqual([
       [
         'new-slGloss',
         'igt',
@@ -2545,9 +2548,28 @@ describe("runNativeImport, igt's own layer rules", () => {
     // Setup's rules on the other layers stand.
     expect(callsOf(client, 'tokenLayers.setConstraints')).toEqual([]);
     const names = client.calls.map(([n]) => n);
-    expect(names.indexOf('spanLayers.setConstraints')).toBeGreaterThan(
+    expect(names.lastIndexOf('spanLayers.setConstraints')).toBeGreaterThan(
       names.lastIndexOf('spans.bulkCreate'),
     );
+  });
+
+  // REV6-WIRE: an archive of a project holding two annotations on a unit of
+  // a field out of force goes in as it was. The fields' rules are off while
+  // the documents go in, and put back at the end without a repair.
+  it("takes the fields' rules off before the documents go in", async () => {
+    const client = stubClient({ store: makeStore() });
+    await runNativeImport({ client, projectId: 'newp', archive: withTagset('suggest') });
+    const names = client.calls.map(([n]) => n);
+    const stripped = argsOf(client, 'spanLayers.setConstraints').filter(([, , l]) => !l.length);
+    expect(stripped.map(([id]) => id)).toContain('new-slGloss');
+    for (const [, ns, , , opts] of stripped) {
+      expect(ns).toBe('igt');
+      expect(opts.expected?.length).toBeGreaterThan(0);
+    }
+    expect(names.indexOf('spanLayers.setConstraints')).toBeLessThan(
+      names.indexOf('spans.bulkCreate'),
+    );
+    expect(callsOf(client, 'spanLayers.repairConstraints')).toEqual([]);
   });
 
   it('declares nothing for a tagset that is not closed', async () => {
@@ -2558,7 +2580,7 @@ describe("runNativeImport, igt's own layer rules", () => {
       archive: withTagset('suggest'),
     });
     expect(result.warnings).toEqual([]);
-    expect(callsOf(client, 'spanLayers.setConstraints')).toEqual([]);
+    expect(declared(client)).toEqual([]);
   });
 
   it('names a field whose stored values break the list, and imports the rest', async () => {
@@ -2577,6 +2599,6 @@ describe("runNativeImport, igt's own layer rules", () => {
     expect(result.warnings).toEqual([
       '“Leipzig” is not in force on Gloss: 2 annotations not in the list, QQ (2). Change these values, then choose Put in force under Validation.',
     ]);
-    expect(callsOf(client, 'spanLayers.setConstraints')).toEqual([]);
+    expect(declared(client)).toEqual([]);
   });
 });

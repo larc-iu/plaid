@@ -67,11 +67,9 @@ import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project
 import { humanizeError } from '@ui/lib/errors.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
-import { declareIgtRules } from '../../domain/igtConstraints.js';
-import {
-  NOT_IN_FORCE_ACTION,
-  notInForceLines,
-} from '../../components/projects/settings/refusedValues.js';
+import { declareIgtRules, igtFields } from '../../domain/igtConstraints.js';
+import { getIgtLayerInfo } from '../../domain/layerInfo.js';
+import { notInForceText } from '../../components/projects/settings/refusedValues.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -1046,6 +1044,18 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     }
   }
 
+  // The archive is the project as it was, and a field out of force there may
+  // hold two annotations on one unit. The fields' rules setup declared are
+  // taken off while the documents go in, so those go in as they were, and
+  // `declareRulesAtEnd` puts back what the data allows.
+  for (const sl of igtFields(getIgtLayerInfo(project))) {
+    const stored = sl.constraints?.[IGT_NAMESPACE];
+    if (!stored?.length) continue;
+    await client.spanLayers.setConstraints(sl.id, IGT_NAMESPACE, [], undefined, {
+      expected: stored,
+    });
+  }
+
   // Other apps' settings and layers, once for the whole project, before any
   // document needs them.
   targets.otherLayers = await restoreOtherLayers({
@@ -1213,13 +1223,17 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
  * step 9b does and through the same function. Setup ran before the archive's
  * tagsets and each field's reference to one were written, so a closed
  * tagset's list goes in force here, once every document is in (the import's
- * own values are exempt from it). A list the stored values still break is
+ * own values are exempt from it), and the fields' own rules, taken off while
+ * the documents went in, come back. Nothing is repaired: a list the stored
+ * values still break, or one annotation a unit where a unit holds two, is
  * left out and named in a warning, as is a declaration the server refuses.
  */
 async function declareRulesAtEnd({ client, projectId, warnings = [] }) {
   try {
-    const { notInForce } = await declareIgtRules(client, projectId);
-    warnings.push(...notInForceLines(notInForce).map((line) => `${line} ${NOT_IN_FORCE_ACTION}`));
+    // No annotation is changed: two annotations the archive holds on a unit
+    // stay, and their field is named.
+    const { notInForce } = await declareIgtRules(client, projectId, { repair: false });
+    warnings.push(...notInForce.map((f) => notInForceText([f])));
   } catch (err) {
     warnings.push(`The annotation rules were not set: ${humanizeError(err)}`);
   }
