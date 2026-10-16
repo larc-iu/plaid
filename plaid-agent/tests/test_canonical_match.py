@@ -24,7 +24,7 @@ NAMES_MARK_CASES = [
     ('a', False), ('a.', False), (r'\w', False), ('[a-z]', False), (r'\p{L}', False), (r'\P{M}', False),
     (r'\\x{301}', False), (r'\x41', False), (r'[\x{2f0}-\x{310}]', False), (r'\p{IsLatin}', False),
     ('[a-]', False), (r'\x{zz}', False), (r'[^\p{Me}]', False), (r'\x{110000}', False), (r'\x{1F600}', False),
-    (r'[\p{L}\p{M}]', False), (r'\b', False), (r'\W', False), (r'a\w', False), (r'[^\x{301}]', False),
+    (r'[\p{L}\p{M}]', False), (r'\b', False), (r'\W', False), (r'a\w', False), (r'[^\x{301}]', True),
     (r'[\x{2ff}-\x{370}]', False),
 ]
 

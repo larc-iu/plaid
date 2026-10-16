@@ -250,8 +250,10 @@
         (is (= #{nfd nfc eng} (values [["span" "?s" {"layer" sl "value" {"regex" rx}}]])) rx)))
     (testing "a pattern that names no mark is never compared decomposed"
       (is (= #{nfd} (values [["span" "?s" {"layer" sl "value" {"regex" "a"}}]])))
-      (doseq [rx ["a." "a\\w" "a[\\p{L}\\p{M}]" "a\\P{L}" "a[^\\x{300}]"]]
+      (doseq [rx ["a." "a\\w" "a[\\p{L}\\p{M}]" "a\\P{L}"]]
         (is (= #{nfd} (values [["span" "?s" {"layer" sl "value" {"regex" rx}}]])) rx)))
+    (testing "an escaped mark in a negated class names it too, as the mark typed there does"
+      (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "a[^\\x{300}]"}}]]))))
     (testing "and a composed pattern still finds both spellings of the letter"
       (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "\u00e1$"}}]]))))))
 

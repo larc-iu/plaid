@@ -350,7 +350,7 @@
 
 (defn names-mark?
   "Whether a Java pattern names a combining mark: it holds one, an escape of
-  one (`\\x{301}`, `\\u0301`) outside a negated class, a class range between
+  one (`\\x{301}`, `\\u0301`), a class range between
   two, or a mark property (`\\p{M}`, `\\p{Mn}`, `\\pM`) on its own or in a
   class of nothing but mark properties. Such a pattern also reaches inside
   composed letters (REV7-CORE-4), as one typed with the mark does. `.`, `\\w`
@@ -383,12 +383,11 @@
                       (let [[cp nxt] (hex-escape cps i)]
                         (if (empty? classes)
                           (if (mark? cp) true (recur (long nxt) classes nil false))
-                          (let [classes (assoc-in classes [(dec (count classes)) 2] true)
-                                negated (first (peek classes))]
+                          (let [classes (assoc-in classes [(dec (count classes)) 2] true)]
                             (cond
                               dash (if (and (mark? start) (mark? cp)) true (recur (long nxt) classes nil false))
                               (range-dash? nxt) (recur (long nxt) classes cp false)
-                              (and (mark? cp) (not negated)) true
+                              (mark? cp) true
                               :else (recur (long nxt) classes nil false)))))
 
                       (== e (int \p))
@@ -413,7 +412,7 @@
                               (nil? cp) (recur (+ i 2) classes nil false)
                               dash (if (and (mark? start) (mark? cp)) true (recur (+ i 2) classes nil false))
                               (range-dash? (+ i 2)) (recur (+ i 2) classes cp false)
-                              (and (mark? cp) (not (first (peek classes)))) true
+                              (mark? cp) true
                               :else (recur (+ i 2) classes nil false))))))))
 
                 (== c (int \[))
@@ -438,5 +437,5 @@
                   (cond
                     dash (if (and (mark? start) (mark? c)) true (recur (inc i) classes nil false))
                     (range-dash? (inc i)) (recur (inc i) classes c false)
-                    (and (mark? c) (not (first (peek classes)))) true
+                    (mark? c) true
                     :else (recur (inc i) classes nil false))))))))))

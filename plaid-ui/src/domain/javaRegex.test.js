@@ -543,7 +543,7 @@ const NAMES_MARK_CASES = [
   ['\\b', false],
   ['\\W', false],
   ['a\\w', false],
-  ['[^\\x{301}]', false],
+  ['[^\\x{301}]', true],
   ['[\\x{2ff}-\\x{370}]', false],
 ];
 

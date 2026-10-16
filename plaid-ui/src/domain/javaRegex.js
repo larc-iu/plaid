@@ -937,7 +937,7 @@ const hexEscape = (cps, i) => {
 
 /**
  * Whether a Java pattern names a combining mark: it holds one, an escape of
- * one (`\x{301}`, `́`) outside a negated class, a class range between
+ * one (`\x{301}`, `\u0301`), a class range between
  * two, or a mark property (`\p{M}`, `\p{Mn}`, `\pM`) on its own or in a class
  * of nothing but mark properties. The server's REGEXP also matches such a
  * pattern with pattern and value decomposed, so it reaches inside composed
@@ -1032,7 +1032,7 @@ export function namesMark(src) {
     } else if (rangeDash(i)) {
       start = cp;
     } else {
-      if (isMark(cp) && !top[0]) return true;
+      if (isMark(cp)) return true;
       start = null;
     }
   }

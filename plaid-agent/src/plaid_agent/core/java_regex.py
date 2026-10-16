@@ -898,7 +898,7 @@ def _hex_escape(src: str, i: int):
 
 def names_mark(src: str) -> bool:
     """Whether a Java pattern names a combining mark: it holds one, an escape
-    of one (``\\x{301}``, ``\\u0301``) outside a negated class, a class
+    of one (``\\x{301}``, ``\\u0301``), a class
     range between two, or a mark property (``\\p{M}``, ``\\p{Mn}``,
     ``\\pM``) on its own or in a class of nothing but mark properties. Such
     a pattern also reaches inside composed letters (REV7-CORE-4), as one
@@ -977,7 +977,7 @@ def names_mark(src: str) -> bool:
         elif src[i:i + 1] == '-' and src[i + 1:i + 2] not in ('', ']'):
             start = cp
         else:
-            if _is_mark(cp) and not classes[-1][0]:
+            if _is_mark(cp):
                 return True
             start = None
     return False
