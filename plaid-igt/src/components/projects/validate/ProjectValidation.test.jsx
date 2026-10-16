@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, byText, texts } from '@ui/test/renderComponent.jsx';
 import { ProjectValidation } from './ProjectValidation.jsx';
+import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { MIXED, hitsClient } from './cellReadingFixture.js';
 
 // The Validation tab's own logic: which fields it decides are governed, that it
@@ -11,6 +12,7 @@ import { MIXED, hitsClient } from './cellReadingFixture.js';
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),
   notifyError: vi.fn(),
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
 }));
 
@@ -427,6 +429,67 @@ describe('Add to tagset', () => {
       delimiters: '.',
       parts: 'all',
     });
+    await unmount();
+  });
+});
+
+// A closed list the server does not hold (an unfinished import, another
+// client): the tab says so and puts it in force on request, or names the
+// values in the way (REV3-WIRE-2).
+describe('a closed list not in force', () => {
+  const held = (answer) => {
+    const declared = [];
+    const client = {
+      ...clientWith([[['PL', 3]], [['Song', 4]]]),
+      projects: { get: vi.fn(async () => structuredClone(project)) },
+      spanLayers: {
+        refusedValues: vi.fn(async () => answer),
+        checkConstraints: vi.fn(async () => ({ violations: [], violationCount: 0 })),
+        setConstraints: vi.fn(async (id, _ns, list) => declared.push([id, list])),
+        repairConstraints: vi.fn(),
+      },
+      withOperation: async (_m, fn) => fn(),
+      batched: async (fn) => fn(client),
+    };
+    return { client, declared };
+  };
+  const leipzig = { type: 'value-set', values: ['PL', '1SG'], delimiters: '.', parts: 'all' };
+
+  it('names it, and Put in force declares it', async () => {
+    vi.clearAllMocks();
+    const { client, declared } = held({ count: 0, valueCount: 0, values: [] });
+    const { container, step, unmount } = await render(client);
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    expect(notice.textContent).toContain('Not in force: Leipzig on Gloss.');
+    await step(async () => {
+      byText(notice, 'button', 'Put in force').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(declared).toEqual([['msl-0', [{ type: 'single-span' }, leipzig]]]);
+    expect(notifySuccess).toHaveBeenCalledWith('The tagsets are in force');
+    expect(notifyWarning).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('leaves the list out and names the values in the way', async () => {
+    vi.clearAllMocks();
+    const { client, declared } = held({
+      count: 1,
+      valueCount: 1,
+      values: [{ value: 'QQ', parts: ['QQ'], count: 1 }],
+    });
+    const { container, step, unmount } = await render(client);
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    await step(async () => {
+      byText(notice, 'button', 'Put in force').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(declared).toEqual([['msl-0', [{ type: 'single-span' }]]]);
+    expect(notifyWarning).toHaveBeenCalledWith(
+      '“Leipzig” is not in force on Gloss: 1 annotation not in the list, QQ (1). Change these values, then choose Put in force under Validation.',
+      'Not in force',
+    );
+    expect(notifySuccess).not.toHaveBeenCalled();
     await unmount();
   });
 });

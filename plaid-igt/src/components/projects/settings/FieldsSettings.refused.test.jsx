@@ -130,3 +130,55 @@ describe('Settings > Fields, a closed tagset assigned', () => {
     await unmount();
   });
 });
+
+// REV3-WIRE-3, the mirror: another maintainer adds a value to POS after this
+// save read the project and before its batch lands, so the batch declares
+// the list as read. The rules are put in force from a read after the save,
+// so POS's field takes the list with the new value.
+describe('Settings > Fields, the tagset changed while the save is on its way', () => {
+  it('leaves the field holding the list as stored now', async () => {
+    const server = project();
+    const vs = (values) => ({ type: 'value-set', values, delimiters: '', parts: 'all' });
+    const pos = () => server.textLayers[0].tokenLayers[1].spanLayers[0];
+    const client = {
+      projects: { get: async () => structuredClone(server) },
+      spanLayers: {
+        refusedValues: async () => ({ count: 0, valueCount: 0, values: [] }),
+        checkConstraints: async () => ({ violations: [], violationCount: 0 }),
+        setConfig: async (_id, _ns, key, value) => {
+          pos().config.igt[key] = value;
+        },
+        setConstraints: async (_id, ns, list, _d, options) => {
+          if (JSON.stringify(options?.expected ?? null) !== JSON.stringify(pos().constraints[ns])) {
+            throw Object.assign(new Error('HTTP 409'), { status: 409 });
+          }
+          pos().constraints = { [ns]: list };
+        },
+        repairConstraints: async () => {},
+        get: async () => structuredClone(pos()),
+      },
+      withOperation: async (_m, fn) => fn(),
+      batched: async (fn) => {
+        server.config.igt.tagsets.POS.values.push({ value: 'V' });
+        const ops = [];
+        const queue = (bundle) =>
+          new Proxy(
+            {},
+            {
+              get:
+                (_, m) =>
+                (...a) =>
+                  ops.push(() => client[bundle][m](...a)),
+            },
+          );
+        fn({ spanLayers: queue('spanLayers'), tokenLayers: queue('tokenLayers') });
+        for (const op of ops) await op();
+        return [];
+      },
+    };
+    const { error, unmount } = await save(client);
+    expect(error).toBeNull();
+    expect(pos().constraints.igt).toEqual([{ type: 'single-span' }, vs(['N', 'V'])]);
+    await unmount();
+  });
+});

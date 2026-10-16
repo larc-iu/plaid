@@ -149,6 +149,8 @@ function stubClient({
     setConstraints: async (...a) => record(`${bundle}.setConstraints`, a),
     checkConstraints: async (...a) =>
       record(`${bundle}.checkConstraints`, a, { violations: [], violationCount: 0 }),
+    refusedValues: async (...a) =>
+      record(`${bundle}.refusedValues`, a, { count: 0, valueCount: 0, values: [] }),
   });
   // Each call keeps what it answered, out of sight of toEqual, so a test can
   // follow an id from the call that made it to the calls that use it.
@@ -2509,10 +2511,11 @@ describe("runNativeImport, igt's own layer rules", () => {
 
   it('names a field whose stored values break the list, and imports the rest', async () => {
     const client = stubClient({ store: makeStore() });
-    client.spanLayers.checkConstraints = async (id, rules) =>
-      rules.some((r) => r.type === 'value-set')
-        ? { violations: [{ constraint: 'value-set' }], violationCount: 2 }
-        : { violations: [], violationCount: 0 };
+    client.spanLayers.refusedValues = async () => ({
+      count: 2,
+      valueCount: 1,
+      values: [{ value: 'QQ', parts: ['QQ'], count: 2 }],
+    });
     const result = await runNativeImport({
       client,
       projectId: 'newp',
@@ -2520,7 +2523,7 @@ describe("runNativeImport, igt's own layer rules", () => {
     });
     expect(result.imported).toBe(1);
     expect(result.warnings).toEqual([
-      'The rules for "Gloss" are not in force (2 annotations break them)',
+      '“Leipzig” is not in force on Gloss: 2 annotations not in the list, QQ (2). Change these values, then choose Put in force under Validation.',
     ]);
     expect(callsOf(client, 'spanLayers.setConstraints')).toEqual([]);
   });

@@ -66,10 +66,11 @@ import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project
 import { humanizeError } from '@ui/lib/errors.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
-import { getIgtLayerInfo } from '../../domain/layerInfo.js';
-import { wantedConstraints } from '../../domain/igtConstraints.js';
-import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstraints.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { declareIgtRules } from '../../domain/igtConstraints.js';
+import {
+  NOT_IN_FORCE_ACTION,
+  notInForceLines,
+} from '../../components/projects/settings/refusedValues.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -1194,7 +1195,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   // their layers hold the rules the archived project's did.
   if (shouldStop?.()) throw new ImportCancelled();
   await declareOtherLayerRules({ client, restored: targets.otherLayers, warnings });
-  await declareIgtRules({ client, projectId, warnings });
+  await declareRulesAtEnd({ client, projectId, warnings });
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
 }
@@ -1204,27 +1205,13 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
  * step 9b does and through the same function. Setup ran before the archive's
  * tagsets and each field's reference to one were written, so a closed
  * tagset's list goes in force here, once every document is in (the import's
- * own values are exempt from it). A rule the stored data still breaks is left
- * out and named in a warning, as is a declaration the server refuses.
+ * own values are exempt from it). A list the stored values still break is
+ * left out and named in a warning, as is a declaration the server refuses.
  */
-async function declareIgtRules({ client, projectId, warnings = [] }) {
+async function declareRulesAtEnd({ client, projectId, warnings = [] }) {
   try {
-    const project = await client.projects.get(projectId);
-    const { pending } = await ensureLayerConstraints(
-      client,
-      wantedConstraints(getIgtLayerInfo(project), project?.config),
-      { canManage: true },
-    );
-    const names = new Map();
-    for (const tl of (project?.textLayers || []).flatMap((t) => t.tokenLayers || [])) {
-      names.set(tl.id, tl.name);
-      for (const sl of tl.spanLayers || []) names.set(sl.id, sl.name);
-    }
-    for (const p of pending) {
-      warnings.push(
-        `The rules for "${names.get(p.layerId) ?? p.layerId}" are not in force (${countOf(p.violationCount, 'annotation breaks', 'annotations break')} them)`,
-      );
-    }
+    const { notInForce } = await declareIgtRules(client, projectId);
+    warnings.push(...notInForceLines(notInForce).map((line) => `${line} ${NOT_IN_FORCE_ACTION}`));
   } catch (err) {
     warnings.push(`The annotation rules were not set: ${humanizeError(err)}`);
   }

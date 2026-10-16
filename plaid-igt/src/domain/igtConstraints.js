@@ -12,9 +12,11 @@
 // node too.
 import { uuidv7 } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE } from './igtConfig.js';
-import { MODES, resolveTagset } from './tagsets.js';
+import { getIgtLayerInfo } from './layerInfo.js';
+import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
 import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 import {
+  ensureLayerConstraints,
   queueRepairOfBareLayer,
   sameConstraints,
   storedConstraints,
@@ -194,6 +196,97 @@ export const refusedBySave = async (
 
 /** Every IGT field of a layer info, as `queueFieldDeclarations` takes them. */
 export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {}).flat();
+
+/**
+ * Put IGT's rules in force on project `projectId` as it now stands, read
+ * here: every rule its settings want (`wantedConstraints`) that its layers do
+ * not hold, declared through `ensureLayerConstraints`. With `fieldsOnly`,
+ * only the fields' rules (what a settings save governs), else the word and
+ * morpheme layers' too (what setup and an import declare).
+ *
+ * This is the one place a stored rule is brought back to the settings, so
+ * every path that leaves the settings and the server apart calls it: setup,
+ * the end of an import or a resume, "Use the project as it is", and after
+ * every tagset or field save (which also heals a field another maintainer's
+ * save, a script or an unfinished import left behind).
+ *
+ * A closed list the stored values break (`refusedValues`, with its
+ * exemptions) is not declared, and a list the field already holds stays, so
+ * nothing is enforced less than before. Each such field is returned in
+ * `notInForce` as `{layerId, field, tagset, count, valueCount, values}`, and
+ * so is any other rule the server still refuses (`values` empty). Returns
+ * `{changed, notInForce}`.
+ */
+export const declareIgtRules = async (
+  client,
+  projectId,
+  { fieldsOnly = false, limit = 5 } = {},
+) => {
+  const project = await client.projects.get(projectId);
+  const info = getIgtLayerInfo(project);
+  const wanted = wantedConstraints(info, project?.config).filter(
+    (e) => (!fieldsOnly || e.kind === 'span') && !sameConstraints(e.stored, e.constraints),
+  );
+  if (!wanted.length) return { changed: false, notInForce: [] };
+  const fields = new Map(igtFields(info).map((sl) => [sl.id, sl]));
+  const names = new Map();
+  for (const tl of (project?.textLayers || []).flatMap((t) => t.tokenLayers || [])) {
+    names.set(tl.id, tl.name);
+    for (const sl of tl.spanLayers || []) names.set(sl.id, sl.name);
+  }
+  const notInForce = [];
+  const entries = await Promise.all(
+    wanted.map(async (e) => {
+      const rule = e.constraints.find((c) => c.type === 'value-set');
+      const held = (e.stored || []).filter((c) => c.type === 'value-set');
+      if (!rule || held.some((c) => sameConstraints([c], [rule]))) return e;
+      const answer = await client.spanLayers.refusedValues(e.layerId, rule, { limit });
+      if (!(answer?.count > 0)) return e;
+      notInForce.push({
+        layerId: e.layerId,
+        field: names.get(e.layerId) ?? e.layerId,
+        tagset: readTagsetName(fields.get(e.layerId)?.config),
+        ...answer,
+      });
+      return {
+        ...e,
+        constraints: [...e.constraints.filter((c) => c.type !== 'value-set'), ...held],
+      };
+    }),
+  );
+  const { changed, pending } = await ensureLayerConstraints(client, entries, { canManage: true });
+  for (const p of pending) {
+    if (notInForce.some((n) => n.layerId === p.layerId)) continue;
+    notInForce.push({
+      layerId: p.layerId,
+      field: names.get(p.layerId) ?? p.layerId,
+      tagset: readTagsetName(fields.get(p.layerId)?.config),
+      count: p.violationCount ?? 0,
+      valueCount: 0,
+      values: [],
+    });
+  }
+  return { changed, notInForce };
+};
+
+/**
+ * The fields whose rules on the server differ from what their settings want
+ * (a closed list not in force, or a list held that the settings no longer
+ * name), read off a project: `[{layerId, field, tagset, closed}]`, `closed`
+ * when the settings want a list. Reads only.
+ */
+export const fieldsOutOfForce = (project) => {
+  const info = getIgtLayerInfo(project);
+  const fields = new Map(igtFields(info).map((sl) => [sl.id, sl]));
+  return wantedConstraints(info, project?.config)
+    .filter((e) => e.kind === 'span' && !sameConstraints(e.stored, e.constraints))
+    .map((e) => ({
+      layerId: e.layerId,
+      field: fields.get(e.layerId)?.name ?? e.layerId,
+      tagset: readTagsetName(fields.get(e.layerId)?.config),
+      closed: e.constraints.some((c) => c.type === 'value-set'),
+    }));
+};
 
 /**
  * The words for a settings save refused because stored values break the

@@ -12,7 +12,8 @@ import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
-import { igtFields, queueFieldDeclarations } from '@/domain/igtConstraints';
+import { fieldsOutOfForce, igtFields, queueFieldDeclarations } from '@/domain/igtConstraints';
+import { putRulesInForce } from '../settings/putRulesInForce.js';
 import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
@@ -167,6 +168,21 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     [layerInfo, project?.config, domains],
   );
 
+  // The fields whose rules on the server are not what their tagsets say: a
+  // closed list an import, a script or a refused save left out of force.
+  const outOfForce = useMemo(() => fieldsOutOfForce(project), [project]);
+  const [forcing, setForcing] = useState(false);
+  const putInForce = async () => {
+    setForcing(true);
+    try {
+      const notInForce = await putRulesInForce(client, projectId);
+      if (notInForce && !notInForce.length) notifySuccess('The tagsets are in force');
+      await onProjectUpdate?.();
+    } finally {
+      setForcing(false);
+    }
+  };
+
   const scan = useCallback(async () => {
     setBusy(true);
     // What an opened row found belongs to the scan before, and its count
@@ -296,6 +312,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       }
       if (!fresh.length) return;
       notifySuccess(`${fresh.map((f) => `“${f.value}”`).join(', ')} added to ${g.tagsetName}`);
+      await putRulesInForce(client, projectId);
       // The scan reads the tagset from the project, so refresh it and re-check.
       await onProjectUpdate?.();
     } catch (err) {
@@ -385,10 +402,35 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   const totalBad = fields.reduce((a, f) => a + f.bad.length, 0);
   const zeroRows = zeros || [];
+  const missing = outOfForce.filter((f) => f.closed);
+  const stale = outOfForce.filter((f) => !f.closed);
 
   return (
     <div className="flex flex-col gap-4">
       {header}
+
+      {outOfForce.length > 0 && (
+        <Notice tone="warning" icon={AlertTriangle} data-testid="rules-out-of-force">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              {missing.length > 0 &&
+                `Not in force: ${missing.map((f) => `${f.tagset} on ${f.field}`).join(', ')}.`}
+              {missing.length > 0 && stale.length > 0 && ' '}
+              {stale.length > 0 &&
+                `Still in force without a closed tagset: the list on ${stale.map((f) => f.field).join(', ')}.`}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={forcing}
+              onClick={putInForce}
+            >
+              Put in force
+            </Button>
+          </div>
+        </Notice>
+      )}
 
       {totalBad === 0 && governed.length > 0 && (
         <Notice tone="success" icon={Check} className="items-center px-4 py-3">

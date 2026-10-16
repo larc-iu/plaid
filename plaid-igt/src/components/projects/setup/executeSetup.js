@@ -37,14 +37,12 @@ import {
   storedIgnoredTokens,
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
-import { getIgtLayerInfo } from '../../../domain/layerInfo.js';
 import {
+  declareIgtRules,
   morphemeLayerConstraints,
   queueNewField,
-  wantedConstraints,
   wordLayerConstraints,
 } from '../../../domain/igtConstraints.js';
-import { ensureLayerConstraints } from '../../../../../plaid-ui/src/lib/layerConstraints.js';
 import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
@@ -559,13 +557,8 @@ async function executeProjectSetupImpl({
   // Nothing declares it later on its own.
   updateProgress(85, 'Setting up annotation rules…');
   try {
-    const project = await client.projects.get(currentProjectId);
-    const rules = await ensureLayerConstraints(
-      client,
-      wantedConstraints(getIgtLayerInfo(project), project?.config),
-      { canManage: true },
-    );
-    if (rules.pending.length) console.warn('Annotation rules not in force:', rules.pending);
+    const rules = await declareIgtRules(client, currentProjectId);
+    if (rules.notInForce.length) console.warn('Annotation rules not in force:', rules.notInForce);
   } catch (rulesError) {
     console.warn('Failed to set up the annotation rules:', rulesError);
     failures.push(`The annotation rules could not be set up: ${rulesError.message}`);

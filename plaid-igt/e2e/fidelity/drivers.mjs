@@ -16,11 +16,8 @@
 import { File } from 'node:buffer';
 import { unzipSync } from 'fflate';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
-import {
-  markImportFinished,
-  markImportStarted,
-  readLanguages,
-} from '../../src/domain/igtConfig.js';
+import { markImportStarted, readLanguages } from '../../src/domain/igtConfig.js';
+import { finishImport } from '../../src/domain/importFinish.js';
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
 import { newPreset } from '../../src/export/presets.js';
 import { runExport } from '../../src/export/runExport.js';
@@ -99,18 +96,20 @@ async function runProjectImport(
   const projectId = setup.projectId;
   const vocab = typeof vocabId === 'function' ? await vocabId({ projectId, setup }) : vocabId;
   await markImportStarted(client, projectId, kind, source, vocab);
-  const finish = async () => {
-    if (!(await markImportFinished(client, projectId))) {
-      throw new Error('the import record could not be cleared');
-    }
+  // The record cleared as the wizards clear it, with IGT's rules put in
+  // force first. Returns the warnings the run's own did not already give.
+  const finish = async (said = []) => {
+    const { cleared, warnings } = await finishImport(client, projectId);
+    if (!cleared) throw new Error('the import record could not be cleared');
+    return warnings.filter((w) => !said.includes(w));
   };
   // `resume` is what the unfinished-import screen does: the same engine over
   // the same file again, on the project that is already there. The engines
   // skip what they find done, so a resume has to ask the data, not a tally.
   const resume = async () => {
     const again = await run({ projectId, vocabId: vocab, shouldStop: () => false });
-    await finish();
-    return { projectId, warnings: again?.warnings ?? [] };
+    const said = again?.warnings ?? [];
+    return { projectId, warnings: [...said, ...(await finish(said))] };
   };
   let res;
   try {
@@ -119,8 +118,8 @@ async function runProjectImport(
     if (!/cancel/i.test(err.message)) throw err;
     return { projectId, cancelled: true, warnings: [], resume };
   }
-  await finish();
-  return { projectId, cancelled: false, warnings: res?.warnings ?? [], resume };
+  const said = res?.warnings ?? [];
+  return { projectId, cancelled: false, warnings: [...said, ...(await finish(said))], resume };
 }
 
 async function importNative(client, bytes, name, shouldStop) {

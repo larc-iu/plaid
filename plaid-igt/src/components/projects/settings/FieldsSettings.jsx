@@ -22,6 +22,7 @@ import { readFieldLang, readLanguages } from '@/domain/igtConfig';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
 import { queueFieldDeclarations, refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
+import { putRulesInForce } from './putRulesInForce.js';
 import { RefusedValuesNotice } from './RefusedValuesNotice.jsx';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
 import {
@@ -214,6 +215,10 @@ export const FieldsSettings = ({
       queueRest(b, data, change, layers, layerIds, fresh?.config);
     });
     setRefused(null);
+    // Every field's rules as the settings now want them, read after the
+    // save: a tagset another maintainer changed while this save was on its
+    // way reaches the fields this save pointed at it.
+    await putRulesInForce(client, projectId);
     // The Tagsets section above reads which fields point at which tagset off
     // the project, and that is what gates its "Add values used in this
     // project" button. Without this, pointing a field at a tagset here left

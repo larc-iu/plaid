@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { markImportFinished } from '@/domain/igtConfig';
-import { notifyError } from '@/utils/feedback';
+import { finishImport } from '@/domain/importFinish';
+import { notifyError, notifyWarning } from '@/utils/feedback';
+import { NOT_IN_FORCE_TITLE } from '@/components/projects/settings/refusedValues';
 
 /**
  * The project an import is being run over again, named by `?resume=<id>` on an
@@ -17,7 +18,8 @@ import { notifyError } from '@/utils/feedback';
  * the lexicon's structure is filled in for the entries still missing it.
  *
  * `finishAsIs` is the other way out, for a partial import somebody decides is
- * enough: it drops the record and opens the project. `resumeProject` is the
+ * enough: it puts IGT's rules in force as the import's end would, drops the
+ * record and opens the project. `resumeProject` is the
  * project as read, for what the record names (the lexicon it writes into).
  */
 export function useResumeImport(client) {
@@ -49,7 +51,9 @@ export function useResumeImport(client) {
       confirmLabel: 'Use it',
     });
     if (!ok) return;
-    if (!(await markImportFinished(client, resumeId))) {
+    const { cleared, warnings } = await finishImport(client, resumeId);
+    if (warnings.length) notifyWarning(warnings.join(' '), NOT_IN_FORCE_TITLE);
+    if (!cleared) {
       notifyError('The import record could not be cleared.', 'Failed to finish the import');
       return;
     }

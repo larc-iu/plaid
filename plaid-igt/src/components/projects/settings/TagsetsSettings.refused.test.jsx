@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { TagsetsSettings } from './TagsetsSettings.jsx';
 import { TagsetsManager } from './TagsetsManager.jsx';
-import { notifyError, notifySuccess } from '@/utils/feedback';
+import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 
 // Closing a list the stored values break: the server is asked first which
 // values it would refuse, and the tagset's panel names them, with nothing
@@ -12,6 +12,7 @@ vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),
   notifyError: vi.fn(),
   notifyInfo: vi.fn(),
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
 }));
 
@@ -90,7 +91,9 @@ const makeClient = (answer, answers = {}, options = {}) => {
         client.asked.push([id, rule, options]);
         return answers[id] ?? answer;
       },
+      checkConstraints: async () => ({ violations: [], violationCount: 0 }),
     },
+    withOperation: async (_message, fn) => fn(),
     async batched(fn) {
       const ops = [];
       const queue = (bundle) =>
@@ -229,11 +232,21 @@ describe('a field whose layer holds no list', () => {
         .click();
       await settle();
     });
-    expect(client.asked).toEqual([]);
-    expect(client.writes.map((w) => w[0])).toEqual(['setConfig']);
+    // Asked about only once the save has landed, to put Gloss's rules in
+    // force (FX-D-WIRE): its list stays out, the notice names the value, and
+    // the rule nothing breaks is declared.
+    expect(client.asked.map((a) => a[0])).toEqual(['sl-gloss']);
+    expect(client.writes.map((w) => w[0])).toEqual(['setConfig', 'setConstraints']);
     expect(Object.keys(client.writes[0][2])).toEqual(['POS', 'Leipzig', 'Genre']);
+    expect(client.writes[1]).toEqual(['setConstraints', 'sl-gloss', [{ type: 'single-span' }]]);
     expect(notifySuccess).toHaveBeenCalled();
     expect(notifyError).not.toHaveBeenCalled();
+    expect(notifyWarning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '“Leipzig” is not in force on Gloss: 2 annotations not in the list, QQ (2).',
+      ),
+      'Not in force',
+    );
     await view.unmount();
   });
 
@@ -244,9 +257,15 @@ describe('a field whose layer holds no list', () => {
       { bare: true },
     );
     const view = await close(client, { bare: true });
-    expect(client.asked.map((a) => a[0])).toEqual(['sl-pos']);
-    expect(client.writes.map((w) => w[0])).toEqual(['setConfig', 'setConstraints']);
+    // Gloss is asked about after the save, to put its rules in force.
+    expect(client.asked.map((a) => a[0])).toEqual(['sl-pos', 'sl-gloss']);
+    expect(client.writes.map((w) => w[0])).toEqual([
+      'setConfig',
+      'setConstraints',
+      'setConstraints',
+    ]);
     expect(client.writes[1][1]).toBe('sl-pos');
+    expect(client.writes[2]).toEqual(['setConstraints', 'sl-gloss', [{ type: 'single-span' }]]);
     expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
     await view.unmount();
   });

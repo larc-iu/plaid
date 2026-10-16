@@ -6,6 +6,7 @@
 // plaid-ui/src/components/assistant/, and plaid-ud has an adapter of its own.
 import { readInitialized } from '../../../domain/igtConfig.js';
 import { isTagsetPlan, writeTagsetPlan } from '../../../domain/tagsetPlan.js';
+import { putRulesInForce } from '../settings/putRulesInForce.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationToMarkdown } from './citationMarkdown.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
@@ -128,10 +129,15 @@ export const IGT_ASSISTANT = {
   opensProject: (project) => readInitialized(project?.config),
   // A plan of tagset changes is settings, which the assistant's delegated
   // token may not write: written here, with the user's session, before the
-  // approval goes (domain/tagsetPlan.js).
+  // approval goes (domain/tagsetPlan.js). Then every field's rules are put
+  // in force as a settings save leaves them.
   writesFirst: isTagsetPlan,
-  writeFirst: async ({ client, projectId, plan, operation }) =>
-    isTagsetPlan(plan) ? writeTagsetPlan(client, projectId, plan, operation) : false,
+  writeFirst: async ({ client, projectId, plan, operation }) => {
+    if (!isTagsetPlan(plan)) return false;
+    const wrote = await writeTagsetPlan(client, projectId, plan, operation);
+    if (wrote) await putRulesInForce(client, projectId);
+    return wrote;
+  },
   examples: [
     'Which words in this project are still unglossed?',
     'Are the glosses for the most common suffix consistent?',

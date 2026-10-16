@@ -36,3 +36,24 @@ export const refusedValuesText = (fields) =>
         `${f.field}: ${countWord(f.count)}, ${f.values.map(valueText).join(', ')}${moreText(f)}.`,
     )
     .join(' ')}`;
+
+export const NOT_IN_FORCE_TITLE = 'Not in force';
+export const NOT_IN_FORCE_ACTION =
+  'Change these values, then choose Put in force under Validation.';
+
+/**
+ * A closed list left out of force because values in use are not in it, as
+ * `declareIgtRules` (domain/igtConstraints.js) answers it, one line a field:
+ * "“Leipzig” is not in force on Morph Gloss: 1 annotation not in the list,
+ * QQ (1)." A rule refused for another reason has no values to name.
+ */
+export const notInForceLines = (fields) =>
+  fields.map((f) =>
+    f.values?.length
+      ? `${f.tagset ? `“${f.tagset}”` : 'The closed list'} is not in force on ${f.field}: ${countWord(f.count)} not in the list, ${f.values.map(valueText).join(', ')}${moreText(f)}.`
+      : `The rules of ${f.field} are not in force: ${countWord(f.count)} break them.`,
+  );
+
+/** The same as one text with what to do, for a toast. */
+export const notInForceText = (fields) =>
+  `${notInForceLines(fields).join(' ')} ${NOT_IN_FORCE_ACTION}`;

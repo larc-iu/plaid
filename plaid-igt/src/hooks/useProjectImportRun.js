@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { executeProjectSetup } from '@/components/projects/setup/executeSetup';
-import { markImportStarted, markImportFinished } from '@/domain/igtConfig';
+import { markImportStarted } from '@/domain/igtConfig';
+import { finishImport } from '@/domain/importFinish';
 import { ImportCancelled } from '@/import/resume';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 
@@ -90,15 +91,19 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       await markImportStarted(client, projectId, kind, source, vocab, choices);
       if (requireVocab && !vocab) throw new Error(requireVocab);
 
-      const res = await run({
+      const ran = await run({
         projectId,
         vocabId: vocab,
         shouldStop: () => stopRef.current,
         setProgress,
       });
-      if (!(await markImportFinished(client, projectId))) {
+      const finished = await finishImport(client, projectId);
+      if (!finished.cleared) {
         notifyWarning('The project still opens on this import.', 'Import complete');
       }
+      const said = new Set(ran?.warnings || []);
+      const more = finished.warnings.filter((w) => !said.has(w));
+      const res = more.length ? { ...ran, warnings: [...(ran?.warnings || []), ...more] } : ran;
       setResults(res);
       setStage('done');
       const warnings = res.warnings?.length ?? 0;

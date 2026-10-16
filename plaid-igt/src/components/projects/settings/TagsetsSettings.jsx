@@ -14,6 +14,7 @@ import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { expectStored, isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { putRulesInForce } from './putRulesInForce.js';
 
 // Everything here is derived from the LIVE project rather than a private fetch.
 // `usage` (which fields point at which tagset) changes when the field table
@@ -142,6 +143,10 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         );
       }
     }
+    // Every field's rules as the settings now want them, read after the
+    // save: a field pointed at a tagset since `live` was read takes its list
+    // here.
+    await putRulesInForce(client, projectId);
     // The field table below reads the tagset names off the project, so a new
     // tagset is not pickable until this lands.
     try {
