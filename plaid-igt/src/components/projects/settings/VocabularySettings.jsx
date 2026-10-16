@@ -65,6 +65,20 @@ export const VocabularySettings = ({ projectId, client }) => {
     }
   };
 
+  // How many links this project has into a vocabulary: an unlink removes them.
+  const handleCountLinks = async (vocab) => {
+    const res = await client.query({
+      where: [
+        ['vocab', '?v', { layer: vocab.id }],
+        ['link', '?l', { item: '?v' }],
+      ],
+      return: { group: [], aggregates: [['count']] },
+      scope: { projectIds: [projectId] },
+    });
+    const n = res?.results?.[0]?.[0];
+    return typeof n === 'number' ? n : 0;
+  };
+
   // A failed send says why, and its row is already back as it was.
   const handleError = (error) => {
     notifyError(refusal(error), 'Vocabularies not updated');
@@ -101,6 +115,7 @@ export const VocabularySettings = ({ projectId, client }) => {
         showTitle={false}
         isSettings={true}
         client={client}
+        onCountLinks={handleCountLinks}
       />
     </div>
   );

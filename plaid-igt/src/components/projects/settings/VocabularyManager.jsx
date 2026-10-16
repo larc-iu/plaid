@@ -31,6 +31,7 @@ export const VocabularyManager = ({
   showTitle = true,
   isSettings = false,
   client = null, // reads each vocabulary's entry count, when given
+  onCountLinks = null, // how many links this project has into a vocabulary
 }) => {
   const [vocabularies, setVocabularies] = useState([]);
   const [newVocabName, setNewVocabName] = useState('');
@@ -40,6 +41,10 @@ export const VocabularyManager = ({
   const [isInitialized, setIsInitialized] = useState(false);
   const [unlinkModalOpened, setUnlinkModalOpened] = useState(false);
   const [vocabToUnlink, setVocabToUnlink] = useState(null);
+  // The links an unlink removes: undefined while counted, null if unreadable.
+  const [unlinkCount, setUnlinkCount] = useState(undefined);
+  // The row the count is for, so a late answer for another row is dropped.
+  const unlinkAsked = useRef(null);
   // vocabId -> entry count. Two vocabularies may share a name, and the count
   // is what tells them apart on screen. Absent while loading or if unreadable.
   const [entryCounts, setEntryCounts] = useState({});
@@ -147,7 +152,16 @@ export const VocabularyManager = ({
       const vocab = vocabularies.find((v) => v.id === vocabId);
       if (vocab) {
         setVocabToUnlink(vocab);
+        setUnlinkCount(onCountLinks ? undefined : null);
         openUnlinkModal();
+        if (onCountLinks) {
+          unlinkAsked.current = vocab;
+          Promise.resolve(onCountLinks(vocab))
+            .catch(() => null)
+            .then((n) => {
+              if (unlinkAsked.current === vocab) setUnlinkCount(typeof n === 'number' ? n : null);
+            });
+        }
         return;
       }
     }
@@ -398,12 +412,26 @@ export const VocabularyManager = ({
         }}
         title={`Unlink vocabulary “${vocabToUnlink?.name ?? ''}”?`}
         confirmLabel="Unlink"
+        confirmDisabled={unlinkCount === undefined}
         onConfirm={handleConfirmUnlink}
       >
         <p>
           Every link from this project to the vocabulary's entries is removed. The vocabulary
           remains available to other projects.
         </p>
+        {onCountLinks && (
+          <p>
+            {unlinkCount === undefined && 'Counting links…'}
+            {unlinkCount === null && 'The number of links could not be read.'}
+            {unlinkCount === 0 && 'This project has no links to its entries.'}
+            {unlinkCount > 0 && (
+              <>
+                This project has <strong>{countOf(unlinkCount, 'link', 'links')}</strong> to its
+                entries.
+              </>
+            )}
+          </p>
+        )}
       </ConfirmDeleteDialog>
     </div>
   );

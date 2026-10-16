@@ -226,6 +226,54 @@ describe('Project settings, Vocabularies, entry counts', () => {
   });
 });
 
+// An unlink removes every link the project has into the vocabulary, and the
+// confirm names how many.
+describe('Project settings, Vocabularies, the unlink confirm', () => {
+  const linkQuery = (q) => q.where.some((c) => c[0] === 'link');
+  const counted = (answer) => {
+    const client = makeClient({ linked: ['v1'] });
+    client.query = vi.fn(async (q) => (linkQuery(q) ? answer(q) : { results: [] }));
+    return client;
+  };
+  const dialogText = () => document.body.querySelector('[role=alertdialog]')?.textContent ?? '';
+
+  it('names the number of links in this project', async () => {
+    const client = counted(async () => ({ results: [[1204]] }));
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    expect(dialogText()).toContain('This project has 1,204 links to its entries.');
+    const q = client.query.mock.calls.map((c) => c[0]).find(linkQuery);
+    expect(q.scope).toEqual({ projectIds: ['p1'] });
+    expect(q.where).toContainEqual(['vocab', '?v', { layer: 'v1' }]);
+    await view.unmount();
+  });
+
+  it('waits for the count before Unlink can be pressed', async () => {
+    let settle;
+    const client = counted(() => new Promise((resolve) => (settle = resolve)));
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    expect(dialogText()).toContain('Counting links');
+    expect(byText(document.body, '[role=alertdialog] button', 'Unlink').disabled).toBe(true);
+    await view.step(async () => settle({ results: [[0]] }));
+    expect(dialogText()).toContain('This project has no links to its entries.');
+    expect(byText(document.body, '[role=alertdialog] button', 'Unlink').disabled).toBe(false);
+    await view.unmount();
+  });
+
+  it('says when the count could not be read, and still unlinks', async () => {
+    const client = counted(async () => {
+      throw new Error('down');
+    });
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    expect(dialogText()).toContain('The number of links could not be read.');
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
+    expect(client.projects.unlinkVocab).toHaveBeenCalledWith('p1', 'v1');
+    await view.unmount();
+  });
+});
+
 describe('Project settings, Vocabularies, a list that will not load', () => {
   it('shows the panel and no toast about an update', async () => {
     const client = makeClient();
