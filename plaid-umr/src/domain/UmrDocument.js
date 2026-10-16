@@ -76,16 +76,26 @@ const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
 // What stands when a Text mode apply sent in several requests failed after
 // the first landed: `stage` is the request that failed ('changes' when it was
-// one of the first's own requests), `withNodes` whether the apply makes nodes,
-// and `unsure` whether that request's answer was lost.
-const partlyApplied = (stage, withNodes) => {
-  const missing = 'Not saved';
-  if (stage === 'changes')
-    return `Partly applied. Saved: some deletions and changes. ${missing}: the rest.`;
-  if (stage === 'nodes')
-    return `Partly applied. Saved: deletions and changes. ${missing}: new nodes and edges.`;
-  const saved = withNodes ? 'deletions, changes and new nodes' : 'deletions and changes';
-  return `Partly applied. Saved: ${saved}. ${missing}: new edges.`;
+// one of the first's own requests), and `counts` what the apply does, as
+// `{ deletions, changes, nodes, edges }` (new nodes and new edges).
+const partlyApplied = (stage, { deletions, changes, nodes, edges }) => {
+  const list = (parts) =>
+    parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  const altered =
+    list(
+      [deletions && countOf(deletions, 'deletion'), changes && countOf(changes, 'change')].filter(
+        Boolean,
+      ),
+    ) || 'changes';
+  const newNodes = nodes ? countOf(nodes, 'new node') : null;
+  const newEdges = edges ? countOf(edges, 'new edge') : null;
+  const [saved, missing] =
+    stage === 'changes'
+      ? [`some of the ${altered}`, ['the others', newNodes, newEdges]]
+      : stage === 'nodes'
+        ? [altered, [newNodes, newEdges]]
+        : [list([altered, newNodes].filter(Boolean)), [newEdges]];
+  return `Partly applied. Saved: ${saved}. Not saved: ${list(missing.filter(Boolean))}.`;
 };
 
 /**
@@ -2920,7 +2930,14 @@ export class UmrDocument extends DocumentModel {
           // requests that landed are answered from what they stored, and the
           // rest run (DocumentModel's `_queueWrite`).
           if (!partly || isUnknownOutcome(error)) throw error;
-          throw Object.assign(new Error(partlyApplied(stage, newNodes.length > 0)), {
+          const deletions = plan.delete.length + plan.edgesDelete.length;
+          const counts = {
+            deletions,
+            changes: plan.changes - deletions - plan.create.length - plan.edgesAdd.length,
+            nodes: newNodes.length,
+            edges: newEdges.length + heldTriples.length,
+          };
+          throw Object.assign(new Error(partlyApplied(stage, counts)), {
             cause: error,
           });
         }

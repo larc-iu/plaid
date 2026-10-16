@@ -180,7 +180,7 @@ test('past one request, a failed node request leaves no anchor and says what sta
   assert.equal(errors.length, 1);
   assert.match(
     errors[0].msg,
-    /Partly applied\. Saved: deletions and changes\. Not saved: new nodes and edges\./,
+    /Partly applied\. Saved: 1,001 changes\. Not saved: 1 new node and 1 new edge\./,
   );
   release();
 });
@@ -195,7 +195,7 @@ test('past one request, a failed edge request says the nodes stand', async () =>
     assert.match(
       errors[0].msg,
       new RegExp(
-        `Partly applied\\. Saved: deletions, changes and new nodes\\. ${missing}: new edges\\.`,
+        `Partly applied\\. Saved: 1,001 changes and 1 new node\\. ${missing}: 1 new edge\\.`,
       ),
     );
     release();
@@ -217,7 +217,7 @@ test('past one request, a first request that failed after some of it was saved s
   assert.equal(await doc.applyPenman(1, text), false);
   assert.match(
     errors[0].msg,
-    /Partly applied\. Saved: some deletions and changes\. Not saved: the rest\./,
+    /Partly applied\. Saved: some of the 1,001 changes\. Not saved: the others, 1 new node and 1 new edge\./,
   );
   release();
 });
