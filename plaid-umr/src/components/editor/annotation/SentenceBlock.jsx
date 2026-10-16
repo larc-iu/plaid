@@ -1926,6 +1926,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               askNewNode(null, [], { x: p.x - 110, y: p.y });
             }}
           >
+            {!textMode && sentence.nodes.length === 0 && !sentence.rawGraph && (
+              <p className="umr-graph-empty" aria-hidden="true">
+                {emptyStop
+                  ? `No graph. ${keys.words('canvas.newRoot')} to add a node.`
+                  : 'No graph.'}
+              </p>
+            )}
             <svg
               className="umr-edges"
               width={Math.max(width, 1)}

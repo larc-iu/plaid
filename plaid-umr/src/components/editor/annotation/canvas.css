@@ -96,6 +96,17 @@
 .umr-graph {
   position: relative;
 }
+/* What an empty graph's band says, where its node would be. */
+.umr-graph-empty {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  margin: 0;
+  font-size: 0.8125rem;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+}
 /* An empty graph is a keyboard stop of its own (SentenceBlock's `emptyStop`). */
 .umr-graph:focus-visible {
   outline: 2px solid hsl(var(--ring));

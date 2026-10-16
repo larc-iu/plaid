@@ -120,6 +120,8 @@ describe('SentenceBlock', () => {
       />,
     );
     expect(texts(r.container, '.umr-block-note')).toEqual([]);
+    // Its band says so where a node would be (Q3-UMR-POLISH).
+    expect(texts(r.container, '.umr-graph-empty')).toEqual([expect.stringMatching(/^No graph\./)]);
     await r.unmount();
   });
 
@@ -135,6 +137,7 @@ describe('SentenceBlock', () => {
       />,
     );
     expect(texts(r.container, '.umr-block-note')).toEqual(['Unreadable graph, stored as text']);
+    expect(texts(r.container, '.umr-graph-empty')).toEqual([]);
     await r.unmount();
   });
 });
