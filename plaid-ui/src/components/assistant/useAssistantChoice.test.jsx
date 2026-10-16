@@ -150,4 +150,29 @@ describe('an assistant a request found gone (H13-PANEL-2)', () => {
     expect(read()).toBe('none/fixed/online');
     await unmount();
   });
+
+  // The server can answer 503 for a moment while the assistant is still
+  // there: discovery decides, and the panel keeps it.
+  it('is not called offline when discovery still finds it', async () => {
+    const { ask } = await import('./jobs.js');
+    const discover = vi.fn().mockResolvedValue([svc('igt:one')]);
+    const refused = Object.assign(new Error("No live service 'igt:one' on this project"), {
+      notLive: true,
+      serviceId: 'igt:one',
+    });
+    const client = {
+      messages: { discoverServices: discover, requestService: vi.fn().mockRejectedValue(refused) },
+    };
+    const { read, step, unmount } = await mount(client);
+    let said = null;
+    await step(() =>
+      ask({ client, projectId: 'p1' }, { serviceId: 'igt:one' }, 'c1', 'hold').catch((e) => {
+        said = e;
+      }),
+    );
+    expect(said.message).toBe('The assistant did not take the request. Try again in a moment.');
+    expect(said.notLive).toBeUndefined();
+    expect(read()).toBe('igt:one/fixed/online');
+    await unmount();
+  });
 });

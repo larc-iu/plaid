@@ -177,7 +177,8 @@ export const ask = (store, service, convId, op, fields = {}, { tab = null } = {}
       undefined,
       { requestId: newId(), noOperation: true },
     )
-    .catch((e) => {
+    .catch(async (refused) => {
+      const e = await whyRefused(client, projectId, refused);
       if (noteGone(projectId, e)) throw Object.assign(new Error(WENT_OFFLINE), { notLive: true });
       throw e;
     });
@@ -289,14 +290,28 @@ const noteGone = (projectId, e) => {
   return true;
 };
 const WENT_OFFLINE = 'The assistant went offline.';
+const NOT_TAKEN = 'The assistant did not take the request. Try again in a moment.';
+
+// A 503 is the assistant gone only when discovery no longer finds it: the
+// server can answer 503 for a moment while it is still there. Answers the
+// error to report, its `notLive` kept only when it is gone.
+const whyRefused = async (client, projectId, e) => {
+  if (!e?.notLive || !client) return e;
+  const found = await client.messages.discoverServices(projectId).catch(() => null);
+  const there = (found || []).some((s) => s?.serviceId === e.serviceId && s.online !== false);
+  if (!there) return e;
+  return Object.assign(new Error(NOT_TAKEN), { status: 503, serviceId: e.serviceId });
+};
 
 // Run a request stream to its end, recording how it ended on the job.
+// `j.client` asks discovery about a 503 (`whyRefused`).
 const watch = async (j, run) => {
   try {
     j.outcome = await run();
-  } catch (e) {
-    if (e?.name === 'AbortError') j.stopped = true;
+  } catch (refused) {
+    if (refused?.name === 'AbortError') j.stopped = true;
     else {
+      const e = await whyRefused(j.client, j.projectId, refused);
       j.error = e;
       noteGone(j.projectId, e);
       if (e?.status !== 404) console.error('[Assistant] request failed', e);
@@ -476,6 +491,7 @@ export const startTurn = ({
   }
   jobs.set(conv.id, j);
   j.promise = (async () => {
+    j.client = client;
     await watch(j, () =>
       client.messages.requestService(
         projectId,
@@ -660,6 +676,7 @@ export const startApply = ({
   });
   jobs.set(conv.id, j);
   j.promise = (async () => {
+    j.client = client;
     await watch(j, async () => {
       if (writeFirst) {
         const ready = await client.messages.requestService(
@@ -788,6 +805,7 @@ export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => 
   });
   jobs.set(conv.id, j);
   j.promise = (async () => {
+    j.client = client;
     await watch(j, () =>
       client.messages.attachServiceRequest(
         projectId,
