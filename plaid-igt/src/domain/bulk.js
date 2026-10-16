@@ -29,14 +29,21 @@ export function chunk(arr, size = CHUNK) {
 /**
  * Send `items` to a bulk endpoint in CHUNK-sized slices, concatenating the
  * ids each call returns so the caller still gets one id per input, in input
- * order. `check` runs before each slice so a cancel lands promptly.
+ * order. `check` runs before each slice so a cancel lands promptly. An answer
+ * that lists ids lists one per item sent, or this throws: an id short would
+ * pair every later input with the wrong row.
  */
 export async function bulkInChunks(items, check, send) {
   const ids = [];
   for (const slice of chunk(items)) {
     check?.();
     const res = await send(slice);
-    ids.push(...createdIds(res));
+    const got = createdIds(res);
+    const listed = Array.isArray(res?.ids) || Array.isArray(res?.body?.ids);
+    if (listed && got.length !== slice.length) {
+      throw new Error(`The server answered ${got.length} ids for ${slice.length} rows.`);
+    }
+    ids.push(...got);
   }
   return ids;
 }
