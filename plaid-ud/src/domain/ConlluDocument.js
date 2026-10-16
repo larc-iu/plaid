@@ -50,6 +50,7 @@ import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows, isVirtualWordId, sentenceHoldsWords } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
+import { readIgnoredTokensOf } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 
 // The lemma a new word starts with is a copy of its form, made by a rule and
@@ -400,7 +401,13 @@ export class ConlluDocument extends DocumentModel {
     // (zh-Hans); otherwise the project's language stands in, and 'und' last.
     const tokenizerLocale =
       info.textLayer?.config?.ud?.tokenizerLocale || readProjectLanguage(this._project) || 'und';
-    const wordRanges = gapTokenize(body, sentenceRanges, wordTokens, tokenizerLocale);
+    const wordRanges = gapTokenize(
+      body,
+      sentenceRanges,
+      wordTokens,
+      tokenizerLocale,
+      readIgnoredTokensOf(wordTokenLayer.config),
+    );
     if (keepSentences && wordRanges.length === 0) {
       this.setError('No untokenized text.');
       return false;
@@ -563,7 +570,13 @@ export class ConlluDocument extends DocumentModel {
       : newlineSentenceRanges(body || '');
     const locale =
       textLayer?.config?.ud?.tokenizerLocale || readProjectLanguage(this._project) || 'und';
-    return gapTokenize(body || '', ranges, wordTokenLayer?.tokens || [], locale).length;
+    return gapTokenize(
+      body || '',
+      ranges,
+      wordTokenLayer?.tokens || [],
+      locale,
+      readIgnoredTokensOf(wordTokenLayer?.config),
+    ).length;
   }
 
   tokenizeLoss(body) {

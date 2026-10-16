@@ -19,6 +19,7 @@
 // it through here for better script-specific segmentation (especially for
 // ja/zh/th which V8 segments with dictionary lookup when given the locale).
 import { cpLength, utf16ToCp } from '@larc-iu/plaid-client';
+import { shouldTokenizeCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 
 export function basicTokenize(text, locale = 'und') {
   const segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
@@ -75,21 +76,34 @@ export function newlineSentenceRanges(text) {
  * leaves untokenized (ruling 28 and 29, 2026-10-16). With no tokens it is
  * `basicTokenize` of the whole text, cut at `sentenceRanges`.
  *
+ * A new token never splits what IGT's own tokenizer would make one word, and
+ * so never leaves a character the project calls letter-like (`ignoredTokens`
+ * on the word layer) out of its word: tokens that fall in one such word are
+ * joined into one, the word's whole extent. That way IGT reads a text whose
+ * gaps this filled the same as it would have tokenized them itself. Only
+ * where IGT has set the word layer up (`ignoredTokens` is its config there),
+ * so a project of plaid-ud alone tokenizes as it always has.
+ *
  * @param {string} text the document body
  * @param {[number, number][]} sentenceRanges in code points, in order
  * @param {{begin: number, end: number}[]} tokens the tokens there are
  * @param {string} locale
+ * @param {object|null} ignoredTokens the word layer's `config.igt.ignoredTokens`
  * @returns {[number, number][]} the new tokens' ranges in document order
  */
-export function gapTokenize(text, sentenceRanges, tokens, locale = 'und') {
+export function gapTokenize(text, sentenceRanges, tokens, locale = 'und', ignoredTokens = null) {
   const taken = [...tokens].sort((a, b) => a.begin - b.begin);
   const cps = Array.from(text);
   const out = [];
   const fill = (begin, end) => {
     if (end <= begin) return;
-    for (const [b, e] of basicTokenize(cps.slice(begin, end).join(''), locale)) {
-      out.push([begin + b, begin + e]);
-    }
+    const ranges = basicTokenize(cps.slice(begin, end).join(''), locale).map(([b, e]) => [
+      begin + b,
+      begin + e,
+    ]);
+    out.push(
+      ...(ignoredTokens ? joinedOver(ranges, igtWords(cps, begin, end, ignoredTokens)) : ranges),
+    );
   };
   for (const [sBegin, sEnd] of sentenceRanges) {
     let at = sBegin;
@@ -101,4 +115,32 @@ export function gapTokenize(text, sentenceRanges, tokens, locale = 'und') {
     fill(at, sEnd);
   }
   return out;
+}
+
+// The words IGT's tokenizer makes of cps[begin, end): runs of characters that
+// are neither whitespace nor a break under the project's config.
+function igtWords(cps, begin, end, ignoredTokens) {
+  const words = [];
+  let start = null;
+  for (let i = begin; i <= end; i += 1) {
+    const breaks = i === end || /\s/.test(cps[i]) || shouldTokenizeCharacter(cps[i], ignoredTokens);
+    if (breaks) {
+      if (start !== null) words.push([start, i]);
+      start = null;
+    } else if (start === null) start = i;
+  }
+  return words;
+}
+
+// `ranges` with every group that overlaps one of `words` joined into one range
+// over the group and the word: in order, none overlapping.
+function joinedOver(ranges, words) {
+  const all = [...ranges, ...words].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const joined = [];
+  for (const [b, e] of all) {
+    const last = joined[joined.length - 1];
+    if (last && b < last[1]) last[1] = Math.max(last[1], e);
+    else joined.push([b, e]);
+  }
+  return joined;
 }
