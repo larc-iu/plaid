@@ -35,6 +35,7 @@ describe('the project tagsets section', () => {
     };
     const client = {
       projects: {
+        get: async () => structuredClone(server),
         setConfig: async (_id, _ns, key, value) => {
           if (key === 'documentMetadata') throw new Error('refused');
           server.config.igt[key] = value;
@@ -100,6 +101,7 @@ describe('the project tagsets section', () => {
   it('still refuses when the rename itself is refused', async () => {
     const client = {
       projects: {
+        get: async () => structuredClone(project),
         setConfig: async () => {
           throw new Error('refused');
         },

@@ -250,8 +250,10 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   // Add an unknown part to the tagset. The other remedy (change the values) is
   // a bulk replace, which is why every row also links there.
-  // The parts are added to the tagsets as stored: a write refused because
-  // someone saved them since is made again to what they saved.
+  // The parts are added to the tagsets as stored, read when the button is
+  // pressed, so a field another maintainer pointed at the tagset since this
+  // page was read takes the list too. A write refused because someone saved
+  // the tagsets in between is made again to what they saved.
   const addToTagset = async (g, parts) => {
     const attempt = async (p) => {
       const tagsets = readTagsets(p?.config);
@@ -287,7 +289,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     try {
       let fresh;
       try {
-        fresh = await attempt(project);
+        fresh = await attempt(await client.projects.get(projectId));
       } catch (err) {
         if (!isConfigConflict(err)) throw err;
         fresh = await attempt(await client.projects.get(projectId));

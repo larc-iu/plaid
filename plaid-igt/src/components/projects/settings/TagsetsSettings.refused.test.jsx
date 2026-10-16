@@ -17,8 +17,9 @@ vi.mock('@/utils/feedback', () => ({
 
 // `bare`: a second field, Gloss, governed by a closed Leipzig whose layer
 // holds no list (rules removed by another client, or a project made before
-// lists were declared), with values off it.
-const project = ({ bare = false } = {}) => ({
+// lists were declared), with values off it. `pointed`: a second field, Gloss,
+// that another maintainer has pointed at POS.
+const project = ({ bare = false, pointed = false } = {}) => ({
   id: 'p-1',
   config: {
     igt: {
@@ -55,6 +56,16 @@ const project = ({ bare = false } = {}) => ({
                   },
                 ]
               : []),
+            ...(pointed
+              ? [
+                  {
+                    id: 'sl-gloss',
+                    name: 'Gloss',
+                    config: { igt: { scope: 'Word', tagset: 'POS' } },
+                    constraints: { igt: [{ type: 'single-span' }] },
+                  },
+                ]
+              : []),
           ],
         },
       ],
@@ -62,11 +73,13 @@ const project = ({ bare = false } = {}) => ({
   ],
 });
 
-const makeClient = (answer, answers = {}) => {
+// `options` is the project the server holds, as `project` takes them.
+const makeClient = (answer, answers = {}, options = {}) => {
   const client = {
     asked: [],
     writes: [],
     projects: {
+      get: async () => project(options),
       setConfig: async (_id, _ns, key, value) => client.writes.push(['setConfig', key, value]),
     },
     spanLayers: {
@@ -205,6 +218,7 @@ describe('a field whose layer holds no list', () => {
     const client = makeClient(
       { count: 0, valueCount: 0, values: [] },
       { 'sl-gloss': glossRefused },
+      { bare: true },
     );
     const view = await mount(client, { bare: true });
     const input = all(view.container, 'input').find((i) => /New tagset name/.test(i.placeholder));
@@ -227,12 +241,49 @@ describe('a field whose layer holds no list', () => {
     const client = makeClient(
       { count: 0, valueCount: 0, values: [] },
       { 'sl-gloss': glossRefused },
+      { bare: true },
     );
     const view = await close(client, { bare: true });
     expect(client.asked.map((a) => a[0])).toEqual(['sl-pos']);
     expect(client.writes.map((w) => w[0])).toEqual(['setConfig', 'setConstraints']);
     expect(client.writes[1][1]).toBe('sl-pos');
     expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
+    await view.unmount();
+  });
+});
+
+// REV2-WIRE-2: a page read before another maintainer pointed Gloss at POS.
+// Closing POS puts the list on Gloss too, and asks about Gloss's values.
+describe('a field pointed at the tagset since the page was read', () => {
+  it('is asked about and takes the list', async () => {
+    const client = makeClient({ count: 0, valueCount: 0, values: [] }, {}, { pointed: true });
+    const view = await close(client);
+    expect(client.asked.map((a) => a[0])).toEqual(['sl-pos', 'sl-gloss']);
+    const declared = client.writes.filter((w) => w[0] === 'setConstraints');
+    expect(declared.map((w) => w[1])).toEqual(['sl-pos', 'sl-gloss']);
+    expect(declared[1][2]).toContainEqual({
+      type: 'value-set',
+      values: ['N', 'V'],
+      delimiters: '',
+      parts: 'all',
+    });
+    await view.unmount();
+  });
+
+  it("stops the close when that field's values break the list", async () => {
+    const client = makeClient(
+      { count: 0, valueCount: 0, values: [] },
+      {
+        'sl-gloss': { count: 1, valueCount: 1, values: [{ value: 'QQ', parts: ['QQ'], count: 1 }] },
+      },
+      { pointed: true },
+    );
+    const view = await close(client);
+    expect(client.writes).toEqual([]);
+    const notice = view.container.querySelector('[data-testid="tagset-refused"]');
+    expect(notice?.textContent).toBe(
+      'Not saved. These values are in use and not in the list:Gloss: 1 annotation, QQ (1)',
+    );
     await view.unmount();
   });
 });

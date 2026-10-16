@@ -391,3 +391,42 @@ describe('what it offers to do about a violation', () => {
     await unmount();
   });
 });
+
+// REV2-WIRE-2: a page read before another maintainer pointed a second field
+// at Leipzig. Adding a part to the list puts the new list on that field too.
+describe('Add to tagset', () => {
+  it('declares the new list on every field the tagset governs now', async () => {
+    const server = structuredClone(project);
+    server.textLayers[0].tokenLayers[0].spanLayers.push({
+      id: 'msl-1',
+      name: 'Lex Gloss',
+      config: { igt: { scope: 'Morpheme', tagset: 'Leipzig' } },
+      constraints: { igt: [{ type: 'single-span' }] },
+    });
+    const declared = [];
+    const client = {
+      ...clientWith([[['1SG.ABL', 3]], [['Song', 4]]]),
+      projects: { get: vi.fn(async () => structuredClone(server)), setConfig: vi.fn() },
+      spanLayers: {
+        setConstraints: (id, _ns, constraints) => declared.push([id, constraints]),
+        repairConstraints: vi.fn(),
+      },
+      batched: async (fn) => fn(client),
+    };
+    const { container, step, unmount } = await render(client);
+    const add = all(container, 'button').find((b) => b.title === 'Add ABL to Leipzig');
+    await step(async () => {
+      add.click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).toHaveBeenCalled();
+    expect(declared.map(([id]) => id)).toEqual(['msl-0', 'msl-1']);
+    expect(declared[1][1]).toContainEqual({
+      type: 'value-set',
+      values: ['PL', '1SG', 'ABL'],
+      delimiters: '.',
+      parts: 'all',
+    });
+    await unmount();
+  });
+});

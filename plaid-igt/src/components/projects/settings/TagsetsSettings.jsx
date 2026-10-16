@@ -41,8 +41,9 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
   // Fields reference a tagset by name, so a rename has to repoint every field
   // that used the old name — annotation fields on their span layer, metadata
   // fields in the project config — or they all quietly fall back to free.
-  const repointFields = async ({ from, to }) => {
-    const fields = byName[from] || [];
+  // `live` is the project as the save read it.
+  const repointFields = async ({ from, to }, live) => {
+    const fields = byTagsetName(governedFields(getIgtLayerInfo(live), live?.config))[from] || [];
     for (const g of fields) {
       if (g.kind === 'span') {
         await client.spanLayers.setConfig(g.layerId, IGT_NAMESPACE, 'tagset', to, undefined, {
@@ -51,7 +52,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       }
     }
     if (fields.some((g) => g.kind === 'metadata')) {
-      const meta = (readDocumentMetadata(project?.config) || []).map((f) =>
+      const meta = (readDocumentMetadata(live?.config) || []).map((f) =>
         f.tagset === from ? { ...f, tagset: to } : f,
       );
       await client.projects.setConfig(
@@ -60,7 +61,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         'documentMetadata',
         meta,
         undefined,
-        expectStored(project, IGT_NAMESPACE, 'documentMetadata'),
+        expectStored(live, IGT_NAMESPACE, 'documentMetadata'),
       );
     }
   };
@@ -70,14 +71,19 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
   // name, so the editor must show that rather than roll back to a name that is
   // gone. The vocabulary screen's handleSaveTagsets keeps the same contract.
   const handleSaveChanges = async (next, meta) => {
+    // The fields and their rules as they are now: another maintainer may
+    // have pointed a field at a tagset since this page was read, and the
+    // tagsets write's own check does not cover a field's reference.
+    let live;
     try {
       if (!client) throw new Error('Not authenticated');
+      live = await client.projects.get(projectId);
       // A closed tagset's list is a rule its fields hold on the server. The
       // fields take the new rules in the same batch as the tagsets, so a list
       // the stored values break is refused whole. A renamed tagset's fields
       // are read under the new name, which repointFields writes next.
       const renamed = meta?.renamed;
-      const fields = igtFields(getIgtLayerInfo(project)).map((sl) =>
+      const fields = igtFields(getIgtLayerInfo(live)).map((sl) =>
         renamed && readTagsetName(sl.config) === renamed.from
           ? {
               ...sl,
@@ -90,12 +96,12 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
           : sl,
       );
       const after = {
-        ...project?.config,
-        [IGT_NAMESPACE]: { ...project?.config?.[IGT_NAMESPACE], tagsets: next },
+        ...live?.config,
+        [IGT_NAMESPACE]: { ...live?.config?.[IGT_NAMESPACE], tagsets: next },
       };
       // A closed list the stored values break would be refused whole: ask
       // first, and the editor says which values are in the way.
-      const refused = await refusedBySave(client, fields, after, project?.config);
+      const refused = await refusedBySave(client, fields, after, live?.config);
       if (refused.length) {
         throw Object.assign(new Error('Values in use are not in the list'), {
           refusedValues: refused,
@@ -106,7 +112,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
           b.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
             expected,
           });
-          queueFieldDeclarations(b, fields, after, project?.config);
+          queueFieldDeclarations(b, fields, after, live?.config);
         });
         return next;
       });
@@ -127,7 +133,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     setDraftTagsets(next);
     if (meta?.renamed) {
       try {
-        await repointFields(meta.renamed);
+        await repointFields(meta.renamed, live);
       } catch (error) {
         console.error('Failed to repoint fields:', error);
         notifyError(

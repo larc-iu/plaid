@@ -24,6 +24,7 @@ const makeServer = () => {
   const client = {
     writes: [],
     projects: {
+      get: async () => structuredClone(server),
       setConfig: async (_id, ns, key, value, _audit, options) => {
         client.writes.push({ key, value, options });
         if (options && !sameConfig(options.expected, server.config[ns][key])) {
