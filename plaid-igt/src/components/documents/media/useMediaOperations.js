@@ -1086,6 +1086,17 @@ export const useMediaOperations = () => {
         return false;
       }
       const begin = plan.segment.metadata?.timeBegin ?? 0;
+      // The segment playing stops at the split, where its left half ends.
+      const playing = playingSelectionRef.current;
+      if (
+        playing &&
+        playing.start === begin &&
+        playing.end === (plan.segment.metadata?.timeEnd ?? 0) &&
+        time > playing.start &&
+        time < playing.end
+      ) {
+        setPlayingSelection({ start: playing.start, end: time });
+      }
       const ok = await shownOrRefused(doc, () => doc.splitSegment(target, { time, at: plan.at }));
       if (ok) setSelection({ start: begin, end: time });
       return ok;

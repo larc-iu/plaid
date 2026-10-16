@@ -951,6 +951,17 @@ describe('useMediaOperations: split and merge', () => {
     await h.unmount();
   });
 
+  it('a split of the segment playing moves its stop to the split', async () => {
+    const h = await mountWith();
+    await h.step(() => h.api.playRangeFromHere({ start: 0, end: 4 }));
+    expect(h.api.playingSelection).toEqual({ start: 0, end: 4 });
+    await h.step(async () => {
+      await h.api.handleSplitSegment('s1');
+    });
+    expect(h.api.playingSelection).toEqual({ start: 0, end: 2.5 });
+    await h.unmount();
+  });
+
   it('a caret in the row says where the text is cut', async () => {
     const h = await mountWith();
     await h.step(async () => {
