@@ -82,8 +82,13 @@ export const comments = {
       entityId,
     };
     this._popoverReturnId = `comment:${entityId}`;
-    this._cmtEditingId = null;
-    this._cmtEditDraft = '';
+    // An edit in progress is kept for its comment, and this thread opens on
+    // the one kept for it, if any.
+    this._cmtStashEdit();
+    const resumed = (this.comments?.threadFor(entityId) ?? []).find((c) =>
+      this._cmtEdits?.has(c.id),
+    );
+    this._cmtResumeEdit(resumed ?? null);
     this._cmtSyncUnsaved();
     this._popoverPos = this._computePopoverPos(anchorEl, 300, this._popWidth('comment'));
     this._render(true);
@@ -96,6 +101,35 @@ export const comments = {
     )?.focus();
     // The thread's real height is rarely the 300px estimate above.
     this._fitPopover();
+  },
+
+  // What is typed into a comment being edited, by comment, kept when the
+  // popover closes or another edit starts, so the edit opens again on it.
+  _cmtStashEdit() {
+    const id = this._cmtEditingId;
+    if (id) {
+      (this._cmtEdits ||= new Map()).set(id, {
+        draft: this._cmtEditDraft,
+        original: this._cmtEditOriginal,
+      });
+    }
+    this._cmtEditingId = null;
+    this._cmtEditDraft = '';
+  },
+
+  // Start editing `comment`, on what was typed into it before if anything
+  // was, or on its body. Null edits nothing.
+  _cmtResumeEdit(comment) {
+    if (!comment) {
+      this._cmtEditingId = null;
+      this._cmtEditDraft = '';
+      return;
+    }
+    const kept = this._cmtEdits?.get(comment.id);
+    this._cmtEdits?.delete(comment.id);
+    this._cmtEditingId = comment.id;
+    this._cmtEditDraft = kept?.draft ?? comment.body;
+    this._cmtEditOriginal = kept?.original ?? comment.body;
   },
 
   // What is typed into each thread's composer, by entity, kept when the
@@ -124,8 +158,14 @@ export const comments = {
       };
     }
     const typed = [...(this._cmtDrafts?.values() ?? [])].some((d) => d.trim());
-    const edit = this._cmtEditDraft.trim();
-    const editing = this._cmtEditingId && edit && edit !== this._cmtEditOriginal;
+    const changed = (draft, original) => !!draft.trim() && draft.trim() !== original;
+    // A kept edit of a comment gone meanwhile has nothing left to save into.
+    const live = new Set((this.comments?.all ?? []).map((c) => c.id));
+    const editing =
+      (this._cmtEditingId && changed(this._cmtEditDraft, this._cmtEditOriginal)) ||
+      [...(this._cmtEdits?.entries() ?? [])].some(
+        ([id, e]) => live.has(id) && changed(e.draft, e.original),
+      );
     setUnsavedDraft(
       this,
       this._cmtSending || typed || editing ? 'The comment you have typed' : null,
@@ -251,9 +291,8 @@ export const comments = {
           composerDraft: this._cmtDraftFor(entityId),
           on: {
             startEdit: (c) => {
-              this._cmtEditingId = c.id;
-              this._cmtEditDraft = c.body;
-              this._cmtEditOriginal = c.body;
+              this._cmtStashEdit();
+              this._cmtResumeEdit(c);
               this._render(true);
             },
             cancelEdit: () => {
@@ -293,6 +332,7 @@ export const comments = {
               if (!this.confirmDeleteComment) return;
               if (!(await this.confirmDeleteComment(c))) return;
               if (this._cmtEditingId === c.id) this._cmtEditingId = null;
+              this._cmtEdits?.delete(c.id);
               await store.remove(c.id);
               this._fitPopover();
             },

@@ -264,3 +264,30 @@ describe('opening the comment popover', () => {
     expect(document.activeElement).toBe(host.querySelector('.igt-cmt-pop__close'));
   });
 });
+
+// FIX-ERR1 item 8: reopening the popover threw away an edit in progress.
+describe('an edit of a comment in progress, in the grid', () => {
+  const editBox = () => host.querySelector('.igt-cmt-pop textarea[aria-label="Edit your comment"]');
+
+  it('is kept when the popover closes, and opens again with it', async () => {
+    mount({ comments: seededStore() });
+    openThread();
+    host.querySelector('[aria-label="Edit this comment"]').click();
+    const box = editBox();
+    box.value = 'check this word again';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    editor._closePopover();
+    expect(editBox()).toBeNull();
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
+    openThread();
+    expect(editBox()?.value).toBe('check this word again');
+    // Cancel lets it go.
+    [...host.querySelectorAll('.igt-cmt-pop button')]
+      .find((b) => b.textContent.trim() === 'Cancel')
+      .click();
+    editor._closePopover();
+    openThread();
+    expect(editBox()).toBeNull();
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+});
