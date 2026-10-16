@@ -48,7 +48,7 @@
   body-fn takes the setup and the id to name."
   []
   [["project" :projects "/api/v1/projects" (fn [_ id] {:id id :name "P2"})]
-   ["document" :documents "/api/v1/documents" (fn [s id] {:id id :project-id (:proj s) :name "D2"})]
+   ["document" :documents "/api/v1/documents" (fn [s id] {:id id :project-id (:proj s) :name (str "D2 " id)})]
    ["text layer" :text_layers "/api/v1/text-layers" (fn [s id] {:id id :project-id (:proj s) :name "T2"})]
    ["token layer" :token_layers "/api/v1/token-layers" (fn [s id] {:id id :text-layer-id (:tl s) :name "W2"})]
    ["span layer" :span_layers "/api/v1/span-layers" (fn [s id] {:id id :token-layer-id (:tkl s) :name "S2"})]

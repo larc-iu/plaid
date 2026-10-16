@@ -2187,7 +2187,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
         return self._request('DELETE', f'/api/v1/documents/{document_id}', audit_message=audit_message)
 
     def update(self, document_id: str, name: str, audit_message=None) -> Any:
-        """Update a document's name.
+        """Update a document's name. A name another document of the project
+        holds is refused with 422 and ``name-taken``.
 
         Args:
             document_id: The document ID
@@ -2197,8 +2198,9 @@ class DocumentsResource(_MetadataMethods, _Resource):
                              body=_body_of(name=name), audit_message=audit_message)
 
     def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None,
-               *, id: str | None = None) -> Any:
-        """Create a new document in a project.
+               *, id: str | None = None, free_name: bool = False) -> Any:
+        """Create a new document in a project. Returns ``{'id': ..., 'name': ...}``,
+        the name the document was given.
 
         Args:
             project_id: The project ID
@@ -2209,9 +2211,14 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 minted (``plaid_client.uuid7()``), so a create sent again after
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
+            free_name: A name another document of the project holds becomes
+                the first free "name (2)", "name (3)" and on. Without it such a
+                name is refused with 422 and ``name-taken``.
         """
         return self._request('POST', '/api/v1/documents',
-                             body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name, metadata=metadata), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name,
+                                           metadata=metadata, free_name=True if free_name else _UNSET),
+                             audit_message=audit_message)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -2292,15 +2299,18 @@ class DocumentsResource(_MetadataMethods, _Resource):
                              audit_message=audit_message)
 
     def copy(self, document_id: str, name: str, *, include_media: Any = _UNSET,
-             audit_message: str | None = None, id: str | None = None) -> Any:
+             audit_message: str | None = None, id: str | None = None,
+             free_name: bool = False) -> Any:
         """Copy a document and everything in it, as one operation.
 
         The copy lands in the same project, sharing the source's layers and
         the vocabulary entries its links name, and holds the source's texts,
         tokens, spans, relations and vocab links under fresh ids, with their
-        metadata. Comments do not travel. Returns ``{'id': ...}``, plus
-        ``media_error`` when the source had media the copy could not take
-        with it. Writers only.
+        metadata. Comments do not travel. Returns ``{'id': ..., 'name': ...}``,
+        plus ``media_error`` when the source had media the copy could not take
+        with it. Writers only. A name another document of the project holds is
+        refused with 422 and ``name-taken``, unless ``free_name``, which takes
+        the first free "name (2)", "name (3)" and on.
 
         Args:
             document_id: The document to copy
@@ -2314,7 +2324,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 id was used before).
         """
         return self._request('POST', f'/api/v1/documents/{document_id}/copy',
-                             body=_body_of(id=_UNSET if id is None else id, name=name, include_media=include_media),
+                             body=_body_of(id=_UNSET if id is None else id, name=name, include_media=include_media,
+                                           free_name=True if free_name else _UNSET),
                              audit_message=audit_message)
 
 

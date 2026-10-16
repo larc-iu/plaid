@@ -10,6 +10,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.document-rows :as drows]
+            [plaid.sql.document-names :as names]
             [plaid.sql.metadata :as metadata]
             [plaid.media.duration :as duration]
             [plaid.media.storage :as media])
@@ -367,46 +368,60 @@
   `:document/id` names the new document's id (a client's UUIDv7), else
   the server mints one.
 
-  Returns {:success true :extra <new-id>} on success."
+  A name another document of the project holds is refused (422), unless
+  `:document/free-name?`, which takes the first free name instead
+  (`plaid.sql.document-names`).
+
+  Returns {:success true :extra <new-id> :name <the name stored>} on success."
   ([db attrs user-id]
    (create db attrs user-id nil))
   ([db attrs user-id metadata-map]
-   (let [{:document/keys [name project]} attrs
+   (let [{:document/keys [name project free-name?]} attrs
          new-id (or (:document/id attrs) (psc/new-uuid))
-         now (psc/now-iso)]
-     (submit-operation! [tx db {:type :document/create
-                                :project project
-                                :document new-id
-                                :description (str "Create document \"" name "\" in project " project
-                                                  (when (seq metadata-map)
-                                                    (str " with " (count metadata-map) " metadata keys")))
-                                :user user-id
+         now (psc/now-iso)
+         stored (volatile! name)
+         said-name (if (and free-name? (string? name) project)
+                     (names/settle! db project name {:free? true})
+                     name)
+         result
+         (submit-operation! [tx db {:type :document/create
+                                    :project project
+                                    :document new-id
+                                    :description (str "Create document \"" said-name "\" in project " project
+                                                      (when (seq metadata-map)
+                                                        (str " with " (count metadata-map) " metadata keys")))
+                                    :user user-id
                                 ;; Body INSERTs at version=1; skip the post-body bump
                                 ;; (otherwise fresh documents would start at v2 and the
                                 ;; first audit row would be the version-update, not the
                                 ;; INSERT).
-                                :skip-doc-version-bump? true}]
+                                    :skip-doc-version-bump? true}]
                         ;; Validation inside the body so a bad
                         ;; name produces {:success false :code 400} via the
                         ;; outer catch in submit-operation*.
-                        (psc/assert-valid-name! name)
-                        (psc/claim-ids! tx :documents "document" [(:document/id attrs)])
-                        (when (nil? (psc/fetch-by-id tx :projects project))
-                          (throw (ex-info (psc/err-msg-not-found "Project" project)
-                                          {:id project :code 400})))
-                        (crud/insert! tx :documents
-                                      {:id new-id
-                                       :name name
-                                       :project_id project
-                                       :version 1
-                                       :created_at now
-                                       :modified_at now})
-                        (when (seq metadata-map)
-                          (metadata/insert-metadata! tx "document" new-id metadata-map))
-                        new-id))))
+                            (psc/assert-valid-name! name)
+                            (psc/claim-ids! tx :documents "document" [(:document/id attrs)])
+                            (when (nil? (psc/fetch-by-id tx :projects project))
+                              (throw (ex-info (psc/err-msg-not-found "Project" project)
+                                              {:id project :code 400})))
+                            (let [name (names/settle! tx project name {:free? free-name?})]
+                              (psc/assert-valid-name! name)
+                              (vreset! stored name)
+                              (crud/insert! tx :documents
+                                            {:id new-id
+                                             :name name
+                                             :project_id project
+                                             :version 1
+                                             :created_at now
+                                             :modified_at now}))
+                            (when (seq metadata-map)
+                              (metadata/insert-metadata! tx "document" new-id metadata-map))
+                            new-id)]
+     (cond-> result (:success result) (assoc :name @stored)))))
 
 (defn merge
-  "Update mutable document fields. Currently supports :document/name.
+  "Update mutable document fields. Currently supports :document/name, which
+  is refused (422) when another document of the project holds it.
   Always bumps `version`, and `modified_at` unless the write is a repair
   (`op/modified-at`)."
   [db eid m user-id]
@@ -426,6 +441,8 @@
                      (let [existing (psc/fetch-by-id tx :documents eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Document" eid) {:code 404 :id eid})))
+                       (when-let [n (:document/name m)]
+                         (names/settle! tx (:project_id existing) n {:except eid}))
                        (let [attrs (cond-> {:modified_at (op/modified-at tx existing (op/op-ts))
                                             :version (inc (or (:version existing) 1))}
                                      (some? (:document/name m))
@@ -510,22 +527,32 @@
   it always did, and `:media-error` still reports it.
 
   `:id` in the options names the copy's id (a client's UUIDv7), else the
-  server mints one. The rows inside the copy always get server ids."
+  server mints one. The rows inside the copy always get server ids.
+
+  A name another document of the project holds is refused (422), unless
+  `:free-name?` in the options, which takes the first free name instead.
+  The result's `:extra` carries the name stored beside the id."
   ([db src-id new-name user-id]
    (copy db src-id new-name user-id nil))
-  ([db src-id new-name user-id {:keys [include-media? id] :or {include-media? true}}]
+  ([db src-id new-name user-id {:keys [include-media? id free-name?] :or {include-media? true}}]
    (let [new-id (or id (psc/new-uuid))
          now (psc/now-iso)
          ;; The history names the source as a reader knows it, by its name.
          ;; A missing source fails inside the operation, before anything is
          ;; written under this description.
-         src-name (or (:name (psc/fetch-by-id db :documents src-id)) src-id)
+         src (psc/fetch-by-id db :documents src-id)
+         src-name (or (:name src) src-id)
+         ;; The name the copy will most likely take, for the description. The
+         ;; one stored is settled inside the operation.
+         said-name (if (and free-name? src (string? new-name))
+                     (names/settle! db (:project_id src) new-name {:free? true})
+                     new-name)
          result
          (submit-operation! [tx db {:type :document/copy
                                     :project (project-id db src-id)
                                     :document new-id
                                     :description (str "Copy \"" src-name
-                                                      "\" as \"" new-name "\"")
+                                                      "\" as \"" said-name "\"")
                                     :user user-id
                                     ;; The body INSERTs at version=1, as
                                     ;; `create` does; skip the post-body bump so
@@ -537,7 +564,9 @@
                               (when (nil? src)
                                 (throw (ex-info (psc/err-msg-not-found "Document" src-id)
                                                 {:code 404 :id src-id})))
-                              (let [rows (drows/read-rows tx src-id)
+                              (let [new-name (names/settle! tx (:project_id src) new-name {:free? free-name?})
+                                    _ (psc/assert-valid-name! new-name)
+                                    rows (drows/read-rows tx src-id)
                                     ;; One fresh id per source row of every kind
                                     ;; in `metadata-reference-kinds`, minted up
                                     ;; front: everything that points at a row
@@ -614,7 +643,7 @@
                                                       :document_id new-id
                                                       :tokens (mapv token-ids (drows/tokens-of r))))
                                        (:vocab-links rows)))
-                                {:id new-id})))]
+                                {:id new-id :name new-name})))]
      (if (and (:success result) include-media? (media/media-exists? src-id))
        ;; `after-commit!` runs this inline outside an atomic batch (where
        ;; the operation above has already committed), and holds it until

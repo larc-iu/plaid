@@ -731,8 +731,9 @@ async function buildOtherDocuments(ctx) {
   // No text yet.
   await client.documents.create(projectId, 'Notes');
 
-  // Sentences but no words, under a name another document already has.
-  const untok = await client.documents.create(projectId, 'Notes');
+  // Sentences but no words, under a name another document has but for case
+  // (names are unique in a project, and a file system may fold case).
+  const untok = await client.documents.create(projectId, 'notes');
   doc = await reload(client, projectId, untok.id);
   await must(
     doc,

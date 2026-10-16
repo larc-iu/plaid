@@ -54,7 +54,11 @@ const tabSeen = (name) => (page) => expect(page.getByRole('tab', { name })).toBe
 test.beforeAll(async () => {
   ({ userId } = readToken());
   ({ projectId, documentId } = await getFixture());
-  otherDocumentId = (await client().documents.create(projectId, SECOND_DOCUMENT)).id;
+  // Reused when a run that died left it: names are unique in a project.
+  const left = (await client().projects.listDocuments(projectId)).find(
+    (d) => d.name === SECOND_DOCUMENT,
+  );
+  otherDocumentId = (left ?? (await client().documents.create(projectId, SECOND_DOCUMENT))).id;
 });
 
 test.afterAll(async () => {

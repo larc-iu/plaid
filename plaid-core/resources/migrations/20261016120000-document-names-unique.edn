@@ -1,0 +1,8 @@
+;; Document names are unique in a project (2026-10-16): the documents that
+;; shared a name are renamed, the oldest keeping it, and a unique index
+;; refuses a duplicate from then on. Code, not SQL, so each rename is an
+;; audited operation that History and as-of reads show.
+{:ns plaid.sql.document-names
+ :up-fn "up"
+ :down-fn "down"
+ :transaction? false}

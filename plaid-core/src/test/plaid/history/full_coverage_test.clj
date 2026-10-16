@@ -860,8 +860,8 @@
 
 (deftest ^:integration operations-ts-sequential-commit-order-has-no-ties
   (let [proj (create-test-project admin-request "MonoTsProj")]
-    (dotimes [_ 25]
-      (create-test-document admin-request proj "d"))
+    (dotimes [i 25]
+      (create-test-document admin-request proj (str "d" i)))
     (let [tss (->> (jdbc/execute! plaid.fixtures/db
                                   ["SELECT ts FROM operations ORDER BY ts, id"]
                                   {:builder-fn rs/as-unqualified-maps})

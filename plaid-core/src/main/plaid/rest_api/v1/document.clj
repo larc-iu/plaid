@@ -103,23 +103,28 @@
    ["" {:post {:summary (str "Create a new document in a project. Requires <body>project-id</body> and <body>name</body>. "
                              "<body>id</body>, optional, is the new document's id, a UUIDv7 the client minted (else the "
                              "server mints one). An id used before, even by a document since deleted, is refused with "
-                             "409 and <body>id-taken</body>.")
+                             "409 and <body>id-taken</body>. A name another document of the project holds is refused "
+                             "with 422 and <body>name-taken</body>, unless <body>free-name</body> is true, which takes "
+                             "the first free name instead: the name itself, else \"name (2)\", \"name (3)\" and on. "
+                             "The answer carries the <body>name</body> stored.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:body [:map
                                    [:id {:optional true} :uuid]
                                    [:project-id :uuid]
                                    [:name :string]
+                                   [:free-name {:optional true} boolean?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [id project-id name metadata]} :body} :parameters db :db user-id :user/id}]
+               :handler (fn [{{{:keys [id project-id name metadata free-name]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs (cond-> {:document/project project-id
-                                               :document/name name}
+                                               :document/name name
+                                               :document/free-name? (true? free-name)}
                                         (some? id) (assoc :document/id id))
                                 result (doc/create db attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-version-in-header
                                {:status 201
-                                :body {:id (:extra result)}}
+                                :body {:id (:extra result) :name (:name result)}}
                                db (:extra result))
                               {:status (or (:code result) 500)
                                :body (prm/error-body result)})))}}]
@@ -195,20 +200,22 @@
                                       (prm/assoc-document-version-in-header
                                        {:status 200 :body body}
                                        db document-id))))))))}
-         :patch {:summary "Update a document. Supported keys:\n\n<body>name</body>: update a document's name."
+         :patch {:summary (str "Update a document. Supported keys:\n\n<body>name</body>: update a document's name. "
+                               "A name another document of the project holds is refused with 422 and "
+                               "<body>name-taken</body>.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:body [:map [:name :string]]
                               :query [:map [:document-version {:optional true} :int]]}
                  :handler (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id}]
-                            (let [{:keys [success code error]} (doc/merge db document-id {:document/name name} user-id)]
+                            (let [{:keys [success code] :as result} (doc/merge db document-id {:document/name name} user-id)]
                               (if success
                                 (prm/assoc-document-version-in-header
                                  {:status 200
                                   :body (doc/get db document-id)}
                                  db document-id)
                                 {:status (or code 500)
-                                 :body {:error (or error "Internal server error")}})))}
+                                 :body (prm/error-body result)})))}
          :delete {:summary "Delete a document and all data contained."
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
@@ -279,20 +286,26 @@
                            "carries <body>media-error</body> and the copy is otherwise complete. "
                            "Requires writer privileges. <body>id</body>, optional, is the copy's id, a UUIDv7 "
                            "the client minted (else the server mints one). An id used before is refused with 409 "
-                           "and <body>id-taken</body>. The rows inside the copy always get fresh server ids.")
+                           "and <body>id-taken</body>. The rows inside the copy always get fresh server ids. "
+                           "A name another document of the project holds is refused with 422 and "
+                           "<body>name-taken</body>, unless <body>free-name</body> is true, which takes the first "
+                           "free name instead: the name itself, else \"name (2)\", \"name (3)\" and on. The answer "
+                           "carries the <body>name</body> stored.")
              :middleware [[pra/wrap-writer-required get-project-id]]
              :parameters {:body [:map
                                  [:id {:optional true} :uuid]
                                  [:name :string]
-                                 [:include-media {:optional true} boolean?]]}
+                                 [:include-media {:optional true} boolean?]
+                                 [:free-name {:optional true} boolean?]]}
              :handler (fn [{{{:keys [document-id]} :path
-                             {:keys [id name include-media]} :body} :parameters
+                             {:keys [id name include-media free-name]} :body} :parameters
                             db :db
                             user-id :user/id}]
                         (let [{:keys [success extra code] :as result}
                               (doc/copy db document-id name user-id
                                         {:include-media? (if (some? include-media) include-media true)
-                                         :id id})]
+                                         :id id
+                                         :free-name? (true? free-name)})]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 201 :body extra}

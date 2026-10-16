@@ -2950,7 +2950,8 @@ class PlaidClient {
           auditMessage,
         }),
       /**
-       * Update a document's name.
+       * Update a document's name. A name another document of the project holds
+       * is refused with 422 and `name-taken`.
        * @param {string} documentId - The document ID
        * @param {string} name - The name
        * @param {string} [auditMessage] - Audit message for this write
@@ -2969,12 +2970,21 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-       * @returns {Promise<Created>}
+       * @param {boolean} [opts.freeName] - A name another document of the project holds becomes
+       *   the first free "name (2)", "name (3)" and on. Without it such a name is refused with 422
+       *   and `name-taken`.
+       * @returns {Promise<{id: string, name: string}>} The new id and the name stored
        */
-      create: (projectId, name, metadata, auditMessage, { id } = {}) =>
+      create: (projectId, name, metadata, auditMessage, { id, freeName } = {}) =>
         this._request("POST", "/api/v1/documents", {
           auditMessage,
-          body: bodyOf({ id, "project-id": projectId, name, metadata }),
+          body: bodyOf({
+            id,
+            "project-id": projectId,
+            name,
+            metadata,
+            "free-name": freeName || undefined,
+          }),
         }),
       /**
        * Copy a document and everything in it into a new document of the same
@@ -2982,19 +2992,27 @@ class PlaidClient {
        * the vocabulary entries its links name, and holds the source's texts,
        * tokens, spans, relations and vocab links under fresh ids, with their
        * metadata. Comments do not travel. The media file does, unless
-       * `includeMedia` is false. Resolves to `{ id }`, plus `mediaError` when
-       * the source had media the copy could not take with it.
+       * `includeMedia` is false. Resolves to `{ id, name }`, plus `mediaError` when
+       * the source had media the copy could not take with it. A name another
+       * document of the project holds is refused with 422 and `name-taken`,
+       * unless `freeName`, which takes the first free "name (2)", "name (3)"
+       * and on.
        * @param {string} documentId - The document to copy
        * @param {string} name - The new document's name
-       * @param {{includeMedia?: boolean, id?: string}} [options] - `{ includeMedia }`: false leaves the media
+       * @param {{includeMedia?: boolean, id?: string, freeName?: boolean}} [options] - `{ includeMedia }`: false leaves the media
        *   file behind
        * @param {string} [auditMessage] - Custom audit message for this operation
-       * @returns {Promise<{id: string, mediaError?: string}>}
+       * @returns {Promise<{id: string, name: string, mediaError?: string}>}
        */
-      copy: (documentId, name, { includeMedia, id } = {}, auditMessage) =>
+      copy: (documentId, name, { includeMedia, id, freeName } = {}, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/copy`, {
           auditMessage,
-          body: bodyOf({ id, name, "include-media": includeMedia }),
+          body: bodyOf({
+            id,
+            name,
+            "include-media": includeMedia,
+            "free-name": freeName || undefined,
+          }),
         }),
     };
 

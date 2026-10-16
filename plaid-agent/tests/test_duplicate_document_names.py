@@ -11,7 +11,9 @@ from test_tools import FakeClient, call_tool, fake_ws
 
 def _ws(nfd_in=()):
     docs = {}
-    for i, name in enumerate(['Text 1', 'Text 1', 'Text 2'], 1):
+    # Core refuses a name another document holds exactly, so the two that
+    # share one here differ by case, which the assistant reads as one name.
+    for i, name in enumerate(['Text 1', 'text 1', 'Text 2'], 1):
         raw = document_raw()
         raw['id'], raw['name'] = f'd{i}', name
         if raw['id'] in nfd_in:
@@ -33,7 +35,7 @@ def test_analyses_of_and_check_integrity_print_references_as_search_does():
 
 def test_check_integrity_names_a_document_not_in_nfc_with_its_id_where_the_name_is_shared():
     out = call_tool(_ws(nfd_in=('d2', 'd3')), 'check_integrity', {})
-    assert 'precomposed characters exist): "Text 1" (d2), "Text 2"' in out, out
+    assert 'precomposed characters exist): "text 1" (d2), "Text 2"' in out, out
 
 
 def test_a_rule_refused_at_approval_names_a_shared_name_with_its_id():

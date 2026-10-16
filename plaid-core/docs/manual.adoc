@@ -777,6 +777,12 @@ A project has many **documents**, and each has a name and a unique ID:
 { id: "01d01a27", name: "Document 1", project: "1cce50df" }
 ----
 
+Document names are unique in a project, compared exactly as stored (composed, NFC).
+A create, rename or copy to a name another document of the project holds is refused with 422, and the answer's `name-taken` holds the name.
+A create or copy with `free-name` (`freeName` in the JavaScript client, `free_name` in Python) takes the first free name instead: the name itself, else "Name (2)", "Name (3)" and on.
+Both answer with the `name` the document was given.
+A restore keeps the document's current name when the name it had then belongs to another document now.
+
 === Reading part of a document
 
 Reading a document with `include_body` / `includeBody` returns every layer in the project.

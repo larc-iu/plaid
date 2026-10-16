@@ -76,6 +76,25 @@
                "body": {"name": "Doc, copy", "include-media": false}}]
   },
   {
+    "name": "a copy that takes the first free name asks for it",
+    "js": ["documents.copy", "D1", "Doc", {"freeName": true}],
+    "py": ["documents.copy", "D1", "Doc"],
+    "py_kw": {"free_name": true},
+    "sends": [{"method": "POST", "path": "/api/v1/documents/D1/copy", "body": {"name": "Doc", "free-name": true}}]
+  },
+  {
+    "name": "a create that takes the first free name asks for it",
+    "js": ["documents.create", "P1", "Doc", "$undefined", "$undefined", {"freeName": true}],
+    "py": ["documents.create", "P1", "Doc"],
+    "py_kw": {"free_name": true},
+    "sends": [{"method": "POST", "path": "/api/v1/documents", "body": {"project-id": "P1", "name": "Doc", "free-name": true}}]
+  },
+  {
+    "name": "a create without freeName leaves the field out",
+    "js": ["documents.create", "P1", "Doc"],
+    "sends": [{"method": "POST", "path": "/api/v1/documents", "body": {"project-id": "P1", "name": "Doc"}}]
+  },
+  {
     "name": "restore posts the moment to go back to",
     "js": ["documents.restore", "D1", "2026-06-01T12:00:00Z"],
     "sends": [{"method": "POST", "path": "/api/v1/documents/D1/restore", "query": {"as-of": "2026-06-01T12:00:00Z"}}]

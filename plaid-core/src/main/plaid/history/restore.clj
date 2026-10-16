@@ -47,6 +47,7 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.constraints.token :as tc]
+            [plaid.sql.document-names :as names]
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :refer [submit-operation!]]
@@ -408,7 +409,12 @@
   [db doc-id ts]
   (let [[tgt skipped] (prune-target db (compose-target (target-rows! db doc-id ts)))
         cur (drows/read-rows db doc-id)
-        p (assoc (plan tgt cur) :document-metadata (meta-of (:document tgt)))]
+        p (assoc (plan tgt cur) :document-metadata (meta-of (:document tgt)))
+        ;; Names are unique in a project: a name another document has taken
+        ;; since stays with it, and this document keeps the name it has.
+        p (cond-> p
+            (and (:name p) (names/holder db (:project_id (:document cur)) (:name p) doc-id))
+            (assoc :name nil))]
     {:plan p :current cur :skipped skipped :summary (summarize p skipped)}))
 
 (defn preview
