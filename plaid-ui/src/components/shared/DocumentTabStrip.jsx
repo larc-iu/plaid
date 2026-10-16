@@ -142,7 +142,10 @@ export const DocumentTabStrip = ({
             },
           ]}
         />
-        {status && <span className="ms-auto shrink-0">{status}</span>}
+        {/* A flex box, so the pill is as tall as itself and no taller: a
+            line box around it took the page's line height and pushed the
+            row, and everything under it, down when the pill appeared. */}
+        {status && <span className="ms-auto flex shrink-0 items-center">{status}</span>}
       </div>
 
       {/* The name takes its own direction inside a heading that stays with the
