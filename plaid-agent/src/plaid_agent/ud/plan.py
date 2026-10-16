@@ -18,7 +18,6 @@ to exist first. So every lemma span a plan has to create goes in one batch,
 and the relations go in the next.
 """
 
-import re
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
@@ -882,14 +881,7 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int,
         if not (moved or parsed_before):
             raise PlanError(said, b.applied, total) from e
         row = op.get(ok.ROW)
-        # The parser's own count of a row over one document, as it says it
-        # ("230 of 300 sentences were parsed"), kept on the record for the
-        # card (Luke 2026-10-16).
-        counted = re.search(r'(\d+) of (\d+) sentences were parsed', str(e))
-        one = len(op.get('document_ids') or []) == 1
-        raise PlanError(said, b.applied, total, partly=[row] if row is not None else [],
-                        partly_count=(int(counted.group(1)), int(counted.group(2)), 'sentences')
-                        if counted and moved and one else None) from e
+        raise PlanError(said, b.applied, total, partly=[row] if row is not None else []) from e
 
 
 def _version(client, document_id: str) -> Optional[int]:
