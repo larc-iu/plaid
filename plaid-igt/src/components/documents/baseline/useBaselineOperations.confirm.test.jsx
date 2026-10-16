@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { fakeDocument, mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
-import { removedStretches, useBaselineOperations } from './useBaselineOperations.js';
+import {
+  baselineLossSentence,
+  removedStretches,
+  useBaselineOperations,
+} from './useBaselineOperations.js';
 
 const removesText = (base, gaps) => removedStretches(base, gaps).length > 0;
 
@@ -18,7 +22,13 @@ const tokenized = (body) =>
     body,
     layerInfo: {
       primaryTextLayer: { id: 'tl-1', text: { id: 't-1', digest: 'd0' } },
-      primaryTokenLayer: { id: 'w', tokens: [{ id: 'w1', begin: 0, end: 3 }] },
+      primaryTokenLayer: {
+        id: 'w',
+        tokens: [
+          { id: 'w1', begin: 0, end: 3 },
+          { id: 'w2', begin: 4, end: 7 },
+        ],
+      },
     },
   });
 
@@ -144,6 +154,51 @@ describe('useBaselineOperations, the counts in the confirm', () => {
     expect(asks()).toBe(false);
     expect(doc.editBaselineText).toHaveBeenCalled();
     await h.unmount();
+  });
+
+  // REV7-IGT-4: "Ana, kuti", the comma deleted. No word changes, with or
+  // without ud's token over the comma and ud's lemma on it.
+  const anaKuti = (ud) => {
+    const words = [
+      { id: 'w1', begin: 0, end: 3 },
+      ...(ud ? [{ id: 'p1', begin: 3, end: 4 }] : []),
+      { id: 'w2', begin: 5, end: 9 },
+    ];
+    const doc = withLayers(
+      'Ana, kuti',
+      words,
+      ud ? [{ id: 'lemma', tokens: ['p1'], value: ',' }] : [],
+    );
+    if (ud) {
+      // ud's syntactic word nested in its comma token, with a lemma of its own.
+      doc.layerInfo.primaryTextLayer.tokenLayers.push({
+        id: 'ud-words',
+        parentTokenLayer: 'w',
+        tokens: [{ id: 'sw1', begin: 3, end: 4 }],
+        spanLayers: [{ id: 'ud-lemma', spans: [{ id: 'l2', tokens: ['sw1'], value: ',' }] }],
+      });
+    }
+    return doc;
+  };
+
+  it('asks nothing for a deletion that changes no word, with or without ud punctuation tokens', async () => {
+    for (const ud of [false, true]) {
+      const doc = anaKuti(ud);
+      const h = await save(doc, (h) => change(h, 3, 4, 'Ana kuti', 3));
+      expect(asks()).toBe(false);
+      expect(doc.editBaselineText).toHaveBeenCalled();
+      await h.unmount();
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('says the same with or without ud punctuation tokens when a word goes or changes', () => {
+    for (const ud of [false, true]) {
+      const doc = anaKuti(ud);
+      expect(baselineLossSentence(doc, [[0, 4]])).toBe('Deletes 1 word.');
+      expect(baselineLossSentence(doc, [[2, 4]])).toBe('Changes the words in the removed text.');
+      expect(baselineLossSentence(doc, [[3, 5]])).toBe('');
+    }
   });
 });
 

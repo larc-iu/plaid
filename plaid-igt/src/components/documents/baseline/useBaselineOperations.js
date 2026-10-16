@@ -52,24 +52,38 @@ export function removedStretches(base, gaps) {
 }
 
 // What a save that takes away `ranges` deletes, as a sentence for its
-// question: the words wholly inside a removed stretch (never a token the
-// ignored-tokens rule excludes, which reads as text), and the shared loss
-// counter's count of what hangs off every token that goes.
-function baselineLossSentence(doc, ranges) {
-  const loss = countTextDeleteLoss(doc.layerInfo?.primaryTextLayer?.tokenLayers || [], ranges, {
-    vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
-  });
+// question: the words wholly inside a removed stretch, and the shared loss
+// counter's count of what hangs off every token that goes. A token the
+// ignored-tokens rule excludes reads as text here (punctuation ud's Tokenize
+// made, say), so neither it nor what another app nested in it or put on it
+// is counted: the question is the one the same text with no such token gets
+// (ruling 29). A stretch that only cuts a word down changes that word. One
+// that touches no word asks nothing: '' then.
+export function baselineLossSentence(doc, ranges) {
   const layer = doc.layerInfo?.primaryTokenLayer;
+  const tokenLayers = doc.layerInfo?.primaryTextLayer?.tokenLayers || [];
   const cfg = readIgnoredTokens(layer?.config);
   const body = Array.from(doc.body || '');
-  const words = (layer?.tokens || []).filter(
-    (t) =>
-      ranges.some(([b, e]) => b <= t.begin && t.end <= e) &&
-      !isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg),
-  ).length;
+  const ignored = [];
+  const shown = [];
+  for (const t of layer?.tokens || []) {
+    (isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg) ? ignored : shown).push(t);
+  }
+  const inIgnored = (t) => ignored.some((g) => g.begin <= t.begin && t.end <= g.end);
+  const except = tokenLayers.flatMap((tl) =>
+    (tl.tokens || []).filter((t) => (tl.id === layer?.id ? !shown.includes(t) : inIgnored(t))),
+  );
+  const loss = countTextDeleteLoss(tokenLayers, ranges, {
+    vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+    except: except.map((t) => t.id),
+  });
+  const words = shown.filter((t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e)).length;
   const gone = [words && countOf(words, 'word'), lossPhrase(loss)].filter(Boolean).join(' and ');
   const cut = lossPhrase(loss.shortened);
-  return [gone && `Deletes ${gone}.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
+  const said = [gone && `Deletes ${gone}.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
+  if (said) return said;
+  const touched = shown.some((t) => ranges.some(([b, e]) => b < t.end && t.begin < e));
+  return touched ? 'Changes the words in the removed text.' : '';
 }
 
 // Does the document hold a word? A token the ignored-tokens rule excludes is
@@ -145,13 +159,14 @@ export const useBaselineOperations = () => {
     // On a tokenized document, a save that deletes or replaces text can
     // delete tokens and the annotations on them, so it asks first. One that
     // only inserts, glued to a word or not, keeps every token (Luke,
-    // 2026-10-16).
+    // 2026-10-16), and one that touches no word changes none.
     const removed = hasWords(doc) ? removedStretches(editLog.log.base, editLog.gaps()) : [];
+    const loses = removed.length > 0 ? baselineLossSentence(doc, removed) : '';
     if (
-      removed.length > 0 &&
+      loses &&
       !(await confirm({
         title: 'Save baseline changes?',
-        description: baselineLossSentence(doc, removed) || 'Changes the words in the removed text.',
+        description: loses,
         confirmLabel: 'Save anyway',
         destructive: true,
       }))
