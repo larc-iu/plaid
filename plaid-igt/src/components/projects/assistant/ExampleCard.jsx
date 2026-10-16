@@ -134,7 +134,12 @@ export const ExampleCard = ({ c, projectId }) => {
         </div>
       )}
       <div ref={scroller} className="overflow-x-auto">
-        <table dir={dir} className="border-separate border-spacing-0 whitespace-nowrap">
+        {/* A right-to-left table narrower than the card sits at its right
+            edge, where the sentence starts. */}
+        <table
+          dir={dir}
+          className={`border-separate border-spacing-0 whitespace-nowrap${dir === 'rtl' ? ' ml-auto' : ''}`}
+        >
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>

@@ -60,11 +60,14 @@ describe('ExampleCard scrolling', () => {
       };
       const r = await renderComponent(<ExampleCard c={rtl} projectId="p1" />);
       expect(r.container.querySelector('table').getAttribute('dir')).toBe('rtl');
+      // Narrower than the card, it sits at the right edge.
+      expect(r.container.querySelector('table').classList.contains('ml-auto')).toBe(true);
       expect(r.container.querySelector('.overflow-x-auto').scrollLeft).toBe(600);
       await r.unmount();
       // An LTR one stays at its start, the left.
       const l = await renderComponent(<ExampleCard c={{ ...c, focus: [] }} projectId="p1" />);
       expect(l.container.querySelector('.overflow-x-auto').scrollLeft).toBe(0);
+      expect(l.container.querySelector('table').classList.contains('ml-auto')).toBe(false);
       await l.unmount();
     } finally {
       undo.forEach((f) => f());
