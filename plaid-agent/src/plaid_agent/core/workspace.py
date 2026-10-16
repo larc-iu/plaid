@@ -62,9 +62,11 @@ def name_key(name: str) -> str:
 
 
 def name_fold(name: str) -> str:
-    """A document name as core keeps names apart (ruling 5): NFC, then
-    casefolded. Two names that fold alike cannot both be in a project."""
-    return unicodedata.normalize('NFC', name).casefold()
+    """A document name as core keeps names apart (ruling 5): NFC, casefolded,
+    NFC again, as core's ``document-names/fold``. Two names that fold alike
+    cannot both be in a project. The second NFC matters: ``ſ́`` casefolds to
+    a decomposed ``ś``."""
+    return unicodedata.normalize('NFC', unicodedata.normalize('NFC', name).casefold())
 
 
 def loose_name_key(name: str) -> str:

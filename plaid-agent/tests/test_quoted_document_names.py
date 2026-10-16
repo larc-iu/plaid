@@ -82,6 +82,21 @@ def test_igt_refuses_a_name_another_document_holds_naming_its_spelling():
     assert out == 'Error: Another document is already named "Text 1". Pick a different name.', out
 
 
+def test_igt_refuses_a_name_core_folds_alike_typed_in_another_spelling():
+    """Core folds NFC, casefold, NFC: a name typed decomposed, or one whose
+    casefold decomposes (long s with an acute folds to s with an acute), is
+    the stored name. Both igt tools refuse it before core does."""
+    w = _ws(('Café', 'Text 2', '\u015bwiat'))
+    out = run(w, 'create_document', {'name': 'CAFE\u0301', 'text': 'a b'})
+    assert out == 'Error: A document named "Café" already exists. Pick a different name.', out
+    out = run(w, 'rename_document', {'document': 'Text 2', 'new_name': 'cafe\u0301'})
+    assert out == 'Error: Another document is already named "Café". Pick a different name.', out
+    out = run(w, 'create_document', {'name': '\u017f\u0301wiat', 'text': 'a b'})
+    assert out == 'Error: A document named "\u015bwiat" already exists. Pick a different name.', out
+    out = run(w, 'rename_document', {'document': 'Text 2', 'new_name': '\u017f\u0301WIAT'})
+    assert out == 'Error: Another document is already named "\u015bwiat". Pick a different name.', out
+
+
 def test_ud_reads_print_the_name_escaped_and_without_an_id(monkeypatch):
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.query import _ref_index
