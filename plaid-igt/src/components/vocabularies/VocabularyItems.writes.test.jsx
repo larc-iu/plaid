@@ -975,3 +975,62 @@ describe('a type changed on the entry form', () => {
     await view.unmount();
   });
 });
+
+describe('a new sense opened by URL', () => {
+  it("starts from its headword's form when the entries arrive after the page", async () => {
+    const { client } = stub([{ id: 'h', form: 'kai' }]);
+    const gate = deferred();
+    const get = client.vocabLayers.get;
+    client.vocabLayers.get = async (...args) => {
+      await gate.promise;
+      return get(...args);
+    };
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=new&parent=h']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+        />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    await view.step(async () => {
+      gate.resolve();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(formInput().value).toBe('kai');
+    await view.unmount();
+  });
+});
+
+describe('the empty pane', () => {
+  it('offers New only to a maintainer', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    auth.client = client;
+    const pane = () =>
+      all(document.body, 'p').find((p) => p.textContent.startsWith('Select an entry'))?.textContent;
+    const reader = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+          canManage={false}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 3; i++) await reader.step(async () => {});
+    expect(pane()).toBe('Select an entry.');
+    await reader.unmount();
+
+    const maintainer = await mount(client, '/vocabularies/v1');
+    expect(pane()).toBe('Select an entry, or click “New” to add one.');
+    await maintainer.unmount();
+  });
+});

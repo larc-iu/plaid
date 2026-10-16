@@ -725,6 +725,9 @@ export const VocabularyItems = ({
       // sense the entry's form, and "adidi 1.2" reads that way), so Add sense
       // starts from that form. A new entry starts blank.
       const parent = newParent && tree.byId.get(newParent);
+      // A sense opened by URL before the entries arrive waits for its
+      // headword, or it would be seeded blank and never filled.
+      if (newParent && !parent && loading) return;
       dispatch({ type: 'draft/seed', seedKey, form: parent?.form ?? '', fields: {} });
       return;
     }
@@ -736,7 +739,7 @@ export const VocabularyItems = ({
       form: item.form,
       fields: editableMetadata(item.metadata),
     });
-  }, [selectedId, newParent, items, tree, draft.seedKey, pastTime]);
+  }, [selectedId, newParent, items, tree, draft.seedKey, pastTime, loading]);
 
   // A row of the roleset band whose name is not an ARG or repeats another
   // (RolesetBand's onProblem). The draft's fields keep that argument as it was
@@ -1364,7 +1367,7 @@ export const VocabularyItems = ({
         {!selectedId ? (
           <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
             <p className="text-sm text-muted-foreground">
-              Select an entry, or click “New” to add one.
+              {canManage ? 'Select an entry, or click “New” to add one.' : 'Select an entry.'}
             </p>
           </div>
         ) : isNew ? (
