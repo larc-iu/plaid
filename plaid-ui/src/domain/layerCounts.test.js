@@ -61,3 +61,37 @@ describe('wordCountsByProject', () => {
     expect(c.query).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('wordCountsByProject with a word value spec', () => {
+  // Surfaces per layer: a token whose surface the spec does not match is no word.
+  const SURFACES = {
+    'a-words': ['Ana', 'runs', '.', 'Ben', '...'],
+    'b-words': ['uh', 'dog', 'uh'],
+    'c-words': ['x', '.'],
+  };
+  const matches = (spec, s) => spec.regex.split('|').some((alt) => alt === s);
+  const valueClient = () => ({
+    query: vi.fn(async ({ where, scope }) => {
+      const spec = where[1]?.[2]?.value;
+      const out = [];
+      for (const [layer, surfaces] of Object.entries(SURFACES)) {
+        if (scope && !scope.projectIds.includes(layer[0])) continue;
+        out.push([layer, surfaces.filter((s) => !spec || matches(spec, s)).length]);
+      }
+      return { results: out };
+    }),
+  });
+  const ps = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const words = (p) => `${p.id}-words`;
+  // a and c share one spec, b has its own, so two more queries.
+  const specs = { a: { regex: 'Ana|runs|Ben' }, b: { regex: 'dog' }, c: null };
+  const spec = (p) => specs[p.id] && { regex: specs[p.id].regex };
+
+  it('counts each project by its own spec, and a project without one by every token', async () => {
+    const c = valueClient();
+    expect(await wordCountsByProject(c, ps, words, null, spec)).toEqual({ a: 3, b: 1, c: 2 });
+    expect(c.query).toHaveBeenCalledTimes(3);
+    const scoped = c.query.mock.calls.map(([q]) => q.scope?.projectIds ?? null);
+    expect(scoped).toEqual([null, ['a'], ['b']]);
+  });
+});

@@ -25,6 +25,9 @@ import { EmptyState } from './EmptyState.jsx';
  * no word of their extent is an anti-join that took two seconds on a 250,000
  * token treebank, against 50ms for the plain counts.
  *
+ * `wordValue`, optional, is a query value spec a word's surface matches:
+ * plaid-igt's ignored-tokens rule, so punctuation ud's Tokenize made is no word.
+ *
  * `href(documentId, {wordCount, hasWordLayer, wordsLoading})` is the app's too.
  * It takes the counts because plaid-ud sends a document with nothing in it to
  * the text editor instead of the annotation grid.
@@ -36,6 +39,7 @@ export const DocumentTable = ({
   project,
   wordLayerId,
   seedLayerId,
+  wordValue,
   href,
   defaultSort,
 }) => {
@@ -49,6 +53,9 @@ export const DocumentTable = ({
   // rather than a spinner once the read has landed.
   const [myLastEdits, setMyLastEdits] = useState({});
   const [mineLoading, setMineLoading] = useState(true);
+
+  // By value: the app may build the spec anew each render.
+  const wordValueKey = JSON.stringify(wordValue ?? null);
 
   // Per-document word counts: an aggregate query over the layer's tokens,
   // grouped by document, and the seed layer's for a document with no words. Sub-word units are on another layer and would inflate
@@ -67,13 +74,16 @@ export const DocumentTable = ({
         return;
       }
       try {
-        const countPerDoc = (layer) =>
+        const countPerDoc = (layer, value = null) =>
           client.query({
-            where: [['token', '?t', { layer, doc: { var: '?d' } }]],
+            where: [
+              ['token', '?t', { layer, doc: { var: '?d' } }],
+              ...(value ? [['token', '?t', { value }]] : []),
+            ],
             return: { group: ['?d'], aggregates: [['count']] },
           });
         const [res, seeds] = await Promise.all([
-          countPerDoc(wordLayerId),
+          countPerDoc(wordLayerId, JSON.parse(wordValueKey)),
           seedLayerId ? countPerDoc(seedLayerId) : null,
         ]);
         const byDoc = {};
@@ -100,7 +110,7 @@ export const DocumentTable = ({
     return () => {
       cancelled = true;
     };
-  }, [wordLayerId, seedLayerId, client]);
+  }, [wordLayerId, seedLayerId, wordValueKey, client]);
 
   // When this reader last touched each document, from the audit log in one
   // request. A failure here costs a column, not the list, so it warns and

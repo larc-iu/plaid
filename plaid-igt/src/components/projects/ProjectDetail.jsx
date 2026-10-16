@@ -12,7 +12,13 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
-import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
+import {
+  readIgnoredTokens,
+  readInitialized,
+  readImportState,
+  importRouteFor,
+  wordValueSpec,
+} from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
@@ -230,6 +236,9 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
         canEdit={canWrite}
         newDocument={NewDocumentHere}
         wordLayerId={getIgtLayerInfo(project).primaryTokenLayer?.id}
+        wordValue={wordValueSpec(
+          readIgnoredTokens(getIgtLayerInfo(project).primaryTokenLayer?.config),
+        )}
         href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
       />
     );

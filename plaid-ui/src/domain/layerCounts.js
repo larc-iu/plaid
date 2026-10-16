@@ -20,20 +20,56 @@
  * A project with no such layer gets `null`, which reads as a dash rather than
  * as a zero: it has no answer, and zero is an answer.
  *
+ * `wordValue(project)`, optional, is a query value spec a word's surface
+ * matches (plaid-igt's: a token its ignored-tokens rule excludes, punctuation
+ * ud's Tokenize made say, is no word). Such a project is counted by one more
+ * query per distinct spec, over its own projects only.
+ *
  * `layer: '?l'` binds a layer VARIABLE (a bare "?name" string); the `{var}`
  * form is only for scalar values (doc, value, begin, end, form).
  */
-export const wordCountsByProject = async (client, projects, wordLayerId, seedLayerId = null) => {
-  const res = await client.query({
-    where: [['token', '?t', { layer: '?l' }]],
-    return: { group: ['?l'], aggregates: [['count']] },
-  });
+export const wordCountsByProject = async (
+  client,
+  projects,
+  wordLayerId,
+  seedLayerId = null,
+  wordValue = null,
+) => {
+  const bySpec = new Map();
+  for (const p of projects) {
+    const spec = wordLayerId(p) && wordValue ? wordValue(p) : null;
+    if (!spec) continue;
+    const key = JSON.stringify(spec);
+    if (!bySpec.has(key)) bySpec.set(key, { spec, projects: [] });
+    bySpec.get(key).projects.push(p);
+  }
+  const [res, ...filtered] = await Promise.all([
+    client.query({
+      where: [['token', '?t', { layer: '?l' }]],
+      return: { group: ['?l'], aggregates: [['count']] },
+    }),
+    ...[...bySpec.values()].map(({ spec, projects: ps }) =>
+      client.query({
+        where: [
+          ['token', '?t', { layer: '?l' }],
+          ['token', '?t', { value: spec }],
+        ],
+        scope: { projectIds: ps.map((p) => p.id) },
+        return: { group: ['?l'], aggregates: [['count']] },
+      }),
+    ),
+  ]);
   const byLayer = new Map((res?.results || []).map(([layerId, n]) => [layerId, n]));
+  const wordsByLayer = new Map();
+  for (const r of filtered)
+    for (const [layerId, n] of r?.results || []) wordsByLayer.set(layerId, n);
+  const filteredIds = new Set([...bySpec.values()].flatMap((g) => g.projects.map((p) => p.id)));
   const byProject = {};
   const short = [];
   for (const p of projects) {
     const id = wordLayerId(p);
-    byProject[p.id] = id ? (byLayer.get(id) ?? 0) : null;
+    const counts = filteredIds.has(p.id) ? wordsByLayer : byLayer;
+    byProject[p.id] = id ? (counts.get(id) ?? 0) : null;
     const seed = id && seedLayerId ? seedLayerId(p) : null;
     if (seed && byProject[p.id] < (byLayer.get(seed) ?? 0)) short.push({ p, id, seed });
   }

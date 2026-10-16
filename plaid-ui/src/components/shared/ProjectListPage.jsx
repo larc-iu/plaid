@@ -18,6 +18,8 @@ import { ProjectTartan } from './ProjectTartan.jsx';
  * differs (plaid-ud counts its morpheme layer, where the CoNLL-U rows live).
  * `seedLayerId(project)` is plaid-ud's token layer, counted for a document
  * with no words yet, as its document list does (see wordCountsByProject).
+ * `wordValue(project)`, optional, keeps the count to tokens whose surface
+ * matches it (plaid-igt's ignored-tokens rule).
  * `newProject` is the label on the button and in the empty state. The button
  * opens `form`, the app's new-project dialog, or links to `newProjectTo`, the
  * app's new-project page.
@@ -25,6 +27,7 @@ import { ProjectTartan } from './ProjectTartan.jsx';
 export const ProjectListPage = ({
   wordLayerId,
   seedLayerId,
+  wordValue,
   newProject,
   form: NewProject,
   newProjectTo,
@@ -78,7 +81,13 @@ export const ProjectListPage = ({
     (async () => {
       setWordsLoading(true);
       try {
-        const counts = await wordCountsByProject(client, projects, wordLayerId, seedLayerId);
+        const counts = await wordCountsByProject(
+          client,
+          projects,
+          wordLayerId,
+          seedLayerId,
+          wordValue,
+        );
         if (!cancelled) setWordCounts(counts);
       } catch (err) {
         console.error('Word-count query failed:', err);
@@ -96,7 +105,7 @@ export const ProjectListPage = ({
     return () => {
       cancelled = true;
     };
-  }, [projects, getClient, wordLayerId, seedLayerId]);
+  }, [projects, getClient, wordLayerId, seedLayerId, wordValue]);
 
   const handleProjectCreated = (project) => {
     setShowCreateForm(false);

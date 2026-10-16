@@ -53,6 +53,19 @@ describe('DocumentTable', () => {
     await unmount();
   });
 
+  it('counts only tokens whose surface matches the word value spec, asked once', async () => {
+    const spec = { regex: '[^\\p{P}]' };
+    const query = vi.fn(async ({ where }) =>
+      JSON.stringify(where[1]?.[2]?.value) === JSON.stringify(spec)
+        ? { results: [['d1', 40]] }
+        : { results: [['d1', 42]] },
+    );
+    const { container, unmount } = await mount({ client: client({ query }), wordValue: spec });
+    expect(wordCells(container)).toEqual(['40', '0']);
+    expect(query.mock.calls[0][0].where[1]).toEqual(['token', '?t', { value: spec }]);
+    await unmount();
+  });
+
   it('counts a document with no words yet by its tokens', async () => {
     // d1 has words, which are what it counts; d2 has never been opened, so
     // it has none yet and each of its 16 tokens will get one.
