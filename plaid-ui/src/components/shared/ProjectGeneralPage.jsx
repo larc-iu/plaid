@@ -154,7 +154,7 @@ const LanguageCard = ({ onSaved, saved, save, description, note }) => {
           <Input
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            placeholder="en"
+            placeholder="Not set"
             className="w-56"
             spellCheck={false}
             aria-label="Project language"

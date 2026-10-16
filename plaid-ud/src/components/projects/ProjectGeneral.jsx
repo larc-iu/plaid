@@ -139,7 +139,7 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
             <Input
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
-              placeholder={language.trim() || 'und'}
+              placeholder={language.trim() || 'Not set'}
               className="w-56"
               spellCheck={false}
               aria-label="Tokenizer locale"
