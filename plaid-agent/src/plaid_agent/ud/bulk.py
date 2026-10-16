@@ -286,13 +286,15 @@ _REWRITES = {'run_parse': 'parses', 'set_words': 'reshapes a token in', 'split_t
 def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
     """The refusals a corpus-wide change owes, over every document it reaches:
     the same ones `_guards` makes for one document, by id."""
-    from .tools import _no_restore_planned, docs_of_op
+    from .tools import SPLITS_KEEP_WORDS, _no_restore_planned, docs_of_op
     _no_restore_planned(ws)
     rewriting = set(opkind.shaped(KIND, SENTENCE_SHAPE, WORD_SHAPE, DOCUMENT_SHAPE, opkind.EXCLUSIVE))
     reach = set(docs)
     for op in ws.ops:
         kind = op.get('kind')
-        if kind in rewriting and docs_of_op(op) & reach:
+        # A split deletes no word and changes no value: each word keeps its
+        # id and what is on it, so the replacement finds them as it would.
+        if kind in rewriting and kind not in SPLITS_KEEP_WORDS and docs_of_op(op) & reach:
             what = _REWRITES.get(kind, 'rewrites')
             raise ToolError(f'This plan already {what} a document this replacement reaches, and that '
                             f'rewrites what the replacement would change. Apply one, then plan the other '

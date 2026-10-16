@@ -254,6 +254,36 @@ def partes(live_client):
     s.delete()
 
 
+def test_a_split_shares_its_plan_with_a_scope_over_its_document(partes):
+    """A split deletes no word, so a corpus-wide change over the same
+    document may share its plan, both orders, and both land (UD.md,
+    2026-10-16). A set_words, which deletes its token's words, may not."""
+    s = partes
+    project, _before = _read(s)
+    ws = Workspace(s.client, project)
+    call_tool(ws, 'replace_in_field', {'field': 'lemma', 'pattern': 'pan', 'replacement': 'pane', 'whole': True})
+    t_split_token(ws, document='Partes', ref='s2.w1')
+    assert [o['kind'] for o in ws.ops] == ['replace_scope', 'split_token']
+    validate_ops(copy.deepcopy(ws.plan_payload()['ops']))
+    counts = execute_plan(s.client, copy.deepcopy(ws.plan_payload()['ops']), source='test', label='both',
+                          project=project)
+    assert counts.get('split tokens') == 1, counts
+    _, doc = _read(s)
+    assert [r[2] for r in _rows(doc, 1) if r[0] == 'pan'] == ['pane']
+    assert [r[0] for r in _rows(doc, 2)] == ['Mi', 'casa', '.']
+    # The other order is the same plan, and a set_words still clashes.
+    ws = Workspace(s.client, load_project(s.client, s.project_id))
+    t_split_token(ws, document='Partes', ref='s3.w1', parts=['can', 'not'])
+    out = call_tool(ws, 'replace_in_field', {'field': 'lemma', 'pattern': 'dulce', 'replacement': 'dulcis',
+                                             'whole': True})
+    assert [o['kind'] for o in ws.ops] == ['split_token', 'replace_scope'], out
+    ws.ops.clear()
+    t_set_words(ws, document='Partes', ref='s1.w2-3', forms=['vende'])
+    out = call_tool(ws, 'replace_in_field', {'field': 'lemma', 'pattern': 'dulce', 'replacement': 'dulcis',
+                                             'whole': True})
+    assert out.startswith('Error: This plan already reshapes a token in a document this replacement reaches'), out
+
+
 def _read(s):
     project = load_project(s.client, s.project_id)
     return project, load_document(s.client, project, s.ids['sd1'])

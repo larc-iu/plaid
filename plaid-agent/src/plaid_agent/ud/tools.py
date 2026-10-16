@@ -42,6 +42,9 @@ PLAN_NOTE = ("A whole document's review (confirm or discard_predictions without 
 # applied. Every kind that declares how to resolve itself, so a new one joins
 # by being declared.
 SCOPE_KINDS = opkind.scopes(KIND)
+# The token reshape that deletes no word, so a scope over its document may
+# share its plan (UD.md, 2026-10-16).
+SPLITS_KEEP_WORDS = frozenset({'split_token'})
 # The most documents one review may cover when several are named or all
 # are asked for: each is read to count what is waiting, and read again at
 # approval.
@@ -243,9 +246,11 @@ class Workspace(BaseWorkspace):
                    and words & set(prev.get('existing_word_ids') or []) for prev in planned):
                 raise ToolError('This plan already reshapes this token. Keep one of the two '
                                 '(plan_status, drop_planned), or plan them in separate turns.')
-            other = SCOPE_KINDS
+            # A split deletes no word: each keeps its id and its values, so a
+            # scope over the document finds them as it would without it.
+            other = SCOPE_KINDS if kind not in SPLITS_KEEP_WORDS else ()
         else:
-            other = RESHAPES_TOKEN
+            other = tuple(k for k in RESHAPES_TOKEN if k not in SPLITS_KEEP_WORDS)
         reach = docs_of_op(op)
         if any(prev.get('kind') in other and docs_of_op(prev) & reach for prev in planned):
             raise ToolError('This plan both reshapes a token and changes every matching word of '
