@@ -1023,6 +1023,15 @@ export const VocabularyItems = ({
     const counting = countLinks(id).then((n) => ({ id, n }));
     deleteCountRef.current = counting;
   };
+  // The open entry's row in the list, else the list's first, for focus to
+  // land on when the Delete entry question closes with nothing under it.
+  const focusEntryList = () => {
+    const pane = list.listRef.current;
+    const row = pane?.querySelector('a[data-selected="true"]') ?? pane?.querySelector('a');
+    row?.focus();
+    return !!row;
+  };
+
   const handleConfirmDelete = async (e) => {
     e?.preventDefault?.();
     if (!selectedItem) return;
@@ -1588,12 +1597,14 @@ export const VocabularyItems = ({
         dialog={dialog}
         dispatch={dispatch}
         selectedItem={selectedItem}
+        numbers={numbers}
         usageCounts={usageCounts}
         deleteRefPatches={deleteRefPatches}
         deleteFreesSenses={deleteFreesSenses}
         deleteLinksChanged={deleteLinksChanged}
         deleteHidden={deleteHidden?.id === selectedItem?.id ? deleteHidden : null}
         onConfirmDelete={handleConfirmDelete}
+        focusAfterClose={focusEntryList}
       />
     </div>
   );

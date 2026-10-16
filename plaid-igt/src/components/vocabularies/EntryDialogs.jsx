@@ -9,6 +9,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
+import { FormLabel } from './FormLabel';
 
 // The confirmation the screen asks before deleting the open entry. Whether it
 // is open is the reducer's `dialog`.
@@ -16,6 +17,8 @@ export const EntryDialogs = ({
   dialog,
   dispatch,
   selectedItem,
+  // buildItemNumbers, so the entry is named as the list names it.
+  numbers,
   usageCounts,
   deleteRefPatches,
   deleteFreesSenses,
@@ -27,6 +30,9 @@ export const EntryDialogs = ({
   // open. Null until then, when the count is the one this screen reads.
   deleteHidden = null,
   onConfirmDelete,
+  // Where focus goes on close when what opened the dialog is gone (a delete
+  // closes the entry under it). Returns whether it found a place.
+  focusAfterClose,
 }) => {
   const close = () => dispatch({ type: 'dialog/close' });
   const open = dialog?.kind === 'delete';
@@ -45,6 +51,10 @@ export const EntryDialogs = ({
   useEffect(() => {
     if (open && (deleteHidden || deleteLinksChanged)) cancelRef.current?.focus();
   }, [open, deleteHidden, deleteLinksChanged]);
+  // What had focus when the dialog opened. A refusal reopens the question
+  // after the Delete button that opened it went with the entry, and Radix
+  // would put focus back on that detached button, which is the body.
+  const openerRef = useRef(null);
   return (
     <>
       <AlertDialog
@@ -53,7 +63,16 @@ export const EntryDialogs = ({
           if (!o) close();
         }}
       >
-        <AlertDialogContent className="max-w-md">
+        <AlertDialogContent
+          className="max-w-md"
+          onOpenAutoFocus={() => {
+            openerRef.current = document.activeElement;
+          }}
+          onCloseAutoFocus={(e) => {
+            if (openerRef.current?.isConnected) return;
+            if (focusAfterClose?.()) e.preventDefault();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Delete entry?</AlertDialogTitle>
           </AlertDialogHeader>
@@ -68,7 +87,11 @@ export const EntryDialogs = ({
                   </p>
                 )}
                 <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the entry <strong>"{item?.form}"</strong>.
+                  You are about to permanently delete the entry{' '}
+                  <strong>
+                    "<FormLabel form={item?.form ?? ''} index={numbers?.get(item?.id)} />"
+                  </strong>
+                  .
                 </p>
                 <p className="mt-1 text-muted-foreground">
                   {(usageCounts || deleteHidden) && uses > 0 ? (

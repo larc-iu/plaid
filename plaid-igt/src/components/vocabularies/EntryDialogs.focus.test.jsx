@@ -53,3 +53,34 @@ describe('Delete entry asked again', () => {
     expect(document.body.textContent).toContain('"dog"');
   });
 });
+
+describe('Delete entry', () => {
+  it('names a homonym with its number', async () => {
+    await mount(<EntryDialogs {...props({ numbers: new Map([['e1', '2']]) })} />);
+    const sub = document.body.querySelector('[role="alertdialog"] sub');
+    expect(sub?.textContent).toBe('2');
+    expect(sub.parentElement.textContent).toBe('dog2');
+  });
+
+  it('puts focus in the entry list when what opened it is gone', async () => {
+    const opener = document.createElement('button');
+    const row = document.createElement('a');
+    row.href = '#';
+    document.body.append(opener, row);
+    opener.focus();
+    const focusAfterClose = () => {
+      row.focus();
+      return true;
+    };
+    await mount(<EntryDialogs {...props({ dialog: null, focusAfterClose })} />);
+    await r.rerender(<EntryDialogs {...props({ focusAfterClose })} />);
+    expect(document.activeElement.textContent.trim()).toBe('Cancel');
+    opener.remove();
+    await r.rerender(<EntryDialogs {...props({ dialog: null, focusAfterClose })} />);
+    await r.step(async () => {
+      for (let i = 0; i < 3; i++) await new Promise((res) => setTimeout(res, 0));
+    });
+    expect(document.activeElement).toBe(row);
+    row.remove();
+  });
+});
