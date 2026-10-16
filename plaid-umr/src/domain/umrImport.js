@@ -88,8 +88,10 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     if (existing) {
       textId = existing.info.textLayer.text.id;
     } else {
+      // Names are unique in a project: a name another document holds
+      // becomes the first free "Name (2)", which the server picks.
       const created = await createOnce(options.mint ?? { current: null }, (id) =>
-        client.documents.create(projectId, name, undefined, undefined, { id }),
+        client.documents.create(projectId, name, undefined, undefined, { id, freeName: true }),
       );
       documentId = created.id;
       const textResponse = await client.texts.create(layerInfo.textLayer.id, documentId, plan.body);

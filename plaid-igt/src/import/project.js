@@ -174,12 +174,14 @@ export async function createDocumentShell({
 }) {
   progress('Creating document');
   const id = uuidv7();
+  // Names are unique in a project: a name another document holds becomes the
+  // first free "Name (2)", which the server picks.
   const created = await client.documents.create(
     projectId,
     name,
     typeof metadata === 'function' ? metadata(id) : metadata,
     undefined,
-    { id },
+    { id, freeName: true },
   );
   const documentId = created.id ?? created;
   await onDocument?.(documentId);

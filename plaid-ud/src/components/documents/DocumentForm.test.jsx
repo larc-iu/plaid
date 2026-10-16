@@ -103,3 +103,20 @@ describe('the new-document form after a create whose answer was lost', () => {
     await view.unmount();
   });
 });
+
+describe('the new-document form when the name is taken', () => {
+  it("says core's refusal in the dialog", async () => {
+    create.mockReset();
+    const said = 'A document named “Alpha” already exists in this project.';
+    create.mockRejectedValueOnce(
+      Object.assign(new Error(said), {
+        status: 422,
+        responseData: { error: said, 'name-taken': 'Alpha' },
+      }),
+    );
+    const { step, unmount } = await mount(true);
+    await submit(step, 'Alpha');
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(said);
+    await unmount();
+  });
+});

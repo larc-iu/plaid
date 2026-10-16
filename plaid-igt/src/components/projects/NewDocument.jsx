@@ -15,6 +15,7 @@ import {
 } from '@ui/components/ui/dialog';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
+import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 
 // The Documents tab's way to a new document, beside its heading, for a writer.
@@ -26,11 +27,16 @@ export const NewDocument = ({ projectId, client, canManage }) => {
   const [choosing, setChoosing] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  // Core's refusal of a name another document holds, said under the field.
+  const [nameTaken, setNameTaken] = useState(null);
   // The id the create names, kept across presses of Create (createOnce.js)
   // for one name in one opening of the dialog.
   const mint = useRef(null);
   useEffect(() => {
-    if (!open) mint.current = null;
+    if (!open) {
+      mint.current = null;
+      setNameTaken(null);
+    }
   }, [open]);
   const navigate = useNavigate();
 
@@ -63,6 +69,11 @@ export const NewDocument = ({ projectId, client, canManage }) => {
       // A new document is empty, so the next thing to do is type its text.
       navigate(`/projects/${projectId}/documents/${newDocument.id}?tab=baseline`);
     } catch (error) {
+      const taken = nameTakenMessage(error);
+      if (taken) {
+        setNameTaken(taken);
+        return;
+      }
       console.error('Failed to create document:', error);
       notifyError(error, 'Failed to create the document');
     } finally {
@@ -138,14 +149,22 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                   value={documentName}
                   onChange={(e) => {
                     mint.current = null;
+                    setNameTaken(null);
                     setDocumentName(e.target.value);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && documentName.trim() && !isCreating)
                       handleCreateDocument();
                   }}
+                  aria-invalid={nameTaken ? true : undefined}
+                  aria-describedby={nameTaken ? 'doc-name-taken' : undefined}
                   autoFocus
                 />
+                {nameTaken && (
+                  <p id="doc-name-taken" role="alert" className="text-sm text-destructive">
+                    {nameTaken}
+                  </p>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating}>

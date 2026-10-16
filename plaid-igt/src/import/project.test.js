@@ -153,6 +153,8 @@ describe('createDocumentShell', () => {
       'tokens.bulkCreate',
     ]);
     expect(client.calls[0].slice(1, 4)).toEqual(['p1', 'Story', { source: 'a.eaf' }]);
+    // A name another document of the project holds becomes the first free one.
+    expect(client.calls[0][5]).toEqual(expect.objectContaining({ freeName: true }));
     expect(client.calls[1].slice(1)).toEqual(['tl', 'doc1', 'los perros', undefined]);
     expect(client.calls[2][1]).toEqual([{ tokenLayerId: 'sl', text: 'text1', begin: 0, end: 10 }]);
     expect(shell).toEqual({ documentId: 'doc1', textId: 'text1', sentenceIds: ['t1'] });

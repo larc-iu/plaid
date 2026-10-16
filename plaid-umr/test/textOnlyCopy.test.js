@@ -213,6 +213,25 @@ describe('copying as text only', () => {
     ]);
   });
 
+  test('a blank name takes the free name the copy was given', async () => {
+    const client = fakeClient(annotatedRaw());
+    const asked = [];
+    const doc = {
+      name: 'lunch',
+      copyTo: async (name, opts) => {
+        asked.push([name, typeof opts?.onNameTaken]);
+        return { id: 'd9', name: 'lunch (2)' };
+      },
+    };
+    const onNameTaken = () => {};
+    assert.deepEqual(await copyTextOnly(client, doc, '  ', { onNameTaken }), {
+      id: 'd9',
+      name: 'lunch (2)',
+    });
+    assert.deepEqual(asked, [['', 'function']]);
+    assert.deepEqual(client.log[0], ['begin', 'Copy "lunch", text only']);
+  });
+
   test('a copy that failed leaves nothing to take off', async () => {
     const client = fakeClient(annotatedRaw());
     assert.equal(await copyTextOnly(client, docThatCopies(null), 'x'), null);

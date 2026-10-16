@@ -75,19 +75,24 @@ export async function leaveOutGraphs(client, documentId) {
 /**
  * Copy `doc` as `name` and leave the UMR graphs out of the copy, as one
  * History entry. Resolves to `{ id, name }` for the copy, or null when the
- * copy itself failed (the screen has been told).
+ * copy itself failed (the screen has been told). A blank `name` takes the
+ * first free one after the document's, and a taken one goes to
+ * `onNameTaken`, as `doc.copyTo` has them.
  *
  * A copy made whose graphs could not be taken off is the wrong document, one
  * a blind second annotator must not open, so it is deleted and the failure
  * thrown as the copy's own: a retry starts clean. Only when that delete fails
  * too does it throw `CopyKeptGraphs`, carrying the copy that is left.
  */
-export async function copyTextOnly(client, doc, name) {
-  const next = (name || '').trim() || `${doc.name} (copy)`;
+export async function copyTextOnly(client, doc, name, { onNameTaken = null } = {}) {
+  const next = (name || '').trim();
+  const label = next
+    ? `Copy "${doc.name}" as "${next}", text only`
+    : `Copy "${doc.name}", text only`;
   let created = null;
   try {
-    await client.withOperation(`Copy "${doc.name}" as "${next}", text only`, async () => {
-      created = await doc.copyTo(next);
+    await client.withOperation(label, async () => {
+      created = await doc.copyTo(next, { onNameTaken });
       if (created?.id) await leaveOutGraphs(client, created.id);
     });
   } catch (error) {

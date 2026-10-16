@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { humanizeError, isUnknownOutcome } from '@ui/lib/errors.js';
 import { createOnce } from '@ui/lib/createOnce.js';
+import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -50,7 +51,11 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
       // with it) unmounts, so there's no need to reset it.
       navigate(`/projects/${projectId}/documents/${created.id}/edit`);
     } catch (err) {
-      setError(isUnknownOutcome(err) ? humanizeError(err) : 'Failed to create the document.');
+      // A name another document holds is said as core words it.
+      setError(
+        nameTakenMessage(err) ??
+          (isUnknownOutcome(err) ? humanizeError(err) : 'Failed to create the document.'),
+      );
       console.error('Error creating document:', err);
       setLoading(false);
     }

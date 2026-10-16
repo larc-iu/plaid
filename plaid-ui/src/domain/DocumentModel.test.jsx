@@ -38,7 +38,7 @@ const ROUTES = {
 const RESTORE = { appPrefix: 'plaid_igt', configNamespace: 'igt', appName: 'Plaid IGT' };
 
 // A client that records the two calls these operations make and nothing else.
-const recordingClient = ({ failCopy = false } = {}) => {
+const recordingClient = ({ failCopy = false, takenCopy = false } = {}) => {
   const calls = [];
   return {
     calls,
@@ -49,10 +49,17 @@ const recordingClient = ({ failCopy = false } = {}) => {
     documents: {
       get: async () => ({ id: 'd1', name: 'One', metadata: {} }),
       update: async (id, name) => calls.push(['update', id, name]),
-      copy: async (id, name) => {
-        calls.push(['copy', id, name]);
+      copy: async (id, name, { freeName } = {}) => {
+        calls.push(freeName ? ['copy', id, name, 'free'] : ['copy', id, name]);
         if (failCopy) throw new Error('nope');
-        return { id: 'd2' };
+        if (takenCopy) {
+          const said = `A document named “${name}” already exists in this project.`;
+          throw Object.assign(new Error(said), {
+            status: 422,
+            responseData: { error: said, 'name-taken': name },
+          });
+        }
+        return { id: 'd2', name: freeName ? `${name} (2)` : name };
       },
     },
   };
@@ -121,8 +128,21 @@ describe('what every document can do as a document', () => {
     ]);
     // The document copied from is untouched.
     expect(doc.name).toBe('One');
-    // An unnamed copy still has a name.
-    expect((await doc.copyTo(''))?.name).toBe('One (copy)');
+    // An unnamed copy takes the first free name after the document's, which
+    // the server picks and names.
+    expect(await doc.copyTo('')).toEqual({ id: 'd2', name: 'One (2)' });
+    expect(client.calls.at(-1)).toEqual(['copy', 'd1', 'One', 'free']);
+  });
+
+  it("hands a taken name's refusal to the caller instead of the banner", async () => {
+    const { doc, errors } = load({ takenCopy: true });
+    const said = [];
+    expect(await doc.copyTo('Two', { onNameTaken: (m) => said.push(m) })).toBe(null);
+    expect(said).toEqual(['A document named “Two” already exists in this project.']);
+    expect(errors).toEqual([]);
+    // Without a caller to hand it to, the banner says it.
+    expect(await doc.copyTo('Two')).toBe(null);
+    expect(errors[0]).toMatch(/“Two” already exists/);
   });
 
   it('answers with null when the copy failed', async () => {
@@ -180,7 +200,10 @@ beforeEach(() => {
   confirm.mockReset();
   confirm.mockResolvedValue(true);
   auth.user = { id: 'u', isAdmin: true };
-  auth.getClient = () => ({ documents: { delete: vi.fn(async () => true) } });
+  auth.getClient = () => ({
+    documents: { delete: vi.fn(async () => true) },
+    projects: { listDocuments: async () => [{ name: 'One' }, { name: 'One (2)' }] },
+  });
   editor.projectId = 'p1';
   editor.documentId = 'd1';
   editor.project = { id: 'p1', name: 'Ay', maintainers: ['u'], writers: [], readers: [] };
@@ -216,7 +239,7 @@ describe('the details screen over a document that adds nothing of its own', () =
     await view.step(async () => click(button(document.body, 'Copy')));
     await flush();
 
-    expect(client.calls).toContainEqual(['copy', 'd1', 'One (copy)']);
+    expect(client.calls).toContainEqual(['copy', 'd1', 'One (3)']);
     expect(path).toBe('/projects/p1/documents/d2/annotate');
     await tick();
   });

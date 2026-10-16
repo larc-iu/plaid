@@ -45,6 +45,10 @@ const ROUTES = {
 const RESTORE = { appPrefix: 'plaid_igt', configNamespace: 'igt', appName: 'Plaid IGT' };
 
 let copied = [];
+// Names another document holds, which a copy is refused.
+let takenNames = [];
+// The project's names the dialog reads when it opens.
+let projectNames = ['One'];
 
 class Doc extends DocumentModel {
   constructor(raw) {
@@ -53,8 +57,12 @@ class Doc extends DocumentModel {
   get body() {
     return 'the cat sat';
   }
-  async copyTo(name) {
+  async copyTo(name, { onNameTaken } = {}) {
     copied.push(name);
+    if (takenNames.includes(name)) {
+      onNameTaken?.(`A document named “${name}” already exists in this project.`);
+      return null;
+    }
     return { id: 'd2', name };
   }
   async rename() {
@@ -120,12 +128,17 @@ const idx = () => window.history.state?.idx;
 
 beforeEach(() => {
   copied = [];
+  takenNames = [];
+  projectNames = ['One'];
   path = null;
   confirm.mockReset();
   confirm.mockResolvedValue(true);
   deleteDocument.mockClear();
   auth.user = { id: 'u', isAdmin: true };
-  auth.getClient = () => ({ documents: { delete: deleteDocument } });
+  auth.getClient = () => ({
+    documents: { delete: deleteDocument },
+    projects: { listDocuments: async () => projectNames.map((name) => ({ name })) },
+  });
   editor.projectId = 'p1';
   editor.documentId = 'd1';
   editor.project = { id: 'p1', name: 'Ay', maintainers: ['u'], writers: [], readers: [] };
@@ -201,7 +214,7 @@ describe('the document details screen', () => {
     await view.step(async () => click(button(document.body, 'Copy')));
     await flush();
 
-    expect(copied).toEqual(['One (copy)']);
+    expect(copied).toEqual(['One (2)']);
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         description: 'The name you have typed is not saved. Leaving loses it.',
@@ -226,6 +239,44 @@ describe('the document details screen', () => {
     await tick();
     expect(idx()).toBe(0);
     expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('offers the first free name after the document’s', async () => {
+    projectNames = ['One', 'One (2)', 'One (4)'];
+    const view = await mount();
+    await view.step(() => click(button(view.container, 'Copy document')));
+    await flush();
+    expect(document.body.querySelector('#copy-name').value).toBe('One (3)');
+  });
+
+  it('keeps a name typed before the project’s names were read', async () => {
+    let answer;
+    auth.getClient = () => ({
+      documents: { delete: deleteDocument },
+      projects: { listDocuments: () => new Promise((resolve) => (answer = resolve)) },
+    });
+    const view = await mount();
+    await view.step(() => click(button(view.container, 'Copy document')));
+    await view.step(() => typeInto(document.body.querySelector('#copy-name'), 'Mine'));
+    await view.step(async () => answer([{ name: 'One' }]));
+    await flush();
+    expect(document.body.querySelector('#copy-name').value).toBe('Mine');
+  });
+
+  it('says a taken name under the field and keeps the dialog open', async () => {
+    takenNames = ['Two'];
+    const view = await mount();
+    await view.step(() => click(button(view.container, 'Copy document')));
+    await view.step(() => typeInto(document.body.querySelector('#copy-name'), 'Two'));
+    await view.step(async () => click(button(document.body, 'Copy')));
+    await flush();
+    const said = document.body.querySelector('#copy-name-taken');
+    expect(said?.textContent).toBe('A document named “Two” already exists in this project.');
+    expect(button(document.body, 'Copy')).toBeDefined();
+    expect(path).toBe('/projects/p1/documents/d1/details');
+    // Typing again clears it.
+    await view.step(() => typeInto(document.body.querySelector('#copy-name'), 'Three'));
+    expect(document.body.querySelector('#copy-name-taken')).toBeNull();
   });
 
   it('asks for a name only when the app offers no kinds of copy', async () => {
@@ -295,7 +346,7 @@ describe('the document details screen', () => {
     await view.step(async () => click(button(document.body, 'Copy')));
     await flush();
     expect(own).not.toHaveBeenCalled();
-    expect(copied).toEqual(['One (copy)']);
+    expect(copied).toEqual(['One (2)']);
   });
 
   it('deletes without a second question, and takes its history entry with it', async () => {

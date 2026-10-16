@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
@@ -13,6 +13,7 @@ import {
 import { canEditProject } from '../../domain/permissions.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { humanizeError } from '../../lib/errors.js';
+import { freeDocumentName } from '../../lib/documentNames.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { fullTimestamp, timeAgo } from '../../lib/formatTime.js';
 import { useConfirm } from './ConfirmProvider.jsx';
@@ -36,11 +37,14 @@ import { TextDirectionField } from './TextDirectionField.jsx';
  *
  * `copyChoices` is an app's list of kinds of copy, offered in the Copy dialog
  * with the first one chosen: `[{ value, label, hint?, copy? }]`. A choice with
- * no `copy` is the plain whole-document copy. `copy({ client, doc, name })`
- * makes the copy its own way and resolves to `{ id, name }` or null, as
- * `doc.copyTo` does, marking it `notified` when it has already said how the
- * copy went, and `stay` when the page is not to open it. Without the list the
- * dialog asks for a name only.
+ * no `copy` is the plain whole-document copy. `copy({ client, doc, name,
+ * onNameTaken })` makes the copy its own way and resolves to `{ id, name }` or
+ * null, as `doc.copyTo` does, marking it `notified` when it has already said
+ * how the copy went, and `stay` when the page is not to open it. Without the
+ * list the dialog asks for a name only.
+ *
+ * Names are unique in a project: the dialog offers the first free name after
+ * the document's ("Story (2)"), and says a taken one under the field.
  *
  * What the page shows comes from the app's document shell: plaid-ud and
  * plaid-umr hand it down their outlet (`useDocumentEditor`), and plaid-igt,
@@ -69,8 +73,12 @@ export const DocumentDetailsPage = ({
   const [name, setName] = useState(doc.name || '');
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyName, setCopyName] = useState('');
+  const [copyTaken, setCopyTaken] = useState(null);
   const [copyChoice, setCopyChoice] = useState(null);
   const [copying, setCopying] = useState(false);
+  // Whether the copy's name was typed in this opening of the dialog, so the
+  // free name read after it opened does not replace it.
+  const copyTyped = useRef(false);
 
   // Follow the document's own name whenever it changes underneath us (a rename
   // from another tab, or a reload). Keyed on the name alone, so typing here is
@@ -100,18 +108,41 @@ export const DocumentDetailsPage = ({
   };
 
   const openCopy = () => {
-    setCopyName(`${doc.name} (copy)`);
+    // Blank until the project's names are read.
+    setCopyName('');
+    setCopyTaken(null);
+    copyTyped.current = false;
     setCopyChoice(copyChoices?.[0]?.value ?? null);
     setCopyOpen(true);
+    const base = doc.name;
+    Promise.resolve()
+      .then(() => getClient()?.projects?.listDocuments?.(projectId))
+      .then((docs) => {
+        if (!docs || copyTyped.current) return;
+        setCopyName(
+          freeDocumentName(
+            base,
+            docs.map((d) => d.name),
+          ),
+        );
+      })
+      .catch(() => {});
+  };
+
+  const typeCopyName = (value) => {
+    copyTyped.current = true;
+    setCopyTaken(null);
+    setCopyName(value);
   };
 
   const handleCopy = async () => {
     setCopying(true);
     try {
       const chosen = copyChoices?.find((c) => c.value === copyChoice);
+      const onNameTaken = setCopyTaken;
       const created = chosen?.copy
-        ? await chosen.copy({ client: getClient(), doc, name: copyName })
-        : await doc.copyTo(copyName);
+        ? await chosen.copy({ client: getClient(), doc, name: copyName, onNameTaken })
+        : await doc.copyTo(copyName, { onNameTaken });
       if (!created?.id) return;
       setCopyOpen(false);
       if (!created.notified) notifySuccess(`Copied to “${created.name}”`);
@@ -243,10 +274,18 @@ export const DocumentDetailsPage = ({
             <Input
               id="copy-name"
               value={copyName}
-              onChange={(e) => setCopyName(e.target.value)}
+              placeholder={doc.name}
+              onChange={(e) => typeCopyName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !copying && handleCopy()}
+              aria-invalid={copyTaken ? true : undefined}
+              aria-describedby={copyTaken ? 'copy-name-taken' : undefined}
               autoFocus
             />
+            {copyTaken && (
+              <p id="copy-name-taken" role="alert" className="text-sm text-destructive">
+                {copyTaken}
+              </p>
+            )}
           </div>
           {copyChoices?.length > 1 && (
             <fieldset className="flex flex-col gap-2" data-testid="copy-choices">

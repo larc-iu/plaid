@@ -125,7 +125,11 @@ export async function importConlluDocument(
 
   let createdDocumentId = null;
   try {
-    const documentResponse = await client.documents.create(projectId, name);
+    // Names are unique in a project: a name another document holds becomes
+    // the first free "Name (2)", which the server picks.
+    const documentResponse = await client.documents.create(projectId, name, undefined, undefined, {
+      freeName: true,
+    });
     createdDocumentId = documentResponse.id;
     // Layer config is project-level and identical for every document, so a
     // bulk-import caller can pass it in to skip a per-document round trip.

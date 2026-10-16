@@ -18,6 +18,7 @@ import {
   isUnknownOutcome,
   statusOf,
 } from '../lib/errors.js';
+import { nameTakenMessage } from '../lib/documentNames.js';
 import {
   AUTO,
   LTR,
@@ -390,8 +391,11 @@ export class DocumentModel {
    * and the caller navigates to it. Resolves to `{ id, name }` for the copy,
    * or null when it failed (the screen has already been told).
    *
-   * The server answers with the id alone, so the name in the result is the one
-   * asked for, which is the copy's name.
+   * Names are unique in a project. A blank `name` asks the server for the
+   * first free one after this document's ("Story (2)"), and the result names
+   * what the copy was given. A name another document holds is refused: with
+   * `onNameTaken` the refusal is handed to it (a dialog says it under the
+   * field) instead of the screen's banner.
    *
    * Same project only, and comments do not travel, which is the server's
    * ruling, not this method's choice.
@@ -399,13 +403,25 @@ export class DocumentModel {
    * It takes its turn in the write queue, so the copy holds every edit made
    * before it. It shows nothing, so a failure takes nothing back.
    */
-  async copyTo(name) {
-    const next = (name || '').trim() || `${this.name} (copy)`;
+  async copyTo(name, { onNameTaken = null } = {}) {
+    const typed = (name || '').trim();
+    const next = typed || this.name;
     let created = null;
     const ok = await this._queueWrite(
       'Failed to copy document',
       async () => {
-        created = await this._client.documents.copy(this.id, next);
+        try {
+          created = typed
+            ? await this._client.documents.copy(this.id, next)
+            : await this._client.documents.copy(this.id, next, { freeName: true });
+        } catch (err) {
+          const said = onNameTaken && nameTakenMessage(err);
+          if (said) {
+            err.reported = true;
+            onNameTaken(said);
+          }
+          throw err;
+        }
       },
       // No label: the copy's History then shows the server's description,
       // `Copy "<source>" as "<name>"`, where a label would say only "Copy
@@ -413,7 +429,7 @@ export class DocumentModel {
       null,
       { shown: false },
     );
-    return ok && created?.id ? { ...created, name: next } : null;
+    return ok && created?.id ? { ...created, name: created.name ?? next } : null;
   }
 
   /**
@@ -699,7 +715,9 @@ export class DocumentModel {
   //
   // `handled` is a conflict the screen reports itself (`handlesConflicts`).
   _writeFailed(label, err, handled = false) {
-    console.error(`${label}:`, err);
+    // A refusal the screen says another way, or of a name another document
+    // holds, is an answer, not a fault.
+    if (err?.reported !== true && !nameTakenMessage(err)) console.error(`${label}:`, err);
     // Held back unsent once the document was found deleted, which was said
     // once already (`_documentGone`), or a refusal the screen says another
     // way (`reported`, such as igt's recording notice): no banner of its own.

@@ -11,9 +11,9 @@ export const UMR_COPY_CHOICES = [
     value: 'text',
     label: 'Text only',
     hint: 'Words and glosses, without the UMR graphs.',
-    copy: async ({ client, doc, name }) => {
+    copy: async ({ client, doc, name, onNameTaken }) => {
       try {
-        return await copyTextOnly(client, doc, name);
+        return await copyTextOnly(client, doc, name, { onNameTaken });
       } catch (error) {
         // The copy with its graphs could not be deleted: the page stays
         // here instead of opening it, and the toast stays until closed.

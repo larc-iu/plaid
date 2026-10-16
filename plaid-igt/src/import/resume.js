@@ -21,6 +21,7 @@
 // the stamp and every name composed, and a file name from macOS is not.
 
 import { nameKey } from '@ui/lib/nameKey.js';
+import { freeDocumentName } from '@ui/lib/documentNames.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 
@@ -100,9 +101,7 @@ export async function priorImports(client, projectId) {
  * so a run that makes several copies never hands out one name twice.
  */
 export function unusedName(base, taken) {
-  const composed = nameKey(base);
-  let name = composed;
-  for (let n = 2; taken.has(name); n += 1) name = `${composed} (${n})`;
+  const name = freeDocumentName(base, taken);
   taken.add(name);
   return name;
 }
