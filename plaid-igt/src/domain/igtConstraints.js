@@ -13,6 +13,7 @@
 import { uuidv7 } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
+import { findDoubles } from './doubles.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
 import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 import {
@@ -220,6 +221,23 @@ export const refusedBySave = async (
 /** Every IGT field of a layer info, as `queueFieldDeclarations` takes them. */
 export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {}).flat();
 
+// How many units a field left out of force for `fixable` (its rules with a
+// remedy) holds more than one annotation on, as Validation counts them. Core's
+// own count when they cannot be read.
+const reachableCount = async (client, p, fixable) => {
+  const core = p.repair?.length ? (p.repairCount ?? 0) : (p.violationCount ?? 0);
+  if (!fixable.includes('single-span')) return core;
+  try {
+    const { count, hidden } = await findDoubles(client, p.layerId, { limit: 0 });
+    // None found now (a double written after the declaration was refused,
+    // and gone since): what core counted.
+    return count || hidden ? count : core;
+  } catch (err) {
+    console.warn('Could not count the doubled annotations:', err);
+    return core;
+  }
+};
+
 /**
  * Put IGT's rules in force on project `projectId` as it now stands, read
  * here: every rule its settings want (`wantedConstraints`) that its layers do
@@ -242,7 +260,9 @@ export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {
  * `repair: false` (every heal but setup's and an import's) no annotation is
  * changed: a rule the data breaks is left out even where the server could
  * repair it, and its field is named with `repair` (the rule types),
- * `repairCount` and `scope` (Word, Morpheme or Sentence). Returns `{changed, notInForce}`.
+ * `repairCount` (the units holding more than one annotation that Analyze
+ * shows, `findDoubles`) and `scope` (Word, Morpheme or Sentence). Returns
+ * `{changed, notInForce}`.
  */
 export const declareIgtRules = async (
   client,
@@ -293,19 +313,16 @@ export const declareIgtRules = async (
     // A rule with a remedy the declaration itself was refused for (a double
     // written after the check) needs the same as one the check found.
     const refusedFixable = repair ? [] : (p.constraints || []).filter((t) => t === 'single-span');
-    const needs = p.repair?.length
+    const fixable = p.repair?.length ? p.repair : refusedFixable;
+    // Units on tokens Analyze shows no fields for are not counted
+    // (`findDoubles`), as Validation counts them.
+    const needs = fixable.length
       ? {
-          repair: p.repair,
-          repairCount: p.repairCount ?? 0,
+          repair: fixable,
+          repairCount: await reachableCount(client, p, fixable),
           scope: fields.get(p.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
         }
-      : refusedFixable.length
-        ? {
-            repair: refusedFixable,
-            repairCount: p.violationCount ?? 0,
-            scope: fields.get(p.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
-          }
-        : {};
+      : {};
     if (named) {
       // Its list is named already: what else the data breaks goes with it.
       Object.assign(named, needs);

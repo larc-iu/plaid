@@ -54,4 +54,18 @@ describe('the notice for fields left out of force', () => {
     );
     expect(notInForceText([{ ...other, count: 3 }])).toMatch(/: 3 annotations break them\. /);
   });
+
+  // REV7-WIRE-3: doubles only on ignored words are not counted, and no step
+  // is named that Analyze cannot take.
+  it('says doubles only on ignored words with no step to take', () => {
+    expect(notInForceText([{ ...doubled, repairCount: 0 }])).toBe(
+      'Raw note: ignored words hold more than one annotation.',
+    );
+    expect(notInForceText([{ ...doubled, repairCount: 0, scope: 'Morpheme' }])).toBe(
+      'Raw note: morphemes of ignored words hold more than one annotation.',
+    );
+    expect(notInForceText([listed, { ...doubled, repairCount: 0 }])).toMatch(
+      / Change these values, then choose Put in force under Validation\.$/,
+    );
+  });
 });

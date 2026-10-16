@@ -60,7 +60,11 @@ const notInForceLines = (fields) =>
     }
     if (f.repair?.length) {
       const n = f.repairCount ?? 0;
-      lines.push(`${f.field}: ${n} ${unitWord(f.scope, n)} with more than one annotation.`);
+      lines.push(
+        n > 0
+          ? `${f.field}: ${n} ${unitWord(f.scope, n)} with more than one annotation.`
+          : `${f.field}: ${f.scope === 'Morpheme' ? 'morphemes of ignored words' : 'ignored words'} hold more than one annotation.`,
+      );
     }
     if (!lines.length) {
       lines.push(
@@ -77,11 +81,16 @@ const notInForceLines = (fields) =>
 export const notInForceText = (fields, { here = false } = {}) => {
   const steps = [];
   if (fields.some((f) => f.values?.length)) steps.push('change these values');
-  if (fields.some((f) => f.repair?.length)) steps.push('leave one annotation on each');
+  if (fields.some((f) => f.repair?.length && f.repairCount > 0)) {
+    steps.push('leave one annotation on each');
+  }
   if (fields.some((f) => !f.values?.length && !f.repair?.length)) {
     steps.push('change the annotations that break them');
   }
+  const lines = notInForceLines(fields).join(' ');
+  // Doubles only on ignored words: nothing Analyze can do.
+  if (!steps.length) return lines;
   const what = steps.join(' and ');
   const action = `${what[0].toUpperCase()}${what.slice(1)}, then choose Put in force${here ? '' : ' under Validation'}.`;
-  return `${notInForceLines(fields).join(' ')} ${action}`;
+  return `${lines} ${action}`;
 };

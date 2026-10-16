@@ -615,15 +615,15 @@ Validation then names the tagset and the field above the list.
 The tagset can still be changed, and each save names the values still in the way.
 Once those values are changed, **Put in force** applies the list.
 Saving any tagset or field does the same for every field whose values allow it.
-A save of tagsets or fields made while another maintainer changes the tagsets is not saved, and says **Tagsets changed elsewhere. Reload and redo your change.**
+A save of tagsets or fields, in the project or a lexicon, made while another maintainer changes the tagsets is not saved, and says **Tagsets changed elsewhere. Reload and redo your change.**
 So is an approved Assistant plan of tagset changes, and one that assigns a tagset deleted or renamed since it was made.
 
 Validation also names a field that allows more than one annotation on a word, morpheme or sentence, such as a field a script made, and a field that holds a list no closed tagset names, such as a field whose tagset was deleted.
 Under the field it lists each word, morpheme or sentence that holds more than one, with the document and the values, and a link to it in Analyze.
-A document that shares its name with another is named with its id too.
-Ignored tokens, which have no fields in Analyze, are not listed.
+Ignored tokens, which have no fields in Analyze, are not listed or counted.
 Analyze shows one of the values at a time, and clearing it shows the next.
 **Put in force** applies one annotation on each once no word, morpheme or sentence holds two, and **Remove the list** removes the list.
+A list whose tagset was made closed again in the meantime stays, and the notice says so.
 Neither changes an annotation.
 
 NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. A service's proposals are not refused, even outside a closed tagset. The Validation tab lists them.

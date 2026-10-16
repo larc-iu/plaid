@@ -7,18 +7,18 @@ import { cn } from '@ui/lib/utils';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
-import { notifyError, notifySuccess, humanizeError } from '@/utils/feedback';
+import { notifyError, notifyInfo, notifySuccess, humanizeError } from '@/utils/feedback';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
-import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
+import { governedFields, offTagsetValues, readTagsetName, readTagsets } from '@/domain/tagsets';
 import { fieldsOutOfForce, igtFields, queueFieldDeclarations } from '@/domain/igtConstraints';
 import { putRulesInForce } from '../settings/putRulesInForce.js';
 import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
 import { listedCount, locateFailing } from './locateFailing.js';
-import { locateDoubles } from './locateDoubles.js';
+import { findDoubles } from '@/domain/doubles';
 import { distinctValues, loadAttested } from './attested.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -201,7 +201,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     Promise.all(
       singles.map(async (f) => {
         try {
-          return [f.layerId, await locateDoubles(client, f.layerId, { projectId })];
+          return [f.layerId, await findDoubles(client, f.layerId)];
         } catch (err) {
           console.error('Could not find the doubled annotations:', err);
           return [f.layerId, { failed: true }];
@@ -216,8 +216,10 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   }, [client, outOfForce, projectId]);
   // Put the rules of `targets` (entries of `outOfForce`) in force, and say
   // what changed: `done` names it when nothing was left out. With `listOnly`
-  // (Remove the list), `done` is said once the heal ran: taking a list off
-  // is never refused, and what else stays out is on the screen already.
+  // (Remove the list), what the heal left is read back and said field by
+  // field: a list another maintainer's change made wanted again since this
+  // screen read the project stays. What else stays out is on the screen
+  // already.
   const putInForce = async (targets, done, { listOnly = false } = {}) => {
     setForcing(true);
     try {
@@ -227,10 +229,48 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         here: true,
         quiet: listOnly,
       });
-      if (notInForce && (listOnly || !notInForce.length)) notifySuccess(done);
+      if (notInForce && listOnly) {
+        await sayListsRemoved(targets);
+      } else if (notInForce && !notInForce.length) {
+        notifySuccess(done);
+      }
       await onProjectUpdate?.();
     } finally {
       setForcing(false);
+    }
+  };
+
+  // After Remove the list: which of `targets` hold no list now, and which
+  // kept theirs (their tagset closed again since, or another change).
+  const sayListsRemoved = async (targets) => {
+    let fresh;
+    try {
+      fresh = await client.projects.get(projectId);
+    } catch (err) {
+      console.error('Could not read the project after removing the list:', err);
+      return;
+    }
+    const layers = new Map(igtFields(getIgtLayerInfo(fresh)).map((sl) => [sl.id, sl]));
+    const stillStale = new Set(
+      fieldsOutOfForce(fresh)
+        .filter((f) => f.stale)
+        .map((f) => f.layerId),
+    );
+    const holdsList = (f) =>
+      (layers.get(f.layerId)?.constraints?.[IGT_NAMESPACE] || []).some(
+        (c) => c.type === 'value-set',
+      );
+    const removed = targets.filter((f) => !holdsList(f));
+    if (removed.length) {
+      notifySuccess(`The list on ${removed.map((f) => f.field).join(', ')} is removed`);
+    }
+    for (const f of targets.filter(holdsList)) {
+      const tagset = readTagsetName(layers.get(f.layerId)?.config);
+      notifyInfo(
+        !stillStale.has(f.layerId) && tagset
+          ? `The list on ${f.field} stays: ${tagset} is closed.`
+          : `The list on ${f.field} stays.`,
+      );
     }
   };
 
@@ -553,11 +593,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                   variant="outline"
                   className="ml-auto"
                   disabled={forcing}
-                  onClick={() =>
-                    putInForce(stale, `The list on ${listNames(stale)} is removed`, {
-                      listOnly: true,
-                    })
-                  }
+                  onClick={() => putInForce(stale, null, { listOnly: true })}
                 >
                   Remove the list
                 </Button>
