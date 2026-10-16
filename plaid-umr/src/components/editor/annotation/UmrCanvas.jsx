@@ -45,11 +45,37 @@ const useLexicon = (client, project) => {
   return lexicon;
 };
 
-// Scroll a rendered node into view and focus it.
+// Scroll a rendered node into view and focus it. The blocks above it are
+// still drawing their graphs a frame or two after a page turn, and grow as
+// they do, which carried a linked node below the fold: for a moment after,
+// it is brought back to the middle each time that moves it, until the reader
+// scrolls.
+const SETTLE_MS = 1500;
 const focusElement = (el) => {
   if (!el) return;
-  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.scrollIntoView({ block: 'center' });
   el.focus({ preventScroll: true });
+  const until = performance.now() + SETTLE_MS;
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+    for (const type of ['wheel', 'touchstart', 'keydown']) {
+      window.removeEventListener(type, stop, true);
+    }
+  };
+  for (const type of ['wheel', 'touchstart', 'keydown']) {
+    window.addEventListener(type, stop, { capture: true, once: true });
+  }
+  let placed = el.getBoundingClientRect().top;
+  const check = () => {
+    if (stopped || !el.isConnected || performance.now() > until) return stop();
+    if (Math.abs(el.getBoundingClientRect().top - placed) > 2) {
+      el.scrollIntoView({ block: 'center' });
+      placed = el.getBoundingClientRect().top;
+    }
+    requestAnimationFrame(check);
+  };
+  requestAnimationFrame(check);
 };
 
 // The document as a column of sentence blocks, one page at a time. Reads the
