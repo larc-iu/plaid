@@ -1,4 +1,10 @@
-import { notifySuccess, notifyError, notifyWarning, dismissToast } from '../../lib/notify.js';
+import {
+  notifySuccess,
+  notifyError,
+  notifyWarning,
+  notifyInfo,
+  dismissToast,
+} from '../../lib/notify.js';
 import { humanizeError, refusalSaid } from '../../lib/errors.js';
 import { lastProjects } from './projectReach.js';
 import { itemTime } from './itemTime.js';
@@ -628,6 +634,9 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
     notifyWarning(j.outcome.message, 'Partly applied');
   } else if (j.outcome?.duplicate) {
     notifyWarning(j.outcome.message, 'Already applied');
+  } else if (j.outcome && !docked && j.outcome.applied === 0) {
+    // Approved, but what it asked for was already so (settings in force).
+    notifyInfo(j.outcome.message, 'Nothing written');
   } else if (j.outcome && !docked) {
     notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
   }

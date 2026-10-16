@@ -11,10 +11,11 @@ vi.mock('../../lib/notify.js', () => ({
   notifySuccess: vi.fn(),
   notifyError: vi.fn(),
   notifyWarning: vi.fn(),
+  notifyInfo: vi.fn(),
   dismissToast: vi.fn(),
 }));
 
-const { notifySuccess, notifyError, notifyWarning, dismissToast } = await import(
+const { notifySuccess, notifyError, notifyWarning, notifyInfo, dismissToast } = await import(
   '../../lib/notify.js'
 );
 const { applyToasts, settleApplyToasts } = await import('./jobs.js');
@@ -29,6 +30,22 @@ describe('applyToasts', () => {
   it('says so on the full tab, where nothing is covered', () => {
     applyToasts(applied, '2 changes');
     expect(notifySuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('is titled Nothing written when the approval wrote nothing', () => {
+    const msg = 'The settings were already in force. Nothing was written.';
+    applyToasts({ outcome: { kind: 'applied', applied: 0, counts: [], message: msg } }, '1 change');
+    expect(notifySuccess).not.toHaveBeenCalled();
+    expect(notifyInfo).toHaveBeenCalledWith(msg, 'Nothing written');
+    vi.clearAllMocks();
+    applyToasts(
+      { outcome: { kind: 'applied', applied: 0, counts: [], message: msg } },
+      '1 change',
+      {
+        docked: true,
+      },
+    );
+    expect(notifyInfo).not.toHaveBeenCalled();
   });
 
   it('stays quiet in the docked panel, where the card says it', () => {
