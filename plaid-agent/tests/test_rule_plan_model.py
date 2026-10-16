@@ -3,8 +3,10 @@ against the model in ``rule_plan_model.py``. Every count (the card,
 plan_status, the research record, the applied count) must equal the values
 that changed, and those must be what the model says the user asked for,
 with no refusal. ``RULE_MODEL_CASES`` sets how many plans (10 by default),
-``RULE_MODEL_START`` the first seed, ``RULE_MODEL_WEIGHTS`` the step mix and
-``RULE_MODEL_OUT`` a file each case is written to."""
+``RULE_MODEL_START`` the first seed, ``RULE_MODEL_WEIGHTS`` the step mix,
+``RULE_MODEL_DENSE=1`` steps that pick the values the plan already names or
+rewrites, so rules meet named changes often, and ``RULE_MODEL_OUT`` a file
+each case is written to."""
 import json
 import os
 import random
@@ -28,6 +30,7 @@ OUT = os.environ.get('RULE_MODEL_OUT')
 N = int(os.environ.get('RULE_MODEL_CASES', '10'))
 START = int(os.environ.get('RULE_MODEL_START', '0'))
 WEIGHTS = json.loads(os.environ.get('RULE_MODEL_WEIGHTS', '{}'))
+DENSE = os.environ.get('RULE_MODEL_DENSE') == '1'
 
 
 def spec_key(tool, args):
@@ -80,6 +83,10 @@ def run_case(c, case):
                 prev = [sp['replacement'] for sp in rule_specs.values()
                         if sp['tool'] == 'replace_in_field' and sp['replacement']]
                 pat = rng.choice(prev) if prev and rng.random() < 0.5 else rng.choice(LET[:3])
+                # Dense: often a value the plan names, so rules rewrite named changes.
+                named = [e[2] for e in model.entries if e[0] == 'named' and e[1][2] == field and e[2]]
+                if DENSE and named and rng.random() < 0.6:
+                    pat = rng.choice(named)
                 rep = rng.choice([x for x in LET if x != pat] + ([''] if rng.random() < 0.1 else []))
                 whole = rng.random() < 0.6
                 document = rng.choice(DOCS) if rng.random() < 0.2 else None
@@ -101,6 +108,10 @@ def run_case(c, case):
             elif act == 'set':
                 t = rng.choice(targets)
                 v = stored[t] if rng.random() < 0.5 else rng.choice(VALS + ['D'])
+                if DENSE and rng.random() < 0.5:
+                    # A value a rule of the plan reads or writes.
+                    v = rng.choice([x for sp in rule_specs.values() for x in (sp.get('pattern'), sp.get('replacement'),
+                                                                               sp.get('value')) if x] or [v])
                 args = {'document': t[0], 'refs': [t[1]], 'field': t[2], 'value': v}
                 out = call_tool(ws, 'set_field', args)
                 if not out.startswith('Error'):
