@@ -757,22 +757,24 @@ def _reference(cfg, layers, entry_fields, op) -> Optional[str]:
 
 def check_settings(client, project, ops) -> List[str]:
     """Why the plan's tagset changes can no longer apply as staged: a tagset
-    or a field's tagset changed since. Empty when they can."""
+    or a field's tagset changed since, to something other than what the plan
+    makes it (a change already made reads as done, igt's ``stateOf``). Empty
+    when they can."""
     reasons = []
     for owner in dict.fromkeys(op['owner'] for op in settings_ops(ops)):
         cfg, layers, entry_fields = _live(client, project, owner)
         raw = _igt(cfg).get('tagsets')
         raw = raw if isinstance(raw, dict) else {}
         for op in settings_ops(ops):
-            if op['owner'] != owner:
+            if op['owner'] != owner or _state(cfg, layers, entry_fields, op) != 'moved':
                 continue
             if op['kind'] == 'set_tagset':
                 now = _comparable(_norm(raw[op['was']], op['was'])) if op['was'] in raw else None
-                if now != _comparable(op.get('before')):
-                    reasons.append(f'the tagset {qv(op["was"])} changed since this plan was made')
-                elif op['was'] != op['name'] and op['name'] in raw:
+                if now == _comparable(op.get('before')) and op['was'] != op['name'] and op['name'] in raw:
                     reasons.append(f'a tagset named {qv(op["name"])} was made since this plan was')
-            elif _reference(cfg, layers, entry_fields, op) != op.get('before'):
+                else:
+                    reasons.append(f'the tagset {qv(op["was"])} changed since this plan was made')
+            else:
                 reasons.append(f'the tagset of a field this plan changes ({op["label"].split(":")[0]}) changed '
                                'since this plan was made')
         # A field pointed at a tagset its owner will not have once the plan's
@@ -836,7 +838,7 @@ def _field_rules(cfg, layers, ops) -> List[dict]:
         wanted = field_constraints(layer_after, after_cfg)
         before = field_constraints(sl.get('config') or {}, cfg)
         stored = (sl.get('constraints') or {}).get(IGT)
-        out.append({'id': sl['id'], 'raw': lcfg.get('tagset'), 'old': old, 'old_name': old_name, 'tagset': name,
+        out.append({'id': sl['id'], 'raw': lcfg.get('tagset', ABSENT), 'old': old, 'old_name': old_name, 'tagset': name,
                     'wanted': wanted,
                     'stored': stored, 'changes': _canonical(wanted) != _canonical(before),
                     'in_force': _canonical(stored) == _canonical(before)})
@@ -846,12 +848,15 @@ def _field_rules(cfg, layers, ops) -> List[dict]:
 TAGSETS_CHANGED = 'Tagsets changed elsewhere. Reload and redo your change.'
 
 
+ABSENT = object()
+
+
 def _queue_stated(b, api: str, owner_id: str, key: str, read) -> None:
     """Queue a write that changes nothing and states that igt cell ``key``
-    still holds ``read`` (None: absent): core writes nothing for it and
-    refuses the batch (409) when the cell changed since (igt's
-    ``queueStated``)."""
-    if read is None:
+    still holds ``read`` (``ABSENT``: no such key, None: a stored JSON null):
+    core writes nothing for it and refuses the batch (409) when the cell
+    changed since (igt's ``queueStated``)."""
+    if read is ABSENT:
         b.add(lambda batch: getattr(batch, api).delete_config(owner_id, IGT, key, expected=None))
     else:
         b.add(lambda batch: getattr(batch, api).set_config(owner_id, IGT, key, read, expected=read))
@@ -875,11 +880,12 @@ def queue_settings(client, b, project, ops) -> List[str]:
         owner_api = 'projects' if owner == PROJECT else 'vocab_layers'
         owner_id = project.id if owner == PROJECT else owner
         if new != (raw or {}):
-            b.add(lambda batch, v=new, e=raw: getattr(batch, owner_api).set_config(
-                owner_id, IGT, 'tagsets', v, expected=e))
+            # Bound now: the batch runs after the loop moved to the last owner.
+            b.add(lambda batch, a=owner_api, i=owner_id, v=new, e=raw: getattr(batch, a).set_config(
+                i, IGT, 'tagsets', v, expected=e))
         else:
             # The tagsets as read, stated: changed since, they refuse the batch.
-            _queue_stated(b, owner_api, owner_id, 'tagsets', igt.get('tagsets'))
+            _queue_stated(b, owner_api, owner_id, 'tagsets', igt.get('tagsets', ABSENT))
         # A plan that renames or deletes a tagset states every field
         # reference it leaves as read, so a field pointed at that tagset
         # since refuses it (igt's ``queueOwner``).
@@ -899,10 +905,10 @@ def queue_settings(client, b, project, ops) -> List[str]:
                     spec = {**spec, 'tagset': name} if name else {x: y for x, y in spec.items() if x != 'tagset'}
                     fields[k] = spec
             if fields != entry_fields:
-                b.add(lambda batch, v=fields, e=igt.get('fields'): batch.vocab_layers.set_config(
-                    owner_id, IGT, 'fields', v, expected=e))
+                b.add(lambda batch, i=owner_id, v=fields, e=igt.get('fields'): batch.vocab_layers.set_config(
+                    i, IGT, 'fields', v, expected=e))
             elif removes_name:
-                _queue_stated(b, 'vocab_layers', owner_id, 'fields', igt.get('fields'))
+                _queue_stated(b, 'vocab_layers', owner_id, 'fields', igt.get('fields', ABSENT))
             continue
 
         meta = igt.get('documentMetadata')
@@ -921,12 +927,12 @@ def queue_settings(client, b, project, ops) -> List[str]:
                     m.pop('tagset', None)
                 new_meta.append(m)
             if new_meta != meta:
-                b.add(lambda batch, v=new_meta, e=meta: batch.projects.set_config(
-                    owner_id, IGT, 'documentMetadata', v, expected=e))
+                b.add(lambda batch, i=owner_id, v=new_meta, e=meta: batch.projects.set_config(
+                    i, IGT, 'documentMetadata', v, expected=e))
             elif removes_name:
                 _queue_stated(b, 'projects', owner_id, 'documentMetadata', meta)
         elif removes_name:
-            _queue_stated(b, 'projects', owner_id, 'documentMetadata', meta)
+            _queue_stated(b, 'projects', owner_id, 'documentMetadata', igt.get('documentMetadata', ABSENT))
 
         for r in _field_rules(cfg, layers, mine):
             if r['tagset'] != r['old_name']:
@@ -1026,6 +1032,11 @@ def write_settings(client, project, ops) -> List[dict]:
     if reasons:
         raise PlanOutOfDate(reasons)
     owners = list(dict.fromkeys(op['owner'] for op in settings_ops(ops)))
+    lives = {o: _live(client, project, o) for o in owners}
+    if all(_state(*lives[op['owner']], op) == 'after' for op in settings_ops(ops)):
+        # Already as the plan leaves them: nothing to write (igt's
+        # ``writeTagsetPlan``).
+        return []
 
     def tagsets_now():
         return {o: _igt(_live(client, project, o)[0]).get('tagsets') for o in owners}

@@ -19,11 +19,12 @@ export const TAGSETS_CHANGED = 'Tagsets changed elsewhere. Reload and redo your 
 /**
  * Queue on `api` (a batch's `projects`, `spanLayers` or `vocabLayers`) a
  * write that changes nothing and states that the IGT cell `key` of `id`
- * still holds `read` (null or undefined: absent). Core writes nothing for it
- * and refuses the whole batch (409) when the cell changed since.
+ * still holds `read` (undefined: absent, null: a stored JSON null). Core
+ * writes nothing for it and refuses the whole batch (409) when the cell
+ * changed since.
  */
 export const queueStated = (api, id, key, read) =>
-  read == null
+  read === undefined
     ? api.deleteConfig(id, IGT_NAMESPACE, key, undefined, { expected: null })
     : api.setConfig(id, IGT_NAMESPACE, key, read, undefined, { expected: read });
 

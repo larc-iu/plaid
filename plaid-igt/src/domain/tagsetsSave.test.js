@@ -104,6 +104,14 @@ describe('a Tagsets save states what it leaves', () => {
       ['projects', 'deleteConfig', 'p', 'igt', 'tagsets', undefined, { expected: null }],
     ]);
   });
+
+  it('a cell holding JSON null is stated as null, never deleted (REV7-WIRE-7)', () => {
+    const { calls, b } = recorder();
+    queueStated(b.spanLayers, 's', 'tagset', null);
+    expect(calls).toEqual([
+      ['spanLayers', 'setConfig', 's', 'igt', 'tagset', null, undefined, { expected: null }],
+    ]);
+  });
 });
 
 describe('a refused save says the tagsets changed only when they did', () => {

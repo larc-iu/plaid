@@ -81,3 +81,40 @@ def test_a_list_on_a_field_naming_a_missing_tagset_is_taken_off_by_the_heal(proj
     proj.client.span_layers.set_config(proj.ids[MGLOSS], 'igt', 'tagset', 'Gone')
     T.heal_fields(proj.client, proj.project_id, {proj.ids[MGLOSS]})
     assert rules(proj, MGLOSS) == [{'type': 'single-span'}]
+
+
+def test_a_plan_changing_the_project_and_a_lexicon_writes_each_owner_its_own(proj):
+    """REV7-WIRE-2: each owner's tagsets write goes to that owner, not to the
+    owner the loop ended on."""
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'NewA',
+                              'changes': {'add': ['a', 'b'], 'mode': 'closed', 'delimiters': ''}})
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'LX', 'lexicon': 'Lexicon',
+                              'changes': {'mode': 'closed', 'add': ['n', 'v']}})
+    T.write_settings(proj.client, ws.project, ws.ops)
+    assert 'NewA' in igt_config(proj)['tagsets']
+    lex = proj.client.vocab_layers.get(proj.ids[VOCAB])['config']['igt']['tagsets']
+    assert 'LX' in lex and 'NewA' not in lex
+
+
+def test_an_assign_another_maintainer_already_made_writes_nothing_and_passes(proj):
+    """REV7-WIRE-2: settings already as the plan leaves them read as done, as
+    igt's ``writeTagsetPlan`` reads them."""
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Translation', 'tagset': 'Leipzig'})
+    proj.client.span_layers.set_config(proj.ids[TRANS], 'igt', 'tagset', 'Leipzig')
+    assert T.check_settings(proj.client, ws.project, ws.ops) == []
+    assert T.write_settings(proj.client, ws.project, ws.ops) == []
+    assert layer(proj, TRANS)['config']['igt']['tagset'] == 'Leipzig'
+
+
+def test_a_stated_read_of_a_stored_null_writes_nothing(proj):
+    """REV7-WIRE-7: a cell holding JSON null, stated as read, stays as it is."""
+    proj.client.span_layers.set_config(proj.ids[TRANS], 'igt', 'tagset', None)
+    q = T._Queue()
+    T._queue_stated(q, 'span_layers', proj.ids[TRANS], 'tagset', None)
+    with proj.client.batched() as batch:
+        for fn in q.calls:
+            fn(batch)
+    igt = layer(proj, TRANS)['config']['igt']
+    assert 'tagset' in igt and igt['tagset'] is None
