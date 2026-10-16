@@ -1,16 +1,25 @@
 // The end of an import, however it ends: run to the end, resumed to the end,
 // or ended by "Use the project as it is". Relative imports only: the
 // fidelity drivers run this from plain node.
-import { markImportFinished } from './igtConfig.js';
+import { markImportFinished, readImportState } from './igtConfig.js';
 import { declareIgtRules } from './igtConstraints.js';
-import {
-  NOT_IN_FORCE_ACTION,
-  notInForceLines,
-} from '../components/projects/settings/refusedValues.js';
+import { notInForceText } from '../components/projects/settings/refusedValues.js';
+
+/** The import record's kind for a Plaid IGT archive (ImportNativeProject.jsx). */
+export const NATIVE_IMPORT_KIND = 'Plaid IGT archive';
+
+/**
+ * Whether putting the rules in force at the end of the import recorded in
+ * `config` may repair the data it brought in. A native archive is the
+ * project as it was, so two annotations it holds on a unit stay, and the
+ * field is named instead.
+ */
+export const importRepairs = (config) => readImportState(config)?.kind !== NATIVE_IMPORT_KIND;
 
 /**
  * Put IGT's rules in force on the project as it now stands, as setup does
- * (`declareIgtRules`), then drop the import record so the project opens. An
+ * (`declareIgtRules`, with no repair after a native archive), then drop the
+ * import record so the project opens. An
  * import stopped part way has written its tagsets and each field's reference
  * to one, so a closed list goes in force here even though the import never
  * reached its own last step. Returns `{cleared, warnings}`: whether the
@@ -20,8 +29,9 @@ import {
 export const finishImport = async (client, projectId) => {
   const warnings = [];
   try {
-    const { notInForce } = await declareIgtRules(client, projectId);
-    warnings.push(...notInForceLines(notInForce).map((line) => `${line} ${NOT_IN_FORCE_ACTION}`));
+    const repair = importRepairs((await client.projects.get(projectId))?.config);
+    const { notInForce } = await declareIgtRules(client, projectId, { repair });
+    warnings.push(...notInForce.map((f) => notInForceText([f])));
   } catch (err) {
     console.error('Could not put the annotation rules in force:', err);
     warnings.push('The annotation rules were not set.');

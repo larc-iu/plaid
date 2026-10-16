@@ -31,6 +31,7 @@ import { countOf } from '@ui/lib/plural.js';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
+import { NATIVE_IMPORT_KIND } from '@/domain/importFinish';
 
 export const ImportNativeProject = () => {
   useDocumentTitle('Import archive');
@@ -52,7 +53,7 @@ export const ImportNativeProject = () => {
     setupDoneRef,
     stop,
     start,
-  } = useProjectImportRun({ client, kind: 'Plaid IGT archive', resumeId });
+  } = useProjectImportRun({ client, kind: NATIVE_IMPORT_KIND, resumeId });
 
   const handleFile = async (file) => {
     if (!file) return;

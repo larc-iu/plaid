@@ -93,4 +93,41 @@ describe('finishImport', () => {
     spy.mockRestore();
     expect(out).toEqual({ cleared: true, warnings: ['The annotation rules were not set.'] });
   });
+  // REV6-WIRE: a native archive is the project as it was. Two annotations it
+  // holds on a unit stay, and the field is named. Another format's import
+  // still has them joined.
+  it('repairs nothing after a native archive, and names the field', async () => {
+    const doubled = (rules) =>
+      rules.some((r) => r.type === 'single-span')
+        ? { violations: [{ constraint: 'single-span' }], violationCount: 1 }
+        : { violations: [], violationCount: 0 };
+    const bare = () => {
+      const p = project();
+      p.textLayers[0].tokenLayers[0].spanLayers[0].constraints = {};
+      return p;
+    };
+    for (const [kind, repaired] of [
+      ['Plaid IGT archive', false],
+      ['CLDF', true],
+    ]) {
+      const client = stub({ count: 0, valueCount: 0, values: [] });
+      client.projects.get = async () => {
+        const p = bare();
+        p.config.igt.import = { kind };
+        return p;
+      };
+      client.spanLayers.checkConstraints = async (_id, rules) => doubled(rules);
+      client.spanLayers.repairConstraints = async (...a) => {
+        client.calls.push(['repairConstraints', ...a]);
+        return { repaired: [{ joined: 1 }] };
+      };
+      const out = await finishImport(client, 'p');
+      expect(client.calls.some(([c]) => c === 'repairConstraints')).toBe(repaired);
+      if (!repaired) {
+        expect(out.warnings).toEqual([
+          'Morph Gloss: 1 morpheme with more than one annotation. Leave one annotation on each, then choose Put in force under Validation.',
+        ]);
+      }
+    }
+  });
 });

@@ -45,6 +45,7 @@ import {
 } from '../../../domain/igtConstraints.js';
 import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
+import { importRepairs } from '../../../domain/importFinish.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
 // so it is also what identifies one this setup made before it was tagged.
@@ -530,7 +531,10 @@ async function executeProjectSetupImpl({
   // Nothing declares it later on its own.
   updateProgress(85, 'Setting up annotation rules…');
   try {
-    const rules = await declareIgtRules(client, currentProjectId);
+    // A resumed native import holds the archive's data as it was: nothing is
+    // repaired (importFinish.js `importRepairs`).
+    const repair = importRepairs((await client.projects.get(currentProjectId))?.config);
+    const rules = await declareIgtRules(client, currentProjectId, { repair });
     if (rules.notInForce.length) console.warn('Annotation rules not in force:', rules.notInForce);
   } catch (rulesError) {
     console.warn('Failed to set up the annotation rules:', rulesError);
