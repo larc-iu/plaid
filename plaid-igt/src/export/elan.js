@@ -41,9 +41,11 @@
 // sentence with no contained alignment gets two value-less slots. The file is
 // valid and editable, and ELAN can be used to align it afterwards.
 //
-// The Segment tier is emitted only when it carries information the Sentence
-// tier does not, i.e. when some sentence contains two or more alignment tokens.
-// At 1:1 it would be an exact duplicate of its parent.
+// The Segment tier is always written, one per speaker, so every document of
+// one export has one tier structure. It holds annotations only when it carries
+// information the Sentence tier does not, i.e. when some sentence contains two
+// or more alignment tokens. At 1:1 it would be an exact duplicate of its parent,
+// so it is left empty.
 //
 // Punctuation between words is NOT emitted on the Word tier: ELAN has no
 // equivalent of FLEx's <item type="punct">, so it would be indistinguishable
@@ -157,13 +159,13 @@ export function sentenceTiming(sentence, validTokens) {
 // A name allocator: TIER_ID is subject to an xsd:key, so a field named "Word"
 // must not collide with the structural Word tier. `scope` is given for a
 // field: the second field of a name (Gloss on words and on morphemes) is named
-// for its scope, "Morpheme Gloss", and only a name taken that way too gets a
-// number.
+// for its scope, "Gloss (morpheme)" (Luke, 2026-10-16), and only a name taken
+// that way too gets a number.
 const nameAllocator = () => {
   const used = new Set();
   return (candidate, fallback, scope = null) => {
     const base = String(candidate ?? '').trim() || fallback;
-    const scoped = scope && used.has(base) ? `${scope} ${base}` : base;
+    const scoped = scope && used.has(base) ? `${base} (${scope.toLowerCase()})` : base;
     let name = scoped;
     for (let i = 2; used.has(name); i++) name = `${scoped}-${i}`;
     used.add(name);

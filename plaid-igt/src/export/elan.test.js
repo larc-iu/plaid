@@ -497,9 +497,9 @@ describe('fields that share a name across scopes', () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.some((id) => /-\d+$/.test(id))).toBe(false);
     expect(valuesOf(tierNamed(dom, 'Gloss'))).toEqual(['perros-g', 'corren-g']);
-    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss'))).toEqual(['dog', 'PL']);
-    expect(tierNamed(dom, 'Morpheme Gloss').getAttribute('PARENT_REF')).toBe('Morph');
-    expect(fieldNamesOf(dom)).toEqual({ 'Morpheme Gloss': 'Gloss' });
+    expect(valuesOf(tierNamed(dom, 'Gloss (morpheme)'))).toEqual(['dog', 'PL']);
+    expect(tierNamed(dom, 'Gloss (morpheme)').getAttribute('PARENT_REF')).toBe('Morph');
+    expect(fieldNamesOf(dom)).toEqual({ 'Gloss (morpheme)': 'Gloss' });
   });
 
   it('keeps a language tag at the end of the name', () => {
@@ -512,19 +512,19 @@ describe('fields that share a name across scopes', () => {
     }
     const dom = build(doc, { ...SHARED, wordFields: ['Gloss (en)'], morphFields: ['Gloss (en)'] });
     expect(valuesOf(tierNamed(dom, 'Gloss (en)'))).toEqual(['w', 'w']);
-    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss (en)'))).toEqual(['m', 'm']);
-    expect(fieldNamesOf(dom)).toEqual({ 'Morpheme Gloss (en)': 'Gloss (en)' });
+    expect(valuesOf(tierNamed(dom, 'Gloss (en) (morpheme)'))).toEqual(['m', 'm']);
+    expect(fieldNamesOf(dom)).toEqual({ 'Gloss (en) (morpheme)': 'Gloss (en)' });
   });
 
   it('stays unique when a field is already called by the scoped name', () => {
     const doc = sharedDoc();
     for (const s of doc.sortedSentences) {
-      for (const w of s.tokens) w.annotations['Morpheme Gloss'] = { value: 'taken' };
+      for (const w of s.tokens) w.annotations['Gloss (morpheme)'] = { value: 'taken' };
     }
-    const dom = build(doc, { ...SHARED, wordFields: ['Gloss', 'Morpheme Gloss'] });
+    const dom = build(doc, { ...SHARED, wordFields: ['Gloss', 'Gloss (morpheme)'] });
     const ids = all(dom, 'TIER').map((t) => t.getAttribute('TIER_ID'));
     expect(new Set(ids).size).toBe(ids.length);
-    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss'))).toEqual(['taken', 'taken']);
+    expect(valuesOf(tierNamed(dom, 'Gloss (morpheme)'))).toEqual(['taken', 'taken']);
     const renamed = Object.entries(fieldNamesOf(dom));
     expect(renamed).toHaveLength(1);
     const [tierId, field] = renamed[0];
@@ -537,9 +537,9 @@ describe('fields that share a name across scopes', () => {
     doc.alignmentTokens = [makeAlignmentToken('a1', 0, 14, 0.5, 2, 'Ana')];
     const xml = buildEafDocument(doc, { ...SHARED, perSpeaker: true }, CONTEXT);
     const dom = parse(xml);
-    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss@Ana'))).toEqual(['dog', 'PL']);
-    expect(fieldNamesOf(dom)).toEqual({ 'Morpheme Gloss': 'Gloss' });
-    const tier = readEaf(xml, 'x.eaf').tiers.find((t) => t.id === 'Morpheme Gloss@Ana');
+    expect(valuesOf(tierNamed(dom, 'Gloss (morpheme)@Ana'))).toEqual(['dog', 'PL']);
+    expect(fieldNamesOf(dom)).toEqual({ 'Gloss (morpheme)': 'Gloss' });
+    const tier = readEaf(xml, 'x.eaf').tiers.find((t) => t.id === 'Gloss (morpheme)@Ana');
     expect(tier.baseName).toBe('Gloss');
   });
 
@@ -562,7 +562,7 @@ describe('fields that share a name across scopes', () => {
     expect(tierNamed(dom, 'Gloss@en').getAttribute('PARTICIPANT')).toBeNull();
     const byId = new Map(readEaf(xml, 'x.eaf').tiers.map((t) => [t.id, t.baseName]));
     expect(byId.get('Gloss@en')).toBe('Gloss@en');
-    expect(byId.get('Morpheme Gloss@en')).toBe('Gloss@en');
+    expect(byId.get('Gloss@en (morpheme)')).toBe('Gloss@en');
     expect(byId.get('Gloss')).toBe('Gloss');
   });
 

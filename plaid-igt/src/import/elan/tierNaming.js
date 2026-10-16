@@ -85,6 +85,19 @@ export function parseElanFlexTierName(name) {
   return { level, itemType, ws };
 }
 
+// Plaid's ELAN export names a morpheme field's tier "<name> (morpheme)" when a
+// word field already has the name (Luke, 2026-10-16), and records the field in
+// the file's HEADER (domain/elanFieldNames.js). A file without the record
+// still reads the tier back to the field.
+const MORPHEME_TIER_SUFFIX = ' (morpheme)';
+
+/** "Gloss (morpheme)" → "Gloss", any other name as it is. */
+export function fieldOfMorphemeTier(name) {
+  const s = String(name ?? '');
+  const base = s.endsWith(MORPHEME_TIER_SUFFIX) ? s.slice(0, -MORPHEME_TIER_SUFFIX.length) : '';
+  return base.trim() ? base : s;
+}
+
 /**
  * `Translation-gls-nl` → {base: 'Translation', itemType: 'gls', ws: 'nl'}, or
  * null when the name is not shaped that way. A name from ELAN's FLEx import

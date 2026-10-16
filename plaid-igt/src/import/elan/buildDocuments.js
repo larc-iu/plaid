@@ -37,7 +37,12 @@ import {
 import { ROLES, nodeLabel, groupRoles, groupValues } from './schema.js';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
 import { joinPhrase } from '../flex/flextextParser.js';
-import { fieldWorksFieldNames, parseElanFlexTierName, parseFlexTierName } from './tierNaming.js';
+import {
+  fieldOfMorphemeTier,
+  fieldWorksFieldNames,
+  parseElanFlexTierName,
+  parseFlexTierName,
+} from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
@@ -181,12 +186,13 @@ export function matchMediaFiles(eafs, mediaFiles, { shared = false } = {}) {
  * Default target name for a field/orthography node: the tier's name, except a
  * word's text in another writing system from ELAN's FLEx import
  * (`A_word-txt-dis-Latn-AF`), which is named by that writing system as the
- * FLEx importer names an orthography.
+ * FLEx importer names an orthography, and a tier "Gloss (morpheme)", which
+ * is the field Gloss (fieldOfMorphemeTier).
  */
 export const defaultFieldName = (node) => {
   const flex = parseElanFlexTierName(nodeLabel(node));
   if (flex?.level === 'word' && flex.itemType === 'txt' && flex.ws) return nameKey(flex.ws);
-  return nameKey(nodeLabel(node));
+  return nameKey(fieldOfMorphemeTier(nodeLabel(node)));
 };
 
 /** Resolve the mapping to role → the schema nodes holding it. */

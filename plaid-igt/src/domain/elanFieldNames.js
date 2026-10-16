@@ -3,8 +3,8 @@
 //
 // TIER_ID is unique within a file, and a project imported from FLEx has Gloss
 // and POS on words AND on morphemes. The exporter names the second tier of a
-// name for its scope ("Morpheme Gloss") and records, in one HEADER property,
-// the field each such tier is: {"Morpheme Gloss": "Gloss"}. The import reads
+// name for its scope ("Gloss (morpheme)") and records, in one HEADER property,
+// the field each such tier is: {"Gloss (morpheme)": "Gloss"}. The import reads
 // the record, so a round trip keeps both fields' names. Keys are tier names
 // without the speaker suffix.
 //

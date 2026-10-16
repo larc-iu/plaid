@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { fieldWorksFieldNames, parseFlexTierName, suggestFieldNames } from './tierNaming.js';
+import {
+  fieldOfMorphemeTier,
+  fieldWorksFieldNames,
+  parseFlexTierName,
+  suggestFieldNames,
+} from './tierNaming.js';
 import { fieldNameLang } from '../../domain/fieldNames.js';
 
 describe('parseFlexTierName', () => {
@@ -196,5 +201,15 @@ describe('fieldWorksFieldNames', () => {
     expect(named).toEqual({ k1: 'Word Text (oni)', k2: 'Word POS (en)' });
     expect(fieldNameLang(named.k1)).toBe('oni');
     expect(fieldNameLang(named.k2)).toBe('en');
+  });
+});
+
+describe('fieldOfMorphemeTier', () => {
+  it('reads the field from a tier named "<name> (morpheme)"', () => {
+    expect(fieldOfMorphemeTier('Gloss (morpheme)')).toBe('Gloss');
+    expect(fieldOfMorphemeTier('Gloss (en) (morpheme)')).toBe('Gloss (en)');
+    expect(fieldOfMorphemeTier('Gloss (en)')).toBe('Gloss (en)');
+    expect(fieldOfMorphemeTier(' (morpheme)')).toBe(' (morpheme)');
+    expect(fieldOfMorphemeTier('Gloss')).toBe('Gloss');
   });
 });
