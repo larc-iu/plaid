@@ -448,6 +448,19 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     await unmount();
   });
 
+  // REV3-WIRE-4: a page read before another maintainer pointed a second field
+  // at the tagset. The toast counts the fields the save repointed.
+  it('counts the fields the save repointed, not the ones the page knew', async () => {
+    vi.clearAllMocks();
+    const onSaveChanges = vi.fn(async () => ({ repointed: 2 }));
+    const { container, step, unmount } = await mountWith({ onSaveChanges });
+    await expandFirst(container, step);
+    const name = all(container, 'input').find((i) => i.value === 'Leipzig');
+    await step(async () => blurWith(name, 'LGR'));
+    expect(notifyInfo).toHaveBeenCalledWith('2 fields now use "LGR"', 'Tagset renamed');
+    await unmount();
+  });
+
   it('holds lowercase values back for a decision when seeding', async () => {
     // A glossed project has far more stems than tags. Seeding them all under
     // the default (suggest) mode is how a tagset came to hold 1,700 values.

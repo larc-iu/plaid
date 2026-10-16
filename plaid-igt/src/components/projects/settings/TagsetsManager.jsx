@@ -32,7 +32,8 @@ import { nameKey } from '@ui/lib/nameKey.js';
 // for the text inputs, so a rename does not write once per keystroke.
 // `onSaveChanges(next, meta)` gets `meta.renamed = { from, to }` on a rename,
 // because fields reference a tagset by NAME and the wrapper has to repoint
-// them in the same operation.
+// them in the same operation. It may answer `{repointed}`, how many fields
+// the rename repointed as the save read them.
 //
 // `usage` maps a tagset name to the fields referencing it (governedFields
 // records), which is what makes a delete safe to reason about and a rename
@@ -122,9 +123,9 @@ export const TagsetsManager = ({
   const save = async (next, meta, name) => {
     setDraft(next);
     try {
-      await onSaveChanges(next, meta);
+      const saved = await onSaveChanges(next, meta);
       setRefused(null);
-      return true;
+      return saved ?? true;
     } catch (error) {
       // The settings wrapper reports it; roll the draft back so what's on
       // screen is what the server has. Values in the way of a closed list
@@ -175,12 +176,15 @@ export const TagsetsManager = ({
     // Fields point at a tagset BY NAME, so the save carries the rename along
     // and the wrapper repoints every field that used the old name in the same
     // operation. Left to the user, they all silently fell back to free.
-    if (!(await save(next, { renamed: { from, to: name } }))) return;
+    const saved = await save(next, { renamed: { from, to: name } });
+    if (!saved) return;
     setOpenName(name);
-    const fields = usage?.[from] || [];
-    if (fields.length) {
+    // The fields the save repointed, read when it saved, else the ones this
+    // page knows.
+    const n = saved.repointed ?? (usage?.[from] || []).length;
+    if (n) {
       notifyInfo(
-        `${fields.length} field${fields.length === 1 ? '' : 's'} now use${fields.length === 1 ? 's' : ''} "${name}"`,
+        `${n} field${n === 1 ? '' : 's'} now use${n === 1 ? 's' : ''} "${name}"`,
         'Tagset renamed',
       );
     }

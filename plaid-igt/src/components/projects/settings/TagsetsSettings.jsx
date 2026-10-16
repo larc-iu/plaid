@@ -42,7 +42,8 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
   // Fields reference a tagset by name, so a rename has to repoint every field
   // that used the old name — annotation fields on their span layer, metadata
   // fields in the project config — or they all quietly fall back to free.
-  // `live` is the project as the save read it.
+  // `live` is the project as the save read it. Returns how many fields it
+  // repointed.
   const repointFields = async ({ from, to }, live) => {
     const fields = byTagsetName(governedFields(getIgtLayerInfo(live), live?.config))[from] || [];
     for (const g of fields) {
@@ -65,6 +66,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         expectStored(live, IGT_NAMESPACE, 'documentMetadata'),
       );
     }
+    return fields.length;
   };
 
   // Only a refused tagsets write throws, so the editor rolls back. When the
@@ -132,9 +134,10 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     // Hold what we just wrote until the refreshed project comes back, so the
     // editor does not flicker to the pre-save value in between.
     setDraftTagsets(next);
+    let repointed = 0;
     if (meta?.renamed) {
       try {
-        await repointFields(meta.renamed, live);
+        repointed = await repointFields(meta.renamed, live);
       } catch (error) {
         console.error('Failed to repoint fields:', error);
         notifyError(
@@ -154,6 +157,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     } finally {
       setDraftTagsets(null);
     }
+    return { repointed };
   };
 
   // The [value, count, reading] rows actually present in the fields using

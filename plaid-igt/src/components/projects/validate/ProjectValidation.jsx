@@ -272,6 +272,12 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   // the tagsets in between is made again to what they saved.
   const addToTagset = async (g, parts) => {
     const attempt = async (p) => {
+      // The field as stored now: one moved to another tagset since this page
+      // was read takes nothing, rather than the list it no longer uses.
+      const now = governedFields(getIgtLayerInfo(p), p?.config).find((x) => x.key === g.key);
+      if ((now?.tagsetName ?? null) !== g.tagsetName) {
+        throw Object.assign(new Error('Field moved'), { movedTo: now?.tagsetName ?? null });
+      }
       const tagsets = readTagsets(p?.config);
       const t = tagsets[g.tagsetName];
       if (!t) throw new Error(`Tagset "${g.tagsetName}" no longer exists`);
@@ -316,6 +322,16 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       // The scan reads the tagset from the project, so refresh it and re-check.
       await onProjectUpdate?.();
     } catch (err) {
+      if (err?.movedTo !== undefined) {
+        notifyError(
+          err.movedTo
+            ? `${g.field} uses “${err.movedTo}” now. Nothing was added.`
+            : `${g.field} has no tagset now. Nothing was added.`,
+          'Failed to update the tagset',
+        );
+        await onProjectUpdate?.();
+        return;
+      }
       console.error('Could not add to tagset:', err);
       notifyError(humanizeError(err), 'Failed to update the tagset');
     }

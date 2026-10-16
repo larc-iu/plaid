@@ -155,6 +155,65 @@ describe('the project tagsets section', () => {
   });
 });
 
+// REV3-WIRE-4: another maintainer pointed a second field at the tagset after
+// this page was read. The rename repoints both and answers how many.
+describe('a rename from a page read before a field was pointed at the tagset', () => {
+  it('repoints every field the save reads and answers their number', async () => {
+    const leipzig = { delimiters: '.', mode: 'suggest', values: [{ value: 'PL' }] };
+    const field = (id, name) => ({
+      id,
+      name,
+      config: { igt: { scope: 'Morpheme', tagset: 'Leipzig' } },
+      constraints: { igt: [{ type: 'single-span' }] },
+    });
+    const withFields = (fields) => ({
+      id: 'p-1',
+      config: { igt: { tagsets: { Leipzig: leipzig } } },
+      textLayers: [
+        {
+          id: 'tl',
+          config: { plaid: { role: 'baseline' } },
+          tokenLayers: [{ id: 'ml', config: { plaid: { role: 'morpheme' } }, spanLayers: fields }],
+        },
+      ],
+    });
+    const server = withFields([field('a', 'Gloss'), field('b', 'Lex Gloss')]);
+    const repointed = [];
+    const client = {
+      projects: { get: async () => structuredClone(server), setConfig: async () => {} },
+      spanLayers: {
+        setConfig: async (id, _ns, key, value) => repointed.push([id, key, value]),
+        setConstraints: async () => {},
+      },
+      async batched(fn) {
+        fn({ projects: this.projects, spanLayers: this.spanLayers });
+        return [];
+      },
+    };
+    const { step, unmount } = await renderComponent(
+      <TagsetsSettings
+        project={withFields([field('a', 'Gloss')])}
+        projectId="p-1"
+        client={client}
+        onProjectUpdate={async () => {}}
+      />,
+    );
+    let answer;
+    await step(async () => {
+      answer = await tagsetsManager.props.onSaveChanges(
+        { LGR: leipzig },
+        { renamed: { from: 'Leipzig', to: 'LGR' } },
+      );
+    });
+    expect(repointed).toEqual([
+      ['a', 'tagset', 'LGR'],
+      ['b', 'tagset', 'LGR'],
+    ]);
+    expect(answer).toEqual({ repointed: 2 });
+    await unmount();
+  });
+});
+
 // REV3-WIRE-3: another maintainer points Gloss at Leipzig after this save
 // read the project and before its batch lands. Gloss is declared with the
 // old list by theirs, and this save's own batch does not know Gloss. The

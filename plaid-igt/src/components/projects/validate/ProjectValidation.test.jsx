@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, byText, texts } from '@ui/test/renderComponent.jsx';
 import { ProjectValidation } from './ProjectValidation.jsx';
-import { notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { MIXED, hitsClient } from './cellReadingFixture.js';
 
 // The Validation tab's own logic: which fields it decides are governed, that it
@@ -429,6 +429,36 @@ describe('Add to tagset', () => {
       delimiters: '.',
       parts: 'all',
     });
+    await unmount();
+  });
+});
+
+// REV3-WIRE-5: the field moved to another tagset after the page was read.
+// Nothing is added to the list it no longer uses.
+describe('Add to tagset, the field moved since the page was read', () => {
+  it('adds nothing and says which tagset the field uses now', async () => {
+    const server = structuredClone(project);
+    server.config.igt.tagsets.POS = { delimiters: '', mode: 'suggest', values: [] };
+    server.textLayers[0].tokenLayers[0].spanLayers[0].config.igt.tagset = 'POS';
+    const client = {
+      ...clientWith([[['1SG.ABL', 3]], [['Song', 4]]]),
+      projects: { get: vi.fn(async () => structuredClone(server)), setConfig: vi.fn() },
+      spanLayers: { setConstraints: vi.fn() },
+      batched: async (fn) => fn(client),
+    };
+    const { container, step, unmount } = await render(client);
+    const add = all(container, 'button').find((b) => b.title === 'Add ABL to Leipzig');
+    await step(async () => {
+      add.click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).not.toHaveBeenCalled();
+    expect(client.spanLayers.setConstraints).not.toHaveBeenCalled();
+    expect(notifySuccess).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith(
+      'Gloss uses “POS” now. Nothing was added.',
+      'Failed to update the tagset',
+    );
     await unmount();
   });
 });
