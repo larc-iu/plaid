@@ -5,7 +5,10 @@
   deletes and replacements, never touching, and after them FX-E-TEXT's 507
   user-shaped saves after REV4-TEXT's generator: Devanagari, Hebrew, Thai,
   Arabic and Latin texts of up to 30 sentences, leading whitespace, pasted
-  sentences, a line typed at the start beside other edits, up to 13 gaps)
+  sentences, a line typed at the start beside other edits, up to 13 gaps,
+  then FX-F-TEXT's 150 saves at the head of a text indented with
+  ideographic, no-break or ASCII spaces: Enter after the indent, a line of
+  only such spaces, a title line, beside other edits)
   with what core makes of each on
   the edits path, the body and the sentence begins and words after the save.
   igt's \"Tokenize new text\" (plaid-igt `newTextWords.js`) and its Python

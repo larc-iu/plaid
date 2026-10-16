@@ -2953,7 +2953,9 @@
          kept (filterv (complement ::gone) placed)
          was-token (let [m (into {} (map (juxt :token/id identity)) wide)] #(m (:token/id %)))
         ;; A line typed before the text's first sentence, one holding a
-        ;; letter before its last line break, is a sentence of its own
+        ;; letter (anything but whitespace, as `space?` reads it, so not a
+        ;; line of only no-break or ideographic spaces) before its last line
+        ;; break, is a sentence of its own
         ;; (`:heads`): the new text before the first sentence's first letter
         ;; left, whatever the save's shape.
          firsts (filter #(and (partitioning (:token/layer %)) (zero? (:token/begin %))
@@ -2968,7 +2970,8 @@
                               p (if (neg? (at-or-before q)) q p)
                               prefix (String. nw 0 (int p))
                               m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" prefix))]
-                          (when (and m (re-find #"\S" m))
+                          (when (and m (.anyMatch (.codePoints ^String m)
+                                                  (reify java.util.function.IntPredicate (test [_ c] (not (ws? c))))))
                             (let [k (cp/cp-count m)]
                              ;; not over a whole word the edit kept (one typed
                              ;; over with the line)

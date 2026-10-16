@@ -518,6 +518,14 @@
   (let [heads (fn [s ops] (:heads (nth (extents-after s [] ops) 2)))]
     (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\n")])))
     (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "  \n")])))
+    ;; REV5-TEXT-2: no-break and ideographic spaces are whitespace here too,
+    ;; so Enter after a paragraph indent of them makes no sentence
+    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u3000\n")])))
+    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u00a0\u202f\n")])))
+    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\n")])))
+    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u3000\n")])))
+    (is (nil? (heads "\u00a0\u00a0|Ana| |runs.| /|Ben| |sits.|" [(ins 2 "\n")])))
+    (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "题目\n")])))
     (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (heads "|Hi.|\n/|The| |end.|" [(ins 0 "Oh.\n") (del 4 1)])))
     (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads " |Hi.|\n/|The| |end.|" [(ins 1 "Oh.\n")])))
     (let [[nb at] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n") (del 4 1)])]

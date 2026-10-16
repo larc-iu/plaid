@@ -216,8 +216,9 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
   // A line typed before the first sentence's first letter left, holding a
   // letter before its last line break, is a sentence of its own: the first
   // sentence begins at the first letter after that line (plaid-core
-  // `apply-plain-gaps`, `head-end`). Core reads "a letter" there as anything
-  // but ASCII whitespace. Not where a word the save typed over with the line
+  // `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace,
+  // so a line of only no-break or ideographic spaces (an indent) is not one.
+  // Not where a word the save typed over with the line
   // ends inside it, which core keeps on its own text.
   const first = (sentences || []).find((s) => s.begin === 0);
   if (first) {
@@ -238,7 +239,7 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
           break;
         }
       }
-      const letter = k > 0 && body.slice(0, k).some((c) => !/^[ \t\n\v\f\r]$/.test(c));
+      const letter = k > 0 && body.slice(0, k).some((c) => !isSpace(c));
       const typedOver = (words || []).some(
         (w) =>
           w.begin < w.end &&

@@ -310,8 +310,9 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
     # A line typed before the first sentence's first letter left, holding a
     # letter before its last line break, is a sentence of its own: the first
     # sentence begins at the first letter after that line (plaid-core
-    # `apply-plain-gaps`, `head-end`). Core reads "a letter" there as anything
-    # but ASCII whitespace. Not where a word the save typed over with the line
+    # `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace,
+    # so a line of only no-break or ideographic spaces (an indent) is not one.
+    # Not where a word the save typed over with the line
     # ends inside it, which core keeps on its own text.
     first = next((snt for snt in sentences or () if (snt['begin'] if isinstance(snt, dict) else snt[0]) == 0), None)
     if first is not None:
@@ -321,7 +322,7 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
         if q >= 0:
             p = start_of(q)
             k = next((x + 1 for x in range(p - 1, -1, -1) if _is_line_break(body[x])), -1)
-            letter = k > 0 and any(c not in ' \t\n\v\f\r' for c in body[:k])
+            letter = k > 0 and any(not is_js_space(c) for c in body[:k])
             spans = [(w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1]) for w in words or []]
             typed_over = any(wb < we and any(s <= wb and we <= e and v for s, e, v in srt) and end_of(we) <= k
                              for wb, we in spans)
