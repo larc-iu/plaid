@@ -171,3 +171,44 @@ def test_a_quoted_label_is_the_document_it_quotes_not_one_whose_name_holds_the_q
         assert w.resolve_document_id(given) == want, given
     w._doc_list = [{'id': 'q', 'name': '"Cuento"'}]
     assert w.resolve_document_id('"Cuento"') == 'q'
+
+
+def test_a_rule_asked_again_that_stays_says_what_its_entry_writes_and_why():
+    # REV5-AGENT-4: kept, then named.
+    client, w = _ws({'sp-g1': 'Ali'})
+    _replace(w, 'Ali', 'Bob', whole=True)
+    _set(w, 's1.w1', 'Ali')
+    out = _replace(w, 'Ali', 'Bob', whole=True)
+    assert out == ('Nothing to change after the changes planned since: this change is entry 1 already, which stays '
+                   'where it is and writes nothing now: the plan keeps the 1 value it matches as it is. Drop that '
+                   'keep (drop_planned) for this change to reach it.'), out
+    client, w = _ws({'sp-g1': 'Ali'})
+    _replace(w, 'Ali', 'Bob', whole=True)
+    _set(w, 's1.w1', 'Cy')
+    out = _replace(w, 'Ali', 'Bob', whole=True)
+    assert out == ('Nothing to change after the changes planned since: this change is entry 1 already, which stays '
+                   'where it is and writes nothing now: the plan names its own value for the 1 value it matches. '
+                   'Drop that change (drop_planned) for this change to reach it.'), out
+    assert _approve(client, w) == {'sp-g1': 'Cy'}
+
+
+def test_a_rule_asked_again_names_each_rule_its_move_leaves_with_nothing():
+    # REV5-AGENT-5 (Luke 2026-10-16): it still applies last, and says so.
+    client, w = _ws({'sp-g1': 'Ali', 'sp-y1': 'Ali'})
+    _replace(w, 'Ali', 'Bob', whole=True)
+    _replace(w, 'Bob', 'Cy', whole=True, document='Text 1')
+    out = _replace(w, 'Ali', 'Bob', whole=True)
+    assert out.split('\n')[0].endswith(
+        'It was planned already as entry 1: that copy is gone, and this one applies after the changes planned since. '
+        'Gloss "Bob" → "Cy" in "Text 1" now changes nothing (entry 1): drop it (drop_planned) if it should go.'), out
+    assert _approve(client, w) == {'sp-g1': 'Bob', 'sp-y1': 'Bob'}
+
+
+def test_a_rule_that_only_rewrote_a_dropped_named_change_goes_with_it():
+    # The REV5-AGENT review's note: no row of 0 values is left behind.
+    _client, w = _ws({'sp-g1': 'Ali'})
+    _set(w, 's1.w1', 'Bob')
+    _replace(w, 'Bob', 'Zed', whole=True)
+    out = call_tool(w, 'drop_planned', {'indexes': [1]})
+    assert '1 later corpus-wide change that now finds nothing to change went with it.' in out, out
+    assert w.ops == []

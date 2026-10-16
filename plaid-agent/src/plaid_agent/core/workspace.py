@@ -448,6 +448,11 @@ class BaseWorkspace:
     #: project's workspace shares it (`reach.route`).
     reads: Optional[List[Dict[str, Any]]] = None
 
+    #: How many values the last drop_planned took back from what the dropped
+    #: entries had set inside other planned changes (``after_drop``), so a
+    #: drop that took some back never reads as one that changed nothing.
+    dropped_elsewhere: int = 0
+
     def note_read(self, n: int, unit: str, of: Optional[int] = None, which: Optional[str] = None) -> None:
         """Say what the tool call under way showed the model: ``n`` of
         ``unit`` (one of `trace.UNITS`), out of ``of``, and ``which`` ones,

@@ -1011,16 +1011,14 @@ class Workspace(BaseWorkspace):
         for k in keys:
             self.new_entries.pop(k, None)
         self.ops[:] = [op for op in self.ops if not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
-        # A dropped rule takes back what it changed in planned analyses, where
-        # nothing changed them since (bulk.UNDO).
-        from .bulk import UNDO
-        undone = 0
+        # A dropped rule takes back each value it set in a planned analysis
+        # that still holds it, one value at a time (bulk.UNDO, REV5-AGENT-2).
+        from .bulk import SEQ, UNDO, take_back
+        undone = since = 0
         for op in dropped:
-            for was, now in op.get(UNDO) or []:
-                at = next((i for i, o in enumerate(self.ops) if o == now), None)
-                if at is not None:
-                    self.ops[at] = was
-                    undone += 1
+            back, moved = take_back(self, op.get(UNDO) or [], op.get(SEQ) or 0)
+            undone, since = undone + back, since + moved
+        self.dropped_elsewhere = undone
         # A dropped analysis takes the links to its morphemes along: they have
         # nothing to be written on.
         before = self.unlinked
@@ -1028,13 +1026,15 @@ class Workspace(BaseWorkspace):
         self.reported_unlinked += self.unlinked - before
         # A later rule was found over the values a dropped one leaves, or
         # read a value a dropped keep held as stored: each is found again.
-        # One that now finds nothing goes, and is said.
-        from ..core import rules
+        # One that now finds nothing goes, and is said, whatever was dropped:
+        # a rule that only rewrote a dropped named change too.
         from .bulk import sync_rules
-        emptied = sync_rules(self, drop_empty=any(rules.is_rule(op) for op in dropped))
+        emptied = sync_rules(self, drop_empty=True)
         return ((' Links to the dropped new entries were dropped with them.' if keys else '')
-                + (f' The values it set in {undone} planned analys{"is" if undone == 1 else "es"} '
-                   'were taken back.' if undone else '')
+                + (f' {undone} {"value" if undone == 1 else "values"} it set in planned analyses '
+                   f'{"was" if undone == 1 else "were"} taken back.' if undone else '')
+                + (f' {since} {"value" if since == 1 else "values"} it set in planned analyses, changed since, '
+                   f'{"stays" if since == 1 else "stay"} as planned.' if since else '')
                 + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '')
                 + (f' {emptied} later corpus-wide change{"s" if emptied != 1 else ""} that '
                    f'{"now find" if emptied != 1 else "now finds"} nothing to change went with it.'

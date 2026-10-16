@@ -1639,6 +1639,7 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
                             f'{len(ws.ops)} are planned (see plan_status).')
     dropped = [ws.ops[i - 1] for i in sorted(drop)]
     ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
+    ws.dropped_elsewhere = 0
     note = ws.after_drop(dropped)
     # A value kept out of a corpus-wide change goes with the last change it
     # was kept out of: on its own it would read as a change that writes
@@ -1659,6 +1660,8 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
     elif keeps and not changes and len(dropped) == keeps:
         said = (f'Stopped keeping {_n(keeps, "value", "values")}: the corpus-wide change in the plan now '
                 f'includes {"it" if keeps == 1 else "them"}.')
+    elif not changes and not keeps and ws.dropped_elsewhere:
+        said = f'Dropped {_n(len(dropped), "entry", "entries")}.'
     elif not changes and not keeps:
         said = f'Dropped {_n(len(dropped), "entry that changed", "entries that changed")} nothing.'
     else:

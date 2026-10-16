@@ -107,8 +107,8 @@ def test_a_rule_asked_again_that_then_finds_nothing_stays_where_it_was(live_clie
         call_tool(ws, 'replace_in_field', first)
         call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': 'A', 'replacement': 'C', 'whole': True})
         out = call_tool(ws, 'replace_in_field', first)
-        assert out == ('Nothing to change after the changes planned since: this change is planned already as '
-                       'entry 1, which stays where it is.'), out
+        assert out == ('Nothing to change after the changes planned since: this change is entry 1 already, which '
+                       'stays where it is and writes 1 value.'), out
         _p, h, _ = approve(c, s.project_id, ws)
         assert not h.errors, h.errors
         assert [v for v, _m in _glosses(c, s.project_id)] == ['B']
@@ -125,10 +125,10 @@ def test_dropping_a_form_rule_takes_back_its_values_in_planned_analyses(live_cli
                                        'morphemes': [{'form': 'ka'}, {'form': 's'}]})
         analysis = ws.ops[0]
         out = call_tool(ws, 'set_field_for_form', {'form': 'ka', 'field': 'Morph Gloss', 'value': 'DO'})
-        assert '1 more in analyses this plan already holds, changed there.' in out, out
+        assert out.endswith(' 1 value in analyses this plan already holds, changed there.'), out
         assert ws.ops[0] != analysis
         out = call_tool(ws, 'drop_planned', {'indexes': [2]})
-        assert 'The values it set in 1 planned analysis were taken back.' in out, out
+        assert out.startswith('Dropped 1 planned change. 1 value it set in planned analyses was taken back.'), out
         assert ws.ops == [analysis]
     finally:
         s.delete()
@@ -160,5 +160,101 @@ def test_a_rule_asked_again_after_resume_over_a_cycle_approves_untouched(live_cl
         assert not h.errors and h.done[0].get('applied') == 1, (h.errors, h.done)
         assert [v for v, _m in _glosses(c, s.project_id)] == ['C', 'C', '']
         assert [v for v, _m in _glosses(c, s.project_id, 'Doc B')] == ['C', 'C']
+    finally:
+        s.delete()
+
+
+_KA = [('ka', '', [('ka', '')]), ('kan', '', [('ka', ''), ('n', '')]), ('kan', '', [('ka', ''), ('n', '')])]
+_ANA = {'document': 'Doc A', 'ref': 's1.w2', 'morphemes': [{'form': 'ka'}, {'form': 'n'}]}
+
+
+def _form(form, value, only_empty=False):
+    return {'form': form, 'field': 'Morph Gloss', 'value': value, 'only_empty': only_empty}
+
+
+def _analysis(ws):
+    [op] = [o for o in ws.ops if o.get('kind') == 'set_analysis']
+    return [next((f['value'] for f in m.get('fields') or []), '') for m in op['morphemes']]
+
+
+def _morph_glosses(c, pid):
+    doc = Workspace(c, load_project(c, pid)).doc('Doc A')
+    return [[m.fields['Morph Gloss'].value if 'Morph Gloss' in m.fields else '' for m in w.morphemes]
+            for s in doc.sentences for w in s.words]
+
+
+def _analysis_case(c, name, steps, analysis, stored, said=None):
+    s, ws = _seeded(c, [_doc('d0', 'Doc A', _KA)], name)
+    try:
+        call_tool(ws, 'set_analysis', _ANA)
+        out = None
+        for tool, args in steps:
+            out = call_tool(ws, tool, args)
+        if said is not None:
+            assert said in out, out
+        assert _analysis(ws) == analysis, (_analysis(ws), out)
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert not h.errors, h.errors
+        assert _morph_glosses(c, s.project_id) == stored
+    finally:
+        s.delete()
+
+
+def test_dropping_a_form_rule_asked_again_takes_back_only_what_its_last_copy_set(live_client):
+    # REV5-AGENT-1: "X" on every ka, "Y", "X" again, then drop "X": the
+    # analysis's ka holds "Y", as the card's "Y" row says.
+    _analysis_case(live_client, 'undo re-ask',
+                   [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('ka', 'Y')),
+                    ('set_field_for_form', _form('ka', 'X')), ('drop_planned', {'indexes': [3]})],
+                   ['Y', ''], [['Y'], ['Y', ''], ['Y', '']],
+                   said='1 value it set in planned analyses was taken back.')
+
+
+def test_dropping_a_form_rule_asked_again_without_a_change_between_takes_its_value_back(live_client):
+    _analysis_case(live_client, 'undo re-ask twice',
+                   [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('ka', 'X')),
+                    ('drop_planned', {'indexes': [2]})],
+                   ['', ''], [[''], ['', ''], ['', '']])
+
+
+def test_dropping_a_form_rule_takes_back_its_value_whatever_else_changed_the_analysis(live_client):
+    # REV5-AGENT-2, the three shapes: a form rule on the other morpheme
+    # before or after it, and a value named on the other morpheme.
+    _analysis_case(live_client, 'undo, rule before',
+                   [('set_field_for_form', _form('n', 'X', True)), ('set_field_for_form', _form('ka', 'Q')),
+                    ('drop_planned', {'indexes': [2]})],
+                   ['Q', ''], [['Q'], ['Q', ''], ['Q', '']])
+    _analysis_case(live_client, 'undo, rule after',
+                   [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('n', 'Z')),
+                    ('drop_planned', {'indexes': [2]})],
+                   ['', 'Z'], [[''], ['', 'Z'], ['', 'Z']])
+    _analysis_case(live_client, 'undo, named after',
+                   [('set_field_for_form', _form('ka', 'X')),
+                    ('set_field', {'document': 'Doc A', 'refs': ['s1.w2.m2'], 'field': 'Morph Gloss', 'value': 'Q'}),
+                    ('drop_planned', {'indexes': [2]})],
+                   ['', 'Q'], [[''], ['', 'Q'], ['', '']])
+
+
+def test_dropping_a_form_rule_leaves_a_value_named_over_its_own(live_client):
+    _analysis_case(live_client, 'undo, named over it',
+                   [('set_field_for_form', _form('ka', 'X')),
+                    ('set_field', {'document': 'Doc A', 'refs': ['s1.w2.m1'], 'field': 'Morph Gloss', 'value': 'Q'}),
+                    ('drop_planned', {'indexes': [2]})],
+                   ['Q', ''], [[''], ['Q', ''], ['', '']],
+                   said='1 value it set in planned analyses, changed since, stays as planned.')
+
+
+def test_a_form_rule_that_reaches_only_a_planned_analysis_is_staged_and_its_drop_takes_the_value_back(live_client):
+    c = live_client
+    s, ws = _seeded(c, [_doc('d0', 'Doc A', [('ka', '', [('ka', '')]), ('kan', '', [('kan', '')])])], 'only analysis')
+    try:
+        call_tool(ws, 'set_analysis', _ANA)
+        out = call_tool(ws, 'set_field_for_form', _form('n', 'X'))
+        assert out.startswith('Planned 0 changes') and out.endswith(
+            ' 1 value in analyses this plan already holds, changed there.'), out
+        assert _analysis(ws) == ['', 'X'] and len(ws.ops) == 2
+        out = call_tool(ws, 'drop_planned', {'indexes': [2]})
+        assert out.startswith('Dropped 1 entry. 1 value it set in planned analyses was taken back.'), out
+        assert _analysis(ws) == ['', ''] and len(ws.ops) == 1
     finally:
         s.delete()

@@ -361,12 +361,16 @@ def test_set_field_for_form_reads_the_planned_chain():
     w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'set_field_for_form', {'form': 'd', 'field': 'Morph Gloss', 'value': 'DAT'})
-    assert [op['kind'] for op in w.ops] == ['set_analysis'], out
+    # Staged as a row of its own, so dropping it takes its value back.
+    assert [op['kind'] for op in w.ops] == ['set_analysis', 'bulk_scope'], out
     assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', 'DAT', None]
     # The stored "Ali" of s1.w1 is on its way out, and the planned one
     # already has a value, so only_empty leaves it.
     call_tool(w, 'set_field_for_form', {'form': 'Ali', 'field': 'Morph Gloss', 'value': 'ALI'})
     assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', 'DAT', None]
+    call_tool(w, 'drop_planned', {'indexes': [2]})
+    assert [op['kind'] for op in w.ops] == ['set_analysis']
+    assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', None, None]
 
 
 def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_rewrites():

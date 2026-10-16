@@ -281,7 +281,7 @@ SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
 
 def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change: str, head: str, what: str,
                 quiet_when_empty: bool = False, mode: Optional[str] = None,
-                undo: Optional[List[list]] = None) -> str:
+                undo: Optional[List[list]] = None, saved: Optional[Dict[str, Any]] = None) -> str:
     """Stage a corpus-wide change as one rule (``core.rules``): the tool and
     its arguments, what it found now, counted per document with a digest of
     each document's changes, and the card row with a sample. It is found again
@@ -294,19 +294,25 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     again replaces its earlier copy and applies last, after the changes
     planned since: the latest instruction wins (REV4-AGENT-4).
 
-    ``undo`` is ``[[analysis op before, after], ...]`` for the planned
-    analyses the tool changed in place, which dropping the rule takes back
-    (``Workspace.after_drop``).
+    ``undo`` holds the values the tool set in the plan's analyses, one
+    :data:`UNDO` record each, which dropping the rule takes back
+    (``Workspace.after_drop``). ``saved`` is the plan as it was before the
+    tool changed those, which the plan goes back to when the rule is not
+    staged.
     """
     key = ('rule', tool, rules.fingerprint_args(args))
-    # The plan's rules as they stand, so this one reads what they leave.
-    sync_rules(ws)
+    # The plan's rules as they stand and as they count, so this one reads
+    # what they leave and the answer can say which it leaves with nothing.
+    settle_rules(ws)
     where = f' in {ws.doc_label(args["document"], quote=True)}' if args.get('document') else ''
-    saved = ws.snapshot()
+    saved = saved or ws.snapshot()
     named = named_values(ws)
     was_at = next((i for i, o in enumerate(ws.ops) if rules.is_rule(o) and rules.target(o) == key), None)
+    counted = {rules.target(o): o.get('count') or 0 for o in ws.ops if rules.is_rule(o) and o.get('head') is not None}
     try:
-        undo = list(ws.ops[was_at].get(UNDO) or []) + list(undo or []) if was_at is not None else list(undo or [])
+        # The records belong to the copy that made them: an earlier copy's
+        # went with it (REV5-AGENT-1).
+        undo = list(undo or [])
         if was_at is not None:
             # Asked again: its earlier copy goes, and it is found after
             # everything planned since.
@@ -336,13 +342,12 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
         raise
     rewritten, back = _named_changed(named, named_values(ws))
     held = _held_out(ws, found)
-    if not kept and not rewritten:
+    if not kept and not rewritten and not undo:
         # It changes nothing, not even a value the plan names: the plan stays
         # as it was, an earlier copy of it included.
         ws.restore(saved)
         if was_at is not None:
-            return (f'Nothing to change after the changes planned since: this change is planned already as '
-                    f'entry {was_at + 1}, which stays where it is.' + left_for_analysis(left))
+            return _stays(ws, key, was_at, unit) + left_for_analysis(left)
         out = '' if quiet_when_empty and not held else f'Nothing to change: no {what} matched.'
         if held:
             # It matched only values the plan keeps as they are: said, so
@@ -361,10 +366,11 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     # stored: approval writes nothing there (REV4-AGENT-1).
     undone = len(kept) - n
     moved = (f' It was planned already as entry {was_at + 1}: that copy is gone, and this one applies after the '
-             'changes planned since.') if was_at is not None and was_at < len(ws.ops) - 1 else ''
+             'changes planned since.' + _emptied(ws, key, counted)) if was_at is not None and was_at < len(ws.ops) - 1 \
+        else ''
     named_line = _rewritten(len(rewritten), back)
     if not kept:
-        return (ws.planned_note(0) + f' {named_line}' + moved + left_for_analysis(left))
+        return (ws.planned_note(0) + (f' {named_line}' if rewritten else '') + moved + left_for_analysis(left))
     sample = [c['label'] for c in op[CARD]['sample']]
     changes = rules.transition_lines(op[CARD].get(rules.TRANSITIONS) or [],
                                      op[CARD].get(rules.TRANSITIONS_MORE) or [0, 0], unit)
@@ -395,6 +401,47 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             + (f' {held} more match{"es" if held != 1 else ""} where the plan keeps the value as it is, left out.'
                if held else '')
             + left_for_analysis(left))
+
+
+def _stays(ws: Workspace, key: tuple, was_at: int, unit) -> str:
+    """What a rule asked again says when, applied last, it would change
+    nothing, so its earlier copy stays where it is: what that entry writes
+    now, and when that is nothing, why (REV5-AGENT-4)."""
+    op = ws.ops[was_at]
+    n = op.get('count') or 0
+    out = (f'Nothing to change after the changes planned since: this change is entry {was_at + 1} already, which '
+           f'stays where it is')
+    if n:
+        return out + f' and writes {_plural_unit(n, unit)}.'
+    found = ws.rule_found.get(key) or []
+    held = _held_out(ws, found)
+    targets = {op_target(o) for o in found} - kept_targets(ws.ops)
+    named = len(targets & {t for t, v in named_values(ws).items() if v is not None})
+    why = ([f'the plan keeps {_the(held, unit)} it matches as {"it is" if held == 1 else "they are"}'] if held else []) \
+        + ([f'the plan names its own value for {_the(named, unit)} it matches'] if named else [])
+    if not why:
+        return out + ' and writes nothing now.'
+    what = ('that keep' if held == 1 else 'those keeps') if not named else \
+        ('that change' if named == 1 else 'those changes') if not held else 'those keeps and changes'
+    return (out + ' and writes nothing now: ' + ' and '.join(why) + f'. Drop {what} (drop_planned) for this change '
+            f'to reach {"it" if held + named == 1 else "them"}.')
+
+
+def _the(n: int, unit) -> str:
+    return f'the {n} {unit[0] if n == 1 else unit[1]}'
+
+
+def _emptied(ws: Workspace, key: tuple, counted: Dict[tuple, int]) -> str:
+    """The rules a rule asked again leaves with nothing to change, as it
+    moves after them, named with the way to drop them (REV5-AGENT-5)."""
+    out = ''
+    for i, o in enumerate(ws.ops, start=1):
+        t = rules.target(o) if rules.is_rule(o) else None
+        if t is None or t == key or o.get('head') is None or not counted.get(t) or o.get('count'):
+            continue
+        out += (f' {o.get("change") or o.get("tool")} now changes nothing (entry {i}): drop it (drop_planned) if it '
+                'should go.')
+    return out
 
 
 def _held_out(ws: Workspace, found: List[Dict[str, Any]]) -> int:
@@ -704,7 +751,8 @@ def sync_rules(ws: Workspace, drop_empty: bool = False) -> int:
         if _find_rules(ws):
             used = settle_named(ws)
         empty = [op for op in ws.ops if drop_empty and rules.is_rule(op) and op.get('head') is not None
-                 and not ws.rule_found.get(rules.target(op)) and rules.target(op) not in used]
+                 and not ws.rule_found.get(rules.target(op)) and rules.target(op) not in used
+                 and not undo_live(ws, op)]
         if not empty:
             break
         # Nothing left for it to change: a row of no changes says nothing.
@@ -1139,8 +1187,49 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     args['value'] = value
     if cond:
         args['where'] = cond
-    # A word whose analysis the plan writes is read as that analysis, and a
-    # value on one of its morphemes goes into it (as set_field does).
+    key = ('rule', 'set_field_for_form', rules.fingerprint_args(args))
+    saved = ws.snapshot()
+    try:
+        # Asked again: what its earlier copy set in the plan's analyses goes
+        # with that copy, where nothing changed it since, and this copy sets
+        # its own (REV5-AGENT-1).
+        earlier = next((o for o in ws.ops if rules.is_rule(o) and rules.target(o) == key), None)
+        if earlier is not None and earlier.get(UNDO):
+            with ws.staging():
+                take_back(ws, earlier[UNDO], earlier.get(SEQ) or 0)
+        undo = _set_in_analyses(ws, f, form, value, only_empty, doc_id, cond)
+    except BaseException:
+        ws.restore(saved)
+        raise
+    edits = len(undo)
+
+    held = condition_words(cond)
+    note = _stage_rule(ws, 'set_field_for_form', args, ('value', 'values'),
+                       change=f'{f.name} = {qv(value)} on {qv(form)}{held}',
+                       head=f'{f.name}: {qv(value)} on every {qv(form)}' + (' without a value' if only_empty else '')
+                       + held,
+                       what=f'occurrences of {qv(form)}' + (' without a value' if only_empty else ''),
+                       quiet_when_empty=bool(edits), undo=undo, saved=saved)
+    if note.startswith(f'Nothing to change: no occurrences of {qv(form)} matched.'):
+        # Occurrences that hold the value already are not "no occurrences"
+        # (REV4-AGENT-3).
+        have = _occurrences(ws, args)
+        if have:
+            note = (f'Nothing to change: {"the 1 occurrence" if have == 1 else f"all {have} occurrences"} of '
+                    f'{qv(form)} hold{"s" if have == 1 else ""} {f.name} {qv(value) if value else "empty"} '
+                    'already.' + note[len(f'Nothing to change: no occurrences of {qv(form)} matched.'):])
+    if edits:
+        more = f'{edits} {"value" if edits == 1 else "values"} in analyses this plan already holds, changed there.'
+        note = f'{note} {more}' if note else more
+    return note
+
+
+def _set_in_analyses(ws: Workspace, f, form: str, value: str, only_empty: bool, doc_id: Optional[str],
+                     cond) -> List[list]:
+    """Set ``value`` on each morpheme of ``form`` in the analyses the plan
+    holds (a word whose analysis the plan writes is read as that analysis,
+    as set_field does). Gives what it set, one :data:`UNDO` record per
+    value."""
     same = _form_matcher(form)
     targets = []
     for op in ws.ops if f.scope != 'Word' else ():
@@ -1152,48 +1241,114 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
         if w is None:
             continue
         for k, pm in enumerate(op.get('morphemes') or [], start=1):
-            cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
-                        if fv.get('layer_id') == f.layer_id), '')
+            cur = _value_on(pm, f.layer_id)
             if same(pm.get('form')) and cur != value and not (only_empty and cur):
-                targets.append((doc, f'{word_ref(s, w)}.m{k}', w.id))
+                targets.append((doc, f'{word_ref(s, w)}.m{k}', w.id, k - 1, pm.get('form'), cur))
     if cond and targets:
         from .queries import condition_holds
         held = condition_holds(ws, cond, 'Word', [t[2] for t in targets])
         targets = [t for t in targets if t[2] in held]
-    # Each analysis as it was and as the edits leave it, so dropping the rule
-    # takes them back (UNDO).
     undo: List[list] = []
     if targets:
         with ws.staging():
-            was: Dict[str, Dict[str, Any]] = {}
-            for doc, ref, _w in targets:
+            for doc, ref, wid, k, pform, cur in targets:
                 place = _planned_place(ws, doc, ref)
-                was.setdefault(place.analysis.get('word_id'), place.analysis)
-                edit_planned_morpheme(ws, doc, ref, place, field=f, value=value)
-            for wid, op in was.items():
-                now = next((o for o in ws.ops if o.get('kind') == 'set_analysis' and o.get('word_id') == wid), None)
-                if now is not None and now != op:
-                    undo.append([op, now])
-    edits = len(targets)
+                if edit_planned_morpheme(ws, doc, ref, place, field=f, value=value):
+                    undo.append([doc.id, wid, k, f.layer_id, pform, cur, value])
+    return undo
 
-    held = condition_words(cond)
-    note = _stage_rule(ws, 'set_field_for_form', args, ('value', 'values'),
-                       change=f'{f.name} = {qv(value)} on {qv(form)}{held}',
-                       head=f'{f.name}: {qv(value)} on every {qv(form)}' + (' without a value' if only_empty else '')
-                       + held,
-                       what=f'occurrences of {qv(form)}' + (' without a value' if only_empty else ''),
-                       quiet_when_empty=bool(edits), undo=undo)
-    if note.startswith(f'Nothing to change: no occurrences of {qv(form)} matched.'):
-        # Occurrences that hold the value already are not "no occurrences"
-        # (REV4-AGENT-3).
-        have = _occurrences(ws, args)
-        if have:
-            note = (f'Nothing to change: {"the 1 occurrence" if have == 1 else f"all {have} occurrences"} of '
-                    f'{qv(form)} hold{"s" if have == 1 else ""} {f.name} {qv(value) if value else "empty"} '
-                    'already.' + note[len(f'Nothing to change: no occurrences of {qv(form)} matched.'):])
-    if edits:
-        note += f' {edits} more in analyses this plan already holds, changed there.'
-    return note
+
+def _value_on(pm: Dict[str, Any], layer_id: str) -> str:
+    """A planned morpheme's value on a layer, '' for none."""
+    return next((fv.get('value') or '' for fv in pm.get('fields') or [] if fv.get('layer_id') == layer_id), '')
+
+
+def _undo_place(ws: Workspace, record: list):
+    """(document, reference, value now) of the planned morpheme an
+    :data:`UNDO` record names, or None when the plan no longer holds it: the
+    analysis was dropped, or gives that place another form."""
+    did, wid, k, layer_id, form, _before, _after = record
+    analysis = next((o for o in ws.ops if o.get('kind') == 'set_analysis' and o.get('word_id') == wid), None)
+    chain = (analysis or {}).get('morphemes') or []
+    if k >= len(chain) or chain[k].get('form') != form:
+        return None
+    doc = ws.doc(did)
+    s, w, _m = doc.find(wid) or (None, None, None)
+    if w is None:
+        return None
+    return doc, f'{word_ref(s, w)}.m{k + 1}', _value_on(chain[k], layer_id)
+
+
+def undo_live(ws: Workspace, op: Dict[str, Any]) -> bool:
+    """Whether a rule still holds a value it set in a planned analysis."""
+    for r in op.get(UNDO) or []:
+        at = _undo_place(ws, r)
+        if at is not None and at[2] == r[6]:
+            return True
+    return False
+
+
+def take_back(ws: Workspace, records: List[list], seq: int = 0) -> tuple:
+    """Put back each value a rule set in a planned analysis (its :data:`UNDO`
+    records) that still holds what the rule set, one value at a time: a value
+    anything else set since stays, and so does the rest of the analysis
+    (REV5-AGENT-2). Each form rule staged after it (``seq``) then reads the
+    value put back, as it would have without the rule. Gives (values taken
+    back, values changed since)."""
+    back = since = 0
+    for r in records:
+        at = _undo_place(ws, r)
+        if at is None:
+            continue
+        doc, ref, now = at
+        if now != r[6]:
+            since += 1
+            _splice(ws, r)
+            continue
+        place = _planned_place(ws, doc, ref)
+        f = ws.project.field_by_layer(r[3])
+        back += edit_planned_morpheme(ws, doc, ref, place, field=f, value=r[5])
+        _replay(ws, r, seq)
+    return back, since
+
+
+def _splice(ws: Workspace, record: list) -> None:
+    """A later rule set the value ``record`` set over again: what it would
+    put back is the value from before ``record``, since that rule is gone."""
+    for i, o in enumerate(ws.ops):
+        recs = o.get(UNDO) if rules.is_rule(o) else None
+        for j, r in enumerate(recs or []):
+            if r[:5] == record[:5] and r[5] == record[6]:
+                ws.ops[i] = {**o, UNDO: recs[:j] + [[*r[:5], record[5], r[6]]] + recs[j + 1:]}
+                return
+
+
+def _replay(ws: Workspace, record: list, seq: int) -> None:
+    """Apply to the planned morpheme ``record`` names each form rule of the
+    plan staged after ``seq`` that would set it now, in the order they were
+    staged, each adding the value it sets to its own records."""
+    later = sorted((o for o in ws.ops if rules.is_rule(o) and o.get('tool') == 'set_field_for_form'
+                    and o.get('head') is not None and (o.get(SEQ) or 0) > seq), key=lambda o: o.get(SEQ) or 0)
+    for o in later:
+        a = o.get('args') or {}
+        f = ws.project.field(a['field'])
+        at = _undo_place(ws, record)
+        if at is None or f.layer_id != record[3]:
+            continue
+        doc, ref, cur = at
+        value = '' if a.get('value') is None else str(a['value'])
+        if not _form_matcher(a['form'])(record[4]) or cur == value or (bool(a.get('only_empty', True)) and cur):
+            continue
+        if a.get('document') and a['document'] != doc.id:
+            continue
+        if a.get('where'):
+            from .queries import condition_holds
+            if record[1] not in condition_holds(ws, a['where'], 'Word', [record[1]]):
+                continue
+        place = _planned_place(ws, doc, ref)
+        if edit_planned_morpheme(ws, doc, ref, place, field=f, value=value):
+            i = next(i for i, x in enumerate(ws.ops) if x is o)
+            ws.ops[i] = {**o, UNDO: list(o.get(UNDO) or []) + [[*record[:5], cur, value]]}
 
 
 def _occurrences(ws: Workspace, args: Dict[str, Any]) -> int:
