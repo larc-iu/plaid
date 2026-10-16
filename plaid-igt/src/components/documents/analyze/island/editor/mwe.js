@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { PROV_STATES } from '@larc-iu/plaid-client';
-import { isTokenIgnored, trimIgnoredEdges } from '@/domain/igtConfig';
+import { trimIgnoredEdges } from '@/domain/igtConfig';
 import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
 import { joinMweForm, mweMorphType } from '@/domain/mwe';
 import { notifyInfo } from '@/utils/feedback';
@@ -118,7 +118,7 @@ export const mwe = {
         cursorId: wordId,
       };
     }
-    const words = sentence.tokens.filter((t) => !isTokenIgnored(t.content, this._ignoredCfg));
+    const words = sentence.tokens;
     let i = words.findIndex((t) => t.id === sel.cursorId);
     if (i < 0) i = words.findIndex((t) => t.id === wordId);
     const next = words[i + dir];

@@ -1,7 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
-import { isTokenIgnored } from '@/domain/igtConfig';
 import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
@@ -76,19 +75,6 @@ export const grid = {
   },
 
   _tokenCol(token, ctx, sctx) {
-    // Ignored tokens (punctuation, per the project's ignored-tokens config) are
-    // real word tokens but carry no annotation — no orthographies, no gloss, no
-    // lexicon link, and no morpheme. They render like a gap: in the text, but
-    // plainly not glossed.
-    if (isTokenIgnored(token.content, ctx.ignoredCfg)) {
-      // Still a column a multi-word expression may run across: it draws the
-      // lines' pieces, never a label.
-      return this._inertCol(
-        token.content,
-        `${token.content}: excluded from annotation`,
-        this._mweBrackets(token, sctx).rules,
-      );
-    }
     // Marked word tokens (a tokenizer service stamps prov on token metadata)
     // show the same violet/dashed treatment on the form band; Ctrl+Enter on
     // the word confirms the token along with its analysis.
