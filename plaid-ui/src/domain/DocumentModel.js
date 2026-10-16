@@ -853,16 +853,27 @@ export class DocumentModel {
     this._cellScope?.push(cell);
     this._unsent.push(unsent);
     let conflict = false;
-    const run = () =>
-      this._client.withOperation(operation, send, {
-        kind,
-        ref,
-        groupId: unsent.groupId,
-        keys: unsent.keys,
-        // A create refused 409 id-taken for a row this edit made was made by
-        // an earlier send of it, and answers as made (the client).
-        minted: this._created(unsent),
+    const run = async () => {
+      // The client's own first resend of a write whose answer was lost shows
+      // the retrying pill at once, not only once the client gives up and the
+      // queue's resends begin (about 13 s in).
+      const off = this._client.onRetry?.((info) => {
+        if (isUnknownOutcome(info?.error)) this._writes.noteResend();
       });
+      try {
+        return await this._client.withOperation(operation, send, {
+          kind,
+          ref,
+          groupId: unsent.groupId,
+          keys: unsent.keys,
+          // A create refused 409 id-taken for a row this edit made was made by
+          // an earlier send of it, and answers as made (the client).
+          minted: this._created(unsent),
+        });
+      } finally {
+        off?.();
+      }
+    };
     return this._writes.push(
       async () => {
         this._unsent = this._unsent.filter((u) => u !== unsent);

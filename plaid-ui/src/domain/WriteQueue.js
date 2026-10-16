@@ -218,6 +218,12 @@ export class WriteQueue {
     this._listeners.forEach((fn) => fn());
   }
 
+  // A send in flight is being sent again by the client, its answer lost:
+  // `isOffline` from now until it is answered.
+  noteResend() {
+    if (this._count) this._setOffline(true);
+  }
+
   _setOffline(offline) {
     if (this._offline === offline) return;
     this._offline = offline;
@@ -308,7 +314,7 @@ export class WriteQueue {
     for (let attempt = 0; ; attempt += 1) {
       try {
         await send();
-        if (attempt) this._setOffline(false);
+        this._setOffline(false);
         this._setLocked(false);
         return;
       } catch (err) {
@@ -323,7 +329,7 @@ export class WriteQueue {
         }
         this._setLocked(false);
         if (!resendWhenBack?.(err)) {
-          if (attempt) this._setOffline(false);
+          this._setOffline(false);
           throw err;
         }
         console.error('A write got no answer, and goes again until it does:', err);

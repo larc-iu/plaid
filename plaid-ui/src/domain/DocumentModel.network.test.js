@@ -133,6 +133,51 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// The retrying pill shows from the client's first resend of a write whose
+// answer was lost, not only once the client gives up and the queue takes over
+// (about 13 s into an outage), and goes when the write is answered.
+describe('the client resending a lost write', () => {
+  it('is offline from its first resend until the write is answered', async () => {
+    const { client, doc } = open();
+    const listeners = new Set();
+    client.onRetry = (fn) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    };
+    let answer;
+    const write = client.write;
+    client.write = async (key, value) => {
+      for (const fn of listeners) fn({ attempt: 1, retries: 3, delay: 1000, error: lost() });
+      await new Promise((r) => (answer = r));
+      return write(key, value);
+    };
+    const saved = doc.set('gloss', 'DOG');
+    await flush();
+    expect(doc.isOffline).toBe(true);
+    answer();
+    expect(await saved).toBe(true);
+    expect(doc.isOffline).toBe(false);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('is not offline for a busy server, which the client also resends', async () => {
+    const { client, doc } = open();
+    const listeners = new Set();
+    client.onRetry = (fn) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    };
+    const write = client.write;
+    client.write = async (key, value) => {
+      const busy = Object.assign(new Error('HTTP 503'), { status: 503, method: 'PATCH' });
+      for (const fn of listeners) fn({ attempt: 1, retries: 3, delay: 1000, error: busy });
+      expect(doc.isOffline).toBe(false);
+      return write(key, value);
+    };
+    expect(await doc.set('gloss', 'DOG')).toBe(true);
+  });
+});
+
 describe('a write made offline', () => {
   it('is sent once the network is back, and is not refused', async () => {
     const { server, doc, errors } = open();
