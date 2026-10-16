@@ -60,6 +60,44 @@ describe('what a person is told', () => {
     expect(humanizeError(httpError(409, 'conflict'))).toMatch(/Redo your edit/);
   });
 
+  // An overlap refusal changed nothing elsewhere, so it is not "Redo your edit".
+  it('says what an overlap refusal is, not that something changed elsewhere', () => {
+    const said =
+      'The change would leave two tokens of layer "Rows" over the same text, which the layer does not allow.';
+    const textSave = Object.assign(httpError(409, said), { responseData: { error: said } });
+    expect(humanizeError(textSave)).toBe(said);
+    for (const message of [
+      'Token overlaps with existing token(s) in non-overlapping layer',
+      'Updated token would overlap with existing token(s)',
+      'Bulk-created token overlaps with existing token(s)',
+      'Merged token would overlap with existing token(s)',
+      'Shifted boundary would create overlap',
+    ]) {
+      const refused = Object.assign(httpError(409, message), { responseData: { error: message } });
+      expect(humanizeError(refused)).toBe('Overlaps another row on this layer. Nothing was saved.');
+    }
+    const byId =
+      'The change would leave two tokens of layer "01a04095-38c4-74d1-8450-a7d6a0267af7" over the same text, which the layer does not allow.';
+    expect(
+      humanizeError(Object.assign(httpError(409, byId), { responseData: { error: byId } })),
+    ).toBe('Overlaps another row on this layer. Nothing was saved.');
+  });
+
+  it('names who holds the lock when the answer says', () => {
+    const lockRoute = Object.assign(httpError(423, 'Document is locked'), {
+      responseData: { error: 'Document is locked', 'user-id': 'b@x.com' },
+    });
+    expect(humanizeError(lockRoute)).toBe(
+      'This document is being edited right now by b@x.com. Try again in a moment.',
+    );
+    const said = 'Document 01a04095-38c4-74d1-8450-a7d6a0267af7 is locked by c@x.com';
+    const write = Object.assign(httpError(423, said), { responseData: { error: said } });
+    expect(humanizeError(write)).toBe(
+      'This document is being edited right now by c@x.com. Try again in a moment.',
+    );
+    expect(humanizeError(httpError(423))).toMatch(/by another user or a service/);
+  });
+
   it('says the same sentence for a status whether or not the object carries it', () => {
     const withObject = humanizeError(httpError(403));
     const withMessage = humanizeError(httpError(403).message);

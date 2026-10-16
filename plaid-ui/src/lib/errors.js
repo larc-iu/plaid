@@ -158,6 +158,18 @@ export const refusalSaid = (error) => {
   return said && !namesAnId(said) ? said : null;
 };
 
+// Who holds the lock a 423 names, when the answer says: core's lock route
+// answers `{error, user-id}`, a write refused under a lock "... is locked by
+// <user>". Null when it names no one.
+const lockHolder = (error) => {
+  const body = error?.responseData;
+  const named = body?.['user-id'] ?? body?.['locked-by'];
+  if (typeof named === 'string' && named.trim()) return named.trim();
+  const said = String(body?.error ?? errorText(error));
+  const m = said.match(/\bis locked by (\S+?)\.?$/);
+  return m ? m[1] : null;
+};
+
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
   if (statusOf(error) === 408) return TOO_LONG;
@@ -189,6 +201,19 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (statusOf(error) === 400 && /\bRequest validation failed\b/i.test(errorText(error))) {
     return namesAnId(String(fallback)) ? 'Something went wrong.' : fallback;
   }
+  // A save refused because two rows of a layer that forbids overlap would
+  // share text. Nothing changed elsewhere, so "Redo your edit" is wrong.
+  if (statusOf(error) === 409) {
+    const said = String(error?.responseData?.error ?? errorText(error)).trim();
+    if (/\bwhich the layer does not allow\b/.test(said) && !namesAnId(said)) return said;
+    if (
+      /\bwhich the layer does not allow\b|\boverlaps? with existing token|\bwould overlap with existing token|\bwould create overlap\b/i.test(
+        said,
+      )
+    ) {
+      return 'Overlaps another row on this layer. Nothing was saved.';
+    }
+  }
   switch (statusOf(error)) {
     case 401:
       return 'Your sign-in is no longer valid.';
@@ -204,8 +229,12 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
       // Over the server's cap on a request's body. A document that long is
       // to be split (the huge-documents ruling), not sent in pieces.
       return 'This document is too large to save. Split it into shorter documents.';
-    case 423:
-      return 'This document is being edited right now (by another user or a service). Try again in a moment.';
+    case 423: {
+      const holder = lockHolder(error);
+      return holder
+        ? `This document is being edited right now by ${holder}. Try again in a moment.`
+        : 'This document is being edited right now (by another user or a service). Try again in a moment.';
+    }
     case 500:
       return 'The server hit an unexpected error. Try again in a moment.';
     default:
