@@ -180,7 +180,7 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
       const perWord = morphemesByWord.map((ms, i) =>
         ms.length ? ms.map((m) => shown(m.text)) : [shown(words[i]?.text)],
       );
-      push({ ...base, items: fileItems(perWord), perWord });
+      push({ ...base, items: joinedItems(perWord, morphemesByWord), perWord });
       return;
     }
     const id = String(entry.source).replace(/^layer:/, '');
@@ -286,8 +286,8 @@ const morphemesPerWord = (sentence) =>
 
 /**
  * The joint to draw BEFORE each morpheme of each word, '' for the first of a
- * word: `[['', '-'], ['', '=', '-']]`. A display concern only, which is why
- * it is not on the lines themselves: an exported file writes the forms bare.
+ * word: `[['', '-'], ['', '=', '-']]`. The canvas draws it between the forms,
+ * and an exported file writes it on the items (`joinedItems`).
  */
 export const morphemeJoinersFor = (sentence) =>
   morphemesPerWord(sentence).map((ms) =>
@@ -305,6 +305,29 @@ const item = (value) => shown(value).replace(/ /g, '_');
 
 // What the file writes for a line laid out word by word.
 const fileItems = (perWord) => perWord.flat().map(item);
+
+// A morpheme or one of its glosses comes before the joint when it is a
+// prefix or a proclitic (`ts-`, `ma=`), and after it otherwise (`-ra`, `=go`).
+const leansForward = (morphType) => /prefix|proclitic/i.test(String(morphType || ''));
+
+// What the file writes for the Morphemes line: the forms of each word joined
+// as IGT draws them, `ts- ɨmɨntsara -ra`, so the line reads back word by word
+// (`wordGroups`), and its glosses pair with it item for item. Ruled
+// 2026-10-16. A word nobody segmented is one item with no joint, and a form
+// that already carries one at a joint (an imported `-s`) gets no second.
+const joinedItems = (perWord, morphemesByWord) =>
+  perWord.flatMap((values, w) => {
+    const ms = morphemesByWord[w] || [];
+    const out = values.map(item);
+    if (ms.length !== values.length) return out;
+    for (let i = 1; i < out.length; i += 1) {
+      if (/[-=]$/.test(out[i - 1]) || /^[-=]/.test(out[i])) continue;
+      const joint = morphemeJoiner(ms[i - 1]?.morphType, ms[i]?.morphType);
+      if (leansForward(ms[i - 1]?.morphType)) out[i - 1] = `${out[i - 1]}${joint}`;
+      else out[i] = `${joint}${out[i]}`;
+    }
+    return out;
+  });
 
 // The two- or three-letter code a gloss header takes, from whatever a
 // layer or a person wrote (`en`, `pt-BR`, `qaa-x-eng`): `und` when there is

@@ -272,11 +272,41 @@ test('an unanalyzed word reads as itself on the Morphemes line, as in IGT', () =
   };
   const lines = ilgLinesFor(s, info, resolveIlg(null, info));
   const morphemes = lines.find((l) => l.key === 'morphemes');
-  assert.deepEqual(morphemes.items, ['Çocuklar', 'okula', 'gid', 'iyor', 'lar']);
+  assert.deepEqual(morphemes.items, ['Çocuklar', 'okula', 'gid', '-iyor', '-lar']);
   // With no word segmented, the line would repeat the Words, and is left out.
   assert.ok(
     !ilgLinesFor({ ...s, morphemes: [] }, info, resolveIlg(null, info)).some(
       (l) => l.key === 'morphemes',
     ),
   );
+});
+
+// Ruled 2026-10-16: the Morphemes line carries IGT's joints, a prefix's or a
+// proclitic's after it and any other before, so the file reads back word by
+// word instead of as one flat row.
+test('the Morphemes line writes the joints IGT draws, and reads back by word', () => {
+  const info = layerInfo();
+  info.glossLayers.forEach((g) => (g.layer.spans = []));
+  const s = {
+    ...sentence(),
+    words: [
+      { id: 'w1', index: 1, begin: 0, end: 13, text: 'tsɨmɨntsarara' },
+      { id: 'w2', index: 2, begin: 14, end: 18, text: 'ajan' },
+      { id: 'w3', index: 3, begin: 19, end: 24, text: 'mayra' },
+    ],
+    morphemes: [
+      { id: 'm1', begin: 0, end: 13, precedence: 0, text: 'ts', morphType: 'prefix' },
+      { id: 'm2', begin: 0, end: 13, precedence: 1, text: 'ɨmɨntsara', morphType: 'stem' },
+      { id: 'm3', begin: 0, end: 13, precedence: 2, text: 'ra', morphType: 'suffix' },
+      { id: 'm4', begin: 19, end: 24, precedence: 0, text: 'may', morphType: 'stem' },
+      { id: 'm5', begin: 19, end: 24, precedence: 1, text: 'ra', morphType: 'enclitic' },
+    ],
+  };
+  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const morphemes = lines.find((l) => l.key === 'morphemes');
+  assert.deepEqual(morphemes.items, ['ts-', 'ɨmɨntsara', '-ra', 'ajan', 'may', '=ra']);
+  // The canvas keeps the bare forms and draws the joints itself.
+  assert.deepEqual(morphemes.perWord, [['ts', 'ɨmɨntsara', 'ra'], ['ajan'], ['may', 'ra']]);
+  const [back] = perWordStored([{ key: 'morphemes', items: morphemes.items }], 3);
+  assert.deepEqual(back.perWord, [['ts-', 'ɨmɨntsara', '-ra'], ['ajan'], ['may', '=ra']]);
 });
