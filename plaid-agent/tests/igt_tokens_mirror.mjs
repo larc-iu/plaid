@@ -40,7 +40,7 @@ const tokenization = await import(
   pathToFileURL(resolve(SRC, "utils/tokenizationUtils.js")).href
 );
 const classes = await import(
-  pathToFileURL(resolve(SRC, "domain/punctuationClasses.js")).href
+  pathToFileURL(resolve(UI, "domain/punctuationClasses.js")).href
 );
 const spaceless = await import(
   pathToFileURL(resolve(SRC, "domain/spacelessScripts.js")).href

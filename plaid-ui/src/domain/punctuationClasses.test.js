@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTokenIgnored } from './igtConfig.js';
+import { isTokenIgnored } from './igtWordBreaks.js';
 import {
   PICTOGRAPHIC,
   PUNCT_OR_SYMBOL,

@@ -8,7 +8,7 @@
 
 import { composeText } from '@larc-iu/plaid-client';
 import { countOf } from '@ui/lib/plural.js';
-import { isPictograph, isPunctOrSymbol } from '../domain/punctuationClasses.js';
+import { isPictograph, isPunctOrSymbol } from '../../../plaid-ui/src/domain/punctuationClasses.js';
 
 /**
  * A reusable UTF-16 index → code-point index converter for one string.

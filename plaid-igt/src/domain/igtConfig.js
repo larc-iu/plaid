@@ -15,8 +15,13 @@
 // under the shared word layer).
 
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
-import { ZERO_MORPH, isZeroMorph } from './zeroMorph.js';
-import { isPictograph, isPunctOrSymbol } from './punctuationClasses.js';
+import { ZERO_MORPH } from './zeroMorph.js';
+// The ignore rule itself is shared (plaid-ui domain/igtWordBreaks.js): another
+// app's Tokenize makes a token only of what it ignores. By the real path, as
+// plain node (the Python mirrors) loads this file too.
+import { isIgnoredCharacter, isTokenIgnored } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
+
+export { isTokenIgnored };
 
 /** plaid-igt's private config namespace (distinct from the reserved `plaid`). */
 export const IGT_NAMESPACE = 'igt';
@@ -62,42 +67,6 @@ export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ??
  */
 export const TOKENIZE_NEW_TEXT_KEY = 'tokenizeNewText';
 export const readTokenizeNewText = (config) => readIgt(config, TOKENIZE_NEW_TEXT_KEY) !== false;
-
-// "Punctuation" for the ignore rule: Unicode punctuation and symbols, EXCEPT
-// pictographs (emoji) and the zero morph. An emoji token in an object-language
-// transcript is a word-like unit a linguist may well want to gloss (an
-// interjection, a gesture); treating it as punctuation silently removed its
-// annotation cells. ∅ is Sm, so it falls under \p{S} on the letter of the rule
-// while being the most meaning-bearing character in the app: without this it
-// would lose its annotation cells the same way, and trimIgnoredEdges would eat
-// the zero off a form like `ta∅`.
-//
-// Both classes come from one generated table (punctuationClasses.js), never
-// the runtime's `\p{}`: those move with the browser's Unicode version (★ is a
-// pictograph in Unicode 16 and not in 17), and a word reference counts words
-// past the ignored tokens, so it would mean different words in different
-// browsers and to the agent. plaid-client-py reads the same table.
-const isPunctChar = (c) => isPunctOrSymbol(c) && !isPictograph(c) && !isZeroMorph(c);
-
-/**
- * Has the project declared this character LETTER-LIKE?
- *
- * The `unicodePunctuation` rule's exception list is a list of single
- * CHARACTERS, and each one is meant to behave as a letter would: an ejective
- * or glottalization mark, an apostrophe inside a word. That is one meaning,
- * and every reader of the list honors it — the tokenizer does not break a word
- * at one (`shouldTokenizeCharacter`), `trimIgnoredEdges` does not shave one off
- * a form, and a token spelled with them is a word to be annotated rather than
- * punctuation to skip.
- *
- * Entries longer than one character cannot be letter-like and match nothing;
- * the settings screen refuses them, and any left in older config are inert.
- */
-const isLetterLike = (c, cfg) =>
-  cfg?.type === 'unicodePunctuation' && (cfg.whitelist || []).includes(c);
-
-/** Punctuation for the ignore rule, minus what the project calls letter-like. */
-const isIgnorableChar = (c, cfg) => isPunctChar(c) && !isLetterLike(c, cfg);
 
 /**
  * The ignored-tokens rule a new project starts with: a word made only of
@@ -151,25 +120,6 @@ export const storedIgnoredTokens = (setup) => ({
 export const defaultIgnoredTokensSetup = () => ignoredTokensSetup(DEFAULT_IGNORED_TOKENS);
 
 /**
- * Is a token excluded from word-level annotation under an ignored-tokens config
- * (`readIgnoredTokens` shape)? `content` is the token's surface text. Shared by
- * the editor render and reconcile so "ignored" means the same in both: ignored
- * tokens get no annotation cells and no healed morpheme.
- *
- * A token is excluded when EVERY character in it is punctuation the project has
- * not called letter-like. One letter-like character is enough to make it a
- * word: `ʼ` on its own is a word if the project spells words with it.
- */
-export const isTokenIgnored = (content, cfg) => {
-  if (!cfg) return false;
-  if (cfg.type === 'unicodePunctuation') {
-    return [...(content || '')].every((c) => isIgnorableChar(c, cfg));
-  }
-  if (cfg.type === 'blacklist') return (cfg.blacklist || []).includes(content);
-  return false;
-};
-
-/**
  * A query value spec (`{regex}`) that a word token's surface matches and an
  * ignored token's does not (`isTokenIgnored`), for core's queries, or null when
  * the rule ignores nothing. Core compiles it with Java's Unicode tables, which
@@ -205,8 +155,8 @@ export const trimIgnoredEdges = (content, cfg) => {
   const chars = [...s];
   let start = 0;
   let end = chars.length;
-  while (start < end && isIgnorableChar(chars[start], cfg)) start++;
-  while (end > start && isIgnorableChar(chars[end - 1], cfg)) end--;
+  while (start < end && isIgnoredCharacter(chars[start], cfg)) start++;
+  while (end > start && isIgnoredCharacter(chars[end - 1], cfg)) end--;
   if (start >= end) return s;
   return chars.slice(start, end).join('');
 };

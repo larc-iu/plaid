@@ -10,7 +10,6 @@
     "plaid-igt/src/domain/mutations/analysisCopy.js",
     "plaid-igt/src/domain/mwe.js",
     "plaid-igt/src/domain/precedent.js",
-    "plaid-igt/src/domain/punctuationClasses.js",
     "plaid-igt/src/domain/tagsets.js",
     "plaid-igt/src/domain/virtualMorpheme.js",
     "plaid-igt/src/domain/vocabDictionary.js",
@@ -19,8 +18,10 @@
     "plaid-igt/src/domain/zeroMorph.js",
     "plaid-ui/src/domain/collation.js",
     "plaid-ui/src/domain/glossCase.js",
+    "plaid-ui/src/domain/igtWordBreaks.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js",
+    "plaid-ui/src/domain/punctuationClasses.js",
     "plaid-ui/src/domain/setupGuard.js",
     "plaid-ui/src/lib/unicodeRanges.js"
   ],
@@ -37,7 +38,6 @@
     "plaid-igt/src/domain/mutations/vocab.js",
     "plaid-igt/src/domain/mwe.js",
     "plaid-igt/src/domain/precedent.js",
-    "plaid-igt/src/domain/punctuationClasses.js",
     "plaid-igt/src/domain/tagsets.js",
     "plaid-igt/src/domain/vocabDictionary.js",
     "plaid-igt/src/domain/vocabFields.js",
@@ -45,9 +45,11 @@
     "plaid-igt/src/domain/zeroMorph.js",
     "plaid-ui/src/domain/collation.js",
     "plaid-ui/src/domain/glossCase.js",
+    "plaid-ui/src/domain/igtWordBreaks.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js",
     "plaid-ui/src/domain/permissions.js",
+    "plaid-ui/src/domain/punctuationClasses.js",
     "plaid-ui/src/lib/unicodeRanges.js"
   ]
 }

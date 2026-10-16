@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ROLES } from '@larc-iu/plaid-client';
+import { ZERO_MORPH } from './zeroMorph.js';
 import {
   findBaselineTextLayer,
   findWordTokenLayer,
@@ -106,6 +107,10 @@ describe('ignored-tokens rule', () => {
     expect(isTokenIgnored('?', cfg)).toBe(false); // whitelisted
     expect(isTokenIgnored('word', cfg)).toBe(false);
     expect(isTokenIgnored('word.', cfg)).toBe(false);
+  });
+  it('never ignores the zero morph, spelled as zeroMorph.js spells it', () => {
+    expect(isTokenIgnored(ZERO_MORPH, cfg)).toBe(false);
+    expect(trimIgnoredEdges(`ta${ZERO_MORPH}.`, cfg)).toBe(`ta${ZERO_MORPH}`);
   });
   it('does NOT ignore emoji / pictographs (they are annotatable word-like units)', () => {
     expect(isTokenIgnored('😀', cfg)).toBe(false);
