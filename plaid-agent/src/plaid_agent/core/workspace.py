@@ -102,6 +102,11 @@ def _ids_in(value: Any, key: Optional[str] = None):
         yield value
 
 
+def _quoted(text: str) -> bool:
+    """Whether ``text`` is wrapped in a pair of quotes, straight or curly."""
+    return len(text) >= 2 and (text[0], text[-1]) in (('"', '"'), ('\u201c', '\u201d'))
+
+
 #: A document named with its id after the name, as a read names one whose
 #: name another document shares: the id is group 1.
 _LABELLED = re.compile(r'.*\(\s*([^()\s]+)\s*\)\s*', re.S)
@@ -394,14 +399,19 @@ class BaseWorkspace:
             hit = next((d for d in docs if d['id'] == labelled.group(1)), None)
             if hit is not None:
                 return hit['id']
-        by_name = [d for d in docs if (d.get('name') or '').lower() == document.lower()]
-        # Then as the names would be typed: a model wrote "children's" for a
-        # name with ’ and "COMPLETE:Pear_Story_01" for "COMPLETE: Pear_Story_01"
-        # and was refused eight times (2026-10-12 survey).
-        for key in (name_key, loose_name_key):
+        # As given, then without the quotes every read and refusal prints a
+        # name in ('"Cuento"', REV4-AGENT-6).
+        for name in [document] + ([document[1:-1].strip()] if _quoted(document) else []):
+            by_name = [d for d in docs if (d.get('name') or '').lower() == name.lower()]
+            # Then as the names would be typed: a model wrote "children's" for a
+            # name with ’ and "COMPLETE:Pear_Story_01" for "COMPLETE: Pear_Story_01"
+            # and was refused eight times (2026-10-12 survey).
+            for key in (name_key, loose_name_key):
+                if by_name:
+                    break
+                by_name = [d for d in docs if key(d.get('name') or '') == key(name)]
             if by_name:
                 break
-            by_name = [d for d in docs if key(d.get('name') or '') == key(document)]
         if len(by_name) == 1:
             return by_name[0]['id']
         if len(by_name) > 1:

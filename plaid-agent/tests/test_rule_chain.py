@@ -142,3 +142,21 @@ def test_a_rule_asked_again_applies_last():
             'since.') in out, out
     assert [op['args']['pattern'] for op in w.ops] == ['Ali', 'Cy', 'Bob']
     assert _approve(client, w) == {'sp-g1': 'Cy', 'sp-x2': 'Cy'}
+
+
+def test_a_drop_by_document_that_drops_nothing_says_so():
+    # REV4-AGENT-5
+    client, w = _ws({'sp-g1': 'Ali', 'sp-y1': 'Ali'})
+    _replace(w, 'Ali', 'Bob', whole=True)
+    out = call_tool(w, 'drop_planned', {'document': 'Text 1'})
+    assert out.startswith('Nothing dropped. 1 change that also reaches other documents was kept: drop it by '
+                          'number if it should go.'), out
+    assert len(w.ops) == 1
+
+
+def test_a_quoted_document_name_is_read_as_the_name():
+    # REV4-AGENT-6: every read and refusal prints a name in quotes.
+    _client, w = _ws({'sp-g1': 'Ali'})
+    for name in ('"Text 1"', '“Text 1”'):
+        assert w.resolve_document_id(name) == 'd1'
+    assert not call_tool(w, 'read_document', {'document': '"Text 2"'}).startswith('Error')

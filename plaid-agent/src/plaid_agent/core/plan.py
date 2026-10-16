@@ -1651,9 +1651,12 @@ def drop_planned(ws, indexes=None, field=None, document=None) -> str:
     if kept:
         note += (f' {kept} change{"s" if kept != 1 else ""} that also reach{"" if kept != 1 else "es"} other '
                  f'documents {"were" if kept != 1 else "was"} kept: drop {"them" if kept != 1 else "it"} by number '
-                 'if they should go.')
+                 f'if {"they" if kept != 1 else "it"} should go.')
     changes, keeps = plan_changes(dropped), kept_values(dropped)
-    if keeps and not changes and len(dropped) == keeps:
+    if not dropped:
+        # Every match also reaches another document (REV4-AGENT-5).
+        said = 'Nothing dropped.'
+    elif keeps and not changes and len(dropped) == keeps:
         said = (f'Stopped keeping {_n(keeps, "value", "values")}: the corpus-wide change in the plan now '
                 f'includes {"it" if keeps == 1 else "them"}.')
     elif not changes and not keeps:
