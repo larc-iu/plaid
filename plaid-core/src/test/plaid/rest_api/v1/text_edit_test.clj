@@ -438,12 +438,15 @@
   "igt's layers as its Media tab has them: sentences, words, morphemes
   under them with igt's rules, and rows beside them, a span
   on every token, and an empty row at each of `points` (legacy data)."
-  [body sents words rows points]
+  [body sents words rows points & [split]]
   (let [proj (create-test-project admin-request "RowsProj")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
         mk-layer (fn [n opts] (-> (create-token-layer-opts admin-request tl n opts) :body :id))
         s (mk-layer "Sentences" {:overlap-mode "partitioning"})
         w (mk-layer "Words" {:overlap-mode "non-overlapping" :parent-token-layer-id s})
+        _ (when split
+            (assert-status 204 (api-call admin-request {:method :put :path (str "/api/v1/token-layers/" w "/config/plaid/splitOnSpace")
+                                                        :body true})))
         m (mk-layer "Morphemes" {:overlap-mode "any" :parent-token-layer-id w})
         a (mk-layer "Rows" {:overlap-mode "non-overlapping"})
         sl (into {} (map (fn [l] [l (-> (create-span-layer admin-request l "V") :body :id)])) [s w m a])
@@ -486,13 +489,14 @@
   ;; sentence with its whitespace. Text typed inside the whitespace between
   ;; two of them answered 409 (the next row took it with its sentence, the
   ;; row before kept its end past it), and a row over a sentence of only
-  ;; whitespace left the text that sentence took in no row. Text typed
-  ;; inside a row stays in it (FX-D-TEXT), and at its edge goes with the
-  ;; sentence that takes it.
+  ;; whitespace left the text that sentence took in no row. Text typed in
+  ;; the whitespace where such a row meets the next sentence counts as typed
+  ;; at the boundary, so each row stays on its sentence (FX-E-TEXT,
+  ;; REV4-TEXT-1), and at its edge goes with the sentence that takes it.
   (doseq [[label change want-body want-rows]
-          [["one insert" {:edits [(ins 4 "X")]} "Hi. X  The end." [[0 7] [7 15]]]
-           ["two inserts" {:edits [(ins 4 "X") (ins 6 "Y")]} "Hi. X Y The end." [[0 8] [8 16]]]
-           ["a whole-body save" {:body "Hi. X  The end."} "Hi. X  The end." [[0 7] [7 15]]]
+          [["one insert" {:edits [(ins 4 "X")]} "Hi. X  The end." [[0 4] [4 15]]]
+           ["two inserts" {:edits [(ins 4 "X") (ins 6 "Y")]} "Hi. X Y The end." [[0 4] [4 16]]]
+           ["a whole-body save" {:body "Hi. X  The end."} "Hi. X  The end." [[0 4] [4 15]]]
            ["at the row's edge" {:edits [(ins 6 "So ")]} "Hi.   So The end." [[0 6] [6 17]]]]]
     (testing label
       (let [{:keys [text rows]} (rows-setup "Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 6] [6 14]] [])
@@ -504,6 +508,27 @@
         r (edit-text text {:edits [(ins 4 "X")]})]
     (is (= 200 (:status r)) (pr-str (:body r)))
     (is (= [[0 4 "Hi. "] [4 6 "X "] [6 14 "The end."]] (map extent rows)))))
+
+(deftest a-row-keeps-every-letter-and-takes-what-its-sentence-takes-at-its-edge
+  ;; REV4-TEXT-2: with ud's splitOnSpace a space typed inside a word a row
+  ;; covers left one part of the word out of the row. REV4-TEXT-3: a row over
+  ;; part of a sentence did not take text typed at its edge that the
+  ;; sentence takes only by the gap-fill (at the end of the text, a line)
+  (doseq [[label body sents words rows split change want-body want-rows]
+          [["a space typed in a word a row covers" "ab cd. Ef gh." [[0 7] [7 13]] [[0 2] [3 6] [7 9] [10 13]] [[3 6]]
+            true {:edits [(ins 4 " ")]} "ab c d. Ef gh." [[3 7]]]
+           ["a space typed in a row's last word" "ab cd. Ef gh." [[0 7] [7 13]] [[0 2] [3 6] [7 9] [10 13]] [[0 9]]
+            true {:edits [(ins 8 " ")]} "ab cd. E f gh." [[0 10]]]
+           ["text typed at the end of the text" "Ab cd." [[0 6]] [[0 2] [3 6]] [[0 2] [3 6]]
+            false {:edits [(ins 6 " X")]} "Ab cd. X" [[0 2] [3 8]]]
+           ["a line typed after a row ending on a line break" "Ab cd.\nEf." [[0 7] [7 10]] [[0 2] [3 6] [7 10]] [[0 2] [3 7] [7 10]]
+            false {:edits [(ins 7 "X\n")]} "Ab cd.\nX\nEf." [[0 2] [3 9] [9 12]]]]]
+    (testing label
+      (let [{:keys [text rows]} (rows-setup body sents words rows [] split)
+            r (edit-text text change)]
+        (is (= 200 (:status r)) (pr-str (:body r)))
+        (is (= want-body (:text/body (:body r))))
+        (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
 
 (deftest a-row-edge-in-the-whitespace-saves-any-edit
   ;; REV3-TEXT-1: a row ending in the middle of the whitespace after its

@@ -975,7 +975,9 @@
   when it reaches none. Any other token inside it is cut to the part holding
   most of its letters (or goes when none of it is there), one over several
   words that began or ended with it begins or ends where it does, and
-  nothing else differs. `gaps` are the change as the server takes it."
+  nothing else differs. A row (a token of a layer that forbids overlap
+  beside the words) is where it is without `splitOnSpace`: it keeps every
+  old letter it held. `gaps` are the change as the server takes it."
   [^String old tokens gaps plain split dealt]
   (let [o (cps old)
         nw (cps (:text/body (:text plain)))
@@ -1090,6 +1092,10 @@
                          got
                          (or (nil? t) (= :s layer)) t
                          over (let [[b e] (trim-ws nw (sentence-now over))] (assoc t :token/begin b :token/end e))
+                         ;; a row keeps every old letter it held and the text
+                         ;; typed inside it, so a typed space that splits a
+                         ;; word moves it nowhere (FX-E-TEXT, REV4-TEXT-2)
+                         (#{:a :ss :rw} layer) t
                          (shared id) (let [[x y] (shared id)] (assoc t :token/begin x :token/end y))
                          (moved [begin end]) (let [[x y] (moved [begin end])] (assoc t :token/begin x :token/end y))
                          (contains? under-placed id) (when-let [[b e] (first (under-placed id))]
@@ -1168,20 +1174,15 @@
       (conj! out (str id " at " got ", its sentence at " want)))
     ;; rows over sentences with their whitespace (REV2-TEXT-1): each on its
     ;; sentence as the gap-fill leaves it, off the whitespace it had none of,
-    ;; but holding to its last old character when text was typed strictly
-    ;; inside it (FX-D-TEXT), and the next row begins where it ends
+    ;; text typed in its whitespace going with the sentence that takes it
+    ;; (FX-E-TEXT, REV4-TEXT-1), and the next row begins where it ends
     (let [nw (cps nb)
-          vlen #(cp/cp-count (:value %))
-          pm (fn [x] (+ x (reduce + 0 (map #(- (vlen %) (- (:end %) (:start %))) (filter #(<= (:end %) x) server)))))
-          gone? (fn [x] (some #(and (<= (:start %) x) (< x (:end %))) server))
-          inside? (fn [b e] (some (fn [{a :start z :end :as g}] (and (< b a) (if (= a z) (< a e) (< z e)) (pos? (vlen g)))) server))
           rws (sort-by :token/begin (filter #(= :rw (first (:token/id %))) tokens))
           wants (reduce (fn [acc {:token/keys [id begin end]}]
                           (let [st (some #(when (= [begin end] [(:token/begin %) (:token/end %)]) %) sents)
                                 want (when-let [[b e] (some-> st :token/id filled)]
                                        (let [b (if (ws? (aget o begin)) b (loop [x b] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x)))
                                              e (if (ws? (aget o (dec end))) e (loop [x e] (if (and (> x b) (ws? (aget nw (dec x)))) (recur (dec x)) x)))
-                                             e (if (and (inside? begin end) (not (gone? (dec end)))) (max e (inc (pm (dec end)))) e)
                                              b (if-let [pe (:end (peek acc))] (max b pe) b)]
                                          (when (< b e) [b e])))]
                             (conj acc {:id id :want want :end (second want)})))

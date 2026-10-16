@@ -4,13 +4,20 @@
   segments), over sentences with or without their whitespace, over several
   sentences, inside one, or cut anywhere (FX-D-TEXT, after REV3-TEXT). Each
   case is one to three changes near the sentence boundaries, judged on the
-  edits path and on a whole-body save, against the gaps the server reads
-  the change as. The invariant, for every row layer, with no exemptions:
+  edits path and on a whole-body save, with and without `splitOnSpace` on
+  the words, against the gaps the server reads the change as. A sentence is
+  read as it is stored, after the partition's gap-fill (FX-E-TEXT). The
+  invariant, for every row layer:
   1. no edit of a text whose rows did not overlap makes them overlap (so the
      save never answers 409),
-  2. text typed strictly inside a row stays in that row (but for
-     whitespace at an edge that was on a letter, which the plain rule moves
-     the edge off),
+  2. text typed strictly inside a row stays in that row, but for whitespace
+     at an edge that was on a letter (the plain rule moves the edge off it)
+     and a line typed at the start that becomes a sentence of its own (every
+     token reaching over it leaves it). Text typed in the whitespace where a
+     row over whole sentences meets a sentence boundary counts as typed at
+     the boundary: it is in the row exactly when it is in one of the
+     sentences the row reaches (FX-E-TEXT, REV4-TEXT-1), unless the save
+     deletes every sentence the row holds whole,
   3. text typed where a row's edge meets a sentence boundary (a sentence's
      begin or first letter, its end or the end of its last letter) goes
      with the sentence the partition rule chooses, and the row on that
@@ -35,6 +42,17 @@
 
 (def ^:private opts {:children #{:m} :exclusive #{:w :r}})
 
+(defn- gap-fill
+  "The sentences of `r` as the save stores them: each to the next one's
+  begin, the first from 0 (or the line made a sentence of its own, `-1`),
+  the last to the end of the text."
+  [r n]
+  (let [ss (sort-by first (concat (map (fn [h] [(:token/begin h) (:token/end h) -1]) (:heads r))
+                                  (keep (fn [t] (when (= :s (:token/layer t)) [(:token/begin t) (:token/end t) (second (:token/id t))]))
+                                        (:tokens r))))
+        c (count ss)]
+    (map-indexed (fn [i [b e id]] [(if (zero? i) 0 b) (if (= i (dec c)) n (max e (first (nth ss (inc i))))) id]) ss)))
+
 (defn- tokens-of [{:keys [sents words rows]}]
   (-> []
       (into (map-indexed (fn [i [b e]] {:token/id [:s i] :token/layer :s :token/begin b :token/end e}) sents))
@@ -46,9 +64,10 @@
 (defn run-case
   "`{:gaps :r}`: the gaps the server reads case `c`'s change as on `path`
   (`:edits` or `:body`) and what the plain rule makes of them."
-  [{:keys [o gaps] :as c} path]
+  [{:keys [o gaps sos] :as c} path]
   (let [tokens (tokens-of c)
-        ops (ta/gap-ops gaps)]
+        ops (ta/gap-ops gaps)
+        opts (cond-> opts sos (assoc :split-on-space true))]
     (if (= path :edits)
       (let [used (ta/plain-edit-gaps o ops tokens #{:s} #{:w} opts)]
         {:gaps used :r (ta/apply-plain-gaps o tokens used #{:s} #{:w} opts)})
@@ -75,15 +94,37 @@
             gone? (fn [x] (some #(and (<= (:start %) x) (< x (:end %))) gaps))
             new-rows (into {} (keep (fn [t] (when (= :r (:token/layer t)) [(second (:token/id t)) [(:token/begin t) (:token/end t)]])))
                            (:tokens r))
-            ;; the sentence the partition rule put new position p in, before
-            ;; the gap-fill sweeps the text between sentences into one
-            sentence-at (fn [p] (some (fn [t] (when (and (= :s (:token/layer t)) (<= (:token/begin t) p) (< p (:token/end t)))
-                                                (second (:token/id t))))
-                                      (:tokens r)))
+            ;; the sentence new position p is in, as stored
+            filled (gap-fill r (alength nc))
+            sentence-at (fn [p] (some (fn [[b e id]] (when (and (<= b p) (< p e)) id)) filled))
             ;; old sentence boundaries: begins (with and without whitespace)
             ;; and ends, each naming its sentence
             sb (into {} (mapcat (fn [i [b e]] (let [[x y] (trim-ws oc [b e])] (cond-> [[b i]] (< x y) (conj [x i])))) (range) sents))
             se (into {} (mapcat (fn [i [b e]] (let [[x y] (trim-ws oc [b e])] (cond-> [[e i]] (< x y) (conj [y i])))) (range) sents))
+            ;; the old sentences each row reaches (any of their text), and
+            ;; those it holds whole (by their letters, or all of a sentence
+            ;; with none)
+            sent-span (fn [[b e]] (let [[x y] (trim-ws oc [b e])] (if (< x y) [x y] [b e])))
+            reaches (fn [i] (let [[b e] (rows i)]
+                              (into #{} (keep-indexed (fn [k [x y]] (when (and (< x e) (< b y)) k))) sents)))
+            ;; (a row whose sentences the save all deleted follows none, and
+            ;; keeps what is typed inside it by (2))
+            live-sents (into #{} (keep (fn [t] (when (= :s (:token/layer t)) (second (:token/id t))))) (:tokens r))
+            whole (fn [i] (let [[b e] (rows i)
+                                ks (filter (fn [k] (let [[x y] (sent-span (sents k))] (and (<= b x) (<= y e)))) (range (count sents)))]
+                            (if (some live-sents ks) ks [])))
+            ;; a gap in the whitespace between a row's letters and an edge of
+            ;; it on a boundary of a sentence it holds whole
+            boundary-ws? (fn [i a z]
+                           (let [[b e] (rows i)
+                                 [lb le] (trim-ws oc [b e])
+                                 ws (whole i)
+                                 wb (some (fn [k] (contains? (hash-set (first (sents k)) (first (trim-ws oc (sents k)))) b)) ws)
+                                 we (some (fn [k] (contains? (hash-set (second (sents k)) (second (trim-ws oc (sents k)))) e)) ws)]
+                             ;; (all of a row of only whitespace)
+                             (boolean (if (< lb le)
+                                        (or (and wb (<= a lb)) (and we (>= z le)))
+                                        (or wb we)))))
             out (transient [])
             v! (fn [k msg] (conj! out [k msg]))]
         ;; 1. no overlap
@@ -93,17 +134,32 @@
         (doseq [[i [b e]] (map-indexed vector rows)
                 :let [[nb* ne*] (new-rows i)]
                 :when nb*]
-          ;; 2. text typed strictly inside
+          ;; 2. text typed strictly inside, but for the whitespace where a
+          ;; row over whole sentences meets a sentence boundary, where text
+          ;; is in the row exactly when it is in a sentence the row reaches
           (doseq [[gi {a :start z :end :as g}] (map-indexed vector gaps)
                   :when (and (< b a) (if (= a z) (< a e) (< z e)) (pos? (vlen g)))
+                  :when (not (boundary-ws? i a z))
                   :let [x (new-at gi)
                         ;; whitespace at an edge on a letter before is moved off
+                        ;; (and a line made a sentence of its own at the
+                        ;; start, which every token reaching over it leaves)
                         out (remove (fn [p] (or (<= nb* p (dec ne*))
+                                                (= -1 (sentence-at p))
                                                 (and (< p nb*) (not (ws? (aget oc b))) (every? #(ws? (aget nc %)) (range p nb*)))
                                                 (and (>= p ne*) (not (ws? (aget oc (dec e)))) (every? #(ws? (aget nc %)) (range ne* (inc p))))))
                                     (range x (+ x (vlen g))))]
                   :when (seq out)]
             (v! 2 (str "row " i " " [b e] "->" [nb* ne*] " left out " (pr-str (:value g)) " typed inside at " a)))
+          (doseq [[gi {a :start z :end :as g}] (map-indexed vector gaps)
+                  :when (and (< b a) (if (= a z) (< a e) (< z e)) (pos? (vlen g)) (boundary-ws? i a z))
+                  :let [x (new-at gi) vc (cps (:value g)) reach (reaches i)]
+                  k (range (alength vc))
+                  :let [j (sentence-at (+ x k))]
+                  :when (and (not (ws? (aget vc k))) (not= -1 j)
+                             (not= (contains? reach j) (and (<= nb* (+ x k)) (< (+ x k) ne*))))]
+            (v! 2 (str "row " i " " [b e] "->" [nb* ne*] " " (pr-str (:value g)) " typed at " a
+                       " in the whitespace at a sentence boundary, in sentence " j ", reaches " (sort reach))))
           ;; 3. text typed where an edge meets a sentence boundary
           (doseq [[gi {a :start z :end :as g}] (map-indexed vector gaps)
                   :when (= a z)
@@ -221,7 +277,9 @@
                            (conj out g)
                            out)))
                      [] (range (rint 1 3)))]
-    {:o body :sents sents :words words :rows rows :shape shape :gaps (vec (sort-by (juxt :start :end) gaps))}))
+    {:o body :sents sents :words words :rows rows :shape shape :gaps (vec (sort-by (juxt :start :end) gaps))
+     ;; ud's words, which a typed space splits
+     :sos (< (.nextDouble rng) 0.3)}))
 
 (defn sweep
   "`{[path invariant shape] count}` and the first few failing cases, over
@@ -269,8 +327,8 @@
       (is (= (map (fn [[b e]] (if (< at e) [(cond-> b (> b at) inc) (inc e)] [b e])) rows)
              (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))
           "the rows do not move")))
-  (testing "REV3-TEXT-2: text typed inside a row stays in it"
-    (doseq [[o sents rows want] [["Ab.  Cd. Ef." [[0 5] [5 9] [9 12]] [[0 5] [5 12]] [[0 6] [6 13]]]
+  (testing "REV3-TEXT-2: text typed inside a row is in a row (FX-E-TEXT: the one over the sentence that takes it)"
+    (doseq [[o sents rows want] [["Ab.  Cd. Ef." [[0 5] [5 9] [9 12]] [[0 5] [5 12]] [[0 4] [4 13]]]
                                  ["Ab.  Cd." [[0 4] [4 5] [5 8]] [[0 5] [5 8]] [[0 6] [6 9]]]]
             path [:edits :body]
             :let [c {:o o :sents sents :words [[0 2] [5 7]] :rows rows :gaps [{:start 4 :end 4 :value "X"}]}
@@ -285,4 +343,39 @@
                      :gaps [{:start 4 :end 4 :value "So "}]}
                   {r :r} (run-case c path)]]
       (is (empty? (violations c path)) (pr-str rows path))
-      (is (= want (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))))))
+      (is (= want (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))))
+  (let [rows-of (fn [r] (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))]
+    (testing "REV4-TEXT-1: a row over whole sentences follows the sentence that takes text typed in its whitespace"
+      (doseq [[o sents rows at v want] [["Hi.  The end." [[0 5] [5 13]] [[0 5] [5 13]] 4 "So" [[0 4] [4 15]]]
+                                        ["Hi.   The end." [[0 6] [6 14]] [[0 6] [6 14]] 4 "So" [[0 4] [4 16]]]
+                                        ["Hi.   The end." [[0 6] [6 14]] [[0 6] [6 14]] 5 "So" [[0 5] [5 16]]]
+                                        ["Hi.  The end." [[0 5] [5 13]] [[0 5] [5 13]] 4 "So " [[0 4] [4 16]]]
+                                        ["Hi.  The end." [[0 5] [5 13]] [[0 3] [5 13]] 4 "So" [[0 3] [4 15]]]]
+              path [:edits :body]
+              :let [c {:o o :sents sents :words [[0 3] [5 8] [9 13]] :rows rows :gaps [{:start at :end at :value v}]}
+                    {r :r} (run-case c path)]]
+        (is (empty? (violations c path)) (pr-str o rows at path))
+        (is (= want (rows-of r)) (pr-str o rows at path))))
+    (testing "REV4-TEXT-2: with splitOnSpace a typed space leaves every letter in its row"
+      (doseq [[o sents words rows at want] [["ab cd." [[0 6]] [[0 2] [3 6]] [[0 2]] 1 [[0 3]]]
+                                            ["ab cd." [[0 6]] [[0 2] [3 6]] [[0 5]] 4 [[0 6]]]
+                                            ["ab cd. Ef gh." [[0 7] [7 13]] [[0 2] [3 6] [7 9] [10 13]] [[0 9]] 8 [[0 10]]]
+                                            ["ab cd. Ef gh." [[0 7] [7 13]] [[0 2] [3 6] [7 9] [10 13]] [[3 6]] 4 [[3 7]]]]
+              sos [true false]
+              path [:edits :body]
+              :let [c {:o o :sents sents :words words :rows rows :sos sos :gaps [{:start at :end at :value " "}]}
+                    {r :r} (run-case c path)]]
+        (is (empty? (violations c path)) (pr-str o rows sos path))
+        (is (= want (rows-of r)) (pr-str o rows sos path))))
+    (testing "REV4-TEXT-3: a row over part of a sentence takes text typed at its edge that the gap-fill gives the sentence"
+      (doseq [[o sents words rows at v want] [["Ab cd." [[0 6]] [[0 2] [3 6]] [[0 2] [3 6]] 6 " X" [[0 2] [3 8]]]
+                                              ["Ab cd.\nEf." [[0 7] [7 10]] [[0 2] [3 6] [7 10]] [[0 2] [3 6] [7 10]] 6 " X" [[0 2] [3 8] [9 12]]]
+                                              ["Ab cd.\nEf." [[0 7] [7 10]] [[0 2] [3 6] [7 10]] [[0 2] [3 7] [7 10]] 7 "X\n" [[0 2] [3 9] [9 12]]]
+                                              ["Ab cd." [[0 6]] [[0 2] [3 6]] [[0 2] [3 6]] 0 "So " [[0 5] [6 9]]]
+                                              ;; a text with no word yet, whose rows decide in their place
+                                              ["ab cd? ef." [[0 10]] [] [[0 2] [3 6] [7 10]] 10 "\nX" [[0 2] [3 6] [7 12]]]]
+              path [:edits :body]
+              :let [c {:o o :sents sents :words words :rows rows :gaps [{:start at :end at :value v}]}
+                    {r :r} (run-case c path)]]
+        (is (empty? (violations c path)) (pr-str o rows at path))
+        (is (= want (rows-of r)) (pr-str o rows at path))))))

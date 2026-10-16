@@ -2314,14 +2314,17 @@
     sentence's whitespace there, an edge on a letter is moved off
     whitespace onto the sentence's letters. So text typed where such an
     edge meets the boundary goes with the sentence the partition rule
-    chooses, and the row holds it when it is on that sentence's side.
+    chooses, and the row holds it when it is on that sentence's side. Text
+    typed in the whitespace between such an edge and the row's letters
+    counts as typed at the boundary (FX-E-TEXT, REV4-TEXT-1).
   - Such an edge of a row over part of the sentence takes only the text
-    typed right at it (`typed-at`) that the sentence took, where the plain
-    rule left the edge beside that text.
+    typed right at it (`typed-at`) that the sentence took after the
+    gap-fill, where the plain rule left the edge beside that text.
   - Any other edge stays where the plain rule placed it.
-  - A followed edge never leaves out what the row holds as its own (`held`,
-    of its old extent: its old text left and the text typed strictly inside
-    it), so text typed inside a row stays in it.
+  - No edge leaves out what the row holds as its own (`held`, of its old
+    extent less that boundary whitespace: its old text left and the text
+    typed strictly inside it), so text typed inside a row stays in it and
+    no letter a row held leaves it (REV4-TEXT-2).
   - Two rows of a layer that did not overlap do not: where two edges cross,
     they meet at the one that stayed put, else at the one that keeps what
     each row holds, else every row of the layer keeps the plain placement.
@@ -2368,7 +2371,7 @@
                       letters? (< ob oe)
                       new-letters? (< lb le)
                       e (fn [x to] [x {:to to :over (if letters? [ob oe] [begin end])
-                                       :now ((juxt :token/begin :token/end) (now id))}])]
+                                       :now [nb ne]}])]
                   {:begins (cond-> [(e begin (if (or (space? (aget o begin)) (not new-letters?)) nb lb))]
                              (and letters? (not= ob begin)) (conj (e ob (if new-letters? lb nb))))
                    :ends (cond-> [(e end (if (or (space? (aget o (dec end))) (not new-letters?)) ne le))]
@@ -2379,8 +2382,9 @@
         ;; follows the sentence's edge, a row over part of it takes the text
         ;; typed right at its edge that the sentence took, where the plain
         ;; rule left the edge beside it, and nothing else
-        place (fn [{:keys [to over now]} begin end begin? plain]
-                (if (every? (fn [[x y]] (and (<= begin x) (<= y end))) over)
+        whole? (fn [{:keys [over]} begin end] (every? (fn [[x y]] (and (<= begin x) (<= y end))) over))
+        place (fn [{:keys [to now] :as at} begin end begin? plain]
+                (if (whole? at begin end)
                   to
                   (when-let [[x y] (typed-at (if begin? begin end))]
                     (let [[x y] (reduce (fn [[x y] [nb ne]] [(max x nb) (min y ne)]) [x y] now)
@@ -2394,12 +2398,23 @@
         rows (keep (fn [{:token/keys [id] :as t}]
                      (let [{:token/keys [begin end]} (was id)]
                        (when (and begin (< begin end) (follower? t))
-                         (let [fb (some-> (begin-at begin) (place begin end true (:token/begin t)))
-                               fe (some-> (end-at end) (place begin end false (:token/end t)))
-                               [hb he] (held [begin end])
-                               b (if fb (cond-> fb hb (min hb)) (:token/begin t))
-                               e (if fe (cond-> fe he (max he)) (:token/end t))]
-                           (if (and (or fb fe) (< b e))
+                         (let [ba (begin-at begin)
+                               ea (end-at end)
+                               ;; text typed in the whitespace where a row over
+                               ;; whole sentences meets a sentence boundary
+                               ;; counts as typed at the boundary, so it goes
+                               ;; with the sentence that takes it
+                               hb* (if (and ba (whole? ba begin end)) (lead o begin end) begin)
+                               he* (if (and ea (whole? ea begin end)) (tail o begin end) end)
+                               [hb he] (when (< hb* he*) (held [hb* he*]))
+                               ;; every edge keeps what the row holds
+                               pb (cond-> (:token/begin t) hb (min hb))
+                               pe (cond-> (:token/end t) he (max he))
+                               fb (some-> ba (place begin end true pb))
+                               fe (some-> ea (place begin end false pe))
+                               b (cond-> (or fb pb) hb (min hb))
+                               e (cond-> (or fe pe) he (max he))]
+                           (if (< b e)
                              {:id id :layer (:token/layer t) :old begin :b b :e e :hb hb :he he
                               :fb (and fb (= b fb)) :fe (and fe (= e fe))}
                              {:id id :layer (:token/layer t) :old begin :b (:token/begin t) :e (:token/end t)
@@ -2464,8 +2479,10 @@
   holding most of its kept letters, cut to it, and is deleted when it holds
   nothing of any. Another token as long as the word stays with it, and one
   over several words that began or ended with it begins or ends where it
-  does now. `typed?` says whether a new-body position holds typed text."
-  [^ints nw old-tokens placed word? part? typed? child? dealt?]
+  does now. A row (`row?`) stays where the plain rule placed it, so a
+  split moves no row. `typed?` says whether a new-body position holds typed
+  text."
+  [^ints nw old-tokens placed word? part? typed? child? dealt? row?]
   (let [was (into {} (map (juxt :token/id identity)) old-tokens)
         letter-at? (fn [i] (and (not (typed? i)) (not (space? (aget nw i)))))
         ;; the old letters kept, by new position
@@ -2559,7 +2576,7 @@
                (let [{ob :token/begin oe :token/end} (was id)
                      inside (second (inside-of ob oe))]
                  (cond
-                   (or (::gone t) (nil? ob) (part? t)) t
+                   (or (::gone t) (nil? ob) (part? t) (row? t)) t
                    (shared id) (let [[x y] (shared id)] (assoc t :token/begin x :token/end y))
                    (splits [ob oe]) (let [[x y] (:keep (splits [ob oe]))] (assoc t :token/begin x :token/end y))
                    ;; under a split word, shorter than it: where it stands
@@ -2907,7 +2924,8 @@
                                  #(partitioning (:token/layer %))
                                  #(aget typed (int %))
                                  #(contains? (set children) (:token/layer %))
-                                 #(contains? (set dealt) %)))
+                                 #(contains? (set dealt) %)
+                                 #(row? (:token/layer %))))
            {:placed placed})
          zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))
          kept (filterv (complement ::gone) placed)
@@ -2977,10 +2995,12 @@
                           y (if (ws? (aget o (dec e))) y (loop [y y] (if (and (> y x) (ws? (aget nw (dec y)))) (recur (dec y)) y)))]
                       (when (< x y) [x y])))))
          kept (follow-sentences o wide kept heads nw partitioning
-                                (fn [t] (not (or (not (contains? exclusive (:token/layer t)))
-                                                 (partitioning (:token/layer t))
-                                                 (decider-layers (:token/layer t))
-                                                 (contains? children (:token/layer t)))))
+                                ;; a row, also where the text has no word yet
+                                ;; and the rows decide in their place
+                                #(let [l (:token/layer %)]
+                                   (or (row? l)
+                                       (and (seq word-layers) (contains? exclusive l) (not (partitioning l))
+                                            (not (contains? children l)) (not (contains? (set word-layers) l)))))
                                 held
                                 ;; the new text of an insert at old x
                                 (fn [x] (let [g (at-or-before x)]
