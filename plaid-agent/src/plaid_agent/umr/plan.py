@@ -14,6 +14,7 @@ several, and a write in a later one names the same id.
 
 import re
 from collections import Counter
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import metadata_ops
@@ -228,8 +229,15 @@ def concept_matches(op: Dict[str, Any], concept: str) -> bool:
     pattern = op.get('concept') or ''
     if not pattern:
         return False
-    return matcher(pattern, literal=not op.get('regex'), case_insensitive=not op.get('case_sensitive'),
-                   whole=bool(op.get('whole')))(concept)
+    return _matcher(pattern, not op.get('regex'), not op.get('case_sensitive'), bool(op.get('whole')))(concept)
+
+
+@lru_cache(maxsize=64)
+def _matcher(pattern: str, literal: bool, case_insensitive: bool, whole: bool):
+    """A scope's pattern compiled once, not once a node: compiling one that
+    ignores case folds every character class, about 17 ms, and a document of
+    1,400 nodes asked it of each."""
+    return matcher(pattern, literal=literal, case_insensitive=case_insensitive, whole=whole)
 
 
 def holds(node, rel: str) -> List[str]:
