@@ -92,6 +92,20 @@ describe('wordCountsByProject with a word value spec', () => {
     expect(await wordCountsByProject(c, ps, words, null, spec)).toEqual({ a: 3, b: 1, c: 2 });
     expect(c.query).toHaveBeenCalledTimes(3);
     const scoped = c.query.mock.calls.map(([q]) => q.scope?.projectIds ?? null);
-    expect(scoped).toEqual([null, ['a'], ['b']]);
+    expect(scoped).toEqual([['a', 'b', 'c'], ['a'], ['b']]);
+  });
+});
+
+describe('wordCountsByProject scope', () => {
+  it('counts only the listed projects that have a word layer', async () => {
+    const c = client();
+    await wordCountsByProject(c, projects, wordLayerId);
+    expect(c.query.mock.calls[0][0].scope).toEqual({ projectIds: ['p1', 'p2'] });
+  });
+
+  it('asks nothing when no listed project has a word layer', async () => {
+    const c = client();
+    expect(await wordCountsByProject(c, [{ id: 'p3' }], wordLayerId)).toEqual({ p3: null });
+    expect(c.query).not.toHaveBeenCalled();
   });
 });

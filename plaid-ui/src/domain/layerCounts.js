@@ -2,8 +2,9 @@
  * How many tokens each project holds, in one round trip for the whole list
  * (two when some project needs the fallback below).
  *
- * Count tokens grouped by their token layer across every readable project, then
- * map each project's own word layer to its count. `wordLayerId(project)` is the
+ * Count tokens grouped by their token layer across the listed projects that
+ * have a word layer (never every project on the server, which an admin can
+ * read), then map each project's own word layer to its count. `wordLayerId(project)` is the
  * caller's, because the two apps count different layers: plaid-igt its word
  * layer, plaid-ud the morpheme layer whose tokens are UD's syntactic words.
  *
@@ -43,11 +44,15 @@ export const wordCountsByProject = async (
     if (!bySpec.has(key)) bySpec.set(key, { spec, projects: [] });
     bySpec.get(key).projects.push(p);
   }
+  const counted = projects.filter((p) => wordLayerId(p)).map((p) => p.id);
   const [res, ...filtered] = await Promise.all([
-    client.query({
-      where: [['token', '?t', { layer: '?l' }]],
-      return: { group: ['?l'], aggregates: [['count']] },
-    }),
+    counted.length
+      ? client.query({
+          where: [['token', '?t', { layer: '?l' }]],
+          scope: { projectIds: counted },
+          return: { group: ['?l'], aggregates: [['count']] },
+        })
+      : null,
     ...[...bySpec.values()].map(({ spec, projects: ps }) =>
       client.query({
         where: [
