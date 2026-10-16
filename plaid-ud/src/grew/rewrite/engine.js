@@ -24,6 +24,10 @@ import { cloneGraph } from './graph.js';
 import { firstMatch } from './match.js';
 import { applyCommands } from './commands.js';
 
+// A rule as a refusal names it: "The rule" for one written without a name,
+// which the parser calls `rule`, a keyword no rule can be named.
+const ruleNamed = (name) => (name === 'rule' ? 'The rule' : `Rule '${name}'`);
+
 const MAX_APPLICATIONS = 1000;
 
 // The strategy the rule set runs under: `main`, else the first declared, else
@@ -49,7 +53,7 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
     if (!m) return null;
     if (applications.length >= maxApplications) {
       throw new GrewRuntimeError(
-        `Rule '${rule.name}' did not terminate after ${maxApplications} applications. Add a \`without\` clause that stops it.`,
+        `${ruleNamed(rule.name)} did not terminate after ${maxApplications} applications. Add a \`without\` clause that stops it.`,
         { rule: rule.name, line: rule.line },
       );
     }
@@ -98,7 +102,7 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
           if (fingerprint(r) === fingerprint(cur)) {
             const last = applications[applications.length - 1];
             throw new GrewRuntimeError(
-              `Rule '${last.rule}' matched but changed nothing and would match forever. Add a \`without\` clause that stops it.`,
+              `${ruleNamed(last.rule)} matched but changed nothing and would match forever. Add a \`without\` clause that stops it.`,
               { rule: last.rule, line: rules.get(last.rule)?.line ?? null },
             );
           }

@@ -105,9 +105,10 @@ test('del_edge and add_edge: by name, by description, label copy, second head al
 });
 
 test('an add_edge that is already there is ineffective, so the rule loops and stops', () => {
+  // A rule written without a name is "The rule", not "Rule 'rule'" (Q2-UD-POLISH).
   assert.throws(
     () => rewrite('pattern { X -[obj]-> Y } commands { add_edge X -[obj]-> Y }'),
-    (e) => e instanceof GrewRuntimeError && /changed nothing/.test(e.message),
+    (e) => e instanceof GrewRuntimeError && /^The rule matched but changed nothing/.test(e.message),
   );
 });
 

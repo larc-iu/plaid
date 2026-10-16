@@ -238,10 +238,15 @@ export const SearchPage = () => {
     setApplying(true);
     try {
       const rows = plan.rows.filter((r) => selected.has(r.key));
-      const names = plan.grs.rules.map((r) => r.name).join(', ');
+      // A rule written without a name is called `rule` (grew/parser.js), a
+      // keyword no rule can be named: History says "Rewrite" for it.
+      const names = plan.grs.rules
+        .map((r) => r.name)
+        .filter((n) => n !== 'rule')
+        .join(', ');
       const out = await applyRewrite(
         getClient(),
-        { rows, docs: plan.docs, label: `Rewrite: ${names}` },
+        { rows, docs: plan.docs, label: names ? `Rewrite: ${names}` : 'Rewrite' },
         setProgress,
       );
       const summary = applySummary(out, (failed) => humanizeError(failed));
