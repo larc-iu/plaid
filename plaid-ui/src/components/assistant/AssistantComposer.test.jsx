@@ -129,6 +129,30 @@ describe('AssistantComposer', () => {
     await m.unmount();
   });
 
+  it('takes a space typed right after a pick as the one the pick put there (H8-ASSISTANT)', async () => {
+    const m = await mount({ offer: SENTENCES });
+    await m.type('about @libres');
+    await m.press('Enter');
+    expect(m.box.value).toBe('about s2 ');
+    m.box.selectionStart = m.box.value.length;
+    m.box.selectionEnd = m.box.value.length;
+    let spaced = null;
+    await m.step(() => {
+      const e = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+      m.box.dispatchEvent(e);
+      spaced = e.defaultPrevented;
+    });
+    expect(spaced).toBe(true);
+    // Only the first: a second space is the reader's own.
+    await m.step(() => {
+      const e = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+      m.box.dispatchEvent(e);
+      spaced = e.defaultPrevented;
+    });
+    expect(spaced).toBe(false);
+    await m.unmount();
+  });
+
   it('closes the list on Escape and keeps what was typed', async () => {
     const m = await mount({ offer: SENTENCES });
     await m.type('about @s');

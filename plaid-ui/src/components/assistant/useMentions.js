@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { flattenOptions, normalizeOptions } from '../shared/comboboxOptions.js';
 import { activeMention, filterMentions, insertMention, withMentionIds } from './mentions.js';
 
@@ -68,8 +68,12 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     if (!items.some((m) => m.id === activeId)) setActiveId(items[0].id);
   }, [items, activeId]);
 
+  // Where a pick left the caret, after the space it puts after the mention:
+  // a space typed there next is that space again, and is not doubled.
+  const pickedAt = useRef(null);
   const pick = (item) => {
     const next = insertMention(text, caret, item.value);
+    pickedAt.current = next.text[next.caret - 1] === ' ' ? next.caret : null;
     setText(next.text);
     setDismissed(-1);
     // After the paint, or the caret is set against the old value and the
@@ -88,6 +92,12 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
   // is arbitrated rather than left to bubble: Enter sends a message. True means
   // the list took the key.
   const handleKeyDown = (e) => {
+    const after = pickedAt.current;
+    pickedAt.current = null;
+    if (e.key === ' ' && after != null && e.target?.selectionStart === after) {
+      e.preventDefault();
+      return true;
+    }
     if (!open || !items.length) return false;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
