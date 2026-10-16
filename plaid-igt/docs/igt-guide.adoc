@@ -132,6 +132,7 @@ A script written without spaces between words, such as Chinese, Japanese, or Tha
 You can edit the baseline later too, and the sentences, words, and annotations already there are kept.
 A word you change keeps its analysis, and a word is deleted with its annotations only when all its text is.
 New text becomes words of its own, and text typed at either end of a sentence joins that sentence.
+A new line typed after a sentence joins that sentence, and one typed before the first sentence becomes a sentence of its own. To make a new line a sentence, **Ctrl/Cmd+click** its first word on the Tokenize tab.
 In most projects, typing or deleting a space does not split or merge words. Do that on the Tokenize tab.
 **Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it.
 
@@ -257,7 +258,7 @@ Words already there are kept, so text added later can be tokenized by running it
 **Split at segments** adds a sentence break wherever a segment from the Media tab starts, so a recording cut into utterances becomes one sentence per utterance.
 
 A project can mark certain tokens as **ignored**, usually punctuation.
-Ignored tokens carry no word-level annotation and host no morphemes, so they stay out of your way in the grid.
+Ignored tokens are not words. They read as plain text everywhere, in the grid, in counts, searches and exports, with no annotation and no morphemes.
 The built-in splitter breaks words at punctuation, so an orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed as **behaving as a letter** under **Settings → Annotation** (see <<_annotation>>).
 Then `k'a` stays one word.
 
