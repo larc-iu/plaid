@@ -155,17 +155,40 @@ export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
   // right after the punctuation the one before ends on, else to the one
   // before (plaid-core `apply-plain-gaps`). Where a gap that deletes reaches
   // a boundary, which sentence its typed text lands in is the server's to
-  // say, so that text gets no word.
+  // say, so that text gets no word. Past whitespace, the text goes to the
+  // first sentence beginning at or after it, and so does the text of every
+  // other insert in the same whitespace before it (`run-start`, `run-at`).
+  const begins = (sentences || []).map((s) => s.begin);
+  const noBegin = (a, x) => !begins.some((b) => a <= b && b < x);
+  // The next letter's position for an insert after whitespace with no line
+  // break in it or between it and that letter, else null.
+  const nextLetter = sorted.map(({ start: a, end: b, value }) => {
+    if (a !== b || !(a > 0 && a < old.length) || !isSpace(old[a - 1])) return null;
+    if (Array.from(value ?? '').some(isLineBreak)) return null;
+    for (let x = a; x < old.length; x++) {
+      if (!isSpace(old[x])) return x;
+      if (isLineBreak(old[x])) return null;
+    }
+    return null;
+  });
+  const runStart = [];
+  sorted.forEach((_, j) => {
+    runStart.push(
+      j > 0 && nextLetter[j] !== null && nextLetter[j - 1] === nextLetter[j] ? runStart[j - 1] : j,
+    );
+  });
   const toNext = (j, p) => {
     const { start: a, end: b, value } = sorted[j];
     if (a !== b || a > p || !(a > 0 && a < old.length)) return false;
     if (Array.from(value ?? '').some(isLineBreak)) return false;
     if (!isSpace(old[a - 1])) return a === p && !isSpace(old[a]) && isPunct(old[a - 1]);
-    for (let x = a; x < old.length; x++) {
-      if (!isSpace(old[x])) return x >= p;
-      if (isLineBreak(old[x])) return false;
-    }
-    return false;
+    return nextLetter[j] !== null && p <= nextLetter[j] && noBegin(a, p);
+  };
+  // Where the sentence beginning at `p` begins when `toNext(j, p)`.
+  const runAt = (j, p) => {
+    let h = j;
+    while (h > runStart[j] && noBegin(sorted[h - 1].start, p)) h -= 1;
+    return at[h];
   };
   const cut = new Uint8Array(n + 1);
   for (const s of sentences || []) {
@@ -177,10 +200,10 @@ export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
       if (j >= 0 && sorted[j].start <= p && p <= sorted[j].end) touching.push(j);
     }
     if (!touching.length) {
-      cut[i >= 0 && toNext(i, p) ? at[i] : startOf(p)] = 1;
+      cut[i >= 0 && toNext(i, p) ? runAt(i, p) : startOf(p)] = 1;
     } else if (touching.every((j) => sorted[j].start === p && sorted[j].end === p)) {
       const j = touching.at(-1);
-      cut[toNext(j, p) ? at[j] : at[j] + lens[j]] = 1;
+      cut[toNext(j, p) ? runAt(j, p) : at[j] + lens[j]] = 1;
     } else {
       for (const j of touching) {
         cut[at[j]] = 1;

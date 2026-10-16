@@ -245,7 +245,34 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
     # right after the punctuation the one before ends on, else to the one
     # before (plaid-core `apply-plain-gaps`). Where a gap that deletes reaches
     # a boundary, which sentence its typed text lands in is the server's to
-    # say, so that text gets no word.
+    # say, so that text gets no word. Past whitespace, the text goes to the
+    # first sentence beginning at or after it, and so does the text of every
+    # other insert in the same whitespace before it (`run-start`, `run-at`).
+    begins = [snt['begin'] if isinstance(snt, dict) else snt[0] for snt in sentences or ()]
+
+    def no_begin(a: int, x: int) -> bool:
+        return not any(a <= b < x for b in begins)
+
+    def next_letter(j: int) -> Optional[int]:
+        # The next letter's position for an insert after whitespace with no
+        # line break in it or between it and that letter, else None.
+        a, b, value = srt[j]
+        if a != b or not 0 < a < len(old) or not is_js_space(old[a - 1]):
+            return None
+        if any(_is_line_break(c) for c in value):
+            return None
+        for x in range(a, len(old)):
+            if not is_js_space(old[x]):
+                return x
+            if _is_line_break(old[x]):
+                return None
+        return None
+
+    letters = [next_letter(j) for j in range(len(srt))]
+    run_start: List[int] = []
+    for j in range(len(srt)):
+        run_start.append(run_start[j - 1] if j > 0 and letters[j] is not None and letters[j - 1] == letters[j] else j)
+
     def to_next(j: int, p: int) -> bool:
         a, b, value = srt[j]
         if a != b or a > p or not 0 < a < len(old):
@@ -254,12 +281,14 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
             return False
         if not is_js_space(old[a - 1]):
             return a == p and not is_js_space(old[a]) and _is_punct(old[a - 1])
-        for x in range(a, len(old)):
-            if not is_js_space(old[x]):
-                return x >= p
-            if _is_line_break(old[x]):
-                return False
-        return False
+        return letters[j] is not None and p <= letters[j] and no_begin(a, p)
+
+    def run_at(j: int, p: int) -> int:
+        # Where the sentence beginning at ``p`` begins when ``to_next(j, p)``.
+        h = j
+        while h > run_start[j] and no_begin(srt[h - 1][0], p):
+            h -= 1
+        return at[h]
 
     cut = bytearray(n + 1)
     for snt in sentences or ():
@@ -269,10 +298,10 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
         i = last_starting(p, False)
         touching = [j for j in range(max(0, i - 1), i + 1) if j >= 0 and srt[j][0] <= p <= srt[j][1]]
         if not touching:
-            cut[at[i] if i >= 0 and to_next(i, p) else start_of(p)] = 1
+            cut[run_at(i, p) if i >= 0 and to_next(i, p) else start_of(p)] = 1
         elif all(srt[j][0] == p and srt[j][1] == p for j in touching):
             j = touching[-1]
-            cut[at[j] if to_next(j, p) else at[j] + lens[j]] = 1
+            cut[run_at(j, p) if to_next(j, p) else at[j] + lens[j]] = 1
         else:
             for j in touching:
                 cut[at[j]] = 1
