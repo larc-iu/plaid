@@ -15,8 +15,9 @@
     :cascade!    `(fn [tx id])` deleting the layer and everything under it"
   (:require [clojure.string :as str]
             [plaid.sql.common :as psc]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.crud :as crud]
-            [plaid.sql.operation :refer [submit-operation!]]))
+            [plaid.sql.operation :as op :refer [submit-operation!]]))
 
 (defn reader
   "A `(fn [db id] ...)` returning one row of `table` through `row->layer`,
@@ -92,9 +93,21 @@
                              :user user-id}]
                      (shift-layer! tx table (str/capitalize noun) eid parent-col up?)))
 
+(defn- documents-written
+  "The documents whose rows the current operation has written so far, read
+  from the document each of its audit rows is stamped with."
+  [tx]
+  (mapv :document_id (psc/q tx {:select-distinct [:document_id]
+                                :from :audit_writes
+                                :where [:and [:= :op_id (:id psaw/*op*)]
+                                        [:<> :document_id nil]]})))
+
 (defn delete
   "Delete layer `eid` and everything under it through the spec's `:cascade!`,
-  in one operation."
+  in one operation. Every document that lost a row to the cascade has its
+  version bumped, and the result's `:documents` names them, so a client
+  holding one of them learns of the change (X-Document-Versions) and a
+  stale write to it is refused."
   [{:keys [table kind noun cascade!] :as spec} db eid user-id]
   (submit-operation! [tx db {:type (keyword kind "delete")
                              :project (project-id db table eid)
@@ -103,4 +116,5 @@
                              :user user-id}]
                      (assert-exists! tx spec eid)
                      (cascade! tx eid)
+                     (op/bump-document-versions! tx (documents-written tx))
                      eid))

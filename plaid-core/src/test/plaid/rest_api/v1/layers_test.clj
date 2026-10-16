@@ -4,9 +4,12 @@
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
                                     with-admin with-test-users with-clean-db]]
+            [clojure.data.json :as json]
+            [plaid.fixtures :refer [db]]
             [plaid.sql.common :as psc]
-            [plaid.test-helpers :refer [create-test-project delete-test-project
-                                        create-text-layer create-token-layer create-span-layer create-relation-layer]]))
+            [plaid.test-helpers :refer [create-test-project delete-test-project create-test-document
+                                        create-text-layer create-token-layer create-span-layer create-relation-layer
+                                        create-text create-token create-span create-relation]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -301,3 +304,47 @@
         (is (= #{table} (set @seen))
             (str layer-type " config set+delete read " (pr-str (distinct @seen))))))
     (delete-test-project admin-request project-id)))
+(deftest deleting-a-layer-bumps-the-documents-it-took-rows-from
+  ;; A layer delete cascades through every document of the project. A client
+  ;; holding one of them must hear of it: its version goes up, the response
+  ;; names the new version, and a document that lost nothing keeps its own.
+  (let [pid (create-test-project admin-request "Bump project")
+        [a b c] (for [n ["A" "B" "C"]] (create-test-document admin-request pid n))
+        txl (-> (create-text-layer admin-request pid "Text") :body :id)
+        tkl (-> (create-token-layer admin-request txl "Tokens") :body :id)
+        spl (-> (create-span-layer admin-request tkl "Spans") :body :id)
+        rll (-> (create-relation-layer admin-request spl "Relations") :body :id)
+        ta (-> (create-text admin-request txl a "one two") :body :id)
+        tb (-> (create-text admin-request txl b "three") :body :id)
+        ka1 (-> (create-token admin-request tkl ta 0 3) :body :id)
+        ka2 (-> (create-token admin-request tkl ta 4 7) :body :id)
+        _ (create-token admin-request tkl tb 0 5)
+        sa1 (-> (create-span admin-request spl [ka1] "x") :body :id)
+        sa2 (-> (create-span admin-request spl [ka2] "y") :body :id)
+        _ (assert-created (create-relation admin-request rll sa1 sa2 "r"))
+        versions #(psc/document-versions db [a b c])
+        header (fn [res] (some-> (get-in res [:headers "X-Document-Versions"]) (json/read-str)))
+        delete! (fn [kind id]
+                  (let [before (versions)
+                        res (api-call admin-request {:method :delete :path (str "/api/v1/" kind "/" id)})
+                        after (versions)]
+                    (assert-no-content res)
+                    [(set (filter #(not= (before %) (after %)) [a b c]))
+                     (header res)
+                     after]))]
+    (testing "a relation layer: only the document holding its relations"
+      (let [[bumped hdr after] (delete! "relation-layers" rll)]
+        (is (= #{a} bumped))
+        (is (= {(str a) (after a)} hdr))))
+    (testing "a span layer"
+      (let [[bumped hdr after] (delete! "span-layers" spl)]
+        (is (= #{a} bumped))
+        (is (= {(str a) (after a)} hdr))))
+    (testing "a token layer: both documents with tokens, not the empty one"
+      (let [[bumped hdr after] (delete! "token-layers" tkl)]
+        (is (= #{a b} bumped))
+        (is (= {(str a) (after a) (str b) (after b)} hdr))))
+    (testing "a text layer: both documents with a text"
+      (let [[bumped hdr after] (delete! "text-layers" txl)]
+        (is (= #{a b} bumped))
+        (is (= {(str a) (after a) (str b) (after b)} hdr))))))

@@ -5,6 +5,7 @@
   (:require [clojure.string :as str]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer-constraints :as lcr]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.sql.project :as prj]))
 
 (defn- config-check
@@ -147,9 +148,12 @@
         :delete {:summary (str "Delete a " noun ".")
                  :middleware maintainer
                  :handler (fn [{db :db user-id :user/id :as request}]
-                            (respond (delete-fn db (id-of request) user-id)
-                                     500 "Internal server error"
-                                     (fn [] {:status 204})))}}]
+                            (let [result (delete-fn db (id-of request) user-id)]
+                              ;; The documents that lost rows have new versions.
+                              (respond result
+                                       500 "Internal server error"
+                                       (fn [] (prm/assoc-document-versions-in-header
+                                               {:status 204} db (:documents result))))))}}]
 
       ["/shift"
        {:post {:summary shift-summary
