@@ -28,15 +28,9 @@ import { isTokenIgnored, readIgnoredTokens } from '@/domain/igtConfig';
 // because the same passage was changed elsewhere: a save refused for it, or
 // text typed during a save that landed that cannot be moved onto it. It lasts
 // until the next save or Cancel.
-// Whether `gaps` (code points of `base`) take away any of its text. What a
-// gap gives back at its front or end is not taken: a paste over the whole
-// box that only adds to it is an insert.
-export function removesText(base, gaps) {
-  return removedStretches(base, gaps).length > 0;
-}
-
 // The stretches of `base` (code points, [begin, end)) that `gaps` take away:
-// each gap's old text less what it gives back at its front and end.
+// each gap's old text less what it gives back at its front and end. A paste
+// over the whole box that only adds to it takes nothing: it is an insert.
 export function removedStretches(base, gaps) {
   const cps = Array.from(base);
   return gaps.flatMap(({ start, end, value }) => {
@@ -59,7 +53,7 @@ export function removedStretches(base, gaps) {
 // What a save that takes away `ranges` deletes, as a sentence for its
 // question, or '' when it deletes nothing: the shared loss counter's count of
 // every token wholly inside a removed stretch and what hangs off it.
-export function baselineLossSentence(doc, ranges) {
+function baselineLossSentence(doc, ranges) {
   const loss = countTextDeleteLoss(doc.layerInfo?.primaryTextLayer?.tokenLayers || [], ranges, {
     vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
   });

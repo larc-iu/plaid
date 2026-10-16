@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { fakeDocument, mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
-import { removesText, useBaselineOperations } from './useBaselineOperations.js';
+import { removedStretches, useBaselineOperations } from './useBaselineOperations.js';
+
+const removesText = (base, gaps) => removedStretches(base, gaps).length > 0;
 
 // Luke (2026-10-16): on a tokenized document, Baseline asks before a save
 // only when the save deletes or replaces text. An insert, glued to a word or
