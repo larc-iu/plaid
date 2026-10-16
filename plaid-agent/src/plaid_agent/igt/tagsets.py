@@ -21,7 +21,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.constraints import value_parts, value_set_allows
 from plaid_client.workflows.igt.glossing import is_lexical_part
-from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset
+from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset,
+                                                read_tagset_name, resolve_tagset)
 
 from ..core.bidi import qv
 from ..core.tools import ToolError
@@ -914,7 +915,8 @@ def heal_fields(client, project_id: str, layer_ids) -> List[dict]:
     far as the stored values allow, changing no annotation (igt's
     ``declareIgtRules`` with ``repair: false``): a closed list the values
     break is not declared, and a list the field holds stays, and one span a
-    token is declared only where no token holds two. Returns the fields left
+    token is declared only where no token holds two. A field naming a tagset
+    the project does not have is left alone. Returns the fields left
     out of force, as {id, refused (core's answer for the list, or None),
     doubled (the tokens holding two, or 0)}."""
     from plaid_client import PlaidAPIError
@@ -923,6 +925,10 @@ def heal_fields(client, project_id: str, layer_ids) -> List[dict]:
     out = []
     for sl in _span_layers(p):
         if sl['id'] not in layer_ids:
+            continue
+        # A field naming a tagset the project does not have is left as it
+        # is, as igt's heal leaves it (``wantedConstraints``).
+        if read_tagset_name(sl.get('config')) and resolve_tagset(sl.get('config'), cfg) is None:
             continue
         wanted = field_constraints(sl.get('config') or {}, cfg)
         stored = (sl.get('constraints') or {}).get(IGT)
