@@ -427,6 +427,38 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
     assert edge['metadata']['provDetail'] == {'value': ':ARG0'}
 
 
+def test_a_redraft_that_drafts_the_graph_a_sentence_has_writes_nothing():
+    """Ruling 30 (2026-10-16): a machine re-run writes only what changes, so
+    a redraft of the graph a sentence already has leaves it as it is, its
+    document-level triples included. Any difference, a concept here, and the
+    sentence is written as before."""
+    from plaid_client.testing import FakeClient
+    raw = _without_triples(_document())
+    concept = _machine_drafted(raw)
+    concept['spans'][0]['metadata']['umr']['words'] = ['w3']
+    concept['spans'][1]['metadata']['umr']['words'] = ['w2']
+    doc = _read(raw)
+    layers = resolve_layers(raw)
+    attrs = [{'rel': ':aspect', 'value': 'performance', 'order': 1}]
+
+    def plan(dog):
+        return [{'sentence': doc.sentences[0], 'pieces': [(8, 14), (4, 7)],
+                 'nodes': [{'concept': 'bark-01',
+                            'meta': {'var': 's1b', 'root': True, 'attrs': attrs},
+                            'piece_indexes': [0]},
+                           {'concept': dog, 'meta': {'var': 's1d', 'attrs': []},
+                            'piece_indexes': [1]}],
+                 'edges': [{'source': 0, 'target': 1, 'role': ':ARG0', 'order': 0}]}]
+
+    client = FakeClient([raw])
+    write_graphs(client, layers, plan('dog'), {'prov': 'inferred'})
+    assert client.batches == []
+
+    write_graphs(client, layers, plan('cat'), {'prov': 'inferred'})
+    [batch] = client.batches
+    assert batch[0][0] == 'tokens.bulk_delete' and sorted(batch[0][1]) == ['n1', 'n2']
+
+
 def test_a_drafted_node_aligned_to_no_word_records_its_sentence_and_no_words():
     from plaid_client.testing import FakeClient
     raw = _without_triples(_document())

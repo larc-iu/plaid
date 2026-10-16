@@ -1,5 +1,6 @@
 import contextlib
 import json
+from collections import Counter
 import stanza
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
@@ -497,12 +498,65 @@ class SentenceWrites:
                 "metadata": dict(frag),
             })
 
+    def planned_rows(self, layers):
+        """What this sentence's parse holds, as :func:`stored_rows` reads the
+        stored one: its syntactic words by place, each span by the place of its
+        word, and each relation by the places of its lemma spans' words."""
+        places = [(op["begin"], op["end"], op.get("precedence") or 0) for op in self.morphemes]
+        spans = []
+        for layer_id, ops in self.spans.items():
+            spans += [(layer_id, places[op["tokens"][0].k], op["value"]) for op in ops]
+        lemma_place = []
+        if layers.lemma:
+            lemma_place = [places[op["tokens"][0].k]
+                           for op in self.spans.get(layers.lemma["id"], [])]
+        relations = [(lemma_place[r["source"].k], lemma_place[r["target"].k], r["value"])
+                     for r in self.relations]
+        return sorted(places), Counter(spans), Counter(relations)
+
+    def clear(self):
+        """Write nothing for this sentence: its stored parse is the new one."""
+        self.deletes, self.morphemes, self._rows = [], [], []
+        self.spans, self.relations, self._slots = {}, [], 0
+
     def word_bytes(self):
         return _json_bytes(self.words)
 
     def parse_bytes(self):
         return (_json_bytes([self.deletes, self.morphemes, self.spans, self.relations])
                 + REF_BYTES * self._slots)
+
+
+def stored_rows(morphemes, morpheme_layer, layers):
+    """A sentence's stored parse in the shape :meth:`SentenceWrites.planned_rows`
+    gives: its syntactic words (``morphemes``) by place, the spans on them of
+    the layers a parse writes, and the dependency relations between their
+    lemma spans. Suppressors and the enhanced graph are not a parse's."""
+    place = {m["id"]: (m["begin"], m["end"], m.get("precedence") or 0) for m in morphemes}
+    written = {layer["id"] for layer in layers.span_layers}
+    spans = []
+    lemma_place = {}
+    for span_layer in morpheme_layer.get("span_layers", []) or []:
+        if span_layer.get("id") not in written:
+            continue
+        for span in span_layer.get("spans", []) or []:
+            tokens = span.get("tokens") or []
+            at = place.get(_token_id(tokens[0])) if tokens else None
+            if at is None:
+                continue
+            spans.append((span_layer["id"], at, span.get("value")))
+            if layers.lemma and span_layer["id"] == layers.lemma["id"]:
+                lemma_place[span.get("id")] = at
+    relations = []
+    if layers.dependency:
+        for rel in layers.dependency.get("relations", []) or []:
+            if is_suppressor(rel):
+                continue
+            source = lemma_place.get(_token_id(rel.get("source")))
+            target = lemma_place.get(_token_id(rel.get("target")))
+            if source is not None and target is not None:
+                relations.append((source, target, rel.get("value")))
+    return sorted(place.values()), Counter(spans), Counter(relations)
 
 
 def _resolved(op, refs):
@@ -964,11 +1018,30 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                       relation_layer_by_ud_config(lemma_layer, "dependency"))
     for unit, sentence_data in zip(units, sentences_data):
         unit.plan_annotations(sentence_data, layers, frag)
+    if preserve:
+        # A sentence whose new parse is the one it has is not written again:
+        # a re-run that changes nothing writes nothing (ruling 30, 2026-10-16).
+        morphemes_of = {}
+        for m in existing_morphemes:
+            morphemes_of.setdefault(morph_to_sent.get(m["id"]), []).append(m)
+        unchanged = 0
+        for unit, (orig_idx, _sent, _ws) in zip(units, reparse):
+            if unit.words:
+                continue
+            stored = stored_rows(morphemes_of.get(orig_idx, []), morpheme_layer, layers)
+            if stored == unit.planned_rows(layers):
+                unit.clear()
+                unchanged += 1
+        if unchanged:
+            log(f"  {unchanged} sentence(s) parse as they are stored; left as they are")
+            units = [unit for unit in units if unit.morphemes or unit.words or unit.deletes]
+        parse_summary["unchanged_sentences"] = unchanged
     log(f"Planned {len(sentence_ops)} sentences, "
         f"{sum(len(u.words) for u in units)} words, "
         f"{sum(len(u.morphemes) for u in units)} syntactic words")
     with progress.critical():
-        write_parse(client, head_deletes, sentence_ops, units, layers, progress, log)
+        if units or head_deletes or sentence_ops:
+            write_parse(client, head_deletes, sentence_ops, units, layers, progress, log)
         log(f"Successfully parsed document {document_id}")
     return parse_summary
 

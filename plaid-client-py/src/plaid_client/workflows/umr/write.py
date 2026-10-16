@@ -253,6 +253,46 @@ def _sentence_writes(layers: UmrLayers, plan: dict, frag: dict) -> dict:
             'bytes': size}
 
 
+def _graph_rows(nodes, edges) -> Tuple[list, list]:
+    """A graph as rows a write stores, provenance aside: each node by its
+    concept, its ``umr`` metadata and its anchors, and each edge by its role,
+    its ``umr`` metadata and the nodes it joins. ``nodes`` are
+    ``(concept, umr, anchors)``, ``edges`` ``(role, umr, source, target)`` by
+    index into ``nodes``."""
+    def key(value):
+        return json.dumps(value, sort_keys=True, default=str)
+
+    node_rows = [key([concept, umr, sorted(anchors)]) for concept, umr, anchors in nodes]
+    edge_rows = sorted(key([role, umr, node_rows[source], node_rows[target]])
+                       for role, umr, source, target in edges)
+    return sorted(node_rows), edge_rows
+
+
+def _unchanged(plan: dict, unit: dict) -> bool:
+    """Whether ``plan`` writes the graph its sentence has: the same nodes,
+    anchors and edges with the same values. Such a plan writes nothing, so a
+    redraft that drafts what is there leaves it as it is (ruling 30,
+    2026-10-16)."""
+    sentence = plan['sentence']
+    if not isinstance(sentence, Sentence) or not sentence.nodes \
+            or len(sentence.nodes) != len(unit['nodes']):
+        return False
+    stored_index = {n.id: i for i, n in enumerate(sentence.nodes)}
+    stored_nodes = [(n.concept, (n.metadata or {}).get(UMR_NAMESPACE),
+                     [(p.begin, p.end) for p in n.pieces]) for n in sentence.nodes]
+    stored_edges = [(e.role, (e.metadata or {}).get(UMR_NAMESPACE),
+                     stored_index[e.source], stored_index[e.target])
+                    for n in sentence.nodes for e in n.out
+                    if e.source in stored_index and e.target in stored_index]
+    planned_nodes = [(op['value'], op['metadata'].get(UMR_NAMESPACE),
+                      [tuple(plan['pieces'][i]) for i in indexes])
+                     for op, indexes in unit['nodes']]
+    planned_edges = [(op['value'], op['metadata'].get(UMR_NAMESPACE), source, target)
+                     for op, source, target in unit['edges']]
+    return (_graph_rows(stored_nodes, stored_edges)
+            == _graph_rows(planned_nodes, planned_edges))
+
+
 #: What one ref beside a body costs on the wire, ``{"at": [...], "op": n,
 #: "index": k}`` with its separators, rounded up.
 _REF_BYTES = 64
@@ -329,7 +369,8 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     if kept:
         raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
     units = [_sentence_writes(layers, plan, frag) for plan in plans]
-    units = [unit for unit in units if unit['doomed'] or unit['pieces']]
+    units = [unit for plan, unit in zip(plans, units)
+             if (unit['doomed'] or unit['pieces']) and not _unchanged(plan, unit)]
     if not units:
         return
 

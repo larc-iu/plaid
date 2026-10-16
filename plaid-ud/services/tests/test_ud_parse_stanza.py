@@ -911,3 +911,72 @@ def test_a_write_refused_because_the_request_ended_is_logged_once_without_a_trac
     assert 'the request had already ended when this service wrote' in out.out
     assert 'Traceback' not in out.out + out.err
     assert 'Error parsing document' not in out.out
+
+
+# --- a re-run that changes nothing writes nothing (ruling 30, 2026-10-16) ----
+
+MACHINE = {'prov': 'inferred', 'provSource': SOURCE}
+
+
+def _stored_parse(count, rows_of=lambda i: ROWS):
+    """A document of ``count`` copies of BODY holding, sentence by sentence,
+    the machine parse ``rows_of(i)`` gives, as an earlier run wrote it."""
+    sentences = [(i * 14, i * 14 + 13) for i in range(count)]
+    morphemes, spans, relations = [], {}, []
+    for i in range(count):
+        lemma_of = {}
+        for row in rows_of(i):
+            mid = f'm{i}-{row["id"]}'
+            b, e = i * 14 + row['start_char'], i * 14 + row['end_char']
+            morphemes.append((mid, b, e))
+            lemma_id = f'l{i}-{row["id"]}'
+            lemma_of[row['id']] = lemma_id
+            spans.setdefault('lemmaL', []).append(
+                {'id': lemma_id, 'tokens': [mid], 'value': row['lemma'], 'metadata': MACHINE})
+            spans.setdefault('uposL', []).append(
+                {'id': f'u{i}-{row["id"]}', 'tokens': [mid], 'value': row['upos'],
+                 'metadata': MACHINE})
+            spans.setdefault('xposL', []).append(
+                {'id': f'x{i}-{row["id"]}', 'tokens': [mid], 'value': row['xpos'],
+                 'metadata': MACHINE})
+            for n, value in enumerate(row['feats'].split('|')):
+                spans.setdefault('featsL', []).append(
+                    {'id': f'f{i}-{row["id"]}-{n}', 'tokens': [mid], 'value': value,
+                     'metadata': MACHINE})
+        for row in rows_of(i):
+            target = lemma_of[row['id']]
+            source = target if row['head'] == 0 else lemma_of[row['head']]
+            relations.append({'id': f'r{i}-{row["id"]}', 'source': source, 'target': target,
+                              'value': row['deprel'], 'metadata': MACHINE})
+    words = [(b, e) for _, b, e in morphemes]
+    return _document(body=' '.join([BODY] * count), sentences=sentences, words=words,
+                     morphemes=morphemes, spans=spans, relations=relations)
+
+
+def test_a_reparse_that_changes_nothing_writes_nothing():
+    service = _service(documents=[_stored_parse(2)], provider=_PipelineProvider([ROWS, ROWS]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['mode'] == 'preserve' and result['parsed_sentences'] == 2
+    assert result['unchanged_sentences'] == 2
+    written = [kind for batch in service.client.batches for kind, _ in batch]
+    assert written == []
+
+
+def test_a_reparse_writes_only_the_sentence_whose_parse_changed():
+    changed = [dict(row) for row in ROWS]
+    changed[1] = {**changed[1], 'upos': 'PROPN'}
+    service = _service(documents=[_stored_parse(2)],
+                       provider=_PipelineProvider([ROWS, changed]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['unchanged_sentences'] == 1
+    gone = [mid for batch in service.client.batches for kind, p in batch
+            if kind == 'tokens.bulk_delete' for mid in p]
+    assert sorted(gone) == ['m1-1', 'm1-2', 'm1-3']
+    made = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
+    assert sorted((op['begin'], op['end']) for op in made) == [(14, 17), (18, 21), (22, 27)]
