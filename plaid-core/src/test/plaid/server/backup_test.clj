@@ -2,7 +2,8 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [db with-db]]
-            [plaid.server.backup :as backup])
+            [plaid.server.backup :as backup]
+            [plaid.server.config])
   (:import [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]
            [java.util.zip ZipFile]))
@@ -80,3 +81,13 @@
         (is (nil? (:running (backup/status))))
         (Thread/sleep 1100)
         (is (instance? java.io.File (backup/backup-once! db dir 2)))))))
+
+(deftest the-default-directory-is-beside-the-database
+  ;; Unset, backups go next to the database file wherever the server was
+  ;; started from, as recordings do. A directory set in the config is taken as
+  ;; given.
+  (with-redefs [plaid.server.config/config {:plaid.server.sql/config {:main-db-path "/srv/plaid/data/plaid.db"}}]
+    (is (= "/srv/plaid/data/backups" (:directory (backup/status)))))
+  (with-redefs [plaid.server.config/config {:plaid.server.sql/config {:main-db-path "/srv/plaid/data/plaid.db"}
+                                            :plaid.backup/config {:directory "/mnt/off-site"}}]
+    (is (= "/mnt/off-site" (:directory (backup/status))))))

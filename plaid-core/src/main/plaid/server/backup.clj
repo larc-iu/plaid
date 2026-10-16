@@ -28,14 +28,23 @@
 
 (def ^:private defaults
   {:enabled?  true
-   :directory "data/backups"
    :retention 5
    :time      "03:00"})
 
+(defn- default-directory
+  "`backups` beside the database file, as the media directory is, so the
+  backups land next to the database wherever the server was started from."
+  []
+  (let [db-path (-> config :plaid.server.sql/config :main-db-path)
+        parent (or (some-> ^String db-path io/file .getParentFile .getPath) "data")]
+    (str (io/file parent "backups"))))
+
 (defn- backup-config []
   ;; translate only assoc-in's keys the operator actually set, so merge over
-  ;; the defaults to fill any holes.
-  (merge defaults (:plaid.backup/config config)))
+  ;; the defaults to fill any holes. A directory the operator set is taken as
+  ;; given (a relative one against the working directory).
+  (let [c (merge defaults (:plaid.backup/config config))]
+    (cond-> c (nil? (:directory c)) (assoc :directory (default-directory)))))
 
 (def ^:private file-prefix "plaid-backup-")
 (def ^:private ^DateTimeFormatter ts-formatter (DateTimeFormatter/ofPattern "yyyyMMdd-HHmmss"))
