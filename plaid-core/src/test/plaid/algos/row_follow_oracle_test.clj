@@ -154,7 +154,11 @@
             out (transient [])
             v! (fn [k msg] (conj! out [k msg]))]
         ;; 1. no overlap
-        (let [rs (sort (vals new-rows))]
+        ;; (with the rows a save makes, as the save writes them beside the
+        ;; others)
+        (let [rs (sort (into (vec (vals new-rows))
+                             (keep (fn [t] (when (= :r (:token/layer t)) [(:token/begin t) (:token/end t)])))
+                             (:made r)))]
           (doseq [[b e] rs :when (>= b e)] (v! 1 (str "empty row " [b e])))
           (doseq [[[_ e] [b _]] (partition 2 1 rs) :when (> e b)] (v! 1 (str "rows overlap " (vec rs)))))
         (doseq [[i [b e]] (map-indexed vector rows)
@@ -234,8 +238,9 @@
 
 (defn gen-case
   "A case as REV3-TEXT's generator made them: two to four sentences, with
-  whitespace between them (some of only whitespace), words, rows of one of
-  `shapes`, and one to three changes near the sentence boundaries."
+  whitespace between them (some of only whitespace), words (none in a
+  fifth of them), rows of one of `shapes`, and one to three changes near
+  the sentence boundaries."
   [^java.util.Random rng]
   (let [pick #(nth % (.nextInt rng (count %)))
         rint (fn [a b] (+ a (.nextInt rng (inc (- b a)))))
@@ -317,9 +322,14 @@
                            (conj out g)
                            out)))
                      [] (range (rint 1 3)))]
-    {:o body :sents sents :words words :rows rows :shape shape :gaps (vec (sort-by (juxt :start :end) gaps))
-     ;; ud's words, which a typed space splits
-     :sos (< (.nextDouble rng) 0.3)}))
+    (let [;; ud's words, which a typed space splits
+          sos (< (.nextDouble rng) 0.3)
+          ;; a text not tokenized yet (a transcript typed on the Media tab
+          ;; in a script without spaces), where the rows decide in the
+          ;; words' place (REV6-TEXT-1)
+          words (if (< (.nextDouble rng) 0.2) [] words)]
+      {:o body :sents sents :words words :rows rows :shape shape :gaps (vec (sort-by (juxt :start :end) gaps))
+       :sos sos})))
 
 (defn sweep
   "`{[path invariant shape] count}` and the first few failing cases, over

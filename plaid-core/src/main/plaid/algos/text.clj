@@ -2638,7 +2638,9 @@
   `tokens` taken the plain way. Returns `{:text :tokens :deleted}` as
   `apply-text-edits` does, with `:heads`, the sentences made over a line
   typed before the first one, and with `split-on-space`, `:made`, the new
-  tokens of the words a typed space split (see `split-spaced-words`), each
+  tokens of the words a typed space split (see `split-spaced-words`: only
+  tokens on a layer in `word-layers` when it names one, so a text whose
+  word layer holds no token has nothing split), each
   `{:token/layer :token/begin :token/end}`, a word before the tokens under
   it. `:dealt` names the layers under the words whose tokens as long as a
   split word are dealt one to each part (see `split-spaced-words`).
@@ -2942,7 +2944,13 @@
                            (let [na (new-at g)] (dotimes [j (:n (info g))] (aset a (+ na j) true))))
                          a)]
              (split-spaced-words nw wide placed
-                                 decides?
+                                 ;; only a word is split: a token of a
+                                 ;; word layer, where the text has one. In
+                                 ;; a text whose word layer holds no token
+                                 ;; yet the rows decide in the words' place,
+                                 ;; but a space typed in a row splits
+                                 ;; nothing (REV6-TEXT-1)
+                                 (if (seq word-layers) #(contains? word-layers (:token/layer %)) decides?)
                                  #(partitioning (:token/layer %))
                                  #(aget typed (int %))
                                  #(contains? (set children) (:token/layer %))

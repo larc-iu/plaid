@@ -957,3 +957,27 @@
         (is (= (ta/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:x} opts)
                (ta/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:w} opts))
             (str "edits " (pr-str body) " -> " (pr-str new)))))))
+
+(deftest a-space-typed-in-a-row-of-a-text-with-no-words-splits-nothing
+  ;; REV6-TEXT-1: with no word token (a transcript typed on the Media tab
+  ;; in a script without spaces, or with Tokenize new text off) the rows
+  ;; decide where text goes, but they are no words: `splitOnSpace` split
+  ;; the row into a new row over its first part while the row stayed, and
+  ;; the save was refused with 409.
+  (let [body "Ana runs. Ben sits."
+        tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 10}
+                {:token/id [:s 1] :token/layer :s :token/begin 10 :token/end 19}
+                {:token/id [:r 0] :token/layer :r :token/begin 0 :token/end 9}
+                {:token/id [:r 1] :token/layer :r :token/begin 10 :token/end 19}]
+        opts {:split-on-space true :children #{:m} :exclusive #{:w :r}}]
+    (doseq [[op new rows] [[(ins 1 " ") "A na runs. Ben sits." [[0 10] [11 20]]]
+                           [(ins 4 " ") "Ana  runs. Ben sits." [[0 10] [11 20]]]
+                           [(ins 4 "\t") "Ana \truns. Ben sits." [[0 10] [11 20]]]
+                           [(ins 4 "and ") "Ana and runs. Ben sits." [[0 13] [14 23]]]
+                           [(ins 16 " ") "Ana runs. Ben si ts." [[0 9] [10 20]]]]]
+      (doseq [[path r] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w} opts)]
+                        [:body (ta/plain-body body new tokens #{:s} #{:w} opts)]]]
+        (is (= new (:text/body (:text r))) (str path " " (pr-str op)))
+        (is (empty? (:made r)) (str path " " (pr-str op) " makes no token"))
+        (is (= rows (vec (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))
+            (str path " " (pr-str op) " rows"))))))

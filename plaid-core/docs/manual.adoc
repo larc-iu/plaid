@@ -889,6 +889,7 @@ Letters typed inside a word or at its end become part of the word, and a word is
 A word typed over keeps its place, and its annotations, on the new text.
 
 A space typed inside a word does not split it, unless the word layer's config sets `splitOnSpace` to `true` in the `plaid` namespace.
+Only a word splits: in a text whose word layer holds no token yet, a space typed inside a row splits nothing.
 Where two words meet with no space between them, an insert at the boundary may say which word its text joins with `side: "before"` or `side: "after"`.
 
 Text typed between two tokens of a `partitioning` layer, such as two sentences, belongs to one of them by where it was typed:

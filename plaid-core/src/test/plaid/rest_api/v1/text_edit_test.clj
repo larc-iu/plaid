@@ -552,6 +552,28 @@
         (is (= want-body (:text/body (:body r))))
         (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
 
+(deftest a-space-typed-in-a-row-of-a-text-with-no-words-saves
+  ;; REV6-TEXT-1: with ud's splitOnSpace on the word layer and no word token
+  ;; yet (a transcript typed on the Media tab with Tokenize new text off, or
+  ;; in a script without spaces), a space typed inside a row was refused
+  ;; with 409: the row was split as a word and the part made overlapped it.
+  (doseq [[label change want-body want-rows]
+          [["a space in a word" {:edits [(ins 1 " ")]} "A na runs. Ben sits." [[0 10] [11 20]]]
+           ["a tab beside a space" {:edits [(ins 4 "\t")]} "Ana \truns. Ben sits." [[0 10] [11 20]]]
+           ["a word typed" {:edits [(ins 4 "and ")]} "Ana and runs. Ben sits." [[0 13] [14 23]]]
+           ["a whole-body save" {:body "Ana runs fast. Ben sits."} "Ana runs fast. Ben sits." [[0 14] [15 24]]]
+           ["Thai" {:edits [(ins 9 " ")]} nil nil]]]
+    (testing label
+      (let [thai? (= label "Thai")
+            body (if thai? "ฉันไปตลาดเมื่อวานนี้ แม่ซื้อผลไม้" "Ana runs. Ben sits.")
+            {:keys [text rows]} (if thai?
+                                  (rows-setup body [[0 21] [21 33]] [] [[0 20] [21 33]] [] true)
+                                  (rows-setup body [[0 10] [10 19]] [] [[0 9] [10 19]] [] true))
+            r (edit-text text change)]
+        (is (= 200 (:status r)) (pr-str (:body r)))
+        (is (= (or want-body "ฉันไปตลาด เมื่อวานนี้ แม่ซื้อผลไม้") (:text/body (:body r))))
+        (is (= (or want-rows [[0 21] [22 34]]) (map #(vec (take 2 (extent %))) rows)))))))
+
 (deftest a-row-edge-in-the-whitespace-saves-any-edit
   ;; REV3-TEXT-1: a row ending in the middle of the whitespace after its
   ;; sentence, beside a row beginning there that is not one sentence, made
