@@ -1240,9 +1240,11 @@
                                                                  at (fn [i] (some #(when (and (<= (:token/begin %) i) (< i (:token/end %))) %) sents))
                                                                  x (some-> L at)
                                                                  y (some-> F at)]
-                                                             ;; between two sentences, no other change in the run
+                                                             ;; between two sentences, and any other change in
+                                                             ;; the run only types there (FX-B-TEXT, REV-TEXT-2)
                                                              (when (and x y (not= x y)
-                                                                        (not-any? #(and (not= % g) (<= L (:end %)) (<= (:start %) (inc F))) server))
+                                                                        (every? #(and (= (:start %) (:end %)) (< L (:start %) (inc F)))
+                                                                                (filter #(and (not= % g) (<= L (:end %)) (<= (:start %) (inc F))) server)))
                                                                [x y L F])))]
                                    ;; Luke (2026-10-15): text typed after the
                                    ;; whitespace between two sentences belongs to
@@ -1262,7 +1264,9 @@
                                                                       (re-find #"\s" v) nil
                                                                       :else (:token/id x))
                                                 (= a (inc L)) (:token/id x)
-                                                (or (brk? v) (brk? (cp/cp-subs body a F)))
+                                                ;; a line typed later in the run too
+                                                (or (brk? v) (brk? (cp/cp-subs body a F))
+                                                    (some #(and (<= a (:start %) F) (brk? (:value %))) server))
                                                 (if (> a (:token/begin y)) (:token/id y) (:token/id x))
                                                 :else (:token/id y))
                                          p (+ a (shift g) lead-ws)

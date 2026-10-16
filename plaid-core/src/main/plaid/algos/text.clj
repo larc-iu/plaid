@@ -818,6 +818,23 @@
   keeps a long run of one repeated letter from costing a scan per place."
   64)
 
+(defn- typed-to-next?
+  "Whether text `v` (code points) inserted at `a` in `o` goes to the token of
+  a partition beginning there (see `apply-plain-gaps`): typed past whitespace
+  on the next letter's line, or right after punctuation with no whitespace,
+  and holding no line break."
+  [^ints o a ^ints v]
+  (let [n (alength o)]
+    (boolean
+     (and (pos? a) (< a n)
+          (not-any? line-break? v)
+          (if (space? (aget o (dec a)))
+            (loop [x a] (cond (>= x n) false
+                              (not (space? (aget o x))) true
+                              (line-break? (aget o x)) false
+                              :else (recur (inc x))))
+            (and (not (space? (aget o a))) (separator? (aget o (dec a)))))))))
+
 (defn- slide-cost
   "How many of `tokens` an edit at this place would disturb. It cuts a token
   a delete takes part of, one a delete swallows while it stands at a single
@@ -908,14 +925,7 @@
             ;; one beginning there when it is typed past whitespace on the
             ;; next letter's line, or right after punctuation with no
             ;; whitespace, and else into the one ending there (see `apply-plain-gaps`).
-            to-next? (and (pos? a) (< a n)
-                          (not-any? line-break? v)
-                          (if (space? (aget o (dec a)))
-                            (loop [x a] (cond (>= x n) false
-                                              (not (space? (aget o x))) true
-                                              (line-break? (aget o x)) false
-                                              :else (recur (inc x))))
-                            (and (not (space? (aget o a))) (separator? (aget o (dec a))))))
+            to-next? (typed-to-next? o a v)
             met (if (or new-after? new-before? (= :apart (at (dec a))) (= :apart (at a)))
                   #{}
                   (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
@@ -1619,6 +1629,14 @@
          reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
          start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
          near (tokens-near tokens (count edits))
+         ;; an insert where a partition's token begins that the edits path
+         ;; would give to that token: of two readings that disturb as much,
+         ;; this one wins, so text typed at several sentence starts goes to
+         ;; each sentence it starts, as one typed alone does
+         next-start? (fn [near-e e]
+                       (and (= :insert (:kind e))
+                            (some #(and (partitioning (:token/layer %)) (= (:at e) (:token/begin %))) near-e)
+                            (typed-to-next? o (:at e) (.toArray (.codePoints ^String (:value e))))))
          moved (reduce
                 (fn [moved e]
                   (let [i (count moved)
@@ -1664,6 +1682,7 @@
                                 :else
                                 (first (sort-by (juxt cost
                                                       #(slide-cuts near-e %)
+                                                      #(if (next-start? near-e %) 0 1)
                                                       #(Math/abs (long (- (start-of %) (start-of e)))))
                                                 places))))))))
                 []
@@ -2511,7 +2530,11 @@
     goes to the one after when typed after whitespace with no line break
     between it and that token's first letter, or right after punctuation
     the one before ends on with no whitespace, and else to the one before
-    (Luke, 2026-10-15). Text holding a line break goes to the one before.
+    (Luke, 2026-10-15), and so does the text of every other gap that only
+    types in the same whitespace before it. Where a token of the partition
+    holding only whitespace begins between the text and the next letter,
+    the text goes to the first such token instead, so that none is left
+    empty. Text holding a line break goes to the one before.
   - A gap that takes all of it, and more, deletes it.
   - The new text between the letters given to the tokens either side
     belongs to neither.
@@ -2677,9 +2700,32 @@
                                          (line-break? (aget o x)) nil
                                          :else (recur (inc x)))))))
                            (range k))
-         to-next? (fn [g x] (when (>= g 0)
-                              (let [q (next-letter g)]
-                                (and q (<= (:a (info g)) x q)))))
+        ;; the first gap of the run of such gaps that `g` ends, every one
+        ;; of them typing before the same letter: all their text goes to
+        ;; that letter's sentence, not only the last one's
+         run-start (let [r (long-array k)]
+                     (dotimes [g k]
+                       (aset r g (if (and (pos? g) (next-letter g) (= (next-letter (dec g)) (next-letter g)))
+                                   (aget r (dec g))
+                                   g)))
+                     r)
+        ;; the begins of each partition's tokens, to find a sentence of only
+        ;; whitespace between the typed text and the next letter
+         part-begins (reduce (fn [m {:token/keys [layer begin]}]
+                               (if (partitioning layer) (update m layer (fnil conj (sorted-set)) begin) m))
+                             {} wide)
+        ;; whether a token of partition `layer` beginning (or ending) at
+        ;; `x` begins (or ends) at the text typed in the run gap `g` ends,
+        ;; at or before `x`: `x` is no later than the next letter, and no
+        ;; other token of the layer begins between the typed text and `x`.
+        ;; A sentence of only whitespace there takes the text, so none is
+        ;; left empty and the sentences keep their order.
+         to-next? (fn [g layer x]
+                    (when (>= g 0)
+                      (let [q (next-letter g)
+                            a (:a (info (aget run-start g)))]
+                        (and q (<= a x q) (empty? (subseq (get part-begins layer (sorted-set)) >= a < x))))))
+         run-at (fn [g] (new-at (aget run-start g)))
          placed (mapv (fn [{:token/keys [begin end layer] :as t}]
                         (if-let [[g off len] (keep-at [begin end])]
                           ;; one of the gap's words typed over: it goes on
@@ -2696,7 +2742,7 @@
                                      (neg? gb) begin
                                      ;; a sentence beginning in the whitespace
                                      ;; after text typed there begins at it
-                                     (and (partitioning layer) (to-next? gb begin)) (new-at gb)
+                                     (and (partitioning layer) (to-next? gb layer begin)) (run-at gb)
                                      (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
                                      (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
@@ -2718,7 +2764,7 @@
                                 ne (cond
                                      (neg? ge) end
                                      ;; and the one before it ends there
-                                     (and (partitioning layer) (< begin a2) (to-next? ge end)) (new-at ge)
+                                     (and (partitioning layer) (< begin a2) (to-next? ge layer end)) (run-at ge)
                                      (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
                                      (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole

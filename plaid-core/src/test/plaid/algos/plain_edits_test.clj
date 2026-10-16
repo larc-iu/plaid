@@ -248,6 +248,40 @@
       (is (= ["Oh The end."] (sents "|The| |end.|" [(ins 0 "Oh ")])))
       (is (= ["The end. Bye."] (sents "|The| |end.|" [(ins 8 " Bye.")]))))))
 
+(deftest text-typed-in-the-whitespace-between-sentences-keeps-the-partition-whole
+  ;; FX-B-TEXT: the sentences as stored, not gap-filled, so a sentence left
+  ;; empty or two that overlap show
+  (let [raw (fn [s change]
+              (let [{:keys [body tokens]} (doc s)
+                    r (if (string? change)
+                        (ta/plain-body body change tokens #{:s} #{:w})
+                        (ta/plain-edits body tokens change #{:s} #{:w}))
+                    nb (:text/body (:text r))
+                    ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+                (is (every? (fn [[b e]] (< b e)) ss) "no sentence is left empty")
+                (is (= (map second (butlast ss)) (map first (rest ss))) "the sentences meet")
+                (is (= [0 (cp/cp-count nb)] [(ffirst ss) (second (last ss))]) "and cover the text")
+                (mapv (fn [[b e]] (cp/cp-subs nb b e)) ss)))]
+    (testing "REV-TEXT-1: a sentence of only whitespace keeps its place and takes text typed at its start"
+      (is (= ["Hi. " "X " "The end."] (raw "|Hi.| / /|The| |end.|" [(ins 4 "X")])))
+      (is (= ["Hi. " "X  " "The end."] (raw "|Hi.| / /|The| |end.|" [(ins 4 "X ")])))
+      (is (= ["Hi. " "X " "The end."] (raw "|Hi.| / /|The| |end.|" "Hi. X The end.")))
+      (is (= ["Hi. " "X  " "The end."] (raw "|Hi.| /  /|The| |end.|" [(ins 4 "X")])))
+      (testing "and text typed inside it, past whitespace, goes to the next"
+        (is (= ["Hi. " " " "X The end."] (raw "|Hi.| /  /|The| |end.|" [(ins 5 "X")]))))
+      (testing "two of them"
+        (is (= ["Hi. " "X " " " "The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 4 "X")])))))
+    (testing "REV-TEXT-2: every insert in the whitespace goes to the next sentence"
+      (is (= ["Hi. " "X Y The end."] (raw "|Hi.|   /|The| |end.|" [(ins 4 "X") (ins 6 "Y")])))
+      (is (= ["Hi. " "X Y The end."] (raw "|Hi.|   /|The| |end.|" [(ins 5 "Y") (ins 4 "X")])))
+      (is (= ["Hi. " "X Y Z The end."] (raw "|Hi.|    /|The| |end.|" [(ins 4 "X") (ins 6 "Y") (ins 8 "Z")])))
+      (testing "but not one before a line break"
+        (is (= ["Hi. X\n " "Y The end."] (raw "|Hi.| \n /|The| |end.|" [(ins 4 "X") (ins 7 "Y ")])))))
+    (testing "REV-TEXT-3: a whole-body save with several sentence starts typed reads each past the whitespace"
+      (is (= ["The dog ran. " "Then The cat sat. " "So A cow mooed."]
+             (raw "|The| |dog| |ran.| /|The| |cat| |sat.| /|A| |cow| |mooed.|" "The dog ran. Then The cat sat. So A cow mooed.")))
+      (is (= ["A. " "x B. " "y C. " "z D."] (raw "|A.| /|B.| /|C.| /|D.|" "A. x B. y C. z D."))))))
+
 (deftest a-split-cuts-only-at-the-whitespace-typed
   ;; REV2 M1: a word that already held a space is cut only at the space the
   ;; edit typed, and goes on the part holding most of its old letters
