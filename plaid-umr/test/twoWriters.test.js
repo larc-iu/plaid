@@ -348,6 +348,28 @@ test('a refused edit tells the screen so, and one sent again does not', async ()
   assert.equal(told, 1);
 });
 
+// The document-relation editor opens again after a refusal, as the others
+// do: the domain tells the screen when a triple's write was refused.
+test('a refused document-level relation tells the screen so', async () => {
+  const { core, a, b } = await start();
+  const [x, y] = unrelated(a.doc, 1);
+  assert.ok(await b.doc.setConcept(x.id, 'theirs'));
+  let told = 0;
+  const onRefused = () => (told += 1);
+  const triple = { source: 'author', target: y.id, rel: ':full-affirmative', onRefused };
+  assert.equal(await a.doc.createTriple(triple), false);
+  assert.equal(told, 1);
+  const made = await a.doc.createTriple(triple);
+  assert.ok(made);
+  assert.equal(told, 1);
+
+  // And a relabel of one, refused the same way.
+  const c = await core.open('c');
+  assert.ok(await c.doc.setConcept(x.id, 'theirs-again'));
+  assert.equal(await a.doc.setTripleRelation(made, ':partial-affirmative', { onRefused }), false);
+  assert.equal(told, 2);
+});
+
 // Review round (REV-FX-UMR3). Another app's write straight into the store: a
 // version bump that changes no UMR row.
 const igtWrite = (core, fn) => {

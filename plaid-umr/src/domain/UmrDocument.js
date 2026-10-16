@@ -1985,7 +1985,15 @@ export class UmrDocument extends DocumentModel {
    * node id or a constant's name. `sentenceIndex` says whose block writes a
    * triple between two constants. Resolves to the triple's id, or false.
    */
-  async createTriple({ source, target, rel, group = null, sentenceIndex = null }) {
+  // `onRefused` is called when the server refused it after it was shown.
+  async createTriple({
+    source,
+    target,
+    rel,
+    group = null,
+    sentenceIndex = null,
+    onRefused = null,
+  }) {
     rel = nfc(rel);
     if (!source || !target || !rel) return false;
     const isConst = (x) => DOC_CONSTANTS.includes(x);
@@ -2116,6 +2124,7 @@ export class UmrDocument extends DocumentModel {
         },
       },
     );
+    if (!ok) onRefused?.();
     return ok ? settledId(tripleId) : false;
   }
 
@@ -2153,7 +2162,8 @@ export class UmrDocument extends DocumentModel {
     }
   }
 
-  async setTripleRelation(id, rel) {
+  // `onRefused` is called when the server refused it after it was shown.
+  async setTripleRelation(id, rel, { onRefused = null } = {}) {
     rel = nfc(rel);
     const t = this.triple(id);
     if (!t || !rel || t.rel === rel) return false;
@@ -2179,7 +2189,7 @@ export class UmrDocument extends DocumentModel {
       r.value = rel;
       if (stampOps.length) r.metadata = applyMetadataOps(r.metadata, stampOps);
     });
-    return this._queueWrite(
+    const ok = await this._queueWrite(
       label,
       async () => {
         const serverId = settledId(t.id);
@@ -2194,6 +2204,8 @@ export class UmrDocument extends DocumentModel {
       },
       `Relabel ${t.rel} ${this._ends(t)} as ${rel}`,
     );
+    if (!ok) onRefused?.();
+    return ok;
   }
 
   async deleteTriple(id) {

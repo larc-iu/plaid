@@ -701,9 +701,26 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const rel = normalizeRole(text);
       const p = ed.pending;
       closeEditor();
-      if (p.tripleId) await doc.setTripleRelation(p.tripleId, rel);
+      // Open again with what was typed, while what it was for is still there
+      // (the triple, or both ends of the one it would make).
+      const endThere = (x) => DOC_CONSTANTS.includes(x) || !!doc.node(x);
+      const again = offerAgain(() =>
+        (
+          p.tripleId
+            ? doc.triple(p.tripleId)
+            : endThere(p.triple.source) && endThere(p.triple.target)
+        )
+          ? { kind: 'docRole', pending: p, x: ed.x, y: ed.y, value: rel }
+          : null,
+      );
+      if (p.tripleId) await doc.setTripleRelation(p.tripleId, rel, { onRefused: again });
       else {
-        await doc.createTriple({ ...p.triple, rel, sentenceIndex: sentence.index });
+        await doc.createTriple({
+          ...p.triple,
+          rel,
+          sentenceIndex: sentence.index,
+          onRefused: again,
+        });
       }
       return;
     }
