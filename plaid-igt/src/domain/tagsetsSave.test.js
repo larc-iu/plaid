@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   TAGSETS_CHANGED,
+  queueLexiconFieldsSave,
+  queueLexiconTagsetsSave,
   queueStated,
   queueTagsetsSave,
   tagsetsChangedError,
@@ -35,7 +37,14 @@ const recorder = () => {
             calls.push([res, m, ...args]),
       },
     );
-  return { calls, b: { projects: bundle('projects'), spanLayers: bundle('spanLayers') } };
+  return {
+    calls,
+    b: {
+      projects: bundle('projects'),
+      spanLayers: bundle('spanLayers'),
+      vocabLayers: bundle('vocabLayers'),
+    },
+  };
 };
 
 describe('a Tagsets save states what it leaves', () => {
@@ -125,5 +134,74 @@ describe('a refused save says the tagsets changed only when they did', () => {
   it('leaves any other refusal as it is', async () => {
     const other = Object.assign(new Error('HTTP 422'), { status: 422 });
     expect(await tagsetsChangedError(other, { A: 1 }, async () => ({ A: 2 }))).toBe(other);
+  });
+});
+
+// REV7-WIRE-1: the lexicon screen's saves state the tagsets they read, as the
+// project's screens do, and its rename is one batch with its repoint.
+describe("a lexicon's settings saves", () => {
+  const LX = { LX: { mode: 'closed', delimiters: '', values: [{ value: 'n' }] } };
+  const FIELDS = { morphType: { inline: true } };
+
+  it('a fields save that sets a tagset states the tagsets read', () => {
+    const { calls, b } = recorder();
+    const fields = { morphType: { inline: true, tagset: 'LX' } };
+    queueLexiconFieldsSave(b, 'v', fields, {
+      fieldsRead: FIELDS,
+      statesTagsets: true,
+      tagsetsRead: LX,
+    });
+    expect(calls).toEqual([
+      ['vocabLayers', 'setConfig', 'v', 'igt', 'tagsets', LX, undefined, { expected: LX }],
+      ['vocabLayers', 'setConfig', 'v', 'igt', 'fields', fields, undefined, { expected: FIELDS }],
+    ]);
+  });
+
+  it('a fields save that sets no tagset states nothing more', () => {
+    const { calls, b } = recorder();
+    queueLexiconFieldsSave(b, 'v', FIELDS, { fieldsRead: FIELDS, tagsetsRead: LX });
+    expect(calls.map((c) => c[4])).toEqual(['fields']);
+  });
+
+  it('a rename writes the tagsets and the repointed fields together', () => {
+    const { calls, b } = recorder();
+    const fields = { morphType: { inline: true, tagset: 'LY' } };
+    const read = { morphType: { inline: true, tagset: 'LX' } };
+    queueLexiconTagsetsSave(b, 'v', { LY: LX.LX }, { tagsetsRead: LX, fields, fieldsRead: read });
+    expect(calls).toEqual([
+      [
+        'vocabLayers',
+        'setConfig',
+        'v',
+        'igt',
+        'tagsets',
+        { LY: LX.LX },
+        undefined,
+        { expected: LX },
+      ],
+      ['vocabLayers', 'setConfig', 'v', 'igt', 'fields', fields, undefined, { expected: read }],
+    ]);
+  });
+
+  it('a delete that repoints nothing states the fields as read', () => {
+    const { calls, b } = recorder();
+    queueLexiconTagsetsSave(b, 'v', {}, { tagsetsRead: LX, fields: null, fieldsRead: FIELDS });
+    expect(calls[1]).toEqual([
+      'vocabLayers',
+      'setConfig',
+      'v',
+      'igt',
+      'fields',
+      FIELDS,
+      undefined,
+      { expected: FIELDS },
+    ]);
+  });
+
+  it('a save that removes no name writes only the tagsets', () => {
+    const { calls, b } = recorder();
+    const next = { LX: { ...LX.LX, mode: 'suggest' } };
+    queueLexiconTagsetsSave(b, 'v', next, { tagsetsRead: LX, fields: null, fieldsRead: FIELDS });
+    expect(calls.map((c) => c[4])).toEqual(['tagsets']);
   });
 });

@@ -116,58 +116,6 @@ const firstInlineSwitch = () => document.querySelector('button[role="switch"]');
 const nameInput = () => document.querySelector('input[placeholder="Enter vocabulary name"]');
 
 describe('the vocabulary screen', () => {
-  it('keeps a tagset rename that landed when the fields that name it are refused', async () => {
-    // The server holds tagset "cases", which the field "case" names. The
-    // rename lands and the fields' repoint is refused. The editor must not
-    // roll back to "cases", which the server no longer holds, and what it is
-    // shown afterwards must be the server's.
-    const server = {
-      id: 'A',
-      name: 'Ayvale lexicon',
-      maintainers: ['u'],
-      config: {
-        igt: {
-          fields: [{ name: 'case', type: 'text', tagset: 'cases' }],
-          tagsets: { cases: { mode: 'closed', tags: [{ value: 'NOM' }] } },
-        },
-      },
-    };
-    const client = {
-      withOperation: (_label, fn) => fn(),
-      vocabLayers: {
-        get: async () => structuredClone(server),
-        setConfig: async (_id, _ns, key, value) => {
-          if (key === 'fields') throw new Error('refused');
-          server.config.igt[key] = value;
-        },
-        update: async () => {},
-      },
-      projects: { list: async () => [] },
-    };
-    const view = await mount(client, '/vocabularies/A?tab=settings');
-    const next = { case: server.config.igt.tagsets.cases };
-    let threw = false;
-    await view.step(async () => {
-      try {
-        await tagsetsManager.props.onSaveChanges(next, { renamed: { from: 'cases', to: 'case' } });
-      } catch {
-        threw = true;
-      }
-      await settle(5);
-    });
-    expect(threw).toBe(false);
-    expect(Object.keys(tagsetsManager.props.tagsets)).toEqual(['case']);
-
-    // A later change to the server's tagsets reaches the editor.
-    server.config.igt.tagsets = { case: next.case, moods: { mode: 'closed', tags: [] } };
-    await view.step(async () => {
-      tagsetsManager.props.onSaveChanges(server.config.igt.tagsets);
-      await settle(5);
-    });
-    expect(Object.keys(tagsetsManager.props.tagsets).sort()).toEqual(['case', 'moods']);
-    await view.unmount();
-  });
-
   it('asks before the tab closes while a schema write is on its way', async () => {
     const { client, holds } = stub();
     const held = deferred();
@@ -412,8 +360,102 @@ describe('the vocabulary schema written from a stale page', () => {
       },
       projects: { list: async () => [] },
     };
-    return { server, client, sent };
+    // A batch is all or nothing, as core's.
+    let batches = 0;
+    client.batched = async (fn) => {
+      batches += 1;
+      const queued = [];
+      const record =
+        (method) =>
+        (...args) =>
+          queued.push([method, args]);
+      fn({ vocabLayers: { setConfig: record('setConfig'), deleteConfig: record('deleteConfig') } });
+      const before = structuredClone(server.config.igt);
+      try {
+        for (const [method, [id, ns, key, ...rest]] of queued) {
+          if (method === 'setConfig') {
+            await client.vocabLayers.setConfig(id, ns, key, ...rest);
+          } else {
+            const options = rest[1];
+            sent.push([key, options]);
+            if (canonical(options.expected) !== canonical(server.config.igt[key])) {
+              throw Object.assign(new Error('HTTP 409'), { status: 409 });
+            }
+            delete server.config.igt[key];
+          }
+        }
+      } catch (error) {
+        server.config.igt = before;
+        throw error;
+      }
+    };
+    return { server, client, sent, batches: () => batches };
   };
+
+  // REV7-WIRE-1: a rename and the fields that name it are one batch, as on
+  // the project's Tagsets screen.
+  it('renames a tagset and repoints the fields that name it in one batch', async () => {
+    const { server, client, batches } = casServer();
+    server.config.igt.fields.gloss.tagset = 'cases';
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    const next = { case: server.config.igt.tagsets.cases };
+    await view.step(async () => {
+      await tagsetsManager.props.onSaveChanges(next, { renamed: { from: 'cases', to: 'case' } });
+      await settle(5);
+    });
+    expect(batches()).toBe(1);
+    expect(Object.keys(server.config.igt.tagsets)).toEqual(['case']);
+    expect(server.config.igt.fields.gloss.tagset).toBe('case');
+    await view.unmount();
+  });
+
+  it('writes neither the rename nor the repoint when the fields changed since the page read them', async () => {
+    const { server, client } = casServer();
+    server.config.igt.fields.gloss.tagset = 'cases';
+    feedback.notifyError.mockClear();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    server.config.igt.fields = { ...server.config.igt.fields, remark: { inline: true } };
+    let threw = false;
+    await view.step(async () => {
+      try {
+        await tagsetsManager.props.onSaveChanges(
+          { case: server.config.igt.tagsets.cases },
+          { renamed: { from: 'cases', to: 'case' } },
+        );
+      } catch {
+        threw = true;
+      }
+      await settle(5);
+    });
+    expect(threw).toBe(true);
+    expect(Object.keys(server.config.igt.tagsets)).toEqual(['cases']);
+    expect(server.config.igt.fields.gloss.tagset).toBe('cases');
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('a tagsets save the tagsets moved under says so', async () => {
+    const { server, client } = casServer();
+    feedback.notifyError.mockClear();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    server.config.igt.tagsets = { renamed: server.config.igt.tagsets.cases };
+    await view.step(async () => {
+      try {
+        await tagsetsManager.props.onSaveChanges({});
+      } catch {
+        // the editor rolls back
+      }
+      await settle(5);
+    });
+    expect(feedback.notifyError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Tagsets changed elsewhere. Reload and redo your change.',
+      }),
+      'Failed to save the tagsets',
+    );
+    expect(Object.keys(server.config.igt.tagsets)).toEqual(['renamed']);
+    await view.unmount();
+  });
 
   it('expects the fields it read, and then the ones it wrote', async () => {
     const { server, client, sent } = casServer();

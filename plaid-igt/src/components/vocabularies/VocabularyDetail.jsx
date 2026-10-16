@@ -57,6 +57,11 @@ import {
 } from '@ui/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { storedConfig } from '@ui/domain/configCells.js';
+import {
+  queueLexiconFieldsSave,
+  queueLexiconTagsetsSave,
+  tagsetsChangedError,
+} from '@/domain/tagsetsSave';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
@@ -349,6 +354,9 @@ export const VocabularyDetail = () => {
   };
   // A refused schema write's refetch, which puts back what the screen showed.
   const resyncSchema = () => updateVocabulary({ inTurn: true });
+  // The lexicon's tagsets as stored now, for a refused save's words.
+  const readTagsetsNow = async () =>
+    storedConfig(await client.vocabLayers.get(vocabularyId), IGT_NAMESPACE, 'tagsets');
 
   useEffect(() => {
     const token = { cancelled: false };
@@ -516,7 +524,10 @@ export const VocabularyDetail = () => {
   // Write the schema. The table shows it at once and the write takes its turn
   // in the schema queue. A refused write says so and reloads the vocabulary,
   // which puts back what the table showed. Resolves to whether it landed.
-  const saveFields = (updatedFields) => {
+  // A save that sets a field's tagset (`statesTagsets`) states the tagsets
+  // this page read in the same batch, so one renamed or deleted elsewhere
+  // since refuses it.
+  const saveFields = (updatedFields, { statesTagsets = false } = {}) => {
     setFields(updatedFields);
     if (isNewVocabulary) return Promise.resolve(true);
     return sendKeyed(
@@ -526,14 +537,29 @@ export const VocabularyDetail = () => {
       async () => {
         const value = fieldsToConfig(updatedFields);
         await fieldsCell.write(async (expected) => {
-          await client.vocabLayers.setConfig(
-            vocabularyId,
-            IGT_NAMESPACE,
-            'fields',
-            value,
-            undefined,
-            { expected },
-          );
+          if (!statesTagsets) {
+            await client.vocabLayers.setConfig(
+              vocabularyId,
+              IGT_NAMESPACE,
+              'fields',
+              value,
+              undefined,
+              { expected },
+            );
+            return value;
+          }
+          const tagsetsRead = tagsetsCell.expected();
+          try {
+            await client.batched((b) =>
+              queueLexiconFieldsSave(b, vocabularyId, value, {
+                fieldsRead: expected,
+                statesTagsets: true,
+                tagsetsRead,
+              }),
+            );
+          } catch (error) {
+            throw await tagsetsChangedError(error, tagsetsRead, readTagsetsNow);
+          }
           return value;
         });
       },
@@ -551,7 +577,10 @@ export const VocabularyDetail = () => {
   // like a project field, so the list is stored once.
   const handleSetTagset = async (fieldName, choice) => {
     const tagset = choice === NO_TAGSET ? null : choice;
-    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, tagset } : f)));
+    await saveFields(
+      fields.map((f) => (f.name === fieldName ? { ...f, tagset } : f)),
+      { statesTagsets: true },
+    );
   };
 
   // What a field holds. A reference field has no tagset (its values are
@@ -699,32 +728,43 @@ export const VocabularyDetail = () => {
   };
 
   // Fields reference a tagset by name, so a rename repoints every field that
-  // used the old name right behind it, or they quietly fall back to free.
-  // Same contract as the project's TagsetsSettings. Both take their turn in
-  // the schema queue. A refused tagsets write throws, which is how
-  // TagsetsManager learns to roll back. A refused repoint does not: the
-  // tagsets the manager shows are the server's, and the refusal's own
-  // re-read shows the fields as the server holds them.
+  // used the old name in the same batch as the tagsets write, or they would
+  // quietly fall back to free. Same contract as the project's TagsetsSettings:
+  // a rename or delete that repoints nothing states the fields as read, and
+  // a refusal for tagsets changed elsewhere says so. A refused save throws,
+  // which is how TagsetsManager learns to roll back.
   const handleSaveTagsets = async (next, meta) => {
     setDraftTagsets(next);
-    const tagsetsLanded = sendKeyed(
+    const renamed = meta?.renamed;
+    const repointed =
+      renamed && fields.some((f) => f.tagset === renamed.from)
+        ? fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f))
+        : null;
+    if (repointed) setFields(repointed);
+    const saved = await sendKeyed(
       writes.schema,
       client,
       'Change the tagsets',
       () =>
-        tagsetsCell.write(async (expected) => {
-          await client.vocabLayers.setConfig(
-            vocabularyId,
-            IGT_NAMESPACE,
-            'tagsets',
-            next,
-            undefined,
-            {
-              expected,
-            },
-          );
-          return next;
-        }),
+        tagsetsCell.write((tagsetsRead) =>
+          fieldsCell
+            .write(async (fieldsRead) => {
+              const value = repointed ? fieldsToConfig(repointed) : fieldsRead;
+              try {
+                await client.batched((b) =>
+                  queueLexiconTagsetsSave(b, vocabularyId, next, {
+                    tagsetsRead,
+                    fields: repointed ? value : null,
+                    fieldsRead,
+                  }),
+                );
+              } catch (error) {
+                throw await tagsetsChangedError(error, tagsetsRead, readTagsetsNow);
+              }
+              return value;
+            })
+            .then(() => next),
+        ),
       {
         refused: (err) => {
           console.error('Failed to save tagsets:', err);
@@ -734,16 +774,7 @@ export const VocabularyDetail = () => {
         resync: resyncSchema,
       },
     );
-    const renamed = meta?.renamed;
-    const fieldsLanded =
-      renamed && fields.some((f) => f.tagset === renamed.from)
-        ? saveFields(
-            fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f)),
-          )
-        : true;
-    const tagsetsSaved = await tagsetsLanded;
-    await fieldsLanded;
-    if (!tagsetsSaved) throw new Error('Failed to save tagsets');
+    if (!saved) throw new Error('Failed to save tagsets');
     await updateVocabulary();
     setDraftTagsets(null);
   };

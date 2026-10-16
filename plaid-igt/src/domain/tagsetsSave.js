@@ -146,3 +146,48 @@ export const queueTagsetsSave = (
   queueFieldDeclarations(b, fields, after, live?.config);
   return repointed;
 };
+
+/**
+ * Queue on batch `b` a lexicon's entry fields save: `fields` (its `fields`
+ * config) expecting `fieldsRead`. A save that sets a field's tagset
+ * (`statesTagsets`) also states the lexicon's tagsets as the page read them
+ * (`tagsetsRead`, `queueStated`), so a tagset renamed or deleted since
+ * refuses it, as the project's Fields screen does.
+ */
+export const queueLexiconFieldsSave = (
+  b,
+  vocabId,
+  fields,
+  { fieldsRead, statesTagsets = false, tagsetsRead } = {},
+) => {
+  if (statesTagsets) queueStated(b.vocabLayers, vocabId, 'tagsets', tagsetsRead);
+  b.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fields, undefined, {
+    expected: fieldsRead,
+  });
+};
+
+/**
+ * Queue on batch `b` a lexicon's Tagsets save: the tagsets `next` expecting
+ * `tagsetsRead`, and the entry fields `fields` (the config with every field
+ * naming a renamed tagset pointed at its new name) expecting `fieldsRead`,
+ * in the same batch, as the project's Tagsets screen repoints. A save that
+ * renames or deletes a tagset and repoints nothing states the fields as
+ * read, so a field pointed at that tagset since refuses it. `fields` null:
+ * nothing to repoint.
+ */
+export const queueLexiconTagsetsSave = (b, vocabId, next, { tagsetsRead, fields, fieldsRead }) => {
+  b.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', next, undefined, {
+    expected: tagsetsRead,
+  });
+  if (fields) {
+    b.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fields, undefined, {
+      expected: fieldsRead,
+    });
+  } else if (
+    Object.keys(tagsetsRead && typeof tagsetsRead === 'object' ? tagsetsRead : {}).some(
+      (name) => !Object.hasOwn(next || {}, name),
+    )
+  ) {
+    queueStated(b.vocabLayers, vocabId, 'fields', fieldsRead);
+  }
+};
