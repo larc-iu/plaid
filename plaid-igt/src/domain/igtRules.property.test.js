@@ -8,6 +8,7 @@ import {
   refusedBySave,
 } from './igtConstraints.js';
 import { getIgtLayerInfo } from './layerInfo.js';
+import { queueTagsetsSave, tagsetsSaveFields } from './tagsetsSave.js';
 import { valueSetAllows } from '../../../plaid-client-js/src/constraints.js';
 import { sameConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 
@@ -26,6 +27,11 @@ import { sameConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 // would need a repair to take its rules is named instead, and a settings save
 // is refused only for a field in force before it whose new list the stored
 // values break. A field out of force before the save never blocks it.
+//
+// FX-F-WIRE adds, by the rulings on REV5-WIRE-2: a tagset rename repoints its
+// fields in the batch that writes the tagsets, so no field is left naming the
+// old name, and the heal leaves a field naming a tagset the project does not
+// have as it is (never named, its rules untouched).
 
 // A small seeded generator, so a failing case can be run again.
 const rng = (seed) => {
@@ -159,8 +165,13 @@ const fakeCore = ({ project, data }) => {
     if (vs.length) throw violation(vs);
     sl.constraints = { ...sl.constraints, [ns]: list };
   };
-  const setConfig = (id, ns, key, value) => {
+  const setConfig = (id, ns, key, value, _doc, options) => {
     const sl = layer(id);
+    if (options && Object.hasOwn(options, 'expected')) {
+      if ((options.expected ?? null) !== (sl.config?.[ns]?.[key] ?? null)) {
+        throw Object.assign(new Error('HTTP 409'), { status: 409 });
+      }
+    }
     sl.config = { ...sl.config, [ns]: { ...sl.config?.[ns], [key]: value } };
   };
   const spanLayers = {
@@ -238,7 +249,7 @@ const fakeCore = ({ project, data }) => {
 // what stands in the way (values off its list, or a token with two spans
 // where it does not hold one span a token), keeping the list it held when
 // values are in the way. Returns the failures.
-const checkHealed = (g, core, out, before) => {
+const checkHealed = (g, core, out, before, beforeHeal = before) => {
   const fails = [];
   const names = new Set(out.notInForce.map((n) => n.layerId));
   let healed = 0;
@@ -246,6 +257,15 @@ const checkHealed = (g, core, out, before) => {
   for (const f of g.fields) {
     const wanted = fieldConstraints(f.config, g.project.config);
     const stored = core.layer(f.id).constraints?.igt ?? null;
+    const name = f.config?.igt?.tagset;
+    if (name && !g.project.config.igt.tagsets?.[name]) {
+      // A field naming a tagset that is gone: left as it is.
+      if (names.has(f.id)) fails.push(`${f.id} names a missing tagset and is named`);
+      if (!sameConstraints(stored, beforeHeal.get(f.id))) {
+        fails.push(`${f.id} names a missing tagset and the heal changed its rules`);
+      }
+      continue;
+    }
     const rule = wanted.find((c) => c.type === 'value-set');
     const inWay = rule ? core.refused(f.id, [rule]) : [];
     const was = before.get(f.id) || [];
@@ -339,7 +359,23 @@ const randomSave = (r, g) => {
   const config = clone(g.project.config);
   const tagsets = config.igt.tagsets;
   const names = Object.keys(tagsets);
-  const kind = pick(r, ['add', 'add', 'remove', 'mode', 'repoint']);
+  const kind = pick(r, ['add', 'add', 'remove', 'mode', 'repoint', 'rename', 'delete']);
+  if (kind === 'rename' && names.length) {
+    const from = pick(r, names);
+    const to = pick(
+      r,
+      ['Leipzig', 'POS', 'Other', 'Gone', 'LGR'].filter((n) => !tagsets[n]),
+    );
+    if (to) {
+      tagsets[to] = tagsets[from];
+      delete tagsets[from];
+      return { kind, config, renamed: { from, to } };
+    }
+  }
+  if (kind === 'delete' && names.length) {
+    delete tagsets[pick(r, names)];
+    return { kind, config };
+  }
   if (kind === 'repoint' || !names.length) {
     const f = pick(r, g.fields);
     const tagset = pick(r, [...names, undefined]);
@@ -355,21 +391,59 @@ const randomSave = (r, g) => {
   return { kind, config };
 };
 
+// A field's settings after `save`: its own repoint, or the rename's.
+const configAfter = (f, save) => {
+  if (f.id === save.field) return save.fieldConfig;
+  if (save.renamed && f.config?.igt?.tagset === save.renamed.from) {
+    return { ...f.config, igt: { ...f.config.igt, tagset: save.renamed.to } };
+  }
+  return f.config;
+};
+
 const runSave = async (client, project, save) => {
   const live = await client.projects.get();
-  const fields = igtFields(getIgtLayerInfo(live)).map((sl) =>
-    sl.id === save.field ? { ...sl, configBefore: sl.config, config: save.fieldConfig } : sl,
-  );
-  const refused = await refusedBySave(client, fields, save.config, live.config);
-  if (refused.length) return { refused };
-  await client.batched((b) => {
-    b.projects.setConfig('p', 'igt', 'tagsets', save.config.igt.tagsets);
-    if (save.field)
+  const layers = new Map(igtFields(getIgtLayerInfo(live)).map((sl) => [sl.id, sl]));
+  let rulesBeforeHeal;
+  const mark = () => {
+    rulesBeforeHeal = new Map(
+      [...layers.keys()].map((id) => [
+        id,
+        clone(
+          project.textLayers[0].tokenLayers.flatMap((t) => t.spanLayers).find((x) => x.id === id)
+            .constraints?.igt ?? null,
+        ),
+      ]),
+    );
+  };
+  if (save.field) {
+    const fields = [...layers.values()].map((sl) =>
+      sl.id === save.field ? { ...sl, configBefore: sl.config, config: save.fieldConfig } : sl,
+    );
+    const refused = await refusedBySave(client, fields, save.config, live.config);
+    if (refused.length) return { refused };
+    await client.batched((b) => {
       b.spanLayers.setConfig(save.field, 'igt', 'tagset', save.fieldConfig.igt.tagset);
-    queueFieldDeclarations(b, fields, save.config, live.config);
-  });
+      queueFieldDeclarations(b, fields, save.config, live.config);
+    });
+  } else {
+    // The Tagsets screen's save, through the batch it sends.
+    const next = save.config.igt.tagsets;
+    const { fields, after } = tagsetsSaveFields(live, next, save.renamed ?? null);
+    const refused = await refusedBySave(client, fields, after, live.config);
+    if (refused.length) return { refused };
+    await client.batched((b) => {
+      queueTagsetsSave(b, 'p', live, next, {
+        renamed: save.renamed ?? null,
+        expected: live.config.igt.tagsets,
+        fields,
+        after,
+      });
+    });
+  }
+  mark();
   return {
     refused: [],
+    rulesBeforeHeal,
     out: await declareIgtRules(client, 'p', { fieldsOnly: true, repair: false }),
   };
 };
@@ -377,7 +451,7 @@ const runSave = async (client, project, save) => {
 describe('a settings save over a generated sweep', () => {
   it('is refused only for a field in force whose new list the values break, and changes no annotation', async () => {
     const violations = [];
-    const stats = { refused: 0, saved: 0, outOfForceSaved: 0 };
+    const stats = { refused: 0, saved: 0, outOfForceSaved: 0, renamed: 0 };
     for (let seed = 1; seed <= CASES; seed++) {
       const g = generate(seed);
       const r = rng(seed * 7919);
@@ -390,7 +464,7 @@ describe('a settings save over a generated sweep', () => {
       // What the save should be refused for: a field in force before it,
       // whose rules it changes to a list the stored values break.
       const blocking = g.fields.filter((f) => {
-        const cfgAfter = f.id === save.field ? save.fieldConfig : f.config;
+        const cfgAfter = configAfter(f, save);
         const was = fieldConstraints(f.config, configBefore);
         const now = fieldConstraints(cfgAfter, save.config);
         if (sameConstraints(was, now)) return false;
@@ -399,7 +473,7 @@ describe('a settings save over a generated sweep', () => {
         return rule && core.refused(f.id, [rule]).length > 0;
       });
       const outOfForceTouched = g.fields.some((f) => {
-        const cfgAfter = f.id === save.field ? save.fieldConfig : f.config;
+        const cfgAfter = configAfter(f, save);
         const was = fieldConstraints(f.config, configBefore);
         return (
           !sameConstraints(was, fieldConstraints(cfgAfter, save.config)) &&
@@ -428,11 +502,18 @@ describe('a settings save over a generated sweep', () => {
       // The fields as the save left their settings.
       if (save.field) g.fields.find((f) => f.id === save.field).config = save.fieldConfig;
       for (const f of g.fields) f.config = core.layer(f.id).config;
-      const healed = checkHealed(g, core, res.out, before);
+      if (save.renamed) {
+        stats.renamed += 1;
+        for (const f of g.fields) {
+          if (f.config?.igt?.tagset === save.renamed.from) fail(`${f.id} still names the old name`);
+        }
+      }
+      const healed = checkHealed(g, core, res.out, before, res.rulesBeforeHeal);
       healed.fails.forEach(fail);
     }
     expect(violations).toEqual([]);
     expect(stats.refused).toBeGreaterThan(CASES / 100);
     expect(stats.outOfForceSaved).toBeGreaterThan(CASES / 20);
+    expect(stats.renamed).toBeGreaterThan(CASES / 20);
   });
 });

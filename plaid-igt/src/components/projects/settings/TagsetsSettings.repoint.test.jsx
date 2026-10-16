@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { TagsetsSettings } from './TagsetsSettings.jsx';
 
-// The project's tagset rename, when the rename lands and repointing the fields
-// that name it is refused. The vocabulary screen keeps the same contract
-// (VocabularyDetail.writes.test.jsx).
+// The project's tagset rename (REV5-WIRE-2): the tagsets and every field that
+// names the renamed tagset go in one batch, so no read sees a field naming a
+// tagset that is gone, and a refused repoint refuses the rename with it.
 
 const tagsetsManager = vi.hoisted(() => ({ props: null }));
 vi.mock('./TagsetsManager.jsx', () => ({
@@ -21,7 +21,7 @@ vi.mock('@/utils/feedback', () => ({
 }));
 
 describe('the project tagsets section', () => {
-  it('keeps a rename that landed when the fields that name it are refused', async () => {
+  it('refuses the rename with its fields, in one batch', async () => {
     const cases = { mode: 'closed', tags: [{ value: 'NOM' }] };
     const server = {
       id: 'p-1',
@@ -42,9 +42,11 @@ describe('the project tagsets section', () => {
         },
       },
       spanLayers: { setConfig: async () => {}, setConstraints: async () => {} },
-      // A batch queues its writes and sends them in turn on submit, a refusal
-      // refusing the batch.
+      // A batch lands whole or not at all.
+      batches: 0,
       async batched(fn) {
+        this.batches += 1;
+        const saved = structuredClone(server.config);
         const ops = [];
         const queue = (bundle) =>
           new Proxy(
@@ -57,7 +59,12 @@ describe('the project tagsets section', () => {
             },
           );
         fn({ projects: queue('projects'), spanLayers: queue('spanLayers') });
-        for (const op of ops) await op();
+        try {
+          for (const op of ops) await op();
+        } catch (e) {
+          server.config = saved;
+          throw e;
+        }
         return [];
       },
     };
@@ -65,7 +72,7 @@ describe('the project tagsets section', () => {
     const onProjectUpdate = vi.fn(async () => {
       project = structuredClone(server);
     });
-    const { rerender, step, unmount } = await renderComponent(
+    const { step, unmount } = await renderComponent(
       <TagsetsSettings
         project={project}
         projectId="p-1"
@@ -84,17 +91,10 @@ describe('the project tagsets section', () => {
         threw = true;
       }
     });
-    expect(threw).toBe(false);
-    expect(onProjectUpdate).toHaveBeenCalled();
-    await rerender(
-      <TagsetsSettings
-        project={project}
-        projectId="p-1"
-        client={client}
-        onProjectUpdate={onProjectUpdate}
-      />,
-    );
-    expect(Object.keys(tagsetsManager.props.tagsets)).toEqual(['case']);
+    expect(threw).toBe(true);
+    expect(client.batches).toBe(1);
+    expect(Object.keys(server.config.igt.tagsets)).toEqual(['cases']);
+    expect(server.config.igt.documentMetadata).toEqual([{ name: 'case', tagset: 'cases' }]);
     await unmount();
   });
 
@@ -179,14 +179,20 @@ describe('a rename from a page read before a field was pointed at the tagset', (
     });
     const server = withFields([field('a', 'Gloss'), field('b', 'Lex Gloss')]);
     const repointed = [];
+    let inBatch = false;
     const client = {
       projects: { get: async () => structuredClone(server), setConfig: async () => {} },
       spanLayers: {
-        setConfig: async (id, _ns, key, value) => repointed.push([id, key, value]),
+        setConfig: async (id, _ns, key, value) => repointed.push([id, key, value, inBatch]),
         setConstraints: async () => {},
+        refusedValues: async () => ({ count: 0, valueCount: 0, values: [] }),
+        checkConstraints: async () => ({ violations: [], violationCount: 0 }),
       },
+      withOperation: async (_m, fn) => fn(),
       async batched(fn) {
+        inBatch = true;
         fn({ projects: this.projects, spanLayers: this.spanLayers });
+        inBatch = false;
         return [];
       },
     };
@@ -206,8 +212,8 @@ describe('a rename from a page read before a field was pointed at the tagset', (
       );
     });
     expect(repointed).toEqual([
-      ['a', 'tagset', 'LGR'],
-      ['b', 'tagset', 'LGR'],
+      ['a', 'tagset', 'LGR', true],
+      ['b', 'tagset', 'LGR', true],
     ]);
     expect(answer).toEqual({ repointed: 2 });
     await unmount();

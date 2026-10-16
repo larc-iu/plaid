@@ -55,6 +55,18 @@ describe('the rules IGT wants', () => {
     expect(wantedConstraints({}, {})).toEqual([]);
   });
 
+  it('wants nothing of a field naming a tagset the project does not have (REV5-WIRE-2)', () => {
+    const info = getIgtLayerInfo(buildRawDoc());
+    const [sl, other] = Object.values(info.spanLayers).flat();
+    sl.config = { igt: { ...sl.config?.igt, tagset: 'Gone' } };
+    sl.constraints = {
+      igt: [{ type: 'single-span' }, { type: 'value-set', values: ['N'], delimiters: '.' }],
+    };
+    const ids = wantedConstraints(info, tagsets('closed')).map((w) => w.layerId);
+    expect(ids).not.toContain(sl.id);
+    expect(ids).toContain(other.id);
+  });
+
   it('queues a declaration only for a field whose rules a settings save changes', () => {
     const info = getIgtLayerInfo(buildRawDoc());
     const [gloss, ...rest] = Object.values(info.spanLayers).flat();

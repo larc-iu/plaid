@@ -85,6 +85,8 @@ export const queueNewField = (b, parentLayerId, field, projectConfig) => {
  *   word layer            single-link (IGT's, the layer is shared)
  *   each IGT field        single-span, plus value-set when its tagset is closed
  *
+ * A field naming a tagset the project does not have wants nothing here.
+ *
  * Lists are in a fixed order (by type, values in the tagset's order), so an
  * unchanged project compares equal and writes nothing.
  */
@@ -99,6 +101,9 @@ export const wantedConstraints = (layerInfo, projectConfig) => {
   for (const scope of ['word', 'morpheme', 'sentence']) {
     for (const sl of layerInfo?.spanLayers?.[scope] || []) {
       if (!sl?.id) continue;
+      // A field naming a tagset the project does not have is left as it
+      // is: a name that resolves to nothing never takes a list away.
+      if (readTagsetName(sl.config) && !resolveTagset(sl.config, projectConfig)) continue;
       out.push({
         kind: 'span',
         layerId: sl.id,

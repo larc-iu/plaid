@@ -1,17 +1,13 @@
 import { useMemo, useState } from 'react';
 import { TagsetsManager } from './TagsetsManager.jsx';
 import { notifyError } from '@/utils/feedback';
-import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
+import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { byTagsetName, governedFields, readTagsetName, readTagsets } from '@/domain/tagsets';
-import {
-  igtFields,
-  queueFieldDeclarations,
-  refusedBySave,
-  tagsetRefusal,
-} from '@/domain/igtConstraints';
+import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
+import { refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
+import { queueTagsetsSave, tagsetsSaveFields } from '@/domain/tagsetsSave';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
-import { expectStored, isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
+import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { putRulesInForce } from './putRulesInForce.js';
@@ -39,69 +35,29 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     [project],
   );
 
-  // Fields reference a tagset by name, so a rename has to repoint every field
-  // that used the old name — annotation fields on their span layer, metadata
-  // fields in the project config — or they all quietly fall back to free.
-  // `live` is the project as the save read it. Returns how many fields it
-  // repointed.
-  const repointFields = async ({ from, to }, live) => {
-    const fields = byTagsetName(governedFields(getIgtLayerInfo(live), live?.config))[from] || [];
-    for (const g of fields) {
-      if (g.kind === 'span') {
-        await client.spanLayers.setConfig(g.layerId, IGT_NAMESPACE, 'tagset', to, undefined, {
-          expected: from,
-        });
-      }
-    }
-    if (fields.some((g) => g.kind === 'metadata')) {
-      const meta = (readDocumentMetadata(live?.config) || []).map((f) =>
-        f.tagset === from ? { ...f, tagset: to } : f,
-      );
-      await client.projects.setConfig(
-        projectId,
-        IGT_NAMESPACE,
-        'documentMetadata',
-        meta,
-        undefined,
-        expectStored(live, IGT_NAMESPACE, 'documentMetadata'),
-      );
-    }
-    return fields.length;
-  };
-
-  // Only a refused tagsets write throws, so the editor rolls back. When the
-  // rename lands and repointing its fields is refused, the server holds the new
-  // name, so the editor must show that rather than roll back to a name that is
-  // gone. The vocabulary screen's handleSaveTagsets keeps the same contract.
+  // A refused save throws, so the editor rolls back. Fields reference a
+  // tagset by name, so a rename repoints every field that names it
+  // (annotation fields on their span layer, metadata fields in the project
+  // config) in the same batch as the tagsets: a field never names a tagset
+  // that is gone, which the heal of another save would read as no list.
   const handleSaveChanges = async (next, meta) => {
     // The fields and their rules as they are now: another maintainer may
     // have pointed a field at a tagset since this page was read, and the
     // tagsets write's own check does not cover a field's reference.
     let live;
+    let renamed;
+    let fields;
+    let after;
+    let repointed = 0;
     try {
       if (!client) throw new Error('Not authenticated');
       live = await client.projects.get(projectId);
       // A closed tagset's list is a rule its fields hold on the server. The
       // fields take the new rules in the same batch as the tagsets, so a list
       // the stored values break is refused whole. A renamed tagset's fields
-      // are read under the new name, which repointFields writes next.
-      const renamed = meta?.renamed;
-      const fields = igtFields(getIgtLayerInfo(live)).map((sl) =>
-        renamed && readTagsetName(sl.config) === renamed.from
-          ? {
-              ...sl,
-              configBefore: sl.config,
-              config: {
-                ...sl.config,
-                [IGT_NAMESPACE]: { ...sl.config?.[IGT_NAMESPACE], tagset: renamed.to },
-              },
-            }
-          : sl,
-      );
-      const after = {
-        ...live?.config,
-        [IGT_NAMESPACE]: { ...live?.config?.[IGT_NAMESPACE], tagsets: next },
-      };
+      // are read under the new name.
+      renamed = meta?.renamed ?? null;
+      ({ fields, after } = tagsetsSaveFields(live, next, renamed));
       // A closed list the stored values break would be refused whole: ask
       // first, and the editor says which values are in the way.
       const refused = await refusedBySave(client, fields, after, live?.config);
@@ -112,10 +68,12 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       }
       await tagsetsCell.write(async (expected) => {
         await client.batched((b) => {
-          b.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
+          repointed = queueTagsetsSave(b, projectId, live, next, {
+            renamed,
             expected,
+            fields,
+            after,
           });
-          queueFieldDeclarations(b, fields, after, live?.config);
         });
         return next;
       });
@@ -134,18 +92,6 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     // Hold what we just wrote until the refreshed project comes back, so the
     // editor does not flicker to the pre-save value in between.
     setDraftTagsets(next);
-    let repointed = 0;
-    if (meta?.renamed) {
-      try {
-        repointed = await repointFields(meta.renamed, live);
-      } catch (error) {
-        console.error('Failed to repoint fields:', error);
-        notifyError(
-          `Some fields still name the tagset “${meta.renamed.from}”.`,
-          'Failed to update the fields',
-        );
-      }
-    }
     // Every field's rules as the settings now want them, read after the
     // save: a field pointed at a tagset since `live` was read takes its list
     // here.
