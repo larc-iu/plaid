@@ -234,6 +234,15 @@
      :op/document did
      :op/description (:description op-record)}))
 
+(def ^:dynamic *written-versions*
+  "Bound by the REST layer (`wrap-request-extras`) to an atom holding
+  `{document-id version}` for the request. Every operation that commits adds
+  the versions it left its documents at, read inside its own transaction, so
+  the answer's X-Document-Versions names the version this request wrote and
+  not one a write committed after it (which would let the client's next
+  strict write through over a change it never saw). Nil outside a request."
+  nil)
+
 (def ^:dynamic *deferred-events*
   "Bound (to an atom holding a vector) by the atomic batch handler.
   Inside an atomic batch, submit-operation*'s success path runs while
@@ -522,6 +531,9 @@
           ;; Set when an op that asked for it (`:unrecorded-if-empty?`)
           ;; wrote nothing and its row was taken back out.
           unrecorded? (volatile! false)
+          ;; The document versions this op left, read in its transaction
+          ;; (see `*written-versions*`).
+          versions-written (volatile! nil)
           extra (psd/with-tx [tx db]
                   ;; ts stamped here — while holding the RESERVED write
                   ;; lock — so it is strictly monotonic with COMMIT order.
@@ -616,8 +628,16 @@
                                    (wrote-nothing? tx op-id ts))
                           (unrecord-operation! tx op-record)
                           (vreset! unrecorded? true))
+                        ;; The versions this op leaves, read before the commit.
+                        (when *written-versions*
+                          (vreset! versions-written
+                                   (psc/document-versions
+                                    tx (cond-> (set @affected-docs)
+                                         (:document op-attrs) (conj (:document op-attrs))))))
                         result))))
           op-record (assoc @op-record* :documents @affected-docs)]
+      (when-let [a *written-versions*]
+        (swap! a merge @versions-written))
       (try
         (flush-deferred-events! @constraint-events)
         (catch Throwable t

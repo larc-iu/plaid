@@ -8,7 +8,10 @@
             [clojure.data.json :as json]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler admin-request
                                     api-call assert-ok with-admin with-test-users with-clean-db]]
+            [plaid.fixtures]
             [plaid.rest-api.v1.middleware :as prm]
+            [plaid.sql.common]
+            [plaid.sql.operation]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -81,3 +84,29 @@
     (assert-ok res)
     (is (= (set (map (comp str :doc) docs)) (set (keys (versions res)))))
     (is (nil? (omitted res)))))
+
+(deftest the-version-named-is-the-one-this-write-left
+  ;; Another writer can commit between this write's commit and its answer.
+  ;; The answer names the version this write left, read in its own
+  ;; transaction, so the client's next strict write is refused over the
+  ;; change it never saw instead of going through.
+  (doseq [[what write!] [["a single write" (fn [{:keys [span]}] (update-span admin-request span :value "B"))]
+                         ["a bulk write" (fn [{:keys [span]}] (bulk-update-spans admin-request [{:id span :value "C"}]))]]]
+    (testing what
+      (let [[{:keys [doc] :as d}] (setup 1)
+            before (plaid.sql.common/document-version plaid.fixtures/db doc)
+            intruded (atom false)
+            post-submit @#'plaid.sql.operation/post-submit!
+            res (with-redefs [plaid.sql.operation/post-submit!
+                              (fn [& args]
+                                (apply post-submit args)
+                                ;; A later writer commits before the answer is built.
+                                (when (compare-and-set! intruded false true)
+                                  (plaid.sql.common/execute! plaid.fixtures/db
+                                                             {:update :documents :set {:version [:+ :version 1]}
+                                                              :where [:= :id doc]})))]
+                  (write! d))]
+        (assert-ok res)
+        (is @intruded)
+        (is (= (+ 2 before) (plaid.sql.common/document-version plaid.fixtures/db doc)))
+        (is (= {(str doc) (inc before)} (versions res)))))))

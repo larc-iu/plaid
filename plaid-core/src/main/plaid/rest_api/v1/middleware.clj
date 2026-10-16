@@ -124,12 +124,20 @@
   learned only one of their versions goes on to write the rest with a
   stale one, which its own strict mode then refuses.
 
-  The versions come from `psc/document-versions`, one SELECT over the ids.
-  Reading them through `doc/get` cost a walk of the media directory and a
-  metadata query per document, on every write response there is."
+  A document this request's own operations wrote is named at the version
+  they left it, read inside their transactions (`op/*written-versions*`):
+  read here, after the commit, it could already be a later writer's. The
+  rest come from `psc/document-versions`, one SELECT over the ids. Reading
+  them through `doc/get` cost a walk of the media directory and a metadata
+  query per document, on every write response there is."
   [response db doc-ids]
   (if (and (seq doc-ids) (>= (:status response) 200) (< (:status response) 300))
-    (let [versions (psc/document-versions db doc-ids)]
+    (let [written (some-> op/*written-versions* deref)
+          written-by-text (into {} (map (fn [[k v]] [(str k) [k v]])) written)
+          {mine true others false} (group-by #(contains? written-by-text (str %)) (distinct doc-ids))
+          versions (into (psc/document-versions db others)
+                         (map #(written-by-text (str %)))
+                         mine)]
       (if (seq versions)
         (assoc-in response [:headers "X-Document-Versions"] (json/write-str versions))
         response))
@@ -186,10 +194,16 @@
   hands on to run after the request (a project's removal)."
   [handler db secret-key]
   (fn [request]
-    (handler (-> request
-                 (update :db #(or % db))
-                 (assoc :plaid/datasource db)
-                 (assoc :secret-key secret-key)))))
+    (let [request (-> request
+                      (update :db #(or % db))
+                      (assoc :plaid/datasource db)
+                      (assoc :secret-key secret-key))]
+      ;; One record of written versions per request. A batch's sub-requests
+      ;; come through here again and share the batch's.
+      (if op/*written-versions*
+        (handler request)
+        (binding [op/*written-versions* (atom {})]
+          (handler request))))))
 
 (defn- method-name [m]
   (some-> m name str/upper-case))
