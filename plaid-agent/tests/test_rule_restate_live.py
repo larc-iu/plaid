@@ -8,7 +8,7 @@ import json
 
 from fixtures import GLOSS, MGLOSS, MORPH_LAYER, SENT_LAYER, TEXT_LAYER, VOCAB, WORD_LAYER, lexicon_raw
 from live import live_client, seed  # noqa: F401
-from rule_plan_model import approve, project
+from rule_plan_model import approve, project, resumed
 
 from plaid_agent.core.plan import plan_changes
 from plaid_agent.igt.project import load_project
@@ -130,5 +130,35 @@ def test_dropping_a_form_rule_takes_back_its_values_in_planned_analyses(live_cli
         out = call_tool(ws, 'drop_planned', {'indexes': [2]})
         assert 'The values it set in 1 planned analysis were taken back.' in out, out
         assert ws.ops == [analysis]
+    finally:
+        s.delete()
+
+
+def test_a_rule_asked_again_after_resume_over_a_cycle_approves_untouched(live_client):
+    # REV5-AGENT-3: "C" -> "B", "B" -> "C" (values go back to stored),
+    # resume_plan, then "B" -> "C" again. Nobody writes; approval writes the
+    # one net change and refuses nothing. The values are a person's, and the
+    # resumed turn never reads Doc B.
+    c = live_client
+    docs = [_doc('d0', 'Doc A', [('ka', 'B', []), ('to', 'C', []), ('mi', '', [])]),
+            _doc('d1', 'Doc B', [('ka', 'C', []), ('to', 'C', [])])]
+    for d in docs:
+        for sp in d['text_layers'][0]['token_layers'][1]['span_layers'][0]['spans']:
+            sp.pop('metadata')
+    s, ws = _seeded(c, docs, 'resume cycle again')
+    try:
+        def rep(p, r):
+            return call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': p, 'replacement': r,
+                                                      'whole': True})
+        rep('C', 'B')
+        rep('B', 'C')
+        ws = resumed(c, s.project_id, ws)
+        assert ws.resolve_document_id('Doc B') not in ws._docs
+        rep('B', 'C')
+        assert plan_changes(ws.plan_payload()['ops']) == 1
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert not h.errors and h.done[0].get('applied') == 1, (h.errors, h.done)
+        assert [v for v, _m in _glosses(c, s.project_id)] == ['C', 'C', '']
+        assert [v for v, _m in _glosses(c, s.project_id, 'Doc B')] == ['C', 'C']
     finally:
         s.delete()

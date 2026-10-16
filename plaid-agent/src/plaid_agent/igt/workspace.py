@@ -821,6 +821,31 @@ class Workspace(BaseWorkspace):
         self.stored_values = {(layer, token): v for layer, token, v in saved['stored_values']}
         self._patch_version += 1
 
+    def plan_state(self) -> Dict[str, Any]:
+        # The person's work each resumed rule's changes replace, as the turn
+        # that found them read it: a later rule that reads what an earlier one
+        # left says the same in its digest after resume_plan as before, and
+        # approval does not refuse it (REV5-AGENT-3). Only a person's work is
+        # carried: what metadata_of does not know counts as no one's.
+        from ..core import work
+        state = super().plan_state()
+        held: Dict[str, Any] = {}
+        for found in self.rule_found.values():
+            for o in found:
+                fn = self.REPLACES.get(o.get('kind'))
+                for eid in (fn(self, o) or ()) if fn else ():
+                    if eid and eid not in held:
+                        hit, md = self.metadata_of(eid)
+                        if hit and work.protected(md):
+                            held[eid] = md
+        state['rule_work'] = [[k, v] for k, v in held.items()]
+        return state
+
+    def resume(self, state: Dict[str, Any], documents: List[Dict[str, Any]]) -> None:
+        super().resume(state, documents)
+        for eid, md in state['rule_work']:
+            self.note_metadata(eid, md)
+
     def add_op(self, op: Dict[str, Any]) -> None:
         self.place_virtual(op)
         self.place_morph_type(op)
