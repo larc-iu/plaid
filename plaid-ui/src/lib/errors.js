@@ -170,6 +170,16 @@ const lockHolder = (error) => {
   return m ? m[1] : null;
 };
 
+// The account this page is signed in as (auth.js keeps it), or null. Read
+// here rather than through the auth service, which this module must not pull in.
+const signedInAs = () => {
+  try {
+    return globalThis.localStorage?.getItem('userId') || null;
+  } catch {
+    return null;
+  }
+};
+
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
   if (statusOf(error) === 408) return TOO_LONG;
@@ -231,6 +241,9 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
       return 'This document is too large to save. Split it into shorter documents.';
     case 423: {
       const holder = lockHolder(error);
+      if (holder && holder === signedInAs()) {
+        return 'This document is being edited in another tab of yours. Try again in a moment.';
+      }
       return holder
         ? `This document is being edited right now by ${holder}. Try again in a moment.`
         : 'This document is being edited right now (by another user or a service). Try again in a moment.';

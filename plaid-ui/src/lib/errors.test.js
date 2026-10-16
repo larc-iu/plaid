@@ -98,6 +98,27 @@ describe('what a person is told', () => {
     expect(humanizeError(httpError(423))).toMatch(/by another user or a service/);
   });
 
+  it('says a lock the reader holds is their own other tab, never their own id', () => {
+    localStorage.setItem('userId', 'a@b.com');
+    try {
+      const own = Object.assign(httpError(423, 'Document is locked'), {
+        responseData: { error: 'Document is locked', 'user-id': 'a@b.com' },
+      });
+      expect(humanizeError(own)).toBe(
+        'This document is being edited in another tab of yours. Try again in a moment.',
+      );
+      const said = 'Document 01a04095-38c4-74d1-8450-a7d6a0267af7 is locked by a@b.com';
+      const write = Object.assign(httpError(423, said), { responseData: { error: said } });
+      expect(humanizeError(write)).not.toMatch(/a@b\.com/);
+      const theirs = Object.assign(httpError(423, 'Document is locked'), {
+        responseData: { error: 'Document is locked', 'user-id': 'b@x.com' },
+      });
+      expect(humanizeError(theirs)).toMatch(/by b@x\.com/);
+    } finally {
+      localStorage.removeItem('userId');
+    }
+  });
+
   it('says the same sentence for a status whether or not the object carries it', () => {
     const withObject = humanizeError(httpError(403));
     const withMessage = humanizeError(httpError(403).message);
