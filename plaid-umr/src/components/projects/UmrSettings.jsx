@@ -30,6 +30,8 @@ export const UmrSettings = () => {
   const { project, fetchProject } = useManagedProject(projectId);
   const layerInfo = useMemo(() => getUmrLayerInfo(project), [project]);
   const [rows, setRows] = useState([]);
+  // The rows as last read, so Save is offered only for a change.
+  const [seeded, setSeeded] = useState([]);
   const [saving, setSaving] = useState(false);
 
   // Seed from the lines the canvas and the export draw (the stored mapping,
@@ -39,16 +41,18 @@ export const UmrSettings = () => {
   // source.
   useEffect(() => {
     if (!project) return;
-    setRows(resolveIlg(readIlgConfig(project), layerInfo));
+    const resolved = resolveIlg(readIlgConfig(project), layerInfo);
+    setRows(resolved);
+    setSeeded(resolved);
   }, [project, layerInfo]);
 
   const sources = useMemo(() => {
     const out = [];
     if (layerInfo.morphemeTokenLayer) {
-      out.push({ value: 'morphemes', label: `Morphemes (${layerInfo.morphemeTokenLayer.name})` });
+      out.push({ value: 'morphemes', label: layerInfo.morphemeTokenLayer.name });
     }
     layerInfo.glossLayers.forEach((g) => {
-      out.push({ value: `layer:${g.layer.id}`, label: `${g.layer.name} (${g.scope})` });
+      out.push({ value: `layer:${g.layer.id}`, label: `${g.layer.name} · ${g.scope}` });
     });
     out.push({ value: STORED, label: 'Lines an import stored' });
     return out;
@@ -72,6 +76,7 @@ export const UmrSettings = () => {
       }),
     );
   const incomplete = rows.some((r) => r.source !== STORED && !r.header);
+  const changed = JSON.stringify(rows) !== JSON.stringify(seeded);
   const move = (i, d) =>
     setRows((r) => {
       const j = i + d;
@@ -156,7 +161,9 @@ export const UmrSettings = () => {
                   </SelectContent>
                 </Select>
                 {stored ? (
-                  <span className="flex-1 whitespace-nowrap text-sm text-muted-foreground">
+                  // As wide as a header and a language, so the row's buttons
+                  // line up with the other rows'.
+                  <span className="w-[288px] whitespace-nowrap text-sm text-muted-foreground">
                     Written as stored
                   </span>
                 ) : (
@@ -227,7 +234,7 @@ export const UmrSettings = () => {
           <Button type="button" variant="outline" onClick={propose} disabled={saving}>
             Propose lines
           </Button>
-          <Button type="button" onClick={save} disabled={saving || incomplete}>
+          <Button type="button" onClick={save} disabled={saving || incomplete || !changed}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>

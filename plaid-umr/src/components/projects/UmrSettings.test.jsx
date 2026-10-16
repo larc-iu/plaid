@@ -51,10 +51,27 @@ describe('UmrSettings', () => {
     );
     await r.step(async () => {});
     expect(texts(r.container, 'button[aria-label="Source"]')).toEqual([
-      'Morphemes (Morphemes)',
-      'Gloss (morpheme)',
-      'Translation (sentence)',
+      'Morphemes',
+      'Gloss · morpheme',
+      'Translation · sentence',
     ]);
+    await r.unmount();
+  });
+
+  it('offers Save only once a line is changed', async () => {
+    const r = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1']}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<UmrSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await r.step(async () => {});
+    const save = () =>
+      [...r.container.querySelectorAll('button')].find((b) => b.textContent === 'Save');
+    expect(save().disabled).toBe(true);
+    await r.step(() => r.container.querySelector('button[aria-label="Move down"]').click());
+    expect(save().disabled).toBe(false);
     await r.unmount();
   });
 });
