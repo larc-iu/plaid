@@ -1050,7 +1050,10 @@
          :body (unresolved-if (nil? id)
                               {:error (str "User " (->user-id request)
                                            " lacks sufficient privileges to " (key verb) " "
-                                           (if id
+                                           ;; A project id the request did not name itself
+                                           ;; (found from an entity, a body, a bulk list) is
+                                           ;; not handed to someone with no access to it.
+                                           (if (and id (named-in-path? request id))
                                              (str "project " id)
                                              "the project this entity belongs to"))})}))))
 

@@ -185,14 +185,16 @@
   ;; The no-op is for a list in which NOTHING resolves. An id that lives in a
   ;; project (or vocabulary) the caller cannot write is still judged there.
   (let [gone (delete-all! (setup))
-        {:keys [t1 s1 r1 l1 v1]} (setup {:writer? false})
+        {:keys [proj t1 s1 r1 l1 v1]} (setup {:writer? false})
         theirs {:tokens t1 :spans s1 :relations r1 :vocab-links l1 :vocab-items v1}]
     (doseq [[kind path] routes]
       (testing (name kind)
         (let [ids (conj (gone kind) (theirs kind))
               r (api-call user1-request {:method :delete :path path :body ids})]
           (assert-forbidden r)
-          (is (not (contains? (:body r) :unresolved)) "a real refusal, not a gone id"))
+          (is (not (contains? (:body r) :unresolved)) "a real refusal, not a gone id")
+          (is (not (clojure.string/includes? (str (-> r :body :error)) (str proj)))
+              "the refusal does not name a project the caller never named"))
         (testing "in a batch"
           (assert-forbidden (batch user1-request [[path (into [(theirs kind)] (gone kind))]])))))
     (assert-ok (get-token admin-request t1))
