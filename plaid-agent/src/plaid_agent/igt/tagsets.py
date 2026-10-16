@@ -198,6 +198,15 @@ def _unlisted(attested, t: dict) -> List[Tuple[str, int, bool]]:
     return sorted(rows, key=lambda r: (-r[1], r[0]))
 
 
+def _with_empty_part(attested, t: dict) -> List[Tuple[str, int]]:
+    """[(value, count)] of the values holding an empty part (a delimiter with
+    nothing on one side, as in "V..N"), which a closed list refuses whatever
+    it lists, most frequent first."""
+    rows = [(v, n) for v, n in attested if isinstance(v, str) and v.strip() and t['delimiters']
+            and '' in value_parts(v, t['delimiters'])]
+    return sorted(rows, key=lambda r: (-r[1], r[0]))
+
+
 def _rule(t: Optional[dict]) -> Optional[dict]:
     """The value-set rule a tagset puts on the fields it governs, None unless
     it is closed (``field_constraints``)."""
@@ -235,12 +244,19 @@ def _core_refused(ws, f: dict, t: dict, limit: int = SHOWN) -> dict:
     return ws.client.span_layers.refused_values(f['key'], _rule({**t, 'mode': CLOSED}), limit=limit)
 
 
+def _part(p: str) -> str:
+    """A part as igt's notice names it: an empty one (a delimiter with nothing
+    on one side) as "an empty part"."""
+    return 'an empty part' if p == '' else qv(p)
+
+
 def _refused_value(v: dict) -> str:
     """One refused value with its count, and the parts off the list when core
-    names fewer than the whole value ("1SG.NOM" (2, "1SG" not listed))."""
+    names fewer than the whole value ("1SG.NOM" (2, "1SG" not listed),
+    "V..N" (1, an empty part not listed))."""
     value = v['value']
     parts = [p for p in (v.get('parts') or []) if isinstance(p, str)]
-    off = '' if not parts or parts == [value] else ', ' + ', '.join(qv(p) for p in parts) + ' not listed'
+    off = '' if not parts or parts == [value] else ', ' + ', '.join(_part(p) for p in parts) + ' not listed'
     return f'{qv(value) if isinstance(value, str) else value} ({v["count"]}{off})'
 
 
@@ -286,9 +302,11 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
         attested = _attested(ws, f)
         rows = _unlisted(attested, t)
         head = f'{f["name"]}: {sum(n for _, n in attested)} values'
-        if not rows:
-            lines.append(head + ', every part listed.')
-        else:
+        empty = _with_empty_part(attested, t)
+        found = ([f'{len(rows)} unlisted parts'] if rows else []) + (
+            [f'{len(empty)} distinct value{"s" if len(empty) != 1 else ""} with an empty part'] if empty else [])
+        lines.append(head + (', ' + ' and '.join(found) if found else ', every part listed') + '.')
+        if rows:
             words = [r for r in rows if r[2]]
             # Parts core reads that are no tag: a year glossed as itself, or
             # "YON)" of bz(PDIR.YON) when brackets are no delimiter. A close
@@ -297,7 +315,6 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
             letterless = [r for r in rows if not r[2] and not any(c.isalpha() for c in r[0])
                           and not _BRACKETS.intersection(r[0])]
             tags = [r for r in rows if not r[2] and r not in bracketed and r not in letterless]
-            lines.append(head + f', {len(rows)} unlisted parts.')
             if tags:
                 lines.append('  Tags: ' + _listing(tags, lambda r: f'{r[0]} ({r[1]})'))
             if bracketed:
@@ -309,6 +326,11 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
                 lines.append('  Parts without a letter: ' + _listing(letterless, lambda r: f'{r[0]} ({r[1]})'))
             if words:
                 lines.append('  Lexical glosses: ' + _listing(words, lambda r: f'{r[0]} ({r[1]})'))
+        if empty:
+            # A delimiter with nothing on one side: no list holds an empty
+            # part, so a closed list refuses the value whatever it lists.
+            lines.append('  An empty part, which a closed list refuses: '
+                         + _listing(empty, lambda r: f'{qv(r[0])} ({r[1]})'))
         if f['kind'] != SPAN:
             continue
         if as_stored and _held(f, t):

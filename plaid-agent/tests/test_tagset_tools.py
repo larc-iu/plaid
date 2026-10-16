@@ -358,3 +358,21 @@ def test_a_refused_value_names_the_parts_off_the_list():
     r = {'count': 3, 'value_count': 2, 'values': [{'value': '1SG.NOM', 'parts': ['1SG'], 'count': 2},
                                                   {'value': 'QQ', 'parts': ['QQ'], 'count': 1}]}
     assert _refused_line(r) == '3 stored values, 2 distinct: "1SG.NOM" (2, "1SG" not listed), "QQ" (1)'
+
+
+def test_an_empty_part_is_named_as_igt_names_it(monkeypatch):
+    """REV2-WIRE-3: a delimiter with nothing on one side ("V..N") is "an empty
+    part", as igt's notice says, in core's answer and in the check's summary."""
+    from plaid_agent.igt import tagsets as T
+    r = {'count': 2, 'value_count': 2, 'values': [{'value': 'V..N', 'parts': ['V', '', 'N'], 'count': 1},
+                                                  {'value': 'N.X', 'parts': ['X'], 'count': 1}]}
+    assert T._refused_line(r) == ('2 stored values: "V..N" (1, "V", an empty part, "N" not listed), '
+                                  '"N.X" (1, "X" not listed)')
+    ws = _fake_ws()
+    monkeypatch.setattr(T, '_attested', lambda ws, f: [('PL..ERG', 3), ('PL', 2)])
+    monkeypatch.setattr(T, '_core_refused', lambda ws, f, t, limit=T.SHOWN: {'count': 0, 'value_count': 0,
+                                                                            'values': []})
+    out = call_tool(ws, 'tagsets', {'action': 'check', 'tagset': 'Leipzig', 'field': 'Morph Gloss'})
+    lines = out.splitlines()
+    assert 'Morph Gloss: 5 values, 1 distinct value with an empty part.' in lines, out
+    assert '  An empty part, which a closed list refuses: "PL..ERG" (3)' in lines, out
