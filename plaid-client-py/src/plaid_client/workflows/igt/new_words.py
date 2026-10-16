@@ -27,7 +27,7 @@ import unicodedata
 from bisect import bisect_right
 from typing import Any, List, Optional, Sequence, Tuple
 
-from .ignored import is_punct_char, is_token_ignored
+from .ignored import is_letter_like, is_punct_char, is_token_ignored
 from .spaceless_scripts import SPACELESS_SCRIPTS
 
 # The editor's isUnicodePunctuation character class, verbatim (without
@@ -164,14 +164,16 @@ def _trim_gaps(old: str, gaps) -> List[Tuple[int, int, str]]:
     return out
 
 
-def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], sentences: Sequence[Any] = ()):
+def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], sentences: Sequence[Any] = (),
+                    ignored: Optional[dict] = None):
     """Where an edit of ``gaps`` over ``base`` may make words, as
     ``new_text_words`` takes them: ``(body, typed, covered, cut)``, the body
     the edit makes (a list of code points), which of them the edit typed,
     which an existing word may end up over, and where core puts a sentence
     boundary (``cut``, 1 at each such position, held to core's by
     ``tests/test_sentence_cut_cases.py`` on plaid-core's shared case table).
-    None when the edit types nothing."""
+    ``ignored`` is the ignored-tokens rule, whose letter-like characters are
+    no punctuation to core. None when the edit types nothing."""
     old = base or ''
     srt = sorted(_trim_gaps(old, [_gap(g) for g in gaps or []]), key=lambda g: g[0])
     body: List[str] = []
@@ -236,15 +238,16 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
     covered = bytearray(n)
     # What typed text against it with no whitespace between goes to: all that
     # is covered but the text of a word made only of punctuation, which takes
-    # none (plaid-core ``apply-plain-gaps``, ``punct?``: what igt's default
-    # ignore rule skips, whatever the project's own rule says).
+    # none (plaid-core ``apply-plain-gaps``, ``punct?``: what igt's
+    # punctuation rule skips, a character the project's rule calls
+    # letter-like being a letter, whichever rule is in force).
     takes = bytearray(n)
     for w in words or []:
         wb, we = (w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1])
         if not wb < we:
             continue
         lo, hi = start_of(wb), end_of(we)
-        punct = all(is_punct_char(c) for c in old[wb:we])
+        punct = all(is_punct_char(c) and not is_letter_like(c, ignored) for c in old[wb:we])
         for x in range(max(0, lo), min(n, hi)):
             covered[x] = 1
             # (text a gap typed inside it, which the server may give it, does)
@@ -373,7 +376,7 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
     the ignored-tokens rule. ``sentences`` are the sentences on ``base``: no
     new word crosses one of their boundaries. Returns ``(begin, end)`` ranges
     in code points of the body the edit makes, in order."""
-    layout = new_text_layout(base, gaps, words, sentences)
+    layout = new_text_layout(base, gaps, words, sentences, ignored)
     if layout is None:
         return []
     body, typed, covered, cut = layout

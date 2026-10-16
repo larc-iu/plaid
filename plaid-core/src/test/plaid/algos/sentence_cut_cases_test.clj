@@ -12,9 +12,11 @@
   such saves with NEL in the indents, the separators and the typed lines,
   and FX-H-TEXT's 200 saves typing letters, punctuation and spaces against
   the punctuation of a text with a word token over every run of punctuation,
-  as ud's Tokenize leaves one, which no word takes) with what core makes of
-  each on
-  the edits path, the body and the sentence begins and words after the save.
+  as ud's Tokenize leaves one, which no word takes, and FX-I-FOLLOW's 150
+  such saves in a project whose ignored-tokens rule (`ignored`, as igt
+  stores it) lists `'`, `’` and `-` as letter-like, typed against words made
+  only of those, which take it) with what core makes of each on the edits
+  path, the body and the sentence begins and words after the save.
   igt's \"Tokenize new text\" (plaid-igt `newTextWords.js`) and its Python
   twin (plaid-client-py `new_words.py`) read where core puts a sentence
   boundary without asking it, and their tests hold them to this table
@@ -33,14 +35,15 @@
   new body, the sentences' begins after the partition's gap-fill (the first
   at 0, and a line typed before the first sentence is one of its own) and
   the words."
-  [{:strs [base sentences words gaps]}]
+  [{:strs [base sentences words gaps ignored]}]
   (let [tokens (-> []
                    (into (map-indexed (fn [i [b e]] {:token/id [:s i] :token/layer :s :token/begin b :token/end e}) sentences))
                    (into (mapcat (fn [i [b e]] [{:token/id [:w i] :token/layer :w :token/begin b :token/end e}
                                                 {:token/id [:m i] :token/layer :m :token/begin b :token/end e}])
                                  (range) words)))
         gs (mapv (fn [{:strs [start end value]}] {:start start :end end :value value}) gaps)
-        r (ta/plain-edits base tokens (ta/gap-ops gs) #{:s} #{:w} {:children #{:m}})
+        r (ta/plain-edits base tokens (ta/gap-ops gs) #{:s} #{:w}
+                          {:children #{:m} :letter-like (ta/ignored-letter-like {"igt" {"ignoredTokens" ignored}})})
         of (fn [l] (sort (keep #(when (= l (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))]
     {"body" (:text/body (:text r))
      "sentenceBegins" (let [bs (map first (of :s))]
@@ -50,11 +53,11 @@
      "words" (mapv vec (of :w))}))
 
 (defn write-table!
-  "Writes the table from `cases` (each `{base sentences words gaps}`, string
-  keys) with core's answers."
+  "Writes the table from `cases` (each `{base sentences words gaps}` and
+  maybe `ignored`, string keys) with core's answers."
   [cases]
   (with-open [w (io/writer table-file)]
-    (json/write {"cases" (mapv #(assoc (select-keys % ["base" "sentences" "words" "gaps"]) "core" (core-answer %)) cases)}
+    (json/write {"cases" (mapv #(assoc (select-keys % ["base" "sentences" "words" "gaps" "ignored"]) "core" (core-answer %)) cases)}
                 w :escape-unicode false :escape-slash false)))
 
 (deftest core-answers-the-shared-sentence-cut-table

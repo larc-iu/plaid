@@ -383,7 +383,7 @@
                       a)
             word-letter (let [a (boolean-array (alength nw))]
                           (doseq [t tokens :when (and (= wl (:token/layer t)) (not (gone (:token/id t)))
-                                                      (not (every? #(#'ta/punct? (aget o %)) (range (:token/begin t) (:token/end t)))))
+                                                      (not (every? #(#'ta/punct? #{} (aget o %)) (range (:token/begin t) (:token/end t)))))
                                   k (kept-of t)]
                             (aset a (aget newpos k) true))
                           a)]

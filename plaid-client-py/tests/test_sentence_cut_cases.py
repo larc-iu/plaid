@@ -16,7 +16,7 @@ sentenceCutCases.test.js does for the editor's copy:
 import json
 from pathlib import Path
 
-from plaid_client.workflows.igt.ignored import is_punct_char
+from plaid_client.workflows.igt.ignored import is_letter_like, is_punct_char
 from plaid_client.workflows.igt.new_words import is_js_space, new_text_layout, new_text_words
 
 CASES = json.loads((Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'test' / 'plaid' / 'algos'
@@ -33,7 +33,7 @@ def test_the_sentence_cut_agrees_with_core_on_the_shared_table():
     for c in CASES:
         words = [{'begin': b, 'end': e} for b, e in c['words']]
         sentences = [{'begin': b, 'end': e} for b, e in c['sentences']]
-        layout = new_text_layout(c['base'], c['gaps'], words, sentences)
+        layout = new_text_layout(c['base'], c['gaps'], words, sentences, c.get('ignored'))
         if layout is None:
             continue
         body, typed, covered, cut = layout
@@ -57,7 +57,7 @@ def test_the_sentence_cut_agrees_with_core_on_the_shared_table():
                 pairs += 1
                 if (x in twin_cuts) != (x in core_cuts):
                     problems.append((c['base'], c['gaps'], 'between', x, core_cuts, twin_cuts))
-        for b, e in new_text_words(c['base'], c['gaps'], words, None, sentences):
+        for b, e in new_text_words(c['base'], c['gaps'], words, c.get('ignored'), sentences):
             if any(b < s < e for s in core_cuts):
                 problems.append((c['base'], c['gaps'], 'crosses', b, e))
             if any(b < we and wb < e for wb, we in core['words']):
@@ -71,17 +71,21 @@ def test_a_letter_typed_against_a_punctuation_word_is_free_where_core_leaves_it_
     # REV7-IGT-1: a word made only of punctuation (ud's `(` or `.`) takes no
     # text typed against it, so where a save only types into a text holding
     # one, a letter it typed is free for a new word exactly where core leaves
-    # it in no word.
+    # it in no word. A word made only of characters the project calls
+    # letter-like is no punctuation (FX-I-FOLLOW): text typed against it is
+    # covered where core gives it to that word.
     problems = []
     checked = 0
     for c in CASES:
         if not all(g['start'] == g['end'] for g in c['gaps']):
             continue
-        if not any(all(is_punct_char(ch) for ch in c['base'][b:e]) for b, e in c['words']):
+        ignored = c.get('ignored')
+        if not any(all(is_punct_char(ch) and not is_letter_like(ch, ignored) for ch in c['base'][b:e])
+                   for b, e in c['words']):
             continue
         words = [{'begin': b, 'end': e} for b, e in c['words']]
         sentences = [{'begin': b, 'end': e} for b, e in c['sentences']]
-        layout = new_text_layout(c['base'], c['gaps'], words, sentences)
+        layout = new_text_layout(c['base'], c['gaps'], words, sentences, ignored)
         if layout is None:
             continue
         body, typed, covered, _ = layout

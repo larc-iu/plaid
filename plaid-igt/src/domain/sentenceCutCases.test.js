@@ -23,8 +23,12 @@ const { cases } = JSON.parse(
 const span = ([begin, end]) => ({ begin, end });
 const isSpace = (c) => /\s/u.test(c);
 const sentenceOf = (cuts, x) => cuts.filter((b) => b <= x).length;
-const isPunctOnly = (cs) =>
-  cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, { type: 'unicodePunctuation' }));
+// Punctuation to core's rule: igt's punctuation rule with the case's
+// letter-like characters (`ignored`, FX-I-FOLLOW) as letters.
+const isPunctOnly = (cs, ignored) => {
+  const rule = { type: 'unicodePunctuation', whitelist: ignored?.whitelist || [] };
+  return cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, rule));
+};
 
 describe('the sentence cut of Tokenize new text', () => {
   it('agrees with core on the shared table', () => {
@@ -37,6 +41,7 @@ describe('the sentence cut of Tokenize new text', () => {
         gaps: c.gaps,
         words: c.words.map(span),
         sentences: c.sentences.map(span),
+        ignored: c.ignored ?? null,
       };
       const layout = newTextLayout(save);
       if (!layout) continue;
@@ -77,7 +82,7 @@ describe('the sentence cut of Tokenize new text', () => {
           }
         }
       }
-      for (const w of newTextWords({ ...save, ignored: null })) {
+      for (const w of newTextWords(save)) {
         if (coreCuts.some((b) => w.begin < b && b < w.end))
           problems.push({ base: c.base, gaps: c.gaps, crosses: w });
         if (core.words.some(([b, e]) => w.begin < e && b < w.end))
@@ -92,19 +97,22 @@ describe('the sentence cut of Tokenize new text', () => {
   // REV7-IGT-1: a word made only of punctuation (ud's `(` or `.`) takes no
   // text typed against it, so where a save only types into a text holding
   // one, a letter it typed is free for a new word exactly where core leaves
-  // it in no word.
+  // it in no word. A word made only of characters the project calls
+  // letter-like is no punctuation (FX-I-FOLLOW), so in such a case the text
+  // typed against it is covered where core gives it to that word.
   it('leaves a letter typed against a punctuation word free, as core leaves it in no word', () => {
     const problems = [];
     let checked = 0;
     for (const c of cases) {
       if (!c.gaps.every((g) => g.start === g.end)) continue;
       const chars = [...c.base];
-      if (!c.words.some(([b, e]) => isPunctOnly(chars.slice(b, e)))) continue;
+      if (!c.words.some(([b, e]) => isPunctOnly(chars.slice(b, e), c.ignored))) continue;
       const layout = newTextLayout({
         base: c.base,
         gaps: c.gaps,
         words: c.words.map(span),
         sentences: c.sentences.map(span),
+        ignored: c.ignored ?? null,
       });
       if (!layout) continue;
       const { body, typed, covered } = layout;

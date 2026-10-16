@@ -1062,3 +1062,49 @@
       (is (= expect (mapv second (words r))) (str id " " path (when punct? " with punctuation tokens")))
       (when punct?
         (is (every? #(re-matches #"[\p{P}\p{S}]+" %) (puncts r)) (str id " " path " punctuation stays punctuation"))))))
+
+(deftest a-letter-like-character-is-a-letter-to-the-punctuation-rule
+  ;; FX-I-FOLLOW 1: in a project whose ignored-tokens rule lists `'` as
+  ;; letter-like, a word `'` is a word to igt, so a letter typed against it
+  ;; joins it as one typed against a letter does, on both paths. Without the
+  ;; list it stays apart, as a punctuation token does (REV7-IGT-1).
+  (let [ll #{(int \')}
+        word-texts (fn [r]
+                     (let [body (:text/body (:text r))]
+                       (vec (sort-by first (keep (fn [{:token/keys [layer begin end]}]
+                                                   (when (= :w layer) [begin (cp/cp-subs body begin end)]))
+                                                 (:tokens r))))))
+        doc (fn [body spans] (into [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
+                                   (map-indexed (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e}) spans)))]
+    (doseq [[id body spans op with without]
+            [["after" "ab ' cd" [[0 2] [3 4] [5 7]] (ins 4 "x") ["ab" "'x" "cd"] ["ab" "'" "cd"]]
+             ["before" "ab ' cd" [[0 2] [3 4] [5 7]] (ins 3 "x") ["ab" "x'" "cd"] ["ab" "'" "cd"]]
+             ["inside a word" "ab 'cd" [[0 2] [3 6]] (ins 3 "x") ["ab" "x'cd"] ["ab" "x'cd"]]]
+            [letter-like expect] [[ll with] [#{} without]]
+            :let [tokens (doc body spans)
+                  new (ta/edit-ops-body [op] body)
+                  opts {:letter-like letter-like}]
+            [path r] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w} opts)]
+                      [:body (ta/plain-body body new tokens #{:s} #{:w} opts)]]]
+      (is (= expect (mapv second (word-texts r))) (str id " " path (when (seq letter-like) " with ' letter-like"))))))
+
+(deftest the-punctuation-rule-reads-the-unicode-16-table
+  ;; FX-I-FOLLOW 2: U+10D6E (Garay hyphen) is new in Unicode 16, so Java 21
+  ;; reads it as unassigned. igt ignores it, and core's rule reads the same
+  ;; table: a token of only it takes no letter typed against it.
+  (let [body "ab \uD803\uDD6E cd"
+        tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 7}
+                {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end 2}
+                {:token/id [:w 1] :token/layer :w :token/begin 3 :token/end 4}
+                {:token/id [:w 2] :token/layer :w :token/begin 5 :token/end 7}]
+        r (ta/plain-edits body tokens [(ins 4 "x")] #{:s} #{:w})]
+    (is (= [[0 2] [3 4] [6 8]]
+           (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))))
+
+(deftest a-layer-config-names-its-letter-like-characters
+  (is (= #{(int \') 0x2019} (ta/ignored-letter-like {"igt" {"ignoredTokens" {"type" "unicodePunctuation"
+                                                                             "whitelist" ["'" "\u2019" "ab" ""]}}})))
+  (is (= #{} (ta/ignored-letter-like {"igt" {"ignoredTokens" {"type" "blacklist" "whitelist" ["'"] "blacklist" ["."]}}})))
+  (is (= #{} (ta/ignored-letter-like {})))
+  (is (= #{(int \')} (:letter-like (ta/layer-roles [{:id :w :overlap-mode "non-overlapping" :parent :s :letter-like #{(int \')}}
+                                                    {:id :s :overlap-mode "partitioning"}])))))

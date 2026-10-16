@@ -39,12 +39,17 @@ const isLineBreak = (c) => /[\n\r\u0085\u2028\u2029]/u.test(c);
 // JavaScript's `\s` leaves it out (plaid-core `blank?`).
 const isBlank = (c) => isSpace(c) || c === '\u0085';
 const isPunct = (c) => !/[\p{L}\p{M}\p{N}]/u.test(c);
-// Punctuation to core's text rule (plaid-core `punct?`): what igt's default
-// ignore rule skips, whatever the project's own rule says. A word made only
-// of it takes no text typed against it.
-const PUNCTUATION_RULE = Object.freeze({ type: 'unicodePunctuation' });
-const isPunctOnly = (cs) =>
-  cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, PUNCTUATION_RULE));
+// Punctuation to core's text rule (plaid-core `punct?`): what igt's
+// punctuation rule skips, a character the project's rule calls letter-like
+// being a letter, whichever rule the project has in force (plaid-core
+// `ignored-letter-like`). A word made only of it takes no text typed against
+// it.
+const punctuationRule = (ignored) =>
+  Object.freeze({
+    type: 'unicodePunctuation',
+    whitelist: ignored?.type === 'unicodePunctuation' ? ignored.whitelist || [] : [],
+  });
+const isPunctOnly = (cs, rule) => cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, rule));
 
 /** Whether a stretch holds a letter of a script written without spaces. */
 export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpacelessScript);
@@ -83,14 +88,16 @@ function trimmed(old, gaps) {
  * (`covered`), and where core puts a sentence boundary in it (`cut`, 1 at
  * each such position). `sentenceCutCases.test.js` holds `cut` to core's on
  * plaid-core's shared case table. Null when the save types nothing.
- * @param {object} save - as `newTextWords` takes it, less `ignored`
+ * @param {object} save - as `newTextWords` takes it
  * @param {string} save.base
  * @param {Array<{start:number,end:number,value:string}>} save.gaps
  * @param {Array<{begin:number,end:number}>} save.words
  * @param {Array<{begin:number,end:number}>} [save.sentences]
+ * @param {object|null} [save.ignored] - the ignored-tokens rule, whose
+ *   letter-like characters are no punctuation to core
  * @returns {{body: string[], typed: boolean[], covered: Uint8Array, cut: Uint8Array}|null}
  */
-export function newTextLayout({ base, gaps, words, sentences = [] }) {
+export function newTextLayout({ base, gaps, words, sentences = [], ignored = null }) {
   const old = Array.from(base ?? '');
   const sorted = trimmed(old, gaps).sort((a, b) => a.start - b.start);
   const body = [];
@@ -153,6 +160,7 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
   };
 
   const covered = new Uint8Array(n);
+  const rule = punctuationRule(ignored);
   // What typed text against it with no whitespace between goes to: all that
   // is covered but the text of a word made only of punctuation, which takes
   // none (plaid-core `apply-plain-gaps`).
@@ -161,7 +169,7 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
     if (!(w.begin < w.end)) continue;
     const lo = startOf(w.begin);
     const hi = endOf(w.end);
-    const punct = isPunctOnly(old.slice(w.begin, w.end));
+    const punct = isPunctOnly(old.slice(w.begin, w.end), rule);
     for (let x = Math.max(0, lo); x < Math.min(n, hi); x++) {
       covered[x] = 1;
       // (text a gap typed inside it, which the server may give it, does)
@@ -305,7 +313,7 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
  *   the body the save makes, in order
  */
 export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
-  const layout = newTextLayout({ base, gaps, words, sentences });
+  const layout = newTextLayout({ base, gaps, words, sentences, ignored });
   if (!layout) return [];
   const { body, typed, covered, cut } = layout;
   const n = body.length;

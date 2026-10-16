@@ -27,7 +27,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [other nodes runs split sents]}]
+  [body & {:keys [other nodes runs split sents ignored]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -40,6 +40,11 @@
             (assert-status 204 (api-call admin-request {:method :put
                                                         :path (str "/api/v1/token-layers/" words "/config/plaid/splitOnSpace")
                                                         :body true})))
+        ;; igt's ignored-tokens rule on the words
+        _ (when ignored
+            (assert-status 204 (api-call admin-request {:method :put
+                                                        :path (str "/api/v1/token-layers/" words "/config/igt/ignoredTokens")
+                                                        :body ignored})))
         ;; another app's layer: beside the words, or (`:child`) nested under them
         others (when other
                  (-> (create-token-layer-opts admin-request tl "Other" {:overlap-mode "non-overlapping"
@@ -821,3 +826,16 @@
         (is (= [[0 3 "The"] [4 7 "dog"] [8 12 "ran."] [18 21 "The"] [22 25 "cat"] [26 30 "sat."]] (map extent words)))
         (is (= ["T1" "T2"] (map #(-> (get-span admin-request %) :body :span/value) ts)))
         (is (every? #(= 200 (:status (get-span admin-request %))) glosses))))))
+
+(deftest a-letter-like-character-is-a-letter-to-the-punctuation-rule
+  ;; FX-I-FOLLOW 1: the words' ignored-tokens rule lists `'` as letter-like,
+  ;; so a word `'` takes a letter typed against it, as igt reads it as a
+  ;; word. Under the default rule it takes none (REV7-IGT-1).
+  (doseq [[ignored expect] [[{:type "unicodePunctuation" :whitelist ["'"] :blacklist []} [3 5 "'x"]]
+                            [{:type "unicodePunctuation" :whitelist [] :blacklist []} [3 4 "'"]]
+                            [nil [3 4 "'"]]]]
+    (let [{:keys [text words]} (setup "ab ' cd" :ignored ignored)
+          digest (-> (get-text admin-request text) :body :text/digest)]
+      (assert-ok (edit-text text {:edits [(ins 4 "x")] :base digest}))
+      (is (= "ab 'x cd" (-> (get-text admin-request text) :body :text/body)))
+      (is (= expect (extent (words 1))) (pr-str ignored)))))

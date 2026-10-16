@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { unpackRanges } from '../lib/unicodeRanges.js';
+import { repoRoot } from '../test/apps.js';
 import { isTokenIgnored } from './igtWordBreaks.js';
 import {
   PICTOGRAPHIC,
@@ -41,4 +45,20 @@ describe('the ignored-token character classes', () => {
       expect(PICTOGRAPHIC).toEqual(runtimeRanges(/\p{Extended_Pictographic}/u));
     },
   );
+
+  // plaid-core's text rules read the same run's table (FX-I-FOLLOW 2).
+  it('are the table plaid-core reads', () => {
+    const file = path.join(repoRoot(), 'plaid-core/resources/punctuation_classes.txt');
+    const rows = Object.fromEntries(
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .filter((l) => l.trim() && !l.startsWith('#'))
+        .map((l) => {
+          const [k, ...rest] = l.trim().split(/ +/);
+          return [k, unpackRanges(rest.join(' '))];
+        }),
+    );
+    expect(rows.punct).toEqual(PUNCT_OR_SYMBOL);
+    expect(rows.picto).toEqual(PICTOGRAPHIC);
+  });
 });

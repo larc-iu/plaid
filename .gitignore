@@ -41,6 +41,8 @@ dist-artifacts/
 !/plaid-core/resources/simplelogger.properties
 # the case folding table document names are compared by (scripts/casefold_table.py)
 !/plaid-core/resources/casefold.txt
+# the punctuation table the text rules read (plaid-igt/tools/punctuationClasses.mjs)
+!/plaid-core/resources/punctuation_classes.txt
 mutations.ednl
 Gemfile.lock
 .aider*

@@ -200,7 +200,9 @@
           ;; layer setting `splitOnSpace` (ud's words) has a space typed inside
           ;; a word split it, for every word of the text, the tokens under
           ;; the word placed by where they stand, or dealt one to each part
-          ;; on a layer of role `syntactic-word`. A diffed body's
+          ;; on a layer of role `syntactic-word`. A character a layer's
+          ;; ignored-tokens rule calls letter-like is a letter to the
+          ;; punctuation rule (see ta/ignored-letter-like). A diffed body's
           ;; edits are first moved to where they disturb the fewest tokens
           ;; when they could stand in several places for the same result (see
           ;; ta/plain-body-gaps). Ops sent as the body are applied as sent.
@@ -209,14 +211,16 @@
                                   :from [:token_layers]
                                   :where [:= :text_layer_id (:text_layer_id text-row)]}))
           {:keys [partitioning deciders exclusive] :as roles}
-          (ta/layer-roles (map (fn [r] (let [plaid (some-> (:config r) psc/parse-config (clojure.core/get "plaid"))]
+          (ta/layer-roles (map (fn [r] (let [config (some-> (:config r) psc/parse-config)
+                                             plaid (clojure.core/get config "plaid")]
                                          {:id (:id r)
                                           :overlap-mode (:overlap_mode r)
                                           :parent (:parent_token_layer_id r)
                                           :split-on-space (true? (clojure.core/get plaid "splitOnSpace"))
-                                          :role (clojure.core/get plaid "role")}))
+                                          :role (clojure.core/get plaid "role")
+                                          :letter-like (ta/ignored-letter-like config)}))
                                layer-rows))
-          opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers])
+          opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers :letter-like])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}
           (cond
