@@ -34,7 +34,7 @@ for (const b of ['tokenLayers', 'spanLayers', 'relationLayers']) {
 const READ_POSTS = new Set([
   'tokenLayers.checkConstraints', 'spanLayers.checkConstraints', 'relationLayers.checkConstraints',
   'spanLayers.refusedValues', 'relationLayers.refusedValues',
-  'documents.mediaLink', 'users.avatarToken', 'users.avatarUrl',
+  'documents.mediaLink', 'users.avatarToken', 'users.avatarUrl', 'tokenLayers.countMatching',
 ]);
 // CRUD bundles whose writes hit document state. `messages`/services are
 // real-time/registry (not audit-logged) and use streaming transports.

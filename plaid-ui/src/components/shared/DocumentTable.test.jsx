@@ -53,16 +53,17 @@ describe('DocumentTable', () => {
     await unmount();
   });
 
-  it('counts only tokens whose surface matches the word value spec, asked once', async () => {
+  it('counts a word value spec with core token count, not the query', async () => {
     const spec = { regex: '[^\\p{P}]' };
-    const query = vi.fn(async ({ where }) =>
-      JSON.stringify(where[1]?.[2]?.value) === JSON.stringify(spec)
-        ? { results: [['d1', 40]] }
-        : { results: [['d1', 42]] },
-    );
-    const { container, unmount } = await mount({ client: client({ query }), wordValue: spec });
+    const query = vi.fn(async () => ({ results: [['d1', 42]] }));
+    const countMatching = vi.fn(async () => ({ results: [['wl', 'd1', 40]] }));
+    const { container, unmount } = await mount({
+      client: client({ query, tokenLayers: { countMatching } }),
+      wordValue: spec,
+    });
     expect(wordCells(container)).toEqual(['40', '0']);
-    expect(query.mock.calls[0][0].where[1]).toEqual(['token', '?t', { value: spec }]);
+    expect(countMatching).toHaveBeenCalledWith(['wl'], spec);
+    expect(query).not.toHaveBeenCalled();
     await unmount();
   });
 

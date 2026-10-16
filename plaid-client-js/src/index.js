@@ -2603,6 +2603,24 @@ class PlaidClient {
     this.tokenLayers = {
       ...layerMethods(this, "token-layers"),
       /**
+       * Count, per document, the tokens of each layer whose surface matches a
+       * regex, as a query's `value: {regex}` on a token decides. Each text is
+       * read once, so it stays fast on a long document. Layers you cannot read
+       * are left out.
+       * @param {string[]} layerIds - The token layer ids
+       * @param {{regex: string, flags?: string}} value - The regex spec
+       * @returns {Promise<{results: Array<[string, string, number]>}>} [layerId,
+       *   documentId, count] rows, a document with tokens of the layer and no
+       *   match counting 0.
+       */
+      countMatching: (layerIds, value) =>
+        this._request("POST", "/api/v1/query/token-counts", {
+          body: { layers: layerIds, value },
+          outOfBand: true,
+          timeout: queryTimeout(this),
+          noBusyRetry: true,
+        }),
+      /**
        * Create a new token layer.
        * @param {string} textLayerId - The text layer ID
        * @param {string} name - The name

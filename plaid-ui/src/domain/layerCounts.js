@@ -23,8 +23,10 @@
  *
  * `wordValue(project)`, optional, is a query value spec a word's surface
  * matches (plaid-igt's: a token its ignored-tokens rule excludes, punctuation
- * ud's Tokenize made say, is no word). Such a project is counted by one more
- * query per distinct spec, over its own projects only.
+ * ud's Tokenize made say, is no word). Such a project's word layer is counted
+ * by core's token count (`tokenLayers.countMatching`, one call per distinct
+ * spec), which reads each text once: the query language's `value` regex slices
+ * every token out of its text and timed out on a long document.
  *
  * `layer: '?l'` binds a layer VARIABLE (a bare "?name" string); the `{var}`
  * form is only for scalar values (doc, value, begin, end, form).
@@ -54,20 +56,16 @@ export const wordCountsByProject = async (
         })
       : null,
     ...[...bySpec.values()].map(({ spec, projects: ps }) =>
-      client.query({
-        where: [
-          ['token', '?t', { layer: '?l' }],
-          ['token', '?t', { value: spec }],
-        ],
-        scope: { projectIds: ps.map((p) => p.id) },
-        return: { group: ['?l'], aggregates: [['count']] },
-      }),
+      client.tokenLayers.countMatching(ps.map(wordLayerId), spec),
     ),
   ]);
   const byLayer = new Map((res?.results || []).map(([layerId, n]) => [layerId, n]));
   const wordsByLayer = new Map();
-  for (const r of filtered)
-    for (const [layerId, n] of r?.results || []) wordsByLayer.set(layerId, n);
+  for (const r of filtered) {
+    for (const [layerId, , n] of r?.results || []) {
+      wordsByLayer.set(layerId, (wordsByLayer.get(layerId) || 0) + n);
+    }
+  }
   const filteredIds = new Set([...bySpec.values()].flatMap((g) => g.projects.map((p) => p.id)));
   const byProject = {};
   const short = [];

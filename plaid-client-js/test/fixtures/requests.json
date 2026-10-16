@@ -422,5 +422,11 @@
     "py_kw": {"limit": 5},
     "sends": [{"method": "POST", "path": "/api/v1/<kind>/L1/constraints/refused-values",
                "body": {"values": ["1SG", "snake_case"], "delimiters": ".", "parts": "all", "limit": 5}}]
+  },
+  {
+    "name": "tokenLayers.countMatching sends the layers and the regex spec",
+    "js": ["tokenLayers.countMatching", ["L1", "L2"], {"regex": "[^\\p{P}]", "flags": "i"}],
+    "sends": [{"method": "POST", "path": "/api/v1/query/token-counts",
+               "body": {"layers": ["L1", "L2"], "value": {"regex": "[^\\p{P}]", "flags": "i"}}}]
   }
 ]

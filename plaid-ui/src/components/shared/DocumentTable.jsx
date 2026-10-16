@@ -74,14 +74,18 @@ export const DocumentTable = ({
         return;
       }
       try {
-        const countPerDoc = (layer, value = null) =>
-          client.query({
-            where: [
-              ['token', '?t', { layer, doc: { var: '?d' } }],
-              ...(value ? [['token', '?t', { value }]] : []),
-            ],
-            return: { group: ['?d'], aggregates: [['count']] },
-          });
+        // A word value spec is counted by core's token count, which reads
+        // each text once (see wordCountsByProject): rows [layer, doc, n].
+        const countPerDoc = async (layer, value = null) => {
+          if (!value) {
+            return client.query({
+              where: [['token', '?t', { layer, doc: { var: '?d' } }]],
+              return: { group: ['?d'], aggregates: [['count']] },
+            });
+          }
+          const res = await client.tokenLayers.countMatching([layer], value);
+          return { results: (res?.results || []).map(([, doc, n]) => [doc, n]) };
+        };
         const [res, seeds] = await Promise.all([
           countPerDoc(wordLayerId, JSON.parse(wordValueKey)),
           seedLayerId ? countPerDoc(seedLayerId) : null,

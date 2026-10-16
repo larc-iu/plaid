@@ -1837,6 +1837,25 @@ class InvitesResource(_Resource):
 class TokenLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
     _kind = 'token-layers'
 
+    def count_matching(self, layer_ids: list, value: dict) -> Any:
+        """Count, per document, the tokens of each layer whose surface matches
+        a regex, as a query's ``value: {'regex': ...}`` on a token decides. Each
+        text is read once, so it stays fast on a long document. Layers you
+        cannot read are left out.
+
+        Args:
+            layer_ids: The token layer ids.
+            value: The regex spec, ``{'regex': ..., 'flags'?: 'i'}``.
+
+        Returns:
+            ``{'results': [[layer_id, document_id, count], ...]}``, a document
+            with tokens of the layer and no match counting 0.
+        """
+        # A read that travels as a POST, timed as a query is (see query).
+        return self._request('POST', '/api/v1/query/token-counts',
+                             body={'layers': layer_ids, 'value': value}, out_of_band=True,
+                             timeout=query_timeout(self._client), no_busy_retry=True)
+
     def create(self, text_layer_id: str, name: str, *, overlap_mode: Any = _UNSET,
                parent_token_layer_id: Any = _UNSET, audit_message=None,
                id: str | None = None) -> Any:
