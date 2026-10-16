@@ -154,8 +154,14 @@ export const chrome = {
     `;
   },
 
+  // A cell still focused on the page going away is taken off first, so what
+  // was typed into it commits: the render removes the cell, and a browser
+  // need not fire blur on a removed element. The pager's own buttons blur on
+  // mousedown, a citation or a search hit landing on another page does not.
   _setPage(page, scrollToTop = false) {
     if (page === this._page) return;
+    const el = document.activeElement;
+    if (el && el !== document.body && this.container.contains(el)) el.blur();
     this._page = page;
     this._render(true);
     if (scrollToTop) {

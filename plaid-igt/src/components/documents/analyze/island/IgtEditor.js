@@ -308,11 +308,7 @@ export class IgtEditor {
       sessionStorage.removeItem('igt:focus-sentence'); // stale target — drop it
       return;
     }
-    const page = Math.floor(idx / this.constructor.PAGE_SIZE);
-    if (page !== this._page) {
-      this._page = page;
-      this._render(true);
-    }
+    this._setPage(Math.floor(idx / this.constructor.PAGE_SIZE));
     requestAnimationFrame(() => {
       const el = this.container.querySelector(
         `.igt-sentence[data-sentence-id="${req.sentenceId}"]`,

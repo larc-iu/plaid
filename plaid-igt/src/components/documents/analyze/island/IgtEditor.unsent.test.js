@@ -319,6 +319,26 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     expect(hasUnsavedDraft()).toBe(null);
   });
 
+  // REV-QUEUE2 item 4: an assistant citation or a search hit turning the page
+  // removed a focused cell with what was typed into it.
+  it('is committed when a citation turns the page while its cell has focus', async () => {
+    const { doc } = mountPaged();
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    sessionStorage.setItem(
+      'igt:focus-sentence',
+      JSON.stringify({ docId: doc.id, sentenceId: 's-2' }),
+    );
+    editor._consumeFocusRequest();
+    await settle(6);
+    expect(cell('ma:m-1:Gloss')).toBe(null);
+    sessionStorage.removeItem('igt:focus-sentence');
+    editor._setPage(0);
+    await settle(6);
+    expect(cell('ma:m-1:Gloss').value).toBe('AAA');
+  });
+
   it('comes back when the refusal answers while the reader is on another page', async () => {
     const { refuse } = mountPaged();
     const a = cell('ma:m-1:Gloss');
