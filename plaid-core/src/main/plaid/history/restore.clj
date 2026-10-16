@@ -323,7 +323,7 @@
       (delete-rows! tx table (deletes table not)))
     ;; The document row.
     (when-let [n (:name p)]
-      (crud/update-by-id! tx :documents doc-id {:name n}))
+      (crud/update-by-id! tx :documents doc-id {:name n :name_key (names/fold n)}))
     (when (:document-metadata? p)
       (metadata/replace-metadata! tx "document" doc-id (:document-metadata p)))
     (doseq [table [:texts :tokens :spans :relations :vocab_links]]

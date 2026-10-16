@@ -564,9 +564,7 @@ def test_documents_sharing_a_name_are_printed_and_cited_by_id():
     from fixtures import document_raw
     from plaid_agent.igt.citations import resolve_citations
     docs = {}
-    # Core refuses a name another document holds exactly, so the two that
-    # share one here differ by case, which the assistant reads as one name.
-    for i, name in enumerate(['Text 1', 'text 1', 'Text 2'], 1):
+    for i, name in enumerate(['Text 1', 'Text 1', 'Text 2'], 1):
         raw = document_raw()
         raw['id'], raw['name'] = f'd{i}', name
         docs[raw['id']] = raw
@@ -576,7 +574,7 @@ def test_documents_sharing_a_name_are_printed_and_cited_by_id():
     assert (w.corpus.ref_name('d1'), w.corpus.ref_name('d2'), w.corpus.ref_name('d3')) == ('d1', 'd2', 'Text 2')
     out = call_tool(w, 'search', {'pattern': 'gam'})
     assert '"d1" s1.w2 gam' in out and '"d2" s1.w2 gam' in out and '"Text 2" s1.w2 gam' in out
-    assert 'Document "text 1" (d2):' in call_tool(w, 'read_document', {'document': 'd2'})
+    assert 'Document "Text 1" (d2):' in call_tool(w, 'read_document', {'document': 'd2'})
     assert 'Document "Text 2": ' in call_tool(w, 'read_document', {'document': 'd3'})
     # Naming the shared name is refused, with the ids to pick from.
     assert 'Several documents are named "Text 1"; use an id: d1, d2' in call_tool(
@@ -584,7 +582,7 @@ def test_documents_sharing_a_name_are_printed_and_cited_by_id():
     # A citation by that id resolves and still shows the reader the name.
     cites = resolve_citations(w, 'see <cite doc="d2" ref="s1"/>, not <cite doc="Text 1" ref="s1"/>')
     assert [(c['key'], c['document_id'], c['document_name']) for c in cites] == [
-        ('<cite doc="d2" ref="s1"/>', 'd2', 'text 1')]
+        ('<cite doc="d2" ref="s1"/>', 'd2', 'Text 1')]
     # The person approving a plan sees the id too, but only where it is needed.
     call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
     assert w.ops[-1]['label'] == 'Text 1 (d1) s1.w2: respell "gam" → "gham"'

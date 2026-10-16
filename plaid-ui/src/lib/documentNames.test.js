@@ -17,8 +17,11 @@ describe('freeDocumentName', () => {
     expect(freeDocumentName('Kafe\u0301', ['Kaf\u00e9'])).toBe('Kaf\u00e9 (2)');
   });
 
-  it('is exact about case', () => {
-    expect(freeDocumentName('story', ['Story'])).toBe('story');
+  it('skips a name taken but for case, as core does', () => {
+    expect(freeDocumentName('story', ['Story'])).toBe('story (2)');
+    expect(freeDocumentName('Story', ['STORY', 'story (2)'])).toBe('Story (3)');
+    expect(freeDocumentName('Straße', ['STRASSE'])).toBe('Straße (2)');
+    expect(freeDocumentName('σοφος', ['ΣΟΦΟΣ'])).toBe('σοφος (2)');
   });
 });
 

@@ -2,7 +2,8 @@
   "Document names are unique in a project (plaid.sql.document-names).
 
   The invariant: after any write, no two documents of a project share a
-  name. Create and rename refuse a taken name with 422 and `name-taken`;
+  name, ignoring case (`fold`), and each document's `name_key` is its name
+  folded. Create and rename refuse a taken name with 422 and `name-taken`;
   a create or copy with `free-name` takes the first free \"Name (n)\"; a
   restore keeps the current name when the old one is taken; and the
   migration renames the documents that already shared a name, the oldest
@@ -44,7 +45,19 @@
                                   {:builder-fn rs/as-unqualified-maps}))))
 
 (defn- unique? [project]
-  (let [ns (names-in project)] (= (count ns) (count (set ns)))))
+  (let [rows (jdbc/execute! db ["SELECT name, name_key FROM documents WHERE project_id = ?" project]
+                            {:builder-fn rs/as-unqualified-maps})]
+    (and (every? #(= (names/fold (:name %)) (:name_key %)) rows)
+         (apply distinct? nil (map :name_key rows)))))
+
+(deftest fold-is-full-case-folding
+  (is (= "story" (names/fold "STORY") (names/fold "Story") (names/fold "story")))
+  (is (= (names/fold "STRASSE") (names/fold "Straße") (names/fold "STRAẞE")) "ß, ẞ and ss are one")
+  (is (= (names/fold "ΣΟΦΟΣ") (names/fold "σοφος") (names/fold "σοφοσ")) "final sigma")
+  (is (= (names/fold "ǅ") (names/fold "Ǆ") (names/fold "ǆ")) "a titlecase digraph")
+  (is (= (names/fold "Ꭰ") (names/fold "ꭰ")) "Cherokee")
+  (is (= (names/fold "Kafe\u0301") (names/fold "KAFÉ")) "composed")
+  (is (not= (names/fold "Story") (names/fold "Story ")) "nothing but case"))
 
 (deftest free-name-takes-the-first-free-candidate
   (is (= "A" (names/free-name #{} "A")))
@@ -52,6 +65,15 @@
   (is (= "A (4)" (names/free-name #{"A" "A (2)" "A (3)"} "A")))
   (is (= "A (2)" (names/free-name #{"A" "A (3)"} "A")) "the first free, not one past the highest")
   (is (= "A (2) (2)" (names/free-name #{"A (2)"} "A (2)")) "a name ending in a number is a name like any other"))
+
+(deftest renames-ignore-case-when-asked
+  (let [docs [{:id "d1" :name "Story" :created_at "2026-01-01"}
+              {:id "d2" :name "story" :created_at "2026-01-02"}
+              {:id "d3" :name "STORY (2)" :created_at "2026-01-03"}
+              {:id "d4" :name "Other" :created_at "2026-01-04"}]]
+    (is (= [] (names/renames docs)) "exactly, nothing is shared")
+    (is (= [["d2" "story (3)"]] (names/renames docs names/fold))
+        "the later one takes the first free name, skipping one that is taken but for case")))
 
 (deftest renames-keep-the-oldest-and-avoid-every-name
   (let [docs [{:id "d3" :name "A" :created_at "2026-01-03"}
@@ -77,21 +99,28 @@
         (is (str/includes? (get-in r [:body :error]) "“Story”"))))
     (testing "another project may use the name"
       (assert-created (create! q "Story")))
-    (testing "the name is exact: a different case is another name"
-      (assert-created (create! p "story")))
-    (testing "a rename to a taken name is refused, and changes nothing"
-      (let [r (rename! b "Story")]
+    (testing "case does not tell names apart"
+      (let [r (create! p "STORY")]
         (assert-status 422 r)
-        (is (= "Story" (get-in r [:body :name-taken])))
-        (is (= ["Other" "Story" "story"] (names-in p)))))
-    (testing "a rename to its own name, or a free one, goes through"
+        (is (= "STORY" (get-in r [:body :name-taken]))))
+      (assert-created (create! p "Straße"))
+      (assert-status 422 (create! p "STRASSE"))
+      (assert-status 422 (create! p "strasse")))
+    (testing "a rename to a taken name is refused, and changes nothing"
+      (let [r (rename! b "story")]
+        (assert-status 422 r)
+        (is (= "story" (get-in r [:body :name-taken])))
+        (is (= ["Other" "Story" "Straße"] (names-in p)))))
+    (testing "a rename to its own name in another case, or a free one, goes through"
+      (assert-ok (rename! a "STORY"))
       (assert-ok (rename! a "Story"))
       (assert-ok (rename! b "Other tale")))
     (testing "free-name takes the first free name, and the answer says which"
       (let [r (create! p "Story" :free-name true)]
         (assert-created r)
         (is (= "Story (2)" (get-in r [:body :name]))))
-      (is (= "Story (3)" (get-in (create! p "Story" :free-name true) [:body :name])))
+      (is (= "story (3)" (get-in (create! p "story" :free-name true) [:body :name]))
+          "free of names taken but for case")
       (is (= "Fresh" (get-in (create! p "Fresh" :free-name true) [:body :name]))
           "a free name is kept as it is"))
     (is (unique? p))))
@@ -99,8 +128,9 @@
 (deftest copy-refuses-or-takes-the-first-free-name
   (let [p (create-test-project admin-request "P")
         a (create-test-document admin-request p "Story")
-        _ (create-test-document admin-request p "Story (2)")]
-    (testing "a copy under a taken name is refused"
+        _ (create-test-document admin-request p "STORY (2)")]
+    (testing "a copy under a taken name is refused, in any case"
+      (assert-status 422 (copy! a "story (2)"))
       (let [r (copy! a "Story")]
         (assert-status 422 r)
         (is (= "Story" (get-in r [:body :name-taken])))))
@@ -118,7 +148,7 @@
         _ (assert-ok (rename! a "Story renamed"))
         t (latest-op-ts)
         _ (assert-ok (rename! a "Story later"))
-        b (create-test-document admin-request p "Story renamed")]
+        b (create-test-document admin-request p "STORY RENAMED")]
     (assert-ok (restore! a t))
     (is (= "Story later" (:name (jdbc/execute-one! db ["SELECT name FROM documents WHERE id = ?" a]
                                                    {:builder-fn rs/as-unqualified-maps}))))
@@ -142,32 +172,39 @@
                                    ["d3" "p1" "A" "2026-01-03T00:00:00Z"]
                                    ["d4" "p1" "A (2)" "2026-01-04T00:00:00Z"]
                                    ["d5" "p1" "B" "2026-01-05T00:00:00Z"]
-                                   ["d6" "p2" "A" "2026-01-06T00:00:00Z"]]]
+                                   ["d6" "p2" "A" "2026-01-06T00:00:00Z"]
+                                   ["d7" "p1" "b" "2026-01-07T00:00:00Z"]
+                                   ["d8" "p1" "a (5)" "2026-01-08T00:00:00Z"]]]
         (q "INSERT INTO documents (id, name, project_id, version, created_at, modified_at) VALUES (?, ?, ?, 1, ?, ?)"
            id name p created created))
       (migratus/migrate (cfg ds))
       (let [by-id (into {} (map (juxt :id identity)) (q "SELECT * FROM documents"))]
         (testing "the oldest keeps the name, the others take the first free one"
-          (is (= {"d1" "A (3)" "d2" "A" "d3" "A (4)" "d4" "A (2)" "d5" "B" "d6" "A"}
-                 (update-vals by-id :name))))
+          (is (= {"d1" "A (3)" "d2" "A" "d3" "A (4)" "d4" "A (2)" "d5" "B" "d6" "A"
+                  "d7" "b (2)" "d8" "a (5)"}
+                 (update-vals by-id :name))
+              "the exact pass, then case: the later of B and b takes the first free name"))
+        (testing "every name_key is the name folded"
+          (is (every? #(= (names/fold (:name %)) (:name_key %)) (vals by-id))))
         (testing "a renamed document's version moves, its modification time does not"
           (is (= 2 (:version (by-id "d1"))))
           (is (= "2026-01-02T00:00:00Z" (:modified_at (by-id "d1"))))
           (is (= 1 (:version (by-id "d2"))))))
       (testing "each rename is an operation with an audited post-image"
         (let [ops (q "SELECT * FROM operations WHERE op_type = 'document/update' ORDER BY ts")]
-          (is (= #{"d1" "d3"} (set (map :document_id ops))))
+          (is (= #{"d1" "d3" "d7"} (set (map :document_id ops))))
           (is (every? #(nil? (:user_id %)) ops))
           (is (every? #(= "p1" (:project_id %)) ops))
-          (is (= #{"A (3)" "A (4)"}
+          (is (= #{"A (3)" "A (4)" "b (2)"}
                  (set (for [w (q "SELECT post_image FROM audit_writes WHERE target_table = 'documents'")]
                         (second (re-find #"\"name\":\"([^\"]*)\"" (:post_image w)))))))))
       (testing "the database refuses a duplicate from then on"
         (is (thrown? Exception
-                     (q "INSERT INTO documents (id, name, project_id, version, created_at, modified_at) VALUES ('d9', 'B', 'p1', 1, 'x', 'x')"))))
-      (testing "down takes the index away"
+                     (q "INSERT INTO documents (id, name, name_key, project_id, version, created_at, modified_at) VALUES ('d9', 'Bx', 'b', 'p1', 1, 'x', 'x')"))))
+      (testing "down takes the folded key away and puts the exact index back"
         (migratus/rollback (cfg ds))
-        (is (empty? (q "SELECT name FROM sqlite_master WHERE name = 'idx_documents_project_name_unique'"))))
+        (is (empty? (q "SELECT name FROM sqlite_master WHERE name = 'idx_documents_project_name_key'")))
+        (is (seq (q "SELECT name FROM sqlite_master WHERE name = 'idx_documents_project_name_unique'"))))
       (finally
         (.close ds)
         (doseq [suffix ["" "-wal" "-shm"]]

@@ -1,5 +1,6 @@
-// Document names are unique in a project. Core refuses a create, rename or
-// copy to a name another document of the project holds (422, `name-taken`),
+// Document names are unique in a project, ignoring case. Core refuses a
+// create, rename or copy to a name another document of the project holds
+// (422, `name-taken`),
 // and a copy or an import may ask core for the first free name instead
 // (`freeName`). The same order as core's `plaid.sql.document-names`.
 
@@ -13,11 +14,17 @@ function* nameCandidates(name) {
   for (let n = 2; ; n += 1) yield `${name} (${n})`;
 }
 
-/** The first of `nameCandidates(name)` not among `taken` (any iterable),
- * composed (NFC) as the server stores every name. */
+// A name as core compares names (`plaid.sql.document-names/fold`): full case
+// folding, upper then lower case with ß as ss, composed.
+const fold = (name) => nameKey(nameKey(name).toUpperCase().toLowerCase().replaceAll('ß', 'ss'));
+
+/** The first of `nameCandidates(name)` none of `taken` (any iterable) holds
+ * but for case, composed (NFC) as the server stores every name. */
 export function freeDocumentName(name, taken) {
-  const held = new Set([...taken].map(nameKey));
-  for (const candidate of nameCandidates(nameKey(name))) if (!held.has(candidate)) return candidate;
+  const held = new Set([...taken].map(fold));
+  for (const candidate of nameCandidates(nameKey(name))) {
+    if (!held.has(fold(candidate))) return candidate;
+  }
   return nameKey(name);
 }
 

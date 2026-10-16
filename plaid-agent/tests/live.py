@@ -244,10 +244,13 @@ class Seeded:
 
     def _document(self, b, fid, raw):
         did = self._mint(fid)
+        # A fixture may hold two documents of one name, which core refuses: the
+        # copy takes a free one. Queries answer in ids, so the copy's names
+        # never reach a test, which reads the fake's.
         if raw.get('metadata'):
-            b.documents.create(self.project_id, raw['name'], raw['metadata'], id=did)
+            b.documents.create(self.project_id, raw['name'], raw['metadata'], id=did, free_name=True)
         else:
-            b.documents.create(self.project_id, raw['name'], id=did)
+            b.documents.create(self.project_id, raw['name'], id=did, free_name=True)
         for tl in raw['text_layers']:
             text = tl.get('text') or {}
             body = text.get('body') or ''

@@ -368,7 +368,8 @@
   `:document/id` names the new document's id (a client's UUIDv7), else
   the server mints one.
 
-  A name another document of the project holds is refused (422), unless
+  A name another document of the project holds, ignoring case
+  (`plaid.sql.document-names/fold`), is refused (422), unless
   `:document/free-name?`, which takes the first free name instead
   (`plaid.sql.document-names`).
 
@@ -410,6 +411,7 @@
                               (crud/insert! tx :documents
                                             {:id new-id
                                              :name name
+                                             :name_key (names/fold name)
                                              :project_id project
                                              :version 1
                                              :created_at now
@@ -421,7 +423,7 @@
 
 (defn merge
   "Update mutable document fields. Currently supports :document/name, which
-  is refused (422) when another document of the project holds it.
+  is refused (422) when another document of the project holds it, ignoring case.
   Always bumps `version`, and `modified_at` unless the write is a repair
   (`op/modified-at`)."
   [db eid m user-id]
@@ -446,7 +448,8 @@
                        (let [attrs (cond-> {:modified_at (op/modified-at tx existing (op/op-ts))
                                             :version (inc (or (:version existing) 1))}
                                      (some? (:document/name m))
-                                     (assoc :name (:document/name m)))]
+                                     (assoc :name (:document/name m)
+                                            :name_key (names/fold (:document/name m))))]
                          (crud/update-by-id! tx :documents eid attrs)
                          eid))))
 
@@ -529,7 +532,8 @@
   `:id` in the options names the copy's id (a client's UUIDv7), else the
   server mints one. The rows inside the copy always get server ids.
 
-  A name another document of the project holds is refused (422), unless
+  A name another document of the project holds, ignoring case
+  (`plaid.sql.document-names/fold`), is refused (422), unless
   `:free-name?` in the options, which takes the first free name instead.
   The result's `:extra` carries the name stored beside the id."
   ([db src-id new-name user-id]
@@ -605,6 +609,7 @@
                                 (crud/insert! tx :documents
                                               {:id new-id
                                                :name new-name
+                                               :name_key (names/fold new-name)
                                                :project_id (:project_id src)
                                                :version 1
                                                :created_at now

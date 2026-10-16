@@ -103,7 +103,7 @@
    ["" {:post {:summary (str "Create a new document in a project. Requires <body>project-id</body> and <body>name</body>. "
                              "<body>id</body>, optional, is the new document's id, a UUIDv7 the client minted (else the "
                              "server mints one). An id used before, even by a document since deleted, is refused with "
-                             "409 and <body>id-taken</body>. A name another document of the project holds is refused "
+                             "409 and <body>id-taken</body>. A name another document of the project holds, ignoring case, is refused "
                              "with 422 and <body>name-taken</body>, unless <body>free-name</body> is true, which takes "
                              "the first free name instead: the name itself, else \"name (2)\", \"name (3)\" and on. "
                              "The answer carries the <body>name</body> stored.")
@@ -201,7 +201,7 @@
                                        {:status 200 :body body}
                                        db document-id))))))))}
          :patch {:summary (str "Update a document. Supported keys:\n\n<body>name</body>: update a document's name. "
-                               "A name another document of the project holds is refused with 422 and "
+                               "A name another document of the project holds, ignoring case, is refused with 422 and "
                                "<body>name-taken</body>.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
@@ -287,7 +287,7 @@
                            "Requires writer privileges. <body>id</body>, optional, is the copy's id, a UUIDv7 "
                            "the client minted (else the server mints one). An id used before is refused with 409 "
                            "and <body>id-taken</body>. The rows inside the copy always get fresh server ids. "
-                           "A name another document of the project holds is refused with 422 and "
+                           "A name another document of the project holds, ignoring case, is refused with 422 and "
                            "<body>name-taken</body>, unless <body>free-name</body> is true, which takes the first "
                            "free name instead: the name itself, else \"name (2)\", \"name (3)\" and on. The answer "
                            "carries the <body>name</body> stored.")

@@ -2958,7 +2958,8 @@ class PlaidClient {
           auditMessage,
         }),
       /**
-       * Update a document's name. A name another document of the project holds
+       * Update a document's name. A name another document of the project holds,
+       * ignoring case,
        * is refused with 422 and `name-taken`.
        * @param {string} documentId - The document ID
        * @param {string} name - The name
@@ -2978,7 +2979,7 @@ class PlaidClient {
        * @param {string} [auditMessage] - Audit message for this write
        * @param {object} [opts]
        * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-       * @param {boolean} [opts.freeName] - A name another document of the project holds becomes
+       * @param {boolean} [opts.freeName] - A name another document of the project holds, ignoring case, becomes
        *   the first free "name (2)", "name (3)" and on. Without it such a name is refused with 422
        *   and `name-taken`.
        * @returns {Promise<{id: string, name: string}>} The new id and the name stored
@@ -3002,7 +3003,7 @@ class PlaidClient {
        * metadata. Comments do not travel. The media file does, unless
        * `includeMedia` is false. Resolves to `{ id, name }`, plus `mediaError` when
        * the source had media the copy could not take with it. A name another
-       * document of the project holds is refused with 422 and `name-taken`,
+       * document of the project holds, ignoring case, is refused with 422 and `name-taken`,
        * unless `freeName`, which takes the first free "name (2)", "name (3)"
        * and on.
        * @param {string} documentId - The document to copy

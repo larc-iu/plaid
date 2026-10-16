@@ -2198,7 +2198,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
 
     def update(self, document_id: str, name: str, audit_message=None) -> Any:
         """Update a document's name. A name another document of the project
-        holds is refused with 422 and ``name-taken``.
+        holds, ignoring case, is refused with 422 and ``name-taken``.
 
         Args:
             document_id: The document ID
@@ -2221,7 +2221,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 minted (``plaid_client.uuid7()``), so a create sent again after
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
-            free_name: A name another document of the project holds becomes
+            free_name: A name another document of the project holds, ignoring case,
+                becomes
                 the first free "name (2)", "name (3)" and on. Without it such a
                 name is refused with 422 and ``name-taken``.
         """
@@ -2318,7 +2319,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         tokens, spans, relations and vocab links under fresh ids, with their
         metadata. Comments do not travel. Returns ``{'id': ..., 'name': ...}``,
         plus ``media_error`` when the source had media the copy could not take
-        with it. Writers only. A name another document of the project holds is
+        with it. Writers only. A name another document of the project holds, ignoring case, is
         refused with 422 and ``name-taken``, unless ``free_name``, which takes
         the first free "name (2)", "name (3)" and on.
 

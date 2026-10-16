@@ -1,0 +1,8 @@
+;; Document names are unique in a project ignoring case (Luke, 2026-10-16):
+;; every document gets its folded name in name_key, the documents whose
+;; names are one but for case are renamed, the oldest keeping its name, and
+;; the unique index moves to (project_id, name_key).
+{:ns plaid.sql.document-names
+ :up-fn "up-fold"
+ :down-fn "down-fold"
+ :transaction? false}
