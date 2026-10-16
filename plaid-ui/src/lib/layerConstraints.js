@@ -194,12 +194,13 @@ export async function ensureLayerConstraints(
         }
         // One layer, or one refusal rolled the whole batch back: declare each
         // on its own, taking out the rules each refusal names, to declare the
-        // rest.
+        // rest. An empty list is declared too: it takes off a rule the layer
+        // holds and is no longer wanted, as the batch above would.
         for (const { entry: w, target } of toDeclare) {
           let list = target;
           // The first refusal counts every violation of the rules refused.
           let counted = false;
-          while (list.length && !sameConstraints(w.stored, list)) {
+          while (!sameConstraints(w.stored, list)) {
             try {
               await declare(client, w, list);
               result.changed = true;

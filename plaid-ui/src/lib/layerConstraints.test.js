@@ -246,6 +246,30 @@ describe('ensureLayerConstraints', () => {
     expect(next.pending[0].repair).toEqual(['single-span']);
   });
 
+  it('takes a list off one layer when nothing else it wants can be declared (REV6-WIRE-3)', async () => {
+    // A field holding a list no tagset wants, and two annotations on a unit:
+    // one span a unit is left out (no repair), so what it takes is no rule,
+    // and the list goes, whether it is healed alone or with other fields.
+    const doubled = (rules) =>
+      rules.some((r) => r.type === 'single-span')
+        ? { violations: [{ constraint: 'single-span' }], violationCount: 1 }
+        : { violations: [], violationCount: 0 };
+    const vs = { type: 'value-set', values: ['n'] };
+    for (const others of [[], [entry('M', [{ type: 'single-span' }])]]) {
+      const c = fakeClient({ 'checkConstraints:L': doubled });
+      const out = await ensureLayerConstraints(
+        c,
+        [entry('L', [{ type: 'single-span' }], [vs]), ...others],
+        { canManage: true, repair: false },
+      );
+      expect(
+        c.calls.filter((x) => x[0] === 'setConstraints' && x[1] === 'L').map((x) => x[3]),
+      ).toEqual([[]]);
+      expect(out.changed).toBe(true);
+      expect(out.pending.map((p) => [p.layerId, p.repair])).toEqual([['L', ['single-span']]]);
+    }
+  });
+
   it('reads a layer another maintainer declared meanwhile once, and stops', async () => {
     const conflict = Object.assign(new Error('HTTP 409'), { status: 409, responseData: {} });
     const c = fakeClient({
