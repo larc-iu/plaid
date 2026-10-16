@@ -134,9 +134,10 @@ function renderControl(id, param, value, onChange, disabled) {
         />
       );
     case 'enum':
+      // As wide as its longest choice needs, so a long one is read whole.
       return (
         <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
-          <SelectTrigger id={id} style={{ width: 200 }}>
+          <SelectTrigger id={id} style={{ minWidth: 200, width: 'auto', maxWidth: '100%' }}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
