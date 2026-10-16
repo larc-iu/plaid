@@ -33,7 +33,7 @@ import {
   ImportCancelled,
   importStamp,
   priorImports,
-  setVocabConfig,
+  writeVocabConfig,
   withoutStamps,
 } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
@@ -195,36 +195,37 @@ export async function importVocabulary({
   // `lang` is a FLEx custom field's writing system, read back by the LIFT
   // export. Both only when the archive has them.
   // Each written only where it differs, so a resume writes nothing the
-  // first run already did (`setVocabConfig`).
+  // first run already did (`writeVocabConfig`).
   const vocab = await client.vocabLayers.get(vocabId);
   if (vocabData.fields?.length) {
-    await setVocabConfig(
-      client,
-      vocab,
-      IGT_NAMESPACE,
-      'fields',
-      Object.fromEntries(
-        vocabData.fields.map((f) => [
-          f.name,
-          {
-            inline: !!f.inline,
-            ...(f.tagset ? { tagset: f.tagset } : {}),
-            ...(f.lang ? { lang: f.lang } : {}),
-            ...(f.type === 'item' ? { type: 'item' } : {}),
-            ...(f.type === 'item' && f.many ? { many: true } : {}),
-            ...(f.scope === 'entry' ? { scope: 'entry' } : {}),
-          },
-        ]),
-      ),
+    const fields = Object.fromEntries(
+      vocabData.fields.map((f) => [
+        f.name,
+        {
+          inline: !!f.inline,
+          ...(f.tagset ? { tagset: f.tagset } : {}),
+          ...(f.lang ? { lang: f.lang } : {}),
+          ...(f.type === 'item' ? { type: 'item' } : {}),
+          ...(f.type === 'item' && f.many ? { many: true } : {}),
+          ...(f.scope === 'entry' ? { scope: 'entry' } : {}),
+        },
+      ]),
+    );
+    await writeVocabConfig(vocab, IGT_NAMESPACE, 'fields', fields, () =>
+      client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fields),
     );
   }
   // The tagsets go in whole, like the fields: setup seeds a Status list for
   // the Status field it seeds, and an archive whose fields replaced that
   // field must not leave its list behind governing nothing.
   if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
-    await setVocabConfig(client, vocab, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
+    await writeVocabConfig(vocab, IGT_NAMESPACE, 'tagsets', vocabData.tagsets, () =>
+      client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets),
+    );
   } else if (vocabData.fields?.length) {
-    await setVocabConfig(client, vocab, IGT_NAMESPACE, 'tagsets', undefined);
+    await writeVocabConfig(vocab, IGT_NAMESPACE, 'tagsets', undefined, () =>
+      client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'tagsets'),
+    );
   }
   // Other apps' namespaces, verbatim (plaid-dict's publication record),
   // except a dictionary address another dictionary already has: two at one
@@ -241,7 +242,9 @@ export async function importVocabulary({
     if (ns === IGT_NAMESPACE || !keys || typeof keys !== 'object') continue;
     for (const [key, value] of Object.entries(keys)) {
       if (takenSlug && ns === DICT_NAMESPACE && key === 'slug') continue;
-      await setVocabConfig(client, vocab, ns, key, value);
+      await writeVocabConfig(vocab, ns, key, value, () =>
+        client.vocabLayers.setConfig(vocabId, ns, key, value),
+      );
     }
   }
 

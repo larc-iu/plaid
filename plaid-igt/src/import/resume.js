@@ -142,24 +142,25 @@ export async function settlePrior(
 export class NotYoursToFinish extends Error {}
 
 /**
- * Write `value` to key `key` of namespace `ns` in vocabulary `vocab`'s config
- * (`vocab` as read, with `id`, `name` and `config`), or remove the key when
- * `value` is undefined, only when the stored value differs. Only a maintainer
- * of the vocabulary may change its config, and a project maintainer who
- * resumes an import someone else started may not be one: a resume then
- * writes nothing the first run already wrote. A write still needed and
- * refused says who can finish the import. True when it wrote.
+ * Run `write`, the write of `value` to key `key` of namespace `ns` in
+ * vocabulary `vocab`'s config (`vocab` as read, with `id`, `name` and
+ * `config`; `value` undefined for a removal), only when the stored value
+ * differs. Only a maintainer of the vocabulary may change its config, and a
+ * project maintainer who resumes an import someone else started may not be
+ * one: a resume then writes nothing the first run already wrote. A write
+ * still needed and refused says who can finish the import. The caller makes
+ * the call itself, so the config keys each importer writes stay readable at
+ * its call site. True when it wrote.
  */
-export async function setVocabConfig(client, vocab, ns, key, value) {
+export async function writeVocabConfig(vocab, ns, key, value, write) {
   const stored = vocab?.config?.[ns]?.[key];
   if (value === undefined ? stored === undefined : sameConfig(stored, value)) return false;
   try {
-    if (value === undefined) await client.vocabLayers.deleteConfig(vocab.id, ns, key);
-    else await client.vocabLayers.setConfig(vocab.id, ns, key, value);
+    await write();
   } catch (err) {
     if (statusOf(err) !== 403) throw err;
     throw new NotYoursToFinish(
-      `Only a maintainer of the vocabulary “${vocab?.name ?? vocab.id}” can finish this import. Ask one to run it, or use the project as it is.`,
+      `Only a maintainer of the vocabulary “${vocab?.name ?? vocab?.id}” can finish this import. Ask one to run it, or use the project as it is.`,
       { cause: err },
     );
   }

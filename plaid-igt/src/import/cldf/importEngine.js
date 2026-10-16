@@ -17,7 +17,7 @@ import {
   ImportCancelled,
   importStamp,
   priorImports,
-  setVocabConfig,
+  writeVocabConfig,
   settlePrior,
 } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
@@ -220,7 +220,9 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     fieldsConfig[name] = { inline: name === 'gloss' || name === 'pos' };
   }
   // Only where it differs: a resume writes nothing the first run already did.
-  await setVocabConfig(client, existing, IGT_NAMESPACE, 'fields', fieldsConfig);
+  await writeVocabConfig(existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
+    client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
+  );
   return byEntry;
 }
 // The steps one document goes through, in order, so progress can report how

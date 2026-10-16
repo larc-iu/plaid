@@ -16,7 +16,7 @@ import {
   ImportCancelled,
   importStamp,
   priorImports,
-  setVocabConfig,
+  writeVocabConfig,
   settlePrior,
 } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
@@ -406,7 +406,9 @@ export async function importLexicon({
     };
   }
   // Only where it differs: a resume writes nothing the first run already did.
-  await setVocabConfig(client, existing, IGT_NAMESPACE, 'fields', fieldsConfig);
+  await writeVocabConfig(existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
+    client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
+  );
 
   // bulkCreate, not a batch of per-item creates: the bulk endpoint is one
   // request, one operation row and one pass over the table, where a batch of
@@ -569,7 +571,11 @@ async function placeVariants({
     fieldsConfig[name] = VARIANT_FIELDS[name];
     added = true;
   }
-  if (added) await setVocabConfig(client, layer, IGT_NAMESPACE, 'fields', fieldsConfig);
+  if (added) {
+    await writeVocabConfig(layer, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
+      client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
+    );
+  }
 
   const entries = [...patches.entries()];
   for (let i = 0; i < entries.length; i += CHUNK) {
