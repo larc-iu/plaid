@@ -9,10 +9,15 @@
 // existing fields and never creates one. "Carried" means an entry and its value come back
 // identical. Only a vocabulary's entries are in the file, so everything else is outside it.
 
+const PARITY_RULING =
+  'user, 2026-09-17: only the native archive must round-trip, and a loss in another format is a wart to record, not a bug to chase';
+
 const inherent = (why) => ({ carried: false, kind: 'inherent', why });
 const foreign = (why) => ({ carried: false, kind: 'foreign', why });
 const ruled = (why, ruling) => ({ carried: false, kind: 'ruled', why, ruling });
-const undecided = (why) => ({ carried: false, kind: 'undecided', why });
+// A loss the 2026-09-17 ruling accepts as a wart: whatever the import gives back
+// passes, so the comparison takes it out of both sides (expect/index.js).
+const wart = (why) => ({ carried: false, kind: 'ruled', why, ruling: PARITY_RULING, wart: true });
 
 const carried = { carried: true };
 
@@ -28,7 +33,7 @@ const NOT_A_FIELD = inherent(
 // Also fixed on 2026-09-17: a vocabulary with a field of its own called Number had two columns
 // of that name, and the entry's number, being the first, landed in the field. The number column
 // is now headed "Entry number" where a field would claim it.
-const NUMBER_COLUMN = undecided(
+const NUMBER_COLUMN = wart(
   "The Number column writes each entry's dotted number (\"a 1.2\"), which names its headword and its place, but Bulk Add ignores that column and creates every row as a headword of its own. A sense whose values differ from its headword's comes back as a second headword spelled the same, and one under a headword with no values of its own fills that headword's blanks instead.",
 );
 
@@ -149,7 +154,7 @@ export default {
       carried: 'changed',
       how: 'Headwords spelled alike come back as separate entries, in the order of the rows, when their values differ in some field and the row that disagrees is answered Add. Two whose values are all equal come back as one, because Bulk Add decides sameness by the values (plaid_igt_vocab_bulk_import.md) and does not read the Number column that tells them apart.',
     },
-    'item.homographNumber': undecided(
+    'item.homographNumber': wart(
       'The stored number is not written. The Number column shows the order of entries spelled alike, but Bulk Add ignores it. The Entries screen writes rows in that order and the project zip in creation order, and Bulk Add creates in row order, so only the first keeps a reordered homograph order, and neither keeps the stored key.',
     ),
     'item.exampleCorpus': inherent(
@@ -177,7 +182,7 @@ export default {
       'The export writes the value, and Bulk Add rejects a value the closed tagset governing its field refuses, counting the row instead of storing it.',
       'docs/igt-guide.adoc, Entry fields: "A closed tagset becomes a dropdown on the entry form and refuses a value outside the list in Bulk Add."',
     ),
-    'item.containerHeadword': undecided(
+    'item.containerHeadword': wart(
       "The headword's row has no values, so the first sense's row agrees with it and fills its blanks, and Bulk Add offers no Add answer for a row that only fills blanks. The headword comes back holding that sense's values, and each later sense comes back as a headword of its own. The Number column that says the rows are a headword and its senses is ignored.",
     ),
     'item.exampleStale': inherent(

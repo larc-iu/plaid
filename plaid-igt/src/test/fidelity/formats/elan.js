@@ -7,6 +7,11 @@
 // rebuilds the baseline from the sentence annotations (token.sentence says how) and every offset
 // is compared against that rebuilt text. The 'changed' entries say exactly how.
 
+// A loss the 2026-09-17 ruling accepts as a wart: whatever the import gives back
+// passes, so the comparison takes it out of both sides (expect/index.js).
+const PARITY_RULING =
+  'user, 2026-09-17: only the native archive must round-trip, and a loss in another format is a wart to record, not a bug to chase';
+
 const carried = { carried: true };
 
 const NO_LEXICON = {
@@ -157,12 +162,16 @@ export default {
     },
     'project.languageObject': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'EAF 2.8 declares languages (LANGUAGE, with LANG_REF on a tier), which could name the language of the sentence tier. The export declares none, and the import reads the language documented only from a FieldWorks-shaped name on the sentence tier (Transcription-txt-oni), which the export never writes.',
     },
     'project.languageMeta': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'EAF 2.8 LANGUAGE and LANG_REF could name the language of the translation and gloss tiers. The export declares none, and the import reads the meta language only from a FieldWorks-shaped field tier name (Translation-gls-nl), which the export never writes.',
     },
     'project.languageCoordinates': {
@@ -172,7 +181,9 @@ export default {
     },
     'project.speakers': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The speakers named on segments travel as tier PARTICIPANTs and come back on the segments (alignment.speaker), but the import does not write the project’s speaker list, so the list is empty afterwards.',
     },
     'project.serviceDefaults': PROJECT_SETTING,
@@ -225,7 +236,9 @@ export default {
     'layers.fieldOrder': carried,
     'layers.fieldLang': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'EAF 2.8 could name a tier’s language through LANGUAGE and LANG_REF, as project.languageObject and project.languageMeta say. The export declares none, so a field comes back with no language.',
     },
     'layers.fieldTagset': {
@@ -417,7 +430,9 @@ export default {
     'token.morphemeZero': carried,
     'token.morphTypeOnMorpheme': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'Only the joint is written: with affix markers on, a morpheme written after = comes back with morphType enclitic, and no other morph type comes back. EAF could hold morph types on a tier of their own under Morph.',
     },
     'token.provenance': TOKEN_PROV_LOST,
@@ -427,7 +442,9 @@ export default {
     'token.morphemeProvenance': TOKEN_PROV_LOST,
     'token.procliticBeforeMorpheme': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The proclitic’s morph type is not written, as token.morphTypeOnMorpheme says. Only the = joint after it is written.',
     },
     'alignment.provenance': TOKEN_PROV_LOST,
@@ -441,7 +458,9 @@ export default {
     },
     'alignment.mixedSpeakersInSentence': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'A sentence’s tiers are filed under one speaker, so its segments come back with that one speaker as alignment.speaker describes: a segment with none gains the other’s name, and segments naming two speakers all come back with none. EAF could file each segment’s tier under its own PARTICIPANT beneath the sentence tier.',
     },
     'alignment.textAcrossLineBreak': {
@@ -479,7 +498,9 @@ export default {
     },
     'span.onAlignment': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The export writes no tier for an annotation on a time-aligned segment. EAF could hold one as a Symbolic_Association tier under Segment.',
     },
     'span.provHuman': carried,

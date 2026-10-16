@@ -39,7 +39,7 @@ function onlyTheEntries(s) {
  * which entry is a sense of which (Number) is one Bulk Add ignores, so the tree
  * is not carried: a sense comes back as a headword of its own, or fills the
  * blanks of the headword above it and does not come back at all. The list
- * leaves what SHOULD happen undecided (item.sense, item.subsense,
+ * calls them warts the parity ruling accepts (item.sense, item.subsense,
  * item.containerHeadword), so every entry a tree touches is taken off BOTH
  * sides and neither answer fails.
  */

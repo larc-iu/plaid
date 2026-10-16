@@ -1,8 +1,8 @@
 // What "lost" means for each catalog feature, as an edit to a snapshot.
 //
 // When a format's list says a feature is not carried, the expected snapshot is
-// the source with that feature taken out, and for an undecided feature it is
-// taken out of both sides so neither answer fails. `STRIPS[key](snapshot)`
+// the source with that feature taken out, and for a wart (a loss the parity ruling
+// accepts, `wart: true`) it is taken out of both sides so neither answer fails. `STRIPS[key](snapshot)`
 // takes it out, in place.
 //
 // Each strip removes the feature and nothing else: a provenance strip deletes

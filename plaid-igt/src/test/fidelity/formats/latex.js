@@ -8,10 +8,15 @@
 // the examples is an invisible PDF link to its entry in the chapter. The fidelity validator
 // (e2e/fidelity/validators.mjs) compiles the bundle with LuaLaTeX when one is installed.
 
+const PARITY_RULING =
+  'user, 2026-09-17: only the native archive must round-trip, and a loss in another format is a wart to record, not a bug to chase';
+
 const inherent = (why) => ({ carried: false, kind: 'inherent', why });
 const foreign = (why) => ({ carried: false, kind: 'foreign', why });
 const ruled = (why, ruling) => ({ carried: false, kind: 'ruled', why, ruling });
-const undecided = (why) => ({ carried: false, kind: 'undecided', why });
+// A loss the 2026-09-17 ruling accepts as a wart: whatever the import gives back
+// passes, so the comparison takes it out of both sides (expect/index.js).
+const wart = (why) => ({ carried: false, kind: 'ruled', why, ruling: PARITY_RULING, wart: true });
 
 const PROJECT_CONFIG = inherent(
   'The book is the texts. Project configuration is not written, except the project name as its title.',
@@ -238,7 +243,7 @@ export default {
       carried: 'changed',
       how: 'A promoted example prints as the number of its example in the book, chapter and example in parentheses after the fields of the entry ("(4.1)"), a link to it in the PDF. One whose sentence, word or morpheme is not in the book is left out.',
     },
-    'item.exampleText': undecided(
+    'item.exampleText': wart(
       "An example stored as text and translation (a FLEx import's) is not printed: the chapter lists only examples the book holds. It could print the text and its translation.",
     ),
     'item.flexIdentity': inherent("FLEx's own guids name nothing a reader of the book can use."),
@@ -311,7 +316,7 @@ export default {
       where:
         'the metadata list, under the field\'s full name ("Title (en)"), for a switched-on field',
     },
-    'document.partlyAligned': undecided(
+    'document.partlyAligned': wart(
       'Which sentences are time-aligned shows only as a speaker above the example, and only where the segment has a speaker. Printing times, the question under alignment.times, would show it.',
     ),
     'document.differentFilledFields': {
@@ -430,7 +435,7 @@ export default {
 
     // Time alignment
     'alignment.provenance': PROVENANCE,
-    'alignment.severalInSentence': undecided(
+    'alignment.severalInSentence': wart(
       'A sentence holding several segments gets no speaker, even when every one of them has the same speaker, because only a segment that matches or contains the sentence gives one (flextext.js coveringAlignment).',
     ),
     'alignment.straddlesSentences': inherent(
@@ -443,7 +448,7 @@ export default {
     'alignment.textAcrossLineBreak': inherent(
       "The book is laid out by sentence and word. The segment's line breaks and runs of spaces are not written.",
     ),
-    'alignment.times': undecided(
+    'alignment.times': wart(
       "A segment's speaker is printed above the example it covers, but its times are not. The book could print them beside the speaker, and nothing says it should not.",
     ),
     'alignment.speaker': {
@@ -533,7 +538,7 @@ export default {
     'link.mweAcrossSentences': inherent(
       'The entry is listed in the vocabulary chapter, but no word links to it. The book is laid out by sentence, and like the Analyze tab it places an expression only in a sentence that holds two of its words.',
     ),
-    'link.onSentence': undecided(
+    'link.onSentence': wart(
       'The entry is listed in the vocabulary chapter as used, but nothing in the example links to it or names it. The example number could link to it.',
     ),
     'link.toSense': {

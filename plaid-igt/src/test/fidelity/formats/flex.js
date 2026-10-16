@@ -6,6 +6,11 @@
 // hold the information where FLEx reads it back from, which a later check confirms by
 // parsing them and validating against FlexInterlinear.xsd and the LIFT schema.
 
+// A loss the 2026-09-17 ruling accepts as a wart: whatever the import gives back
+// passes, so the comparison takes it out of both sides (expect/index.js).
+const PARITY_RULING =
+  'user, 2026-09-17: only the native archive must round-trip, and a loss in another format is a wart to record, not a bug to chase';
+
 const TAGSET_RULING =
   'user, 2026-09-17: tagsets go to FLEx as lists where they can reasonably be seen as FLEx lists, and not where that takes a lot of coercion';
 
@@ -415,7 +420,9 @@ export default {
     },
     'document.media': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The recording is not in the archive. A document with a timed phrase gets <media-files><media location>, whose location is the document name because the server URL names no file. The ELAN and CLDF exports bundle the recording beside their files.',
     },
     'document.noText': {
@@ -677,7 +684,9 @@ export default {
     // Vocabulary links
     'link.word': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The one morph written for a word with no morpheme of its own is the derived one, which carries no link, so no cf names the entry. FLEx links a whole word through a one-morph analysis whose cf does.',
     },
     'link.morpheme': {
@@ -687,7 +696,9 @@ export default {
     },
     'link.mwe': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'FlexInterlinear.xsd has <word type="phrase">, one word unit over adjacent words, and the export does not write it. It would replace the member words and their own analyses with one.',
     },
     'link.mweDiscontinuous': {

@@ -6,10 +6,15 @@
 // it. A project zip can add the vocabularies as TSV files, and the vocabTsv list answers for
 // those, so here every vocabulary feature is outside the format.
 
+const PARITY_RULING =
+  'user, 2026-09-17: only the native archive must round-trip, and a loss in another format is a wart to record, not a bug to chase';
+
 const inherent = (why) => ({ carried: false, kind: 'inherent', why });
 const foreign = (why) => ({ carried: false, kind: 'foreign', why });
 const ruled = (why, ruling) => ({ carried: false, kind: 'ruled', why, ruling });
-const undecided = (why) => ({ carried: false, kind: 'undecided', why });
+// A loss the 2026-09-17 ruling accepts as a wart: whatever the import gives back
+// passes, so the comparison takes it out of both sides (expect/index.js).
+const wart = (why) => ({ carried: false, kind: 'ruled', why, ruling: PARITY_RULING, wart: true });
 
 const PROJECT_CONFIG = inherent(
   'The file is one document, its header and its sentences. Project configuration is not written.',
@@ -28,7 +33,7 @@ const GUIDELINES = ruled(
   'Guidelines go into the native archive only.',
   'runExport.js: "The project\'s annotation manual, on the same terms as comments: the native archive only." plaid_guidelines.md, 2026-09-15.',
 );
-const ENTRY_TIER = undecided(
+const ENTRY_TIER = wart(
   "No line names the entry a word or morpheme is linked to, and nothing marks a multi-word expression. A plain-text interlinear could print such a line, as .flextext carries each morph's entry, and nothing says it should not.",
 );
 
@@ -197,7 +202,7 @@ export default {
       where:
         'the document header, under the field\'s full name ("Title (en): ..."), for a switched-on field',
     },
-    'document.partlyAligned': undecided(
+    'document.partlyAligned': wart(
       'Which sentences are time-aligned shows only as a speaker prefix, and only where the segment has a speaker. Printing times, the question under alignment.times, would show it.',
     ),
     // SUSPECTED BUG: word and morpheme lines are unlabeled, and a line with no values in a
@@ -315,7 +320,7 @@ export default {
 
     // Time alignment
     'alignment.provenance': PROVENANCE,
-    'alignment.severalInSentence': undecided(
+    'alignment.severalInSentence': wart(
       'A sentence holding several segments gets no speaker prefix, even when every one of them has the same speaker, because only a segment that matches or contains the sentence gives one (flextext.js coveringAlignment). The rule there is never to print a wrong speaker, which one shared speaker would not be.',
     ),
     'alignment.straddlesSentences': inherent(
@@ -328,7 +333,7 @@ export default {
     'alignment.textAcrossLineBreak': inherent(
       "The file is laid out by sentence and word. The segment's line breaks and runs of spaces are not written.",
     ),
-    'alignment.times': undecided(
+    'alignment.times': wart(
       "A segment's speaker is written as a transcript-style prefix on the sentence it covers, but its times are not. A plain-text transcript could print them beside the speaker, and nothing says it should not.",
     ),
     'alignment.speaker': {

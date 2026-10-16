@@ -299,7 +299,7 @@ const tokenSteps = [
     // back with it stored as {form}: the word's text with a leading - or = taken
     // off. Whether a word has a derived morpheme is the exported project's rule
     // to say, so an ignored word gets none. The enclitic morph type the prose
-    // adds for = is not added, because token.morphTypeOnMorpheme is undecided
+    // adds for = is not added, because token.morphTypeOnMorpheme is a wart
     // and has already taken morph types off both sides.
     //
     // Last, a word's only morpheme whose form is then the word's text, and on

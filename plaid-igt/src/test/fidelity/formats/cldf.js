@@ -7,6 +7,11 @@
 // wrote for it (Surface_Word), and it reads the fields bound to CLDF terms back under its own names (Gloss,
 // Translation, Note). The 'changed' entries say exactly how.
 
+// A loss the 2026-09-17 ruling accepts as a wart: whatever the import gives back
+// passes, so the comparison takes it out of both sides (expect/index.js).
+const PARITY_RULING =
+  'user, 2026-09-17: only the native archive must round-trip, and a loss in another format is a wart to record, not a bug to chase';
+
 const COMMENTS_RULED = {
   carried: false,
   kind: 'ruled',
@@ -180,7 +185,9 @@ export default {
     },
     'layers.fieldLang': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'No column records the writing system of its field. The import sets lang to the meta language’s ISO 639-3 code on every field named Gloss, Translation or Note, and on no other field.',
     },
     'layers.fieldTagset': {
@@ -233,7 +240,9 @@ export default {
     },
     'vocab.fieldLang': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'No lexicon column records its writing system, and the import declares fields without lang.',
     },
     'vocab.fieldMultilingual': {
@@ -242,17 +251,23 @@ export default {
     },
     'vocab.fieldItemRef': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The export writes the entry a reference points at as its label, and the import stores that label in a plain text field of the same name, so the field comes back without type item.',
     },
     'vocab.fieldItemRefMany': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The export writes the entries a reference list points at as their labels in one cell, and the import stores that cell in a plain text field of the same name, so the field comes back without type item or many.',
     },
     'vocab.fieldEntryScope': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The export writes every field on the entry row for a headword and on the sense row for a sense, whatever its scope, and the import declares fields without one. Which of the EntryTable and the SenseTable a field is written to could say it.',
     },
     'vocab.customTagset': {
@@ -315,12 +330,16 @@ export default {
     },
     'item.exampleText': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'An example stored as text and translation is not written. The export writes only examples that point into a document.',
     },
     'item.flexIdentity': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'FLEx entry and sense guids are not written. A custom entry or sense column could hold them.',
     },
     'item.provenance': PROVENANCE_RULED,
@@ -358,7 +377,9 @@ export default {
     },
     'document.textDirection': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The reserved plaid namespace is removed before document metadata is written (userMetadata), so a set direction is not written. A ContributionTable column could hold it.',
     },
     'document.speechDetection': {
@@ -370,7 +391,9 @@ export default {
     'document.media': carried,
     'document.noText': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
       why: 'The export writes the document’s ContributionTable row and its MediaTable row, but the import builds documents from example rows only, so a document with no sentences does not come back, and its metadata and recording go with it.',
     },
     'document.untokenized': carried,

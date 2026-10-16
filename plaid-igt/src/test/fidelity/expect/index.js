@@ -2,8 +2,9 @@
 //
 // The source snapshot is edited into what the list says an import gives back:
 // every lost feature is taken out (./strips.js, or the format's own override),
-// every undecided feature is taken out of both sides so that neither answer
-// fails, and every changed feature is applied by the format module's steps.
+// every feature the list marks a wart (a loss the 2026-09-17 parity ruling
+// accepts, `wart: true`) or leaves undecided is taken out of both sides so that
+// whatever the import gives back passes, and every changed feature is applied by the format module's steps.
 // The import's bookkeeping (the list's `stamps`) is removed from both sides.
 // Both sides are then finalized (./snap.js), so a key moved by any of this is
 // recomputed the same way on each.
@@ -61,7 +62,7 @@ export function expectRoundTrip({ list, source, actual, bare = null }) {
     const strip = stripFor(module, key);
     if (typeof strip !== 'function') continue; // coveredBy another key
     strip(expected, ctx);
-    if (entry.kind === 'undecided') strip(got, ctx);
+    if (entry.wart || entry.kind === 'undecided') strip(got, ctx);
   }
   for (const step of module.steps || []) step.apply(expected, got, ctx);
   // A span's `order`, its place in the server's listing, is not compared: an
