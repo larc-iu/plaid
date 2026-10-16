@@ -763,12 +763,20 @@ describe('a body with carriage returns', () => {
     expect(editLogGaps(log)).toEqual([{ start: 3, end: 4, value: '' }]);
   });
 
-  it('sends a typed newline as typed, and keeps every carriage return the user did not delete', () => {
+  it('sends a typed newline as the text writes its line breaks, and keeps every carriage return the user did not delete', () => {
+    // Every break `\r\n`: a typed one is `\r\n` too.
     let log = startEditLog(crlf, 'd0');
     log = recordEdit(log, 'one\ntwo\nthree', { start: 5, end: 5 }, 'one\ntw\no\nthree', 6);
     expect(editLogBody(log)).toBe('one\ntw\no\nthree');
-    expect(editLogGaps(log)).toEqual([{ start: 7, end: 7, value: '\n' }]);
-    expect(applyTextOps(log.base, log.ops)).toBe('one\r\ntw\no\r\nthree');
+    expect(editLogGaps(log)).toEqual([{ start: 7, end: 7, value: '\r\n' }]);
+    expect(applyTextOps(log.base, log.ops)).toBe('one\r\ntw\r\no\r\nthree');
+    // and a second, typed after the first
+    log = recordEdit(log, 'one\ntw\no\nthree', { start: 7, end: 7 }, 'one\ntw\n\no\nthree', 8);
+    expect(applyTextOps(log.base, log.ops)).toBe('one\r\ntw\r\n\r\no\r\nthree');
+    // Breaks of both kinds: a typed one is sent as typed.
+    log = startEditLog('one\r\ntwo\nthree', 'd0');
+    log = recordEdit(log, 'one\ntwo\nthree', { start: 5, end: 5 }, 'one\ntw\no\nthree', 6);
+    expect(applyTextOps(log.base, log.ops)).toBe('one\r\ntw\no\nthree');
     // a newline typed right after a lone `\r` keeps it a line break of its own
     log = startEditLog('a\rb', 'd0');
     log = recordEdit(log, 'a\nb', { start: 2, end: 2 }, 'a\n\nb', 3);

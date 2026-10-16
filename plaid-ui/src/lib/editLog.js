@@ -14,6 +14,7 @@
 // stored text is one `\n` in `body`. A change of the box is put onto `raw` at
 // the place it stands for: a deleted `\n` deletes the whole stored break, and
 // typed text goes in as typed, so no `\r` goes that the user did not delete.
+// In a text whose every break is `\r\n`, a typed break is one too.
 //
 // Dependency-free apart from plaid-client's pure modules, reached by path, so
 // plaid-ud's node suite can load it.
@@ -174,6 +175,9 @@ export function startEditLog(base, digest = null) {
   return { base, digest, ops: [], raw: base, body: shown(base), past: [], future: [] };
 }
 
+// Whether every line break of `text` is a `\r\n` (and it has one).
+const allCrlf = (text) => /\r\n/.test(text) && !/\r(?!\n)|(?<!\r)\n/.test(text);
+
 // `op`, a change of the box's value `shown(raw)`, as a change of `raw`. Each
 // code point of the box stands for one of `raw`, or for a `\r\n`. A `\n`
 // typed right after a lone `\r` would make one line break of the two the box
@@ -195,8 +199,10 @@ function onRaw(raw, op) {
         : [op.length, op.value];
   const start = at[op.index];
   const end = at[op.index + length];
-  const joins = chars[start - 1] === '\r' && (typed || chars[end] || '')[0] === '\n';
-  const value = joins ? `\n${typed}` : typed;
+  // A text whose every line break is `\r\n` takes a typed one as `\r\n`.
+  const typedAs = allCrlf(raw) ? typed.replace(/\n/g, '\r\n') : typed;
+  const joins = chars[start - 1] === '\r' && (typedAs || chars[end] || '')[0] === '\n';
+  const value = joins ? `\n${typedAs}` : typedAs;
   if (end === start) return { type: 'insert', index: start, value };
   if (value === '') return { type: 'delete', index: start, value: end - start };
   return { type: 'replace', index: start, length: end - start, value };
