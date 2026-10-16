@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
-import { ExampleCard } from './ExampleCard.jsx';
+import { ExampleCard, snapPastPinned } from './ExampleCard.jsx';
 
 // A long sentence scrolls inside the card to the cited words, and the row
 // labels (Gloss, POS…) scrolled off with the rest, so a reader saw values with
@@ -152,5 +152,31 @@ describe('ExampleCard glosses', () => {
     // Inside the cited morpheme's own highlight.
     expect(r.container.querySelector('span.rounded-sm .plaid-sc')?.textContent).toBe('PL');
     await r.unmount();
+  });
+});
+
+// EXAMPLE-CARD: the centring cut the word under the labels' edge partway, and
+// a sliver of it ("rth") showed beside them.
+describe('snapPastPinned', () => {
+  // Words 100px wide from 0, labels 60px, a 300px card over 1000px.
+  const columns = Array.from({ length: 10 }, (_, i) => ({ left: i * 100, right: i * 100 + 100 }));
+  const opts = { columns, viewport: 300, max: 700, pinned: 60 };
+
+  it('hides or shows whole the word under the labels, whichever is nearer', () => {
+    // At 250 the labels end at 310, ten pixels into the word at 300.
+    expect(snapPastPinned(250, { ...opts, cited: { left: 400, right: 500 } })).toBe(240);
+    // At 300 they end at 360: the word is hidden instead.
+    expect(snapPastPinned(300, { ...opts, cited: { left: 400, right: 500 } })).toBe(340);
+  });
+
+  it('leaves the centring alone on a column edge, or when snapping would cut the cited words', () => {
+    expect(snapPastPinned(240, { ...opts, cited: { left: 400, right: 500 } })).toBe(240);
+    // Cited 320 to 560: 240 cuts its start under the labels and 340 its end.
+    expect(snapPastPinned(250, { ...opts, cited: { left: 320, right: 545 } })).toBe(250);
+  });
+
+  it('snaps the free side next to the labels of a right-to-left table', () => {
+    // Labels at the right: at 250 the free part ends at 490, in the word at 400.
+    expect(snapPastPinned(250, { ...opts, rtl: true, cited: { left: 300, right: 380 } })).toBe(260);
   });
 });

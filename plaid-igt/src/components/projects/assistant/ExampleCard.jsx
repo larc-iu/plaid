@@ -41,6 +41,29 @@ const MorphemeCell = ({ parts, joiners, marked, gloss }) =>
     </Fragment>
   ));
 
+// The centring cuts the column under the pinned labels' edge partway, so a
+// sliver of the neighbouring word showed beside them. Snap that edge to the
+// nearer side of the column, so the column is whole or hidden, as long as
+// the cited columns stay in view. Positions are in the scroller's content,
+// which stays LTR. `columns` are each word's left and right, `cited` the
+// cited span's, `pinned` the labels' width.
+export const snapPastPinned = (scrollLeft, { columns, cited, viewport, max, pinned, rtl }) => {
+  const free = viewport - pinned;
+  const edge = rtl ? scrollLeft + free : scrollLeft + pinned;
+  const cut = columns.find((col) => col.left < edge - 0.5 && col.right > edge + 0.5);
+  if (!cut) return scrollLeft;
+  const at = (x) => (rtl ? x - free : x - pinned);
+  const fits = (s) => {
+    const start = rtl ? s : s + pinned;
+    return s >= 0 && s <= max && cited.left >= start - 0.5 && cited.right <= start + free + 0.5;
+  };
+  return (
+    [at(cut.left), at(cut.right)]
+      .sort((a, b) => Math.abs(a - scrollLeft) - Math.abs(b - scrollLeft))
+      .find(fits) ?? scrollLeft
+  );
+};
+
 export const ExampleCard = ({ c, projectId }) => {
   const words = c.words || [];
   const rows = words.length ? citationRows(c) : [];
@@ -72,14 +95,23 @@ export const ExampleCard = ({ c, projectId }) => {
     const left = Math.min(...marks.map((r) => r.left)) - outer.left + box.scrollLeft;
     const right = Math.max(...marks.map((r) => r.right)) - outer.left + box.scrollLeft;
     const label = box.querySelector('th')?.getBoundingClientRect().width || 0;
-    box.scrollLeft = centeredPastPinned(
-      left,
-      right,
-      box.clientWidth,
-      box.scrollWidth,
-      label,
-      dir === 'rtl',
-    );
+    const rtl = dir === 'rtl';
+    const centred = centeredPastPinned(left, right, box.clientWidth, box.scrollWidth, label, rtl);
+    const columns = [...(box.querySelector('tr')?.querySelectorAll('td') || [])].map((td) => {
+      const r = td.getBoundingClientRect();
+      return {
+        left: r.left - outer.left + box.scrollLeft,
+        right: r.right - outer.left + box.scrollLeft,
+      };
+    });
+    box.scrollLeft = snapPastPinned(centred, {
+      columns,
+      cited: { left, right },
+      viewport: box.clientWidth,
+      max: box.scrollWidth - box.clientWidth,
+      pinned: label,
+      rtl,
+    });
   }, [c, dir]);
 
   return (
