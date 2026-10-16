@@ -304,4 +304,33 @@ describe('AssistantComposer and other projects', () => {
     expect(onAddProject).toHaveBeenCalledWith({ id: 'pC', name: 'Lamkang C' });
     await m.unmount();
   });
+
+  it('tells two projects of one name apart by their document count', async () => {
+    const client = {
+      ...fakeClient(),
+      projects: {
+        ...fakeClient().projects,
+        list: vi.fn().mockResolvedValue([
+          { id: 'p1', name: 'Home' },
+          { id: 'pX', name: 'Lezgi', documentCount: 12 },
+          { id: 'pY', name: 'Lezgi', documentCount: 1 },
+          { id: 'pC', name: 'Lamkang C', documentCount: 3 },
+        ]),
+      },
+    };
+    const onAddProject = vi.fn().mockResolvedValue(true);
+    const m = await mount({ client, onAddProject, maxProjects: 5 });
+    await m.step(() => addButton(m).click());
+    await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const options = all(document.body, '[role="option"]').map((n) => n.textContent);
+    expect(options).toEqual(
+      expect.arrayContaining(['Lezgi · 12 documents', 'Lezgi · 1 document', 'Lamkang C']),
+    );
+    const second = all(document.body, '[role="option"]').find((n) =>
+      n.textContent.endsWith('1 document'),
+    );
+    await m.step(() => second.click());
+    expect(onAddProject).toHaveBeenCalledWith({ id: 'pY', name: 'Lezgi' });
+    await m.unmount();
+  });
 });

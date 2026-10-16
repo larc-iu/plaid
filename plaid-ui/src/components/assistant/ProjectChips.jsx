@@ -6,6 +6,7 @@ import { Combobox } from '../shared/combobox.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
+import { countOf } from '../../lib/plural.js';
 import { atProjectCap, projectCandidates } from './projectReach.js';
 
 // The other projects a conversation reads (see projectReach.js): one chip each
@@ -79,9 +80,15 @@ export const AddProject = ({
     };
   }, [open, client]);
 
-  const options = projectCandidates(projects, homeId, joined, opens).map((p) => ({
+  // Two projects with one name tell themselves apart by their document count
+  // (ruling 41, 2026-10-16).
+  const candidates = projectCandidates(projects, homeId, joined, opens);
+  const named = new Map();
+  for (const p of candidates) named.set(p.name, (named.get(p.name) || 0) + 1);
+  const options = candidates.map((p) => ({
     value: p.id,
     label: p.name,
+    detail: named.get(p.name) > 1 ? countOf(p.documentCount ?? 0, 'document') : null,
   }));
 
   const pick = async (id, option) => {
@@ -161,6 +168,16 @@ export const AddProject = ({
                 className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 listClassName="max-w-[18rem]"
                 optionClassName="truncate"
+                renderOption={({ option }) =>
+                  option.detail ? (
+                    <>
+                      <span dir="auto">{option.label}</span>
+                      <span className="text-muted-foreground"> · {option.detail}</span>
+                    </>
+                  ) : (
+                    option.label
+                  )
+                }
               />
               {checking && (
                 <span className="shrink-0 text-xs text-muted-foreground">Checking…</span>

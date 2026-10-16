@@ -29,7 +29,7 @@ export const projectCandidates = (projects, homeId, joined = [], opens = null) =
   const taken = new Set([homeId, ...joined.map((p) => p.id)]);
   return (projects || [])
     .filter((p) => p?.id && !taken.has(p.id) && (!opens || opens(p)))
-    .map((p) => ({ id: p.id, name: p.name || p.id }));
+    .map((p) => ({ id: p.id, name: p.name || p.id, documentCount: p.documentCount ?? 0 }));
 };
 
 // Whether no more can be added. `max` is what the assistant advertises, and it
