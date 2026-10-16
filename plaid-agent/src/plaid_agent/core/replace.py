@@ -23,8 +23,10 @@ composed finds ``pʰá`` stored decomposed. A match in the composed text is
 mapped back onto the value as stored, code point for code point, and only
 that place is rewritten, with the replacement as typed. The rest of the value
 keeps its own spelling. A value whose composed text holds no match is
-rewritten where the pattern matches it as stored (a combining mark replaced
-on its own, a tone mark respelled).
+rewritten where the pattern matches it as stored. A pattern that holds a
+combining mark (a tone mark respelled on its own) is matched and rewritten in
+the value decomposed, so it reaches the mark inside a composed letter, and the
+value comes back composed, as the server stores it.
 """
 
 import bisect
@@ -33,7 +35,7 @@ from typing import Callable, List, Tuple
 
 import regex
 
-from .java_regex import PatternError, compile_pair, nfc
+from .java_regex import PatternError, compile_decomposed, compile_pair, nfc, nfd
 
 
 def _pieces(s: str) -> List[Tuple[str, str]]:
@@ -107,8 +109,9 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
         raise error('Give a pattern.')
     replacement = '' if replacement is None else str(replacement)
     try:
-        compiled, composed = compile_pair(pattern, literal=not regex_mode,
-                                          case_insensitive=not case_sensitive, whole=whole)
+        kw = dict(literal=not regex_mode, case_insensitive=not case_sensitive, whole=whole)
+        compiled, composed = compile_pair(pattern, **kw)
+        decomposed = compile_decomposed(pattern, **kw)
     except PatternError as e:
         raise error(f'That pattern cannot be used: {e}')
     # A literal replacement is text, not a template: every backslash in it
@@ -117,6 +120,13 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
 
     def apply(value: str) -> str:
         try:
+            if decomposed is not None:
+                # A pattern holding a mark reads the value decomposed, so it
+                # reaches a mark inside a composed letter too. The result is
+                # composed, as the server stores every value.
+                d = nfd(value)
+                if decomposed.search(d) is not None:
+                    return nfc(decomposed.sub(template, d))
             n = nfc(value)
             if composed.search(n) is None:
                 # Only the text as stored matches (a mark on its own), or

@@ -12,8 +12,11 @@
 // mapped back onto the value as stored, and only that place is rewritten,
 // with the replacement as typed (plaid-agent's core/replace.py, the same
 // rule). A value whose composed text holds no match is rewritten where the
-// pattern matches it as stored (a tone mark respelled on its own). `exact`
-// compares canonically equivalent text as equal, as the server's equality does.
+// pattern matches it as stored. A pattern that holds a combining mark (a tone
+// mark respelled on its own) is matched and rewritten in the value
+// decomposed, so it reaches the mark inside a composed letter, and the value
+// comes back composed, as the server stores it. `exact` compares canonically
+// equivalent text as equal, as the server's equality does.
 
 import { translatePattern } from '@ui/domain/javaRegex.js';
 
@@ -29,6 +32,16 @@ import { translatePattern } from '@ui/domain/javaRegex.js';
 export const MATCH_EMPTY = 'empty';
 
 const nfc = (s) => s.normalize('NFC');
+const nfd = (s) => s.normalize('NFD');
+// A combining mark (general category Mn, Mc or Me).
+const holdsMark = (s) => /\p{M}/u.test(s);
+// Whether global RegExp `re` finds a match in `s`, leaving it ready to use.
+const finds = (re, s) => {
+  re.lastIndex = 0;
+  const found = re.test(s);
+  re.lastIndex = 0;
+  return found;
+};
 
 // `s` cut where NFC changes nothing across the cut, each piece with its NFC
 // form: a character and the marks after it, joined to the piece before when
@@ -147,6 +160,7 @@ export function buildReplacer(find, matchType, replacement) {
   // with the pattern in NFC, as the server's search decides.
   let raw = null;
   let re = null;
+  let decomposed = null;
   if (matchType === 'regex' || matchType === 'contains') {
     const options = matchType === 'contains' ? { literal: true, caseInsensitive: true } : {};
     const typed = translatePattern(find, options);
@@ -154,6 +168,12 @@ export function buildReplacer(find, matchType, replacement) {
     raw = new RegExp(typed.source, 'gu');
     const composed = nfc(find) === find ? typed : translatePattern(nfc(find), options);
     re = composed.error ? raw : new RegExp(composed.source, 'gu');
+    // A pattern holding a mark also matches with pattern and value
+    // decomposed, as the server's search decides (Luke, 2026-10-16).
+    if (holdsMark(find)) {
+      const d = translatePattern(nfd(find), options);
+      if (!d.error) decomposed = new RegExp(d.source, 'gu');
+    }
   }
   const hasCapital = (s) => Array.from(s ?? '').some(isUpper);
   const keepCase = matchType === 'contains' && !hasCapital(find) && !hasCapital(replacement);
@@ -171,6 +191,11 @@ export function buildReplacer(find, matchType, replacement) {
       // equality reads it: `pʰá` composed is `pʰá` stored decomposed.
       if (nfc(v) !== nfc(find)) return null;
       next = replacement;
+    } else if (decomposed && finds(decomposed, nfd(v))) {
+      // A pattern holding a mark reads the value decomposed, so it reaches a
+      // mark inside a composed letter too. The result is composed, as the
+      // server stores every value.
+      next = nfc(replaceIn(nfd(v), decomposed));
     } else {
       const n = nfc(v);
       re.lastIndex = 0;

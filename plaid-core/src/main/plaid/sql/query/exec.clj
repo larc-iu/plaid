@@ -110,13 +110,24 @@
     (when-not (identical? n p)
       (try (cached-pattern n) (catch Exception _ nil)))))
 
+(defn- decomposed-pattern
+  "`p` in NFD, compiled, when it holds a combining mark, else nil (and nil
+  when decomposing makes it something Java cannot compile)."
+  [^String p]
+  (when (canonical/holds-mark? p)
+    (try (cached-pattern (canonical/nfd p)) (catch Exception _ nil))))
+
 (defn- regexp-function
   "A REGEXP(pattern, value) UDF: 1 if `value` contains a match for the Java
   regex `pattern`, else 0. A value matches as stored, or in NFC with the
   pattern in NFC, so text matches whatever is canonically equivalent to it:
   `pʰá` typed composed finds it stored decomposed (a + U+0301), and the
   reverse, while every match the stored text gives is kept (a combining mark
-  searched for on its own still finds it in a value stored decomposed).
+  searched for on its own still finds it in a value stored decomposed). A
+  pattern that holds a combining mark also matches in NFD with the value in
+  NFD, so a high tone (U+0301) searched for on its own finds it inside a
+  composed `á` (Luke, 2026-10-16). A pattern with no mark is never compared
+  decomposed, so `a` does not find the a inside `á`.
   Compiled patterns are cached. Patterns are validated for syntax at
   query-validation time, so compile here won't see a bad one. The value is
   wrapped in an interruptible CharSequence so a runaway pattern can be
@@ -134,7 +145,9 @@
                                (cond
                                  np (found? np ns)
                                  (identical? ns s) false
-                                 :else (found? (cached-pattern pat) ns)))))
+                                 :else (found? (cached-pattern pat) ns)))
+                             (when-let [dp (decomposed-pattern pat)]
+                               (found? dp (canonical/nfd s)))))
                   1 0)]
         (.invoke m-result-int this (object-array [(int hit)]))))))
 

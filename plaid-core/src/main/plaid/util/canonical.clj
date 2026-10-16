@@ -15,6 +15,21 @@
     s
     (Normalizer/normalize s Normalizer$Form/NFC)))
 
+(defn nfd
+  "`s` in Unicode NFD, without a copy when it already is."
+  ^String [^String s]
+  (if (Normalizer/isNormalized s Normalizer$Form/NFD)
+    s
+    (Normalizer/normalize s Normalizer$Form/NFD)))
+
+(declare mark?)
+
+(defn holds-mark?
+  "Whether `s` holds a combining mark (general category Mn, Mc or Me)."
+  [^String s]
+  (.anyMatch (.codePoints s) (reify java.util.function.IntPredicate
+                               (test [_ cp] (boolean (mark? cp))))))
+
 (def ^:private ^BitSet not-alone
   "Code points that let a text have another, canonically equivalent spelling:
   every code point after the first in a canonical decomposition (a combining

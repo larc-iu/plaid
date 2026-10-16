@@ -239,10 +239,15 @@
     (mk 0 nfd)
     (mk 2 nfc)
     (mk 4 eng)
-    (testing "a combining mark alone finds it where it is stored as a mark"
-      (is (= #{nfd eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\u0301"}}]]))))
-    (testing "a class of marks too"
+    (testing "a combining mark alone finds it stored as a mark and inside a composed letter"
+      ;; Luke, 2026-10-16: a pattern holding a combining mark also matches
+      ;; with pattern and value decomposed.
+      (is (= #{nfd nfc eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\u0301"}}]])))
+      (is (= #{nfd nfc eng} (values [["span" "?s" {"layer" sl "value" {"regex" "[\u0300\u0301]$"}}]]))))
+    (testing "a class of marks names no mark, so it finds only marks stored as marks"
       (is (= #{nfd eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\\p{M}"}}]]))))
+    (testing "a pattern with no mark is never compared decomposed"
+      (is (= #{nfd} (values [["span" "?s" {"layer" sl "value" {"regex" "a"}}]]))))
     (testing "and a composed pattern still finds both spellings of the letter"
       (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "\u00e1$"}}]]))))))
 

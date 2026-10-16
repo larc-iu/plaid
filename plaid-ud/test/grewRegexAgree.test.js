@@ -110,6 +110,7 @@ test('a rewrite matches a lemma stored decomposed for a pattern typed composed',
         '# text = kitab x',
         '1\tkitab\tp\u02b0a\u0301\tNOUN\t_\t_\t0\troot\t_\t_',
         '2\tx\tp\u02b0a\tX\t_\t_\t1\tdep\t_\t_',
+        '3\ty\tp\u02b0\u00e0\tX\t_\t_\t1\tdep\t_\t_',
       ].join('\n'),
     ),
   });
@@ -124,6 +125,10 @@ test('a rewrite matches a lemma stored decomposed for a pattern typed composed',
   // REV-FX11: a mark on its own still finds it stored as a mark, as the
   // server's REGEXP finds it in the value as stored.
   assert.deepEqual(forms('pattern { X [lemma=re"\u0301"] }'), ['kitab']);
+  // Luke, 2026-10-16: and inside a composed letter, as the server's REGEXP
+  // reads a pattern holding a mark decomposed. A class of marks names none.
+  assert.deepEqual(forms('pattern { X [lemma=re"\u0300"] }'), ['y']);
+  assert.deepEqual(forms(String.raw`pattern { X [lemma=re"\p{M}"] }`), ['kitab']);
   // An equality compares canonically equivalent text as equal, as core's does.
   assert.deepEqual(forms('pattern { X [lemma="p\u02b0\u00e1"] }'), ['kitab']);
 });

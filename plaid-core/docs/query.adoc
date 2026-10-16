@@ -236,6 +236,8 @@ To name a category or a script, use `\p{L}` for any letter or `\p{IsArabic}` for
 Text is compared as a reader would see it.
 A pattern or an equality matches text that differs only in how its characters are composed, so `pʰá` typed with a precomposed `á` finds it stored as `a` plus an accent.
 Two marks typed in either order count as the same text too.
+A pattern that holds a combining mark also finds it inside a precomposed letter, so a pattern of only the acute accent (U+0301) finds the accent in `á`.
+A pattern without one never looks inside a letter, so `a` does not find `á`.
 
 === Value variables
 

@@ -78,15 +78,36 @@ const composedRegExp = (v) => {
   return composedRegExps.get(key);
 };
 
+const decomposedRegExps = new Map();
+
+// The pattern in NFD as a RegExp when it holds a combining mark, else null
+// (and null when it cannot be read once decomposed).
+const decomposedRegExp = (v) => {
+  const key = keyOf(v);
+  if (!decomposedRegExps.has(key)) {
+    const pattern = String(v.pattern);
+    const t = /\p{M}/u.test(pattern)
+      ? translatePattern(pattern.normalize('NFD'), {
+          caseInsensitive: normalizeFlags(v.flags) === 'i',
+        })
+      : null;
+    decomposedRegExps.set(key, t && !t.error ? new RegExp(t.source, 'u') : null);
+  }
+  return decomposedRegExps.get(key);
+};
+
 /** Whether the local matcher finds the pattern in `actual`, as the server's
  * REGEXP decides: in the value as stored, or in its NFC form with the pattern
- * in NFC. So a pattern typed composed finds a form stored decomposed, and a
- * mark searched for on its own still finds it stored as a mark. */
+ * in NFC, or, for a pattern holding a combining mark, in its NFD form with
+ * the pattern in NFD. So a pattern typed composed finds a form stored
+ * decomposed, and a mark searched for on its own finds it stored as a mark
+ * and inside a composed letter. */
 export const localMatches = (v, actual) => {
   const s = String(actual);
   if (localRegExp(v).test(s)) return true;
   const n = s.normalize('NFC');
   const composed = composedRegExp(v);
-  if (composed) return composed.test(n);
-  return n !== s && localRegExp(v).test(n);
+  if (composed ? composed.test(n) : n !== s && localRegExp(v).test(n)) return true;
+  const decomposed = decomposedRegExp(v);
+  return Boolean(decomposed && decomposed.test(s.normalize('NFD')));
 };

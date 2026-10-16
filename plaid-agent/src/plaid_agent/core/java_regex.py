@@ -841,6 +841,30 @@ def nfc(s: str) -> str:
     return s if unicodedata.is_normalized('NFC', s) else unicodedata.normalize('NFC', s)
 
 
+def nfd(s: str) -> str:
+    """``s`` in Unicode NFD, the same object when it already is."""
+    return s if unicodedata.is_normalized('NFD', s) else unicodedata.normalize('NFD', s)
+
+
+def holds_mark(s: str) -> bool:
+    """Whether ``s`` holds a combining mark (general category Mn, Mc or Me)."""
+    return any(unicodedata.category(c) in ('Mn', 'Mc', 'Me') for c in s)
+
+
+def compile_decomposed(pattern: str, **kw):
+    """``pattern`` in NFD, compiled, when it holds a combining mark, else
+    None (and None when decomposing makes it a pattern that cannot be used).
+    The server's REGEXP also matches such a pattern with pattern and value in
+    NFD, so a tone mark searched for on its own finds it inside a composed
+    letter (Luke, 2026-10-16)."""
+    if not holds_mark(pattern):
+        return None
+    try:
+        return compile_local(nfd(pattern), **kw)
+    except PatternError:
+        return None
+
+
 def compile_pair(pattern: str, **kw):
     """``pattern`` compiled as typed and in NFC, as the server's REGEXP reads
     it: a value matches as stored, or in NFC with the pattern in NFC. The NFC
@@ -863,15 +887,19 @@ def matcher(pattern: str, *, literal: bool = False, case_insensitive: bool = Fal
     it: as stored, or in NFC with the pattern in NFC, so text matches whatever
     is canonically equivalent to it (``pʰá`` typed composed and stored
     decomposed) and a mark searched for on its own still finds it stored as a
-    mark. Raises :class:`PatternError` for a pattern that cannot be used."""
-    raw, composed = compile_pair(pattern, literal=literal, case_insensitive=case_insensitive, whole=whole)
+    mark. A pattern holding a combining mark also matches in NFD with the
+    value in NFD (:func:`compile_decomposed`). Raises :class:`PatternError`
+    for a pattern that cannot be used."""
+    kw = dict(literal=literal, case_insensitive=case_insensitive, whole=whole)
+    raw, composed = compile_pair(pattern, **kw)
+    decomposed = compile_decomposed(pattern, **kw)
 
     def match(value: Optional[str]) -> bool:
         v = value or ''
         if raw.search(v) is not None:
             return True
         n = nfc(v)
-        if composed is raw and n is v:
-            return False
-        return composed.search(n) is not None
+        if (composed is not raw or n is not v) and composed.search(n) is not None:
+            return True
+        return decomposed is not None and decomposed.search(nfd(v)) is not None
     return match

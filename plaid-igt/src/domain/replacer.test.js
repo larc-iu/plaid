@@ -82,12 +82,25 @@ describe('buildReplacer', () => {
 
   // REV-FX11: the server keeps every match the value as stored gives, so a
   // tone mark respelled on its own is rewritten where it is stored as a mark.
-  it('rewrites a mark on its own where the value stores it as a mark', () => {
+  // Luke, 2026-10-16: a pattern holding a mark also matches with pattern and
+  // value decomposed, so it reaches the mark inside a composed letter, and
+  // the value comes back composed, as the server stores it.
+  it('rewrites a mark on its own wherever it is, inside a composed letter too', () => {
     expect(run('\u0301', 'contains', '\u0300', ['p\u02b0a\u0301', 'p\u02b0\u00e1']).out).toEqual([
-      'p\u02b0a\u0300',
-      null,
+      'p\u02b0\u00e0',
+      'p\u02b0\u00e0',
     ]);
     expect(run('\u0301', 'regex', '\u0300', ['\u014b\u0301']).out).toEqual(['\u014b\u0300']);
+    expect(run('\u0301', 'regex', '\u0300', ['\u014b\u0301 p\u02b0\u00e1']).out).toEqual([
+      '\u014b\u0300 p\u02b0\u00e0',
+    ]);
+    expect(run('(.)\u0301', 'regex', '$1\u0302', ['p\u02b0\u00e1']).out).toEqual(['p\u02b0\u00e2']);
+    expect(run('\u0301', 'contains', '', ['p\u02b0\u00e1']).out).toEqual(['p\u02b0a']);
+  });
+
+  it('never looks inside a letter for a pattern without a mark', () => {
+    expect(run('a', 'contains', 'o', ['p\u02b0\u00e1']).out).toEqual([null]);
+    expect(run('\\p{M}', 'regex', '', ['p\u02b0\u00e1']).out).toEqual([null]);
   });
 
   // Luke, 2026-10-08: exact compares canonically equivalent text as equal.

@@ -30,9 +30,26 @@ def test_every_match_the_stored_text_gives_is_kept():
     # in a value stored decomposed, as the server's REGEXP does.
     assert matcher('\u0301')(NFD)
     assert matcher('\u0301')('\u014b\u0301')
-    assert not matcher('\u0301')('p\u02b0\u00e1')
-    # A tone mark respelled on its own in a value stored decomposed.
-    assert rep('\u0301', '\u0300', NFD) == 'p\u02b0a\u0300.PL'
+    # A tone mark respelled on its own in a value stored decomposed, the
+    # result composed as the server stores it.
+    assert rep('\u0301', '\u0300', NFD) == 'p\u02b0\u00e0.PL'
+
+
+def test_a_pattern_holding_a_mark_finds_it_inside_a_composed_letter():
+    # Luke, 2026-10-16: a pattern holding a combining mark also matches with
+    # pattern and value decomposed, as the server's REGEXP does.
+    assert matcher('\u0301')('p\u02b0\u00e1')
+    assert matcher('[\u0300\u0301]$', literal=False)('p\u02b0\u00e1')
+    assert matcher('A\u0301', case_insensitive=True)('p\u02b0\u00e1')
+    # A class of marks names no mark, and a pattern with no mark never
+    # looks inside a letter.
+    assert not matcher(r'\p{M}', literal=False)('p\u02b0\u00e1')
+    assert not matcher('a')('p\u02b0\u00e1')
+    # Every acute is respelled, inside a composed letter or after one that
+    # has no composed form, and the value comes back composed.
+    assert rep('\u0301', '\u0300', '\u014b\u0301 p\u02b0\u00e1') == '\u014b\u0300 p\u02b0\u00e0'
+    assert rep('\u0301', '', 'p\u02b0\u00e1') == 'p\u02b0a'
+    assert rep('(.)\u0301', r'\1\u0302', 'p\u02b0\u00e1', regex=True) == 'p\u02b0\u00e2'
     # A letter matches inside a decomposed one as stored, as it always has.
     assert matcher('a.', literal=False)('p\u02b0a\u0301')
 
