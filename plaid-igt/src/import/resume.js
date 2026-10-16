@@ -21,6 +21,8 @@
 // the stamp and every name composed, and a file name from macOS is not.
 
 import { nameKey } from '@ui/lib/nameKey.js';
+import { statusOf } from '@ui/lib/errors.js';
+import { sameConfig } from '@ui/domain/configCells.js';
 
 /** `<document id>:<source id>`, written at creation. */
 const SOURCE_KEY = 'importSource';
@@ -130,5 +132,30 @@ export async function settlePrior(
   }
   await client.documents.delete(existing.id); // half-imported, or being redone
   results.redone += 1;
+  return true;
+}
+
+/**
+ * Write `value` to key `key` of namespace `ns` in vocabulary `vocab`'s config
+ * (`vocab` as read, with `id`, `name` and `config`), or remove the key when
+ * `value` is undefined, only when the stored value differs. Only a maintainer
+ * of the vocabulary may change its config, and a project maintainer who
+ * resumes an import someone else started may not be one: a resume then
+ * writes nothing the first run already wrote. A write still needed and
+ * refused says who can finish the import. True when it wrote.
+ */
+export async function setVocabConfig(client, vocab, ns, key, value) {
+  const stored = vocab?.config?.[ns]?.[key];
+  if (value === undefined ? stored === undefined : sameConfig(stored, value)) return false;
+  try {
+    if (value === undefined) await client.vocabLayers.deleteConfig(vocab.id, ns, key);
+    else await client.vocabLayers.setConfig(vocab.id, ns, key, value);
+  } catch (err) {
+    if (statusOf(err) !== 403) throw err;
+    throw new Error(
+      `Only a maintainer of the vocabulary “${vocab?.name ?? vocab.id}” can finish this import. Ask one to run it, or use the project as it is.`,
+      { cause: err },
+    );
+  }
   return true;
 }

@@ -12,7 +12,13 @@
 // their FLEx sense guid (metadata.flexSense).
 
 import { stampInferred, confirmedInferred, createdIds, metadataOps } from '@larc-iu/plaid-client';
-import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import {
+  ImportCancelled,
+  importStamp,
+  priorImports,
+  setVocabConfig,
+  settlePrior,
+} from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
@@ -399,7 +405,8 @@ export async function importLexicon({
       ...(BARE_PRIMARY.has(n) ? { lang: primaryAnalysisWs } : {}),
     };
   }
-  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
+  // Only where it differs: a resume writes nothing the first run already did.
+  await setVocabConfig(client, existing, IGT_NAMESPACE, 'fields', fieldsConfig);
 
   // bulkCreate, not a batch of per-item creates: the bulk endpoint is one
   // request, one operation row and one pass over the table, where a batch of
@@ -562,7 +569,7 @@ async function placeVariants({
     fieldsConfig[name] = VARIANT_FIELDS[name];
     added = true;
   }
-  if (added) await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
+  if (added) await setVocabConfig(client, layer, IGT_NAMESPACE, 'fields', fieldsConfig);
 
   const entries = [...patches.entries()];
   for (let i = 0; i < entries.length; i += CHUNK) {

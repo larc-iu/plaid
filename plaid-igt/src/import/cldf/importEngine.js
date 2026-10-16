@@ -13,7 +13,13 @@
 
 import { createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
-import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import {
+  ImportCancelled,
+  importStamp,
+  priorImports,
+  setVocabConfig,
+  settlePrior,
+} from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
@@ -213,7 +219,8 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     if (name in fieldsConfig) continue;
     fieldsConfig[name] = { inline: name === 'gloss' || name === 'pos' };
   }
-  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
+  // Only where it differs: a resume writes nothing the first run already did.
+  await setVocabConfig(client, existing, IGT_NAMESPACE, 'fields', fieldsConfig);
   return byEntry;
 }
 // The steps one document goes through, in order, so progress can report how

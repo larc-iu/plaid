@@ -505,6 +505,58 @@ describe('importVocabulary', () => {
   });
 });
 
+// A project maintainer who does not maintain the vocabulary resumes an import
+// its maintainer started: core lets only a vocabulary's maintainers change its
+// config (403), so the resume writes none the first run already wrote, and a
+// write still needed says who can finish.
+describe('importVocabulary, resumed by someone who does not maintain the vocabulary', () => {
+  const tagsets = { POS: { delimiters: '', mode: 'closed', values: [{ value: 'n' }] } };
+  const vocabData = () =>
+    serializeVocabularyNative({
+      ...VOCAB,
+      config: {
+        igt: { fields: { pos: { inline: true, tagset: 'POS' } }, tagsets },
+        dict: { x: 1 },
+      },
+    });
+  const refusing = (client, config) => {
+    const get = client.vocabLayers.get;
+    client.vocabLayers.get = async (id, items) => ({
+      ...(await get(id, items)),
+      name: 'Lex',
+      config,
+    });
+    const no = () => {
+      throw Object.assign(new Error('HTTP 403 lacks maintainer privileges'), { status: 403 });
+    };
+    client.vocabLayers.setConfig = async () => no();
+    client.vocabLayers.deleteConfig = async () => no();
+    return client;
+  };
+
+  it('writes no config the vocabulary already holds', async () => {
+    const data = vocabData();
+    const fields = Object.fromEntries(
+      data.fields.map((f) => [
+        f.name,
+        { inline: !!f.inline, ...(f.tagset ? { tagset: f.tagset } : {}) },
+      ]),
+    );
+    const client = refusing(stubClient(), { igt: { fields, tagsets }, dict: { x: 1 } });
+    const map = await importVocabulary({ client, vocabId: 'v', vocabData: data });
+    expect(map.size).toBe(3);
+  });
+
+  it('says who can finish when a write is still needed', async () => {
+    const client = refusing(stubClient(), {});
+    await expect(
+      importVocabulary({ client, vocabId: 'v', vocabData: vocabData() }),
+    ).rejects.toThrow(
+      'Only a maintainer of the vocabulary “Lex” can finish this import. Ask one to run it, or use the project as it is.',
+    );
+  });
+});
+
 describe('importVocabulary — a dictionary address already in use', () => {
   const withDict = (dict) =>
     serializeVocabularyNative({ ...VOCAB, config: { ...VOCAB.config, dict } });

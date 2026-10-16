@@ -33,6 +33,7 @@ import {
   ImportCancelled,
   importStamp,
   priorImports,
+  setVocabConfig,
   withoutStamps,
 } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
@@ -193,9 +194,13 @@ export async function importVocabulary({
   // field's `tagset` names one of the vocabulary's own tagsets, written next;
   // `lang` is a FLEx custom field's writing system, read back by the LIFT
   // export. Both only when the archive has them.
+  // Each written only where it differs, so a resume writes nothing the
+  // first run already did (`setVocabConfig`).
+  const vocab = await client.vocabLayers.get(vocabId);
   if (vocabData.fields?.length) {
-    await client.vocabLayers.setConfig(
-      vocabId,
+    await setVocabConfig(
+      client,
+      vocab,
       IGT_NAMESPACE,
       'fields',
       Object.fromEntries(
@@ -217,9 +222,9 @@ export async function importVocabulary({
   // the Status field it seeds, and an archive whose fields replaced that
   // field must not leave its list behind governing nothing.
   if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
-    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
+    await setVocabConfig(client, vocab, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
   } else if (vocabData.fields?.length) {
-    await client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'tagsets');
+    await setVocabConfig(client, vocab, IGT_NAMESPACE, 'tagsets', undefined);
   }
   // Other apps' namespaces, verbatim (plaid-dict's publication record),
   // except a dictionary address another dictionary already has: two at one
@@ -236,7 +241,7 @@ export async function importVocabulary({
     if (ns === IGT_NAMESPACE || !keys || typeof keys !== 'object') continue;
     for (const [key, value] of Object.entries(keys)) {
       if (takenSlug && ns === DICT_NAMESPACE && key === 'slug') continue;
-      await client.vocabLayers.setConfig(vocabId, ns, key, value);
+      await setVocabConfig(client, vocab, ns, key, value);
     }
   }
 
