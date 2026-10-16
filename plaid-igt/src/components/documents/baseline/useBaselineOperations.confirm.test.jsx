@@ -96,6 +96,55 @@ describe('useBaselineOperations, the confirm before a save', () => {
   });
 });
 
+describe('useBaselineOperations, the counts in the confirm', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+  const PUNCT = { igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } };
+  const withLayers = (body, tokens, spans = []) => {
+    const words = { id: 'w', config: PUNCT, tokens, spanLayers: [{ id: 'g', spans }] };
+    return fakeDocument({
+      body,
+      layerInfo: {
+        primaryTextLayer: { id: 'tl-1', text: { id: 't-1', digest: 'd0' }, tokenLayers: [words] },
+        primaryTokenLayer: words,
+      },
+    });
+  };
+  const save = async (doc, edit) => {
+    const h = await mountDocumentHook(useBaselineOperations, { doc });
+    await act(async () => h.api.handleEdit());
+    await edit(h);
+    await act(async () => {
+      h.api.handleSave();
+    });
+    return h;
+  };
+  const question = () => document.body.querySelector('[role="alertdialog"]')?.textContent || '';
+
+  it('names what the shared loss counter finds in the removed text (ruling 27)', async () => {
+    const doc = withLayers(
+      'The dog ran.',
+      [
+        { id: 'w1', begin: 0, end: 3 },
+        { id: 'w2', begin: 4, end: 7 },
+      ],
+      [{ id: 's1', tokens: ['w2'], value: 'DOG' }],
+    );
+    const h = await save(doc, (h) => change(h, 3, 7, 'The ran.', 3));
+    expect(question()).toContain('Deletes 1 annotation.');
+    await h.unmount();
+  });
+
+  it('asks nothing when the only tokens are punctuation, as for untokenized text (ruling 29)', async () => {
+    const doc = withLayers('The dog ran.', [{ id: 'p1', begin: 11, end: 12 }]);
+    const h = await save(doc, (h) => change(h, 3, 7, 'The ran.', 3));
+    expect(asks()).toBe(false);
+    expect(doc.editBaselineText).toHaveBeenCalled();
+    await h.unmount();
+  });
+});
+
 describe('removesText', () => {
   it('is false for inserts and for what a replace gives back at its ends', () => {
     expect(removesText('ab cd', [{ start: 2, end: 2, value: ' x' }])).toBe(false);

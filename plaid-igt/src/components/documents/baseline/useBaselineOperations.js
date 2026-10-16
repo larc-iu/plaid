@@ -5,6 +5,8 @@ import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { countTextDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { isTokenIgnored, readIgnoredTokens } from '@/domain/igtConfig';
 
 // Baseline tab operations, backed by the shared IgtDocument. The box keeps
 // its changes as edits made at the caret (plaid-ui's useEditLog), and the
@@ -30,8 +32,14 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 // gap gives back at its front or end is not taken: a paste over the whole
 // box that only adds to it is an insert.
 export function removesText(base, gaps) {
+  return removedStretches(base, gaps).length > 0;
+}
+
+// The stretches of `base` (code points, [begin, end)) that `gaps` take away:
+// each gap's old text less what it gives back at its front and end.
+export function removedStretches(base, gaps) {
   const cps = Array.from(base);
-  return gaps.some(({ start, end, value }) => {
+  return gaps.flatMap(({ start, end, value }) => {
     const old = cps.slice(start, end);
     const typed = Array.from(value);
     let front = 0;
@@ -44,9 +52,32 @@ export function removesText(base, gaps) {
     ) {
       back += 1;
     }
-    return front + back < old.length;
+    return front + back < old.length ? [[start + front, end - back]] : [];
   });
 }
+
+// What a save that takes away `ranges` deletes, as a sentence for its
+// question, or '' when it deletes nothing: the shared loss counter's count of
+// every token wholly inside a removed stretch and what hangs off it.
+export function baselineLossSentence(doc, ranges) {
+  const loss = countTextDeleteLoss(doc.layerInfo?.primaryTextLayer?.tokenLayers || [], ranges, {
+    vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+  });
+  const gone = lossPhrase(loss);
+  const cut = lossPhrase(loss.shortened);
+  return [gone && `Deletes ${gone}.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
+}
+
+// Does the document hold a word? A token the ignored-tokens rule excludes is
+// text, not a word (punctuation ud's Tokenize made, say).
+const hasWords = (doc) => {
+  const layer = doc.layerInfo?.primaryTokenLayer;
+  const cfg = readIgnoredTokens(layer?.config);
+  const body = Array.from(doc.body || '');
+  return (layer?.tokens || []).some(
+    (t) => !isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg),
+  );
+};
 
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
@@ -111,16 +142,14 @@ export const useBaselineOperations = () => {
     // delete tokens and the annotations on them, so it asks first. One that
     // only inserts, glued to a word or not, keeps every token (Luke,
     // 2026-10-16).
-    const tokenized = (doc.layerInfo?.primaryTokenLayer?.tokens || []).length > 0;
-    const risky = tokenized && removesText(editLog.log.base, editLog.gaps());
+    const removed = hasWords(doc) ? removedStretches(editLog.log.base, editLog.gaps()) : [];
     if (
-      risky &&
+      removed.length > 0 &&
       !(await confirm({
         title: 'Save baseline changes?',
         description:
-          'This document is already tokenized. Editing the baseline text here can ' +
-          'delete or mis-align existing tokens and the annotations on them in the changed or ' +
-          'removed regions.',
+          baselineLossSentence(doc, removed) ||
+          'Deletes or shortens words in the changed or removed text.',
         confirmLabel: 'Save anyway',
         destructive: true,
       }))
