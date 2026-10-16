@@ -85,6 +85,36 @@ def _mapper(s: str):
     return (lambda x: at(x, False)), (lambda x: at(x, True))
 
 
+def _matches(compiled, s: str):
+    """The matches of ``compiled`` in ``s`` as Java's ``find`` loop takes
+    them: after an empty match the next search starts one place on, so no
+    non-empty match is taken at the place of an empty one (``|a`` on ``a`` is
+    one empty match, not an empty one and then ``a``, as Python's own
+    iteration gives it). JS's replace moves on the same way."""
+    pos = 0
+    while pos <= len(s):
+        m = compiled.search(s, pos)
+        if m is None:
+            return
+        yield m
+        pos = m.end() if m.end() > m.start() else m.end() + 1
+
+
+def _sub(compiled, template: str, s: str) -> str:
+    """``compiled.sub(template, s)`` over :func:`_matches`."""
+    out, last = [], 0
+    for m in _matches(compiled, s):
+        out.append(s[last:m.start()])
+        try:
+            out.append(m.expand(template))
+        except IndexError:
+            # As sub says it.
+            raise regex.error('invalid group reference')
+        last = m.end()
+    out.append(s[last:])
+    return ''.join(out)
+
+
 def _group_hint(template: str) -> str:
     """How to write a group followed by a digit, where the template has one:
     "\\13NSG" is read as group 13 (bench, twice, meant group 1 then 3NSG)."""
@@ -126,17 +156,17 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
                 # composed, as the server stores every value.
                 d = nfd(value)
                 if decomposed.search(d) is not None:
-                    return nfc(decomposed.sub(template, d))
+                    return nfc(_sub(decomposed, template, d))
             n = nfc(value)
             if composed.search(n) is None:
                 # Only the text as stored matches (a mark on its own), or
                 # nothing does.
-                return compiled.sub(template, value)
+                return _sub(compiled, template, value)
             if n is value:
-                return composed.sub(template, value)
+                return _sub(composed, template, value)
             start, end = _mapper(value)
             out, last = [], 0
-            for m in composed.finditer(n):
+            for m in _matches(composed, n):
                 a, b = max(start(m.start()), last), max(end(m.end()), last)
                 out.append(value[last:a])
                 out.append(m.expand(template))

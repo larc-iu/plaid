@@ -71,8 +71,9 @@ def _config_request(audit_message, value, expected):
     write is a compare-and-set: ``?if-unchanged=true`` and the body
     ``{expected, value}``, which the server refuses with a 409 when the stored
     value is no longer ``expected``. Without it the body is the value itself.
-    Config is opaque, so neither body is re-cased."""
-    opts = {'skip_response_transform': True, 'audit_message': audit_message}
+    Config is opaque, so neither body is re-cased. The answer is a 204 with no
+    body."""
+    opts = {'audit_message': audit_message}
     if expected is _UNSET:
         if value is not _UNSET:
             opts['raw_body'] = value

@@ -660,11 +660,16 @@ class Resource:
                 checked_ops(item['metadata'])
 
 
+#: the kinds ``calls`` records that are not writes
+_NOT_WRITES = frozenset({'operation', 'read', 'lock', 'unlock'})
+
+
 class _Operation:
     """What ``with client.operation(...) as op`` yields: an ``id`` and
     ``set_message``, which refines the label only on the outermost operation,
-    as the real client's handle does and nothing more. The label the audit
-    log ends up with is the client's ``operation_labels`` entry."""
+    and only when something in it was written, as the real client's handle
+    does and nothing more. The label the audit log ends up with is the
+    client's ``operation_labels`` entry."""
     __slots__ = ('id', '_labels', '_index', '_outermost')
 
     def __init__(self, op_id, labels, index, outermost):
@@ -1272,11 +1277,17 @@ class FakeClient:
         self.record('operation', message)
         op = _Operation(group_id or f'op-{len(self.operations)}', self.operation_labels,
                         len(self.operations) - 1, self._operation_depth == 0)
+        start = len(self.calls)
         self._operation_depth += 1
         try:
             yield op
         finally:
             self._operation_depth -= 1
+            # The real client relabels a group only once a write joined it,
+            # since a group nothing wrote to does not exist on the server.
+            if self._operation_depth == 0 and not any(
+                    kind not in _NOT_WRITES for kind, _ in self.calls[start:]):
+                self.operation_labels[op._index] = message
 
     def _audit_page(self, entries, order, limit, cursor, start_time, ops_limit=None,
                     entry_id=None):

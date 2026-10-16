@@ -4784,16 +4784,13 @@ class PlaidClient {
  */
 function configRequest(auditMessage, value, options, isDelete = false) {
   if (!options || !Object.hasOwn(options, "expected")) {
-    return isDelete
-      ? { auditMessage, skipResponseTransform: true }
-      : { auditMessage, rawBody: value, skipResponseTransform: true };
+    return isDelete ? { auditMessage } : { auditMessage, rawBody: value };
   }
   const expected = options.expected === undefined ? null : options.expected;
   return {
     auditMessage,
     queryParams: { "if-unchanged": true },
     rawBody: isDelete ? { expected } : { expected, value },
-    skipResponseTransform: true,
   };
 }
 
@@ -4802,6 +4799,7 @@ function configRequest(auditMessage, value, options, isDelete = false) {
  * `/api/v1/<kind>/<id>/metadata`. Metadata is opaque, so no body is re-cased.
  * Each answers the entity as its GET does.
  * @template {keyof MetadataRecords} K
+  // The answer is a 204 with no body, so there is nothing to keep un-recased.
  * @param {PlaidClient} client
  * @param {K} kind
  */
@@ -5094,6 +5092,9 @@ export {
   confirmedInferred,
   stampContributed,
   provState,
+// The two messages a write that got no answer is reported with: one the
+// server may have saved, one never sent. See ./services.js.
+export { UNKNOWN_OUTCOME, UNREACHABLE } from "./services.js";
   provOrigin,
   isMachine,
   isProtected,

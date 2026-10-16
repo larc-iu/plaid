@@ -46,3 +46,10 @@ test("a timeout is never offline: the request went, and may still land", () => {
   const e = makeNetworkError(t, "http://x/api/v1/spans", "POST");
   assert.equal(e.offline, undefined);
 });
+
+test("the package root exports the two no-answer messages", async () => {
+  const root = await import("../src/index.js");
+  const services = await import("../src/services.js");
+  assert.equal(root.UNKNOWN_OUTCOME, services.UNKNOWN_OUTCOME);
+  assert.equal(root.UNREACHABLE, services.UNREACHABLE);
+});

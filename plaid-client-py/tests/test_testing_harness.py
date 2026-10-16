@@ -637,6 +637,7 @@ def test_the_smaller_shapes_match_the_real_client():
         op.set_message('Merged 3')
         with c.operation('inner') as inner:
             inner.set_message('ignored')  # only the outermost label is refined
+            c.tokens.split('t1', 1)
     assert c.operation_labels == ['Merged 3', 'inner'] and op.id
     with c.documents.locked('d', keep_alive=False) as lock:
         assert lock.lost is None
@@ -732,9 +733,19 @@ def test_the_operation_handle_is_the_real_one_and_the_label_is_read_off_the_clie
         op.set_message('Merged 3')
         with c.operation('inner') as inner:
             inner.set_message('ignored')
+            c.tokens.split('t1', 1)
     assert not hasattr(op, 'message')
     assert c.operations == ['Merge', 'inner']
     assert c.operation_labels == ['Merged 3', 'inner']
+
+
+def test_a_label_is_refined_only_when_the_operation_wrote():
+    # W-TAIL: the real client relabels a group only once a write joined it.
+    c = _project_client()
+    with c.operation('Merge') as op:
+        op.set_message('Merged 3')
+        c.documents.get('d')
+    assert c.operation_labels == ['Merge']
 
 
 def test_an_audit_entry_and_each_of_its_ops_carry_the_time_to_read_at():

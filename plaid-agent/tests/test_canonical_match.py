@@ -81,3 +81,13 @@ def test_replace_in_field_finds_a_decomposed_gloss_typed_composed():
     _replace(w, 'pʰá', 'pʰa˥')
     [row] = w.plan_payload()['changes']
     assert row['rule']['total'] == 2
+
+
+def test_an_empty_match_moves_on_as_java_and_js_do():
+    # REV-W2 nit 1: after an empty match the next search starts one place on,
+    # so a pattern whose first alternative can match empty rewrites what
+    # Java's find and igt's replacer rewrite ("a".replaceAll("|a", "X") is
+    # "XaX"), not Python's own "XXX".
+    assert rep('|a', 'X', 'a', regex=True) == 'XaX'
+    assert rep('x*', '-', 'abc', regex=True) == '-a-b-c-'
+    assert rep('a|', 'X', 'ab', regex=True) == 'XXbX'

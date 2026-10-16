@@ -70,9 +70,10 @@ def test_a_parse_that_stops_partway_is_partly_applied_in_the_parsers_words(monke
     assert item['in_part'] == [230, 300, 'sentences']
     # History names it as partly applied, not as the whole plan. Only the
     # parser wrote under the operation, and a client relabels on its own only
-    # an operation it wrote under, so the relabel is sent here.
+    # an operation it wrote under (the fake models that too), so the relabel
+    # is sent here.
     label = f'Assistant, partly applied: part of {svc.summarize(plan["ops"])}'
-    assert client.operation_labels[_plan_operation(client)] == label
+    assert client.operation_labels[_plan_operation(client)] != label
     assert [m for _, m in relabels] == [label]
     [note] = _notes(client, spec)
     assert '230 of 300 sentences were parsed' in note
