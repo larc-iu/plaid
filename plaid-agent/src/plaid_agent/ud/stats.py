@@ -27,6 +27,12 @@ def _value(w: Word, field: str) -> str:
     return w.form if field == 'form' else (w.deprel or '' if field == 'deprel' else w.value(field))
 
 
+def _named(ws, doc_id: str) -> str:
+    """A document as these answers name it: quoted, with its id beside a
+    name another document shares (``"Viaje" (ud2)``), as the headings do."""
+    return doc_label(ws, doc_id, lambda name: f'"{name}"')
+
+
 def _hit_line(doc: UdDoc, s: Sentence, w: Word, value: str) -> str:
     return f'  {word_ref(s, w)}  {value}   {kwic(doc, s, w)}'
 
@@ -86,8 +92,8 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         hits = _hits_in(doc, field, matches)
         ws.note_read(min(len(hits), limit), 'match', of=len(hits))
         if not hits:
-            return f'No {field} matches "{pattern}" in "{doc.name}".'
-        out = [f'{len(hits)} match(es) for {field} "{pattern}" in "{doc.name}"'
+            return f'No {field} matches "{pattern}" in {_named(ws, doc.id)}.'
+        out = [f'{len(hits)} match(es) for {field} "{pattern}" in {_named(ws, doc.id)}'
                + (f', showing {limit}' if len(hits) > limit else '') + ':']
         out += [_hit_line(doc, s, w, _value(w, field)) for s, w in hits[:limit]]
         return truncate('\n'.join(out))
@@ -294,14 +300,14 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
                 if v:
                     counts[v] += 1
         rows = sorted(counts.items(), key=lambda kv: -kv[1])
-        clipped, place = '', f' in "{doc.name}"'
+        clipped, place = '', f' in {_named(ws, doc.id)}'
     else:
         with c.within(document) as held:
             c.forget_clipping()
             rows = _ngram_rows(c, what, n) if n > 1 else _column_rows(c, what, cond)
             rows = [(v, k) for v, k in rows if v]
             clipped = c.clipped_note(noun)
-            place = (f' in "{c.doc_name(held)}"' if held
+            place = (f' in {_named(ws, held)}' if held
                      else '' if c.held_documents() else ' across the project')
     of = f' of the words with {said}' if said else ''
     if what == 'features':
@@ -484,9 +490,9 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
             for f in fields:
                 hits = _hits_in(doc, f, lambda v: not v)
                 if not hits:
-                    out.append(f'{f}: none missing in "{doc.name}".')
+                    out.append(f'{f}: none missing in {_named(ws, doc.id)}.')
                     continue
-                out.append(f'{f}: {len(hits)} word(s) with none in "{doc.name}"')
+                out.append(f'{f}: {len(hits)} word(s) with none in {_named(ws, doc.id)}')
                 listed[0] += min(len(hits), limit)
                 listed[1] += len(hits)
                 for sent, w in hits[:limit]:
@@ -509,7 +515,7 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
             listed[0] += min(len(docs), limit)
             listed[1] += len(docs)
             for did, n in docs[:limit]:
-                out.append(f'    {n:>6}  "{c.doc_name(did)}"')
+                out.append(f'    {n:>6}  {_named(ws, did)}')
             if len(docs) > limit:
                 out.append(f'    … and {len(docs) - limit} more documents')
         return truncate(('\n'.join(out) + c.clipped_note('documents')) or 'Nothing is missing.')
@@ -528,7 +534,7 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
                 # reachable. Appending "none waiting" per field made it dead,
                 # and a clean document was told to go and confirm things.
                 continue
-            out.append(f'{f}: {len(hits)} {word} value(s) in "{doc.name}"')
+            out.append(f'{f}: {len(hits)} {word} value(s) in {_named(ws, doc.id)}')
             listed[0] += min(len(hits), limit)
             listed[1] += len(hits)
             for sent, w in hits[:limit]:
@@ -536,7 +542,7 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
             if len(hits) > limit:
                 out.append(f'  … and {len(hits) - limit} more (raise limit)')
         if not out:
-            return f'Nothing is waiting for review in "{doc.name}" ({kind}).'
+            return f'Nothing is waiting for review in {_named(ws, doc.id)} ({kind}).'
         out.append('')
         out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away. '
                    'Without refs, either covers the whole document as one planned change.')
@@ -557,7 +563,7 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
         listed[0] += min(len(docs), limit)
         listed[1] += len(docs)
         for did, n in docs[:limit]:
-            out.append(f'    {n:>6}  "{c.doc_name(did)}"')
+            out.append(f'    {n:>6}  {_named(ws, did)}')
         if len(docs) > limit:
             out.append(f'    … and {len(docs) - limit} more documents')
     clipped = c.clipped_note('documents')

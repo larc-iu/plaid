@@ -217,6 +217,13 @@ def _ref_names(ws) -> Dict[str, str]:
     return {i: (i if taken[n.casefold()] > 1 else n) for i, n in names.items()}
 
 
+def ref_name(ws, doc_id: str) -> str:
+    """How a reference names a document (:func:`_ref_names`): its name, or
+    its id where another document shares that name, which every tool takes
+    back as ``document``."""
+    return _ref_names(ws).get(doc_id, doc_id)
+
+
 def doc_label(ws, doc_id: str, quote: Optional[Callable[[str], str]] = None) -> str:
     """A document as a sentence names it: its name, with its id beside it
     where another document shares that name. ``quote`` quotes the name (for

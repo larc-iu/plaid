@@ -72,7 +72,7 @@ class Workspace(BaseWorkspace):
     NOT_CONTENT_KEYS = ('text_id',)
 
     def render(self, doc, **kw) -> str:
-        return render_document(doc, **kw)
+        return render_document(doc, label=doc_label(self, doc.id, lambda name: f'"{name}"'), **kw)
 
     def sentence_position(self, doc, item) -> Optional[int]:
         return by_stored_sent_id(doc, item)

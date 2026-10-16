@@ -906,7 +906,8 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
 
 
 def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int = None, shown_out: list = None,
-                    indexes: Optional[List[int]] = None, budget: Optional[int] = None) -> str:
+                    indexes: Optional[List[int]] = None, budget: Optional[int] = None,
+                    label: Optional[str] = None) -> str:
     """A document as the model reads it.
 
     Either a RANGE, which keeps a long document inside one tool result without
@@ -918,9 +919,13 @@ def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int =
     rendered until it is spent, and the header says which were shown and
     where to continue: cutting the text off mid-sentence under a header that
     promised forty left the model to work out what it had got.
+
+    ``label`` names the document in the header, quoted (``"Viaje" (ud2)``
+    where another document shares the name), or its quoted name.
     """
     sentences = doc.sentences
-    out = [f'Document "{doc.name}" ({len(sentences)} sentences, {doc.word_count} words)']
+    head = label or f'"{doc.name}"'
+    out = [f'Document {head} ({len(sentences)} sentences, {doc.word_count} words)']
     for k in sorted(doc.metadata):
         if isinstance(doc.metadata[k], str) and doc.metadata[k]:
             out.append(f'# {k} = {doc.metadata[k]}')
