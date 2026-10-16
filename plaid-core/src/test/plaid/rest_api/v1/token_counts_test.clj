@@ -99,3 +99,29 @@
     (testing "a token made"
       (h/create-token admin-request tokl text 4 6)
       (is (= [[tokl doc 2]] (words))))))
+
+(deftest a-count-read-inside-a-rolled-back-batch-is-not-kept
+  ;; REV7-CORE-1: the batch moves "word" onto "." (the version goes up by one
+  ;; inside the transaction), reads the count there, then fails and rolls
+  ;; back. A later write that lands on the same version and token count must
+  ;; not be served the count the rolled-back batch read.
+  (let [pid (h/create-test-project admin-request "P3")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (str (id (h/create-token-layer admin-request txtl "words")))
+        doc (str (h/create-test-document admin-request pid "d1"))
+        text (id (h/create-text admin-request txtl doc "word . more"))
+        word (id (h/create-token admin-request tokl text 0 4))
+        _ (h/create-token admin-request tokl text 7 11)
+        punct {:regex "^\\p{P}+$"}
+        punct-count #(-> (counts admin-request [tokl] punct) :body :results)]
+    (is (= [[tokl doc 0]] (punct-count)))
+    (let [resp (api-call admin-request
+                         {:method :post :path "/api/v1/batch"
+                          :body [{:path (str "/api/v1/tokens/" word) :method "patch" :body {:begin 5 :end 6}}
+                                 {:path "/api/v1/query/token-counts" :method "post"
+                                  :body {:layers [tokl] :value punct}}
+                                 {:path "/api/v1/tokens/01a145d5-de24-7000-8ec3-000000000000" :method "delete"}]})]
+      (is (= 404 (:status resp))))
+    (fix/assert-status 200 (api-call admin-request {:method :patch :path (str "/api/v1/documents/" doc)
+                                                    :body {:name "d1 renamed"}}))
+    (is (= [[tokl doc 0]] (punct-count)))))

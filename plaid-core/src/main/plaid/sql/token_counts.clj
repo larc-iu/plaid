@@ -15,7 +15,10 @@
   document's version, which every write to the document moves on (strict mode
   rests on it), and the number of the layer's tokens there. A read whose
   signature matches answers from it, so a list read again costs one grouped
-  count and a read of the versions.
+  count and a read of the versions. Only committed state is kept: a read on a
+  transaction's connection (inside a `/batch`) neither reads nor fills the
+  cache, since what it sees may still roll back while a later write lands on
+  the same version and count.
 
   A surface matches as the query language's REGEXP decides
   (`plaid.sql.query.exec/regexp-function`): as stored, or in NFC with the pattern
@@ -116,7 +119,10 @@
                  (mapv first (rest (rows db {:select [:id] :from [:token_layers]
                                              :where [:and [:in :id ids] [:in :project_id (vec projects)]]})))
                  [])
-        deadline (+ (System/currentTimeMillis) (long *timeout-ms*))]
+        deadline (+ (System/currentTimeMillis) (long *timeout-ms*))
+        ;; A route's :db is the datasource, except inside a batch, where it is
+        ;; the open transaction's connection.
+        cached? (not (instance? java.sql.Connection db))]
     (if (empty? layers)
       []
       (let [groups (rest (rows db {:select [:token_layer_id :document_id [[:count :*]]]
@@ -135,11 +141,11 @@
             (refuse! 408 "Counting took longer than the time limit."))
           (let [k [layer doc pkey]
                 sig [cnt (get versions doc)]
-                [had n] (.get ^java.util.Map cache k)
-                n (if (= had sig)
+                [had n] (when cached? (.get ^java.util.Map cache k))
+                n (if (and cached? (= had sig))
                     n
                     (let [n (count-doc db matches? layer doc)]
-                      (.put ^java.util.Map cache k [sig n])
+                      (when cached? (.put ^java.util.Map cache k [sig n]))
                       n))]
             (.add out [layer doc n])))
         (vec out)))))
