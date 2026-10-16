@@ -1,9 +1,9 @@
 import contextlib
 import json
-from collections import Counter
 import stanza
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
+from plaid_client.provenance import PROVENANCE_KEYS
 from plaid_client.service import (batch_body_budget, locked_for_writes, machine_detail,
                                   partly_written, progress_heartbeat, requester_message,
                                   service_version)
@@ -430,6 +430,12 @@ class SentenceWrites:
         self.spans = {}  # span layer id -> [span op]
         self.relations = []
         self._slots = 0
+        # What a re-parse changes in place (:meth:`keep_stored`): the spans
+        # and relations it deletes, and the ones whose value it updates.
+        self.span_deletes = []
+        self.relation_deletes = []
+        self.span_updates = []
+        self.relation_updates = []
 
     def add_morpheme(self, op, row, word_substring):
         self.morphemes.append(op)
@@ -504,65 +510,155 @@ class SentenceWrites:
                 "metadata": dict(frag),
             })
 
-    def planned_rows(self, layers):
-        """What this sentence's parse holds, as :func:`stored_rows` reads the
-        stored one: its syntactic words by place, each span by the place of its
-        word, and each relation by the places of its lemma spans' words."""
-        places = [(op["begin"], op["end"], op.get("precedence") or 0) for op in self.morphemes]
-        spans = []
-        for layer_id, ops in self.spans.items():
-            spans += [(layer_id, places[op["tokens"][0].k], op["value"]) for op in ops]
-        lemma_place = []
-        if layers.lemma:
-            lemma_place = [places[op["tokens"][0].k]
-                           for op in self.spans.get(layers.lemma["id"], [])]
-        relations = [(lemma_place[r["source"].k], lemma_place[r["target"].k], r["value"])
-                     for r in self.relations]
-        return sorted(places), Counter(spans), Counter(relations)
+    def keep_stored(self, morphemes, morpheme_layer, layers, frag):
+        """Turn this sentence's writes into the rows of its new parse that are
+        not stored as they are (ruling 30, 2026-10-16, per row): a syntactic
+        word at a place one is stored at is kept, a span or relation stored
+        with the value the parse gives is left alone, one whose value changes
+        is updated in place with the parse's stamp, and only what the parse
+        lacks is deleted, so a re-run restates nothing. ``morphemes`` are the
+        sentence's stored syntactic words. Answers whether anything is left
+        to write."""
+        place_of = [(op["begin"], op["end"], op.get("precedence") or 0) for op in self.morphemes]
+        stored_at = {}
+        for m in morphemes:
+            stored_at.setdefault((m["begin"], m["end"], m.get("precedence") or 0), m["id"])
+        kept = {}  # planned index -> stored syntactic word id
+        for k, at in enumerate(place_of):
+            if at in stored_at and stored_at[at] not in kept.values():
+                kept[k] = stored_at[at]
+        kept_ids = set(kept.values())
+        # A syntactic word the parse has no place for goes, with its spans and
+        # relations (the server's cascade).
+        self.deletes = [m["id"] for m in morphemes if m["id"] not in kept_ids]
+        new_index = {}
+        for k in range(len(place_of)):
+            if k not in kept:
+                new_index[k] = len(new_index)
+        self.morphemes = [op for k, op in enumerate(self.morphemes) if k not in kept]
 
-    def clear(self):
-        """Write nothing for this sentence: its stored parse is the new one."""
-        self.deletes, self.morphemes, self._rows = [], [], []
-        self.spans, self.relations, self._slots = {}, [], 0
+        stored_spans = {}  # (layer id, syntactic word id) -> [span]
+        for span_layer in morpheme_layer.get("span_layers", []) or []:
+            for span in span_layer.get("spans", []) or []:
+                tokens = span.get("tokens") or []
+                if tokens and _token_id(tokens[0]) in kept_ids:
+                    stored_spans.setdefault((span_layer["id"], _token_id(tokens[0])), []).append(span)
+
+        lemma_of = {}  # planned lemma span index -> stored id, or a slot of a created one
+        surviving_lemmas = set()
+        for layer in layers.span_layers:
+            ops = self.spans.get(layer["id"], [])
+            created = []
+            is_lemma = layer is layers.lemma
+            by_word = {}
+            for j, op in enumerate(ops):
+                by_word.setdefault(op["tokens"][0].k, []).append((j, op))
+            for k in range(len(place_of)):
+                planned = by_word.get(k, [])
+                if k not in kept:
+                    for j, op in planned:
+                        if is_lemma:
+                            lemma_of[j] = _Slot("lemma", len(created))
+                        created.append({**op, "tokens": [_Slot("morpheme", new_index[k])]})
+                    continue
+                stored = list(stored_spans.get((layer["id"], kept[k]), []))
+                left = []
+                for j, op in planned:
+                    same = next((sp for sp in stored
+                                 if _same_value(sp.get("value"), op["value"])), None)
+                    if same is not None:
+                        stored.remove(same)
+                        if is_lemma:
+                            lemma_of[j] = same["id"]
+                            surviving_lemmas.add(same["id"])
+                    else:
+                        left.append((j, op))
+                for (j, op), sp in zip(left, stored):
+                    self.span_updates.append({"id": sp["id"], "value": op["value"],
+                                              "metadata": _restamp(sp.get("metadata"), frag)})
+                    if is_lemma:
+                        lemma_of[j] = sp["id"]
+                        surviving_lemmas.add(sp["id"])
+                self.span_deletes += [sp["id"] for sp in stored[len(left):]]
+                for j, op in left[len(stored):]:
+                    if is_lemma:
+                        lemma_of[j] = _Slot("lemma", len(created))
+                    created.append({**op, "tokens": [kept[k]]})
+            if created:
+                self.spans[layer["id"]] = created
+            else:
+                self.spans.pop(layer["id"], None)
+
+        stored_relations = {}  # (source id, target id) -> [relation]
+        if layers.dependency:
+            for rel in layers.dependency.get("relations", []) or []:
+                if is_suppressor(rel):
+                    continue
+                source, target = _token_id(rel.get("source")), _token_id(rel.get("target"))
+                if source in surviving_lemmas and target in surviving_lemmas:
+                    stored_relations.setdefault((source, target), []).append(rel)
+        # A suppressor goes with the basic relation under it when that one is
+        # deleted, and one over a pair a new relation joins goes too, as the
+        # editor's own writes do (enhancedGraph.js `suppressorIdsOver`).
+        suppressors = {}
+        enhanced = relation_layer_by_ud_config(layers.lemma, "enhancedDependency")
+        for rel in (enhanced or {}).get("relations", []) or []:
+            if is_suppressor(rel):
+                pair = (_token_id(rel.get("source")), _token_id(rel.get("target")))
+                suppressors.setdefault(pair, []).append(rel["id"])
+        created = []
+        for r in self.relations:
+            source, target = lemma_of[r["source"].k], lemma_of[r["target"].k]
+            stored = stored_relations.get((source, target)) if isinstance(source, str) \
+                and isinstance(target, str) else None
+            if stored:
+                rel = stored.pop(0)
+                if not _same_value(rel.get("value"), r["value"]):
+                    self.relation_updates.append({
+                        "id": rel["id"], "value": r["value"],
+                        "metadata": _restamp(rel.get("metadata"), frag)})
+                continue
+            self.relation_deletes += suppressors.pop((source, target), [])
+            created.append({**r, "source": source, "target": target})
+        self.relations = created
+        for pair, rels in stored_relations.items():
+            if rels:
+                self.relation_deletes += [rel["id"] for rel in rels] + suppressors.pop(pair, [])
+        self._slots = sum(isinstance(v, _Slot) for op in self.morphemes + self.relations
+                          for v in op.values()) + sum(
+            isinstance(t, _Slot) for ops in self.spans.values() for op in ops
+            for t in op["tokens"])
+        return self.has_writes()
+
+    def has_writes(self):
+        """Whether this sentence has anything to write."""
+        return bool(self.deletes or self.words or self.morphemes or self.spans
+                    or self.relations or self.span_deletes or self.relation_deletes
+                    or self.span_updates or self.relation_updates)
 
     def word_bytes(self):
         return _json_bytes(self.words)
 
     def parse_bytes(self):
-        return (_json_bytes([self.deletes, self.morphemes, self.spans, self.relations])
+        return (_json_bytes([self.deletes, self.morphemes, self.spans, self.relations,
+                             self.span_deletes, self.relation_deletes, self.span_updates,
+                             self.relation_updates])
                 + REF_BYTES * self._slots)
 
 
-def stored_rows(morphemes, morpheme_layer, layers):
-    """A sentence's stored parse in the shape :meth:`SentenceWrites.planned_rows`
-    gives: its syntactic words (``morphemes``) by place, the spans on them of
-    the layers a parse writes, and the dependency relations between their
-    lemma spans. Suppressors and the enhanced graph are not a parse's."""
-    place = {m["id"]: (m["begin"], m["end"], m.get("precedence") or 0) for m in morphemes}
-    written = {layer["id"] for layer in layers.span_layers}
-    spans = []
-    lemma_place = {}
-    for span_layer in morpheme_layer.get("span_layers", []) or []:
-        if span_layer.get("id") not in written:
-            continue
-        for span in span_layer.get("spans", []) or []:
-            tokens = span.get("tokens") or []
-            at = place.get(_token_id(tokens[0])) if tokens else None
-            if at is None:
-                continue
-            spans.append((span_layer["id"], at, span.get("value")))
-            if layers.lemma and span_layer["id"] == layers.lemma["id"]:
-                lemma_place[span.get("id")] = at
-    relations = []
-    if layers.dependency:
-        for rel in layers.dependency.get("relations", []) or []:
-            if is_suppressor(rel):
-                continue
-            source = lemma_place.get(_token_id(rel.get("source")))
-            target = lemma_place.get(_token_id(rel.get("target")))
-            if source is not None and target is not None:
-                relations.append((source, target, rel.get("value")))
-    return sorted(place.values()), Counter(spans), Counter(relations)
+def _same_value(a, b):
+    """Whether two annotation values are the same value."""
+    return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+def _restamp(stored, frag):
+    """The metadata ops that put the parse's stamp ``frag`` on a stored row
+    whose value it changes: each of its keys set, and each provenance key the
+    row has that ``frag`` lacks (a person's verification) deleted. The row's
+    other metadata stays."""
+    return ([{"op": "set", "path": [k], "value": v} for k, v in frag.items()]
+            + [{"op": "delete", "path": [k]} for k in (stored or {})
+               if k in PROVENANCE_KEYS and k not in frag])
 
 
 def _resolved(op, refs):
@@ -581,6 +677,12 @@ def queue_sentences(batch, deletes, sentence_ops, word_units, parse_units, layer
     the server runs a batch's ops in order. Each span names its syntactic
     word, and each relation its lemma spans, by a ref to the id an earlier op
     of the same batch creates."""
+    relation_deletes = [d for unit in parse_units for d in unit.relation_deletes]
+    if relation_deletes:
+        batch.relations.bulk_delete(relation_deletes)
+    span_deletes = [d for unit in parse_units for d in unit.span_deletes]
+    if span_deletes:
+        batch.spans.bulk_delete(span_deletes)
     deletes = list(deletes) + [d for unit in parse_units for d in unit.deletes]
     if deletes:
         batch.tokens.bulk_delete(deletes)
@@ -608,6 +710,12 @@ def queue_sentences(batch, deletes, sentence_ops, word_units, parse_units, layer
         create(batch.spans, "lemma" if layer is layers.lemma else None,
                lambda unit, layer_id=layer["id"]: unit.spans.get(layer_id, []))
     create(batch.relations, None, lambda unit: unit.relations)
+    span_updates = [u for unit in parse_units for u in unit.span_updates]
+    if span_updates:
+        batch.spans.bulk_update(span_updates)
+    relation_updates = [u for unit in parse_units for u in unit.relation_updates]
+    if relation_updates:
+        batch.relations.bulk_update(relation_updates)
 
 
 def write_parse(client, head_deletes, sentence_ops, units, layers, progress, log):
@@ -717,7 +825,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
       re-parse PER SENTENCE — only sentences with no human-made/verified UD
       annotation are refreshed (Stanza runs pretokenized over their words,
       replacing UD's syntactic-word tokens + spans/relations for just those
-      sentences); sentences a human has touched are left untouched. Limitation:
+      sentences, writing only the rows whose value changes: ruling 30, per
+      row); sentences a human has touched are left untouched. Limitation:
       pretokenized Stanza does not split multiword tokens, so each word gets
       exactly one syntactic word (annotators can still split by hand).
 
@@ -1025,8 +1134,10 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
     for unit, sentence_data in zip(units, sentences_data):
         unit.plan_annotations(sentence_data, layers, frag)
     if preserve:
-        # A sentence whose new parse is the one it has is not written again:
-        # a re-run that changes nothing writes nothing (ruling 30, 2026-10-16).
+        # Only the rows a re-parse changes are written: a syntactic word, span
+        # or relation stored as the parse has it is left as it is, so a re-run
+        # that changes nothing writes nothing, and one deprel changed is one
+        # relation updated (ruling 30, 2026-10-16, per row).
         morphemes_of = {}
         for m in existing_morphemes:
             morphemes_of.setdefault(morph_to_sent.get(m["id"]), []).append(m)
@@ -1034,13 +1145,11 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         for unit, (orig_idx, _sent, _ws) in zip(units, reparse):
             if unit.words:
                 continue
-            stored = stored_rows(morphemes_of.get(orig_idx, []), morpheme_layer, layers)
-            if stored == unit.planned_rows(layers):
-                unit.clear()
+            if not unit.keep_stored(morphemes_of.get(orig_idx, []), morpheme_layer, layers, frag):
                 unchanged += 1
         if unchanged:
             log(f"  {unchanged} sentence(s) parse as they are stored; left as they are")
-            units = [unit for unit in units if unit.morphemes or unit.words or unit.deletes]
+        units = [unit for unit in units if unit.has_writes()]
         parse_summary["unchanged_sentences"] = unchanged
     log(f"Planned {len(sentence_ops)} sentences, "
         f"{sum(len(u.words) for u in units)} words, "

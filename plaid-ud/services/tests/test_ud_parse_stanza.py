@@ -284,8 +284,9 @@ def test_the_parse_names_who_asked_in_history_and_on_what_it_writes():
 
 
 def test_an_already_tokenized_document_keeps_its_substrate():
-    """The shared-project path: sentences and words already exist, so only the
-    syntactic-word subtree is replaced and Stanza runs pretokenized."""
+    """The shared-project path: sentences and words already exist, so Stanza
+    runs pretokenized, and a syntactic word stored at a place the parse gives
+    is kept: its annotations are written onto it (ruling 30, per row)."""
     doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)],
                     morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)])
     service = _service(documents=[doc])
@@ -297,25 +298,23 @@ def test_an_already_tokenized_document_keeps_its_substrate():
     assert service.pipeline_provider.asked == [('en', True)]
     assert service.pipeline_provider.inputs == [[['the', 'dog', 'barks']]]
 
-    # The old syntactic words go, the substrate stays.
-    assert service.client.payloads('tokens.bulk_delete') == [['m0', 'm1', 'm2']]
-    # The whole write is one atomic batch (conc-2026-09-29 V8-S2): a delete
-    # sent alone, then a failed batch, left the document with no words, and
-    # spans in a batch of their own left words with no annotation.
+    # The syntactic words and the substrate stay.
+    assert service.client.payloads('tokens.bulk_delete') == []
+    assert service.client.payloads('tokens.bulk_create') == []
+    # The whole write is one atomic batch (conc-2026-09-29 V8-S2).
     [batch] = service.client.batches
     kinds = [kind for kind, _ in batch]
-    assert kinds[:2] == ['tokens.bulk_delete', 'tokens.bulk_create']
-    assert set(kinds[2:]) <= {'spans.bulk_create', 'relations.bulk_create'} and len(kinds) > 2
-    # A span names its morpheme by a ref to the id the create makes.
+    assert set(kinds) == {'spans.bulk_create', 'relations.bulk_create'}
+    # A span names the syntactic word it lies on by its id, and a relation
+    # its lemma spans by a ref to the ids their create makes.
     spans = [e for kind, p in batch if kind == 'spans.bulk_create' for e in p]
-    assert spans[0]['tokens'] == [{'$ref': 1, 'index': 0}]
-    assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'sentL') == []
-    assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL') == []
-    morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
-    assert len(morphemes) == 3
-    for op in morphemes:
-        assert op['metadata']['prov'] == 'inferred'
-        assert op['metadata']['provSource'] == SOURCE
+    assert {tuple(span['tokens']) for span in spans} == {('m0',), ('m1',), ('m2',)}
+    for span in spans:
+        assert span['metadata']['prov'] == 'inferred'
+    relations = [e for kind, p in batch if kind == 'relations.bulk_create' for e in p]
+    assert len(relations) == 3
+    assert not any(isinstance(r['source'], str) or isinstance(r['target'], str)
+                   for r in relations)
 
 
 def test_a_sentence_a_person_annotated_is_left_untouched():
@@ -372,8 +371,7 @@ def test_the_lock_is_released_when_a_write_fails():
 
 
 def test_a_failed_token_batch_leaves_the_old_words_in_place():
-    doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)],
-                    morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)])
+    doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)])
     service = _service(documents=[doc], fails={'tokens.bulk_create': PlaidAPIError(
         'Network error: reset', status=0, url='http://plaid.internal:8085/api/v1/batch',
         method='POST', original_error=ConnectionResetError('reset'))})
@@ -446,12 +444,9 @@ def test_a_suppressor_protects_nothing_but_an_enhanced_edge_does():
     assert 'Lemma/Enhanced Dependencies: 1' in refusal
 
 
-def test_a_reparse_takes_a_suppressor_with_the_words_it_lies_on():
-    """A suppressor belongs to the basic relation under it, and a writer that
-    deletes or moves that relation deletes it too. A parse never deletes a
-    relation as such: it deletes the sentence's syntactic words, and the
-    server deletes every relation on their lemma spans, the suppressor with
-    the basic relation, so none is left over a pair with no relation."""
+def _suppressed(rows=None):
+    """A stored parse of BODY whose det relation the enhanced graph leaves out
+    (a suppressor over its pair), and a service that re-parses it as ``rows``."""
     machine = {'prov': 'inferred', 'provSource': SOURCE}
     lemmas = [{'id': 'l0', 'tokens': ['m0'], 'value': 'the', 'metadata': machine},
               {'id': 'l1', 'tokens': ['m1'], 'value': 'dog', 'metadata': machine}]
@@ -462,13 +457,31 @@ def test_a_reparse_takes_a_suppressor_with_the_words_it_lies_on():
                     morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)],
                     spans={'lemmaL': lemmas}, relations=[basic],
                     enhanced_relations=[suppressor])
-    service = _service(documents=[doc])
+    return _service(documents=[doc], provider=_PipelineProvider([rows or ROWS]))
+
+
+def test_a_reparse_takes_a_suppressor_with_the_relation_it_deletes():
+    """A suppressor belongs to the basic relation under it, and a writer that
+    deletes or moves that relation deletes it too, in the same batch, so none
+    is left over a pair with no relation."""
+    moved = [dict(row) for row in ROWS]
+    moved[0] = {**moved[0], 'head': 3}
+    service = _suppressed(moved)
     helper = servicetest.run(service, REQUEST)
 
     assert helper.errors == []
-    [deleted] = service.client.payloads('tokens.bulk_delete')
-    assert {'m0', 'm1'} <= set(deleted)
-    assert not [k for k in service.client.kinds if k.startswith('relations.') and 'create' not in k]
+    [deleted] = service.client.payloads('relations.bulk_delete')
+    assert sorted(deleted) == ['b1', 'x1']
+    assert service.client.payloads('tokens.bulk_delete') == []
+
+
+def test_a_reparse_keeps_a_suppressor_whose_relation_it_keeps():
+    service = _suppressed()
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert service.client.payloads('relations.bulk_delete') == []
+    assert service.client.payloads('tokens.bulk_delete') == []
 
 
 def test_the_tree_is_found_by_its_flag_and_never_by_position():
@@ -761,7 +774,7 @@ def test_a_long_parse_goes_in_batches_the_server_takes_each_holding_whole_senten
                     assert word_batch[_sentence_of(op, starts)] <= n
 
 
-def test_a_long_reparse_deletes_each_sentences_old_words_in_the_batch_that_replaces_them():
+def test_a_long_reparse_writes_onto_each_sentences_stored_words_in_batches_the_server_takes():
     count = 60
     sentences = [(i * 14, i * 14 + 13) for i in range(count)]
     words = [(i * 14 + b, i * 14 + e) for i in range(count) for b, e in ((0, 3), (4, 7), (8, 13))]
@@ -775,15 +788,15 @@ def test_a_long_reparse_deletes_each_sentences_old_words_in_the_batch_that_repla
     assert helper.errors == []
     batches = service.client.batches
     assert len(batches) > 2
-    deleted = []
+    assert service.client.payloads('tokens.bulk_delete') == []
+    assert service.client.payloads('tokens.bulk_create') == []
+    named = [span['tokens'][0] for batch in batches for kind, p in batch
+             if kind == 'spans.bulk_create' for span in p]
+    assert set(named) == {mid for mid, _, _ in morphemes}
     for batch in batches:
-        [(kind, gone)] = [(k, p) for k, p in batch if k == 'tokens.bulk_delete']
-        made = [op for k, p in batch if k == 'tokens.bulk_create' for op in p]
-        # The words it deletes are the ones it writes anew.
-        assert sorted((b, e) for mid, b, e in morphemes if mid in gone) == \
-            sorted((op['begin'], op['end']) for op in made)
-        deleted += gone
-    assert sorted(deleted) == sorted(mid for mid, _, _ in morphemes)
+        # Each relation names its lemma spans by refs into its own batch.
+        made = sum(len(p) for kind, p in batch if kind == 'spans.bulk_create')
+        assert made > 0
 
 
 def test_a_failed_later_batch_says_how_many_sentences_were_parsed_in_full():
@@ -969,7 +982,7 @@ def test_a_reparse_that_changes_nothing_writes_nothing():
     assert written == []
 
 
-def test_a_reparse_writes_only_the_sentence_whose_parse_changed():
+def test_a_reparse_writes_only_the_row_whose_value_changed():
     changed = [dict(row) for row in ROWS]
     changed[1] = {**changed[1], 'upos': 'PROPN'}
     service = _service(documents=[_stored_parse(2)],
@@ -979,8 +992,84 @@ def test_a_reparse_writes_only_the_sentence_whose_parse_changed():
     assert helper.errors == []
     [result] = helper.results
     assert result['unchanged_sentences'] == 1
-    gone = [mid for batch in service.client.batches for kind, p in batch
-            if kind == 'tokens.bulk_delete' for mid in p]
-    assert sorted(gone) == ['m1-1', 'm1-2', 'm1-3']
-    made = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
-    assert sorted((op['begin'], op['end']) for op in made) == [(14, 17), (18, 21), (22, 27)]
+    [batch] = service.client.batches
+    assert [kind for kind, _ in batch] == ['spans.bulk_update']
+    [[update]] = [p for _, p in batch]
+    assert update['id'] == 'u1-2' and update['value'] == 'PROPN'
+    assert {'op': 'set', 'path': ['prov'], 'value': 'inferred'} in update['metadata']
+
+
+def _writes(service):
+    return [(kind, payload) for batch in service.client.batches for kind, payload in batch]
+
+
+def test_one_deprel_changed_is_one_relation_updated_and_nothing_restated():
+    changed = [dict(row) for row in ROWS]
+    changed[0] = {**changed[0], 'deprel': 'det:poss'}
+    service = _service(documents=[_stored_parse(1)], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert _writes(service) == [('relations.bulk_update', [{
+        'id': 'r0-1', 'value': 'det:poss',
+        'metadata': _writes(service)[0][1][0]['metadata']}])]
+
+
+def test_a_head_changed_moves_only_that_relation():
+    changed = [dict(row) for row in ROWS]
+    changed[0] = {**changed[0], 'head': 3}
+    service = _service(documents=[_stored_parse(1)], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    writes = _writes(service)
+    assert [kind for kind, _ in writes] == ['relations.bulk_delete', 'relations.bulk_create']
+    assert writes[0][1] == ['r0-1']
+    [made] = writes[1][1]
+    assert (made['source'], made['target'], made['value']) == ('l0-3', 'l0-1', 'det')
+
+
+def test_a_feature_dropped_or_added_deletes_or_makes_that_span_alone():
+    changed = [dict(row) for row in ROWS]
+    changed[0] = {**changed[0], 'feats': 'Definite=Def'}
+    changed[1] = {**changed[1], 'feats': 'Number=Sing|Case=Nom'}
+    service = _service(documents=[_stored_parse(1)], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    writes = _writes(service)
+    assert [kind for kind, _ in writes] == ['spans.bulk_delete', 'spans.bulk_create']
+    assert writes[0][1] == ['f0-1-1']
+    [made] = writes[1][1]
+    assert (made['tokens'], made['value']) == (['m0-2'], 'Case=Nom')
+
+
+def test_a_lemma_changed_is_updated_in_place_and_keeps_its_relations():
+    changed = [dict(row) for row in ROWS]
+    changed[2] = {**changed[2], 'lemma': 'barking'}
+    service = _service(documents=[_stored_parse(1)], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    writes = _writes(service)
+    assert [kind for kind, _ in writes] == ['spans.bulk_update']
+    assert [(u['id'], u['value']) for u in writes[0][1]] == [('l0-3', 'barking')]
+
+
+def test_overwrite_restamps_a_verified_value_it_changes_and_leaves_one_it_agrees_with():
+    doc = _stored_parse(1)
+    verified = {'prov': 'inferred', 'provSource': SOURCE, 'provConfirmed': True}
+    morph = doc['text_layers'][0]['token_layers'][2]
+    for layer in morph['span_layers']:
+        for span in layer['spans']:
+            if span['id'] in ('u0-1', 'u0-2'):
+                span['metadata'] = dict(verified)
+    changed = [dict(row) for row in ROWS]
+    changed[1] = {**changed[1], 'upos': 'PROPN'}
+    service = _service(documents=[doc], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+
+    assert helper.errors == []
+    [(kind, [update])] = _writes(service)
+    assert kind == 'spans.bulk_update' and update['id'] == 'u0-2'
+    assert {'op': 'delete', 'path': ['provConfirmed']} in update['metadata']
