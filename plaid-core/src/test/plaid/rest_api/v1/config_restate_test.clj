@@ -72,3 +72,18 @@
           (is (= {"L2" (get tagsets "Leipzig")} (get-in (project-config pid) ["igt" "tagsets"])))
           (is (= "E" (:document/name (:body (api-call admin-request {:method :get
                                                                      :path (str "/api/v1/documents/" doc)}))))))))))
+
+(deftest a-delete-of-an-absent-cell-states-it-was-absent
+  (let [pid (create-test-project admin-request "Absent")
+        sl-path (str "/api/v1/projects/" pid "/config/igt/tagset?if-unchanged=true")
+        before (audit-ops pid)]
+    (testing "absent, expected null: nothing written, no row"
+      (assert-status 204 (api-call admin-request {:method :delete :path sl-path :body {:expected nil}}))
+      (is (= before (audit-ops pid)))
+      (is (not (contains? (get (project-config pid) "igt" {}) "tagset"))))
+    (testing "set since, expected null: refused"
+      (assert-status 204 (api-call admin-request {:method :put
+                                                  :path (str "/api/v1/projects/" pid "/config/igt/tagset")
+                                                  :body "Leipzig"}))
+      (assert-status 409 (api-call admin-request {:method :delete :path sl-path :body {:expected nil}}))
+      (is (= "Leipzig" (get-in (project-config pid) ["igt" "tagset"]))))))

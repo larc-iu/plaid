@@ -1063,7 +1063,9 @@
   "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
   is the row's own table, as in `assoc-editor-config-pair`.
   `acting-user-id` attributes the op (a maintainer-level action). `check`
-  is the same compare-and-set as on `assoc-editor-config-pair`."
+  is the same compare-and-set as on `assoc-editor-config-pair`. A cell that
+  is absent already is not written and the operation leaves no audit row,
+  so a delete expecting null states that the cell was absent when read."
   ([db table layer-id editor-name config-key acting-user-id]
    (dissoc-editor-config-pair db table layer-id editor-name config-key acting-user-id nil))
   ([db table layer-id editor-name config-key acting-user-id check]
@@ -1072,14 +1074,16 @@
                               :document nil
                               :description (str "Unset editor config " editor-name "/" config-key
                                                 " on layer " layer-id)
-                              :user acting-user-id}]
+                              :user acting-user-id
+                              :unrecorded-if-empty? true}]
                       (let [row (config-row! tx table layer-id)
                             current (psc/parse-config (:config row))
                             [ed-key cfg-key :as cell] (config-cell-keys editor-name config-key)
                             _ (assert-config-unchanged! current cell (some-> check (assoc :value nil)))
                             new-config (update current ed-key dissoc cfg-key)]
-                        (crud/update-by-id! tx table layer-id
-                                            (config-update-attrs table new-config))))))
+                        (when (contains? (clojure.core/get current ed-key) cfg-key)
+                          (crud/update-by-id! tx table layer-id
+                                              (config-update-attrs table new-config)))))))
 
 ;; ============================================================
 ;; Vocab management (project_vocabs join + cascade vocab_links)
