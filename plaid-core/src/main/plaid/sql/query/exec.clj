@@ -381,23 +381,36 @@
              (seq grouping) (assoc :group-by grouping))]
     {:hq hq :read-kws read-kws :labels labels}))
 
+(def ^:private kind->get-many
+  "Per-kind reader of many entities at once, `(fn [db ids])` -> `{id entity}`,
+  each entity exactly as the kind's `get` (in `kind->get`) gives it. A kind
+  missing here is read one id at a time."
+  {:span span/get-many :token token/get-many :relation relation/get-many
+   :vocab vocab-item/get-many :text text/get-many :link vocab-link/get-many})
+
 (defn- hydrate
   "Replace each id cell in `id-results` with its full REST-shape entity map.
-  Each distinct (kind, id) is fetched once (cached), reusing the kind's public
-  `get` fn so the wire shape is identical to the REST GET response."
+  The distinct ids of each kind are read together (`kind->get-many`), so the
+  wire shape is identical to the REST GET response at a few queries per kind,
+  not several per entity."
   [db find-vars branch id-results]
   (let [kinds (::ast/var-kinds branch)
         find-kinds (mapv kinds find-vars)
-        cache (atom {})
-        fetch (fn [kind id]
-                (let [k [kind id]]
-                  (if (contains? @cache k)
-                    (@cache k)
-                    ;; layer-kind vars have no entity reader (yet) — return the id
-                    (let [e (if-let [g (kind->get kind)] (g db id) {:id id})]
-                      (swap! cache assoc k e)
-                      e))))]
-    (mapv (fn [row] (mapv fetch find-kinds row)) id-results)))
+        ids-by-kind (reduce (fn [m row]
+                              (reduce (fn [m [kind id]] (update m kind (fnil conj #{}) id))
+                                      m (map vector find-kinds row)))
+                            {} id-results)
+        entities (into {}
+                       (map (fn [[kind ids]]
+                              [kind (if-let [many (kind->get-many kind)]
+                                      ;; Keyed by the id's text, whatever type the reader keys by.
+                                      (update-keys (many db ids) str)
+                                      (into {} (map (fn [id]
+                                                      ;; layer-kind vars have no entity reader (yet): the id
+                                                      [(str id) (if-let [g (kind->get kind)] (g db id) {:id id})]))
+                                            ids))]))
+                       ids-by-kind)]
+    (mapv (fn [row] (mapv (fn [kind id] (get-in entities [kind (str id)])) find-kinds row)) id-results)))
 
 (declare run-query)
 

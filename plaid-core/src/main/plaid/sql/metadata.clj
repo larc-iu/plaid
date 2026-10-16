@@ -149,6 +149,34 @@
                     [key (decode-value value)]))
           rows)))
 
+(defn metadata-of
+  "`{entity-id-string {key-string value}}` for the `entity-type` entities
+  `ids`, read in chunks, the many-entity form of `get-metadata`. An entity
+  with no metadata is absent."
+  [db entity-type ids]
+  (reduce (fn [m {:keys [entity_id key value]}]
+            (assoc-in m [(str entity_id) key] (decode-value value)))
+          {}
+          (into []
+                (mapcat (fn [chunk]
+                          (psc/q db {:select [:entity_id :key :value]
+                                     :from [:entity_metadata]
+                                     :where [:and
+                                             [:= :entity_type entity-type]
+                                             [:in :entity_id (vec chunk)]]})))
+                (partition-all psc/bulk-chunk-size (distinct (map str ids))))))
+
+(defn with-metadata-of
+  "Attach to each entity in `by-id` (`{id entity}`) the metadata its own
+  read gives it (see `add-metadata-to-response`), read for all of them at
+  once."
+  [db entity-type by-id]
+  (let [metas (metadata-of db entity-type (keys by-id))]
+    (into {} (map (fn [[id e]]
+                    (let [m (clojure.core/get metas (str id))]
+                      [id (cond-> e (seq m) (assoc :metadata m))])))
+          by-id)))
+
 (defn- raw-insert-metadata!
   "Raw INSERT of k/v rows into entity_metadata, no audit. Internal — the
   public `insert-metadata!` wraps this with parent-row audit folding."

@@ -47,6 +47,13 @@
   (when-let [raw (row->text (psc/fetch-by-id db :texts id))]
     (metadata/add-metadata-to-response db raw "text" id)))
 
+(defn get-many
+  "`{id text}` for the texts `ids` that exist, each as `get` gives it, read
+  together."
+  [db ids]
+  (metadata/with-metadata-of db "text"
+    (update-vals (crud/rows-by-id db :texts ids) row->text)))
+
 (defn project-id
   "Find the project id for a text. Goes through its text-layer."
   [db id]

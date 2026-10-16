@@ -52,6 +52,13 @@
   (when-let [row (psc/fetch-by-id db :relations id)]
     (format db (row->relation row))))
 
+(defn get-many
+  "`{id relation}` for the relations `ids` that exist, each as `get` gives
+  it, read together."
+  [db ids]
+  (metadata/with-metadata-of db "relation"
+    (update-vals (crud/rows-by-id db :relations ids) #(select-keys (row->relation %) attr-keys))))
+
 (defn project-id
   "Find the project id for a relation. Single-entity lookup via the
   denormalized relation_layers.project_id column."

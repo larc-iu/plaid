@@ -156,6 +156,21 @@
                 body (assoc :token/value (cp/cp-subs body (:token/begin tok) (:token/end tok))))]
       (format db tok))))
 
+(defn get-many
+  "`{id token}` for the tokens `ids` that exist, each as `get` gives it
+  (with `:token/value`), read together."
+  [db ids]
+  (let [rows (crud/rows-by-id db :tokens ids)
+        bodies (update-vals (crud/rows-by-id db :texts (distinct (map :text_id (vals rows)))) :body)]
+    (metadata/with-metadata-of db "token"
+      (update-vals rows
+                   (fn [row]
+                     (let [tok (row->token row)
+                           body (clojure.core/get bodies (:token/text tok))]
+                       (select-keys (cond-> tok
+                                      body (assoc :token/value (cp/cp-subs body (:token/begin tok) (:token/end tok))))
+                                    attr-keys)))))))
+
 (defn project-id
   "Find the project id for a token. Single-entity lookup via the
   denormalized token_layers.project_id column (no extra hop)."

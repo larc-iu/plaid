@@ -61,6 +61,15 @@
     (let [tokens (crud/junction-token-ids db :spans id)]
       (format db (row->span row tokens)))))
 
+(defn get-many
+  "`{id span}` for the spans `ids` that exist, each as `get` gives it, read
+  together (one query per table per chunk, not per span)."
+  [db ids]
+  (let [rows (crud/rows-by-id db :spans ids)
+        tokens (crud/junction-token-ids-of db :spans (keys rows))]
+    (metadata/with-metadata-of db "span"
+      (update-vals rows #(select-keys (row->span % (clojure.core/get tokens (:id %) [])) attr-keys)))))
+
 (defn project-id
   "Find the project id for a span. Single-entity lookup via the
   denormalized span_layers.project_id column."

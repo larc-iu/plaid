@@ -65,6 +65,13 @@
   (when-let [item (row->vocab-item (psc/fetch-by-id db :vocab_items id))]
     (metadata/add-metadata-to-response db item "vocab-item" id)))
 
+(defn get-many
+  "`{id entry}` for the vocab items `ids` that exist, each as `get` gives
+  it, read together."
+  [db ids]
+  (metadata/with-metadata-of db "vocab-item"
+    (update-vals (crud/rows-by-id db :vocab_items ids) row->vocab-item)))
+
 (defn get-all-in-layer
   "Get all vocab items in a specific vocab layer, each with metadata
   attached, in creation order. The order is load-bearing: plaid-igt numbers

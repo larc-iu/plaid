@@ -8,7 +8,15 @@
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
             [plaid.test-helpers :as h :refer [id]]
-            [plaid.sql.query.exec :as qe]))
+            [plaid.sql.document :as document]
+            [plaid.sql.metadata :as metadata]
+            [plaid.sql.query.exec :as qe]
+            [plaid.sql.relation :as relation]
+            [plaid.sql.span :as span]
+            [plaid.sql.text :as text]
+            [plaid.sql.token :as token]
+            [plaid.sql.vocab-item :as vocab-item]
+            [plaid.sql.vocab-link :as vocab-link]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -123,6 +131,58 @@
                              "return" "entities"}) :results ffirst)]
           (is (= (str kemal) (str (:vocab-item/id e))))
           (is (= "Kemal" (:vocab-item/form e))))))))
+
+(deftest entities-are-what-each-kinds-own-get-gives
+  ;; Oracle: the entities a query returns are read together per kind, and each
+  ;; is exactly what that kind's single GET reads, metadata, token lists and
+  ;; token surfaces included, for every kind and with and without metadata.
+  (let [pid  (h/create-test-project admin-request "EntOracle")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "pos"))
+        rl   (id (h/create-relation-layer admin-request sl "dep"))
+        vl   (id (h/create-vocab-layer admin-request "EntOracle-lex"))
+        _    (h/link-vocab-to-project admin-request pid vl)
+        docs (vec (for [d (range 3)]
+                    (let [doc (h/create-test-document admin-request pid (str "d" d))
+                          text (id (if (even? d)
+                                     (h/create-text admin-request txtl doc "ab cd ef" {"src" d})
+                                     (h/create-text admin-request txtl doc "ab cd ef")))
+                          ts (vec (for [[i [b e]] (map-indexed vector [[0 2] [3 5] [6 8]])]
+                                    (id (if (odd? i)
+                                          (h/create-token admin-request tokl text b e nil {"n" i})
+                                          (h/create-token admin-request tokl text b e)))))
+                          s0 (id (h/create-span admin-request sl [(ts 0) (ts 1)] "NP" {"k" "v"}))
+                          s1 (id (h/create-span admin-request sl [(ts 2)] "V"))
+                          _ (h/create-relation admin-request rl s1 s0 "obj" {"w" 1})
+                          _ (h/create-relation admin-request rl s0 s1 "x")
+                          item (id (if (even? d)
+                                     (h/create-vocab-item admin-request vl (str "w" d) {"g" d})
+                                     (h/create-vocab-item admin-request vl (str "w" d))))]
+                      (h/create-vocab-link admin-request item [(ts 0)] {"m" d})
+                      (h/create-vocab-link admin-request item [(ts 1) (ts 2)])
+                      doc)))
+        run (fn [ret clause] (:results (qe/run db "admin@example.com"
+                                               {"find" ["?x"] "where" [clause] "return" ret "limit" 1000})))]
+    (is (= 3 (count docs)))
+    (doseq [[kind clause get-fn n] [["span" ["span" "?x" {"layer" sl}] span/get 6]
+                                    ["token" ["token" "?x" {"layer" tokl}] token/get 9]
+                                    ["relation" ["relation" "?x" {"layer" rl}] relation/get 6]
+                                    ["vocab" ["vocab" "?x" {}] vocab-item/get 3]
+                                    ["link" ["link" "?x" {}] vocab-link/get 6]
+                                    ["text" ["text" "?x" {}] text/get 3]
+                                    ["document" ["document" "?x" {}] document/get 3]]]
+      (testing kind
+        (let [ids (map first (run "ids" clause))
+              per-entity-reads (atom 0)
+              ents (let [real metadata/get-metadata]
+                     (with-redefs [metadata/get-metadata (fn [& args] (swap! per-entity-reads inc) (apply real args))]
+                       (doall (map first (run "entities" clause)))))]
+          (is (= n (count ents)))
+          (when (not= kind "document")
+            (is (some :metadata ents) "some carry metadata")
+            (is (= 0 @per-entity-reads) "read together, not one entity at a time"))
+          (is (= (mapv #(get-fn db %) ids) (vec ents))))))))
 
 (deftest entities-respect-acl
   (testing ":entities is scoped like :ids — a reader sees only their project"

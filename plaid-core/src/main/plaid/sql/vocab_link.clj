@@ -60,6 +60,15 @@
     (let [tokens (crud/junction-token-ids db :vocab_links id)]
       (format db (row->vocab-link row tokens)))))
 
+(defn get-many
+  "`{id vocab-link}` for the links `ids` that exist, each as `get` gives it,
+  read together."
+  [db ids]
+  (let [rows (crud/rows-by-id db :vocab_links ids)
+        tokens (crud/junction-token-ids-of db :vocab_links (keys rows))]
+    (metadata/with-metadata-of db "vocab-link"
+      (update-vals rows #(select-keys (row->vocab-link % (clojure.core/get tokens (:id %) [])) attr-keys)))))
+
 (defn get-vocab-layer
   "Return the vocab_layer_id that owns this vocab-link's vocab item."
   [db id]
