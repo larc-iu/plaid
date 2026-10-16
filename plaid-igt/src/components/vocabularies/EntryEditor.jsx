@@ -283,6 +283,7 @@ export const EntryEditor = ({
           <RolesetBand
             uid={uid}
             fields={draft.fields}
+            seed={draft.seeds}
             setFields={setFields}
             disabled={!canManage}
             onProblem={onRolesetProblem}

@@ -42,21 +42,23 @@ const seedDraft = (fields) => ({
 // one shows. Rows as read (an entry holding `ARG1` and `arg1` reads as two
 // `ARG1` rows) do not lock the entry, as an off-tagset value an import left
 // behind does not.
-export const RolesetBand = ({ uid, fields, setFields, disabled = false, onProblem }) => {
+export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, onProblem }) => {
   const bandId = useId();
   const [draft, setDraft] = useState(() => seedDraft(fields));
-  // The fields this band last wrote or was seeded from. A `umr` object other
-  // than theirs came from outside (Cancel, another entry, a save read back),
-  // and the draft starts again from it. With no `umr` object on either side a
-  // change to the fields cannot say which it was, so it starts again too.
-  const [own, setOwn] = useState(fields);
+  // The fields this band last wrote or was seeded from, and the entry form's
+  // `seed` (the count of its draft's seeds: another entry, Cancel, a save read
+  // back). A new seed, or a `umr` object other than the one held, came from
+  // outside and the draft starts again from it. Any other change is another
+  // field typed, which leaves the rows as they are, a new row whose name is
+  // not yet written included.
+  const [own, setOwn] = useState({ fields, seed });
   let current = draft;
-  if (fields !== own) {
-    if (fields?.umr !== own?.umr || !fields?.umr) {
+  if (fields !== own.fields || seed !== own.seed) {
+    if (seed !== own.seed || fields?.umr !== own.fields?.umr) {
       current = seedDraft(fields);
       setDraft(current);
     }
-    setOwn(fields);
+    setOwn({ fields, seed });
   }
   const { roleset, rows } = current;
   const refused = rolesetProblem(roleset);
@@ -74,7 +76,7 @@ export const RolesetBand = ({ uid, fields, setFields, disabled = false, onProble
     const next = { ...current, ...patch };
     const out = writeUmr(fields, { roleset: next.roleset, args: argsToWrite(next.rows) });
     setDraft(next);
-    setOwn(out);
+    setOwn({ fields: out, seed });
     setFields(out);
   };
   const setRow = (i, patch) =>

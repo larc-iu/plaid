@@ -22,6 +22,7 @@ describe('the draft', () => {
     );
     expect(s.draft).toEqual({
       seedKey: 'e1',
+      seeds: 1,
       seedForm: 'kai',
       form: 'kaii',
       fields: { gloss: 'sun' },
@@ -34,7 +35,8 @@ describe('the draft', () => {
       { type: 'draft/form', form: 'x' },
       { type: 'draft/reset', form: 'kai', fields: {} },
     );
-    expect(s.draft).toEqual({ seedKey: 'e1', seedForm: 'kai', form: 'kai', fields: {} });
+    // A reset counts as a seed for a part of the form holding its own draft.
+    expect(s.draft).toEqual({ seedKey: 'e1', seeds: 2, seedForm: 'kai', form: 'kai', fields: {} });
   });
 
   it('unseeds so the next sync fills it again', () => {

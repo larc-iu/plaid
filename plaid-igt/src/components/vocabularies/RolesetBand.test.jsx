@@ -15,11 +15,17 @@ const type = (input, value) => {
 const mount = async (initial) => {
   const seen = { fields: initial };
   let reset;
+  let reseed;
   const Harness = () => {
     const [fields, setFields] = useState(initial);
+    const [seed, setSeed] = useState(1);
     seen.fields = fields;
     reset = setFields;
-    return <RolesetBand uid="e1" fields={fields} setFields={setFields} />;
+    reseed = (f) => {
+      setFields(f);
+      setSeed((n) => n + 1);
+    };
+    return <RolesetBand uid="e1" fields={fields} seed={seed} setFields={setFields} />;
   };
   const view = await renderComponent(<Harness />);
   const input = (label) => view.container.querySelector(`input[aria-label="${label}"]`);
@@ -28,7 +34,16 @@ const mount = async (initial) => {
   };
   const backspace = async (label) =>
     view.step(() => type(input(label), input(label).value.slice(0, -1)));
-  return { ...view, seen, input, keys, backspace, reset: (f) => view.step(() => reset(f)) };
+  return {
+    ...view,
+    seen,
+    input,
+    keys,
+    backspace,
+    reset: (f) => view.step(() => reset(f)),
+    // The form's draft filled from outside (Cancel, a save read back).
+    reseed: (f) => view.step(() => reseed(f)),
+  };
 };
 
 // An empty roleset read "leave-02" in every lexicon, Arapaho and Lamkang
@@ -100,6 +115,23 @@ describe('RolesetBand', () => {
     await view.keys('Argument 1 description', ' ');
     await view.reset({ ...view.seen.fields, gloss: 'give' });
     expect(view.input('Argument 1 description').value).toBe('giver ');
+    await view.unmount();
+  });
+
+  it('keeps a new row not yet named when another field of an entry with no UMR changes', async () => {
+    const view = await mount({ gloss: 'give' });
+    const add = () =>
+      [...view.container.querySelectorAll('button')].find((b) =>
+        b.textContent.includes('Add argument'),
+      );
+    await view.step(() => add().click());
+    await view.step(() => type(view.input('Argument 1 name'), 'AR'));
+    expect(view.seen.fields.umr).toBeUndefined();
+    await view.reset({ ...view.seen.fields, gloss: 'give up' });
+    expect(view.input('Argument 1 name').value).toBe('AR');
+    // Cancel puts back the entry as stored, which has no arguments.
+    await view.reseed({ gloss: 'give' });
+    expect(view.input('Argument 1 name')).toBeNull();
     await view.unmount();
   });
 

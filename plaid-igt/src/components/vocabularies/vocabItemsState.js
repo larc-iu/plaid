@@ -73,7 +73,9 @@ export const hasTyped = (draft, item) => {
 };
 
 export const initialState = {
-  draft: { seedKey: undefined, form: '', fields: {} },
+  // `seeds` counts the times the draft was filled from outside (a seed or a
+  // reset), so a part of the form holding its own draft knows to start again.
+  draft: { seedKey: undefined, seeds: 0, form: '', fields: {} },
   scope: { search: '', field: ANY_FIELD, emptyOnly: false, offTagsetOnly: false },
   // null | { kind: 'bulk' | 'replace' | 'delete' | 'homograph' }
   dialog: null,
@@ -92,6 +94,7 @@ export function reducer(state, action) {
         ...state,
         draft: {
           seedKey: action.seedKey,
+          seeds: state.draft.seeds + 1,
           seedForm: action.form,
           form: action.form,
           fields: action.fields,
@@ -104,7 +107,15 @@ export function reducer(state, action) {
     // Back to the entry as stored, keeping the seed: a cancel is not a
     // reason to re-seed on the next render.
     case 'draft/reset':
-      return { ...state, draft: { ...state.draft, form: action.form, fields: action.fields } };
+      return {
+        ...state,
+        draft: {
+          ...state.draft,
+          seeds: state.draft.seeds + 1,
+          form: action.form,
+          fields: action.fields,
+        },
+      };
     // Forget what the draft was filled from, so the next sync re-seeds it
     // (after a save, an import, a repair that touched the open entry).
     case 'draft/unseed':
