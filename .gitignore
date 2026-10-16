@@ -39,6 +39,8 @@ dist-artifacts/
 # keep the slf4j-simple format config tracked (governs the third-party library
 # log stream; ships in the jar)
 !/plaid-core/resources/simplelogger.properties
+# the case folding table document names are compared by (scripts/casefold_table.py)
+!/plaid-core/resources/casefold.txt
 mutations.ednl
 Gemfile.lock
 .aider*

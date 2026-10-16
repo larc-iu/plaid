@@ -9,28 +9,43 @@
   which a unique index over `(project_id, name_key)` holds to. The migrations
   that made the rule true renamed the documents that shared a name the same
   way, the oldest keeping the bare name."
-  (:require [next.jdbc :as jdbc]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.util.canonical :as canonical]
-            [taoensso.timbre :as log])
-  (:import [java.util Locale]))
+            [taoensso.timbre :as log]))
+
+(def ^:private case-folds
+  "Code point to what Python's `str.casefold` folds it to, read from
+  `resources/casefold.txt` (written by `scripts/casefold_table.py`)."
+  (with-open [r (io/reader (io/resource "casefold.txt") :encoding "UTF-8")]
+    (into {}
+          (comp (remove #(or (str/blank? %) (str/starts-with? % "#")))
+                (map (fn [line]
+                       (let [[cp & to] (str/split (str/trim line) #" ")]
+                         [(Integer/parseInt cp 16)
+                          (let [sb (StringBuilder.)]
+                            (doseq [t to] (.appendCodePoint sb (Integer/parseInt t 16)))
+                            (str sb))]))))
+          (line-seq r))))
 
 (defn fold
-  "`name` as names are compared: full Unicode case folding, composed. Upper
-  then lower case, so a letter whose cases are not one to one (ß and SS, ς and
-  σ, ǅ) lands on one form, and ß as ss, as Python's `str.casefold` has it (the
-  assistant's comparison). The one difference left from `casefold` over every
-  code point: dotless ı folds with I and i here, a coarser class, so core never
-  takes two names the assistant would read as one."
+  "`name` as names are compared: composed, then Python's `str.casefold` (full
+  Unicode case folding, the assistant's comparison), composed again. So ß and
+  SS are one, so are ς and σ, and dotless ı stays apart from i and I."
   ^String [^String name]
-  (-> name
-      (.toUpperCase Locale/ROOT)
-      (.toLowerCase Locale/ROOT)
-      (.replace "ß" "ss")
-      canonical/nfc))
+  (let [sb (StringBuilder.)]
+    (.forEach (.codePoints (canonical/nfc name))
+              (reify java.util.function.IntConsumer
+                (accept [_ cp]
+                  (if-let [to (case-folds cp)]
+                    (.append sb ^String to)
+                    (.appendCodePoint sb cp)))))
+    (canonical/nfc (str sb))))
 
 (defn candidates
   "The names a copy or an import named `name` tries, in order: `name`, then
@@ -151,15 +166,14 @@
   (jdbc/execute! (get-in config [:db :datasource])
                  ["DROP INDEX IF EXISTS idx_documents_project_name_unique"]))
 
-(defn up-fold
-  "Give every document its `name_key`, rename the documents whose names are
-  one but for case the way `up` renamed exact duplicates (the oldest keeps its
-  name, the later ones take the first free \"Name (2)\"), and move the unique
-  index from the name to the folded name."
-  [config]
-  (let [ds (get-in config [:db :datasource])
-        opts {:builder-fn rs/as-unqualified-maps}]
-    (jdbc/execute! ds ["ALTER TABLE documents ADD COLUMN name_key TEXT"])
+(defn- refold!
+  "Give every document its `name_key` by `fold` as it is now, rename the
+  documents whose names are one by it the way `up` renamed exact duplicates
+  (the oldest keeps its name, the later ones take the first free \"Name
+  (2)\"), and put the unique index over `(project_id, name_key)`."
+  [ds]
+  (let [opts {:builder-fn rs/as-unqualified-maps}]
+    (jdbc/execute! ds ["DROP INDEX IF EXISTS idx_documents_project_name_key"])
     ;; Derived from the name, filled in place: no one wrote it.
     (jdbc/with-transaction [tx ds]
       (doseq [{:keys [id name]} (jdbc/execute! tx ["SELECT id, name FROM documents"] opts)]
@@ -183,11 +197,31 @@
               (rename! ds project (by-id id) new-name {:name_key (fold new-name)})))))
       (when (pos? @n)
         (log/info "Renamed" @n "documents in" (count projects) "projects: names are unique in a project, ignoring case")))
-    (jdbc/execute! ds ["DROP INDEX IF EXISTS idx_documents_project_name_unique"])
     (jdbc/execute! ds ["CREATE UNIQUE INDEX idx_documents_project_name_key ON documents(project_id, name_key)"])))
+
+(defn up-fold
+  "Add `name_key`, fill it, rename the documents whose names are one but for
+  case, and move the unique index from the name to the folded name."
+  [config]
+  (let [ds (get-in config [:db :datasource])]
+    (jdbc/execute! ds ["ALTER TABLE documents ADD COLUMN name_key TEXT"])
+    (jdbc/execute! ds ["DROP INDEX IF EXISTS idx_documents_project_name_unique"])
+    (refold! ds)))
 
 (defn down-fold [config]
   (let [ds (get-in config [:db :datasource])]
     (jdbc/execute! ds ["DROP INDEX IF EXISTS idx_documents_project_name_key"])
     (jdbc/execute! ds ["ALTER TABLE documents DROP COLUMN name_key"])
     (jdbc/execute! ds ["CREATE UNIQUE INDEX idx_documents_project_name_unique ON documents(project_id, name)"])))
+
+(defn up-casefold
+  "Fold every name again now that `fold` is Python's `str.casefold` exactly
+  (REV7-CORE-2): dotless ı no longer folds with i, and a letter like a
+  Cherokee one folds to the form casefold gives. A finer fold, so no two names
+  that were apart come together, but `refold!` renames them if they do."
+  [config]
+  (refold! (get-in config [:db :datasource])))
+
+(defn down-casefold
+  "Nothing to take back: the keys stay as the later fold made them."
+  [_config])

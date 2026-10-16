@@ -59,6 +59,25 @@
   (is (= (names/fold "Kafe\u0301") (names/fold "KAFÉ")) "composed")
   (is (not= (names/fold "Story") (names/fold "Story ")) "nothing but case"))
 
+(deftest fold-is-python-casefold
+  ;; REV7-CORE-2: the folded name is NFC(casefold(NFC(name))), value for
+  ;; value, as Python's str.casefold gives it (the assistant's comparison).
+  (testing "dotless i stays apart, as Turkic orthographies need"
+    (is (not= (names/fold "kır") (names/fold "kir")))
+    (is (not= (names/fold "KIR") (names/fold "kır")))
+    (is (not= (names/fold "ı") (names/fold "I")))
+    (is (= "k\u0131r" (names/fold "kır")))
+    (is (= "kir" (names/fold "KIR"))))
+  (testing "values as Python gives them"
+    (is (= "\u13a0\u13a0" (names/fold "Ꭰꭰ")) "Cherokee folds to its capitals")
+    (is (= "ffi" (names/fold "ﬃ")))
+    (is (= "i\u0307stanbul" (names/fold "İstanbul")))
+    (is (= "\u01f0" (names/fold "ǰ")))
+    (is (= "\u03b1\u03b9" (names/fold "ᾼ")))
+    (is (= "ss" (names/fold "ẞ")))
+    (is (= "k" (names/fold "\u212a")) "Kelvin sign")
+    (is (= "\u03c3\u03b1\u03c3" (names/fold "ΣΑΣ")))))
+
 (deftest free-name-takes-the-first-free-candidate
   (is (= "A" (names/free-name #{} "A")))
   (is (= "A (2)" (names/free-name #{"A"} "A")))
@@ -202,9 +221,35 @@
         (is (thrown? Exception
                      (q "INSERT INTO documents (id, name, name_key, project_id, version, created_at, modified_at) VALUES ('d9', 'Bx', 'b', 'p1', 1, 'x', 'x')"))))
       (testing "down takes the folded key away and puts the exact index back"
-        (migratus/rollback (cfg ds))
+        (migratus/rollback-until-just-after (cfg ds) 20261016120000)
         (is (empty? (q "SELECT name FROM sqlite_master WHERE name = 'idx_documents_project_name_key'")))
         (is (seq (q "SELECT name FROM sqlite_master WHERE name = 'idx_documents_project_name_unique'"))))
+      (finally
+        (.close ds)
+        (doseq [suffix ["" "-wal" "-shm"]]
+          (.delete (java.io.File. (str path suffix))))))))
+
+(deftest the-casefold-migration-folds-every-name-again
+  ;; REV7-CORE-2: keys the earlier fold wrote (ı with i, Cherokee in small
+  ;; letters) are folded again as str.casefold folds them.
+  (let [path (temp-db-path)
+        ds (psd/build-datasource path)
+        q (fn [sql & args] (jdbc/execute! ds (into [sql] args) {:builder-fn rs/as-unqualified-maps}))]
+    (try
+      (migratus/migrate-until-just-before (cfg ds) 20261016140000)
+      (q "INSERT INTO projects (id, name) VALUES ('p1', 'P1')")
+      (doseq [[id name key-before] [["d1" "kır" "kir"] ["d2" "Ꭰ" "ꭰ"] ["d3" "Story" "story"]]]
+        (q "INSERT INTO documents (id, name, name_key, project_id, version, created_at, modified_at) VALUES (?, ?, ?, 'p1', 1, 'x', 'x')"
+           id name key-before))
+      (migratus/migrate (cfg ds))
+      (is (= {"d1" "k\u0131r" "d2" "\u13a0" "d3" "story"}
+             (into {} (map (juxt :id :name_key)) (q "SELECT id, name_key FROM documents"))))
+      (testing "kir and kır are two names now"
+        (q "INSERT INTO documents (id, name, name_key, project_id, version, created_at, modified_at) VALUES ('d4', 'kir', 'kir', 'p1', 1, 'x', 'x')")
+        (is (= 4 (count (q "SELECT id FROM documents")))))
+      (testing "the index still refuses one name twice"
+        (is (thrown? Exception
+                     (q "INSERT INTO documents (id, name, name_key, project_id, version, created_at, modified_at) VALUES ('d5', 'STORY', 'story', 'p1', 1, 'x', 'x')"))))
       (finally
         (.close ds)
         (doseq [suffix ["" "-wal" "-shm"]]

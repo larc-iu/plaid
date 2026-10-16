@@ -1,0 +1,7 @@
+;; Document names are compared by Python's str.casefold exactly (REV7-CORE-2):
+;; every document's name_key is folded again, so dotless ı stays apart from i
+;; and I, and any names the finer fold still makes one are renamed as before.
+{:ns plaid.sql.document-names
+ :up-fn "up-casefold"
+ :down-fn "down-casefold"
+ :transaction? false}
