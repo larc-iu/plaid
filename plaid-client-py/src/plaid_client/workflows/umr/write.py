@@ -27,13 +27,13 @@ import json
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
+from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, PROVENANCE_KEYS, service_source
 from plaid_client.service import (batch_body_budget, locked_for_writes, partly_written,
                                   progress_heartbeat)
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
-from .graph import Edge, Sentence, UmrDocument, begins_in, read_document, words_under
+from .graph import Edge, Node, Sentence, UmrDocument, begins_in, read_document, words_under
 from .layers import UMR_NAMESPACE, UmrLayers, gloss_values, resolve_layers
 from .penman import next_variable
 
@@ -253,44 +253,137 @@ def _sentence_writes(layers: UmrLayers, plan: dict, frag: dict) -> dict:
             'bytes': size}
 
 
-def _graph_rows(nodes, edges) -> Tuple[list, list]:
-    """A graph as rows a write stores, provenance aside: each node by its
-    concept, its ``umr`` metadata and its anchors, and each edge by its role,
-    its ``umr`` metadata and the nodes it joins. ``nodes`` are
-    ``(concept, umr, anchors)``, ``edges`` ``(role, umr, source, target)`` by
-    index into ``nodes``."""
-    def key(value):
-        return json.dumps(value, sort_keys=True, default=str)
-
-    node_rows = [key([concept, umr, sorted(anchors)]) for concept, umr, anchors in nodes]
-    edge_rows = sorted(key([role, umr, node_rows[source], node_rows[target]])
-                       for role, umr, source, target in edges)
-    return sorted(node_rows), edge_rows
+def _same(a, b) -> bool:
+    return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
 
 
-def _unchanged(plan: dict, unit: dict) -> bool:
-    """Whether ``plan`` writes the graph its sentence has: the same nodes,
-    anchors and edges with the same values. Such a plan writes nothing, so a
-    redraft that drafts what is there leaves it as it is (ruling 30,
-    2026-10-16)."""
+def _restamp(stored: Optional[dict], planned: dict) -> List[dict]:
+    """The metadata ops that make a stored row's metadata what a plan writes:
+    each key the plan writes set, and each provenance key the row has that the
+    plan's lacks (a person's verification) deleted. Its other keys stay."""
+    return ([{'op': 'set', 'path': [k], 'value': v} for k, v in planned.items()]
+            + [{'op': 'delete', 'path': [k]} for k in (stored or {})
+               if k in PROVENANCE_KEYS and k not in planned])
+
+
+def _keep_stored(plan: dict, unit: dict) -> dict:
+    """``unit`` with only the rows of its new graph that are not stored as
+    they are (ruling 30, 2026-10-16, per row). A stored node with the concept,
+    ``umr`` metadata and anchors the plan gives is kept as it is, with its
+    anchors, edges and document-level triples. One with the same anchors is
+    kept and its concept or metadata updated. An edge between two kept nodes
+    with the role and metadata the plan gives is kept, one whose role or
+    metadata changes is updated, and what the plan lacks is deleted. Only
+    what is left is created: a new node on the stored anchors over its words
+    where there are such, else on new ones."""
     sentence = plan['sentence']
-    if not isinstance(sentence, Sentence) or not sentence.nodes \
-            or len(sentence.nodes) != len(unit['nodes']):
-        return False
-    stored_index = {n.id: i for i, n in enumerate(sentence.nodes)}
-    stored_nodes = [(n.concept, (n.metadata or {}).get(UMR_NAMESPACE),
-                     [(p.begin, p.end) for p in n.pieces]) for n in sentence.nodes]
-    stored_edges = [(e.role, (e.metadata or {}).get(UMR_NAMESPACE),
-                     stored_index[e.source], stored_index[e.target])
-                    for n in sentence.nodes for e in n.out
-                    if e.source in stored_index and e.target in stored_index]
-    planned_nodes = [(op['value'], op['metadata'].get(UMR_NAMESPACE),
-                      [tuple(plan['pieces'][i]) for i in indexes])
-                     for op, indexes in unit['nodes']]
-    planned_edges = [(op['value'], op['metadata'].get(UMR_NAMESPACE), source, target)
-                     for op, source, target in unit['edges']]
-    return (_graph_rows(stored_nodes, stored_edges)
-            == _graph_rows(planned_nodes, planned_edges))
+    if not isinstance(sentence, Sentence) or not sentence.nodes:
+        return unit
+    pieces = [tuple(p) for p in plan['pieces']]
+    planned = [(op, indexes, sorted(pieces[i] for i in indexes)) for op, indexes in unit['nodes']]
+    stored = list(sentence.nodes)
+    ranges = {n.id: sorted((p.begin, p.end) for p in n.pieces) for n in stored}
+    match: Dict[int, Node] = {}   # planned node index -> the stored node it keeps
+    updates = []
+
+    def pair(test):
+        for k, (op, _indexes, at) in enumerate(planned):
+            if k in match:
+                continue
+            for n in stored:
+                if n not in match.values() and test(op, at, n):
+                    match[k] = n
+                    break
+
+    def umr_of(n):
+        return (n.metadata or {}).get(UMR_NAMESPACE)
+
+    pair(lambda op, at, n: at == ranges[n.id] and op['value'] == n.concept
+         and _same(op['metadata'].get(UMR_NAMESPACE), umr_of(n)))
+    exact = set(match)
+    pair(lambda op, at, n: at == ranges[n.id] and op['value'] == n.concept)
+    pair(lambda op, at, n: at == ranges[n.id])
+    for k, n in match.items():
+        if k in exact:
+            continue
+        op = planned[k][0]
+        updates.append({'id': n.id, 'value': op['value'],
+                        'metadata': _restamp(n.metadata, op['metadata'])})
+
+    kept_ids = {n.id for n in match.values()}
+    kept_pieces = {p.id: (p.begin, p.end) for n in match.values() for p in n.pieces}
+    piece_at = {at: pid for pid, at in kept_pieces.items()}
+    doomed_nodes = [n for n in stored if n.id not in kept_ids]
+    doomed_pieces = list(dict.fromkeys(p.id for n in doomed_nodes for p in n.pieces
+                                       if p.id not in kept_pieces))
+    # A node with an anchor a kept node stands on too is not taken by the
+    # anchors' delete, so it is deleted itself.
+    node_deletes = [n.id for n in doomed_nodes if any(p.id in kept_pieces for p in n.pieces)]
+
+    new_pieces: List[dict] = []
+    new_piece_of: Dict[int, int] = {}
+    nodes = []
+    new_node_of: Dict[int, int] = {}
+    for k, (op, indexes, _at) in enumerate(planned):
+        if k in match:
+            continue
+        anchors = []
+        for i in indexes:
+            if pieces[i] in piece_at:
+                anchors.append(piece_at[pieces[i]])
+                continue
+            if i not in new_piece_of:
+                new_piece_of[i] = len(new_pieces)
+                new_pieces.append(unit['pieces'][i])
+            anchors.append(new_piece_of[i])
+        new_node_of[k] = len(nodes)
+        nodes.append((op, anchors))
+
+    def end(k):
+        return match[k].id if k in match else new_node_of[k]
+
+    stored_edges: Dict[Tuple[str, str], List[Edge]] = {}
+    for n in stored:
+        for e in n.out:
+            if e.source in kept_ids and e.target in kept_ids:
+                stored_edges.setdefault((e.source, e.target), []).append(e)
+    edges, edge_updates = [], []
+    left = []
+    for op, source, target in unit['edges']:
+        ends = (end(source), end(target))
+        here = stored_edges.get(ends) if isinstance(ends[0], str) and isinstance(ends[1], str) \
+            else None
+        same = next((e for e in here or [] if e.role == op['value'] and _same(
+            (e.metadata or {}).get(UMR_NAMESPACE), op['metadata'].get(UMR_NAMESPACE))), None)
+        if same is not None:
+            here.remove(same)
+        else:
+            left.append((op, ends))
+    for op, ends in left:
+        here = stored_edges.get(ends) if isinstance(ends[0], str) and isinstance(ends[1], str) \
+            else None
+        if here:
+            e = here.pop(0)
+            edge_updates.append({'id': e.id, 'value': op['value'],
+                                 'metadata': _restamp(e.metadata, op['metadata'])})
+        else:
+            edges.append((op, ends[0], ends[1]))
+    edge_deletes = [e.id for rest in stored_edges.values() for e in rest]
+
+    refs = sum(sum(isinstance(a, int) for a in anchors) for _, anchors in nodes) + sum(
+        isinstance(s, int) + isinstance(t, int) for _, s, t in edges)
+    size = (len(json.dumps([doomed_pieces, node_deletes, edge_deletes, new_pieces,
+                            [n for n, _ in nodes], [e for e, _, _ in edges], updates,
+                            edge_updates]))
+            + _REF_BYTES * refs)
+    return {'doomed': doomed_pieces, 'node_deletes': node_deletes, 'edge_deletes': edge_deletes,
+            'pieces': new_pieces, 'nodes': nodes, 'edges': edges, 'node_updates': updates,
+            'edge_updates': edge_updates, 'bytes': size}
+
+
+def _writes_anything(unit: dict) -> bool:
+    return any(unit.get(key) for key in ('doomed', 'node_deletes', 'edge_deletes', 'pieces',
+                                         'nodes', 'edges', 'node_updates', 'edge_updates'))
 
 
 #: What one ref beside a body costs on the wire, ``{"at": [...], "op": n,
@@ -299,37 +392,49 @@ _REF_BYTES = 64
 
 
 def _queue_sentences(b, units: Sequence[dict], progress: DraftProgress, alone: bool) -> None:
-    """Queue the writes of ``units`` on batch ``b``: the old anchors' delete,
-    then anchors, nodes and edges, each naming the ones before it by a ref."""
+    """Queue the writes of ``units`` on batch ``b``: the edges, nodes and
+    anchors a redraft deletes, then anchors, nodes and edges, each naming the
+    ones before it by a ref (a stored one by its id), then the updates of the
+    stored nodes and edges whose value changes."""
+    edge_deletes = [i for unit in units for i in unit.get('edge_deletes', [])]
+    node_deletes = [i for unit in units for i in unit.get('node_deletes', [])]
     doomed = [pid for unit in units for pid in unit['doomed']]
     pieces = [piece for unit in units for piece in unit['pieces']]
-    if alone and doomed:
+    if alone and (doomed or node_deletes):
         progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
-    if alone:
-        progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(pieces), "anchor")}…')
+    if edge_deletes:
+        b.relations.bulk_delete(edge_deletes)
+    if node_deletes:
+        b.spans.bulk_delete(node_deletes)
     if doomed:
         b.tokens.bulk_delete(doomed)
-    if not pieces:
-        return
-    b.tokens.bulk_create(pieces)
-    piece_refs = [b.ref(-1, k) for k in range(len(pieces))]
+    piece_refs = []
+    if pieces:
+        if alone:
+            progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(pieces), "anchor")}…')
+        b.tokens.bulk_create(pieces)
+        piece_refs = [b.ref(-1, k) for k in range(len(pieces))]
 
     span_ops: List[dict] = []
     piece_base = 0
     node_bases = []
     for unit in units:
         node_bases.append(len(span_ops))
-        span_ops.extend({**op, 'tokens': [piece_refs[piece_base + i] for i in indexes]}
-                        for op, indexes in unit['nodes'])
+        span_ops.extend({**op, 'tokens': [piece_refs[piece_base + a] if isinstance(a, int) else a
+                                          for a in anchors]}
+                        for op, anchors in unit['nodes'])
         piece_base += len(unit['pieces'])
-    if not span_ops:
-        return
-    if alone:
-        progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
-    b.spans.bulk_create(span_ops)
-    node_refs = [b.ref(-1, k) for k in range(len(span_ops))]
+    node_refs = []
+    if span_ops:
+        if alone:
+            progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
+        b.spans.bulk_create(span_ops)
+        node_refs = [b.ref(-1, k) for k in range(len(span_ops))]
 
-    edge_ops = [{**op, 'source': node_refs[base + source], 'target': node_refs[base + target]}
+    def end(base, value):
+        return node_refs[base + value] if isinstance(value, int) else value
+
+    edge_ops = [{**op, 'source': end(base, source), 'target': end(base, target)}
                 for unit, base in zip(units, node_bases)
                 for op, source, target in unit['edges']]
     if edge_ops:
@@ -337,6 +442,12 @@ def _queue_sentences(b, units: Sequence[dict], progress: DraftProgress, alone: b
             progress.report(DraftProgress.WRITE, 0.9,
                             f'Writing {_count(len(edge_ops), "relation")}…')
         b.relations.bulk_create(edge_ops)
+    node_updates = [u for unit in units for u in unit.get('node_updates', [])]
+    if node_updates:
+        b.spans.bulk_update(node_updates)
+    edge_updates = [u for unit in units for u in unit.get('edge_updates', [])]
+    if edge_updates:
+        b.relations.bulk_update(edge_updates)
 
 
 def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
@@ -353,11 +464,13 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     (:func:`~plaid_client.service.batch_body_budget`): the whole run in one
     request passed it on a long document.
 
-    A plan for a sentence that already has a graph REPLACES it: the old
-    graph's anchor tokens are deleted first in the same batch, which cascades
-    its concept spans and with them every edge and document-level triple on
-    them. So a plan for a sentence that is not :attr:`Sentence.redraftable`
-    is refused before anything is written, whatever the caller decided.
+    A plan for a sentence that already has a graph REPLACES it, row by row
+    (:func:`_keep_stored`): what the plan gives as it is stored is left
+    alone, a node or edge whose value changes is updated, and the anchors of
+    a node the plan lacks are deleted first in the same batch, which cascades
+    the node and every edge and document-level triple on it. So a plan for a
+    sentence that is not :attr:`Sentence.redraftable` is refused before
+    anything is written, whatever the caller decided.
     ``frag`` is the provenance stamp every write carries: it is FLAT and the
     app's own half sits beside it under ``umr``, exactly as the importer and
     the canvas write it. Each node's ``provDetail`` also records the concept
@@ -368,9 +481,8 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
             if plan['sentence'].nodes and not plan['sentence'].redraftable]
     if kept:
         raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
-    units = [_sentence_writes(layers, plan, frag) for plan in plans]
-    units = [unit for plan, unit in zip(plans, units)
-             if (unit['doomed'] or unit['pieces']) and not _unchanged(plan, unit)]
+    units = [_keep_stored(plan, _sentence_writes(layers, plan, frag)) for plan in plans]
+    units = [unit for unit in units if _writes_anything(unit)]
     if not units:
         return
 

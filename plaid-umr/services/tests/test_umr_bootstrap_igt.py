@@ -242,11 +242,17 @@ def test_a_sentence_with_a_graph_is_skipped_unless_overwritten():
 
     service = _service(documents=[document])
     servicetest.run(service, {**REQUEST, 'overwrite': True})
+    # Per row (ruling 30): the stored node over the same word is kept, with
+    # what changed on it updated, and only the new node is written.
     assert [kind for kind, _ in service.client.writes] == [
-        'tokens.bulk_delete', 'tokens.bulk_create', 'spans.bulk_create']
-    # The freed variable is used again rather than s1b2.
+        'tokens.bulk_create', 'spans.bulk_create', 'spans.bulk_update']
     assert [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')] == [
-        's1d', 's1b']
+        's1d']
+    # The freed variable is used again rather than s1b2.
+    [[update]] = service.client.payloads('spans.bulk_update')
+    assert update['id'] == 'c1'
+    umr = next(op['value'] for op in update['metadata'] if op['path'] == ['umr'])
+    assert umr['var'] == 's1b'
 
 
 # The same rule as the drafting service, from the same reader: `overwrite`

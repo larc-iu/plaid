@@ -277,6 +277,18 @@ def _machine_drafted(raw):
     return concept
 
 
+def _anchored_elsewhere(raw):
+    """Sentence 1's stored nodes moved onto other words (`the`, `.`), so a
+    plan over `dog` and `barked` makes every node anew."""
+    tokens = raw['text_layers'][0]['token_layers'][2]['tokens']
+    for token in tokens:
+        if token['id'] == 'n1':
+            token['begin'], token['end'] = 0, 3
+        elif token['id'] == 'n2':
+            token['begin'], token['end'] = 15, 16
+    return raw
+
+
 def _without_triples(raw):
     raw['text_layers'][0]['token_layers'][2]['span_layers'][0]['relation_layers'][1][
         'relations'] = []
@@ -397,7 +409,7 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
     a lost answer after the first left anchors with no node (conc-2026-09-29
     H4-7)."""
     from plaid_client.testing import FakeClient
-    raw = _without_triples(_document())
+    raw = _anchored_elsewhere(_without_triples(_document()))
     _machine_drafted(raw)
     doc = _read(raw)
     layers = resolve_layers(raw)
@@ -430,8 +442,7 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
 def test_a_redraft_that_drafts_the_graph_a_sentence_has_writes_nothing():
     """Ruling 30 (2026-10-16): a machine re-run writes only what changes, so
     a redraft of the graph a sentence already has leaves it as it is, its
-    document-level triples included. Any difference, a concept here, and the
-    sentence is written as before."""
+    document-level triples included."""
     from plaid_client.testing import FakeClient
     raw = _without_triples(_document())
     concept = _machine_drafted(raw)
@@ -454,9 +465,77 @@ def test_a_redraft_that_drafts_the_graph_a_sentence_has_writes_nothing():
     write_graphs(client, layers, plan('dog'), {'prov': 'inferred'})
     assert client.batches == []
 
+    # Per row: the one node whose concept changed is updated in place, and its
+    # anchor and edge stay.
     write_graphs(client, layers, plan('cat'), {'prov': 'inferred'})
     [batch] = client.batches
-    assert batch[0][0] == 'tokens.bulk_delete' and sorted(batch[0][1]) == ['n1', 'n2']
+    assert [kind for kind, _ in batch] == ['spans.bulk_update']
+    [[update]] = [p for _, p in batch]
+    assert (update['id'], update['value']) == ('c-d', 'cat')
+    assert {'op': 'set', 'path': ['provDetail'], 'value': {'value': 'cat'}} in update['metadata']
+
+
+def _stored_plan(doc, dog='dog', role=':ARG0', extra=None, drop_dog=False):
+    """A plan of sentence 1's stored graph, changed as asked."""
+    attrs = [{'rel': ':aspect', 'value': 'performance', 'order': 1}]
+    nodes = [{'concept': 'bark-01', 'meta': {'var': 's1b', 'root': True, 'attrs': attrs},
+              'piece_indexes': [0]}]
+    edges = []
+    if not drop_dog:
+        nodes.append({'concept': dog, 'meta': {'var': 's1d', 'attrs': []}, 'piece_indexes': [1]})
+        edges.append({'source': 0, 'target': 1, 'role': role, 'order': 0})
+    pieces = [(8, 14), (4, 7)]
+    if extra:
+        pieces.append((0, 3))
+        nodes.append({'concept': extra, 'meta': {'var': 's1x', 'attrs': []},
+                      'piece_indexes': [len(pieces) - 1]})
+        edges.append({'source': 0, 'target': len(nodes) - 1, 'role': ':mod', 'order': 1})
+    return [{'sentence': doc.sentences[0], 'pieces': pieces, 'nodes': nodes, 'edges': edges}]
+
+
+def _stored_graph():
+    raw = _without_triples(_document())
+    concept = _machine_drafted(raw)
+    concept['spans'][0]['metadata']['umr']['words'] = ['w3']
+    concept['spans'][1]['metadata']['umr']['words'] = ['w2']
+    return raw
+
+
+def test_a_redraft_with_one_role_changed_updates_that_edge_alone():
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), _stored_plan(_read(raw), role=':ARG1'),
+                 {'prov': 'inferred'})
+    [batch] = client.batches
+    assert [kind for kind, _ in batch] == ['relations.bulk_update']
+    assert [(u['id'], u['value']) for u in batch[0][1]] == [('r1', ':ARG1')]
+
+
+def test_a_redraft_that_drops_a_node_deletes_its_anchor_alone():
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), _stored_plan(_read(raw), drop_dog=True),
+                 {'prov': 'inferred'})
+    [batch] = client.batches
+    # The anchor's delete takes the node and its edge with it.
+    assert batch == [('tokens.bulk_delete', ['n2'])]
+
+
+def test_a_redraft_that_adds_a_node_writes_it_and_its_edge_from_the_kept_one():
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), _stored_plan(_read(raw), extra='big'),
+                 {'prov': 'inferred'})
+    [batch] = client.batches
+    assert [kind for kind, _ in batch] == ['tokens.bulk_create', 'spans.bulk_create',
+                                          'relations.bulk_create']
+    [[piece]] = client.payloads('tokens.bulk_create')
+    assert (piece['begin'], piece['end']) == (0, 3)
+    [[edge]] = client.payloads('relations.bulk_create')
+    assert edge['source'] == 'c-b' and edge['value'] == ':mod'
 
 
 def test_a_drafted_node_aligned_to_no_word_records_its_sentence_and_no_words():
@@ -480,7 +559,7 @@ def test_a_drafted_node_aligned_to_no_word_records_its_sentence_and_no_words():
 def test_a_draft_that_fails_partway_writes_nothing():
     from plaid_client.http import PlaidAPIError
     from plaid_client.testing import FakeClient
-    raw = _without_triples(_document())
+    raw = _anchored_elsewhere(_without_triples(_document()))
     _machine_drafted(raw)
     doc = _read(raw)
     plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7), (8, 14)],
