@@ -88,8 +88,10 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
         lost.append(f'{heads} dependenc' + ('y' if heads == 1 else 'ies'))
     if extras:
         lost.append(f'{extras} enhanced dependenc' + ('y' if extras == 1 else 'ies'))
-    becomes = (f'{token.surface!r} becomes ' + ' + '.join(repr(f) for f in clean)
-               if len(clean) > 1 else f'{token.surface!r} becomes one word {clean[0]!r}')
+    # Quoted as every other plan line quotes a value (core.bidi), never as
+    # Python's repr, which changed the marks with the value.
+    becomes = (f'{qv(token.surface)} becomes ' + ' + '.join(qv(f) for f in clean)
+               if len(clean) > 1 else f'{qv(token.surface)} becomes one word {qv(clean[0])}')
 
     ws.add_op({
         'kind': 'set_words', 'token_id': token.id, 'text_id': doc.text_id,

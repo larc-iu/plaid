@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
+from ..core.history import doc_label
 from .grew_syntax import grew_string
 from .project import FEATURES, Sentence, UdDoc, Word, feats_order, kwic, word_ref
 from ..core.corpus import spread
@@ -113,9 +114,9 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         read += 1
         hits = _hits_in(doc, field, matches)
         if not hits:
-            empty.append(f'"{doc.name}"')
+            empty.append(doc_label(ws, did, grew_string))
             continue
-        out.append(f'"{doc.name}" ({len(hits)})')
+        out.append(f'{doc_label(ws, did, grew_string)} ({len(hits)})')
         for s, w in hits[:min(quota, limit - shown)]:
             out.append(_hit_line(doc, s, w, _value(w, field)))
             shown += 1
@@ -346,7 +347,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25, docume
     with c.within(document) as held:
         ws.note_read(len(c.held_documents() or ws.documents()), 'document')
         out = _consistency(c, kinds, limit)
-    return (f'In {grew_string(c.doc_name(held))}:\n' if held else '') + out
+    return (f'In {doc_label(ws, held, grew_string)}:\n' if held else '') + out
 
 
 def _consistency(c: Corpus, kinds: List[str], limit: int) -> str:

@@ -104,10 +104,16 @@ def bare_label(label: Any) -> str:
 
 def grew_string(value: Any) -> str:
     """A form, a lemma or a name in double quotes as a Grew pattern writes a
-    string, a quotation mark inside it escaped: ``"qu'"``, ``"\\""``,
-    ``"French \\"3\\""``. One style for every value an answer quotes, so it
-    can be pasted into a pattern or an argument as it reads."""
-    return '"' + ('' if value is None else str(value)).replace('"', '\\"') + '"'
+    string: ``"qu'"``, ``"\\""``, ``"French \\"3\\""``, ``"C:\\\\x"``. One
+    style for every value an answer quotes, so it can be pasted into a
+    pattern as it reads. The escapes are plaid-ud's ``quote``
+    (src/grew/literals.js), the one Grew escaper, exactly: the backslash
+    first, then the quotation mark and the two whitespace characters the
+    lexer decodes (a raw newline ends the literal). A mirror test holds the
+    two together (tests/test_ud_quoting.py)."""
+    text = '' if value is None else str(value)
+    return '"' + (text.replace('\\', '\\\\').replace('"', '\\"')
+                  .replace('\n', '\\n').replace('\t', '\\t')) + '"'
 
 
 def compact_label(value: Any, enhanced: bool) -> str:

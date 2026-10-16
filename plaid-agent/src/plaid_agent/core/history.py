@@ -217,14 +217,16 @@ def _ref_names(ws) -> Dict[str, str]:
     return {i: (i if taken[n.casefold()] > 1 else n) for i, n in names.items()}
 
 
-def doc_label(ws, doc_id: str) -> str:
+def doc_label(ws, doc_id: str, quote: Optional[Callable[[str], str]] = None) -> str:
     """A document as a sentence names it: its name, with its id beside it
-    where another document shares that name."""
+    where another document shares that name. ``quote`` quotes the name (for
+    prose), the id staying outside: ``"Viaje" (d2)``."""
+    q = quote or (lambda name: name)
     ref = _ref_names(ws).get(doc_id, doc_id)
     if ref != doc_id:
-        return ref
+        return q(ref)
     name = next((d.get('name') for d in ws.documents() if d['id'] == doc_id), None)
-    return f'{name} ({doc_id})' if name else doc_id
+    return f'{q(name)} ({doc_id})' if name else doc_id
 
 
 # --- putting a document back -----------------------------------------------------

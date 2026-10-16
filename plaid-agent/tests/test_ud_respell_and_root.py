@@ -50,7 +50,7 @@ def test_a_reshape_says_on_its_row_what_it_discards_and_flags_the_arcs_it_takes(
     run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
     [op] = ws.ops
     # mar's lemma and UPOS, its obl head and the case and det arcs it heads.
-    assert op['label'] == "'mar' becomes 'ma' + 'r' (discards 2 annotation value(s) and 3 dependencies)"
+    assert op['label'] == '"mar" becomes "ma" + "r" (discards 2 annotation value(s) and 3 dependencies)'
     payload = ws.plan_payload()
     [stored] = payload['ops']
     assert stored.get('replaces_work')
