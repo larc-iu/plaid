@@ -86,7 +86,7 @@ export const EditableCell = React.memo(
       typedRef,
       setShown: setValue,
     });
-    const { conflict } = cell;
+    const { conflict, unsent } = cell;
     // Enter commits by leaving the cell, so a conflict over that commit comes
     // back to a cell nothing is focused in, under a note that says Enter keeps
     // yours. The caret goes back to the cell for it, unless it has gone on to
@@ -383,7 +383,8 @@ export const EditableCell = React.memo(
     const fieldClass =
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
       (mark && hasContent ? ` editable-field--${mark}` : '') +
-      (conflict && !isReadOnly ? ' editable-field--conflict' : '');
+      (conflict && !isReadOnly ? ' editable-field--conflict' : '') +
+      (unsent && !conflict && !isReadOnly ? ' editable-field--unsent' : '');
     // The refused value, under the cell showing the stored one (ConflictNote).
     const conflictId = `${tokenId}-${field}-conflict`;
     const describedBy = conflict ? conflictId : undefined;

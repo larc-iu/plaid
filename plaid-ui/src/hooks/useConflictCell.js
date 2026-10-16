@@ -25,6 +25,9 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
   );
   const cells = engine ?? loose;
   const [conflict, setConflict] = useState(() => cells.conflictOf(key));
+  // Whether a refused value waits in the cell to be sent again, for the cell
+  // to mark it as not saved.
+  const [unsent, setUnsent] = useState(() => !!cells.unsentOf(key));
   const untouched = () => !editingRef.current || !typedRef.current;
 
   useEffect(
@@ -42,6 +45,7 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
         },
         update: () => {
           setConflict(cells.conflictOf(key));
+          setUnsent(!!cells.unsentOf(key));
           if (untouched() && cells.unsentOf(key)) {
             showRef.current(cells.display(key, storedRef.current ?? ''));
           }
@@ -70,6 +74,7 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
     const now = stored ?? '';
     cells.reconcile();
     setConflict(cells.conflictOf(key));
+    setUnsent(!!cells.unsentOf(key));
     // A focused cell nobody typed in follows too, or leaving it would write
     // the value it showed back over the new one.
     if (untouched()) {
@@ -83,9 +88,11 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
 
   return {
     conflict,
+    unsent,
     /** Focus: a value waiting for the cell is taken up. */
     onFocus: () => {
       cells.focus(key);
+      setUnsent(!!cells.unsentOf(key));
     },
     /** A typed keystroke lets a conflict go. */
     onTyped: () => {
@@ -112,10 +119,15 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
     commit: (typed, saved, write, meta = {}) => {
       const ticket = cells.sending(key, { saved, typed, ...meta });
       setConflict(null);
+      setUnsent(false);
       return Promise.resolve()
         .then(write)
         .catch((error) => ({ landed: false, status: statusOf(error), error, readBack: false }))
-        .then((outcome) => cells.settle(ticket, outcome ?? { landed: true }));
+        .then((outcome) => {
+          const decided = cells.settle(ticket, outcome ?? { landed: true });
+          setUnsent(!!cells.unsentOf(key));
+          return decided;
+        });
     },
   };
 }

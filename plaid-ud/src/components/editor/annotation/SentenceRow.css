@@ -292,6 +292,11 @@
 .editable-field--conflict {
   border-color: hsl(var(--warning));
 }
+/* A value refused and put back in its cell, not saved: the same mark, as in
+   plaid-igt's grid, until it is sent again. */
+.editable-field--unsent {
+  border-color: hsl(var(--warning));
+}
 .editable-field-conflict {
   font-family: var(--plaid-font-text);
   position: absolute;

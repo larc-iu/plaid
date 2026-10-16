@@ -383,6 +383,8 @@ describe('an edit refused with the cell unchanged on the server', () => {
     const run = await lostTo({ field: 'lemma', before: 'sit', typed: 'sitC', winner: 'sit' });
     expect(run.input.value).toBe('sitC');
     expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    // Marked in the cell as not saved, not only by the toast (Q2-UD-POLISH).
+    expect(run.input.classList.contains('editable-field--unsent')).toBe(true);
     await run.view.step(async () => focus(run.input));
     await run.view.step(async () => blur(run.input));
     expect(run.onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sitC');
