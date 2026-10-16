@@ -3,17 +3,41 @@ import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { detectDirection } from '@ui/domain/textDirection.js';
 import { centeredPastPinned } from '@ui/components/assistant/citations.js';
+import { glossSmallCaps } from '@ui/domain/glossCase.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
 
 // A cited sentence as IGT draws it: the interlinear table, with the words the
 // model named filled in and a word cited for its morphemes tinted around them.
+// A gloss as the Analyze grid and the LaTeX export set it: each grammatical
+// tag in small caps (glossSmallCaps). The grid sets every word and morpheme
+// field this way, so the card does too. A morpheme row comes joined, with no
+// morph types to tell a stem from an affix, so it is read as a word's value is.
+// One piece of it is read beside the word's other pieces.
+const GLOSS_KINDS = new Set(['word', 'morpheme']);
+const Gloss = ({ value, reading }) =>
+  glossSmallCaps(value, reading).map((p, k) =>
+    p.smallCaps ? (
+      <span key={k} className="plaid-sc">
+        {p.text}
+      </span>
+    ) : (
+      p.text
+    ),
+  );
+
 // A morpheme row's cell for a word whose morphemes the citation names: drawn
 // morpheme by morpheme, so the named ones stand out inside the word.
-const MorphemeCell = ({ parts, joiners, marked }) =>
+const MorphemeCell = ({ parts, joiners, marked, gloss }) =>
   parts.map((part, k) => (
     <Fragment key={k}>
       {k > 0 && (joiners[k - 1] ?? '-')}
-      <span className={cn(marked.has(k + 1) && 'rounded-sm bg-highlight px-0.5')}>{part}</span>
+      <span className={cn(marked.has(k + 1) && 'rounded-sm bg-highlight px-0.5')}>
+        {gloss ? (
+          <Gloss value={part} reading={{ beside: parts.filter((_, j) => j !== k) }} />
+        ) : (
+          part
+        )}
+      </span>
     </Fragment>
   ));
 
@@ -124,7 +148,14 @@ export const ExampleCard = ({ c, projectId }) => {
                       )}
                     >
                       {parts ? (
-                        <MorphemeCell parts={parts} joiners={w.joiners || []} marked={morphemes} />
+                        <MorphemeCell
+                          parts={parts}
+                          joiners={w.joiners || []}
+                          marked={morphemes}
+                          gloss={GLOSS_KINDS.has(r.kind)}
+                        />
+                      ) : GLOSS_KINDS.has(r.kind) ? (
+                        <Gloss value={v} />
                       ) : (
                         v
                       )}

@@ -90,3 +90,67 @@ describe('ExampleCard scrolling', () => {
     await r.unmount();
   });
 });
+
+// FX9-HTMLEXPORT: a gloss on the card is set as the Analyze grid and the LaTeX
+// export set it, each grammatical tag in small caps. The web page export draws
+// this same card, and carries `.plaid-sc` wherever the markup uses it.
+describe('ExampleCard glosses', () => {
+  const sc = (root) => all(root, '.plaid-sc').map((s) => s.textContent);
+
+  it('sets the tags of a word and a morpheme field in small caps, and nothing else', async () => {
+    const r = await renderComponent(
+      <ExampleCard
+        c={{
+          ...c,
+          tiers: [
+            { name: 'Latin', kind: 'orthography' },
+            { name: 'Gloss', kind: 'word' },
+            { name: 'Morphemes', kind: 'morphemes' },
+            { name: 'MGloss', kind: 'morpheme' },
+          ],
+          words: [
+            {
+              index: 1,
+              surface: 'Ali-di',
+              seg: 'Ali-DI',
+              lines: [
+                { field: 'Latin', value: 'ALI' },
+                { field: 'Gloss', value: 'Ali-ERG' },
+                { field: 'MGloss', value: 'Ali-1SG.ERG' },
+              ],
+            },
+          ],
+        }}
+        projectId="p1"
+      />,
+    );
+    expect(sc(r.container)).toEqual(['ERG', '1SG', 'ERG']);
+    await r.unmount();
+  });
+
+  it('sets the tags of a cited word drawn morpheme by morpheme', async () => {
+    const r = await renderComponent(
+      <ExampleCard
+        c={{
+          ...c,
+          tiers: [{ name: 'MGloss', kind: 'morpheme' }],
+          words: [
+            {
+              index: 1,
+              surface: 'gam-ni',
+              morphs: ['gam', 'ni'],
+              joiners: ['-'],
+              lines: [{ field: 'MGloss', value: 'fish-PL', parts: ['fish', 'PL'] }],
+            },
+          ],
+          focus: [{ word: 1, morpheme: 2 }],
+        }}
+        projectId="p1"
+      />,
+    );
+    expect(sc(r.container)).toEqual(['PL']);
+    // Inside the cited morpheme's own highlight.
+    expect(r.container.querySelector('span.rounded-sm .plaid-sc')?.textContent).toBe('PL');
+    await r.unmount();
+  });
+});
