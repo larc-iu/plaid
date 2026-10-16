@@ -684,6 +684,9 @@ class Resolution:
         # What the plan's keeps hold out of every rule (core.keep): set by
         # `resolve_scopes`, since this workspace holds no plan.
         self.kept: set = set()
+        # By rule (its op's id): the lexicon entries the plan's changes
+        # before it remove, which it is found without, as staged.
+        self.removed: Dict[int, frozenset] = {}
 
 
 def _resolve_bulk_scope(res: Resolution, op):
@@ -692,7 +695,8 @@ def _resolve_bulk_scope(res: Resolution, op):
     try:
         # Over the values only the plan's earlier rules leave, a kept value
         # read as stored, as staging found it (`bulk.sync_rules`).
-        found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found), res.kept)
+        found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found), res.kept,
+                             res.removed.get(id(op), frozenset()))
         # Rebuilt now, outside add_op: held to the layers' lists as staged.
         for o in found:
             res.ws.refuse_off_list(o)
@@ -1376,6 +1380,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Option
     res = Resolution(client, project, requester)
     from .bulk import kept_targets
     res.kept = kept_targets(ops)
+    res.removed = {id(op): removed_entries(ops[:i]) for i, op in enumerate(ops) if rules.is_rule(op)}
     keep = rule_keep(res.ws, ops, notes)
 
     def check(op, found):

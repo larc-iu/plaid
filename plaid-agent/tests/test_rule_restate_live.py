@@ -130,7 +130,7 @@ def test_dropping_a_form_rule_takes_back_its_values_in_planned_analyses(live_cli
         assert out.endswith(' 1 value in analyses this plan already holds, changed there.'), out
         assert ws.ops[0] != analysis
         out = call_tool(ws, 'drop_planned', {'indexes': [2]})
-        assert out.startswith('Dropped 1 planned change. 1 value it set in planned analyses was taken back.'), out
+        assert out.startswith('Dropped 1 planned change. 1 value in planned analyses changed with it.'), out
         assert ws.ops == [analysis]
     finally:
         s.delete()
@@ -209,7 +209,7 @@ def test_dropping_a_form_rule_asked_again_takes_back_only_what_its_last_copy_set
                    [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('ka', 'Y')),
                     ('set_field_for_form', _form('ka', 'X')), ('drop_planned', {'indexes': [3]})],
                    ['Y', ''], [['Y'], ['Y', ''], ['Y', '']],
-                   said='1 value it set in planned analyses was taken back.')
+                   said='1 value in planned analyses changed with it.')
 
 
 def test_dropping_a_form_rule_asked_again_without_a_change_between_takes_its_value_back(live_client):
@@ -243,7 +243,7 @@ def test_dropping_a_form_rule_leaves_a_value_named_over_its_own(live_client):
                     ('set_field', {'document': 'Doc A', 'refs': ['s1.w2.m1'], 'field': 'Morph Gloss', 'value': 'Q'}),
                     ('drop_planned', {'indexes': [2]})],
                    ['Q', ''], [[''], ['Q', ''], ['', '']],
-                   said='1 value it set in planned analyses, changed since, stays as planned.')
+                   said='Dropped 2 planned changes.\n')
 
 
 def test_a_form_rule_that_reaches_only_a_planned_analysis_is_staged_and_its_drop_takes_the_value_back(live_client):
@@ -256,7 +256,7 @@ def test_a_form_rule_that_reaches_only_a_planned_analysis_is_staged_and_its_drop
             ' 1 value in analyses this plan already holds, changed there.'), out
         assert _analysis(ws) == ['', 'X'] and len(ws.ops) == 2
         out = call_tool(ws, 'drop_planned', {'indexes': [2]})
-        assert out.startswith('Dropped 1 entry. 1 value it set in planned analyses was taken back.'), out
+        assert out.startswith('Dropped 1 entry. 1 value in planned analyses changed with it.'), out
         assert _analysis(ws) == ['', ''] and len(ws.ops) == 1
     finally:
         s.delete()

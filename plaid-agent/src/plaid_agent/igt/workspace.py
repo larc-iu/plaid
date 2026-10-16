@@ -121,6 +121,10 @@ TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE))
 # spare its approval an edit elsewhere is not worth the wait.
 PIN_LOAD_MAX = 50
 
+#: The form of :meth:`Workspace.plan_state`. A plan stored in another form is
+#: not resumed.
+PLAN_STATE_FORMAT = 2
+
 # The keys of a change that name the entry it writes a link to: a link's
 # entry, and the entry a merge moves every link onto.
 ENTRY_TARGET_KEYS = ('item_id', 'keep_id')
@@ -215,6 +219,17 @@ class Workspace(BaseWorkspace):
         # Set by a rule's resolver that read only part of what it would
         # change (``[read, of]``), for the rule to say so (H12-RULES-2).
         self.partial_read: Optional[List[int]] = None
+        # Per rule of the plan: how many values of planned analyses it set
+        # when it was asked, and how many it is the last to write
+        # (``bulk.settle_analyses``).
+        self.analysis_hits: Dict[tuple, int] = {}
+        self.analysis_last: Dict[tuple, int] = {}
+        # Whether a word meets a rule's condition, asked of the stored
+        # project (``bulk._meets``).
+        self.condition_cache: Dict[tuple, bool] = {}
+        # While a rule is resolved: the lexicon entries the plan's changes
+        # before it remove (``bulk.resolve_rule``), or None for the plan's.
+        self.rule_removed: Optional[frozenset] = None
 
     # --- rules (core.rules) ---------------------------------------------------
 
@@ -839,9 +854,14 @@ class Workspace(BaseWorkspace):
                         if hit and work.protected(md):
                             held[eid] = md
         state['rule_work'] = [[k, v] for k, v in held.items()]
+        state['format'] = PLAN_STATE_FORMAT
         return state
 
     def resume(self, state: Dict[str, Any], documents: List[Dict[str, Any]]) -> None:
+        # A plan stored in another form than this one's is not taken over at
+        # all: nothing of it is resumed (REV6-AGENT-8).
+        if state.get('format') != PLAN_STATE_FORMAT or not isinstance(state.get('rule_work'), list):
+            raise ToolError('Resume is not available for that plan. Stage its changes again.')
         super().resume(state, documents)
         for eid, md in state['rule_work']:
             self.note_metadata(eid, md)
@@ -1011,14 +1031,12 @@ class Workspace(BaseWorkspace):
         for k in keys:
             self.new_entries.pop(k, None)
         self.ops[:] = [op for op in self.ops if not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
-        # A dropped rule takes back each value it set in a planned analysis
-        # that still holds it, one value at a time (bulk.UNDO, REV5-AGENT-2).
-        from .bulk import SEQ, UNDO, take_back
-        undone = since = 0
-        for op in dropped:
-            back, moved = take_back(self, op.get(UNDO) or [], op.get(SEQ) or 0)
-            undone, since = undone + back, since + moved
-        self.dropped_elsewhere = undone
+        # Each planned analysis is worked out again from the requests left
+        # (bulk.settle_analyses, in sync_rules below): what a dropped rule set
+        # there goes, and the rules after it read what is left (Luke
+        # 2026-10-16).
+        from .bulk import analysis_values, values_changed
+        analysed = analysis_values(self)
         # A dropped analysis takes the links to its morphemes along: they have
         # nothing to be written on.
         before = self.unlinked
@@ -1030,11 +1048,10 @@ class Workspace(BaseWorkspace):
         # a rule that only rewrote a dropped named change too.
         from .bulk import sync_rules
         emptied = sync_rules(self, drop_empty=True)
+        changed = self.dropped_elsewhere = values_changed(analysed, analysis_values(self))
         return ((' Links to the dropped new entries were dropped with them.' if keys else '')
-                + (f' {undone} {"value" if undone == 1 else "values"} it set in planned analyses '
-                   f'{"was" if undone == 1 else "were"} taken back.' if undone else '')
-                + (f' {since} {"value" if since == 1 else "values"} it set in planned analyses, changed since, '
-                   f'{"stays" if since == 1 else "stay"} as planned.' if since else '')
+                + (f' {changed} {"value" if changed == 1 else "values"} in planned analyses changed with it.'
+                   if changed else '')
                 + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '')
                 + (f' {emptied} later corpus-wide change{"s" if emptied != 1 else ""} that '
                    f'{"now find" if emptied != 1 else "now finds"} nothing to change went with it.'
@@ -1096,10 +1113,11 @@ class Workspace(BaseWorkspace):
         # Each merge as it will run: less the links another change takes.
         ops = self.mark_replaced_work(copy.deepcopy(settle_merges(self.ops)[0]))
         # How the plan's named values and rules were staged is the plan's own
-        # bookkeeping (bulk.SEQ, ASKED, UNDO): approval reads none of it.
-        from .bulk import ASKED, SEQ, UNDO
+        # bookkeeping (bulk.SEQ, ASKED, ANALYSIS_ASKED, NAMED_EDITS): approval
+        # reads none of it.
+        from .bulk import ANALYSIS_ASKED, ASKED, NAMED_EDITS, SEQ
         for op in ops:
-            for k in (SEQ, ASKED, UNDO):
+            for k in (SEQ, ASKED, ANALYSIS_ASKED, NAMED_EDITS):
                 op.pop(k, None)
         spec = compact_spec(self)
         # An op the scan path staged names no document; the group it joins

@@ -253,7 +253,9 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
         if note:
             notes.append(f'{r}{note}' if len(items) > 1 else note)
     ws.add_ops(staged)
-    return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '')
+    from .bulk import drop_emptied
+    emptied = drop_emptied(ws)
+    return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '') + emptied
 
 
 # A word's BOUNDARIES change (a split, a merge, a delete, a text edit over it)
@@ -638,43 +640,29 @@ _UNSET = object()
 
 def edit_planned_morpheme(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, *, field=None,
                           value: Optional[str] = None, form: Optional[str] = None, morph_type=_UNSET) -> int:
-    """Change morpheme ``place.index`` of the analysis the plan holds for its
-    word, in that analysis: a value of ``field``, its ``form`` or its
-    ``morph_type`` (None clears it). 1 when something changed, else 0.
+    """Name a value of ``field``, a ``form`` or a ``morph_type`` (None clears
+    it) for morpheme ``place.index`` of the analysis the plan holds for its
+    word, in that analysis. 1 when the plan changed, else 0.
 
-    The analysis is staged again through the funnel with its label written
-    afresh, as the same change rather than a second one, and a planned link
-    to that morpheme follows a new form (``plan.planned_morpheme`` checks
-    the form it read)."""
+    It is a request of its own on the analysis (``bulk.name_on_analysis``):
+    a rule staged before it that leaves the plan does not take it back. A
+    planned link to that morpheme follows a new form (``plan.planned_morpheme``
+    checks the form it read)."""
+    from .bulk import FORM, TYPE, name_on_analysis
     k = place.index - 1
-    morphemes = copy.deepcopy(place.analysis['morphemes'])
-    m = morphemes[k]
     if field is not None:
-        value = value or ''
-        cur = next((fv.get('value') or '' for fv in m.get('fields') or [] if fv.get('layer_id') == field.layer_id), '')
-        if cur == value:
-            return 0
-        m['fields'] = [fv for fv in m.get('fields') or [] if fv.get('layer_id') != field.layer_id] + (
-            [{'layer_id': field.layer_id, 'value': value}] if value != '' else [])
+        what, new = field.layer_id, value or ''
     elif form is not None:
-        if form == m['form']:
-            return 0
-        m['form'] = form
+        what, new = FORM, form
     elif morph_type is not _UNSET:
-        if (morph_type or None) == (m.get('morph_type') or None):
-            return 0
-        m['morph_type'] = morph_type or None
+        what, new = TYPE, morph_type or None
     else:
         return 0
-    w = place.word
-    si, wi, _mi = parse_ref(ref)
-    head = f'{ws.doc_label(doc.id)} s{si}.w{wi} {qv(w.surface)}'
-    had_values = sum(1 for sm in w.morphemes for sp in sm.fields.values() if sp.value != '')
-    rebuilt, _note = analysis_op(ws, head, w.surface, w.id, w.text_id, w.begin, w.end,
-                                 place.analysis.get('existing') or [],
-                                 segmentation(w) if place.analysis.get('existing') else '',
-                                 had_values, morphemes)
-    if form is not None:
+    if form is not None and form != place.morpheme['form']:
+        # Before the analysis is staged again, which drops a link whose form
+        # it no longer finds.
+        w = place.word
+        si, wi, _mi = parse_ref(ref)
         for i, op in enumerate(ws.ops):
             if (op.get('kind') == 'link' and op.get('analysis_word_id') == w.id
                     and op.get('morpheme_index') == place.index):
@@ -682,10 +670,7 @@ def edit_planned_morpheme(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, *
                 ws.ops[i] = {**op, 'morpheme_form': form,
                              **(labelled(f'{ws.doc_label(doc.id)} s{si}.w{wi}.m{place.index} {qv(form)}', change)
                                 if change is not None else {})}
-    replaced = ws.replaced
-    ws.add_op({**place.analysis, 'morphemes': morphemes, 'label': rebuilt['label']})
-    ws.replaced = replaced
-    return 1
+    return name_on_analysis(ws, place.analysis, k, what, new)
 
 
 def left_for_analysis(n: int) -> str:
@@ -1128,7 +1113,9 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
     ws.add_ops(staged)
     if not staged:
         return 'Nothing to discard: no machine-made, unconfirmed analysis there.'
-    return ws.planned_note(len(staged))
+    from .bulk import drop_emptied
+    emptied = drop_emptied(ws)
+    return ws.planned_note(len(staged)) + emptied
 
 
 def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] = None,
