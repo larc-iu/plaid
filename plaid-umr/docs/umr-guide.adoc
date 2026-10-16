@@ -237,7 +237,7 @@ An edge with one of these relations is refused, and so is an edge that would clo
 * **:** (colon) edits the relation to the parent. The parent roleset's own arguments come first, with what each means.
 * **a** opens the attribute picker.
 * **v** renames the variable.
-* **u** changes the anchor: click words, or type a word's number and press Enter, to add or remove them, then press Escape or click **Done**.
+* **u** changes the anchor: click words, or type a word's number and press Enter, to add or remove them, then press Enter or Escape, or click **Done**.
 * **m** moves the node under another parent: pick it from the list or click it.
 * **Ctrl+Shift+R** (Cmd+Shift+R) makes the focused node the sentence's root.
 

@@ -1083,6 +1083,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         if (word) await toggleAnchorWord(mode.nodeId, word.id);
         return;
       }
+      // Enter with no number typed, on the node being anchored, is Done.
+      if (e.key === 'Enter' && id === mode.nodeId) {
+        e.preventDefault();
+        setMode(null);
+        focusNode(mode.nodeId);
+        return;
+      }
     }
     if (mode) {
       const arrow = e.key.startsWith('Arrow') && plain;
@@ -1150,7 +1157,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         break;
       // A sentence with no words has nothing to anchor to.
       case 'node.anchor':
-        if (sentence.words.length) setMode({ kind: 'anchor', nodeId: id });
+        if (sentence.words.length) {
+          setMode({ kind: 'anchor', nodeId: id });
+          // The words to click, which a tall graph had below the fold.
+          sectionRef.current?.querySelector('.umr-tokens')?.scrollIntoView({ block: 'nearest' });
+        }
         break;
       // The grip drag as two clicks: the menu, then where the child is.
       case 'node.child':
@@ -1585,7 +1596,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           ? `Sentence ${sentence.number ?? sentence.index} has no word ${mode.missing}.`
           : mode.typed
             ? `Word ${mode.typed}, Enter to anchor.`
-            : 'Click words or type their numbers to anchor to them.',
+            : 'Click words or type their numbers to anchor to them. Enter to finish.',
         move: 'Pick or click the new parent.',
         reentrancy: 'Pick or click the second parent.',
         child: sentence.words.length

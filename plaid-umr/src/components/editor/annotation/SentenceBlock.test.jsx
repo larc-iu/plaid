@@ -1644,6 +1644,11 @@ describe('SentenceBlock mode targets from the keyboard', () => {
     await r.step(() => press(eat, 'Backspace'));
     expect(modeNote(r.container).textContent).toMatch(/Word 2,/);
     expect(input(r.container)).toBeNull();
+    // Enter with no number typed is Done (H11-MULTI).
+    await r.step(() => press(eat, 'Backspace'));
+    await r.step(() => press(eat, 'Enter'));
+    expect(modeNote(r.container)).toBeNull();
+    expect(setAnchor).toHaveBeenCalledTimes(2);
     await r.unmount();
   });
 });
