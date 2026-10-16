@@ -233,7 +233,10 @@ describe('the vocabulary screen', () => {
       await settle(5);
     });
     expect(reads).toBe(2);
-    expect(asks()).toBe(false);
+    // Nothing is on its way now, and the refused name is still in the box,
+    // typed and not saved, so leaving still asks.
+    expect(nameInput().value).toBe('Beeworth lexicon');
+    expect(asks()).toBe(true);
     expect(document.body.textContent).toContain('Ayvale lexicon');
     expect(document.body.textContent).not.toContain('Beeworth lexicon');
     await view.unmount();
@@ -471,6 +474,22 @@ describe('the vocabulary schema written from a stale page', () => {
     expect(threw).toBe(true);
     expect(Object.keys(server.config.igt.tagsets).sort()).toEqual(['cases', 'moods']);
     expect(Object.keys(tagsetsManager.props.tagsets).sort()).toEqual(['cases', 'moods']);
+    await view.unmount();
+  });
+});
+
+describe('a vocabulary name typed and not saved', () => {
+  it('asks before the page is left, and stops asking once it is saved', async () => {
+    const { client } = stub();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    expect(asks()).toBe(false);
+    await view.step(() => setValue(nameInput(), 'Ayvale dictionary'));
+    expect(asks()).toBe(true);
+    await view.step(async () => {
+      button('Save').click();
+      await settle();
+    });
+    expect(asks()).toBe(false);
     await view.unmount();
   });
 });

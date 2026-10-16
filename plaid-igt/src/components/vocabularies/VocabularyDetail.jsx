@@ -67,7 +67,7 @@ import { canEditProject, canManageVocabulary } from '@ui/domain/permissions.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
-import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
+import { useUnsavedDraft, useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { queuesStatus, vocabWriteQueue } from './vocabWriteQueue.js';
 import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { createOnce } from '@ui/lib/createOnce.js';
@@ -174,6 +174,11 @@ export const VocabularyDetail = () => {
     [writes.schema, writes.entries],
   );
   const guardLeavingTab = useUnsavedGuard();
+  // A name typed and not yet saved, on a new vocabulary or in Settings.
+  const nameTyped = isNewVocabulary
+    ? !!editedName.trim()
+    : !!vocabulary && editedName.trim() !== vocabulary.name;
+  useUnsavedDraft(nameTyped ? 'The vocabulary name you have typed' : null);
 
   // Each schema write expects the fields, or the tagsets, this page last read
   // or wrote, so a page opened before another maintainer's save is refused
