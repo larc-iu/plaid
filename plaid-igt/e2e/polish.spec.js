@@ -190,7 +190,5 @@ test('the built-in tokenizer says it leaves sentence boundaries alone', async ({
   await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Built-in (rule-based punctuation)');
-  await expect(
-    dialog.getByText('tokenize words by punctuation, no sentence splitting'),
-  ).toBeVisible();
+  await expect(dialog.getByText('Words split at spaces and punctuation')).toBeVisible();
 });

@@ -604,7 +604,7 @@ export const FieldsManager = ({
                 <th className="w-[15%] px-3 py-2 text-left font-medium">Scope</th>
                 <th className="px-3 py-2 text-left font-medium">Field name</th>
                 <th className="w-[14%] px-3 py-2 text-left font-medium">
-                  <span title="The writing-system tag FieldWorks will see for this field, such as en or tur. Leave it blank unless you export to FLEx.">
+                  <span title="Writing-system tag for FLEx export, such as en or tur.">
                     Language
                   </span>
                 </th>

@@ -21,7 +21,7 @@ const TOKENIZE_BUILTINS = [
   {
     name: BUILTIN_TOKENIZE_SEGMENTER,
     label: 'Unicode segmentation (this browser)',
-    description: "one sentence per line, tokens and words by the project's tokenizer locale",
+    description: "Sentences by line, tokens and words by the project's tokenizer locale",
   },
 ];
 

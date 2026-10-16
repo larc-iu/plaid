@@ -128,7 +128,7 @@ If you both changed the same passage, the save is refused with `Changed elsewher
 
 There are two ways to turn saved text into tokens:
 
-* **Tokenize** splits the text into sentences and tokens, one sentence per line. It uses the project's tokenizer locale, or else its language (see <<_settings,project settings>>). Each word gets its form as a machine-made lemma, and you add the other annotations and the tree yourself in the Annotate tab.
+* **Tokenize** splits the text no token covers yet into tokens. A text with no sentences is first split into sentences, one per line. A text with sentences keeps them, with their tokens and annotations. It uses the project's tokenizer locale, or else its language (see <<_settings,project settings>>). Each word gets its form as a machine-made lemma, and you add the other annotations and the tree yourself in the Annotate tab.
 * **Parse** does the whole job at once. Where your project has a parsing service connected, such as the bundled Stanza parser, it fills in sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand.
 
 Each button opens a dialog naming the method it will use and its options (see <<_services>>).

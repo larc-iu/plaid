@@ -20,7 +20,7 @@ export function TokenizeDialog({
     <ServiceSpotDialog
       label="Tokenize"
       icon={Scissors}
-      description="Splits the saved text into sentences, tokens and words."
+      description="Splits untokenized text into tokens and words, and a text with no sentences into sentences."
       run={tokenize.run}
       spot={spot}
       onRun={() => tokenize.start(text)}
