@@ -181,7 +181,11 @@ describe('a rename from a page read before a field was pointed at the tagset', (
     const repointed = [];
     let inBatch = false;
     const client = {
-      projects: { get: async () => structuredClone(server), setConfig: async () => {} },
+      projects: {
+        get: async () => structuredClone(server),
+        setConfig: async () => {},
+        deleteConfig: async () => {},
+      },
       spanLayers: {
         setConfig: async (id, _ns, key, value) => repointed.push([id, key, value, inBatch]),
         setConstraints: async () => {},

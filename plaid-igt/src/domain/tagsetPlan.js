@@ -26,6 +26,7 @@ import {
   tagsetRefusal,
 } from './igtConstraints.js';
 import { getIgtLayerInfo } from './layerInfo.js';
+import { queueStated, tagsetsChangedError } from './tagsetsSave.js';
 import { CORE_VOCAB_FIELDS } from './vocabFields.js';
 
 const SETTINGS_KINDS = Object.freeze(['set_tagset', 'assign_tagset']);
@@ -131,6 +132,21 @@ const stateOf = (op, live) => {
   return 'moved';
 };
 
+// Whether `op` points a field at a tagset its owner will not have once the
+// plan's own tagset changes (`ops`) are written over `live`: renamed or
+// deleted since the plan was made.
+const assignsMissing = (op, ops, live) => {
+  if (op.kind !== 'assign_tagset' || op.after == null) return false;
+  const raw = igtOf(live.config).tagsets;
+  const names = new Set(raw && typeof raw === 'object' ? Object.keys(raw) : []);
+  for (const o of ops) {
+    if (o.kind !== 'set_tagset' || o.owner !== op.owner) continue;
+    names.delete(o.was);
+    if (o.after != null) names.add(o.name);
+  }
+  return !names.has(op.after);
+};
+
 const readOwner = async (client, projectId, owner) => {
   if (owner === PROJECT) {
     const project = await client.projects.get(projectId);
@@ -181,7 +197,13 @@ const queueOwner = (b, projectId, owner, ops, live) => {
   const ownerId = owner === PROJECT ? projectId : owner;
   if (!same(next, raw || {})) {
     api.setConfig(ownerId, IGT_NAMESPACE, 'tagsets', next, undefined, { expected: raw });
+  } else {
+    // The tagsets as read, stated: changed since, they refuse the batch.
+    queueStated(api, ownerId, 'tagsets', igt.tagsets);
   }
+  // A plan that renames or deletes a tagset states every field reference it
+  // leaves as read, so a field pointed at that tagset since refuses it.
+  const removesName = Object.keys(raw || {}).some((name) => !Object.hasOwn(next, name));
 
   if (owner !== PROJECT) {
     const fields = { ...live.entryFields };
@@ -206,6 +228,8 @@ const queueOwner = (b, projectId, owner, ops, live) => {
       b.vocabLayers.setConfig(ownerId, IGT_NAMESPACE, 'fields', fields, undefined, {
         expected: igt.fields ?? null,
       });
+    } else if (removesName) {
+      queueStated(b.vocabLayers, ownerId, 'fields', igt.fields);
     }
     return [];
   }
@@ -224,7 +248,11 @@ const queueOwner = (b, projectId, owner, ops, live) => {
       b.projects.setConfig(ownerId, IGT_NAMESPACE, 'documentMetadata', nextMeta, undefined, {
         expected: meta,
       });
+    } else if (removesName) {
+      queueStated(b.projects, ownerId, 'documentMetadata', meta);
     }
+  } else if (removesName) {
+    queueStated(b.projects, ownerId, 'documentMetadata', igt.documentMetadata);
   }
 
   // Each field as it will read, for the rules a closed list puts on it.
@@ -241,6 +269,8 @@ const queueOwner = (b, projectId, owner, ops, live) => {
           expected: igtOf(sl.config).tagset ?? null,
         });
       }
+    } else if (removesName) {
+      queueStated(b.spanLayers, sl.id, 'tagset', igtOf(sl.config).tagset);
     }
     return {
       ...sl,
@@ -278,13 +308,15 @@ export const writeTagsetPlan = async (
   const owners = [...new Set(ops.map((op) => op.owner))];
   const lives = new Map();
   for (const owner of owners) lives.set(owner, await readOwner(client, projectId, owner));
-  const states = ops.map((op) => stateOf(op, lives.get(op.owner)));
-  if (states.every((s) => s === 'after')) return false;
+  const states = ops.map((op) =>
+    assignsMissing(op, ops, lives.get(op.owner)) ? 'moved' : stateOf(op, lives.get(op.owner)),
+  );
   if (states.some((s) => s === 'moved')) {
     throw new Error(
       'The tagset settings this plan changes were changed since it was made, so nothing was written. Ask the assistant to plan it again.',
     );
   }
+  if (states.every((s) => s === 'after')) return false;
   // `client` is one of the page's own (plaid-ui `authService.clientApart`),
   // so the operation neither joins one open on the shared client nor is
   // joined by one.
@@ -325,7 +357,20 @@ export const writeTagsetPlan = async (
     }
     const words = tagsetRefusal(error);
     if (words) throw new Error(`${words} Nothing was written.`, { cause: error });
-    throw error;
+    // A 409 for tagsets changed since they were read here says so.
+    throw await tagsetsChangedError(
+      error,
+      Object.fromEntries(owners.map((o) => [o, igtOf(lives.get(o).config).tagsets ?? null])),
+      async () =>
+        Object.fromEntries(
+          await Promise.all(
+            owners.map(async (o) => [
+              o,
+              igtOf((await readOwner(client, projectId, o)).config).tagsets ?? null,
+            ]),
+          ),
+        ),
+    );
   }
   return true;
 };

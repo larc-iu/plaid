@@ -4844,7 +4844,9 @@ function configMethods(client, kind) {
      * @param {any} configValue - Configuration value to set
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
-     *   was absent). The write is then refused with a 409 when the stored value differs.
+     *   was absent). The write is then refused with a 409 when the stored value differs. A value the key
+     *   already holds is not written and leaves no audit row, so the value read, expecting it, states in a
+     *   batch that the key is unchanged.
      * @returns {Promise<void>}
      */
     setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
@@ -4859,7 +4861,8 @@ function configMethods(client, kind) {
      * @param {string} namespace - The config namespace
      * @param {string} configKey - The config key
      * @param {string} [auditMessage] - Audit message for this write
-     * @param {{expected?: any}} [options] - `expected`, as on setConfig.
+     * @param {{expected?: any}} [options] - `expected`, as on setConfig. A key that is absent is not
+     *   written, so expecting null states in a batch that it is still absent.
      * @returns {Promise<void>}
      */
     deleteConfig: (id, namespace, configKey, auditMessage, options) =>

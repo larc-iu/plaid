@@ -132,16 +132,30 @@ describe('Settings > Fields, a closed tagset assigned', () => {
 });
 
 // REV3-WIRE-3, the mirror: another maintainer adds a value to POS after this
-// save read the project and before its batch lands, so the batch declares
-// the list as read. The rules are put in force from a read after the save,
-// so POS's field takes the list with the new value.
+// save read the project and before its batch lands. By Luke's ruling on
+// REV6-WIRE-1 the save states the tagsets it read, so core refuses it whole
+// and the screen says the tagsets changed elsewhere.
 describe('Settings > Fields, the tagset changed while the save is on its way', () => {
-  it('leaves the field holding the list as stored now', async () => {
+  it('is refused whole and says the tagsets changed elsewhere', async () => {
     const server = project();
-    const vs = (values) => ({ type: 'value-set', values, delimiters: '', parts: 'all' });
     const pos = () => server.textLayers[0].tokenLayers[1].spanLayers[0];
     const client = {
-      projects: { get: async () => structuredClone(server) },
+      projects: {
+        get: async () => structuredClone(server),
+        // Core's compare-and-set on the tagsets cell: a value already held
+        // writes nothing.
+        setConfig: async (_id, _ns, key, value, _d, options) => {
+          const held = server.config.igt[key] ?? null;
+          if (
+            options &&
+            JSON.stringify(options.expected ?? null) !== JSON.stringify(held) &&
+            JSON.stringify(value) !== JSON.stringify(held)
+          ) {
+            throw Object.assign(new Error('HTTP 409'), { status: 409 });
+          }
+          server.config.igt[key] = value;
+        },
+      },
       spanLayers: {
         refusedValues: async () => ({ count: 0, valueCount: 0, values: [] }),
         checkConstraints: async () => ({ violations: [], violationCount: 0 }),
@@ -171,14 +185,26 @@ describe('Settings > Fields, the tagset changed while the save is on its way', (
                   ops.push(() => client[bundle][m](...a)),
             },
           );
-        fn({ spanLayers: queue('spanLayers'), tokenLayers: queue('tokenLayers') });
-        for (const op of ops) await op();
+        fn({
+          projects: queue('projects'),
+          spanLayers: queue('spanLayers'),
+          tokenLayers: queue('tokenLayers'),
+        });
+        const saved = structuredClone(server);
+        try {
+          for (const op of ops) await op();
+        } catch (e) {
+          Object.assign(server, saved);
+          throw e;
+        }
         return [];
       },
     };
     const { error, unmount } = await save(client);
-    expect(error).toBeNull();
-    expect(pos().constraints.igt).toEqual([{ type: 'single-span' }, vs(['N', 'V'])]);
+    expect(error?.message).toBe('Tagsets changed elsewhere. Reload and redo your change.');
+    expect(notifyError).toHaveBeenCalledWith(error, 'Not saved');
+    expect(pos().config.igt.tagset).toBeUndefined();
+    expect(pos().constraints.igt).toEqual([{ type: 'single-span' }]);
     await unmount();
   });
 });

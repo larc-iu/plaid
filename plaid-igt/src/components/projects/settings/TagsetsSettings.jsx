@@ -5,7 +5,7 @@ import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
 import { refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
-import { queueTagsetsSave, tagsetsSaveFields } from '@/domain/tagsetsSave';
+import { queueTagsetsSave, tagsetsChangedError, tagsetsSaveFields } from '@/domain/tagsetsSave';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
@@ -49,6 +49,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     let fields;
     let after;
     let repointed = 0;
+    let tagsetsRead = storedConfig(project, IGT_NAMESPACE, 'tagsets');
     try {
       if (!client) throw new Error('Not authenticated');
       live = await client.projects.get(projectId);
@@ -67,6 +68,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         });
       }
       await tagsetsCell.write(async (expected) => {
+        tagsetsRead = expected;
         await client.batched((b) => {
           repointed = queueTagsetsSave(b, projectId, live, next, {
             renamed,
@@ -80,7 +82,10 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     } catch (error) {
       if (error?.refusedValues) throw error;
       console.error('Failed to save tagsets:', error);
-      notifyError(tagsetRefusal(error) ?? error, 'Failed to save the tagsets');
+      const said = await tagsetsChangedError(error, tagsetsRead, async () =>
+        storedConfig(await client.projects.get(projectId), IGT_NAMESPACE, 'tagsets'),
+      );
+      notifyError(tagsetRefusal(error) ?? said, 'Failed to save the tagsets');
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(error)) {
         Promise.resolve(onProjectUpdate?.()).catch((err) =>

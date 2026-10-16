@@ -123,6 +123,84 @@ describe('a plan of tagset changes, written with the approver’s session', () =
     expect(meta[5]).toEqual([{ name: 'Kind', tagset: 'Glosses' }]);
   });
 
+  // REV6-WIRE-4: the tagset a plan points a field at was renamed or deleted
+  // after the plan was made.
+  it('refuses, writing nothing, a plan assigning a tagset that is gone', async () => {
+    const assign = {
+      kind: 'assign_tagset',
+      owner: 'project',
+      fieldKind: 'span',
+      key: 'msl-0',
+      before: 'Leipzig',
+      after: 'Leipzig',
+    };
+    for (const tagsets of [{ L2: LEIPZIG }, {}]) {
+      const p = projectWith(tagsets);
+      p.textLayers[0].tokenLayers[2].spanLayers[0].config.igt.tagset = undefined;
+      const c = fakeClient(p);
+      await expect(
+        writeTagsetPlan(c, 'proj-1', { ops: [{ ...assign, before: null }] }),
+      ).rejects.toThrow(/changed since it was made/);
+      expect(c.batches).toBe(0);
+    }
+  });
+
+  // REV6-WIRE-1, by Luke's ruling: the write states the tagsets it read, and
+  // a plan that renames or deletes one states every field reference it
+  // leaves, so either changed since refuses the batch.
+  it('states the tagsets it read, and on a rename every field reference it leaves', async () => {
+    const assign = {
+      kind: 'assign_tagset',
+      owner: 'project',
+      fieldKind: 'span',
+      key: 'msl-0',
+      before: 'Leipzig',
+      after: null,
+    };
+    const c = fakeClient(projectWith());
+    await writeTagsetPlan(c, 'proj-1', { ops: [assign] });
+    expect(c.calls).toContainEqual([
+      'projects',
+      'setConfig',
+      'proj-1',
+      'igt',
+      'tagsets',
+      { Leipzig: LEIPZIG },
+      undefined,
+      { expected: { Leipzig: LEIPZIG } },
+    ]);
+    const r = fakeClient(projectWith());
+    await writeTagsetPlan(r, 'proj-1', { ops: [setTagset(LEIPZIG, { name: 'Glosses' })] });
+    // msl-0 is repointed, every other field stated as read (no tagset).
+    const stated = r.calls.filter(([res, , , , key]) => res === 'spanLayers' && key === 'tagset');
+    expect(stated.filter(([, m]) => m === 'setConfig').map(([, , id]) => id)).toEqual(['msl-0']);
+    const others = stated.filter(([, m]) => m === 'deleteConfig');
+    expect(others.length).toBeGreaterThan(0);
+    for (const call of others) expect(call[6]).toEqual({ expected: null });
+  });
+
+  it('says the tagsets changed elsewhere when its batch is refused for them', async () => {
+    const p = projectWith();
+    const conflict = Object.assign(new Error('HTTP 409'), { status: 409 });
+    const c = fakeClient(p, null, conflict);
+    const assign = {
+      kind: 'assign_tagset',
+      owner: 'project',
+      fieldKind: 'span',
+      key: 'msl-0',
+      before: 'Leipzig',
+      after: null,
+    };
+    let reads = 0;
+    c.projects.get = async () => {
+      reads += 1;
+      return reads === 1 ? p : { ...p, config: { igt: { ...p.config.igt, tagsets: {} } } };
+    };
+    await expect(writeTagsetPlan(c, 'proj-1', { ops: [assign] })).rejects.toThrow(
+      'Tagsets changed elsewhere. Reload and redo your change.',
+    );
+  });
+
   it('assigns and clears a field’s tagset', async () => {
     const c = fakeClient(projectWith());
     await writeTagsetPlan(c, 'proj-1', {

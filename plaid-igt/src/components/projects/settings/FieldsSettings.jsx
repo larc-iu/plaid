@@ -25,6 +25,7 @@ import { queueFieldDeclarations, refusedBySave, tagsetRefusal } from '@/domain/i
 import { putRulesInForce } from './putRulesInForce.js';
 import { RefusedValuesNotice } from './RefusedValuesNotice.jsx';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
+import { queueStated, tagsetsChangedError } from '@/domain/tagsetsSave';
 import {
   annotatedCounts,
   annotatedWordsQueries,
@@ -204,16 +205,25 @@ export const FieldsSettings = ({
 
     // One batch: each new field's layer with its scope, then the rest, its
     // rules included. A refusal of any of it leaves no layer without its
-    // rules.
-    await client.batched((b) => {
-      for (const { field, parentLayerId } of toCreate) {
-        const id = uuidv7();
-        b.spanLayers.create(parentLayerId, field.name, undefined, { id });
-        b.spanLayers.setConfig(id, IGT_NAMESPACE, 'scope', field.scope);
-        layerIds.set(fieldKey(field), id);
-      }
-      queueRest(b, data, change, layers, layerIds, fresh?.config);
-    });
+    // rules. A save that sets a field's tagset states the tagsets this page
+    // read, so one changed elsewhere since refuses it.
+    const tagsetsRead = storedConfig(project, IGT_NAMESPACE, 'tagsets');
+    try {
+      await client.batched((b) => {
+        if (change.tagset.length) queueStated(b.projects, projectId, 'tagsets', tagsetsRead);
+        for (const { field, parentLayerId } of toCreate) {
+          const id = uuidv7();
+          b.spanLayers.create(parentLayerId, field.name, undefined, { id });
+          b.spanLayers.setConfig(id, IGT_NAMESPACE, 'scope', field.scope);
+          layerIds.set(fieldKey(field), id);
+        }
+        queueRest(b, data, change, layers, layerIds, fresh?.config);
+      });
+    } catch (error) {
+      throw await tagsetsChangedError(error, tagsetsRead, async () =>
+        storedConfig(await client.projects.get(projectId), IGT_NAMESPACE, 'tagsets'),
+      );
+    }
     setRefused(null);
     // Every field's rules as the settings now want them, read after the
     // save: a tagset another maintainer changed while this save was on its

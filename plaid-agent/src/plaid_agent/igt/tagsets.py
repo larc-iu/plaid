@@ -21,8 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.constraints import value_parts, value_set_allows
 from plaid_client.workflows.igt.glossing import is_lexical_part
-from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset,
-                                                read_tagset_name, resolve_tagset)
+from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset
 
 from ..core.bidi import qv
 from ..core.tools import ToolError
@@ -776,6 +775,13 @@ def check_settings(client, project, ops) -> List[str]:
             elif _reference(cfg, layers, entry_fields, op) != op.get('before'):
                 reasons.append(f'the tagset of a field this plan changes ({op["label"].split(":")[0]}) changed '
                                'since this plan was made')
+        # A field pointed at a tagset its owner will not have once the plan's
+        # own tagset changes are written: renamed or deleted since.
+        mine = [op for op in settings_ops(ops) if op['owner'] == owner]
+        new, _, _ = _after(cfg, mine)
+        for op in mine:
+            if op['kind'] == 'assign_tagset' and op.get('after') is not None and op['after'] not in new:
+                reasons.append(f'the tagset {qv(op["after"])} this plan assigns no longer exists')
     return reasons
 
 
@@ -830,10 +836,25 @@ def _field_rules(cfg, layers, ops) -> List[dict]:
         wanted = field_constraints(layer_after, after_cfg)
         before = field_constraints(sl.get('config') or {}, cfg)
         stored = (sl.get('constraints') or {}).get(IGT)
-        out.append({'id': sl['id'], 'old': old, 'old_name': old_name, 'tagset': name, 'wanted': wanted,
+        out.append({'id': sl['id'], 'raw': lcfg.get('tagset'), 'old': old, 'old_name': old_name, 'tagset': name,
+                    'wanted': wanted,
                     'stored': stored, 'changes': _canonical(wanted) != _canonical(before),
                     'in_force': _canonical(stored) == _canonical(before)})
     return out
+
+
+TAGSETS_CHANGED = 'Tagsets changed elsewhere. Reload and redo your change.'
+
+
+def _queue_stated(b, api: str, owner_id: str, key: str, read) -> None:
+    """Queue a write that changes nothing and states that igt cell ``key``
+    still holds ``read`` (None: absent): core writes nothing for it and
+    refuses the batch (409) when the cell changed since (igt's
+    ``queueStated``)."""
+    if read is None:
+        b.add(lambda batch: getattr(batch, api).delete_config(owner_id, IGT, key, expected=None))
+    else:
+        b.add(lambda batch: getattr(batch, api).set_config(owner_id, IGT, key, read, expected=read))
 
 
 def queue_settings(client, b, project, ops) -> List[str]:
@@ -856,6 +877,13 @@ def queue_settings(client, b, project, ops) -> List[str]:
         if new != (raw or {}):
             b.add(lambda batch, v=new, e=raw: getattr(batch, owner_api).set_config(
                 owner_id, IGT, 'tagsets', v, expected=e))
+        else:
+            # The tagsets as read, stated: changed since, they refuse the batch.
+            _queue_stated(b, owner_api, owner_id, 'tagsets', igt.get('tagsets'))
+        # A plan that renames or deletes a tagset states every field
+        # reference it leaves as read, so a field pointed at that tagset
+        # since refuses it (igt's ``queueOwner``).
+        removes_name = any(name not in new for name in (raw or {}))
         if owner != PROJECT:
             fields = {k: dict(s) if isinstance(s, dict) else s for k, s in entry_fields.items()}
             # A core field the config never named takes its default spec, as
@@ -873,6 +901,8 @@ def queue_settings(client, b, project, ops) -> List[str]:
             if fields != entry_fields:
                 b.add(lambda batch, v=fields, e=igt.get('fields'): batch.vocab_layers.set_config(
                     owner_id, IGT, 'fields', v, expected=e))
+            elif removes_name:
+                _queue_stated(b, 'vocab_layers', owner_id, 'fields', igt.get('fields'))
             continue
 
         meta = igt.get('documentMetadata')
@@ -893,6 +923,10 @@ def queue_settings(client, b, project, ops) -> List[str]:
             if new_meta != meta:
                 b.add(lambda batch, v=new_meta, e=meta: batch.projects.set_config(
                     owner_id, IGT, 'documentMetadata', v, expected=e))
+            elif removes_name:
+                _queue_stated(b, 'projects', owner_id, 'documentMetadata', meta)
+        elif removes_name:
+            _queue_stated(b, 'projects', owner_id, 'documentMetadata', meta)
 
         for r in _field_rules(cfg, layers, mine):
             if r['tagset'] != r['old_name']:
@@ -902,6 +936,8 @@ def queue_settings(client, b, project, ops) -> List[str]:
                 else:
                     b.add(lambda batch, i=r['id'], e=r['old']: batch.span_layers.delete_config(
                         i, IGT, 'tagset', expected=e))
+            elif removes_name:
+                _queue_stated(b, 'span_layers', r['id'], 'tagset', r['raw'])
             if not r['changes']:
                 continue
             changed.append(r['id'])
@@ -918,7 +954,8 @@ def heal_fields(client, project_id: str, layer_ids) -> List[dict]:
     ``declareIgtRules`` with ``repair: false``): a closed list the values
     break is not declared, and a list the field holds stays, and one span a
     token is declared only where no token holds two. A field naming a tagset
-    the project does not have is left alone. Returns the fields left
+    the project does not have wants no list, so a list it holds is taken
+    off, as igt's ``wantedConstraints`` has it. Returns the fields left
     out of force, as {id, refused (core's answer for the list, or None),
     doubled (the tokens holding two, or 0)}."""
     from plaid_client import PlaidAPIError
@@ -927,10 +964,6 @@ def heal_fields(client, project_id: str, layer_ids) -> List[dict]:
     out = []
     for sl in _span_layers(p):
         if sl['id'] not in layer_ids:
-            continue
-        # A field naming a tagset the project does not have is left as it
-        # is, as igt's heal leaves it (``wantedConstraints``).
-        if read_tagset_name(sl.get('config')) and resolve_tagset(sl.get('config'), cfg) is None:
             continue
         wanted = field_constraints(sl.get('config') or {}, cfg)
         stored = (sl.get('constraints') or {}).get(IGT)
@@ -987,16 +1020,30 @@ def write_settings(client, project, ops) -> List[dict]:
     whose rules the plan changes put in force as far as their values allow
     (the adapter's ``afterWrite``, in the caller's operation). Returns the
     fields of the plan left out of force (``heal_fields``)."""
+    from plaid_client import PlaidAPIError
     from plaid_agent.core.plan import PlanOutOfDate
     reasons = check_settings(client, project, ops)
     if reasons:
         raise PlanOutOfDate(reasons)
+    owners = list(dict.fromkeys(op['owner'] for op in settings_ops(ops)))
+
+    def tagsets_now():
+        return {o: _igt(_live(client, project, o)[0]).get('tagsets') for o in owners}
+
+    read = tagsets_now()
     q = _Queue()
     changed = queue_settings(client, q, project, ops)
     if q.calls:
-        with client.batched() as batch:
-            for fn in q.calls:
-                fn(batch)
+        try:
+            with client.batched() as batch:
+                for fn in q.calls:
+                    fn(batch)
+        except PlaidAPIError as e:
+            # A 409 for tagsets changed since they were read says so (igt's
+            # ``tagsetsChangedError``).
+            if e.status == 409 and tagsets_now() != read:
+                raise PlanOutOfDate([TAGSETS_CHANGED]) from e
+            raise
     return heal_fields(client, project.id, set(changed)) if changed else []
 
 

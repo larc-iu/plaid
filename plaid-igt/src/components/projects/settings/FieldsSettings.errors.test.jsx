@@ -40,6 +40,10 @@ const project = () => ({
 const fakeClient = ({ refuseCreate = false, refuseBatch = false } = {}) => {
   const calls = [];
   const bundles = (sink) => ({
+    projects: {
+      setConfig: (...a) => sink('projects.setConfig', a),
+      deleteConfig: (...a) => sink('projects.deleteConfig', a),
+    },
     tokenLayers: { setConfig: (...a) => sink('tokenLayers.setConfig', a) },
     spanLayers: {
       setConfig: (...a) => sink('spanLayers.setConfig', a),
@@ -52,8 +56,8 @@ const fakeClient = ({ refuseCreate = false, refuseBatch = false } = {}) => {
   const wire = async (kind, args) => calls.push([kind, ...args]);
   const client = {
     calls,
-    projects: { get: async () => project() },
     ...bundles(wire),
+    projects: { ...bundles(wire).projects, get: async () => project() },
     batched: async (fn) => {
       const ops = [];
       fn(bundles((kind, args) => ops.push([kind, ...args])));

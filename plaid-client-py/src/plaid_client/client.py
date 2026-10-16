@@ -256,7 +256,9 @@ class _ConfigMethods:
             config_key: The config key
             config_value: Configuration value to set
             expected: The value read for this key (``None`` when it was absent). When given, the
-                write is refused with a 409 when the stored value is no longer ``expected``.
+                write is refused with a 409 when the stored value is no longer ``expected``. A value
+                the key already holds is not written and leaves no audit row, so the value read,
+                expecting it, states in a batch that the key is unchanged.
         """
         return self._request('PUT', f'/api/v1/{self._kind}/{id}/config/{namespace}/{config_key}',
                              **_config_request(audit_message, config_value, expected))
@@ -269,7 +271,8 @@ class _ConfigMethods:
             id: The record's ID
             namespace: The config namespace
             config_key: The config key
-            expected: As on ``set_config``.
+            expected: As on ``set_config``. A key that is absent is not written, so expecting
+                ``None`` states in a batch that it is still absent.
         """
         return self._request('DELETE', f'/api/v1/{self._kind}/{id}/config/{namespace}/{config_key}',
                              **_config_request(audit_message, _UNSET, expected))

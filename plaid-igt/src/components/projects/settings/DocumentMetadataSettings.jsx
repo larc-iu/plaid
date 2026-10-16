@@ -6,6 +6,11 @@ import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { PREDEFINED_FIELDS, readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { queueStated, tagsetsChangedError } from '@/domain/tagsetsSave';
+
+// A save refused because what it read changed elsewhere: the fields, or the
+// tagsets it points them at.
+const isStale = (error) => isConfigConflict(error) || !!error?.tagsetsChanged;
 
 // What DocumentMetadataManager shows, read off a project's config. Null means
 // "use the defaults".
@@ -64,17 +69,31 @@ export const DocumentMetadataSettings = ({
         ...(field.tagset ? { tagset: field.tagset } : {}),
       }));
 
-      await metadataCell.write(async (expected) => {
-        await client.projects.setConfig(
-          projectId,
-          IGT_NAMESPACE,
-          'documentMetadata',
-          apiConfig,
-          undefined,
-          { expected },
+      // A save that points a field at a tagset states the tagsets this page
+      // read, so one changed elsewhere since refuses it.
+      const tagsetsRead = storedConfig(project, IGT_NAMESPACE, 'tagsets');
+      try {
+        await metadataCell.write(async (expected) => {
+          await client.batched((b) => {
+            if (apiConfig.some((f) => f.tagset)) {
+              queueStated(b.projects, projectId, 'tagsets', tagsetsRead);
+            }
+            b.projects.setConfig(
+              projectId,
+              IGT_NAMESPACE,
+              'documentMetadata',
+              apiConfig,
+              undefined,
+              { expected },
+            );
+          });
+          return apiConfig;
+        });
+      } catch (error) {
+        throw await tagsetsChangedError(error, tagsetsRead, async () =>
+          storedConfig(await client.projects.get(projectId), IGT_NAMESPACE, 'tagsets'),
         );
-        return apiConfig;
-      });
+      }
       // The Tagsets section reads which fields point at which tagset off the
       // project: its "used by" line and seed button for a tagset used only by
       // a metadata field stayed stale until a reload without this.
@@ -82,7 +101,7 @@ export const DocumentMetadataSettings = ({
     } catch (error) {
       console.error('Failed to save document metadata configuration:', error);
       // Someone else saved since: show what is stored now.
-      if (isConfigConflict(error)) {
+      if (isStale(error)) {
         Promise.resolve(onProjectUpdate?.()).catch((err) =>
           console.error('Failed to reload the project:', err),
         );
@@ -95,7 +114,7 @@ export const DocumentMetadataSettings = ({
 
   // Handle errors
   const handleError = (error) => {
-    if (!isConfigConflict(error)) setHasError(true);
+    if (!isStale(error)) setHasError(true);
     notifyError(error, 'Failed to save the metadata fields');
   };
 

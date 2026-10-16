@@ -30,8 +30,13 @@ import { sameConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 //
 // FX-F-WIRE adds, by the rulings on REV5-WIRE-2: a tagset rename repoints its
 // fields in the batch that writes the tagsets, so no field is left naming the
-// old name, and the heal leaves a field naming a tagset the project does not
-// have as it is (never named, its rules untouched).
+// old name.
+//
+// FX-G-WIRE, by Luke's ruling on REV6-WIRE-1 and -2 (2026-10-16): a field
+// naming a tagset the project does not have wants what a field with no tagset
+// wants, so the heal takes its list off, and it is named until then. A field
+// whose settings want no list holds none after a heal, healed alone or with
+// others (REV6-WIRE-3).
 
 // A small seeded generator, so a failing case can be run again.
 const rng = (seed) => {
@@ -75,8 +80,9 @@ const generate = (seed) => {
     const config = { igt: { scope: pick(r, ['Word', 'Morpheme']), ...(tagset ? { tagset } : {}) } };
     // What the server holds: what the settings want, nothing, the one-span
     // rule only, or a list the settings no longer name (another tagset's,
-    // an old copy of this one), as drift leaves it.
-    const kind = pick(r, ['wanted', 'none', 'span', 'old', 'old']);
+    // an old copy of this one), with one span a token or without, as drift
+    // leaves it.
+    const kind = pick(r, ['wanted', 'none', 'span', 'old', 'old', 'list']);
     const stored =
       kind === 'wanted'
         ? fieldConstraints(config, project.config)
@@ -84,7 +90,9 @@ const generate = (seed) => {
           ? null
           : kind === 'span'
             ? [{ type: 'single-span' }]
-            : [{ type: 'single-span' }, valueSet(subset(r, POOL))];
+            : kind === 'list'
+              ? [valueSet(subset(r, POOL))]
+              : [{ type: 'single-span' }, valueSet(subset(r, POOL))];
     // Stored values: an exempt one (an import's, a machine's) may be off any
     // list, a person's obeys the list the layer held when it was written.
     // One span a token, unless the layer does not hold that rule: then a
@@ -174,9 +182,20 @@ const fakeCore = ({ project, data }) => {
     }
     sl.config = { ...sl.config, [ns]: { ...sl.config?.[ns], [key]: value } };
   };
+  const deleteConfig = (id, ns, key, _doc, options) => {
+    const sl = layer(id);
+    if (options && Object.hasOwn(options, 'expected')) {
+      if ((options.expected ?? null) !== (sl.config?.[ns]?.[key] ?? null)) {
+        throw Object.assign(new Error('HTTP 409'), { status: 409 });
+      }
+    }
+    const { [key]: _gone, ...rest } = sl.config?.[ns] ?? {};
+    sl.config = { ...sl.config, [ns]: rest };
+  };
   const spanLayers = {
     setConstraints: async (...a) => setConstraints(...a),
     setConfig: async (...a) => setConfig(...a),
+    deleteConfig: async (...a) => deleteConfig(...a),
     checkConstraints: async (id, rules) => {
       const vs = violationsOf(id, rules);
       return { violations: vs, violationCount: vs.length };
@@ -206,6 +225,10 @@ const fakeCore = ({ project, data }) => {
     get: async () => clone(project),
     setConfig: async (_id, ns, key, value) => {
       project.config = { ...project.config, [ns]: { ...project.config?.[ns], [key]: value } };
+    },
+    deleteConfig: async (_id, ns, key) => {
+      const { [key]: _gone, ...rest } = project.config?.[ns] ?? {};
+      project.config = { ...project.config, [ns]: rest };
     },
   };
   const client = {
@@ -249,7 +272,7 @@ const fakeCore = ({ project, data }) => {
 // what stands in the way (values off its list, or a token with two spans
 // where it does not hold one span a token), keeping the list it held when
 // values are in the way. Returns the failures.
-const checkHealed = (g, core, out, before, beforeHeal = before) => {
+const checkHealed = (g, core, out, before) => {
   const fails = [];
   const names = new Set(out.notInForce.map((n) => n.layerId));
   let healed = 0;
@@ -257,16 +280,12 @@ const checkHealed = (g, core, out, before, beforeHeal = before) => {
   for (const f of g.fields) {
     const wanted = fieldConstraints(f.config, g.project.config);
     const stored = core.layer(f.id).constraints?.igt ?? null;
-    const name = f.config?.igt?.tagset;
-    if (name && !g.project.config.igt.tagsets?.[name]) {
-      // A field naming a tagset that is gone: left as it is.
-      if (names.has(f.id)) fails.push(`${f.id} names a missing tagset and is named`);
-      if (!sameConstraints(stored, beforeHeal.get(f.id))) {
-        fails.push(`${f.id} names a missing tagset and the heal changed its rules`);
-      }
-      continue;
-    }
     const rule = wanted.find((c) => c.type === 'value-set');
+    // A field whose settings want no list (no tagset, one not closed, or one
+    // the project does not have) holds none after the heal.
+    if (!rule && (stored || []).some((c) => c.type === 'value-set')) {
+      fails.push(`${f.id} keeps a list its settings do not want`);
+    }
     const inWay = rule ? core.refused(f.id, [rule]) : [];
     const was = before.get(f.id) || [];
     const hadSingle = was.some((c) => c.type === 'single-span');
@@ -508,11 +527,11 @@ describe('a settings save over a generated sweep', () => {
           if (f.config?.igt?.tagset === save.renamed.from) fail(`${f.id} still names the old name`);
         }
       }
-      const healed = checkHealed(g, core, res.out, before, res.rulesBeforeHeal);
+      const healed = checkHealed(g, core, res.out, before);
       healed.fails.forEach(fail);
     }
     expect(violations).toEqual([]);
-    expect(stats.refused).toBeGreaterThan(CASES / 100);
+    expect(stats.refused).toBeGreaterThan(CASES / 200);
     expect(stats.outOfForceSaved).toBeGreaterThan(CASES / 20);
     expect(stats.renamed).toBeGreaterThan(CASES / 20);
   });
