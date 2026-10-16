@@ -1249,12 +1249,12 @@ class FakeClient:
                 *(spec['guidelines'] for spec in (self.other_projects or {}).values())]
 
     # -- the client surface --
-    def batch(self, *, timeout=None):
+    def batch(self, *, timeout=_client._UNSET):
         # ``timeout`` is the real client's per-batch wait, accepted and ignored.
         return _Batch(self)
 
     @contextlib.contextmanager
-    def batched(self, *, timeout=None):
+    def batched(self, *, timeout=_client._UNSET):
         batch = _Batch(self)
         try:
             yield batch
