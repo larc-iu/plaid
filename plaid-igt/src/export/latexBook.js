@@ -958,20 +958,20 @@ export function formatAbbreviations(tags, projectConfig) {
 export const VOCAB_SCOPES = Object.freeze({ USED: 'used', ALL: 'all' });
 
 // Fields a preset that never chose its fields leaves out: a status says how
-// far the entry's editing has got, and a morph type is "stem" on most
-// entries, so both read as noise in a book. A preset can still tick them.
-const FIELDS_OFF_BY_DEFAULT = new Set(['status', 'morphType']);
+// far the entry's editing has got, which reads as noise in a book (Luke,
+// 2026-10-16). A preset can still tick it.
+const FIELDS_OFF_BY_DEFAULT = new Set(['status']);
 
-// The morph types of a plain free form. A chapter that prints morph types
-// leaves these out, since nearly every entry has one.
-const PLAIN_MORPH_TYPES = new Set(['stem', 'root']);
+// The morph type a chapter that prints morph types leaves out, since nearly
+// every entry has it (Luke, 2026-10-16).
+const PLAIN_MORPH_TYPE = 'stem';
 
 /**
  * The preset's vocabulary choices as the project has them now. `vocabs` is
  * the project's list of vocabularies as a project read gives it ({ id, name,
  * config }). The chapter is on by default when there is a vocabulary, every
  * vocabulary and every field it exports is on unless the preset switched it
- * off (Status and Morph Type start off), and the chapter lists the entries
+ * off (Status starts off), and the chapter lists the entries
  * the texts use.
  */
 export function latexVocabulary(options, vocabs) {
@@ -1122,9 +1122,9 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
         continue;
       }
       // A morph type goes by its name on screen (multi-word expression), and
-      // a plain stem or root prints none.
+      // a plain stem prints none.
       const raw = fieldText(item.metadata?.[f.name]);
-      if (f.name === 'morphType' && PLAIN_MORPH_TYPES.has(raw.trim().toLowerCase())) continue;
+      if (f.name === 'morphType' && raw.trim().toLowerCase() === PLAIN_MORPH_TYPE) continue;
       const value = texLine(f.name === 'morphType' ? morphTypeLabel(raw) : raw);
       if (value === '') continue;
       out.push(

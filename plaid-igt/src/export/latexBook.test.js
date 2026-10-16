@@ -862,7 +862,7 @@ describe('the vocabulary chapter', () => {
     return tex === null ? null : unwrapped(tex, 'PlaidEntryTarget');
   };
 
-  it('defaults to a chapter of the entries the texts use, every vocabulary and field on but Morph Type', () => {
+  it('defaults to a chapter of the entries the texts use, every vocabulary and field on', () => {
     expect(choiceFor()).toEqual({
       include: true,
       scope: 'used',
@@ -875,7 +875,7 @@ describe('the vocabulary chapter', () => {
             { name: 'gloss', label: 'Gloss', on: true },
             { name: 'pos', label: 'POS', on: true },
             { name: 'seeAlso', label: 'See Also', on: true },
-            { name: 'morphType', label: 'Morph Type', on: false },
+            { name: 'morphType', label: 'Morph Type', on: true },
           ],
         },
       ],
@@ -1018,9 +1018,9 @@ describe('the vocabulary chapter', () => {
       ],
     };
 
-    it('start off in a preset that never chose its fields, and the other fields start on', () => {
+    it('Status starts off in a preset that never chose its fields, and the other fields start on', () => {
       expect(fieldsOf(latexVocabulary({}, [vocab]))).toEqual({
-        morphType: false,
+        morphType: true,
         gloss: true,
         status: false,
       });
@@ -1028,7 +1028,11 @@ describe('the vocabulary chapter', () => {
         vocabularies: [vocab],
         choice: latexVocabulary({ vocabulary: { scope: 'all' } }, [vocab]),
       });
-      expect(tex).not.toContain('Morph Type');
+      expect(tex.match(/Morph Type\}\{[^}]*\}/g)).toEqual([
+        'Morph Type}{suffix}',
+        'Morph Type}{bound root}',
+        'Morph Type}{Root}',
+      ]);
       expect(tex).not.toContain('Status');
     });
 
@@ -1040,7 +1044,7 @@ describe('the vocabulary chapter', () => {
       });
     });
 
-    it('print a morph type only when it is not a plain stem or root', () => {
+    it('print a morph type only when it is not stem', () => {
       const tex = vocabularyTex({
         vocabularies: [vocab],
         choice: latexVocabulary({ vocabulary: ticked }, [vocab]),
@@ -1048,6 +1052,7 @@ describe('the vocabulary chapter', () => {
       expect(tex.match(/Morph Type\}\{[^}]*\}/g)).toEqual([
         'Morph Type}{suffix}',
         'Morph Type}{bound root}',
+        'Morph Type}{Root}',
       ]);
       expect(tex.match(/Status\}\{draft\}/g)).toHaveLength(2);
     });
