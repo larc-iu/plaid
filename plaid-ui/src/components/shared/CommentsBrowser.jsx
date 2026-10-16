@@ -159,7 +159,10 @@ export const CommentsBrowser = ({
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent');
   const [filter, setFilter] = useState('current');
-  const [openId, setOpenId] = useState(null);
+  // Which thread is open: undefined until the reader picks, while a document
+  // with no thread but its own opens that one, so its empty state and the box
+  // to start it show at once rather than behind a collapsed row.
+  const [openId, setOpenId] = useState(undefined);
 
   const list = useMemo(
     () =>
@@ -207,6 +210,10 @@ export const CommentsBrowser = ({
   const pinned = filter === 'current' && paged.page === 0 ? list?.pinned : null;
   const rows = [...(pinned ? [pinned] : []), ...paged.pageItems];
   const q = query.trim();
+  const isOpen = (thread) =>
+    openId === undefined
+      ? thread === pinned && rows.length === 1 && !thread.comments.length
+      : openId === thread.entityId;
 
   return (
     <div className="mt-2">
@@ -261,10 +268,8 @@ export const CommentsBrowser = ({
                 canDeleteAny={canDeleteAny}
                 jumpHref={jumpHref}
                 jumpTitle={jumpTitle}
-                open={openId === thread.entityId}
-                onToggle={() =>
-                  setOpenId((prev) => (prev === thread.entityId ? null : thread.entityId))
-                }
+                open={isOpen(thread)}
+                onToggle={() => setOpenId(isOpen(thread) ? null : thread.entityId)}
               />
             ))}
           </ul>

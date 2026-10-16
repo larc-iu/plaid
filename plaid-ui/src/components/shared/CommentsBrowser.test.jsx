@@ -124,6 +124,16 @@ describe('the counts', () => {
   });
 });
 
+describe('a document with no thread', () => {
+  it('opens its own thread, so it says it has none without a click', async () => {
+    const empty = { ...store(), threads: () => [] };
+    const view = await renderComponent(browse({ store: empty, pinnedId: 'd1' }));
+    expect(view.container.textContent).toContain('No comments.');
+    expect(view.container.querySelector('[aria-label="Collapse this thread"]')).not.toBeNull();
+    await view.unmount();
+  });
+});
+
 describe('a thread header', () => {
   it('lets the excerpt and the latest comment take their own direction', async () => {
     const view = await renderComponent(
