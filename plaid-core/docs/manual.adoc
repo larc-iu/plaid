@@ -61,6 +61,9 @@ By default, each project is private, and one of three permissions levels is need
 
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
 
+Admins and the maintainers of any project or vocabulary may list and search every account on the server (`GET /api/v1/users`), so that they can add members.
+Anyone may create a project and so become a maintainer, which means every user can search the accounts.
+
 A request for a project, document or vocabulary that does not exist answers 404 to an admin.
 Anyone else gets the same 403 they would get for one that exists but is not theirs.
 When the 403 is for an id that resolves to nothing, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
