@@ -126,9 +126,13 @@ test('a rewrite matches a lemma stored decomposed for a pattern typed composed',
   // server's REGEXP finds it in the value as stored.
   assert.deepEqual(forms('pattern { X [lemma=re"\u0301"] }'), ['kitab']);
   // Luke, 2026-10-16: and inside a composed letter, as the server's REGEXP
-  // reads a pattern holding a mark decomposed. A class of marks names none.
+  // reads a pattern holding a mark decomposed.
   assert.deepEqual(forms('pattern { X [lemma=re"\u0300"] }'), ['y']);
-  assert.deepEqual(forms(String.raw`pattern { X [lemma=re"\p{M}"] }`), ['kitab']);
+  // REV7-CORE-4: a mark named by its category or by escape reaches inside a
+  // composed letter too, as the server reads the pattern it is sent.
+  assert.deepEqual(forms(String.raw`pattern { X [lemma=re"\p{M}"] }`), ['kitab', 'y']);
+  assert.deepEqual(forms(String.raw`pattern { X [lemma=re"\x{300}"] }`), ['y']);
+  assert.deepEqual(forms(String.raw`pattern { X [lemma=re"a\w"] }`), ['kitab']);
   // An equality compares canonically equivalent text as equal, as core's does.
   assert.deepEqual(forms('pattern { X [lemma="p\u02b0\u00e1"] }'), ['kitab']);
 });

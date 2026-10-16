@@ -23,7 +23,7 @@ import pytest
 from node_exe import node_or_skip
 from plaid_agent.core.corpus import rx
 from plaid_agent.core.java_case_folds import FOLDS
-from plaid_agent.core.java_regex import PatternError, SERVER_PATTERN_MAX, matcher, nfc, translate
+from plaid_agent.core.java_regex import PatternError, SERVER_PATTERN_MAX, matcher, names_mark, nfc, nfd, translate
 from plaid_agent.core.replace import replacer
 from plaid_agent.core.tools import ToolError
 
@@ -135,7 +135,12 @@ def _differences(rows):
     raw = _oracle([_hexed(sent, s) for sent, s in pairs])
     composed = _oracle([_hexed(nfc(sent), nfc(s)) for sent, s in pairs])
     assert len(raw) == len(composed) == len(pairs)
-    answers = ['1' if '1' in (a, b) else a for a, b in zip(raw, composed)]
+    # A pattern that names a combining mark is also matched with pattern and
+    # value in NFD (REV7-CORE-4), asked of the pattern the server gets.
+    naming = [k for k, (sent, _) in enumerate(pairs) if names_mark(sent)]
+    decomposed = dict(zip(naming, _oracle([_hexed(nfd(pairs[k][0]), nfd(pairs[k][1])) for k in naming])
+                          if naming else []))
+    answers = ['1' if '1' in (a, b, decomposed.get(k)) else a for k, (a, b) in enumerate(zip(raw, composed))]
     differ = []
     k = 0
     for p, o, _ in rows:

@@ -9,7 +9,7 @@
 // function makes (plaid.query.clauses/compile-regex): Pattern.compile with
 // UNICODE_CHARACTER_CLASS, so \w, \d, \s and \b read every script, then find.
 // The server matches a value as stored, or in NFC with the pattern in NFC,
-// or, when the pattern holds a combining mark, in NFD with the pattern in
+// or, when the pattern names a combining mark, in NFD with the pattern in
 // NFD, so a caller that stands for the server asks each and takes any.
 //
 // scripts: prints every Unicode script this Java knows (but Unknown), one per

@@ -5,12 +5,28 @@ the place the match covers, mapped back onto the stored value by code point,
 with the replacement as typed.
 """
 
-from plaid_agent.core.java_regex import matcher
+from plaid_agent.core.java_regex import matcher, names_mark
 from plaid_agent.core.replace import replacer
 
 from test_igt_rules import _replace, _ws
 
 NFD = 'pʰá.PL'
+
+#: (pattern, names a mark), shared word for word with core's
+#: plaid.util.canonical-test and plaid-ui's javaRegex.test.js.
+NAMES_MARK_CASES = [
+    ('́', True), (r'\x{301}', True), (r'\u0301', True), (r'\x{0301}', True), ('[́]', True),
+    (r'[\x{300}-\x{36f}]', True), ('[̀-ͯ]', True), (r'\p{M}', True), (r'\p{Mn}', True),
+    ('a|́', True), (r'\Q' + '́' + r'\E', True), (r'\pM', True), (r'\p{IsMn}', True),
+    (r'\p{gc=Mc}', True), (r'\p{InCombiningDiacriticalMarks}', True), (r'\p{Mark}', True),
+    (r'\p{general_category=Nonspacing_Mark}', True), (r'[\p{Mn}\p{Me}]', True), (r'[a\x{301}]', True),
+    (r'[\p{M}]', True), (r'[[\p{M}]a]', True), (r'\x30' + '́', True),
+    ('a', False), ('a.', False), (r'\w', False), ('[a-z]', False), (r'\p{L}', False), (r'\P{M}', False),
+    (r'\\x{301}', False), (r'\x41', False), (r'[\x{2f0}-\x{310}]', False), (r'\p{IsLatin}', False),
+    ('[a-]', False), (r'\x{zz}', False), (r'[^\p{Me}]', False), (r'\x{110000}', False), (r'\x{1F600}', False),
+    (r'[\p{L}\p{M}]', False), (r'\b', False), (r'\W', False), (r'a\w', False), (r'[^\x{301}]', False),
+    (r'[\x{2ff}-\x{370}]', False),
+]
 
 
 def rep(pattern, replacement, value, regex=False, whole=False):
@@ -41,10 +57,21 @@ def test_a_pattern_holding_a_mark_finds_it_inside_a_composed_letter():
     assert matcher('\u0301')('p\u02b0\u00e1')
     assert matcher('[\u0300\u0301]$', literal=False)('p\u02b0\u00e1')
     assert matcher('A\u0301', case_insensitive=True)('p\u02b0\u00e1')
-    # A class of marks names no mark, and a pattern with no mark never
-    # looks inside a letter.
-    assert not matcher(r'\p{M}', literal=False)('p\u02b0\u00e1')
-    assert not matcher('a')('p\u02b0\u00e1')
+    # REV7-CORE-4: a mark named by escape or by its category reaches inside
+    # a letter too, while a pattern naming none never looks inside one.
+    for named in (r'\p{M}', r'\p{Mn}', r'\pM', r'\x{301}', r'\u0301', r'[\x{300}-\x{36f}]$', r'[\p{Mn}\p{Me}]'):
+        assert matcher(named, literal=False)('p\u02b0\u00e1'), named
+        assert rep(named, '', 'p\u02b0\u00e1', regex=True) == 'p\u02b0a', named
+    for unnamed in ('a', 'a.', r'a\w', r'a[\p{L}\p{M}]', r'a\P{L}'):
+        assert not matcher(unnamed, literal=False)('p\u02b0\u00e1'), unnamed
+    # Typed as literal text, an escape is the text itself.
+    assert not matcher(r'\x{301}', literal=True)('p\u02b0\u00e1')
+
+
+def test_names_mark_reads_a_pattern_as_core_does():
+    # The same table as core's canonical-test and plaid-ui's javaRegex.test.js.
+    for pattern, named in NAMES_MARK_CASES:
+        assert names_mark(pattern) is named, pattern
     # Every acute is respelled, inside a composed letter or after one that
     # has no composed form, and the value comes back composed.
     assert rep('\u0301', '\u0300', '\u014b\u0301 p\u02b0\u00e1') == '\u014b\u0300 p\u02b0\u00e0'

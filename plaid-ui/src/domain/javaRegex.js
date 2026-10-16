@@ -877,3 +877,164 @@ export function translatePattern(
     throw err;
   }
 }
+
+const MARK = /^\p{M}$/u;
+const isMark = (cp) => MARK.test(String.fromCodePoint(cp));
+const MARK_PROPERTIES = new Set([
+  'm',
+  'mn',
+  'mc',
+  'me',
+  'mark',
+  'combiningmark',
+  'nonspacingmark',
+  'spacingmark',
+  'enclosingmark',
+]);
+const HEX = /^[0-9a-fA-F]+$/;
+const ASCII_ALNUM = /^[0-9a-zA-Z]$/;
+
+// Whether `\p{name}` names the combining marks: a mark category, or a block of
+// combining marks, however Java lets it be spelled.
+const markProperty = (name) => {
+  let n = name.toLowerCase().replace(/[_ -]/g, '');
+  const prefix = ['generalcategory=', 'gc=', 'block=', 'blk='].find((p) => n.startsWith(p));
+  if (prefix) n = n.slice(prefix.length);
+  if (n.startsWith('is')) n = n.slice(2);
+  if (n.startsWith('in')) n = n.slice(2);
+  return MARK_PROPERTIES.has(n) || n.startsWith('combining');
+};
+
+// In code points `cps`, the first index of `want` (code points) from `from`, or -1.
+const indexIn = (cps, want, from) => {
+  const w = Array.from(want);
+  for (let i = from; i + w.length <= cps.length; i += 1) {
+    if (w.every((c, k) => cps[i + k] === c)) return i;
+  }
+  return -1;
+};
+
+// At `i` a backslash then x or u: [codePoint, nextIndex], or null.
+const hexEscape = (cps, i) => {
+  const kind = cps[i + 1];
+  let digits;
+  let end;
+  if (kind === 'x' && cps[i + 2] === '{') {
+    const j = indexIn(cps, '}', i + 3);
+    if (j <= 0) return null;
+    digits = cps.slice(i + 3, j).join('');
+    end = j + 1;
+  } else {
+    const width = kind === 'x' ? 2 : 4;
+    if (i + 2 + width > cps.length) return null;
+    digits = cps.slice(i + 2, i + 2 + width).join('');
+    end = i + 2 + width;
+  }
+  if (!HEX.test(digits)) return null;
+  const cp = parseInt(digits, 16);
+  return cp <= 0x10ffff ? [cp, end] : null;
+};
+
+/**
+ * Whether a Java pattern names a combining mark: it holds one, an escape of
+ * one (`\x{301}`, `́`) outside a negated class, a class range between
+ * two, or a mark property (`\p{M}`, `\p{Mn}`, `\pM`) on its own or in a class
+ * of nothing but mark properties. The server's REGEXP also matches such a
+ * pattern with pattern and value decomposed, so it reaches inside composed
+ * letters (REV7-CORE-4), as one typed with the mark does. `.`, `\w` or
+ * `[\p{L}\p{M}]` match a mark too, but name none, so `a.` never finds the a
+ * inside á. Ask it of the pattern sent to the server (translatePattern's
+ * `server`), so the app decides as the server does. The same scan as core's
+ * `plaid.util.canonical/names-mark?` and plaid-agent's `names_mark`.
+ */
+export function namesMark(src) {
+  const cps = Array.from(String(src ?? ''));
+  if (cps.some((c) => MARK.test(c))) return true;
+  const n = cps.length;
+  const classes = []; // per open class: [negated, holds a mark property, holds anything else]
+  const rangeDash = (i) => cps[i] === '-' && i + 1 < n && cps[i + 1] !== ']';
+  let start = null; // in a class, the code point a range may start from
+  let dash = false; // in a class, a range's dash was read after `start`
+  let i = 0;
+  while (i < n) {
+    const c = cps[i];
+    let cp = null;
+    if (c === '\\') {
+      if (i + 1 >= n) break;
+      const e = cps[i + 1];
+      let hit;
+      if (e === 'Q') {
+        const j = indexIn(cps, '\\E', i + 2);
+        i = j < 0 ? n : j + 2;
+      } else if ((e === 'x' || e === 'u') && (hit = hexEscape(cps, i))) {
+        [cp, i] = hit;
+      } else if (e === 'p') {
+        let name;
+        if (cps[i + 2] === '{') {
+          const j = indexIn(cps, '}', i + 3);
+          if (j > 0) {
+            name = cps.slice(i + 3, j).join('');
+            i = j + 1;
+          } else {
+            name = '';
+            i = n;
+          }
+        } else {
+          name = cps[i + 2] ?? '';
+          i += 3;
+        }
+        if (markProperty(name)) {
+          if (classes.length === 0) return true;
+          classes[classes.length - 1][1] = true;
+          start = null;
+          dash = false;
+          continue;
+        }
+      } else {
+        cp = ASCII_ALNUM.test(e) || classes.length === 0 ? null : e.codePointAt(0);
+        i += 2;
+      }
+    } else if (c === '[') {
+      i += 1;
+      const negated = cps[i] === '^';
+      classes.push([negated, false, false]);
+      if (negated) i += 1;
+      start = null;
+      dash = false;
+      continue;
+    } else if (c === ']' && classes.length > 0) {
+      const [negated, marks, other] = classes.pop();
+      if (marks && !other && !negated) return true;
+      i += 1;
+      start = null;
+      dash = false;
+    } else if (c === '-' && classes.length > 0 && start !== null && !dash && rangeDash(i)) {
+      dash = true;
+      i += 1;
+      continue;
+    } else {
+      cp = classes.length > 0 ? c.codePointAt(0) : null;
+      i += 1;
+    }
+    if (classes.length === 0) {
+      if (cp !== null && isMark(cp)) return true;
+      continue;
+    }
+    const top = classes[classes.length - 1];
+    top[2] = true;
+    if (cp === null) {
+      start = null;
+      dash = false;
+    } else if (dash) {
+      if (isMark(start) && isMark(cp)) return true;
+      start = null;
+      dash = false;
+    } else if (rangeDash(i)) {
+      start = cp;
+    } else {
+      if (isMark(cp) && !top[0]) return true;
+      start = null;
+    }
+  }
+  return false;
+}

@@ -98,9 +98,19 @@ describe('buildReplacer', () => {
     expect(run('\u0301', 'contains', '', ['p\u02b0\u00e1']).out).toEqual(['p\u02b0a']);
   });
 
-  it('never looks inside a letter for a pattern without a mark', () => {
+  it('never looks inside a letter for a pattern naming no mark', () => {
     expect(run('a', 'contains', 'o', ['p\u02b0\u00e1']).out).toEqual([null]);
-    expect(run('\\p{M}', 'regex', '', ['p\u02b0\u00e1']).out).toEqual([null]);
+    expect(run('a.', 'regex', '', ['p\u02b0\u00e1']).out).toEqual([null]);
+    expect(run('a\\w', 'regex', '', ['p\u02b0\u00e1']).out).toEqual([null]);
+    expect(run('\\x{301}', 'contains', '', ['p\u02b0\u00e1']).out).toEqual([null]);
+  });
+
+  // REV7-CORE-4: a mark named by escape or by its category reaches inside a
+  // composed letter, as a typed one does.
+  it('reaches inside a letter for a mark named by escape or category', () => {
+    for (const p of ['\\p{M}', '\\p{Mn}', '\\x{301}', '\\u0301', '[\\x{300}-\\x{36f}]']) {
+      expect([p, run(p, 'regex', '', ['p\u02b0\u00e1']).out]).toEqual([p, ['p\u02b0a']]);
+    }
   });
 
   // Luke, 2026-10-08: exact compares canonically equivalent text as equal.

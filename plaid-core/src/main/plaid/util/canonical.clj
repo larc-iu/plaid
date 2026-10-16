@@ -290,3 +290,153 @@
               (sequential? x) (map walk x)
               :else x))]
     (walk v)))
+
+;; ============================================================
+;; A pattern that names a combining mark
+;; ============================================================
+
+(def ^:private mark-properties
+  #{"m" "mn" "mc" "me" "mark" "combiningmark" "nonspacingmark" "spacingmark" "enclosingmark"})
+
+(defn- mark-property?
+  "Whether `\\p{name}` names the combining marks: a mark category, or a block
+  of combining marks, however Java lets it be spelled."
+  [^String name]
+  (let [n (-> name (.toLowerCase java.util.Locale/ROOT) (.replace "_" "") (.replace " " "") (.replace "-" ""))
+        n (or (some (fn [^String p] (when (.startsWith n p) (subs n (count p))))
+                    ["generalcategory=" "gc=" "block=" "blk="])
+              n)
+        n (if (.startsWith ^String n "is") (subs n 2) n)
+        n (if (.startsWith ^String n "in") (subs n 2) n)]
+    (or (contains? mark-properties n) (.startsWith ^String n "combining"))))
+
+(defn- index-of
+  "The index in `cps` of the code points of `s`, from `from`, or -1."
+  ^long [^ints cps ^String s ^long from]
+  (let [want (.toArray (.codePoints s))
+        k (alength want)
+        n (alength cps)]
+    (loop [i from]
+      (cond
+        (> (+ i k) n) -1
+        (every? #(== (aget cps (+ i (long %))) (aget want %)) (range k)) i
+        :else (recur (inc i))))))
+
+(defn- at
+  "The code point at `i`, or -1 past the end."
+  ^long [^ints cps ^long i]
+  (if (< -1 i (alength cps)) (aget cps i) -1))
+
+(defn- hex-escape
+  "At `i` a backslash then x or u: `[code-point next-index]`, or nil."
+  [^ints cps ^long i]
+  (let [kind (at cps (inc i))
+        [from to end] (if (and (== kind (int \x)) (== (at cps (+ i 2)) (int \{)))
+                        (let [j (index-of cps "}" (+ i 3))]
+                          (if (pos? j) [(+ i 3) j (inc j)] [0 0 0]))
+                        (let [w (if (== kind (int \x)) 2 4)]
+                          (when (<= (+ i 2 w) (alength cps))
+                            [(+ i 2) (+ i 2 w) (+ i 2 w)])))]
+    (when (and from (< from to)
+               (every? #(let [d (aget cps (long %))]
+                          (or (<= (int \0) d (int \9)) (<= (int \a) d (int \f)) (<= (int \A) d (int \F))))
+                       (range from to)))
+      (let [v (BigInteger. (String. cps (int from) (int (- to from))) 16)]
+        (when (<= (.compareTo v (BigInteger/valueOf 0x10FFFF)) 0)
+          [(.intValue v) end])))))
+
+(defn- ascii-alnum? [^long cp]
+  (or (<= (int \0) cp (int \9)) (<= (int \a) cp (int \z)) (<= (int \A) cp (int \Z))))
+
+(defn names-mark?
+  "Whether a Java pattern names a combining mark: it holds one, an escape of
+  one (`\\x{301}`, `\\u0301`) outside a negated class, a class range between
+  two, or a mark property (`\\p{M}`, `\\p{Mn}`, `\\pM`) on its own or in a
+  class of nothing but mark properties. Such a pattern also reaches inside
+  composed letters (REV7-CORE-4), as one typed with the mark does. `.`, `\\w`
+  or `[\\p{L}\\p{M}]` match a mark too, but name none, so `a.` never finds the
+  a inside á. The same scan as plaid-agent's `java_regex.names_mark` and
+  plaid-ui's `namesMark`, which the clients ask of the pattern they send."
+  [^String src]
+  (or (holds-mark? src)
+      (let [^ints cps (.toArray (.codePoints src))
+            n (alength cps)
+            bs (int \\)
+            range-dash? (fn [^long i] (and (== (at cps i) (int \-))
+                                           (not (#{-1 (int \])} (at cps (inc i))))))]
+        ;; classes: a vector of [negated mark-property other] per open class
+        (loop [i 0, classes [], start nil, dash false]
+          (if (>= i n)
+            false
+            (let [c (aget cps i)]
+              (cond
+                (== c bs)
+                (if (>= (inc i) n)
+                  false
+                  (let [e (aget cps (inc i))]
+                    (cond
+                      (== e (int \Q))
+                      (let [j (index-of cps "\\E" (+ i 2))]
+                        (recur (if (neg? j) n (+ j 2)) (if (seq classes) (assoc-in classes [(dec (count classes)) 2] true) classes) nil false))
+
+                      (and (or (== e (int \x)) (== e (int \u))) (hex-escape cps i))
+                      (let [[cp nxt] (hex-escape cps i)]
+                        (if (empty? classes)
+                          (if (mark? cp) true (recur (long nxt) classes nil false))
+                          (let [classes (assoc-in classes [(dec (count classes)) 2] true)
+                                negated (first (peek classes))]
+                            (cond
+                              dash (if (and (mark? start) (mark? cp)) true (recur (long nxt) classes nil false))
+                              (range-dash? nxt) (recur (long nxt) classes cp false)
+                              (and (mark? cp) (not negated)) true
+                              :else (recur (long nxt) classes nil false)))))
+
+                      (== e (int \p))
+                      (let [[name nxt] (if (== (at cps (+ i 2)) (int \{))
+                                         (let [j (index-of cps "}" (+ i 3))]
+                                           (if (pos? j)
+                                             [(String. cps (int (+ i 3)) (int (- j (+ i 3)))) (inc j)]
+                                             ["" n]))
+                                         [(if (< (+ i 2) n) (String. cps (int (+ i 2)) 1) "") (+ i 3)])]
+                        (cond
+                          (not (mark-property? name))
+                          (recur (long nxt) (if (seq classes) (assoc-in classes [(dec (count classes)) 2] true) classes) nil false)
+                          (empty? classes) true
+                          :else (recur (long nxt) (assoc-in classes [(dec (count classes)) 1] true) nil false)))
+
+                      :else
+                      (let [cp (when-not (ascii-alnum? e) e)]
+                        (if (empty? classes)
+                          (recur (+ i 2) classes nil false)
+                          (let [classes (assoc-in classes [(dec (count classes)) 2] true)]
+                            (cond
+                              (nil? cp) (recur (+ i 2) classes nil false)
+                              dash (if (and (mark? start) (mark? cp)) true (recur (+ i 2) classes nil false))
+                              (range-dash? (+ i 2)) (recur (+ i 2) classes cp false)
+                              (and (mark? cp) (not (first (peek classes)))) true
+                              :else (recur (+ i 2) classes nil false))))))))
+
+                (== c (int \[))
+                (let [neg? (== (at cps (inc i)) (int \^))]
+                  (recur (if neg? (+ i 2) (inc i)) (conj classes [neg? false false]) nil false))
+
+                (and (== c (int \])) (seq classes))
+                (let [[negated marks other] (peek classes)
+                      classes (pop classes)]
+                  (if (and marks (not other) (not negated))
+                    true
+                    (recur (inc i) (if (seq classes) (assoc-in classes [(dec (count classes)) 2] true) classes) nil false)))
+
+                (and (== c (int \-)) (seq classes) start (not dash) (range-dash? i))
+                (recur (inc i) classes start true)
+
+                (empty? classes)
+                (recur (inc i) classes nil false)
+
+                :else
+                (let [classes (assoc-in classes [(dec (count classes)) 2] true)]
+                  (cond
+                    dash (if (and (mark? start) (mark? c)) true (recur (inc i) classes nil false))
+                    (range-dash? (inc i)) (recur (inc i) classes c false)
+                    (and (mark? c) (not (first (peek classes)))) true
+                    :else (recur (inc i) classes nil false))))))))))

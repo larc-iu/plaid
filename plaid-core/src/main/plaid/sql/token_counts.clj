@@ -22,7 +22,7 @@
 
   A surface matches as the query language's REGEXP decides
   (`plaid.sql.query.exec/regexp-function`): as stored, or in NFC with the pattern
-  in NFC, or, for a pattern holding a combining mark, in NFD."
+  in NFC, or, for a pattern that names a combining mark, in NFD."
   (:require [clojure.string :as str]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
@@ -60,7 +60,7 @@
         nfc-src (canonical/nfc src)
         composed (when-not (identical? nfc-src src)
                    (try (clauses/compile-regex nfc-src) (catch Exception _ nil)))
-        decomposed (when (canonical/holds-mark? src)
+        decomposed (when (canonical/names-mark? src)
                      (try (clauses/compile-regex (canonical/nfd src)) (catch Exception _ nil)))
         found? (fn [^Pattern p ^String s] (.find (.matcher p s)))]
     (fn [^String s]

@@ -13,7 +13,7 @@
 // with a message. It is imported by a relative path, so the node test suite
 // can load it.
 
-import { translatePattern } from '../../../plaid-ui/src/domain/javaRegex.js';
+import { namesMark, translatePattern } from '../../../plaid-ui/src/domain/javaRegex.js';
 import { GrewUnsupportedError } from './errors.js';
 import { normalizeFlags } from './regex.js';
 
@@ -80,13 +80,14 @@ const composedRegExp = (v) => {
 
 const decomposedRegExps = new Map();
 
-// The pattern in NFD as a RegExp when it holds a combining mark, else null
+// The pattern in NFD as a RegExp when the pattern sent to the server names a
+// combining mark (namesMark: typed, by escape or by \p{M}), else null
 // (and null when it cannot be read once decomposed).
 const decomposedRegExp = (v) => {
   const key = keyOf(v);
   if (!decomposedRegExps.has(key)) {
     const pattern = String(v.pattern);
-    const t = /\p{M}/u.test(pattern)
+    const t = namesMark(readable(v).server)
       ? translatePattern(pattern.normalize('NFD'), {
           caseInsensitive: normalizeFlags(v.flags) === 'i',
         })
@@ -98,7 +99,7 @@ const decomposedRegExp = (v) => {
 
 /** Whether the local matcher finds the pattern in `actual`, as the server's
  * REGEXP decides: in the value as stored, or in its NFC form with the pattern
- * in NFC, or, for a pattern holding a combining mark, in its NFD form with
+ * in NFC, or, for a pattern naming a combining mark, in its NFD form with
  * the pattern in NFD. So a pattern typed composed finds a form stored
  * decomposed, and a mark searched for on its own finds it stored as a mark
  * and inside a composed letter. */

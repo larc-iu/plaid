@@ -18,7 +18,7 @@
 // comes back composed, as the server stores it. `exact` compares canonically
 // equivalent text as equal, as the server's equality does.
 
-import { translatePattern } from '@ui/domain/javaRegex.js';
+import { namesMark, translatePattern } from '@ui/domain/javaRegex.js';
 
 /**
  * Fill a value that is not there. The three search match types all skip an
@@ -33,8 +33,6 @@ export const MATCH_EMPTY = 'empty';
 
 const nfc = (s) => s.normalize('NFC');
 const nfd = (s) => s.normalize('NFD');
-// A combining mark (general category Mn, Mc or Me).
-const holdsMark = (s) => /\p{M}/u.test(s);
 // Whether global RegExp `re` finds a match in `s`, leaving it ready to use.
 const finds = (re, s) => {
   re.lastIndex = 0;
@@ -168,9 +166,10 @@ export function buildReplacer(find, matchType, replacement) {
     raw = new RegExp(typed.source, 'gu');
     const composed = nfc(find) === find ? typed : translatePattern(nfc(find), options);
     re = composed.error ? raw : new RegExp(composed.source, 'gu');
-    // A pattern holding a mark also matches with pattern and value
-    // decomposed, as the server's search decides (Luke, 2026-10-16).
-    if (holdsMark(find)) {
+    // A pattern naming a mark (typed, by escape or by \p{M}) also matches
+    // with pattern and value decomposed, as the server's search decides of
+    // the pattern it is sent (Luke, 2026-10-16, REV7-CORE-4).
+    if (namesMark(typed.server)) {
       const d = translatePattern(nfd(find), options);
       if (!d.error) decomposed = new RegExp(d.source, 'gu');
     }

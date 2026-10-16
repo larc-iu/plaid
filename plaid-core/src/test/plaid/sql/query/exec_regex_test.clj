@@ -244,10 +244,14 @@
       ;; with pattern and value decomposed.
       (is (= #{nfd nfc eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\u0301"}}]])))
       (is (= #{nfd nfc eng} (values [["span" "?s" {"layer" sl "value" {"regex" "[\u0300\u0301]$"}}]]))))
-    (testing "a class of marks names no mark, so it finds only marks stored as marks"
-      (is (= #{nfd eng} (values [["span" "?s" {"layer" sl "value" {"regex" "\\p{M}"}}]]))))
-    (testing "a pattern with no mark is never compared decomposed"
-      (is (= #{nfd} (values [["span" "?s" {"layer" sl "value" {"regex" "a"}}]]))))
+    (testing "a mark named by escape or by its category reaches inside a composed letter too (REV7-CORE-4)"
+      (doseq [rx ["\\x{301}" "\\u0301" "\\x{0301}" "[\\x{300}-\\x{36f}]$" "\\p{M}" "\\p{Mn}" "\\pM"
+                  "[\\p{Mn}\\p{Me}]" "\\p{gc=Mn}" "\\p{InCombiningDiacriticalMarks}"]]
+        (is (= #{nfd nfc eng} (values [["span" "?s" {"layer" sl "value" {"regex" rx}}]])) rx)))
+    (testing "a pattern that names no mark is never compared decomposed"
+      (is (= #{nfd} (values [["span" "?s" {"layer" sl "value" {"regex" "a"}}]])))
+      (doseq [rx ["a." "a\\w" "a[\\p{L}\\p{M}]" "a\\P{L}" "a[^\\x{300}]"]]
+        (is (= #{nfd} (values [["span" "?s" {"layer" sl "value" {"regex" rx}}]])) rx)))
     (testing "and a composed pattern still finds both spellings of the letter"
       (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "\u00e1$"}}]]))))))
 

@@ -111,10 +111,11 @@
       (try (cached-pattern n) (catch Exception _ nil)))))
 
 (defn- decomposed-pattern
-  "`p` in NFD, compiled, when it holds a combining mark, else nil (and nil
+  "`p` in NFD, compiled, when it names a combining mark
+  (`canonical/names-mark?`), else nil (and nil
   when decomposing makes it something Java cannot compile)."
   [^String p]
-  (when (canonical/holds-mark? p)
+  (when (canonical/names-mark? p)
     (try (cached-pattern (canonical/nfd p)) (catch Exception _ nil))))
 
 (defn- regexp-function
@@ -124,7 +125,7 @@
   `pʰá` typed composed finds it stored decomposed (a + U+0301), and the
   reverse, while every match the stored text gives is kept (a combining mark
   searched for on its own still finds it in a value stored decomposed). A
-  pattern that holds a combining mark also matches in NFD with the value in
+  pattern that names a combining mark also matches in NFD with the value in
   NFD, so a high tone (U+0301) searched for on its own finds it inside a
   composed `á` (Luke, 2026-10-16). A pattern with no mark is never compared
   decomposed, so `a` does not find the a inside `á`.

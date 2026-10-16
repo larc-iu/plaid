@@ -851,13 +851,149 @@ def holds_mark(s: str) -> bool:
     return any(unicodedata.category(c) in ('Mn', 'Mc', 'Me') for c in s)
 
 
+_MARK_PROPERTIES = frozenset({'m', 'mn', 'mc', 'me', 'mark', 'combiningmark', 'nonspacingmark',
+                              'spacingmark', 'enclosingmark'})
+
+
+def _mark_property(name: str) -> bool:
+    """Whether ``\\p{name}`` names the combining marks: a mark category, or a
+    block of combining marks, however Java lets it be spelled."""
+    n = name.lower().replace('_', '').replace(' ', '').replace('-', '')
+    for prefix in ('generalcategory=', 'gc=', 'block=', 'blk='):
+        if n.startswith(prefix):
+            n = n[len(prefix):]
+            break
+    if n.startswith('is'):
+        n = n[2:]
+    if n.startswith('in'):
+        n = n[2:]
+    return n in _MARK_PROPERTIES or n.startswith('combining')
+
+
+_ASCII_ALNUM = frozenset('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+
+
+def _is_mark(cp: int) -> bool:
+    return unicodedata.category(chr(cp)) in ('Mn', 'Mc', 'Me')
+
+
+def _hex_escape(src: str, i: int):
+    """At ``src[i]`` a backslash then x or u: the code point and the index
+    after the escape, or None."""
+    kind = src[i + 1]
+    if kind == 'x' and src[i + 2:i + 3] == '{':
+        j = src.find('}', i + 3)
+        digits = src[i + 3:j] if j > 0 else ''
+        end = j + 1
+    else:
+        width = 2 if kind == 'x' else 4
+        digits = src[i + 2:i + 2 + width]
+        end = i + 2 + width
+        if len(digits) != width:
+            return None
+    if not digits or any(c not in '0123456789abcdefABCDEF' for c in digits) or int(digits, 16) > 0x10FFFF:
+        return None
+    return int(digits, 16), end
+
+
+def names_mark(src: str) -> bool:
+    """Whether a Java pattern names a combining mark: it holds one, an escape
+    of one (``\\x{301}``, ``\\u0301``) outside a negated class, a class
+    range between two, or a mark property (``\\p{M}``, ``\\p{Mn}``,
+    ``\\pM``) on its own or in a class of nothing but mark properties. Such
+    a pattern also reaches inside composed letters (REV7-CORE-4), as one
+    typed with the mark does. ``.``, ``\\w`` or ``[\\p{L}\\p{M}]`` match a
+    mark too, but name none, so ``a.`` never finds the a inside á. The same
+    scan as core's ``plaid.util.canonical/names-mark?`` and plaid-ui's
+    ``namesMark``, and the clients ask it of the pattern they send
+    (:func:`translate`'s ``server``), so they decide as the server does."""
+    if holds_mark(src):
+        return True
+    i, n = 0, len(src)
+    classes = []      # per open class: [negated, holds a mark property, holds anything else]
+    start = None      # in a class, the code point a range may start from
+    dash = False      # in a class, a range's dash was read after `start`
+    while i < n:
+        c = src[i]
+        cp = None
+        if c == '\\':
+            if i + 1 >= n:
+                break
+            e = src[i + 1]
+            if e == 'Q':
+                j = src.find('\\E', i + 2)
+                i = n if j < 0 else j + 2
+            elif e in 'xu' and (hit := _hex_escape(src, i)) is not None:
+                cp, i = hit
+            elif e == 'p':
+                if src[i + 2:i + 3] == '{':
+                    j = src.find('}', i + 3)
+                    name, i = (src[i + 3:j], j + 1) if j > 0 else ('', n)
+                else:
+                    name, i = src[i + 2:i + 3], i + 3
+                if _mark_property(name):
+                    if not classes:
+                        return True
+                    classes[-1][1] = True
+                    start, dash = None, False
+                    continue
+            else:
+                cp = None if src[i + 1] in _ASCII_ALNUM else ord(src[i + 1])
+                i += 2
+                if cp is not None and not classes:
+                    cp = None
+        elif c == '[':
+            i += 1
+            negated = src[i:i + 1] == '^'
+            classes.append([negated, False, False])
+            if negated:
+                i += 1
+            start, dash = None, False
+            continue
+        elif c == ']' and classes:
+            negated, marks, other = classes.pop()
+            if marks and not other and not negated:
+                return True
+            i += 1
+            start, dash = None, False
+        elif c == '-' and classes and start is not None and not dash and src[i + 1:i + 2] not in ('', ']'):
+            dash = True
+            i += 1
+            continue
+        else:
+            cp = ord(c) if classes else None
+            i += 1
+        if not classes:
+            if cp is not None and _is_mark(cp):
+                return True
+            continue
+        classes[-1][2] = True
+        if cp is None:
+            start, dash = None, False
+        elif dash:
+            if _is_mark(start) and _is_mark(cp):
+                return True
+            start, dash = None, False
+        elif src[i:i + 1] == '-' and src[i + 1:i + 2] not in ('', ']'):
+            start = cp
+        else:
+            if _is_mark(cp) and not classes[-1][0]:
+                return True
+            start = None
+    return False
+
+
 def compile_decomposed(pattern: str, **kw):
-    """``pattern`` in NFD, compiled, when it holds a combining mark, else
-    None (and None when decomposing makes it a pattern that cannot be used).
-    The server's REGEXP also matches such a pattern with pattern and value in
-    NFD, so a tone mark searched for on its own finds it inside a composed
-    letter (Luke, 2026-10-16)."""
-    if not holds_mark(pattern):
+    """``pattern`` in NFD, compiled, when the pattern sent to the server for
+    it names a combining mark (:func:`names_mark`), else None (and None
+    when decomposing makes it a pattern that cannot be used). The server's REGEXP also matches such a pattern with pattern
+    and value in NFD, so a tone mark searched for on its own, typed or by
+    escape, finds it inside a composed letter (Luke, 2026-10-16)."""
+    try:
+        sent = translate(pattern, **kw).server
+    except PatternError:
+        return None
+    if not names_mark(sent):
         return None
     try:
         return compile_local(nfd(pattern), **kw)
