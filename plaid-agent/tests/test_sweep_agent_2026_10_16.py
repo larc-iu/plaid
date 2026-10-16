@@ -229,3 +229,22 @@ def test_corpus_stats_says_how_many_segments_it_left_out_for_ending_before_they_
     out = for_model(call_tool(w, 'corpus_stats', {}))
     assert '1 segment whose end is before its start is left out.' in out, out
     assert 'Time alignment: 2 segments in 1 document' in out, out
+
+
+def test_the_tagsets_check_counts_one_unlisted_part_in_the_singular():
+    """It said "1 unlisted parts" (FX-C-WIRE)."""
+    def check(*values):
+        client = FakeClient()
+        raw = client._documents['d1']
+        for tl in raw['text_layers'][0]['token_layers']:
+            for sl in tl.get('span_layers') or []:
+                if sl['id'] == 'sl-mgloss':
+                    sl['spans'] += [{'id': f'sp-x{i}', 'value': v, 'tokens': [t]}
+                                    for i, (v, t) in enumerate(values)]
+        return call_tool(fake_ws(client), 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
+    out = check(('DAT', 'm-2'))
+    assert 'Morph Gloss: 3 values, 1 unlisted part.' in out, out
+    # The fixture's one word gloss, "Ali", is the only part a close would add.
+    out = check()
+    assert ('The one unlisted part of Morph Gloss is a word gloss. Closing the list with add_used would list it '
+            'as tags') in out, out

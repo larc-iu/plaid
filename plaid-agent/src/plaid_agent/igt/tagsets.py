@@ -304,7 +304,7 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
         rows = _unlisted(attested, t)
         head = f'{f["name"]}: {sum(n for _, n in attested)} values'
         empty = _with_empty_part(attested, t)
-        found = ([f'{len(rows)} unlisted parts'] if rows else []) + (
+        found = ([f'{len(rows)} unlisted part{"s" if len(rows) != 1 else ""}'] if rows else []) + (
             [f'{len(empty)} distinct value{"s" if len(empty) != 1 else ""} with an empty part'] if empty else [])
         lines.append(head + (', ' + ' and '.join(found) if found else ', every part listed') + '.')
         if rows:
@@ -350,8 +350,10 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
         every = _unlisted(attested, {**t, 'mode': CLOSED})
         words_n = sum(1 for r in every if r[2])
         if every and words_n * 2 > len(every):
-            lines.append(f'  {words_n} of the {len(every)} unlisted parts of {f["name"]} are word glosses. Closing the '
-                         'list with add_used would list them as tags: ask the user whether they mean mixed (tags '
+            said = (f'The one unlisted part of {f["name"]} is a word gloss' if len(every) == 1 else
+                    f'{words_n} of the {len(every)} unlisted parts of {f["name"]} are word glosses')
+            lines.append(f'  {said}. Closing the list with add_used would list '
+                         f'{"it" if len(every) == 1 else "them"} as tags: ask the user whether they mean mixed (tags '
                          'enforced, word glosses free) before planning a close.')
         r = _core_refused(ws, f, t)
         stay = sum(n for _, n in _refused(attested, t)) - r['count']
