@@ -272,11 +272,65 @@
     (when-not (standing-holds? entry :project/readers)
       (close-listen-stream! entry))))
 
+(defonce ^:private requester-streams
+  ;; A requester's stream on a service request (the submit's own, or one
+  ;; attached later) -> what opened it: `{:request-id :project-id :user-id
+  ;; :token-id :token-version :token-exp :runner :db}`.
+  (atom {}))
+
+(defn- stream-opener
+  "What opened a requester's stream on `project-id`, as a /listen stream
+  records it."
+  [req project-id request-id]
+  {:request-id request-id
+   :project-id project-id
+   :user-id (pra/->user-id req)
+   :token-id (:api-token/id req)
+   :token-version (-> req :jwt-data :version)
+   :token-exp (-> req :jwt-data :exp)
+   :runner (-> req :jwt-data :scope/runner)
+   :db (:db req)})
+
+(defn- close-request-stream!
+  "Close a requester's stream whose opener lost the right to it. The request
+  goes on, and its other requesters are still told."
+  [channel {:keys [request-id project-id]}]
+  (swap! requester-streams dissoc channel)
+  (events/detach-request! request-id channel)
+  (try (http-kit/send! channel
+                       (sse-event "error" {:error "This connection's credentials no longer allow it"})
+                       false)
+       (catch Exception _))
+  (try (http-kit/close channel) (catch Exception _))
+  (log/info "Closed a service request stream on project" project-id
+            "because its credential no longer admits it"))
+
+(defn- watch-request-stream!
+  "Keep `channel`, a requester's stream, under the same standing check as a
+  /listen stream, and ask it once now: the credential was admitted before
+  the stream registered."
+  [channel opener]
+  (swap! requester-streams assoc channel opener)
+  (when-not (standing-holds? opener :project/readers)
+    (close-request-stream! channel opener)))
+
+(defn- unwatch-request-stream! [channel]
+  (swap! requester-streams dissoc channel))
+
+(defn close-lapsed-request-streams!
+  "Close every requester's stream on a service request whose opener could no
+  longer read the project, as `close-lapsed-listen-streams!` does."
+  []
+  (doseq [[channel opener] @requester-streams]
+    (when-not (standing-holds? opener :project/readers)
+      (close-request-stream! channel opener))))
+
 (events/on-standing-change!
  (fn []
    ;; Each kind is checked on its own, so a failure closing one never
-   ;; leaves the other open.
-   (doseq [close! [close-lapsed-service-channels! close-lapsed-listen-streams!]]
+   ;; leaves the others open.
+   (doseq [close! [close-lapsed-service-channels! close-lapsed-listen-streams!
+                   close-lapsed-request-streams!]]
      (try (close!)
           (catch Exception e
             (log/error e "Could not re-check the open channels after a change of standing"))))))
@@ -408,9 +462,11 @@
           :else
           (do (when-let [p (:last-progress entry)]
                 (http-kit/send! channel (sse-event "progress" {:progress p}) false))
-              (start-keepalive! channel)))))
+              (start-keepalive! channel)
+              (watch-request-stream! channel (stream-opener req (:project-id entry) request-id))))))
     :on-close
     (fn [channel _]
+      (unwatch-request-stream! channel)
       (events/detach-request! request-id channel))}))
 
 (defn- uuid-string? [s]
@@ -633,13 +689,15 @@
                                    (some-> delegated-token (jwt/unsign secret-key) :jti))}))
               (http-kit/send! requester (sse-event "accepted" {:request-id request-id}) false)
               (start-keepalive! requester)
-              (when-not (and service-ch
-                             (http-kit/send! service-ch (sse-event "service_request" event) false))
-                (events/forget-request! request-id)
-                (http-kit/send! requester (sse-event "error" {:error "Service unavailable"}) false)
-                (http-kit/close requester))))
+              (if (and service-ch
+                       (http-kit/send! service-ch (sse-event "service_request" event) false))
+                (watch-request-stream! requester (stream-opener req id request-id))
+                (do (events/forget-request! request-id)
+                    (http-kit/send! requester (sse-event "error" {:error "Service unavailable"}) false)
+                    (http-kit/close requester)))))
           :on-close
           (fn [requester _]
+            (unwatch-request-stream! requester)
             (events/detach-request! request-id requester))})))))
 
 (defn attach-request-handler

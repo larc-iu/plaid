@@ -247,3 +247,41 @@
       (is (= 503 (:status resp)))
       (is @closed)
       (is (not (live? pid "svc"))))))
+
+(deftest a-requester-who-loses-the-project-stops-hearing-their-request
+  ;; A requester's stream on a service request is held to the same standing
+  ;; as a /listen stream: removed from the project, they stop receiving its
+  ;; progress and result. The request itself goes on.
+  (events/reset-state!)
+  (let [pid (create-project!)
+        _ (open! (writer! pid "svc-a@example.com") pid "svc")
+        requester (writer! pid "req-a@example.com")
+        submit! (fn [token request-id]
+                  (let [closed (atom false)
+                        sent (atom [])
+                        ch (stub-channel closed sent)]
+                    (with-redefs [http-kit/as-channel (fn [_ {:keys [on-open]}]
+                                                        (on-open ch)
+                                                        {:status 200 :body ""})]
+                      (fix/rest-handler (-> ((token-req-fn token) :post
+                                                                  (str "/api/v1/projects/" pid "/services/svc/requests"
+                                                                       "?request-id=" request-id))
+                                            (mock/json-body {:doc 1}))))
+                    [closed sent]))
+        rid (str (java.util.UUID/randomUUID))
+        other (str (java.util.UUID/randomUUID))
+        [closed sent] (submit! requester rid)
+        [other-closed] (submit! (writer! pid "req-b@example.com") other)]
+    (is (not @closed) "the stream is open while the requester reads the project")
+    (is (= 1 (count (:requesters (events/get-request rid)))))
+    (api-call admin-request {:method :delete :path (str "/api/v1/projects/" pid "/writers/req-a@example.com")})
+    (testing "the requester's stream closes and says why"
+      (is @closed)
+      (is (some #(and (string? %) (re-find #"^event: error" %)) @sent))
+      (is (empty? (:requesters (events/get-request rid)))))
+    (testing "the request goes on"
+      (is (some? (events/get-request rid)))
+      (is (nil? (:result (events/get-request rid)))))
+    (testing "another requester's stream stays open"
+      (is (not @other-closed))
+      (is (= 1 (count (:requesters (events/get-request other))))))))
