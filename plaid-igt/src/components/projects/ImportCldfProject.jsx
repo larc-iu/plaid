@@ -69,6 +69,7 @@ export const ImportCldfProject = () => {
     setStage,
     progress,
     runError,
+    retryable,
     stopped,
     results,
     projectIdRef,
@@ -390,6 +391,7 @@ export const ImportCldfProject = () => {
             <ImportRunPanel
               stage={stage}
               runError={runError}
+              retryable={retryable}
               stopped={stopped}
               progress={progress}
               onStop={stop}

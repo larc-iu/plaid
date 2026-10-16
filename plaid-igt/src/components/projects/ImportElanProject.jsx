@@ -70,8 +70,18 @@ export const ImportElanProject = () => {
   const resumeChoices = resumeProject
     ? (readImportState(resumeProject.config)?.choices ?? null)
     : null;
-  const { stage, setStage, progress, runError, stopped, results, projectIdRef, stop, start } =
-    useProjectImportRun({ client, kind: 'ELAN', resumeId });
+  const {
+    stage,
+    setStage,
+    progress,
+    runError,
+    retryable,
+    stopped,
+    results,
+    projectIdRef,
+    stop,
+    start,
+  } = useProjectImportRun({ client, kind: 'ELAN', resumeId });
 
   // The record may still be on its way when the files are read: nothing gates
   // the file input on that fetch, and a person who drops a folder straight
@@ -243,6 +253,7 @@ export const ImportElanProject = () => {
                 <ImportRunPanel
                   stage={stage}
                   runError={runError}
+                  retryable={retryable}
                   stopped={stopped}
                   progress={progress}
                   onStop={stop}

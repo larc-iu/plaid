@@ -18,7 +18,7 @@ import {
 import { CHUNK } from '../../domain/bulk.js';
 import { importOtherLayerData, noOtherLayers } from './otherLayers.js';
 import { REFERENCE_KINDS } from './references.js';
-import { ImportCancelled } from '../resume.js';
+import { ImportCancelled, NotYoursToFinish } from '../resume.js';
 import { getIgtLayerInfo } from '../../domain/layerInfo.js';
 import { wantedConstraints } from '../../domain/igtConstraints.js';
 import {
@@ -549,9 +549,9 @@ describe('importVocabulary, resumed by someone who does not maintain the vocabul
 
   it('says who can finish when a write is still needed', async () => {
     const client = refusing(stubClient(), {});
-    await expect(
-      importVocabulary({ client, vocabId: 'v', vocabData: vocabData() }),
-    ).rejects.toThrow(
+    const run = importVocabulary({ client, vocabId: 'v', vocabData: vocabData() });
+    await expect(run).rejects.toBeInstanceOf(NotYoursToFinish);
+    await expect(run).rejects.toThrow(
       'Only a maintainer of the vocabulary “Lex” can finish this import. Ask one to run it, or use the project as it is.',
     );
   });

@@ -117,6 +117,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     setStage,
     progress,
     runError,
+    retryable,
     stopped,
     results,
     projectIdRef,
@@ -872,6 +873,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             <ImportRunPanel
               stage={stage}
               runError={runError}
+              retryable={retryable}
               stopped={stopped}
               progress={progress}
               onStop={stop}

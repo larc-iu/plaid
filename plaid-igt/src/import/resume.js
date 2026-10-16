@@ -136,6 +136,12 @@ export async function settlePrior(
 }
 
 /**
+ * A resume that another person has to run: a retry by this one fails the
+ * same way.
+ */
+export class NotYoursToFinish extends Error {}
+
+/**
  * Write `value` to key `key` of namespace `ns` in vocabulary `vocab`'s config
  * (`vocab` as read, with `id`, `name` and `config`), or remove the key when
  * `value` is undefined, only when the stored value differs. Only a maintainer
@@ -152,7 +158,7 @@ export async function setVocabConfig(client, vocab, ns, key, value) {
     else await client.vocabLayers.setConfig(vocab.id, ns, key, value);
   } catch (err) {
     if (statusOf(err) !== 403) throw err;
-    throw new Error(
+    throw new NotYoursToFinish(
       `Only a maintainer of the vocabulary “${vocab?.name ?? vocab.id}” can finish this import. Ask one to run it, or use the project as it is.`,
       { cause: err },
     );

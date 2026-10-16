@@ -45,6 +45,7 @@ export const ImportNativeProject = () => {
     setStage,
     progress,
     runError,
+    retryable,
     stopped,
     results,
     projectIdRef,
@@ -173,6 +174,7 @@ export const ImportNativeProject = () => {
             <ImportRunPanel
               stage={stage}
               runError={runError}
+              retryable={retryable}
               stopped={stopped}
               progress={progress}
               onStop={stop}

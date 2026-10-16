@@ -227,6 +227,9 @@ const barWidth = (pct) => Math.min(100, Math.max(0, Math.round(pct ?? 0)));
  * once it has. `children` sit between the two, which is where ELAN puts its
  * warning log.
  *
+ * `retryable` is false when a retry by this person would fail the same way
+ * (a resume only a vocabulary's maintainer can finish).
+ *
  * `stopped` is the run hook's own answer to whether the Stop button ended
  * it. Reading that off the error's wording titled any failure whose message
  * happened to carry the word "cancel" as one the person had asked for, and
@@ -235,6 +238,7 @@ const barWidth = (pct) => Math.min(100, Math.max(0, Math.round(pct ?? 0)));
 export const ImportRunPanel = ({
   stage,
   runError,
+  retryable = true,
   stopped = false,
   progress,
   onStop,
@@ -244,7 +248,7 @@ export const ImportRunPanel = ({
     {runError && stage !== 'running' && (
       <Panel tone="error" title={stopped ? 'Import stopped' : 'Failed to import'}>
         {!stopped && <p className="mt-1 text-xs">{runError}</p>}
-        <p className="mt-1 text-xs">Retry continues where it left off.</p>
+        {retryable && <p className="mt-1 text-xs">Retry continues where it left off.</p>}
       </Panel>
     )}
     {children}

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { executeProjectSetup } from '@/components/projects/setup/executeSetup';
 import { markImportStarted } from '@/domain/igtConfig';
 import { finishImport } from '@/domain/importFinish';
-import { ImportCancelled } from '@/import/resume';
+import { ImportCancelled, NotYoursToFinish } from '@/import/resume';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 
 // The run of a project import, shared by the four wizards that make a project
@@ -37,6 +37,8 @@ export function useProjectImportRun({ client, kind, resumeId }) {
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [progress, setProgress] = useState(null); // {label, pct} | null
   const [runError, setRunError] = useState(null);
+  // False when a retry by this person would fail the same way.
+  const [retryable, setRetryable] = useState(true);
   // Whether that error was the Stop button rather than a failure. The run
   // knows; the screen must not have to guess it from the wording.
   const [stopped, setStopped] = useState(false);
@@ -58,6 +60,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
   }) => {
     setStage('running');
     setRunError(null);
+    setRetryable(true);
     setStopped(false);
     stopRef.current = false;
     try {
@@ -120,9 +123,11 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       }
       return res;
     } catch (e) {
-      console.error(`${kind} import failed:`, e);
+      const notYours = e instanceof NotYoursToFinish;
+      if (!notYours) console.error(`${kind} import failed:`, e);
       const cancelled = e instanceof ImportCancelled || e.message === 'Import cancelled';
       setRunError(humanizeError(e));
+      setRetryable(!notYours);
       setStopped(cancelled);
       setStage('review');
       if (!cancelled) notifyError(humanizeError(e), 'Failed to import');
@@ -140,6 +145,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
     progress,
     setProgress,
     runError,
+    retryable,
     stopped,
     results,
     projectIdRef,
