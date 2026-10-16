@@ -52,20 +52,17 @@ const BASELINE_LAYER_NAME = 'Main Text';
 
 // ONE RULE FOR "COMPLETE". A text layer and a vocabulary take two requests: a
 // create, and a write that says what the thing is (the role tag on the text
-// layer, the link on a vocabulary). A token or span layer is made in one batch
-// with its tag and its rules, but an earlier run may have made one in two
-// requests the same way. A lost response between the two
-// leaves something no later look for the finished shape can see, and a resume
-// that only looks for the finished shape makes a second one and strands the
-// first. So every kind is looked for twice: first as finished, then as
-// half made, by the name and shape it carries before the second write.
+// layer, the link on a vocabulary). A lost response between the two leaves
+// something no later look for the finished shape can see, and a resume that
+// only looks for the finished shape makes a second one and strands the first.
+// So both are looked for twice: first as finished, then as half made, by the
+// name they carry before the second write. A token or span layer is made in
+// one batch with its tag and its rules, so it is never half made.
 //
-// `unfinishedLayer` is that second look for a text or token layer. The
-// vocabulary's is at step 8, where the unlinked ones are read.
-const unfinishedLayer = (layers, name, matches = () => true) =>
-  (layers || []).find(
-    (l) => l.name === name && !l.config?.[PLAID_NAMESPACE]?.[ROLE_KEY] && matches(l),
-  ) || null;
+// `unfinishedLayer` is that second look for a text layer. The vocabulary's is
+// at step 8, where the unlinked ones are read.
+const unfinishedLayer = (layers, name) =>
+  (layers || []).find((l) => l.name === name && !l.config?.[PLAID_NAMESPACE]?.[ROLE_KEY]) || null;
 
 // The whole setup (project + layers + config + vocabularies) is ONE logical
 // operation in the audit log; each write keeps its own description underneath.
@@ -191,27 +188,6 @@ async function executeProjectSetupImpl({
   if (textLayerId) {
     const existingTokenLayers = baselineLayer?.tokenLayers || [];
 
-    // The same second look as the text layer's, with the shape a token layer
-    // also carries: two of one name under one parent are different layers
-    // unless their overlap mode and parent match too. The project read names
-    // a token layer's id, name, config and span layers and nothing else, so
-    // the shape is read from the layer itself, and only for a layer the name
-    // has already picked out.
-    const sameMode = (a, b) => (a ?? 'any') === (b ?? 'any');
-    const untagged = async (name, overlapMode, parentId) => {
-      for (const l of existingTokenLayers) {
-        if (!unfinishedLayer([l], name)) continue;
-        const full = await client.tokenLayers.get(l.id);
-        if (
-          sameMode(full?.overlapMode, overlapMode) &&
-          (full?.parentTokenLayer ?? null) === (parentId ?? null)
-        ) {
-          return l;
-        }
-      }
-      return null;
-    };
-
     const ensureTokenLayer = async (
       found,
       role,
@@ -223,7 +199,7 @@ async function executeProjectSetupImpl({
       msg,
       rules = null,
     ) => {
-      let layer = found || (await untagged(name, overlapMode, parentId));
+      let layer = found;
       if (!layer) {
         // A layer made here is made in one batch with its role, what a split
         // keeps, and IGT's rules for it. It is empty, so no data can refuse
@@ -243,9 +219,6 @@ async function executeProjectSetupImpl({
         resources[resourceKey] = layer;
       }
       const config = layer.config?.[PLAID_NAMESPACE] || {};
-      if (config[ROLE_KEY] !== role) {
-        await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, ROLE_KEY, role);
-      }
       // Provenance survives a split, including one made by another app that
       // has never heard of these keys. See the manual's "Metadata Preserved
       // Across a Split" for why the layer has to say so rather than each app

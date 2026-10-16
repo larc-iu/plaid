@@ -3,12 +3,12 @@ import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 import { executeProjectSetup } from './executeSetup.js';
 import { IGT_NAMESPACE } from '../../../domain/igtConfig.js';
 
-// Setup makes each of its three kinds of resource in two requests: a create,
-// and the write that says what the thing is. A lost response between them
-// leaves something no later look for the finished shape can see. The resume
-// used to look twice for a token layer only, so an untagged "Main Text" and
-// an unlinked vocabulary were each made a second time, the first left behind
-// as an orphan.
+// Setup makes a text layer and a vocabulary in two requests: a create, and
+// the write that says what the thing is. A lost response between them leaves
+// something no later look for the finished shape can see, so the resume looks
+// for each twice, or an untagged "Main Text" and an unlinked vocabulary would
+// each be made a second time, the first left behind as an orphan. A token
+// layer is made in one batch with its role and is looked for once.
 
 // Every answer here has the shape core gives it, and no more: a create
 // answers with the new id alone, a project read names a token layer's id,
@@ -323,47 +323,16 @@ const withText = (tokenLayers, config = {}) => ({
 const tagged = (role) => ({ [PLAID_NAMESPACE]: { [ROLE_KEY]: role } });
 
 describe('a resumed setup, token layers', () => {
-  it('tags a token layer made but not tagged, asking the layer for its shape', async () => {
-    const project = withText([
-      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
-      { id: 'tk-half', name: 'Main Tokens', config: {}, spanLayers: [] },
-    ]);
-    const { client, calls } = stub(project, {
-      'tk-half': {
-        id: 'tk-half',
-        name: 'Main Tokens',
-        overlapMode: 'non-overlapping',
-        parentTokenLayer: 'tk-sent',
-        config: {},
-      },
-    });
-    const result = await run(client, 'p1');
-    expect(result.failures).toEqual([]);
-    expect(madeOf(calls, 'token').map((c) => c.name)).toEqual(['Main Morphemes', 'Time Alignment']);
-    expect(calls.config).toContainEqual({
-      kind: 'token',
-      id: 'tk-half',
-      ns: PLAID_NAMESPACE,
-      key: ROLE_KEY,
-      value: ROLES.WORD,
-    });
-  });
-
-  it('leaves an untagged layer of that name but another shape alone', async () => {
+  // A token layer is made in one batch with its role, so an untagged one of
+  // the same name is not setup's and is left alone.
+  it('leaves an untagged layer of that name alone and makes its own', async () => {
     const project = withText([
       { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
       { id: 'tk-other', name: 'Main Tokens', config: {}, spanLayers: [] },
     ]);
-    const { client, calls } = stub(project, {
-      'tk-other': {
-        id: 'tk-other',
-        name: 'Main Tokens',
-        overlapMode: 'any',
-        parentTokenLayer: null,
-        config: {},
-      },
-    });
-    await run(client, 'p1');
+    const { client, calls } = stub(project);
+    const result = await run(client, 'p1');
+    expect(result.failures).toEqual([]);
     expect(madeOf(calls, 'token').map((c) => c.name)).toContain('Main Tokens');
     expect(calls.config.some((c) => c.id === 'tk-other')).toBe(false);
   });
