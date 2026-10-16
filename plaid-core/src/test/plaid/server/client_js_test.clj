@@ -5,6 +5,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [ring.middleware.content-type]
             [plaid.server.middleware :as middleware]
             [ring.middleware.not-modified :refer [wrap-not-modified]]))
 
@@ -144,3 +145,13 @@
         (is (= 200 (:status r)))
         (is (nil? (:body r)))
         (is (= (:headers g) (:headers r)))))))
+
+(deftest a-miss-is-plain-text-whatever-its-extension
+  ;; The content-type middleware guesses from the path only when a response
+  ;; names no type of its own.
+  (let [handler (ring.middleware.content-type/wrap-content-type
+                 (middleware/wrap-client-js middleware/not-found))]
+    (doseq [uri ["/client/nope.js" "/nothing/here.png"]]
+      (let [r (handler {:request-method :get :uri uri :headers {}})]
+        (is (= 404 (:status r)))
+        (is (= "text/plain; charset=utf-8" (get-in r [:headers "Content-Type"])) uri)))))

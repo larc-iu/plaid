@@ -511,6 +511,13 @@
   [^String origin]
   (boolean (re-find #"[.*+?\[\]\\(){|]" origin)))
 
+(defn not-found
+  "What a path nothing serves answers. It says it is plain text, so the
+  content-type middleware does not guess one from the path's extension (a
+  miss at /client/x.js was text/javascript)."
+  [_]
+  {:status 404 :headers {"Content-Type" "text/plain; charset=utf-8"} :body "Not Found"})
+
 (mount/defstate middleware
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)
@@ -553,7 +560,7 @@
                      "matched LITERALLY, not as regex. If you meant an exact "
                      "origin string this is fine; if you meant a wildcard "
                      "subdomain pattern, list each exact origin instead.")))
-    (-> (fn [_] {:status 404 :body "Not Found"})
+    (-> not-found
         (wrap-rest-routes datasource)
         wrap-root-landing
         wrap-bundled-spa
