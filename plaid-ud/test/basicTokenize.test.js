@@ -105,3 +105,41 @@ test('gapTokenize tokenizes only what no token covers, inside each sentence', ()
     [4, 5],
   ]);
 });
+
+test('a gap fill builds no segmenter per gap, and none for a gap of only spaces (REV7-APPS-1)', () => {
+  const Real = Intl.Segmenter;
+  let built = 0;
+  Intl.Segmenter = class extends Real {
+    constructor(...args) {
+      super(...args);
+      built += 1;
+    }
+  };
+  try {
+    // 2,000 words a token each, and a comma after every tenth one.
+    const words = Array.from({ length: 2000 }, (_, i) => (i % 10 === 9 ? 'ab,' : 'ab'));
+    const text = words.join(' ');
+    const tokens = [];
+    let at = 0;
+    for (const w of words) {
+      tokens.push({ begin: at, end: at + 2 });
+      at += w.length + 1;
+    }
+    const added = gapTokenize(text, [[0, at - 1]], tokens, 'und-x-gaps');
+    assert.equal(added.length, 200);
+    gapTokenize(text, [[0, at - 1]], tokens, 'und-x-gaps');
+    assert.ok(built <= 1, `${built} segmenters`);
+  } finally {
+    Intl.Segmenter = Real;
+  }
+});
+
+test('a token never begins or ends with whitespace, though a segment may (REV7-IGT-2)', () => {
+  // A soft hyphen joins the space before it under UAX #29.
+  assert.deepEqual(basicTokenize('a ­ b'), [
+    [0, 1],
+    [2, 3],
+    [4, 5],
+  ]);
+  assert.deepEqual(gapTokenize('a\t­', [[0, 3]], [{ begin: 0, end: 1 }]), [[2, 3]]);
+});

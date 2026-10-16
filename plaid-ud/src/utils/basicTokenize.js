@@ -21,18 +21,33 @@
 import { cpLength, utf16ToCp } from '@larc-iu/plaid-client';
 import { shouldTokenizeCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 
+// One segmenter per locale: building one is the costly part, and a gap fill
+// asks for one per stretch of untokenized text.
+const segmenters = new Map();
+const segmenterFor = (locale) => {
+  let segmenter = segmenters.get(locale);
+  if (!segmenter) {
+    segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
+    segmenters.set(locale, segmenter);
+  }
+  return segmenter;
+};
+
 export function basicTokenize(text, locale = 'und') {
-  const segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
   const ranges = [];
   let cp = 0; // running code-point offset (segments tile the text in order)
-  for (const { segment } of segmenter.segment(text)) {
-    const len = cpLength(segment);
+  for (const { segment } of segmenterFor(locale).segment(text)) {
+    const cps = Array.from(segment);
     // Skip pure-whitespace segments; everything else (word-like OR
-    // punctuation/symbol) becomes its own token.
-    if (/\S/.test(segment)) {
-      ranges.push([cp, cp + len]);
-    }
-    cp += len;
+    // punctuation/symbol) becomes its own token. A segment can hold
+    // whitespace at an edge (a soft hyphen joins the space before it under
+    // UAX #29), and a token never does.
+    let b = 0;
+    let e = cps.length;
+    while (b < e && /\s/.test(cps[b])) b += 1;
+    while (e > b && /\s/.test(cps[e - 1])) e -= 1;
+    if (e > b) ranges.push([cp + b, cp + e]);
+    cp += cps.length;
   }
   return ranges;
 }
@@ -96,7 +111,10 @@ export function gapTokenize(text, sentenceRanges, tokens, locale = 'und', ignore
   const cps = Array.from(text);
   const out = [];
   const fill = (begin, end) => {
-    if (end <= begin) return;
+    // Most gaps are the space between two words: nothing to segment there.
+    let i = begin;
+    while (i < end && /\s/.test(cps[i])) i += 1;
+    if (i >= end) return;
     const ranges = basicTokenize(cps.slice(begin, end).join(''), locale).map(([b, e]) => [
       begin + b,
       begin + e,
@@ -105,10 +123,15 @@ export function gapTokenize(text, sentenceRanges, tokens, locale = 'und', ignore
       ...(ignoredTokens ? joinedOver(ranges, igtWords(cps, begin, end, ignoredTokens)) : ranges),
     );
   };
-  for (const [sBegin, sEnd] of sentenceRanges) {
+  // Sentences in order, and a cursor over the tokens, which are in order too:
+  // each token is looked at for the sentences it reaches, not for every one.
+  let first = 0;
+  for (const [sBegin, sEnd] of [...sentenceRanges].sort((a, b) => a[0] - b[0])) {
+    while (first < taken.length && taken[first].end <= sBegin) first += 1;
     let at = sBegin;
-    for (const t of taken) {
-      if (t.end <= at || t.begin >= sEnd) continue;
+    for (let k = first; k < taken.length && taken[k].begin < sEnd; k += 1) {
+      const t = taken[k];
+      if (t.end <= at) continue;
       fill(at, Math.min(t.begin, sEnd));
       at = Math.max(at, t.end);
     }

@@ -563,6 +563,18 @@ export class ConlluDocument extends DocumentModel {
   // How many tokens Tokenize would add to `body` (its saved text): every
   // token for an untokenized text, else one for each stretch no token covers.
   tokenizeGaps(body) {
+    // Read on every render of the Text Editor (its "No untokenized text."
+    // hint): worked out once per data version and body.
+    const key = body || '';
+    const memo = this._derived('tokenizeGaps', () => new Map());
+    if (!memo.has(key)) {
+      memo.clear();
+      memo.set(key, this._countGaps(key));
+    }
+    return memo.get(key);
+  }
+
+  _countGaps(body) {
     const { sentenceTokenLayer, wordTokenLayer, textLayer } = this.layerInfo;
     const sentences = sentenceTokenLayer?.tokens || [];
     const ranges = sentences.length
