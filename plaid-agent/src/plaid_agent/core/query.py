@@ -82,15 +82,37 @@ class QueryRefused(Exception):
     """The engine turned the query down, with its own reason."""
 
 
-def resolve_layer(value: Any, idx: Dict[str, List[tuple]], display: Callable[[str], str]) -> Any:
+#: The kind of layer each entity clause names in its "layer", and what a
+#: refusal calls each kind.
+CLAUSE_LAYER = {'span': 'span-layer', 'token': 'token-layer', 'vocab': 'vocab-layer',
+                'relation': 'relation-layer', 'seq': 'token-layer'}
+_KIND_CLAUSE = {'span-layer': 'span', 'token-layer': 'token', 'vocab-layer': 'vocab', 'relation-layer': 'relation'}
+_KIND_WORDS = {'text-layer': 'the text layer', 'token-layer': 'a token layer', 'span-layer': 'a span layer',
+               'relation-layer': 'a relation layer', 'vocab-layer': 'a vocabulary'}
+
+
+def resolve_layer(value: Any, idx: Dict[str, List[tuple]], display: Callable[[str], str],
+                  clause: Optional[str] = None) -> Any:
     """One layer name to its id. A name two layers share is refused by naming
-    both, since guessing which was meant is worse than asking."""
+    both, since guessing which was meant is worse than asking. Named in a
+    ``clause`` ("span", "token", ...), only a layer of the kind it takes
+    answers, and a name only another kind holds is refused by saying which
+    kind it is, not by the engine's raw id."""
     if not isinstance(value, str) or value.startswith('?') or UUID_RE.match(value):
         return value
     hits = idx.get(value.casefold())
     if not hits:
         known = sorted({h[2] for hs in idx.values() for h in hs if h[2]})
         raise QueryRefused(f'No layer named "{value}". Layers: ' + ', '.join(known))
+    want = CLAUSE_LAYER.get(clause) if clause else None
+    if want is not None:
+        mine = [h for h in hits if h[0] == want]
+        if not mine:
+            kind = hits[0][0]
+            other = _KIND_CLAUSE.get(kind)
+            raise QueryRefused(f'"{value}" is {_KIND_WORDS.get(kind, kind)}, not {_KIND_WORDS[want]}'
+                               + (f': use it in a {other} clause.' if other else '.'))
+        hits = mine
     ids = {h[1] for h in hits}
     if len(ids) > 1:
         raise QueryRefused(f'"{value}" names {len(ids)} layers ('
@@ -100,14 +122,15 @@ def resolve_layer(value: Any, idx: Dict[str, List[tuple]], display: Callable[[st
 
 
 def rewrite(node: Any, idx: Dict[str, List[tuple]], display: Callable[[str], str],
-            docs: Optional[Dict[str, str]] = None) -> Any:
+            docs: Optional[Dict[str, str]] = None, clause: Optional[str] = None) -> Any:
     """Substitute layer names with ids in every layer slot, and document names
-    with ids in `doc` slots, recursively."""
+    with ids in `doc` slots, recursively. ``clause`` is the entity clause
+    whose constraints ``node`` is, which says the kind its "layer" names."""
     if isinstance(node, dict):
         out = {}
         for k, v in node.items():
             if k in LAYER_SLOTS:
-                out[k] = resolve_layer(v, idx, display)
+                out[k] = resolve_layer(v, idx, display, clause if k == 'layer' else None)
             elif k == 'doc' and docs is not None and isinstance(v, str) and not v.startswith('?') \
                     and not UUID_RE.match(v):
                 # A name nothing answers to is said out loud. Passed through as
@@ -123,7 +146,8 @@ def rewrite(node: Any, idx: Dict[str, List[tuple]], display: Callable[[str], str
                 out[k] = rewrite(v, idx, display, docs)
         return out
     if isinstance(node, list):
-        return [rewrite(x, idx, display, docs) for x in node]
+        head = node[0] if node and isinstance(node[0], str) and node[0] in CLAUSE_LAYER else None
+        return [rewrite(x, idx, display, docs, head if isinstance(x, dict) else None) for x in node]
     return node
 
 

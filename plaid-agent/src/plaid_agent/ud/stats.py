@@ -17,7 +17,7 @@ from ..core.java_regex import matcher
 from ..core.tools import ToolError, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit, read_int
-from ..core.limits import NGRAM_MAX, READ_LIMITS
+from ..core.limits import GROUP_LIMIT, NGRAM_MAX, READ_LIMITS
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
@@ -149,13 +149,40 @@ def _split_features(rows: List[tuple]) -> List[tuple]:
     return sorted(counts.items(), key=lambda kv: -kv[1])
 
 
+def _doc_batches(per_doc: List[list]) -> List[List[str]]:
+    """Documents, from ``[document id, rows]``, in batches whose rows stay
+    under the group limit (one document a batch when it alone is over)."""
+    out: List[List[str]] = []
+    held, size = [], 0
+    for doc, n in sorted(((r[0], r[-1]) for r in per_doc if r[0]), key=lambda r: -r[1]):
+        if held and size + n > GROUP_LIMIT:
+            out.append(held)
+            held, size = [], 0
+        held.append(doc)
+        size += n
+    if held:
+        out.append(held)
+    return out
+
+
 def _bundles(c: Corpus, cond: List[list] = ()) -> List[tuple]:
     """Whole FEATS strings over the corpus, by how many words carry each. A
     feature is a span of its own, so a word's bundle is the join of its spans,
     sorted as the export sorts them."""
+    where = [c.word('?t'), c.field('features', '?s'), c.on('?s'), *cond]
+    clipped = c.clipped
+    rows = c.group(where, ['?t', '?s.value'])
+    if c.truncated:
+        # Cut at the group limit, the rows end inside some word's features,
+        # which would count a bundle that word does not have (REV-AGENT F6).
+        # Read again a few documents at a time, each read under the limit,
+        # and only a document over it alone is clipped.
+        c._clipped = clipped
+        rows = []
+        for docs in _doc_batches(c.group(where, ['?t.doc'])):
+            rows += c.group(where + [['in', '?t.doc', docs]], ['?t', '?s.value'])
     by_word: Dict[str, List[str]] = defaultdict(list)
-    for word, value, _n in c.group([c.word('?t'), c.field('features', '?s'), c.on('?s'), *cond],
-                                   ['?t', '?s.value']):
+    for word, value, _n in rows:
         if value:
             by_word[word].append(value)
     counts: Dict[str, int] = defaultdict(int)

@@ -208,9 +208,10 @@ def q_empty_hint(ws: Workspace, pattern: str, where_l: str, field, regex: bool, 
 
 # --- shared tallies --------------------------------------------------------------
 
-def _casefold_tally(rows: List[list], keyfn) -> Tuple[Counter, Dict[str, set]]:
+def _casefold_tally(rows: List[list], keyfn, spelled=None) -> Tuple[Counter, Dict[str, set]]:
     """Fold grouped rows into casefolded counts, remembering the raw spellings
-    behind each key (for follow-up ``in`` queries)."""
+    behind each key (for follow-up ``in`` queries). ``spelled``, a dict, is
+    filled with how often each key is written each way."""
     counts: Counter = Counter()
     raw: Dict[str, set] = defaultdict(set)
     for row in rows:
@@ -219,7 +220,18 @@ def _casefold_tally(rows: List[list], keyfn) -> Tuple[Counter, Dict[str, set]]:
             continue
         counts[key] += row[-1]
         raw[key].add(rawval)
+        if spelled is not None:
+            text = rawval if isinstance(rawval, str) else (rawval[0] if rawval[0] not in (None, '') else rawval[1])
+            spelled.setdefault(key, Counter())[text or ''] += row[-1]
     return counts, raw
+
+
+def _commonest(spellings: Counter, key: str) -> str:
+    """How a folded key is shown: its commonest spelling, the folded form
+    itself on a tie, else the first in code point order."""
+    top = max(spellings.values())
+    best = sorted(t for t, n in spellings.items() if n == top)
+    return key if key in best else best[0]
 
 
 #: A span value that is not empty: a span holding '' is an empty field to
@@ -291,14 +303,19 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
     c = ws.corpus
     empty = 0
     c.forget_clipping()
+    # Forms are counted case folded, and each is shown as it is most often
+    # written, so a capital-only letter such as Ӏ is not printed as ӏ.
+    spelled: Dict[str, Counter] = {}
     if what_l in ('wordform', 'word'):
         unit = [c.word('?t')] + target_condition(c, cond, '?t', 'Word')
         counts, raw = _casefold_tally(c.group(unit, ['?t.value']),
-                                      lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)))
+                                      lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)),
+                                      spelled)
     elif what_l == 'morpheme':
         unit = c.shown_morph('?m') + target_condition(c, cond, '?m', 'Morpheme')
         counts, raw = _casefold_tally(c.group(unit, ['?m.metadata.form', '?m.value']),
-                                      lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1])) if not c.ignored(r[1]) else (None, None)))
+                                      lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1])) if not c.ignored(r[1]) else (None, None)),
+                                      spelled)
     else:
         layer = c.scope_layer(field.scope)
         held = ([['covers', '?s', '?ft'], ['token', '?ft', {'layer': layer}]]
@@ -314,13 +331,14 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
     # Document dispersion for the shown items only (a second, narrow query).
     spread: Dict[str, set] = defaultdict(set)
     if what_l in ('wordform', 'word'):
-        values = [v for k, _ in shown for v in raw[k]]
+        values = list(dict.fromkeys(v for k, _ in shown for v in raw[k]))
         for chunk in _chunks(values):
             for value, doc, _n in c.group(unit + [['in', '?t.value', chunk]], ['?t.value', '?t.doc']):
                 spread[value.casefold()].add(doc)
     elif what_l == 'morpheme':
-        forms = [f for k, _ in shown for f, v in raw[k] if f not in (None, '')]
-        values = [v for k, _ in shown for f, v in raw[k] if f in (None, '')]
+        # A form is held by many morphemes with different values: each once.
+        forms = list(dict.fromkeys(f for k, _ in shown for f, v in raw[k] if f not in (None, '')))
+        values = list(dict.fromkeys(v for k, _ in shown for f, v in raw[k] if f in (None, '')))
         held = target_condition(c, cond, '?m', 'Morpheme')
         for chunk in _chunks(forms):
             for form, doc, _n in c.group([c.morph('?m'), ['in', '?m.metadata.form', chunk]] + held,
@@ -335,6 +353,10 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
         for chunk in _chunks(values):
             for value, doc, _n in c.group(unit + [['in', '?s.value', chunk]], ['?s.value', '?s.doc']):
                 spread[value].add(doc)
+    if spelled:
+        label = {k: _commonest(spelled[k], k) for k in counts}
+        items = [(label[k], n) for k, n in items]
+        spread = {label.get(k, k): docs for k, docs in spread.items()}
     return items, spread, empty
 
 

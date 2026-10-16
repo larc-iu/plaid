@@ -61,12 +61,15 @@ ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for 
     ('wrong_level', r'\bis not an? (sentence|word|morpheme)\b|names a sentence or a multi-word token|'
                     r'is (a|inside the) multi-word token|, not (sentences|single morphemes)\b|'
                     r'is an? \w+ field, not an? \w+ field'),
-    ('ambiguous', r'names several|several \w+ match|more than one'),
+    # "s2 has 2 words spelled "x": s2.w1, s2.w4", which "has N words" below
+    # would read as not found.
+    ('ambiguous', r'names several|several \w+ match|more than one|has \d+ words spelled "[^"]*":'),
     ('plan_limit', r'more than the [\d,]+ one plan may hold'),
     ('unavailable', r'is connected to this project|not configured|not available|is offline'),
     ('server_refused', r'could not be read'),
     ('plan_conflict', r"this plan's (set_words|split_token) renumbers"),
-    ('not_found', r'^No |has no |has \d+ words?\b|not found|does not exist|no such|is not in '),
+    # A form beside a number that is not the one there: "s1.w2 is "a", not "mar"".
+    ('not_found', r'^No |has no |has \d+ words?\b|not found|does not exist|no such|is not in |\bis "[^"]*", not "'),
     ('plan_conflict', r'^This plan |already|discard_plan first|cannot be planned|would (delete|replace|lose)'),
 )]
 

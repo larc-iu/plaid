@@ -354,7 +354,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         patterns[pattern_key] += 1
         wf = ' | '.join(f'{f.name}={w.fields[f.name].value}' for f in ws.project.fields_by_scope('Word')
                         if f.name in w.fields and w.fields[f.name].value != '')
-        lines_out.append(f'{ws.corpus.tag(doc.id)}{word_ref(s, w)} {prev} [{w.surface}] {nxt} | seg={seg}'
+        lines_out.append(f'{ws.corpus.tag(doc.id)}{word_ref(s, w)}{f".m{hit.index}" if hit is not None else ""} {prev} [{w.surface}] {nxt} | seg={seg}'
                          + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')
                          + f' || {s.text}')
     # The shown count is the hits rendered: the per-call document budget can

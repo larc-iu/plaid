@@ -275,7 +275,7 @@ def _frequency_lines(ws, items, spread, empty, field, what_l, limit, clipped: st
     lines = [f'{len(items)} {noun}' + (', case folded' if folded else '') + f'{held}, {sum(n for _, n in items)} {unit}'
              + (f', {empty} empty' if field and empty is not None else '')
              + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform' + clipped]
-    for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:
+    for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0].casefold(), kv[0]))[:limit]:
         lines.append(f'  {n}\t{len(spread.get(k) or ())}\t{k}')
     return truncate('\n'.join(lines))
 

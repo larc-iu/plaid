@@ -38,7 +38,7 @@ def test_corpus_stats_totals_and_tables():
 def test_frequency_list():
     out = call_tool(ws(), 'frequency_list', {'what': 'morpheme'})
     assert out.startswith('4 morpheme forms, case folded, 5 tokens. count\tdocuments\tform')
-    assert '  1\t1\tali' in out
+    assert '  1\t1\tAli' in out
     out = call_tool(ws(), 'frequency_list', {'what': 'Morph Gloss', 'limit': 1})
     assert '2 Morph Gloss values, 2 tokens, 3 empty (showing 1)' in out
     assert 'No field named "zzz"' in call_tool(ws(), 'frequency_list', {'what': 'zzz'})
@@ -359,7 +359,7 @@ def test_formless_morphemes_in_a_chain_render_as_gaps():
     out = call_tool(w, 'check_integrity', {})
     assert '1 words with a morpheme that has no form (shown as ?): s1.w2 gam' in out
     assert '0 words whose morpheme forms do not add up' in out
-    assert '  1\t1\tgam' in call_tool(w, 'frequency_list', {'what': 'morpheme'})  # the gap is not a form
+    assert '  1\t1\tGam' in call_tool(w, 'frequency_list', {'what': 'morpheme'})  # the gap is not a form
 
 
 def test_naming_a_document_lists_every_reference_not_a_sample():

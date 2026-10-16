@@ -32,6 +32,10 @@ from plaid_agent.research.records import error_class, snake, turn_end, uuid7_tim
     ('Error: s1: link words (sN.wN) or morphemes (sN.wN.mN), not sentences', 'wrong_level'),
     ('Error: s1.w1.m1: discard_analysis works on words (sN.wN), not single morphemes', 'wrong_level'),
     ('Error: "Gloss" is a word field, not a morpheme field; use set_field for it', 'wrong_level'),
+    ('Error: s1."mar": s1 has 2 words spelled "mar": s1.w2, s1.w5. Name one by its number.', 'ambiguous'),
+    ('Error: s1."mar" #3: s1 has 2 word(s) spelled "mar", so there is no #3.', 'not_found'),
+    ('Error: s1.w2 "mar": s1.w2 is "a", not "mar" ("mar" is s1.w5). Name the word by its number.', 'not_found'),
+    ('Error: s1.w1.m2: in the analysis this plan gives "Vamos", m2 is "-mos", not "-os".', 'not_found'),
     ('Error: something new', 'other'),
     (None, 'unknown'),
 ])
