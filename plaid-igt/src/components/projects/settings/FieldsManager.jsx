@@ -287,7 +287,8 @@ export const FieldsManager = ({
         savedRef.current = shown;
         return true;
       } catch (error) {
-        console.error('Failed to save fields configuration:', error);
+        // Values in use that a closed list refuses are an answer, not a fault.
+        if (!error?.refusedValues) console.error('Failed to save fields configuration:', error);
         // Put back what is stored, unless a later change is shown: that one
         // saves next, against what is stored.
         if (shownRef.current === shown) {
