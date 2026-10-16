@@ -76,8 +76,21 @@ export const TextEditor = () => {
       if (el) {
         scrolledForRef.current = sentParam;
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setFlashSentId(el.getAttribute('data-sentence-block'));
+        const id = el.getAttribute('data-sentence-block');
+        setFlashSentId(id);
         flashTimer = setTimeout(() => setFlashSentId(null), 2000);
+        // The caret goes to where that sentence begins in the text box, so
+        // Edit text lands where the editing is. Not into text typed and not
+        // saved, whose offsets are not the tokens'.
+        const box = textareaRef.current;
+        const sentence = (doc?.layerInfo?.sentenceTokenLayer?.tokens || []).find(
+          (t) => String(t.id) === id,
+        );
+        if (box && !box.readOnly && sentence && box.value === doc?.body) {
+          const at = cpSlice(box.value, 0, sentence.begin).length;
+          box.focus({ preventScroll: true });
+          box.setSelectionRange(at, at);
+        }
         return;
       }
       if (Date.now() > deadline) return;
@@ -94,7 +107,7 @@ export const TextEditor = () => {
         scrolledForRef.current = null;
       }
     };
-  }, [sentParam]);
+  }, [sentParam, doc]);
 
   useDocumentTitle('Text Editor', doc?.name, project?.name);
 
