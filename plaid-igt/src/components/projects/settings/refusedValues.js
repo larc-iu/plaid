@@ -65,7 +65,9 @@ export const notInForceLines = (fields) =>
       lines.push(`${f.field}: ${n} ${unitWord(f.scope, n)} with more than one annotation.`);
     }
     if (!lines.length) {
-      lines.push(`The rules of ${f.field} are not in force: ${countWord(f.count)} break them.`);
+      lines.push(
+        `The rules of ${f.field} are not in force: ${countWord(f.count)} ${f.count === 1 ? 'breaks' : 'break'} them.`,
+      );
     }
     return lines.join(' ');
   });
@@ -76,8 +78,11 @@ export const notInForceLines = (fields) =>
  */
 export const notInForceText = (fields, { here = false } = {}) => {
   const steps = [];
-  if (fields.some((f) => f.values?.length || !f.repair?.length)) steps.push('change these values');
+  if (fields.some((f) => f.values?.length)) steps.push('change these values');
   if (fields.some((f) => f.repair?.length)) steps.push('leave one annotation on each');
+  if (fields.some((f) => !f.values?.length && !f.repair?.length)) {
+    steps.push('change the annotations that break them');
+  }
   const what = steps.join(' and ');
   const action = `${what[0].toUpperCase()}${what.slice(1)}, then choose Put in force${here ? '' : ' under Validation'}.`;
   return `${notInForceLines(fields).join(' ')} ${action}`;

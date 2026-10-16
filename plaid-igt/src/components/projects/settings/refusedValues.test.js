@@ -45,4 +45,13 @@ describe('the notice for fields left out of force', () => {
       / Change these values and leave one annotation on each, then choose Put in force under Validation\.$/,
     );
   });
+
+  // REV5-WIRE-4: a rule refused for no value and no join, in words that agree.
+  it('says a rule broken another way in a sentence that agrees with its count', () => {
+    const other = { field: 'Raw note', count: 1, valueCount: 0, values: [] };
+    expect(notInForceText([other])).toBe(
+      'The rules of Raw note are not in force: 1 annotation breaks them. Change the annotations that break them, then choose Put in force under Validation.',
+    );
+    expect(notInForceText([{ ...other, count: 3 }])).toMatch(/: 3 annotations break them\. /);
+  });
 });

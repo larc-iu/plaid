@@ -292,13 +292,22 @@ export const declareIgtRules = async (
   });
   for (const p of pending) {
     const named = notInForce.find((n) => n.layerId === p.layerId);
+    // A rule with a remedy the declaration itself was refused for (a double
+    // written after the check) needs the same as one the check found.
+    const refusedFixable = repair ? [] : (p.constraints || []).filter((t) => t === 'single-span');
     const needs = p.repair?.length
       ? {
           repair: p.repair,
           repairCount: p.repairCount ?? 0,
           scope: fields.get(p.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
         }
-      : {};
+      : refusedFixable.length
+        ? {
+            repair: refusedFixable,
+            repairCount: p.violationCount ?? 0,
+            scope: fields.get(p.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
+          }
+        : {};
     if (named) {
       // Its list is named already: what else the data breaks goes with it.
       Object.assign(named, needs);

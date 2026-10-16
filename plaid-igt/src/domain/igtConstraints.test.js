@@ -353,3 +353,64 @@ describe('what a settings save would have the server refuse', () => {
     expect(c.asked).toEqual([]);
   });
 });
+
+// REV5-WIRE-4: a double written between the heal's check and its declaration
+// is refused by core, and the field is named for the annotation to leave,
+// as one the check found.
+describe('a heal whose declaration a new double refuses', () => {
+  it('names the field for one annotation a unit, with the count core gives', async () => {
+    const { declareIgtRules } = await import('./igtConstraints.js');
+    const proj = {
+      id: 'p',
+      config: { igt: {} },
+      textLayers: [
+        {
+          id: 'tl',
+          config: { plaid: { role: 'baseline' } },
+          tokenLayers: [
+            {
+              id: 'w',
+              config: { plaid: { role: 'word' } },
+              constraints: { igt: [{ type: 'single-link' }] },
+              spanLayers: [
+                {
+                  id: 'raw',
+                  name: 'Raw note',
+                  config: { igt: { scope: 'Word' } },
+                  constraints: {},
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const refusal = Object.assign(new Error('HTTP 422'), {
+      status: 422,
+      responseData: {
+        violations: [{ constraint: 'single-span' }],
+        'violation-count': 1,
+      },
+    });
+    const client = {
+      projects: { get: async () => structuredClone(proj) },
+      spanLayers: {
+        checkConstraints: async () => ({ violations: [], violationCount: 0 }),
+        refusedValues: async () => ({ count: 0, valueCount: 0, values: [] }),
+        setConstraints: async () => {
+          throw refusal;
+        },
+      },
+      withOperation: async (_m, fn) => fn(),
+    };
+    const out = await declareIgtRules(client, 'p', { fieldsOnly: true, repair: false });
+    expect(out.notInForce).toEqual([
+      expect.objectContaining({
+        field: 'Raw note',
+        repair: ['single-span'],
+        repairCount: 1,
+        scope: 'Word',
+      }),
+    ]);
+  });
+});

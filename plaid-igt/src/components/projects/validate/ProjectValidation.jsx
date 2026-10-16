@@ -18,6 +18,7 @@ import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
 import { listedCount, locateFailing } from './locateFailing.js';
+import { locateDoubles } from './locateDoubles.js';
 import { distinctValues, loadAttested } from './attested.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -173,6 +174,32 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   // tagset names any more, a field a script made without its rules.
   const outOfForce = useMemo(() => fieldsOutOfForce(project), [project]);
   const [forcing, setForcing] = useState(false);
+  // Of each field without one annotation a unit, the units holding more
+  // than one, by layer id: `{count, rows}`, or `{failed: true}`.
+  const [doubles, setDoubles] = useState({});
+  useEffect(() => {
+    const singles = outOfForce.filter((f) => f.single);
+    if (!singles.length || !client) {
+      setDoubles({});
+      return undefined;
+    }
+    let live = true;
+    Promise.all(
+      singles.map(async (f) => {
+        try {
+          return [f.layerId, await locateDoubles(client, f.layerId)];
+        } catch (err) {
+          console.error('Could not find the doubled annotations:', err);
+          return [f.layerId, { failed: true }];
+        }
+      }),
+    ).then((entries) => {
+      if (live) setDoubles(Object.fromEntries(entries));
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, outOfForce]);
   // Put the rules of `targets` (entries of `outOfForce`) in force, and say
   // what changed: `done` names it when nothing was left out.
   const putInForce = async (targets, done) => {
@@ -430,16 +457,18 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   // tagset names: the list to remove.
   const stale = outOfForce.filter((f) => f.stale);
   const toForce = outOfForce.filter((f) => !f.stale);
-  const lists = toForce.filter((f) => f.list);
-  const singles = toForce.filter((f) => !f.list && f.single);
-  const others = toForce.filter((f) => !f.list && !f.single);
   const unitOf = (f) =>
     ({ Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' })[f.scope] ?? 'word';
-  const forceText = `Not in force: ${[
-    ...lists.map((f) => `${f.tagset} on ${f.field}`),
-    ...singles.map((f) => `one annotation a ${unitOf(f)} on ${f.field}`),
-    ...others.map((f) => `the rules of ${f.field}`),
-  ].join(', ')}.`;
+  // Each field once, with every rule of it not in force.
+  const forceText = `Not in force: ${toForce
+    .map((f) => {
+      if (f.list && f.single) return `${f.tagset} and one annotation a ${unitOf(f)} on ${f.field}`;
+      if (f.list) return `${f.tagset} on ${f.field}`;
+      if (f.single) return `one annotation a ${unitOf(f)} on ${f.field}`;
+      return `the rules of ${f.field}`;
+    })
+    .join(', ')}.`;
+  const doubled = toForce.filter((f) => f.single && doubles[f.layerId]?.count > 0);
   const listNames = (fs) => fs.map((f) => f.field).join(', ');
 
   return (
@@ -463,6 +492,41 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                 </Button>
               </div>
             )}
+            {doubled.map((f) => {
+              const { count, rows } = doubles[f.layerId];
+              return (
+                <div key={f.layerId} data-testid="doubled-units" className="mt-1">
+                  <p>{`${f.field}: ${count} ${unitOf(f)}${count === 1 ? '' : 's'} with more than one annotation`}</p>
+                  <ul className="mt-1 flex flex-col">
+                    {rows.map((r, i) => (
+                      <li key={`${r.docId}:${r.begin}:${i}`}>
+                        <Link
+                          to={
+                            r.sentenceId
+                              ? hitTo(projectId, r.docId, r.sentenceId)
+                              : `/projects/${projectId}/documents/${r.docId}?tab=analyze`
+                          }
+                          onClick={() =>
+                            r.sentenceId && rememberCaret(r.docId, r.sentenceId, r.begin)
+                          }
+                          className="text-foreground hover:underline"
+                        >
+                          {`${r.docName} · ${r.form}`}
+                        </Link>
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {r.values
+                            .map((v) => (v == null || v === '' ? '(empty)' : String(v)))
+                            .join(' | ')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {count > rows.length && (
+                    <p className="text-xs text-muted-foreground">{`${count - rows.length} more not shown.`}</p>
+                  )}
+                </div>
+              );
+            })}
             {stale.length > 0 && (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>{`In force with no closed tagset: the list on ${listNames(stale)}.`}</span>

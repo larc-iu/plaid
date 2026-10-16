@@ -501,7 +501,9 @@ describe('a closed list not in force', () => {
     const { client, declared } = held({ count: 0, valueCount: 0, values: [] });
     const { container, step, unmount } = await render(client);
     const notice = container.querySelector('[data-testid="rules-out-of-force"]');
-    expect(notice.textContent).toContain('Not in force: Leipzig on Gloss.');
+    expect(notice.textContent).toContain(
+      'Not in force: Leipzig and one annotation a morpheme on Gloss.',
+    );
     await step(async () => {
       byText(notice, 'button', 'Put in force').click();
       for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
@@ -654,6 +656,92 @@ describe('rules not as the settings want, by state', () => {
     });
     expect(declared).toEqual([['msl-1', [{ type: 'single-span' }]]]);
     expect(notifySuccess).toHaveBeenCalledWith('In force on Raw two');
+    await unmount();
+  });
+});
+
+// REV5-WIRE-3: a field that needs one annotation left on some units lists
+// each unit, with its values and a link to it in Analyze. REV5-WIRE-4: a
+// field with its list and one annotation a unit out of force names both.
+describe('units holding more than one annotation', () => {
+  const doc = {
+    id: 'd-1',
+    name: 'Text 1',
+    textLayers: [
+      {
+        id: 'tl-1',
+        config: { plaid: { role: 'baseline' } },
+        text: { body: 'Ali-di gam' },
+        tokenLayers: [
+          {
+            id: 'sl',
+            config: { plaid: { role: 'sentence' } },
+            tokens: [{ id: 's-1', begin: 0, end: 10 }],
+          },
+          {
+            id: 'ml-1',
+            config: { plaid: { role: 'morpheme' } },
+            tokens: [
+              { id: 'm-1', begin: 0, end: 3 },
+              { id: 'm-2', begin: 7, end: 10 },
+            ],
+            spanLayers: [
+              {
+                id: 'msl-0',
+                spans: [
+                  { id: 'sp-1', value: 'ERG', tokens: ['m-1'] },
+                  { id: 'sp-2', value: 'ZZ', tokens: ['m-1'] },
+                  { id: 'sp-3', value: 'PL', tokens: ['m-2'] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const proj = structuredClone(project);
+  proj.textLayers[0].tokenLayers[0].spanLayers[0].constraints = { igt: [] };
+  const client = {
+    ...clientWith([[['PL', 3]], [['Song', 4]]]),
+    projects: { get: vi.fn(async () => structuredClone(proj)) },
+    documents: { get: vi.fn(async () => structuredClone(doc)) },
+    spanLayers: {
+      refusedValues: vi.fn(async () => ({ count: 0, valueCount: 0, values: [] })),
+      checkConstraints: vi.fn(async () => ({
+        violations: [
+          { constraint: 'single-span', document: 'd-1', at: 'm-1', ids: ['sp-1', 'sp-2'] },
+        ],
+        violationCount: 1,
+      })),
+    },
+  };
+
+  it('lists each unit with its values and a link to it in Analyze', async () => {
+    vi.clearAllMocks();
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation
+          project={proj}
+          projectId="p-1"
+          client={client}
+          onProjectUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    expect(notice.textContent).toContain(
+      'Not in force: Leipzig and one annotation a morpheme on Gloss.',
+    );
+    const list = container.querySelector('[data-testid="doubled-units"]');
+    expect(list.textContent).toContain('Gloss: 1 morpheme with more than one annotation');
+    expect(list.textContent).toContain('Text 1 · Ali');
+    expect(list.textContent).toContain('ERG | ZZ');
+    expect(list.querySelector('a').getAttribute('href')).toBe(
+      '/projects/p-1/documents/d-1?tab=analyze&focusSentence=s-1',
+    );
+    expect(client.documents.get).toHaveBeenCalledTimes(1);
     await unmount();
   });
 });

@@ -616,6 +616,8 @@ Once those values are changed, **Put in force** applies the list.
 Saving any tagset or field does the same for every field whose values allow it.
 
 Validation also names a field that allows more than one annotation on a word, morpheme or sentence, such as a field a script made, and a field that holds a list no closed tagset names.
+Under the field it lists each word, morpheme or sentence that holds more than one, with the document and the values, and a link to it in Analyze.
+Analyze shows one of the values at a time, and clearing it shows the next.
 **Put in force** applies one annotation on each once no word, morpheme or sentence holds two, and **Remove the list** removes the list.
 Neither changes an annotation.
 
