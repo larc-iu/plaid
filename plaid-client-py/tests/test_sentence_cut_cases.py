@@ -16,6 +16,7 @@ sentenceCutCases.test.js does for the editor's copy:
 import json
 from pathlib import Path
 
+from plaid_client.workflows.igt.ignored import is_punct_char
 from plaid_client.workflows.igt.new_words import is_js_space, new_text_layout, new_text_words
 
 CASES = json.loads((Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'test' / 'plaid' / 'algos'
@@ -64,3 +65,32 @@ def test_the_sentence_cut_agrees_with_core_on_the_shared_table():
     assert problems[:5] == []
     assert checked > 400
     assert pairs > 300
+
+
+def test_a_letter_typed_against_a_punctuation_word_is_free_where_core_leaves_it_in_no_word():
+    # REV7-IGT-1: a word made only of punctuation (ud's `(` or `.`) takes no
+    # text typed against it, so where a save only types into a text holding
+    # one, a letter it typed is free for a new word exactly where core leaves
+    # it in no word.
+    problems = []
+    checked = 0
+    for c in CASES:
+        if not all(g['start'] == g['end'] for g in c['gaps']):
+            continue
+        if not any(all(is_punct_char(ch) for ch in c['base'][b:e]) for b, e in c['words']):
+            continue
+        words = [{'begin': b, 'end': e} for b, e in c['words']]
+        sentences = [{'begin': b, 'end': e} for b, e in c['sentences']]
+        layout = new_text_layout(c['base'], c['gaps'], words, sentences)
+        if layout is None:
+            continue
+        body, typed, covered, _ = layout
+        for x in range(len(body)):
+            if not typed[x] or is_js_space(body[x]):
+                continue
+            checked += 1
+            in_word = any(b <= x < e for b, e in c['core']['words'])
+            if in_word != bool(covered[x]):
+                problems.append((c['base'], c['gaps'], x, in_word))
+    assert problems[:5] == []
+    assert checked > 500

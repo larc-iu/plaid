@@ -373,14 +373,17 @@
                                                     (and (<= na p) (< p (+ na (cp/cp-count (:value g)))))))
                                           cov))
                         (bad! id " took a new letter apart from it at " p " (" (pr-str (text-of now)) ")"))))))))))
-      ;; a new letter joined to a word's letters is in a word
+      ;; a new letter joined to a word's letters is in a word, but for a
+      ;; word made only of punctuation, which takes no text typed against
+      ;; it (REV7-IGT-1)
       (let [word-at (let [a (boolean-array (alength nw))]
                       (doseq [t (vals by-id) :when (and (= wl (:token/layer t)) (not (gone (:token/id t))))
                               p (range (:token/begin t) (:token/end t))]
                         (aset a p true))
                       a)
             word-letter (let [a (boolean-array (alength nw))]
-                          (doseq [t tokens :when (and (= wl (:token/layer t)) (not (gone (:token/id t))))
+                          (doseq [t tokens :when (and (= wl (:token/layer t)) (not (gone (:token/id t)))
+                                                      (not (every? #(#'ta/punct? (aget o %)) (range (:token/begin t) (:token/end t)))))
                                   k (kept-of t)]
                             (aset a (aget newpos k) true))
                           a)]

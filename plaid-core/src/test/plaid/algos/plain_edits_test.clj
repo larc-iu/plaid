@@ -1009,3 +1009,56 @@
         rows (concat (filter #(= :r (:token/layer %)) (:tokens r)) (filter #(= :r (:token/layer %)) (:made r)))]
     (is (= "Ab cd ef  gh.So  Xy." (:text/body (:text r))))
     (is (= [[0 8] [10 15] [15 15]] (sort (map (juxt :token/begin :token/end) rows))))))
+
+(defn- runs-doc
+  "`body` with one sentence and a word token `[:w i]` over each run of
+  letters, and with `punct?` also one over each run of punctuation, as ud's
+  Tokenize leaves a text igt tokenized."
+  [body punct?]
+  (let [m (re-matcher (if punct? #"[\p{L}\p{N}]+|[\p{P}\p{S}]+" #"[\p{L}\p{N}]+") body)]
+    (into [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
+          (loop [out [] i 0]
+            (if (.find m)
+              (recur (conj out {:token/id [:w i] :token/layer :w :token/begin (.start m) :token/end (.end m)}) (inc i))
+              out)))))
+
+(deftest a-letter-typed-against-a-punctuation-token-never-joins-it
+  ;; REV7-IGT-1 (parent, under Luke's "igt must not change because ud
+  ;; annotation started"): ud's Tokenize gives punctuation a word token,
+  ;; which igt reads as text. A letter typed against it went into it (`,x`,
+  ;; `(x`, `x,`), where without the token igt made the word `x` or `xcd`.
+  ;; Now the same letters make the same words either way, on both paths.
+  (let [words (fn [r]
+                (let [body (:text/body (:text r))]
+                  (vec (sort (keep (fn [{:token/keys [layer begin end]}]
+                                     (when (= :w layer)
+                                       (let [t (cp/cp-subs body begin end)]
+                                         (when-not (re-matches #"[\p{P}\p{S}]+" t) [begin t]))))
+                                   (:tokens r))))))
+        puncts (fn [r]
+                 (let [body (:text/body (:text r))]
+                   (keep (fn [{:token/keys [layer begin end]}]
+                           (when (= :w layer)
+                             (let [t (cp/cp-subs body begin end)]
+                               (when-not (re-find #"[\p{L}\p{N}]" t) t))))
+                         (:tokens r))))]
+    (doseq [[id body op expect] [["B1" "ab, cd" (ins 3 "x") ["ab" "cd"]]
+                                 ["B2" "ab cd.ef" (ins 6 "x") ["ab" "cd" "xef"]]
+                                 ["B3" "ab (cd)" (ins 4 "x") ["ab" "xcd"]]
+                                 ["B4" "ab cd." (ins 6 "x") ["ab" "cd"]]
+                                 ["B5" "ab, cd" (ins 3 " y") ["ab" "cd"]]
+                                 ["B6" "ab «cd» ef" (ins 7 "z") ["ab" "cd" "ef"]]
+                                 ["B7" "ab, cd" (ins 2 "q") ["abq" "cd"]]
+                                 ["B8" "ab ¿cd?" (ins 4 "Q") ["ab" "Qcd"]]
+                                 ["B9" "ab, cd" (del 2 1) ["ab" "cd"]]
+                                 ["B10" "ab ,cd" (ins 3 "x") ["ab" "cd"]]
+                                 ["replace" "ab ?!cd" (rep 4 2 "x") ["ab" "xd"]]
+                                 ["two" "ab (cd)" (ins 4 "x y") ["ab" "ycd"]]]
+            punct? [false true]
+            :let [tokens (runs-doc body punct?)
+                  new (ta/edit-ops-body [op] body)]
+            [path r] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w})]
+                      [:body (ta/plain-body body new tokens #{:s} #{:w})]]]
+      (is (= expect (mapv second (words r))) (str id " " path (when punct? " with punctuation tokens")))
+      (when punct?
+        (is (every? #(re-matches #"[\p{P}\p{S}]+" %) (puncts r)) (str id " " path " punctuation stays punctuation"))))))

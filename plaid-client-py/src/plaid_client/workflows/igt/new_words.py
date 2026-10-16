@@ -27,7 +27,7 @@ import unicodedata
 from bisect import bisect_right
 from typing import Any, List, Optional, Sequence, Tuple
 
-from .ignored import is_token_ignored
+from .ignored import is_punct_char, is_token_ignored
 from .spaceless_scripts import SPACELESS_SCRIPTS
 
 # The editor's isUnicodePunctuation character class, verbatim (without
@@ -234,13 +234,22 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
         return after(i, p)
 
     covered = bytearray(n)
+    # What typed text against it with no whitespace between goes to: all that
+    # is covered but the text of a word made only of punctuation, which takes
+    # none (plaid-core ``apply-plain-gaps``, ``punct?``: what igt's default
+    # ignore rule skips, whatever the project's own rule says).
+    takes = bytearray(n)
     for w in words or []:
         wb, we = (w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1])
         if not wb < we:
             continue
         lo, hi = start_of(wb), end_of(we)
+        punct = all(is_punct_char(c) for c in old[wb:we])
         for x in range(max(0, lo), min(n, hi)):
             covered[x] = 1
+            # (text a gap typed inside it, which the server may give it, does)
+            if not punct or typed[x]:
+                takes[x] = 1
 
     # The sentence boundaries, moved by the edit, cut every candidate: a word
     # is never made across one (the word layer lies inside the sentences).
@@ -311,7 +320,7 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
                 cut[at[j]] = 1
                 cut[at[j] + lens[j]] = 1
                 for x in range(at[j], at[j] + lens[j]):
-                    covered[x] = 1
+                    covered[x] = takes[x] = 1
 
     # A line typed before the first sentence's first letter left, holding a
     # letter before its last line break, is a sentence of its own: the first
@@ -340,16 +349,17 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
                     b += 1
                 cut[min(b, e - 1)] = 1
 
-    # Typed text against a word with no whitespace between goes to the word.
+    # Typed text against a word with no whitespace between goes to the word,
+    # unless the word is made only of punctuation.
     def joins(x: int) -> bool:
         return typed[x] and not is_js_space(body[x])
 
     for x in range(1, n):
-        if not covered[x] and covered[x - 1] and joins(x):
-            covered[x] = 1
+        if not covered[x] and takes[x - 1] and joins(x):
+            covered[x] = takes[x] = 1
     for x in range(n - 2, -1, -1):
-        if not covered[x] and covered[x + 1] and joins(x):
-            covered[x] = 1
+        if not covered[x] and takes[x + 1] and joins(x):
+            covered[x] = takes[x] = 1
     return body, typed, covered, cut
 
 

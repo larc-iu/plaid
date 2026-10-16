@@ -834,6 +834,26 @@
                       Character/LETTER_NUMBER Character/OTHER_NUMBER}
                     (byte t)))))
 
+;; Punctuation and symbols (Unicode P and S), as igt's ignore rule reads
+;; them by default: not a pictograph (an emoji is a word there) and not the
+;; zero morph U+2205.
+(def ^:private punct-types
+  #{Character/CONNECTOR_PUNCTUATION Character/DASH_PUNCTUATION Character/START_PUNCTUATION
+    Character/END_PUNCTUATION Character/INITIAL_QUOTE_PUNCTUATION Character/FINAL_QUOTE_PUNCTUATION
+    Character/OTHER_PUNCTUATION Character/MATH_SYMBOL Character/CURRENCY_SYMBOL
+    Character/MODIFIER_SYMBOL Character/OTHER_SYMBOL})
+
+(defn- punct?
+  "Whether code point `c` is punctuation to the text rules: a character
+  igt's default ignore rule skips (plaid-ui `isIgnoredCharacter`), Unicode
+  punctuation or a symbol, but not a pictograph and not U+2205, the zero
+  morph."
+  [c]
+  (let [c (int c)]
+    (and (contains? punct-types (byte (Character/getType c)))
+         (not (Character/isExtendedPictographic c))
+         (not= c 0x2205))))
+
 (def ^:private slide-reach
   "How far an edit is moved at most, in code points each way. A word edit's
   equivalent places lie within about a word of each other, and the bound
@@ -966,6 +986,9 @@
                                                      (= end a) (not to-next?)
                                                      (= begin a) (or (zero? a) to-next? new-before?)
                                                      :else false)
+                              ;; a token made only of punctuation takes no
+                              ;; text typed against it (see `apply-plain-gaps`)
+                              (every? #(punct? (aget o %)) (range begin end)) false
                               (= end a) new-after?
                               (= begin a) new-before?
                               :else false))
@@ -2794,23 +2817,28 @@
         ;; that end of the token from inside), one it is exactly.
          flags (let [f (object-array k)
                      mark! (fn [g x] (aset f g (conj (or (aget f g) #{}) x)))]
-                 (doseq [{:token/keys [begin end]} deciders]
+                 (doseq [{:token/keys [begin end]} deciders
+                         ;; a word made only of punctuation (ud's `(`,
+                         ;; `.`) takes no text from a gap outside it: a
+                         ;; letter typed against it stays apart, as where
+                         ;; the punctuation has no token (REV7-IGT-1)
+                         :let [punct-only? (every? #(punct? (aget o %)) (range begin end))]]
                    (let [g (at-or-before end)]
                      (when (>= g 0)
                        (let [{:keys [a b]} (info g)]
                          (if (< a b)
                            (cond
-                             (and (< begin a) (<= a end) (< end b)) (mark! g :before)
+                             (and (< begin a) (<= a end) (< end b)) (when-not punct-only? (mark! g :before))
                              (and (<= begin a) (= end b)) (mark! g :holds-end))
-                           (when (and (= end a) (< begin a)) (mark! g :before))))))
+                           (when (and (= end a) (< begin a) (not punct-only?)) (mark! g :before))))))
                    (let [g (at-or-before begin)]
                      (when (>= g 0)
                        (let [{:keys [a b]} (info g)]
                          (if (< a b)
                            (cond
-                             (and (< a begin) (<= begin b) (< b end)) (mark! g :after)
+                             (and (< a begin) (<= begin b) (< b end)) (when-not punct-only? (mark! g :after))
                              (and (= begin a) (<= b end)) (mark! g :holds-start))
-                           (when (and (= begin a) (< a end)) (mark! g :after)))))))
+                           (when (and (= begin a) (< a end) (not punct-only?)) (mark! g :after)))))))
                 ;; A gap that is exactly a token's text (a word, a sentence
                 ;; with its separator, a segment) is that token typed over.
                  (doseq [{:token/keys [begin end]} wide]

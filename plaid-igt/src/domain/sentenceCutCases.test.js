@@ -13,6 +13,7 @@
 // plaid-client-py's test_sentence_cut_cases.py does the same for the Python
 // twin.
 import { describe, it, expect } from 'vitest';
+import { isIgnoredCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { readRepoFile } from '../test/builtinHash.js';
 import { newTextLayout, newTextWords } from './newTextWords.js';
 
@@ -22,6 +23,8 @@ const { cases } = JSON.parse(
 const span = ([begin, end]) => ({ begin, end });
 const isSpace = (c) => /\s/u.test(c);
 const sentenceOf = (cuts, x) => cuts.filter((b) => b <= x).length;
+const isPunctOnly = (cs) =>
+  cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, { type: 'unicodePunctuation' }));
 
 describe('the sentence cut of Tokenize new text', () => {
   it('agrees with core on the shared table', () => {
@@ -84,5 +87,36 @@ describe('the sentence cut of Tokenize new text', () => {
     expect(problems.slice(0, 5)).toEqual([]);
     expect(checked).toBeGreaterThan(400);
     expect(pairs).toBeGreaterThan(300);
+  });
+
+  // REV7-IGT-1: a word made only of punctuation (ud's `(` or `.`) takes no
+  // text typed against it, so where a save only types into a text holding
+  // one, a letter it typed is free for a new word exactly where core leaves
+  // it in no word.
+  it('leaves a letter typed against a punctuation word free, as core leaves it in no word', () => {
+    const problems = [];
+    let checked = 0;
+    for (const c of cases) {
+      if (!c.gaps.every((g) => g.start === g.end)) continue;
+      const chars = [...c.base];
+      if (!c.words.some(([b, e]) => isPunctOnly(chars.slice(b, e)))) continue;
+      const layout = newTextLayout({
+        base: c.base,
+        gaps: c.gaps,
+        words: c.words.map(span),
+        sentences: c.sentences.map(span),
+      });
+      if (!layout) continue;
+      const { body, typed, covered } = layout;
+      for (let x = 0; x < body.length; x++) {
+        if (!typed[x] || isSpace(body[x])) continue;
+        checked += 1;
+        const inWord = c.core.words.some(([b, e]) => b <= x && x < e);
+        if (inWord !== Boolean(covered[x]))
+          problems.push({ base: c.base, gaps: c.gaps, x, inWord });
+      }
+    }
+    expect(problems.slice(0, 5)).toEqual([]);
+    expect(checked).toBeGreaterThan(500);
   });
 });

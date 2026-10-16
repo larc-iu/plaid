@@ -10,7 +10,8 @@
 // - all the text a gap types when the gap reaches inside a word or takes one
 //   whole (the server may grow, keep or read the word over any of it);
 // - the text typed against a word's edge with no whitespace between, which
-//   the server gives that word.
+//   the server gives that word, unless the word is made only of punctuation
+//   (a token over `(` or `.`), which takes none.
 // Each gap is first trimmed of the text its value shares with what it
 // replaces at either end, as the server reads it (plaid-core's `trim-gap`,
 // plaid-ui editLog's `trimGaps`): a selection `two` typed over as
@@ -27,6 +28,7 @@
 // scripts each stretch is judged on its own: `我用 Plaid 写` gives `Plaid`
 // a word, and `我用Plaid写`, one stretch, gets none.
 
+import { isIgnoredCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { tokenizeText } from '../utils/tokenizationUtils.js';
 import { isTokenIgnored } from './igtConfig.js';
 import { isSpacelessScript } from './spacelessScripts.js';
@@ -37,6 +39,12 @@ const isLineBreak = (c) => /[\n\r\u0085\u2028\u2029]/u.test(c);
 // JavaScript's `\s` leaves it out (plaid-core `blank?`).
 const isBlank = (c) => isSpace(c) || c === '\u0085';
 const isPunct = (c) => !/[\p{L}\p{M}\p{N}]/u.test(c);
+// Punctuation to core's text rule (plaid-core `punct?`): what igt's default
+// ignore rule skips, whatever the project's own rule says. A word made only
+// of it takes no text typed against it.
+const PUNCTUATION_RULE = Object.freeze({ type: 'unicodePunctuation' });
+const isPunctOnly = (cs) =>
+  cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, PUNCTUATION_RULE));
 
 /** Whether a stretch holds a letter of a script written without spaces. */
 export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpacelessScript);
@@ -145,11 +153,20 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
   };
 
   const covered = new Uint8Array(n);
+  // What typed text against it with no whitespace between goes to: all that
+  // is covered but the text of a word made only of punctuation, which takes
+  // none (plaid-core `apply-plain-gaps`).
+  const takes = new Uint8Array(n);
   for (const w of words || []) {
     if (!(w.begin < w.end)) continue;
     const lo = startOf(w.begin);
     const hi = endOf(w.end);
-    for (let x = Math.max(0, lo); x < Math.min(n, hi); x++) covered[x] = 1;
+    const punct = isPunctOnly(old.slice(w.begin, w.end));
+    for (let x = Math.max(0, lo); x < Math.min(n, hi); x++) {
+      covered[x] = 1;
+      // (text a gap typed inside it, which the server may give it, does)
+      if (!punct || typed[x]) takes[x] = 1;
+    }
   }
   // The sentence boundaries, moved by the edit, cut every candidate: a word
   // is never made across one (the word layer lies inside the sentences).
@@ -211,7 +228,10 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
       for (const j of touching) {
         cut[at[j]] = 1;
         cut[at[j] + lens[j]] = 1;
-        for (let x = at[j]; x < at[j] + lens[j]; x++) covered[x] = 1;
+        for (let x = at[j]; x < at[j] + lens[j]; x++) {
+          covered[x] = 1;
+          takes[x] = 1;
+        }
       }
     }
   }
@@ -259,10 +279,15 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
     }
   }
 
-  // Typed text against a word with no whitespace between goes to the word.
+  // Typed text against a word with no whitespace between goes to the word,
+  // unless the word is made only of punctuation.
   const joins = (x) => typed[x] && !isSpace(body[x]);
-  for (let x = 1; x < n; x++) if (!covered[x] && covered[x - 1] && joins(x)) covered[x] = 1;
-  for (let x = n - 2; x >= 0; x--) if (!covered[x] && covered[x + 1] && joins(x)) covered[x] = 1;
+  for (let x = 1; x < n; x++) {
+    if (!covered[x] && takes[x - 1] && joins(x)) covered[x] = takes[x] = 1;
+  }
+  for (let x = n - 2; x >= 0; x--) {
+    if (!covered[x] && takes[x + 1] && joins(x)) covered[x] = takes[x] = 1;
+  }
   return { body, typed, covered, cut };
 }
 

@@ -128,6 +128,37 @@ describe('newTextWords', () => {
     expect(typed(base, 8, 'big s', { words })).toEqual(['big']);
   });
 
+  it('makes the same words where punctuation has a word token of its own (ud) as where it has none', () => {
+    // REV7-IGT-1: core gives a word made only of punctuation no text typed
+    // against it, so a letter typed there makes the word it makes without
+    // the punctuation token
+    const runs = (text, re) => {
+      const out = [];
+      for (const m of text.matchAll(re)) {
+        const begin = [...text.slice(0, m.index)].length;
+        out.push({ begin, end: begin + [...m[0]].length });
+      }
+      return out;
+    };
+    const plain = (text) => runs(text, /[\p{L}\p{N}]+/gu);
+    const ud = (text) => runs(text, /[\p{L}\p{N}]+|[\p{P}\p{S}]+/gu);
+    for (const [base, at, value, expected] of [
+      ['ab, cd', 3, 'x', ['x']],
+      ['ab cd.ef', 6, 'x', []],
+      ['ab (cd)', 4, 'x', []],
+      ['ab cd.', 6, 'x', ['x']],
+      ['ab, cd', 3, ' y', ['y']],
+      ['ab «cd» ef', 7, 'z', ['z']],
+      ['ab, cd', 2, 'q', []],
+      ['ab ¿cd?', 4, 'Q', []],
+      ['ab ,cd', 3, 'x', ['x']],
+      ['ab (cd)', 4, 'x y', ['x']],
+    ]) {
+      expect(typed(base, at, value, { words: plain(base) }), base).toEqual(expected);
+      expect(typed(base, at, value, { words: ud(base) }), base).toEqual(expected);
+    }
+  });
+
   it('makes a word of text typed between words with whitespace on both sides', () => {
     const base = 'the cat sat';
     expect(typed(base, 7, ' big', { words: wordsOf(base) })).toEqual(['big']);

@@ -9,8 +9,11 @@
   then FX-F-TEXT's 150 saves at the head of a text indented with
   ideographic, no-break or ASCII spaces: Enter after the indent, a line of
   only such spaces, a title line, beside other edits, and FX-G-TEXT's 120
-  such saves with NEL in the indents, the separators and the typed lines)
-  with what core makes of each on
+  such saves with NEL in the indents, the separators and the typed lines,
+  and FX-H-TEXT's 200 saves typing letters, punctuation and spaces against
+  the punctuation of a text with a word token over every run of punctuation,
+  as ud's Tokenize leaves one, which no word takes) with what core makes of
+  each on
   the edits path, the body and the sentence begins and words after the save.
   igt's \"Tokenize new text\" (plaid-igt `newTextWords.js`) and its Python
   twin (plaid-client-py `new_words.py`) read where core puts a sentence
