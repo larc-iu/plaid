@@ -45,6 +45,7 @@ const setup = (
 ) => {
   const doc = {
     id: 'd1',
+    version: 41,
     name: 'D',
     isSaving: false,
     layerInfo: {
@@ -348,8 +349,10 @@ describe('the Text Editor asking before Tokenize', () => {
     expect(doc.tokenizeLoss).not.toHaveBeenCalled();
     await press('Tokenize');
     await act(async () => done);
+    // The leave is for the document as counted: version 41.
     expect(editor.current.services.tokenize.start).toHaveBeenCalledWith('home', {
       overwrite: true,
+      version: 41,
     });
     await view.unmount();
   });

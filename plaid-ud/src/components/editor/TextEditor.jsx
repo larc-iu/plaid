@@ -293,8 +293,10 @@ export const TextEditor = () => {
       });
       if (!ok) return;
     }
+    // The leave is for what was counted, at the version it was counted on: a
+    // service run refuses when the document changed since.
     return service && loss
-      ? services.tokenize.start(text, { overwrite: true })
+      ? services.tokenize.start(text, { overwrite: true, version: doc.version })
       : services.tokenize.start(text);
   };
 

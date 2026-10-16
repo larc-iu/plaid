@@ -82,3 +82,30 @@ def test_the_tokens_are_substrate_and_carry_no_provenance():
     assert all(not (op.get('metadata') or {}) for op in created), created
     assert service.client.operation_tags == [
         {'kind': 'service-run', 'ref': 'service:tok:nltk-punkt-tokenizer'}]
+
+
+def test_an_overwrite_counted_on_another_version_writes_nothing():
+    """The app asks before an overwrite, with counts read at one version, and
+    sends that version. A document changed since is refused whole: the leave
+    was for what was counted (ud's Tokenize question)."""
+    from plaid_client.workflows.tokenization import TokenSpan
+    doc = _document()
+    doc['text_layers'][0]['token_layers'] = [
+        {'id': 'sentL', 'name': 'Sentences', 'config': {}, 'tokens': []},
+        {'id': 'wordL', 'name': 'Words', 'config': {}, 'tokens': []},
+    ]
+    service = _service(doc)
+    service.tokenizer_model.tokenize_text = lambda text, language: (
+        [TokenSpan('the dog barks', 0, 13)],
+        [TokenSpan('the', 0, 3), TokenSpan('dog', 4, 7), TokenSpan('barks', 8, 13)])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True, 'expect_version': 2})
+
+    assert helper.errors and 'changed' in helper.errors[0]
+    assert [k for k, _ in service.client.writes if k.startswith('tokens.')] == []
+
+    service = _service(doc)
+    service.tokenizer_model.tokenize_text = lambda text, language: (
+        [TokenSpan('the dog barks', 0, 13)],
+        [TokenSpan('the', 0, 3), TokenSpan('dog', 4, 7), TokenSpan('barks', 8, 13)])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True, 'expect_version': 3})
+    assert helper.errors == []
