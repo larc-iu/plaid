@@ -47,7 +47,7 @@ import {
 import { dropPrecedent } from '@/domain/precedentCache';
 import { metadataPatchTo, metadataUpdates } from '@/domain/metadataPatch';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
-import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { dropUnsavedDrafts, useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import {
   followIds,
   pendingId,
@@ -880,6 +880,8 @@ export const VocabularyItems = ({
       ...(Object.keys(meta).length ? { metadata: meta } : {}),
     });
     if (isNew) {
+      // A second press while the first is on its way to the new entry.
+      if (creatingRef.current) return;
       const withPlace = liveNewParent ? withParentSet(tree, { metadata }, liveNewParent) : metadata;
       // Each Create is an entry of its own (homonyms are ordinary), under an
       // id of its own. A create whose answer was lost is sent again until it
@@ -889,8 +891,12 @@ export const VocabularyItems = ({
       const parentForm = parent ? (tree.byId.get(parent)?.form ?? '') : '';
       setItems((prev) => [...prev, saved(id, withPlace)]);
       // Replace: the `?item=new` step becomes the entry it created, so Back
-      // does not return to an empty form for an entry that now exists.
+      // does not return to an empty form for an entry that now exists. The
+      // entry the unsaved-draft guard stands in front of the form comes out
+      // first: replaced, it would be a step of its own, and Back from the
+      // new entry would land on the empty form.
       creatingRef.current = id;
+      await dropUnsavedDrafts();
       goItem(id, { replace: true });
       dispatch({ type: 'draft/form', form });
       // Back to the new-entry form holding what is typed there, so Create
