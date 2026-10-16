@@ -14,6 +14,17 @@ describe('formatBytes', () => {
     expect(formatBytes(2.5e9)).toBe('2.5 GB');
   });
 
+  it('beside another size, takes the decimals that tell them apart', () => {
+    const limit = 100e6;
+    expect(formatBytes(100.4e6)).toBe('100 MB');
+    expect(formatBytes(100.4e6, { against: limit })).toBe('100.4 MB');
+    expect(formatBytes(limit, { against: 100.4e6 })).toBe('100.0 MB');
+    expect(formatBytes(100.04e6, { against: limit })).toBe('100.04 MB');
+    expect(formatBytes(150e6, { against: limit })).toBe('150 MB');
+    expect(formatBytes(limit, { against: limit })).toBe('100 MB');
+    expect(formatBytes(limit, { against: null })).toBe('100 MB');
+  });
+
   it('is empty for nonsense', () => {
     expect(formatBytes(-1)).toBe('');
     expect(formatBytes(NaN)).toBe('');

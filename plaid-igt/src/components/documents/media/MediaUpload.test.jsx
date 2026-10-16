@@ -87,6 +87,16 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  it('a file just over the limit shows the decimal that puts it over', async () => {
+    const r = await renderComponent(
+      <MediaUpload onUpload={vi.fn()} isUploading={false} maxBytes={100 * MB} />,
+    );
+    await choose(r, fileOf(100.4 * MB));
+    expect(r.container.textContent).toContain('· 100.4 MB');
+    expect(r.container.textContent).toContain('This server accepts 100.0 MB');
+    await r.unmount();
+  });
+
   it('sends a merely large file as it is when that is chosen', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(

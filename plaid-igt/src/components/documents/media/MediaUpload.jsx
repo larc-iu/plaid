@@ -120,12 +120,15 @@ export const MediaUpload = ({
             <div className="flex w-[28rem] max-w-full flex-col gap-3">
               <p className="text-sm">
                 <span className="font-medium">{pending.name}</span>
-                <span className="text-muted-foreground"> · {formatBytes(pending.size)}</span>
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {formatBytes(pending.size, { against: overLimit ? maxBytes : null })}
+                </span>
               </p>
               {overLimit && (
                 <p className="text-xs font-medium text-destructive">
-                  This server accepts {formatBytes(maxBytes)}. Sending the file as it is would be
-                  refused.
+                  This server accepts {formatBytes(maxBytes, { against: pending.size })}. Sending
+                  the file as it is would be refused.
                 </p>
               )}
               <p className="text-xs text-muted-foreground">

@@ -140,7 +140,9 @@ export const ElanFiles = ({
         name={file.name}
         onRemove={editable && onRemoveMedia ? () => onRemoveMedia(file) : null}
       >
-        <span className={TONES.muted}>{formatBytes(file.size)}</span>
+        <span className={TONES.muted}>
+          {formatBytes(file.size, { against: need === 'required' ? maxBytes : null })}
+        </span>
         {need && (
           <span className={need === 'required' ? TONES.error : TONES.muted}>
             becomes {smaller ? `a ${formatBytes(smaller)} MP3` : 'an MP3'}
@@ -311,9 +313,12 @@ export const ElanFiles = ({
             <p className="text-xs">
               {required.length > 0 ? (
                 <span className="font-medium text-destructive">
-                  This server accepts {formatBytes(maxBytes)}, so{' '}
-                  {required.length === 1 ? 'that recording' : 'those recordings'} cannot be uploaded
-                  as {required.length === 1 ? 'it is' : 'they are'}.{' '}
+                  This server accepts{' '}
+                  {formatBytes(maxBytes, {
+                    against: Math.min(...required.map((f) => f.size)),
+                  })}
+                  , so {required.length === 1 ? 'that recording' : 'those recordings'} cannot be
+                  uploaded as {required.length === 1 ? 'it is' : 'they are'}.{' '}
                 </span>
               ) : null}
               <span className="text-muted-foreground">
