@@ -69,6 +69,7 @@ describe('planRows', () => {
         writesText: false,
         replacesWork: 0,
         rule: null,
+        kept: false,
       },
       {
         index: 1,
@@ -78,6 +79,7 @@ describe('planRows', () => {
         writesText: false,
         replacesWork: 0,
         rule: null,
+        kept: false,
       },
     ]);
   });
@@ -92,6 +94,7 @@ describe('planRows', () => {
         writesText: false,
         replacesWork: 0,
         rule: null,
+        kept: false,
       },
     ]);
     expect(planRows(null)).toEqual([]);
