@@ -16,11 +16,25 @@
 // same runs.
 //
 // Reads a JSON file of cases as argv[2] and writes the answers to stdout.
+// tokenizationUtils.js imports through the app's `@ui` alias, which is mapped
+// here to plaid-ui's source as vite maps it.
 import { readFileSync } from "node:fs";
+import { registerHooks } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../../plaid-igt/src");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const UI = resolve(ROOT, "plaid-ui/src");
+registerHooks({
+  resolve(specifier, context, next) {
+    if (specifier.startsWith("@ui/")) {
+      return next(pathToFileURL(resolve(UI, specifier.slice(4))).href, context);
+    }
+    return next(specifier, context);
+  },
+});
+
+const SRC = resolve(ROOT, "plaid-igt/src");
 const config = await import(pathToFileURL(resolve(SRC, "domain/igtConfig.js")).href);
 const tokenization = await import(
   pathToFileURL(resolve(SRC, "utils/tokenizationUtils.js")).href
