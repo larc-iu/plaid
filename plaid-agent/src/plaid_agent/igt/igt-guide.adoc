@@ -921,6 +921,7 @@ Pick where to look: word forms, morpheme forms, any annotation field at any scop
 Type what to find, and choose whether a match **contains** it, **is exactly** it, or **matches** a regular expression.
 Contains ignores case, and every kind finds text however its accents were typed.
 An accent searched for on its own, such as a tone mark, also finds it inside a letter typed with it, so a lone acute finds the one in `á`.
+In a regular expression the accent may also be written as an escape, such as `\x{301}` for the acute, and `\p{M}` finds every accent, inside letters too.
 
 A regular expression is read the same way in Search, in Bulk Edit, in a vocabulary's **Replace**, and by the Assistant.
 `\w` is a letter, mark, digit, or underscore in any script, `\b` the edge of a word, and `\p{IsArabic}` any character of the Arabic script, and likewise for every script.
