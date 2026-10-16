@@ -65,7 +65,7 @@ describe('parseCitationHref', () => {
 });
 
 describe('changePlace', () => {
-  it('names the node, with its reference beside it', () => {
+  it('names the node, with its sentence beside it (not its reference, which repeats it)', () => {
     expect(
       UMR_ASSISTANT.changePlace('p1', {
         kind: 'token',
@@ -79,7 +79,7 @@ describe('changePlace', () => {
       href: '#/projects/p1/documents/d1/annotate?sent=3&var=s3e',
       title: 'Story, sentence 3, node s3e',
       name: 's3e',
-      detail: 's3.s3e',
+      detail: 'Sentence 3',
     });
   });
 

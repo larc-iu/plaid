@@ -64,9 +64,13 @@ const changePlace = (projectId, where) => {
   const title = changeTitle(where);
   if (where.kind === 'document') return { href, title, name: where.documentName, detail: null };
   if (where.kind !== 'token') return null;
+  // A node's variable carries its sentence's number already (`s19y`), so the
+  // reference `s19.s19y` beside it said the variable twice: the sentence
+  // stands there instead.
+  const sentence = `Sentence ${where.number ?? where.sentence}`;
   return where.node
-    ? { href, title, name: where.node, detail: where.ref }
-    : { href, title, name: `Sentence ${where.number ?? where.sentence}`, detail: where.surface };
+    ? { href, title, name: where.node, detail: sentence }
+    : { href, title, name: sentence, detail: where.surface };
 };
 
 // A cited sentence for the conversation export: the words, the gloss lines the
