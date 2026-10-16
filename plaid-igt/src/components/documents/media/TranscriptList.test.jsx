@@ -694,6 +694,21 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
+  it('with no recording, timed rows are shown read-only with no play controls (ruling 26)', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(
+      <DocumentProvider value={{ doc, readOnly: false }}>
+        <TranscriptList mediaOps={makeOps()} readOnly playback={false} />
+      </DocumentProvider>,
+    );
+    expect(texts(r.container, '[data-segment-id] p')).toEqual(['the', 'cat']);
+    expect(all(r.container, 'textarea')).toHaveLength(0);
+    expect(all(r.container, 'button[aria-label="Play segment"]')).toHaveLength(0);
+    expect(r.container.querySelector('[role="switch"]')).toBeNull();
+    expect(r.container.textContent).not.toContain('Play segment on entry');
+    await r.unmount();
+  });
+
   // The trash takes the segment AND its text, unless annotations are built on
   // that text, in which case it asks in place. The old confirm dialog asked
   // every time, and its default kept the text, which left the segment's

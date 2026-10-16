@@ -41,6 +41,10 @@ export function DocumentMedia() {
           maxBytes={limits?.mediaFileBytes ?? null}
           readOnly={readOnly}
         />
+        {/* Timed rows with no recording (from ELAN, say): shown, not edited. */}
+        {mediaOps.alignmentTokens.length > 0 && (
+          <TranscriptList mediaOps={mediaOps} readOnly playback={false} />
+        )}
       </div>
     );
   }

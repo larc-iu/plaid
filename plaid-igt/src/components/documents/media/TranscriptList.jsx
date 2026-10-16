@@ -156,6 +156,7 @@ const SegmentRow = memo(function SegmentRow({
   active,
   playing,
   canPlay,
+  playback,
   readOnly,
   duration,
   onFocusRow,
@@ -501,16 +502,18 @@ const SegmentRow = memo(function SegmentRow({
       )}
 
       <div className={cn(ROW_BUTTONS, 'flex items-center gap-0.5')}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          aria-label={playing ? 'Pause segment' : 'Play segment'}
-          onClick={playToggle}
-          disabled={!canPlay}
-        >
-          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
+        {playback && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={playing ? 'Pause segment' : 'Play segment'}
+            onClick={playToggle}
+            disabled={!canPlay}
+          >
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+        )}
         {!readOnly && (
           <Popover
             open={!!askText}
@@ -874,6 +877,8 @@ const NewSegmentRow = memo(function NewSegmentRow({
 export function TranscriptList({
   mediaOps,
   readOnly = false,
+  // False on a document with timed rows and no recording: no play controls.
+  playback = true,
   headerActions = null,
   footer = null,
 }) {
@@ -1286,6 +1291,7 @@ export function TranscriptList({
             active={row.token.id === activeId}
             playing={row.token.id === playingId}
             canPlay={canPlay}
+            playback={playback}
             readOnly={readOnly}
             duration={duration}
             onFocusRow={handleFocusRow}
@@ -1325,6 +1331,7 @@ export function TranscriptList({
       activeId,
       playingId,
       canPlay,
+      playback,
       readOnly,
       duration,
       handleFocusRow,
@@ -1358,16 +1365,18 @@ export function TranscriptList({
         {/* Wraps on a phone: the switch and its label stay together, and the
             buttons go to a line of their own. */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 whitespace-nowrap">
-            <Switch
-              id="transcript-play-on-focus"
-              checked={!!mediaOps.autoPlayOnFocus}
-              onCheckedChange={(on) => mediaOps.setAutoPlayOnFocus(on)}
-            />
-            <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
-              Play segment on entry
-            </Label>
-          </div>
+          {playback && (
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <Switch
+                id="transcript-play-on-focus"
+                checked={!!mediaOps.autoPlayOnFocus}
+                onCheckedChange={(on) => mediaOps.setAutoPlayOnFocus(on)}
+              />
+              <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
+                Play segment on entry
+              </Label>
+            </div>
+          )}
           {/* Transcribe and Clear segments, passed in by the tab: they belong
               beside what they change, but this list stays presentational. */}
           {headerActions && (
