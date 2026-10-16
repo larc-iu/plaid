@@ -8,7 +8,7 @@ import { cpSlice } from '@larc-iu/plaid-client';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 
 /** How many units the notice lists for a field. */
-export const SHOWN_DOUBLES = 20;
+const SHOWN_DOUBLES = 20;
 
 const countOf = (answer) =>
   answer?.violationCount ?? answer?.['violation-count'] ?? answer?.violations?.length ?? 0;
