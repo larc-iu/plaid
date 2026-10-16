@@ -224,8 +224,10 @@ const DocumentBody = ({ tab, context }) => {
         comments,
         // Whether this user may edit at all, ignoring any run in flight. What
         // gates a run's own controls, so the button carrying its progress does
-        // not vanish the moment the run starts.
-        canWrite: permissions.canWrite && !isViewingHistorical,
+        // not vanish the moment the run starts. Off from the click on a
+        // history entry, as readOnly is, and as the shared shell keys it for
+        // ud and umr: not from the snapshot landing.
+        canWrite: permissions.canWrite && !pastEntry,
         canManage: permissions.canManage,
         writeLock: writeLockHeld,
         acquireWriteLock,
