@@ -991,3 +991,21 @@
         (is (empty? (:made r)) (str path " " (pr-str op) " makes no token"))
         (is (= rows (vec (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))
             (str path " " (pr-str op) " rows"))))))
+
+(deftest a-point-inside-a-part-a-split-makes-goes-to-its-edge
+  ;; REV4-TEXT seen: a time-alignment layer given a child layer decides, so
+  ;; `splitOnSpace` splits its rows too, and a point at a row's end that the
+  ;; new part grew over stayed inside it (the save would answer 409)
+  (let [roles (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
+                               {:id :w :overlap-mode "non-overlapping" :parent :s :split-on-space true}
+                               {:id :r :overlap-mode "non-overlapping"}
+                               {:id :c :overlap-mode "any" :parent :r}])
+        body "Ab cd ef gh. Xy."
+        tokens [{:token/id :s :token/layer :s :token/begin 0 :token/end 16}
+                {:token/id :r :token/layer :r :token/begin 0 :token/end 12}
+                {:token/id :p :token/layer :r :token/begin 12 :token/end 12}]
+        r (ta/plain-edits body tokens [(ins 9 " ") (ins 13 "So ")] (:partitioning roles) (:deciders roles)
+                          (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers]))
+        rows (concat (filter #(= :r (:token/layer %)) (:tokens r)) (filter #(= :r (:token/layer %)) (:made r)))]
+    (is (= "Ab cd ef  gh.So  Xy." (:text/body (:text r))))
+    (is (= [[0 8] [10 15] [15 15]] (sort (map (juxt :token/begin :token/end) rows))))))

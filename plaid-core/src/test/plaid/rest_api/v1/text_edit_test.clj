@@ -2,6 +2,7 @@
   "`PATCH /texts/:id` with `edits` and `base`: edits from the caret, the
   body's digest as a precondition, and the answer's `reshape`."
   (:require [clojure.data.json :as json]
+            [clojure.string :as str]
             [clojure.test :refer :all]
             [plaid.fixtures :refer [db rest-handler with-db with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-ok assert-created assert-bad-request assert-not-found
@@ -103,7 +104,12 @@
     (assert-bad-request (edit-text text {:edits [] :body "x"}))
     (assert-bad-request (edit-text text {:edits [] :base 7}))
     (assert-bad-request (edit-text text {:edits [{:type "insert" :index 0 :value "x" :side "left"}]}))
-    (is (= "a b" (-> (get-text admin-request text) :body :text/body)))))
+    (is (= "a b" (-> (get-text admin-request text) :body :text/body)))
+    ;; the message names the op as the client sent it, in JSON
+    (doseq [[op want] [[(ins 9 "x") "Text edit operation out of bounds: {\"type\":\"insert\",\"index\":9,\"value\":\"x\"} (text length is 3 code points)"]
+                       [{:type "insert" :index 0} "Malformed text edit operation: {\"type\":\"insert\",\"index\":0}. Expected"]
+                       [{:type "insert" :index 0 :value "x" :side "left"} "A text edit's side is \"before\" or \"after\": {\"type\":\"insert\",\"index\":0,\"value\":\"x\",\"side\":\"left\"}"]]]
+      (is (str/starts-with? (str (:error (:body (edit-text text {:edits [op]})))) want) (pr-str op)))))
 
 (deftest a-restating-edit-bumps-the-version-and-reads-as-a-body-save
   (let [{:keys [text doc]} (setup "a b")
@@ -617,7 +623,7 @@
   ;; is refused with a 409 naming the layer by its name
   (let [{:keys [text]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
                                    [[0 3] [5 8] [9 13]] [4])
-        r (with-redefs [plaid.algos.text/pin-points-to-edges (fn [_ _ points] points)]
+        r (with-redefs [plaid.algos.text/pin-points-to-edges (fn [_ _ _ points] points)]
             (edit-text text {:edits [(ins 4 "x\n")]}))]
     (is (= 409 (:status r)))
     (is (re-find #"layer \"Rows\"" (str (:error (:body r)))) (pr-str (:body r)))

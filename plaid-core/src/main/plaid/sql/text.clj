@@ -521,10 +521,9 @@
              :user user-id}]
      (when (nil? (psc/fetch-by-id tx :texts eid))
        (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-     (let [token-ids (get-token-ids tx eid)
-           multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)]
+     (let [token-ids (get-token-ids tx eid)]
        (when (seq token-ids)
-         (multi-delete! tx token-ids))
+         (token/multi-delete! tx token-ids))
        (metadata/delete-metadata! tx "text" eid)
        (crud/delete-by-id! tx :texts eid)
        eid))))

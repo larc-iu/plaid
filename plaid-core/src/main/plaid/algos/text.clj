@@ -1,5 +1,6 @@
 (ns plaid.algos.text
-  (:require [clojure.set :as set]
+  (:require [clojure.data.json :as json]
+            [clojure.set :as set]
             [editscript.core :as e]
             [plaid.util.codepoint :as cp]))
 
@@ -490,6 +491,16 @@
       (and (string? type) (keyword type))
       type))
 
+(defn- op-json
+  "`op` as the JSON a client sends it, type first, for a refusal's message."
+  [op]
+  (let [ks [:type :index :length :value :side]
+        m (if (map? op)
+            (apply array-map (concat (mapcat #(when (contains? op %) [% (get op %)]) ks)
+                                     (mapcat identity (apply dissoc op ks))))
+            op)]
+    (json/write-str m :escape-unicode false :escape-slash false)))
+
 (defn- check-op!
   "The 400s `apply-text-edit` throws, for `op` applied to a text of `len`
   code points."
@@ -499,19 +510,19 @@
     (when-not (or (and (= type :insert) (int? index) (string? value))
                   (and (= type :delete) (int? index) (int? value))
                   (and (= type :replace) (int? index) (int? length) (string? value)))
-      (throw (ex-info (str "Malformed text edit operation: " (pr-str op)
-                           " — expected {type: \"insert\", index: int, value: string},"
+      (throw (ex-info (str "Malformed text edit operation: " (op-json op)
+                           ". Expected {type: \"insert\", index: int, value: string},"
                            " {type: \"delete\", index: int, value: int}"
                            " or {type: \"replace\", index: int, length: int, value: string}")
                       {:code 400 :op op})))
     (when-not (contains? #{nil "before" "after" :before :after} (:side op))
-      (throw (ex-info (str "A text edit's side is \"before\" or \"after\": " (pr-str op))
+      (throw (ex-info (str "A text edit's side is \"before\" or \"after\": " (op-json op))
                       {:code 400 :op op})))
     (when-not (case type
                 :insert (<= 0 index len)
                 :delete (and (<= 0 index) (<= 0 value) (<= (+ index value) len))
                 :replace (and (<= 0 index) (<= 0 length) (<= (+ index length) len)))
-      (throw (ex-info (str "Text edit operation out of bounds: " (pr-str op)
+      (throw (ex-info (str "Text edit operation out of bounds: " (op-json op)
                            " (text length is " len " code points)")
                       {:code 400 :op op :text-length len})))
     type))
@@ -2296,14 +2307,21 @@
   outside it (at its edge, or apart from it: a segment that follows its
   sentence can take the whitespace and text before a point), moved to that
   token's edge on the side it stood: its end when it stood at or after the
-  end, its begin when at or before the begin."
-  [old-tokens kept points]
-  (let [was (into {} (map (juxt :token/id identity)) old-tokens)]
+  end, its begin when at or before the begin. A point inside a token the
+  save makes (`made`, a part of a word a typed space split, which stood
+  nowhere before) goes to that token's nearer edge, its end on a tie."
+  [old-tokens kept made points]
+  (let [was (into {} (map (juxt :token/id identity)) old-tokens)
+        inside (fn [layer begin ts] (some (fn [t] (when (and (= layer (:token/layer t)) (< (:token/begin t) begin (:token/end t))) t)) ts))]
     (mapv (fn [{:token/keys [id layer begin] :as z}]
             (let [p (:token/begin (was id))
-                  t (some (fn [t] (when (and (= layer (:token/layer t)) (< (:token/begin t) begin (:token/end t))) t)) kept)
-                  w (some-> t :token/id was)]
+                  t (inside layer begin kept)
+                  w (some-> t :token/id was)
+                  m (when-not t (inside layer begin made))]
               (cond
+                m (let [{mb :token/begin me :token/end} m
+                        x (if (< (- begin mb) (- me begin)) mb me)]
+                    (assoc z :token/begin x :token/end x))
                 (or (nil? t) (nil? w) (nil? p)) z
                 (>= p (:token/end w)) (assoc z :token/begin (:token/end t) :token/end (:token/end t))
                 (<= p (:token/begin w)) (assoc z :token/begin (:token/begin t) :token/end (:token/begin t))
@@ -3076,7 +3094,7 @@
      (cond-> {:text {:text/body new-body}
               ;; a point at the edge of a token of its layer that grew over it
               ;; stays at that edge, so nothing ends up inside another
-              :tokens (into kept (pin-points-to-edges tokens kept (:tokens zero-r)))
+              :tokens (into kept (pin-points-to-edges tokens kept made (:tokens zero-r)))
               :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))}
        (seq heads) (assoc :heads heads)
        ;; the parts of a word split by a typed space (see `split-spaced-words`)
