@@ -1495,8 +1495,12 @@ export class DocumentModel {
   // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
   // ONE in-flight pass and its result, so the second caller reports the same
   // findings as the first.
-  async reconcileOnOpen() {
+  //
+  // `timeout` is how long each of the repair's batches may wait for its
+  // answer (`_repairBatched`), for the repair's own requests alone.
+  async reconcileOnOpen({ timeout } = {}) {
     if (this._reconcilePromise) return this._reconcilePromise;
+    this._repairTimeout = timeout;
     this._reconcilePromise = this._client
       .withOperation(
         RECONCILE_LABEL,
@@ -1529,9 +1533,18 @@ export class DocumentModel {
   }
 
   // The repair itself: what this document's invariants are and how to heal
-  // them. Resolves to the tally `reconcileOnOpen` describes.
+  // them. Resolves to the tally `reconcileOnOpen` describes. Its writes go
+  // through `_repairBatched`.
   async _reconcile() {
     return { findings: [] };
+  }
+
+  // A batch of the repair's, which waits for its answer as long as the
+  // repair was given (`reconcileOnOpen`'s `timeout`), else as the client's do.
+  _repairBatched(fn) {
+    return this._repairTimeout === undefined
+      ? this._client.batched(fn)
+      : this._client.batched(fn, { timeout: this._repairTimeout });
   }
 
   // One line naming what a repair changed, or null when it wrote nothing. The

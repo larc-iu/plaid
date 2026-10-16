@@ -472,7 +472,6 @@ describe('the reconcile gate', () => {
 
   it('gives a big document more time, by the tokens it holds', async () => {
     const client = { batchTimeout: 180000 };
-    let during;
     const tokens = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}` }));
     const doc = makeDoc({});
     doc.client = client;
@@ -480,20 +479,19 @@ describe('the reconcile gate', () => {
       textLayers: [{ tokenLayers: [{ tokens: tokens(40000) }, { tokens: tokens(2000) }] }],
     };
     const inner = doc.reconcileOnOpen;
-    doc.reconcileOnOpen = vi.fn(() => {
-      during = client.batchTimeout;
-      return inner();
-    });
+    doc.reconcileOnOpen = vi.fn((opts) => inner(opts));
     view = await renderComponent(<Probe {...base} doc={doc} />);
     await settle();
-    expect(during).toBe(REPAIR_TIMEOUT_MS + 42000 * REPAIR_MS_PER_TOKEN);
+    const { timeout } = doc.reconcileOnOpen.mock.calls[0][0];
+    expect(timeout).toBe(REPAIR_TIMEOUT_MS + 42000 * REPAIR_MS_PER_TOKEN);
     // A 40,000-word first open took the server about 47 s.
-    expect(during).toBeGreaterThan(60000);
+    expect(timeout).toBeGreaterThan(60000);
+    // The repair's own batches carry it: the client's is never changed.
     expect(client.batchTimeout).toBe(180000);
     await view.unmount();
   });
 
-  it('gives each request of the repair a short timeout, and puts the client back after', async () => {
+  it("gives the repair's requests a short timeout of their own, leaving the client's alone", async () => {
     const client = { batchTimeout: 180000 };
     let during;
     const { doc, finish } = pendingDoc('doc-1');
@@ -501,9 +499,9 @@ describe('the reconcile gate', () => {
     // Concurrent callers share one pass, as DocumentModel's do.
     let pass = null;
     const inner = doc.reconcileOnOpen;
-    doc.reconcileOnOpen = vi.fn(() => {
+    doc.reconcileOnOpen = vi.fn((opts) => {
       during = client.batchTimeout;
-      pass ??= inner();
+      pass ??= inner(opts);
       return pass;
     });
     view = await renderComponent(
@@ -511,12 +509,12 @@ describe('the reconcile gate', () => {
         <Probe {...base} doc={doc} />
       </StrictMode>,
     );
-    expect(during).toBe(REPAIR_TIMEOUT_MS);
+    expect(doc.reconcileOnOpen.mock.calls[0][0]).toEqual({ timeout: REPAIR_TIMEOUT_MS });
     expect(REPAIR_TIMEOUT_MS).toBeLessThanOrEqual(30000);
+    expect(during).toBe(180000);
 
     await view.step(() => finish({}));
     await settle();
-    // Both runs of StrictMode's double invoke have ended.
     expect(client.batchTimeout).toBe(180000);
     expect(api.reconciling).toBe(false);
     await view.unmount();

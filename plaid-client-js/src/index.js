@@ -719,9 +719,12 @@ const AVATAR_TOKEN_FRESH_MS = 5 * 1000;
  * the prototype: the token and base URL, strict mode and the document versions
  * it tracks, the open logical operation.
  */
-function openBatch(client) {
+function openBatch(client, { timeout } = {}) {
   const batch = Object.create(client);
   batch.client = client;
+  // This batch's own timeout per request, in place of the client's
+  // `batchTimeout` (undefined: the client's).
+  batch.submitTimeout = timeout;
   batch.operations = [];
   // The document each queued op's strict-mode stamp is for (null for none),
   // and the logical operation it joined (null for none), index for index with
@@ -784,7 +787,15 @@ async function submitBatch(batch) {
   // needs to know. The same holds for `committedResults`.
   const results = [];
   try {
-    await sendChunks(client, url, ops, stamps, results, groups);
+    await sendChunks(
+      client,
+      url,
+      ops,
+      stamps,
+      results,
+      groups,
+      batch.submitTimeout,
+    );
   } catch (error) {
     if (error && typeof error === "object") {
       error.committed = results.length;
@@ -801,7 +812,15 @@ function claimedVersion(path) {
   return v == null ? null : Number(v);
 }
 
-async function sendChunks(client, url, ops, stamps, results, groups = []) {
+async function sendChunks(
+  client,
+  url,
+  ops,
+  stamps,
+  results,
+  groups = [],
+  timeout = undefined,
+) {
   // Every chunk's refs are checked before the first request goes, so a batch
   // whose refs cannot resolve writes nothing.
   const chunks = [];
@@ -839,7 +858,7 @@ async function sendChunks(client, url, ops, stamps, results, groups = []) {
     // its path now carries it.
     const j = stamps.slice(i, i + chunk.length).findIndex(Boolean);
     record(j < 0 ? null : claimedVersion(chunk[j].path));
-    const answered = await client._postBatch(url, chunk, { key });
+    const answered = await client._postBatch(url, chunk, { key, timeout });
     results.push(...answered);
     if (wasReplayed(answered)) markReplayed(results);
     // The server took the chunk, so each operation it joined exists.
@@ -4510,10 +4529,15 @@ class PlaidClient {
    * parents created earlier in the same batch, and any op's failure rolls the
    * whole batch back. A batch is not nestable. Prefer `batched()`, which
    * submits or aborts for you.
+   *
+   * `timeout` (ms, or null for none) is how long each of this batch's
+   * requests may wait for its answer, in place of the client's
+   * `batchTimeout`, for this batch alone.
+   * @param {{timeout?: number | null}} [options]
    * @returns {PlaidBatch} the batch view
    */
-  batch() {
-    return openBatch(this);
+  batch({ timeout } = {}) {
+    return openBatch(this, { timeout });
   }
 
   /**
@@ -4522,9 +4546,10 @@ class PlaidClient {
    * recased: the headers keep the server's spelling. `key` is the request's
    * Idempotency-Key: a batch whose answer is lost (no response, 502, 504) is
    * sent again under it, and answered from the first send if that landed.
+   * `timeout` is this request's, in place of `batchTimeout` when given.
    * @private
    */
-  async _postBatch(url, body, { key = uuidv7() } = {}) {
+  async _postBatch(url, body, { key = uuidv7(), timeout } = {}) {
     const fetchOptions = {
       method: "POST",
       headers: {
@@ -4540,7 +4565,9 @@ class PlaidClient {
       // repeating it is safe. A fresh timeout signal per attempt — an
       // AbortSignal.timeout stays aborted once it fires.
       const attempt = async () => {
-        const signal = timeoutSignal(this.batchTimeout);
+        const signal = timeoutSignal(
+          timeout !== undefined ? timeout : this.batchTimeout,
+        );
         let res;
         try {
           res = await fetch(
@@ -4654,12 +4681,14 @@ class PlaidClient {
    *   });
    *
    * A write made on `client` inside `fn` is not part of the batch: it goes
-   * over the wire at once, as it would anywhere else. See `batch()`.
+   * over the wire at once, as it would anywhere else. See `batch()`, which
+   * also says what `timeout` does.
    * @param {(batch: PlaidBatch) => (void | Promise<void>)} fn
+   * @param {{timeout?: number | null}} [options]
    * @returns {Promise<any[]>}
    */
-  async batched(fn) {
-    const batch = this.batch();
+  async batched(fn, { timeout } = {}) {
+    const batch = this.batch({ timeout });
     try {
       await fn(batch);
     } catch (e) {

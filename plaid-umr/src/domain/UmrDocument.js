@@ -565,7 +565,7 @@ export class UmrDocument extends DocumentModel {
       wordSplits.forEach(({ nodeId, words }) => change(nodeId, { words }));
       unlink.forEach((nodeId) => change(nodeId, entryRecord(null)));
       const heldRenamed = this._heldRenamed(renumber);
-      await this._client.batched(async (b) => {
+      await this._repairBatched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
         recordMoves.forEach(({ id, begin, end }) => b.tokens.update(id, begin, end));
         wordSplits.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));

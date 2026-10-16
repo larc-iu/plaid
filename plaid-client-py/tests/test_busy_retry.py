@@ -97,3 +97,28 @@ def test_batch_submissions_get_their_own_longer_timeout():
 
     both = PlaidClient('http://localhost:0', 't', timeout=5.0, batch_timeout=60.0)
     assert both.batch_timeout == 60.0
+
+
+def test_a_batch_may_have_a_timeout_of_its_own():
+    """A per-batch ``timeout`` governs that batch's requests alone, and the
+    client's ``batch_timeout`` stays as it was for every other batch."""
+    client = PlaidClient('http://localhost:0', 't', batch_timeout=600.0, retry_delays=[])
+    seen = []
+
+    def post(url, headers=None, data=None, timeout=None):
+        seen.append(timeout)
+        raise RuntimeError('no server here')
+
+    client.session.post = post
+    for make in (lambda: client.batch(timeout=0.05), client.batch):
+        b = make()
+        b.tokens.delete('01a145d5-de24-7000-8ec3-000000000000')
+        try:
+            b.submit()
+        except Exception:
+            pass
+    with pytest.raises(Exception):
+        with client.batched(timeout=0.07) as b:
+            b.tokens.delete('01a145d5-de24-7000-8ec3-000000000000')
+    assert seen == [0.05, 600.0, 0.07]
+    assert client.batch_timeout == 600.0

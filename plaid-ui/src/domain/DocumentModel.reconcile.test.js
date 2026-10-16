@@ -66,3 +66,20 @@ describe('a repair on open refused as changed elsewhere', () => {
     expect(result.error).toBe(first);
   });
 });
+
+describe("a repair's batches", () => {
+  it('wait as long as the repair was given, each its own, and the client keeps its own', async () => {
+    const batched = vi.fn(async () => []);
+    const own = { ...client, batched, batchTimeout: 180000 };
+    class Repairing extends DocumentModel {
+      async _reconcile() {
+        await this._repairBatched(() => {});
+        return { findings: [] };
+      }
+    }
+    const doc = new Repairing({ raw: { id: 'd1', name: 'One', metadata: {} }, client: own });
+    await doc.reconcileOnOpen({ timeout: 31000 });
+    expect(batched).toHaveBeenCalledWith(expect.any(Function), { timeout: 31000 });
+    expect(own.batchTimeout).toBe(180000);
+  });
+});

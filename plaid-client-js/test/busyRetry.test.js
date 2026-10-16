@@ -128,3 +128,39 @@ test('the client gives batch submissions their own, longer timeout', async () =>
   });
   assert.strictEqual(both.batchTimeout, 60000);
 });
+
+test('a batch may have a timeout of its own, for that batch alone', async () => {
+  const { PlaidClient } = await import('../src/index.js');
+  const client = new PlaidClient('http://localhost:0', 't', {
+    batchTimeout: 600000,
+    retryDelaysMs: [],
+  });
+  const realFetch = globalThis.fetch;
+  const signals = [];
+  // A server that never answers: each request waits for its signal.
+  globalThis.fetch = (url, opts) => {
+    signals.push(opts?.signal);
+    return new Promise((_, reject) => {
+      opts?.signal?.addEventListener('abort', () => reject(opts.signal.reason));
+    });
+  };
+  try {
+    const started = Date.now();
+    await assert.rejects(
+      client.batched((b) => b.tokens.delete('01a145d5-de24-7000-8ec3-000000000000'), {
+        timeout: 50,
+      }),
+    );
+    assert.ok(Date.now() - started < 5000, 'gave up on the batch\'s own timeout');
+    assert.strictEqual(client.batchTimeout, 600000, "the client's own is untouched");
+    // Another batch on the client keeps the client's timeout.
+    const other = client.batch();
+    other.tokens.delete('01a145d5-de24-7000-8ec3-000000000001');
+    const pending = other.submit().catch(() => {});
+    await new Promise((r) => setTimeout(r, 100));
+    assert.strictEqual(signals.at(-1).aborted, false);
+    void pending;
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

@@ -73,30 +73,6 @@ export async function serverAnswers(client) {
   }
 }
 
-// The client's batch timeout, set to the repair's while a repair runs on it.
-// Counted per client, since StrictMode's double invoke shares one pass between
-// two runs and the first to end must not restore the timeout under the second.
-const lowered = new WeakMap();
-async function withRepairTimeout(client, timeout, run) {
-  if (!client) return run();
-  const held = lowered.get(client);
-  if (held) held.count += 1;
-  else {
-    lowered.set(client, { count: 1, saved: client.batchTimeout });
-    client.batchTimeout = timeout;
-  }
-  try {
-    return await run();
-  } finally {
-    const h = lowered.get(client);
-    h.count -= 1;
-    if (h.count === 0) {
-      client.batchTimeout = h.saved;
-      lowered.delete(client);
-    }
-  }
-}
-
 // The gate an editor holds behind a spinner while the document heals what
 // another app may have left in the shared substrate (DocumentModel's
 // `reconcileOnOpen`). Runs once per document instance when it loads. Edit
@@ -150,8 +126,9 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
     // Whether this pass ran to its end. Only a pass cut short is run again.
     let finished = false;
     setReconciling(true);
-    const repair = () =>
-      withRepairTimeout(doc.client, repairTimeout(doc), () => doc.reconcileOnOpen());
+    // The repair's batches wait this long for their answers, each its own,
+    // so no other write of the client's waits by the repair's clock.
+    const repair = () => doc.reconcileOnOpen({ timeout: repairTimeout(doc) });
     (async () => {
       try {
         let result = await repair();

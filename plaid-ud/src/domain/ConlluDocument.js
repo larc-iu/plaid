@@ -819,7 +819,7 @@ export class ConlluDocument extends DocumentModel {
 
       let createdSyntacticWords = 0;
       if (seedExtents.length) {
-        await this._client.batched(async (b) => {
+        await this._repairBatched(async (b) => {
           b.tokens.bulkCreate(
             seedExtents.map((e) => ({
               tokenLayerId: morphemeTokenLayer.id,
