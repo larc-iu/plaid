@@ -486,7 +486,7 @@ def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], 
         if target(op) in kept:
             return 'the plan keeps that value as it is'
         if target(op) in explicit:
-            return 'the plan already makes that change by name'
+            return 'the plan names its own change there'
         clash = delete_clash(reg, named, op, gone)
         if clash:
             if clash[0] is not op:

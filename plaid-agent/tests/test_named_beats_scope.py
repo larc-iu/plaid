@@ -16,6 +16,6 @@ def test_igt_notes_a_found_change_the_plan_already_makes_by_name():
     notes = []
     keep = rule_keep(ws, [named], notes)
     assert not keep(found) and keep(other)
-    assert notes == ['dropped: Text 1 s1.w2 "gam": Gloss = "net" (the plan already makes that change by name)']
+    assert notes == ['dropped: Text 1 s1.w2 "gam": Gloss = "net" (the plan names its own change there)']
     # At staging nothing is noted.
     assert not rule_keep(ws, [named])(found)
