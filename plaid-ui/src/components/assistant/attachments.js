@@ -221,6 +221,13 @@ const loadPdfjs = async () => {
   return pdfjs;
 };
 
+// Why a PDF with too little text is refused: a scan when no page has text,
+// else most of its pages are empty, which a scan is not the word for.
+export const scanRefusal = (name, { pages, empty }) =>
+  empty >= pages
+    ? `${name} has no text in it (a scan). Only PDFs with text can be read.`
+    : `${name} has no text on most of its pages. Only PDFs with text can be read.`;
+
 // A PDF's text, with its pages and sections marked, or a refusal naming the
 // file: a scan has no text to read, and the text is held to MAX_BYTES.
 const readPdfText = async (buffer, name, loadPdf = loadPdfjs) => {
@@ -242,11 +249,7 @@ const readPdfText = async (buffer, name, loadPdf = loadPdfjs) => {
   }
   try {
     const got = await pdfText(doc);
-    if (got.scan) {
-      throw new PdfAttachError(
-        `${name} has no text in it (a scan). Only PDFs with text can be read.`,
-      );
-    }
+    if (got.scan) throw new PdfAttachError(scanRefusal(name, got));
     const bytes = new TextEncoder().encode(got.text).length;
     if (bytes > MAX_BYTES) {
       throw new PdfAttachError(

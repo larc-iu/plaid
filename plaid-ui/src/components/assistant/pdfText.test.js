@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { PdfAttachError, readAttachment, refuse, MAX_PDF_BYTES } from './attachments.js';
+import {
+  PdfAttachError,
+  readAttachment,
+  refuse,
+  scanRefusal,
+  MAX_PDF_BYTES,
+} from './attachments.js';
 import {
   assemble,
   cleanText,
@@ -129,6 +135,15 @@ describe('attaching a PDF', () => {
 
   it('refuses a scan by name, and says why', async () => {
     await expect(readAttachment(fileOf('scan.pdf'), 1_000_000, loadPdf)).rejects.toThrow(
+      'scan.pdf has no text in it (a scan). Only PDFs with text can be read.',
+    );
+  });
+
+  it('calls a PDF with some text pages no scan when it refuses it', () => {
+    expect(scanRefusal('mixed.pdf', { pages: 5, empty: 3 })).toBe(
+      'mixed.pdf has no text on most of its pages. Only PDFs with text can be read.',
+    );
+    expect(scanRefusal('scan.pdf', { pages: 2, empty: 2 })).toBe(
       'scan.pdf has no text in it (a scan). Only PDFs with text can be read.',
     );
   });
