@@ -140,6 +140,33 @@ def run_case(c, case):
                 else:
                     args = {'document': rng.choice(DOCS)}
                 out = call_tool(ws, 'drop_planned', args)
+                # A drop asks every remaining request again from scratch
+                # (Luke 2026-10-16): the model does the same with the
+                # requests the plan kept (which to drop is not under test).
+                model = Model(stored, forms)
+                for rec in ws.requests:
+                    a, gone = rec['args'], set()
+                    for k in rec.get('without') or ():
+                        k = json.loads(k)
+                        if k[0] == 'value' and isinstance(k[1], list) and k[1][-1] in idmap:
+                            gone.add(idmap[k[1][-1]])
+                    if rec['tool'] in ('replace_in_field', 'set_field_for_form'):
+                        spec = ({'tool': 'replace_in_field', 'field': a['field'], 'pattern': a['pattern'],
+                                 'replacement': a.get('replacement') or '', 'whole': bool(a.get('whole')),
+                                 'document': a.get('document')} if rec['tool'] == 'replace_in_field' else
+                                {'tool': 'set_field_for_form', 'field': a['field'], 'form': a['form'],
+                                 'value': a['value'], 'only_empty': bool(a.get('only_empty', True)), 'document': None})
+                        sk = json.dumps(spec, sort_keys=True)
+                        model.entries = [e for e in model.entries
+                                         if not (e[0] == 'rule' and json.dumps(e[1], sort_keys=True) == sk)]
+                        model.entries.append(('rule', spec))
+                    elif rec['tool'] == 'set_field':
+                        pairs = list(a['values'].items()) if a.get('values') else [(a['field'], a['value'])]
+                        for ref in a['refs']:
+                            for field, v in pairs:
+                                t = (a['document'], ref, field)
+                                if t in stored and t not in gone:
+                                    model.set_field(t, v)
             elif act == 'resume':
                 ws = resumed(c, s.project_id, ws)
                 resumed_once = True

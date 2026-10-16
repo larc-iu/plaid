@@ -164,6 +164,44 @@ def run_case(c, case):
         acts = ['replace', 'form', 'again', 'set', 'set_back', 'values', 'drop', 'resume']
         w = {'again': [4, 1.5, 3, 2, 1.5, 1, 1.5, 0.7], 'plain': [4, 2, 1, 3, 1, 1.5, 1, 0.7]}[MIX]
         did_resume = False
+        def rebuild():
+            """The model asked the plan's requests again, in order: a drop
+            asks every remaining one again from scratch (Luke 2026-10-16).
+            Which requests a drop takes is not under test here."""
+            m = Model(stored, forms)
+            for rec in ws.requests:
+                a, gone = rec['args'], set()
+                for k in rec.get('without') or ():
+                    k = json.loads(k)
+                    if k[0] == 'value' and isinstance(k[1], list) and k[1][-1] in idmap:
+                        gone.add(idmap[k[1][-1]])
+                if rec['tool'] in ('replace_in_field', 'set_field_for_form'):
+                    spec = ({'tool': 'replace_in_field', 'field': a['field'], 'pattern': a['pattern'],
+                             'replacement': a.get('replacement') or '', 'whole': bool(a.get('whole')),
+                             'document': a.get('document')} if rec['tool'] == 'replace_in_field' else
+                            {'tool': 'set_field_for_form', 'field': a['field'], 'form': a['form'], 'value': a['value'],
+                             'only_empty': bool(a.get('only_empty', True)), 'document': None})
+                    if m.rule(spec) == 'moved' and m.same:
+                        m.entries = m.before
+                elif rec['tool'] == 'set_field':
+                    pairs = list(a['values'].items()) if a.get('values') else [(a['field'], a['value'])]
+                    for ref in a['refs']:
+                        for field, v in pairs:
+                            t = (a['document'], ref, field)
+                            if t in stored and t not in gone:
+                                m.set_field(t, v)
+            # Where asking again moves a rule or leaves it is not under test
+            # after a drop: the plan's order is taken where it ends the same.
+            cr = code_rules()
+            slots = [i for i, e in enumerate(m.entries) if e['k'] == 'rule']
+            if sorted(cr) == sorted(m.entries[i]['key'] for i in slots):
+                by = {m.entries[i]['key']: m.entries[i] for i in slots}
+                cand = list(m.entries)
+                for i, k in zip(slots, cr):
+                    cand[i] = by[k]
+                if m.replay(cand)[0] == m.replay()[0]:
+                    m.entries = cand
+            return m
 
         def spec_of(op):
             a = op['args']
@@ -261,18 +299,9 @@ def run_case(c, case):
                         model.set_field(t, v1 if t[2] == 'Gloss' else v2)
             elif act == 'drop':
                 i = rng.randint(1, len(ws.ops))
-                op = ws.ops[i - 1]
                 args = {'indexes': [i]}
-                if core_rules.is_rule(op):
-                    key = json.dumps(spec_of(op), sort_keys=True)
-                    model.entries = [e for e in model.entries if not (e['k'] == 'rule' and e['key'] == key)]
-                elif op.get('token_id') in idmap:
-                    t = idmap[op['token_id']]
-                    model.entries = [e for e in model.entries if not (e['k'] in ('named', 'keep') and e['t'] == t)]
                 out = call_tool(ws, 'drop_planned', args)
-                # A keep that nothing would change now goes with the drop.
-                model.entries = [e for e in model.entries
-                                 if e['k'] != 'keep' or model.rule_takes(e['t'])]
+                model = rebuild()
             elif act == 'resume':
                 ws = resumed(c, s.project_id, ws)
                 did_resume = True

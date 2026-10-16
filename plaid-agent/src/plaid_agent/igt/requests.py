@@ -118,7 +118,7 @@ def narrowed(ws, rec: Dict[str, Any], keys: set, layers_of: Dict[str, set]) -> O
     planned analyses ``keys`` (``layers_of``, each analysis's layer ids),
     or None when nothing of it is left. A value named on one of their
     morphemes goes, the analysis stays (PLAN-2)."""
-    hit = [k for k in rec.get('owns') or () if k in keys]
+    hit = sorted({k for k in list(rec.get('owns') or ()) + list(rec.get('needs') or ()) if k in keys})
     if not hit:
         return rec
     tool, args = rec['tool'], rec['args']
@@ -175,6 +175,34 @@ def asks_for(ws, rec: Dict[str, Any], field: Optional[str], document: Optional[s
         if named != doc_id:
             return False
     return True
+
+
+def asked_on_analyses(ws, args: Dict[str, Any]) -> List[str]:
+    """The planned analyses a call names a morpheme of (``sN.wN.mN`` of a
+    word the plan analyses), as the plan stands before it runs: the call is
+    asked of that analysis and goes with it, whatever it changed there."""
+    from .tools import _planned_place
+    refs = args.get('refs') if 'refs' in args else [args.get('ref')]
+    if isinstance(refs, str):
+        refs = [refs]
+    if not isinstance(refs, list) or not args.get('document') or not any(
+            o.get('kind') == 'set_analysis' for o in ws.ops):
+        return []
+    try:
+        doc = ws.doc(args['document'])
+    except Exception:  # noqa: BLE001 - the call itself says what is wrong with its document
+        return []
+    out = set()
+    for ref in refs:
+        if not isinstance(ref, str):
+            continue
+        try:
+            place = _planned_place(ws, doc, ref)
+        except Exception:  # noqa: BLE001 - nor is a reference this reads wrongly ours to refuse
+            continue
+        if place is not None:
+            out.add(json.dumps(['analysis', place.word.id], default=str, ensure_ascii=False))
+    return sorted(out)
 
 
 def after_drop(dropped_keys: set, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

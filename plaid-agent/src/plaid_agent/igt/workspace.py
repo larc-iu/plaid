@@ -1061,7 +1061,7 @@ class Workspace(BaseWorkspace):
     # --- the requests the plan was made from (requests.py) ------------------
 
     def request_begin(self, tool: str, args: Dict[str, Any]) -> Any:
-        from .requests import Request, fingerprints, request
+        from .requests import Request, asked_on_analyses, fingerprints, request
         if self.replaying is not None:
             rec = Request(self.replaying)
         else:
@@ -1069,12 +1069,12 @@ class Workspace(BaseWorkspace):
                 self.empty_plan = copy.deepcopy(self.snapshot())
             rec = request(tool, args, self.entry_no)
         self.rule_asked = None
-        return rec, fingerprints(self.ops)
+        return rec, fingerprints(self.ops), asked_on_analyses(self, args)
 
     def request_end(self, asked: Any, answer: str) -> None:
         from ..core.tools import Refusal
         from .requests import entry_key, fingerprints, needs, owned
-        rec, before = asked
+        rec, before, on = asked
         rule, self.rule_asked = self.rule_asked, None
         if self.replaying is None and isinstance(answer, Refusal):
             return
@@ -1090,7 +1090,7 @@ class Workspace(BaseWorkspace):
         # A corpus-wide change stands for its own rule alone: what it rewrote
         # elsewhere is another request's entry.
         rec['owns'] = owned({}, {}, rule) if rule is not None else owned(before, fingerprints(self.ops), None)
-        rec['needs'] = needs(self.ops, rec['owns'])
+        rec['needs'] = sorted(set(needs(self.ops, rec['owns'])) | set(on))
         self.requests.append(rec)
 
     def _asked_whole(self, ops: Optional[List[Dict[str, Any]]] = None) -> bool:
@@ -1110,7 +1110,6 @@ class Workspace(BaseWorkspace):
             return self._drop_in_place(dropped)
         from . import requests as rq
         from .bulk import analysis_values, values_changed
-        from ..core.workspace import _op_key
         pre = self.ops + list(dropped)
         # A drop by field keeps a planned analysis and takes only that
         # field's values out of it (Luke 2026-10-16, PLAN-2).
@@ -1137,19 +1136,14 @@ class Workspace(BaseWorkspace):
             live = {rq.entry_key(o) for o in pre}
             reqs = [r for r in reqs if set(r.get('owns') or ()) & live
                     or not rq.asks_for(self, r, field, document)]
-        carried = {}
-        if self._carried:
-            for o in pre:
-                hit = self._carried.get(_op_key(o))
-                if hit is not None:
-                    carried[rq.entry_key(o)] = hit
         analysed = analysis_values(self, pre)
         left = {rq.entry_key(o): o for o in self.ops}
         left.update({k: o for o in pre for k in [rq.entry_key(o)] if k in narrow})
         rq.replay(self, reqs)
         self.reported_left = len(settle_merges(self.ops)[1])
-        if carried:
-            self._carried = {_op_key(o): carried[rq.entry_key(o)] for o in self.ops if rq.entry_key(o) in carried}
+        # A resumed change asked again in this turn is found over what this
+        # turn reads: what the earlier turn found for it (``_carried``) holds
+        # only while it is the same change, which its content keys.
         now = {rq.entry_key(o): o for o in self.ops}
         went = [o for k, o in left.items() if k not in now]
         back = [k for k in now if k not in left]

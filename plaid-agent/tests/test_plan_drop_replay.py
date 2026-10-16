@@ -153,6 +153,13 @@ class Case:
         """The entry a request answered with ``out`` stands for."""
         if tool == 'set_analysis':
             return ('ana', self.wid(args['document'], args['ref']))
+        if key is not None:
+            # Asked of a planned analysis's morpheme: it goes with that
+            # analysis, whatever it changed there.
+            return key
+        if str(out).startswith('Nothing to change after the changes planned since'):
+            # Asked again, a rule that stays where it is stands for that rule.
+            return next((e[2] for e in self.log if e[0] == tool and e[1] == args and e[2][0] == 'rule'), NONE)
         if str(out).startswith('Nothing to change'):
             return NONE
         if tool in ('set_field_for_form', 'replace_in_field'):
@@ -160,8 +167,6 @@ class Case:
             if k is None or k[0] != 'rule':
                 k = next((e[2] for e in self.log if e[0] == tool and e[1] == args and e[2][0] == 'rule'), None)
             return k
-        if key is not None:
-            return key
         new = [entry_key(o) for o in ws.ops if entry_key(o) not in before]
         if new:
             return new[0]
@@ -283,10 +288,15 @@ class Case:
         else:
             left = {entry_key(o) for o in self.ws.ops}
             gone = {entry_key(o) for o in ops if entry_key(o) not in left and self._matches(o, args)}
+        # Every ask of a dropped rule goes with it, one answered "Nothing to
+        # change" too: they ask for one rule.
+        asks = {(e[0], json.dumps(e[1], sort_keys=True)) for e in self.log if e[2] in gone and e[2][0] == 'rule'}
         for e in self.log:
             if e[3]:
                 continue
-            if e[2] in narrowed:
+            if (e[0], json.dumps(e[1], sort_keys=True)) in asks:
+                e[3] = True
+            elif e[2] in narrowed:
                 # PLAN-2: the analysis stays, less the field's values.
                 if e[0] == 'set_analysis':
                     e[1] = without_field(e[1], field)

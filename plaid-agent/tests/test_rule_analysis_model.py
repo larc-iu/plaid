@@ -58,6 +58,22 @@ def replay(stored, forms, entries):
     return V
 
 
+def build(stored, forms, calls):
+    """The plan the requests ``calls`` make asked in order from scratch: a
+    rule goes last when, applied there, it changes a value, and otherwise
+    stays where it was (asked again) or is not staged (a first ask)."""
+    entries = []
+    for call in calls:
+        if call[0] == 'rule':
+            base = [e for e in entries if not (e[0] == 'rule' and e[1] == call[1])]
+            cand = base + [call]
+            if replay(stored, forms, cand) != replay(stored, forms, base):
+                entries = cand
+        else:
+            entries.append(call)
+    return entries
+
+
 def run_case(c, case):
     rng = random.Random(case)
     s = seed(c, project(), {'d0': doc(rng)}, {VOCAB: lexicon_raw()}, name=f'rule analysis {case}')
@@ -70,7 +86,9 @@ def run_case(c, case):
         assert set(stored) == set(forms), stored
         out = call_tool(ws, 'set_analysis', {'document': 'Doc A', 'ref': 's1.w2',
                                              'morphemes': [{'form': 'ka'}, {'form': 'n'}]})
-        entries = [('ana',)]
+        # Every request, in order: a drop asks the rest again from scratch,
+        # one answered "Nothing to change" too (Luke 2026-10-16).
+        calls = [('ana',)]
         log.append(['ana', out[:200]])
         asked = []
         for step in range(rng.randint(3, 7)):
@@ -94,30 +112,17 @@ def run_case(c, case):
                 else:
                     args = {'form': spec['form'], 'field': 'Morph Gloss', 'value': spec['value'],
                             'only_empty': spec['only_empty']}
-                def has_rule():
-                    return any(core_rules.is_rule(op) and op.get('tool') == spec['tool'] and all(
-                        op['args'].get(k) == v for k, v in args.items() if k != 'only_empty') and
-                        bool(op['args'].get('only_empty', True)) == bool(args.get('only_empty', True))
-                        for op in ws.ops)
-                def ana_now():
-                    return json.dumps([op for op in ws.ops if op.get('kind') == 'set_analysis'], sort_keys=True, default=str)
-                had, a0 = has_rule(), ana_now()
                 out = call_tool(ws, spec['tool'], args)
                 if spec not in asked:
                     asked.append(spec)
-                staged, changed = has_rule(), ana_now() != a0
-                stays = 'which stays where it is' in out
-                if not stays:
-                    if had:
-                        entries = [e for e in entries if not (e[0] == 'rule' and e[1] == spec)]
-                    if staged or changed:
-                        entries.append(('rule', spec))
+                if not out.startswith('Error'):
+                    calls.append(('rule', spec))
                 log.append([act, args, out[:300]])
             elif act == 'named':
                 t = rng.choice(['s1.w2.m1', 's1.w2.m2'])
                 v = rng.choice(['P', 'Q', ''])
                 out = call_tool(ws, 'set_field', {'document': 'Doc A', 'refs': [t], 'field': 'Morph Gloss', 'value': v})
-                entries.append(('named', t, v))
+                calls.append(('named', t, v))
                 log.append([act, t, v, out[:200]])
             else:
                 rule_ix = [i for i, op in enumerate(ws.ops, start=1) if core_rules.is_rule(op)]
@@ -129,10 +134,11 @@ def run_case(c, case):
                          'only_empty': bool(a.get('only_empty', True))} if ws.ops[i - 1]['tool'] == 'set_field_for_form'
                         else {'tool': 'replace_in_field', 'pattern': a['pattern'], 'replacement': a['replacement']})
                 out = call_tool(ws, 'drop_planned', {'indexes': [i]})
-                entries = [e for e in entries if not (e[0] == 'rule' and e[1] == spec)]
+                calls = [e for e in calls if not (e[0] == 'rule' and e[1] == spec)]
                 log.append([act, spec, out[:300]])
         ana = next((op for op in ws.ops if op.get('kind') == 'set_analysis'), None)
         res['ana'] = [[f['value'] for f in m['fields']] for m in ana['morphemes']] if ana else None
+        entries = build(stored, forms, calls)
         expected = replay(stored, forms, entries)
         p = ws.plan_payload()
         if p:
