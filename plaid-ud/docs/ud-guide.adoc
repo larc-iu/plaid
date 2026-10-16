@@ -316,6 +316,7 @@ When you ask the assistant to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve and apply** or **Discard**.
 Every change is listed under its document and links to that sentence in the annotation editor, so a plan can be checked before it is approved.
 A change to something a person made or accepted is marked **Accepted** and counted separately.
+A change over a whole document or the whole project, such as confirming everything waiting in a document or replacing a lemma everywhere, is one row with its counts, and **Show where** lists the documents and a few examples.
 
 Approved changes are written under your account and recorded as the assistant's work accepted by you.
 Tick **Record as human-made** before approving to record them as your own work instead.
@@ -323,6 +324,7 @@ If your work is reviewed in this project, what you approve waits for a reviewer,
 Reading needs Reader access, and applying a plan needs Writer.
 
 A plan is **Out of date** once a sentence it changes has been edited, and can then only be discarded. Ask again to have it planned on the current text.
+A change over a whole document or the project is checked by what it finds: an edit elsewhere in the document leaves it standing, and one to a value it changes makes the whole plan **Out of date**, with what it finds now and where. Nothing is written.
 Asking for a new plan replaces one still waiting, and the older card reads **Replaced**.
 A plan that stops partway reads **Partly applied**, with how many of its changes were written, or for a parse how many sentences. Ask the assistant to finish it.
 A plan that only keeps values as they are reads **Nothing to write**, and can only be discarded.

@@ -372,12 +372,14 @@ When you ask for a change, the assistant does not touch the data.
 It proposes a **plan**, which you **Approve and apply** or **Discard**.
 The plan lists every change under its document, and each node links to its place on the canvas.
 A change to work a person made or accepted is marked **Accepted**.
+One attribute set on every node of a concept is one row with its count, and **Show where** lists a few of the nodes.
 
 Approved changes are recorded as the assistant's work accepted by you.
 Tick **Record as human-made** before approving to record them as your own work instead.
 Reading needs Reader access, and approving a plan needs Writer.
 
 A plan can no longer be approved once a sentence it changes has been edited, and its card reads **Out of date**.
+An attribute set over a concept is checked by the nodes it finds instead: an edit elsewhere leaves it standing, and one to a node it changes makes the whole plan **Out of date**, with what it finds now. Nothing is written.
 Ask again to have it planned on the current text.
 A plan that stops partway reads **Partly applied**, and the assistant can be asked to finish it.
 
