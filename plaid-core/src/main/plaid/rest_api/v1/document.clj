@@ -379,13 +379,18 @@
                              "answered with, and only that holder's lock is released. Answers 204 "
                              "either way.")
                :middleware [[pra/wrap-writer-required get-project-id] document-required]
-               :parameters {:query [:map [:lock-id [:string {:min 1}]]]}
+               ;; Optional in the schema so a release without it is told what
+               ;; to send, not handed the generic validation message.
+               :parameters {:query [:map [:lock-id {:optional true} [:string {:min 1}]]]}
                :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id]} :query} :parameters
                               user-id :user/id}]
-                          (let [result (locks/release-lock! document-id user-id lock-id)]
-                            (case result
-                              :released {:status 204}
-                              :not-held {:status 204})))}}]
+                          (if (nil? lock-id)
+                            {:status 400
+                             :body {:error "Name the lock to release with lock-id, the id its acquire answered with."}}
+                            (let [result (locks/release-lock! document-id user-id lock-id)]
+                              (case result
+                                :released {:status 204}
+                                :not-held {:status 204}))))}}]
 
     ;; Media operations
     media/media-routes

@@ -54,7 +54,9 @@
         (is (not (contains? (:body r) :lock-id)))))
 
     (testing "Releasing without the holder's id is refused and changes nothing"
-      (assert-status 400 (release-lock admin-request doc))
+      (let [r (release-lock admin-request doc)]
+        (assert-status 400 r)
+        (is (= "Name the lock to release with lock-id, the id its acquire answered with." (-> r :body :error))))
       (assert-ok (check-lock admin-request doc)))
 
     (testing "Releasing with another id changes nothing"
