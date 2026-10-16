@@ -24,6 +24,7 @@ from ..core import docload, opkind
 from ..core.bidi import qv
 from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
+from ..core.keep import is_keep
 from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
@@ -259,6 +260,9 @@ class Workspace(BaseWorkspace):
             if op.get('kind') == self.SPAN_KIND and op.get('layer_id') == layer_id \
                     and op.get('token_id') == token_id:
                 return op.get('value') or ''
+            # Kept out of the plan's rules (core.keep): it stays as stored.
+            if is_keep(op) and op.get('layer_id') == layer_id and op.get('token_id') == token_id:
+                return current
         if any(op.get('matched') is not None for op in self.ops):
             return self.rule_values().get((layer_id, token_id), (current,))[0]
         return current
@@ -1411,5 +1415,7 @@ REPLACES = {
     # Resolved when approved, from the documents as they are then, and a
     # restore puts back what was there: neither names what it replaces now.
     'bulk_scope': _NONE, 'restore_document': _NONE,
+    # A value kept as it is (core.keep) replaces nothing.
+    'keep': _NONE,
 }
 Workspace.REPLACES = REPLACES

@@ -22,6 +22,7 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from ..core import guidelines as _guidelines
+from ..core import keep as _keep
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from plaid_client import metadata_ops
@@ -435,6 +436,31 @@ def _resolve_replace_scope(res: Resolution, op):
     return resolve_replace(res.client, res.project, op)
 
 
+# --- whether a scope would change one value -------------------------------------
+#
+# ``takes(op, doc_id, sentence, word, field, span)``: whether the scope, were
+# it resolved now, would change the value of ``field`` on ``word`` (``span``
+# for a span, one feature pair for features; a head has none). A named value
+# set to what it holds then stands against the scope as a keep (core.keep).
+
+def _discard_takes(op, doc_id, sentence, w, field, span) -> bool:
+    if op.get('document_id') != doc_id or field not in (op.get('fields') or ()):
+        return False
+    targets, _spared = discard_targets([(sentence, w)], [field])
+    if field == 'deprel':
+        return any(t[2] == 'deprel' for t in targets)
+    return span is not None and any(t[3] is not None and t[3].id == span.id for t in targets)
+
+
+def _replace_takes(op, doc_id, sentence, w, field, span) -> bool:
+    from .bulk import spec_of
+    if op.get('field') != field or op.get('document_id') not in (None, doc_id):
+        return False
+    cur = (w.deprel if field == 'deprel' else (span.value if span is not None else '')) or ''
+    _spec, rep = spec_of(op)
+    return bool(cur) and rep(cur) != cur
+
+
 # --- the registry -------------------------------------------------------------------
 
 KIND = ok.registry([
@@ -518,17 +544,21 @@ KIND = ok.registry([
            shape=ok.SCOPE, required=('document_id', 'fields'), summary=_discard_scope_summary,
            resolve=_resolve_discard_scope,
            target=lambda op: ('scope', 'discard_scope', op.get('document_id')),
-           extra={'clears': lambda op: True}),
+           extra={'clears': lambda op: True, 'takes': _discard_takes}),
     OpKind('replace_scope', _FIELD_VALUE, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('field', 'pattern'), summary=_replace_scope_summary,
            resolve=_resolve_replace_scope,
            target=lambda op: ('replace', op.get('field'), op.get('pattern'),
                               op.get('replacement'), op.get('document_id')),
-           extra={'clears': lambda op: not (op.get('replacement') or '')}),
+           extra={'clears': lambda op: not (op.get('replacement') or ''), 'takes': _replace_takes}),
     OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel,
            extra={'entity': _relation_entity}),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
            apply=apply_add_comment, token_keys=('entity_id',)),
+    # A value kept out of a discard or a replacement (core.keep): a span
+    # by its span entity, a head by ('head', word) with its relation as the
+    # entity a scope's change names.
+    _keep.kind(OpKind, extra={'entity': _keep.entity}),
 ])
 
 # Every table below is the registry read a different way.
@@ -549,6 +579,17 @@ def entity_of(op: Dict[str, Any]):
     spec = KIND.get(op.get('kind'))
     fn = spec.extra.get('entity') if spec is not None else None
     return fn(op) if fn else None
+
+
+def scope_taking(ops: List[Dict[str, Any]], doc_id: str, sentence, word, field: str, span=None):
+    """The scope among ``ops`` that would change this value were the plan
+    approved now (each scope kind's ``takes``), or None."""
+    for op in ops:
+        spec = KIND.get(op.get('kind'))
+        takes = spec.extra.get('takes') if spec is not None else None
+        if takes is not None and takes(op, doc_id, sentence, word, field, span):
+            return op
+    return None
 
 
 def scope_clears(op: Dict[str, Any]) -> bool:

@@ -90,8 +90,10 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from ..core import guidelines as _guidelines
+from ..core import keep as _keep
 from ..core import opkind as ok
 from ..core import rules
+from ..core.bidi import qv
 from ..core.limits import ROW_LIMIT
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
@@ -862,6 +864,9 @@ KIND = ok.registry([
     OpKind('bulk_scope', ('corpus-wide change', 'corpus-wide changes'), required=('tool', 'args', 'counts'),
            stage=ok.RESOLVED, shape=ok.SCOPE, resolve=_resolve_bulk_scope,
            summary=_bulk_scope_summary, target=rules.target),
+    # A value kept out of a rule of the plan (core.keep): placed on the card
+    # at the word it keeps, writing nothing.
+    _keep.kind(OpKind, at=('token_id',), at_kind=TOKEN),
 ])
 
 # Every table below is the registry read a different way. None of them is
@@ -1373,7 +1378,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Option
         # otherwise.
         if rules.is_rule(op):
             rules.check_matched(op, rules.matched(KIND, found, lambda o: o.get('doc'), res.ws.replaces_work),
-                                lambda d: _doc_name(res.ws, d))
+                                lambda d: res.ws.corpus.doc_name(d), lambda d: _doc_name(res.ws, d))
     # A value two rules change is written once, by the later one, as staging
     # counted it (`bulk.settle_rules`).
     from .bulk import later_rule_wins
@@ -1395,10 +1400,12 @@ def rule_keep(ws, ops: List[Dict[str, Any]], notes: Optional[List[str]] = None):
 
 
 def _doc_name(ws, doc_id: str) -> str:
+    """A document as a refusal names it: quoted, with its id beside a name
+    another document shares (``"Text 1" (d2)``), as check_integrity does."""
     try:
-        return ws.corpus.doc_name(doc_id)
+        return ws.doc_label(doc_id, quote=True)
     except Exception:  # noqa: BLE001 - a name is for the sentence; the id still says which
-        return doc_id
+        return qv(doc_id)
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None,

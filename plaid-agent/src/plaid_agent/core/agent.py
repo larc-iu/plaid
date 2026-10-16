@@ -1109,6 +1109,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             key = (name, raw)
             repeated = False
             nothing = False
+            told = None
             cut = False
             saw = None
             try:
@@ -1137,11 +1138,13 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # What the call reads is noted here (`BaseWorkspace.note_read`).
                 ws.reads = []
                 ws.scoped_documents = None
+                ws.step_label = None
                 cuts_before = cuts()
                 try:
                     result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
                 finally:
                     saw, ws.reads, ws.announced = ws.reads, None, None
+                    told, ws.step_label = getattr(ws, 'step_label', None), None
                 cut = cuts() > cuts_before
                 # The lines a plan shows isolate their values (core.bidi). The
                 # model reads them plain, so it never copies an isolate.
@@ -1181,7 +1184,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
                                     said=rnd.get('said') if first else None,
                                     thought=first and keeper is not None and bool(rnd.get('thinking')),
-                                    nothing=nothing and not failed))
+                                    nothing=nothing and not failed, told=told))
             if keeper is not None and first:
                 # The round's text and reasoning are on its first step now,
                 # not the call's.

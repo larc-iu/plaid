@@ -15,10 +15,11 @@ from typing import Any, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, MACHINE
 
-from ..core import history, opkind
+from ..core import history, keep, opkind
+from ..core.keep import is_keep
 from ..core.bidi import qv
 from ..core.limits import MAX_SCOPE_DOCS
-from ..core.plan import by_document, change_of, confirm_preview, labelled
+from ..core.plan import by_document, change_of, confirm_preview, labelled, plan_changes
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
@@ -67,6 +68,9 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
     if several:
         _refuse_unmatched_scopes(doc, refs, [f for f, _ in pairs])
     staged: List[Dict[str, Any]] = []
+    dropped: List[Dict[str, Any]] = []
+    kept: List[str] = []
+    took: List[str] = []
     edits = 0
     with ws.staging():
         for f, val in pairs:
@@ -83,12 +87,53 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                     continue
                 obj = _need(resolve(doc, ref), kind, ref)
                 old = obj.fields.get(f.name)
-                if (old.value if old else '') == val:
-                    continue
                 what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
+                target = ('span', f.layer_id, obj.id)
+                mine = [op for op in ws.ops if ws.op_target(op) == target]
+                if (old.value if old else '') == val:
+                    # What it holds already. Planning it again would restate it
+                    # and restamp its provenance as the plan's (Eline
+                    # 2026-10-07), so it is left out, and set back to what is
+                    # stored the earlier planned change is taken back. A rule
+                    # of the plan that would change it is the one exception:
+                    # the user is keeping it out of that rule, which a keep
+                    # says without writing (core.keep, Luke 2026-10-16).
+                    from .bulk import rule_taking
+                    if val and rule_taking(ws, target) is not None:
+                        if not any(is_keep(op) for op in mine):
+                            lab = labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:40])}', f'{f.name} stays {qv(val)}')
+                            staged.append(keep.op(target, lab['label'], change_at=lab['change_at'],
+                                                  layer_id=f.layer_id, token_id=obj.id))
+                            kept.append(f'{f.name} {qv(val)} on {ref}')
+                    elif mine:
+                        dropped += mine
+                        took.append(f'{f.name} on {ref}')
+                    continue
+                if any(op.get('kind') == 'set_span' and (op.get('value') or '') == val for op in mine):
+                    continue
                 staged.append(span_op(ws, doc, ref, what, f, obj.id, old, val))
         ws.add_ops(staged)
-    return ws.planned_note(len(staged) + edits)
+        ws.take_back(dropped)
+    n = len([op for op in staged if not is_keep(op)]) + edits
+    if not (n or kept or took):
+        return ws.planned_note(0)
+    said, line = [], []
+    if n:
+        said.append(ws.planned_note(n))
+    if kept:
+        said.append(f'Kept {", ".join(kept)}: the corpus-wide change in the plan leaves '
+                    f'{"it" if len(kept) == 1 else "them"} out, and approval writes nothing to '
+                    f'{"it" if len(kept) == 1 else "them"}.')
+        line.append(f'Kept {", ".join(kept)}')
+    if took:
+        said.append(f'Took back the planned change to {", ".join(took)}: '
+                    f'{"it keeps its" if len(took) == 1 else "they keep their"} stored value.')
+        line.append(f'Took back the planned change to {", ".join(took)}')
+    if line:
+        ws.step_label = '. '.join(([f'Planned {n} change{"s" if n != 1 else ""}'] if n else []) + line)
+    if not n:
+        said.append(f'The plan now holds {plan_changes(ws.ops)} change{"s" if plan_changes(ws.ops) != 1 else ""}.')
+    return ' '.join(said)
 
 
 def _field_named(ws: Workspace, name: str):

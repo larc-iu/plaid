@@ -328,6 +328,11 @@ def test_no_op_kind_is_summarized_as_nothing():
     from plaid_agent.ud.plan import KIND, summarize
 
     for kind in KIND:
+        if kind == 'keep':
+            # A value kept out of a corpus-wide change is not a change
+            # (core.keep): it is counted nowhere.
+            assert summarize([{'kind': kind}]) == 'no changes'
+            continue
         assert summarize([{'kind': kind, 'document_ids': ['d1']}]) != 'no changes', kind
 
 

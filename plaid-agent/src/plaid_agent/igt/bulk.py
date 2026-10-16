@@ -362,6 +362,9 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             + _by_document(ws, kept) + '\nFor example:\n  ' + '\n  '.join(sample)
             + (f'\n  … {n - len(sample)} more' if n > len(sample) else '')
             + '\nStored as a rule, found again when the user approves.'
+            # A value kept out of it (core.keep) is named with what it holds.
+            + (' To leave one value out, set_field it to what it holds now.'
+               if set(op.get('counts') or {}) <= {'set_span'} else '')
             # Its field reads the plan's earlier values, its condition the
             # stored ones (H16-IGT-TOOLS-6).
             + (' The condition reads the values stored now, not the ones this plan writes.'
@@ -688,6 +691,28 @@ def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
     reach = {d for op in ws.ops if op.get('kind') in SCOPES and not values_rule(op)
              for d in (op.get('documents') or [])}
     return bool(reach) and (doc_id is None or doc_id in reach)
+
+
+def rule_taking(ws: Workspace, target: tuple) -> Optional[Dict[str, Any]]:
+    """The rule of the plan that changes what ``target`` names (an op's
+    target, ``op_target``) as it stands, or None. A value named with what
+    it holds then stands against that rule as a keep (core.keep). A rule
+    carried from an earlier turn is resolved again here, as a later rule
+    would read it."""
+    for op in ws.ops:
+        if not rules.is_rule(op) or op.get('head') is None:
+            continue
+        key = rules.target(op)
+        found = ws.rule_found.get(key)
+        if found is None:
+            try:
+                found = resolve_rule(ws, op['tool'], op['args'], ws.rule_found_before(key))
+            except ToolError:
+                continue
+            ws.rule_found[key] = found
+        if any(op_target(o) == target for o in found):
+            return op
+    return None
 
 
 def values_rule(op: Dict[str, Any]) -> bool:

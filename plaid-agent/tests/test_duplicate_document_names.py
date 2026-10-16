@@ -34,3 +34,24 @@ def test_analyses_of_and_check_integrity_print_references_as_search_does():
 def test_check_integrity_names_a_document_not_in_nfc_with_its_id_where_the_name_is_shared():
     out = call_tool(_ws(nfd_in=('d2', 'd3')), 'check_integrity', {})
     assert 'precomposed characters exist): "Text 1" (d2), "Text 2"' in out, out
+
+
+def test_a_rule_refused_at_approval_names_a_shared_name_with_its_id():
+    """The approval's refusal names the document as check_integrity does,
+    the id beside a name another document shares (REV-AGENT2-5)."""
+    import test_igt_rules as R
+    from test_igt_rules import SPANS, _approve, _store, igt_fx, APPS
+    store = {sid: 'VASP' for sid in SPANS}
+    client, _w = R._ws(store)
+    client._documents['d2']['name'] = 'Text 1'
+    w = fake_ws(client)
+    R._engine(client, store)
+    R._replace(w, 'VASP', 'ASP')
+    plan = _store(w, client, igt_fx.PID, 'igt')
+    SPANS['sp-new'] = ('w-1', 'd2')
+    store['sp-new'] = 'VASP'
+    try:
+        helper = _approve(APPS['igt'](), client, plan)
+    finally:
+        del SPANS['sp-new']
+    assert helper.errors and '(1 more in "Text 1" (d2))' in helper.errors[0], helper.errors

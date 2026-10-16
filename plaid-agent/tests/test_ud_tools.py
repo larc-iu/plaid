@@ -507,7 +507,8 @@ def test_discard_predictions_clears_the_machine_value_only(ws):
 def test_discarding_a_whole_document_is_one_scope_op_that_clears_at_approval(ws):
     out = run(ws, 'discard_predictions', document='Viaje')
     assert out == ('Planned discarding 1 unconfirmed machine value(s). That is one planned change '
-                   'covering the whole of "Viaje".')
+                   'covering the whole of "Viaje". To leave one value out, set it (set_field, or set_head for '
+                   'a head) to what it holds now.')
     assert ws.ops[0]['kind'] == 'discard_scope' and ws.ops[0]['per_field'] == {'upos': 1}
     assert summarize(ws.ops) == '1 cleared value'
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
@@ -1671,7 +1672,8 @@ def test_putting_back_a_stored_feature_stages_nothing(ws):
     run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Mood', value='')
     assert len(ws.ops) == 1
     out = run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Mood', value='Ind')
-    assert ws.ops == [] and out.startswith('Planned Mood=Ind on 1 word(s)')
+    # Said as what it did: nothing is planned (REV-AGENT2-6).
+    assert ws.ops == [] and out == 'Took back the planned Mood change on s1.w1: it keeps Mood=Ind.'
     run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='Number=Sing')
     run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='Mood=Ind|Number=Plur')
     assert ws.ops == []

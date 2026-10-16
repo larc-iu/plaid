@@ -161,6 +161,11 @@ class BaseWorkspace:
         # stood when the change's query read it (``note_staged_versions``).
         self._staged_versions: Dict[str, Optional[int]] = {}
         self.ops: List[Dict[str, Any]] = []
+        # The trace line for the call under way, where the tool knows better
+        # than its arguments what it did: a value kept out of a corpus-wide
+        # change, or a planned change taken back (``core.keep``). None reads
+        # the line off the arguments, as for every other call.
+        self.step_label: Optional[str] = None
         # Ops superseded by a later op on the same target this turn, and how
         # many of them a note has already told the model about. Two counters
         # rather than one that is zeroed on being read, because a bulk tool
@@ -691,6 +696,16 @@ class BaseWorkspace:
         if self._gone_at == len(self.ops) - 1:
             self._gone |= opkind.removed_ids(self.KIND, [op], only_certain=True)
             self._gone_at = len(self.ops)
+
+    def take_back(self, ops: List[Dict[str, Any]]) -> None:
+        """Take ``ops`` (these very dicts) out of the plan: a value set back
+        to what is stored drops the change planned for it rather than stage
+        a write restating it, which an approved plan would stamp as its
+        own."""
+        gone = {id(op) for op in ops}
+        if gone:
+            self.ops[:] = [op for op in self.ops if id(op) not in gone]
+            self._gone_at = -1
 
     def add_ops(self, ops: List[Dict[str, Any]]) -> None:
         """Stage a tool's whole batch, or none of it.

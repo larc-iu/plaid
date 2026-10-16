@@ -309,7 +309,8 @@ def _the_named_document(s: Dict[str, Any], args: Dict[str, Any]) -> bool:
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
                failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
-               said: Optional[str] = None, thought: bool = False, nothing: bool = False) -> Dict[str, Any]:
+               said: Optional[str] = None, thought: bool = False, nothing: bool = False,
+               told: Optional[str] = None) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
@@ -324,9 +325,14 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     its input and output, and ``said`` is the text the model wrote in that
     call, on the round's first step only. ``thought`` says that round holds
     the model's reasoning, on the same step, so the panel offers it.
-    ``nothing`` marks a plan call that left the plan as it was."""
+    ``nothing`` marks a plan call that left the plan as it was. ``told`` is
+    the line the tool gave for what it did (``BaseWorkspace.step_label``),
+    where the arguments alone would misread it: a value kept out of a
+    corpus-wide change is not a change planned."""
     kind = tracer.call_kind(name, args)
-    if kind == DOCUMENT and saw and not failed:
+    if told and not failed:
+        label = told
+    elif kind == DOCUMENT and saw and not failed:
         label = f'Read {_document(args)}'
     else:
         label = tracer.describe(name, args)

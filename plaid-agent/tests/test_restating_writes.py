@@ -43,10 +43,12 @@ def test_ud_set_head_to_the_relation_a_word_has_plans_nothing(ud):
     assert ud_call(w, 'set_head', {'document': doc, 'ref': 's1.w4', 'head': 's1.w1', 'deprel': 'obl'}) == \
         'Nothing to change: s1.w4 ("mar") is already obl of word 1 ("Vamos").'
     assert w.ops == []
-    # A planned relabel is still taken back by naming the stored relation.
+    # A planned relabel is taken back by naming the stored relation, and
+    # nothing restates it (REV-AGENT2-2).
     ud_call(w, 'set_head', {'document': doc, 'ref': 's1.w4', 'head': 's1.w1', 'deprel': 'nmod'})
-    ud_call(w, 'set_head', {'document': doc, 'ref': 's1.w4', 'head': 's1.w1', 'deprel': 'obl'})
-    assert [o['deprel'] for o in w.ops] == ['obl']
+    out = ud_call(w, 'set_head', {'document': doc, 'ref': 's1.w4', 'head': 's1.w1', 'deprel': 'obl'})
+    assert out == 'Took back the planned change to the head of s1.w4 ("mar"): it stays obl of word 1 ("Vamos").'
+    assert w.ops == []
 
 
 def test_ud_and_igt_rules_ignoring_case_leave_out_values_already_right():

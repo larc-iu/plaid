@@ -31,6 +31,7 @@ from plaid_client.http import minted_taken
 from plaid_client.ids import drawn_uuid7
 from plaid_client.service import locked_for_writes
 
+from .keep import is_keep
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (confirmed_inferred, contribute_on_edit, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
@@ -72,7 +73,10 @@ def changes_of(op: Dict[str, Any]) -> int:
     """How many changes one stored op is, the number its card row counts: a
     rule or a corpus-wide replacement is the values it changes, anything else
     one. The step summary, the progress line and the tool's note all count
-    in it, so a rule over 7 values is 7 planned changes everywhere."""
+    in it, so a rule over 7 values is 7 planned changes everywhere. A value
+    the plan keeps out of a corpus-wide change (``core.keep``) is none."""
+    if is_keep(op):
+        return 0
     if isinstance(op, dict) and (isinstance(op.get('matched'), list) or op.get(MANY)):
         return int(op.get('count') or 0)
     return 1

@@ -245,7 +245,8 @@ def test_a_change_made_by_name_beats_a_scope_by_the_kind_s_own_declaration():
     assert entity_of({'kind': 'set_span', 'layer_id': 'L', 'token_id': 't'}) == ('span', 'L', 't', None)
     assert entity_of({'kind': 'add_comment'}) is None
     declared = {n for n, k in KIND.items() if k.extra.get('entity')}
-    assert declared == {'set_span', 'set_head', 'del_relation', 'set_deprel'}
+    # A keep (core.keep) names what it keeps the same way, and writes nothing.
+    assert declared == {'set_span', 'set_head', 'del_relation', 'set_deprel', 'keep'}
 
     # A new kind writing the same relation is seen as writing it.
     relabel = OpKind('relabel', ('relabel', 'relabels'), apply=lambda ctx, op: 1,

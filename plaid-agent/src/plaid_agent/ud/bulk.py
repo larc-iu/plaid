@@ -180,9 +180,9 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     _clear_of_reshapes(ws, docs)
     ws.note_staged_versions({d: versions.get(d) for d in docs})
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
-    sample = [f'{qv(names.get(ch["document_id"], ch["document_id"]))}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
+    sample = [f'{doc_label(ws, ch["document_id"], qv)}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
               for ch in found[:SAMPLE_LINES]]
-    where = f' in {qv(names.get(document_id))}' if document_id else f' in {len(docs)} document(s)'
+    where = f' in {doc_label(ws, document_id, qv)}' if document_id else f' in {len(docs)} document(s)'
     # What it replaces is found again only when it is approved, so the values
     # a person made or accepted are counted now, from what the query returned.
     accepted = sum(1 for ch in found if work.protected(ch.get('metadata')))
@@ -206,7 +206,12 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
                if accepted else '')
             + f'{counts}\nFor example:\n  '
             + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE_LINES} more' if len(found) > SAMPLE_LINES else '')
-            + '\nsearch shows every match with its reference.')
+            + '\nsearch shows every match with its reference.' + KEEP_HINT)
+
+
+#: How a value is kept out of a corpus-wide change (core.keep), said after one
+#: is planned rather than in a tool description every turn pays for.
+KEEP_HINT = ' To leave one value out, set it (set_field, or set_head for a head) to what it holds now.'
 
 
 #: The key a replace_scope op carries for its card row while it is in the

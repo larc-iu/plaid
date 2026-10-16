@@ -307,7 +307,7 @@
   "ops": []
  },
  "proj replace_in_field {\"field\": \"Morph Gloss\", \"pattern\": \"ERG\", \"replacement\": \"OBL\", \"whole\": true}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches the whole value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves.",
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches the whole value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {
@@ -410,7 +410,7 @@
   ]
  },
  "proj replace_in_field {\"field\": \"Translation\", \"pattern\": \"(\\\\w+)\\\\.$\", \"regex\": true, \"replacement\": \"\\\\1!\"}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches anywhere in the value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"Ali saw a fish.\" → \"Ali saw a fish!\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1 \"Ali-di gam akuna.\": Translation \"Ali saw a fish.\" → \"Ali saw a fish!\"\nStored as a rule, found again when the user approves.",
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches anywhere in the value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"Ali saw a fish.\" → \"Ali saw a fish!\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1 \"Ali-di gam akuna.\": Translation \"Ali saw a fish.\" → \"Ali saw a fish!\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {
@@ -973,7 +973,7 @@
   "ops": []
  },
  "proj set_field_for_form {\"field\": \"Gloss\", \"form\": \"gam\", \"value\": \"fish\"}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"fish\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w2 \"gam\": Gloss = \"fish\"\nStored as a rule, found again when the user approves.",
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"fish\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w2 \"gam\": Gloss = \"fish\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {
@@ -1070,7 +1070,7 @@
   ]
  },
  "proj set_field_for_form {\"field\": \"Morph Gloss\", \"form\": \"akuna\", \"value\": \"go\"}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"go\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w3.m1 \"akuna\": Morph Gloss = \"go\"\nStored as a rule, found again when the user approves.",
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"go\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w3.m1 \"akuna\": Morph Gloss = \"go\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {
@@ -1167,7 +1167,7 @@
   ]
  },
  "proj set_field_for_form {\"field\": \"Morph Gloss\", \"form\": \"di\", \"only_empty\": false, \"value\": \"OBL\"}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves.",
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {

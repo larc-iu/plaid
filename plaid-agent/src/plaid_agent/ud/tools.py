@@ -15,7 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import uuid7
 
-from ..core import docload, opkind
+from ..core import docload, keep, opkind
+from ..core.keep import is_keep
 from ..core.bidi import qv
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
@@ -26,7 +27,7 @@ from ..core.provenance import unmark
 from ..core.refs import clip, read_ref
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
-                   scope_clears)
+                   scope_clears, scope_taking)
 from .project import (FEATURES, VIRTUAL_REFUSAL, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
                       by_stored_sent_id, feature_refusal, load_document, normalize_feature, render_document, resolve,
                       word_ref, words_listing)
@@ -326,6 +327,8 @@ REPLACES = {
     # A join only widens a sentence, so it takes no relation.
     'merge_sentences': _NONE,
     'confirm': _NONE, 'add_comment': _NONE,
+    # A value kept as it is (core.keep) replaces nothing.
+    'keep': _NONE,
     # Resolved when approved, from the documents as they are then, and a
     # restore puts back what was there: none of them names what it replaces
     # now. A parse is a service run with its own overwrite rule.
@@ -609,21 +612,32 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         return _set_features(ws, doc, layer_id, refs, value)
     value = unmark(value, field)
     words = _words(ws, doc, refs)
-    staged, dropped, changed = [], [], []
+    staged, dropped, changed, kept, took = [], [], [], [], []
     for w in words:
         sp = w.fields.get(field)
         old = sp.value if sp else ''
-        # A word that holds the value already, stored or planned, is left out:
-        # the write would restate it and restamp its provenance as the plan's
-        # (Eline 2026-10-07, igt's set_field skips it too). Set back to what
-        # is stored, the earlier planned change is dropped instead.
+        ref = word_ref(ws.sentence_of(doc, w), w)
+        mine = [op for op in ws.ops if ws.op_target(op) == ('span', layer_id, w.id, None)]
+        if old == value:
+            # What the word holds already. Planning it again would restate it
+            # and restamp its provenance as the plan's (Eline 2026-10-07), so
+            # it is left out, and set back to what is stored the earlier
+            # planned change is taken back. A corpus-wide change in the plan
+            # that would change it is the one exception: the user is keeping
+            # it out of that change, which a keep says without writing
+            # (core.keep, Luke 2026-10-16).
+            if sp is not None and value and scope_taking(ws.ops, doc.id, ws.sentence_of(doc, w), w, field, sp):
+                if not any(is_keep(op) for op in mine):
+                    staged.append(keep.op(('span', layer_id, w.id, None), f'{field} stays {qv(old)}',
+                                          document_id=doc.id, ref=ref, field=field))
+                    kept.append(ref)
+            elif mine:
+                dropped += mine
+                took.append(ref)
+            continue
         if _planned_value(ws, layer_id, w, field) == value:
             continue
         changed.append(w)
-        if old == value:
-            dropped += [op for op in ws.ops if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id
-                        and op.get('token_id') == w.id]
-            continue
         # The value it replaces, as igt's card says it: lemma "run" → "ran".
         label = (f'{field} {qv(old)} → {qv(value)}' if old and value else f'{field} = {qv(value)}' if value
                  else f'clear {field} {qv(old)}' if old else f'clear {field}')
@@ -631,18 +645,45 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
                        'span_id': sp.id if sp else None, 'value': value,
                        'field': field, 'document_id': doc.id,
                        'label': label,
-                       'ref': word_ref(ws.sentence_of(doc, w), w)})
+                       'ref': ref})
     ws.add_ops(staged)
-    if dropped:
-        gone = {id(op) for op in dropped}
-        ws.ops[:] = [op for op in ws.ops if id(op) not in gone]
-    if not changed:
+    ws.take_back(dropped)
+    if not (changed or kept or took):
         return (f'Nothing to change: {field} is already "{value}" on every word named.' if value
                 else f'Nothing to change: none of the words named has {field}.')
     what = f'{field} = "{value}"' if value else f'{field} cleared'
-    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(
-        word_ref(ws.sentence_of(doc, w), w) for w in changed) + _same_form_left(
-        ws, doc, words, lambda o: _planned_value(ws, layer_id, o, field) == value)
+    said, line = [], []
+    if changed:
+        refs_ = [word_ref(ws.sentence_of(doc, w), w) for w in changed]
+        said.append(f'Planned {what} on {len(changed)} word(s): ' + ', '.join(refs_) + _same_form_left(
+            ws, doc, words, lambda o: _planned_value(ws, layer_id, o, field) == value))
+        line.append(f'Planned {what} on ' + ', '.join(refs_))
+    _keep_said(said, line, kept, took, f'{field} "{value}"', f'the planned {field} change',
+               f'"{value}"' if value else f'no {field}')
+    if kept or took:
+        ws.step_label = '. '.join(line)
+    return _joined(said)
+
+
+def _joined(said: List[str]) -> str:
+    """The parts of a tool's answer, each ending as a sentence does."""
+    return ' '.join(p if i == len(said) - 1 or p.endswith('.') else p + '.' for i, p in enumerate(said))
+
+
+def _keep_said(said: List[str], line: List[str], kept: List[str], took: List[str], what: str,
+               change: str, stays: str) -> None:
+    """What the model and the trace are told of values kept out of a
+    corpus-wide change and of planned changes taken back, after anything
+    planned. Neither is said as a change: nothing is written to either."""
+    if kept:
+        said.append(f'Kept {what} on {", ".join(kept)}: the corpus-wide change in the plan leaves '
+                    f'{"it" if len(kept) == 1 else "them"} out, and approval writes nothing to '
+                    f'{"it" if len(kept) == 1 else "them"}.')
+        line.append(f'Kept {what} on {", ".join(kept)}')
+    if took:
+        said.append(f'Took back {change} on {", ".join(took)}: '
+                    f'{"it keeps" if len(took) == 1 else "they keep"} {stays}.')
+        line.append(f'Took back {change} on {", ".join(took)}')
 
 
 def _planned_value(ws: Workspace, layer_id: str, w: Word, field: str) -> str:
@@ -745,20 +786,29 @@ def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
     own span, so a change is a create, an update or a delete of the one span
     holding that feature, as the app's FEATS cell writes it. Wanting what is
     stored drops the planned change to that feature (removing a feature only
-    this plan adds, or putting back a stored one this plan removes)."""
+    this plan adds, or putting back a stored one this plan removes), or, where
+    a corpus-wide change in the plan would change that pair, keeps it out of
+    that change (core.keep)."""
     planned = _planned_features(ws, layer_id, w)
-    ref = word_ref(ws.sentence_of(doc, w), w)
+    sentence = ws.sentence_of(doc, w)
+    ref = word_ref(sentence, w)
     stage, drop = [], []
     for key, value in want.items():
-        if (planned.get(key) or None) == (value or None):
-            continue
         sp = w.feature_span(key)
         stored = (normalize_feature(sp.value) or (None, None))[1] if sp is not None else None
         if (value or None) == stored:
             # Back to what is stored: drop the planned change rather than
             # stage a write of the span's own value, which an approved plan
             # would stamp verified.
-            drop += [op for op in ws.ops if _is_feature_op(op, layer_id, w.id) and op['feature'] == key]
+            mine = [op for op in ws.ops if ws.op_target(op) == ('span', layer_id, w.id, key)]
+            if stored is not None and scope_taking(ws.ops, doc.id, sentence, w, FEATURES, sp):
+                if not any(is_keep(op) for op in mine):
+                    stage.append(keep.op(('span', layer_id, w.id, key), f'{key}={stored} stays',
+                                         document_id=doc.id, ref=ref, field=FEATURES, feature=key))
+            else:
+                drop += mine
+            continue
+        if (planned.get(key) or None) == (value or None):
             continue
         stage.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
                       'span_id': sp.id if sp else None, 'value': f'{key}={value}' if value else '',
@@ -767,14 +817,17 @@ def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
     return stage, drop
 
 
-def _stage_features(ws: Workspace, changes: List[tuple]) -> List[str]:
+def _stage_features(ws: Workspace, changes: List[tuple]) -> tuple:
     """Stage every word's feature ops as one batch, then drop the planned adds
-    a removal undoes. The refs of the words that change, in order."""
+    a removal undoes. The refs of the words that change, of those with a
+    pair kept out of a corpus-wide change, and of those whose planned change
+    was only taken back, in order."""
     ws.add_ops([op for _ref, stage, _drop in changes for op in stage])
-    dropped = {id(op) for _ref, _stage, drop in changes for op in drop}
-    if dropped:
-        ws.ops[:] = [op for op in ws.ops if id(op) not in dropped]
-    return [ref for ref, stage, drop in changes if stage or drop]
+    ws.take_back([op for _ref, _stage, drop in changes for op in drop])
+    changed = [ref for ref, stage, drop in changes if any(not is_keep(op) for op in stage)]
+    kept = [ref for ref, stage, drop in changes if any(is_keep(op) for op in stage)]
+    took = [ref for ref, stage, drop in changes if drop and not stage]
+    return changed, kept, took
 
 
 def _set_features(ws: Workspace, doc: UdDoc, layer_id: str, refs, value: str) -> str:
@@ -793,13 +846,21 @@ def _set_features(ws: Workspace, doc: UdDoc, layer_id: str, refs, value: str) ->
         want.update(pairs)
         stage, drop = _feature_ops(ws, doc, layer_id, w, want)
         changes.append((word_ref(ws.sentence_of(doc, w), w), stage, drop))
-    changed = _stage_features(ws, changes)
+    changed, kept, took = _stage_features(ws, changes)
     bundle = '|'.join(sorted((f'{k}={v}' for k, v in pairs.items()), key=feats_order))
-    if not changed:
+    if not (changed or kept or took):
         return (f'Nothing to change: features are already "{bundle}" on every word named.' if bundle
                 else 'Nothing to change: none of the words named has features.')
     what = f'features = "{bundle}"' if bundle else 'features cleared'
-    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed)
+    said, line = [], []
+    if changed:
+        said.append(f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed))
+        line.append(f'Planned {what} on ' + ', '.join(changed))
+    _keep_said(said, line, kept, took, f'features "{bundle}"' if bundle else 'no features',
+               'the planned features change', f'"{bundle}"' if bundle else 'no features')
+    if kept or took:
+        ws.step_label = '. '.join(line)
+    return _joined(said)
 
 
 def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str = None,
@@ -822,13 +883,21 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
     for w in words:
         stage, drop = _feature_ops(ws, doc, layer_id, w, {feature: value or None})
         changes.append((word_ref(ws.sentence_of(doc, w), w), stage, drop))
-    changed = _stage_features(ws, changes)
-    if not changed:
+    changed, kept, took = _stage_features(ws, changes)
+    if not (changed or kept or took):
         return (f'Nothing to change: {feature}={value} is already set on every word named.' if value
                 else f'Nothing to change: none of the words named has {feature}.')
     what = f'{feature}={value}' if value else f'{feature} removed'
-    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed) + _same_form_left(
-        ws, doc, words, lambda o: _planned_features(ws, layer_id, o).get(feature) == (value or None))
+    said, line = [], []
+    if changed:
+        said.append(f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed) + _same_form_left(
+            ws, doc, words, lambda o: _planned_features(ws, layer_id, o).get(feature) == (value or None)))
+        line.append(f'Planned {what} on ' + ', '.join(changed))
+    _keep_said(said, line, kept, took, f'{feature}={value}' if value else f'no {feature}',
+               f'the planned {feature} change', f'{feature}={value}' if value else f'no {feature}')
+    if kept or took:
+        ws.step_label = '. '.join(line)
+    return _joined(said)
 
 
 def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = None,
@@ -990,17 +1059,39 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
                'label': (f'{word_ref(sentence, word)} root' if head == 0
                          else f'{word_ref(sentence, word)} {deprel} of word {head}'),
                'ref': word_ref(sentence, word)}
-    # The relation it already has, and nothing planned for it: the write would
-    # restate it and restamp its provenance as the plan's (Eline 2026-10-07).
-    if relabel and word.deprel == deprel and ws.replacing(op) is None:
-        return (f'Nothing to change: {word_ref(sentence, word)} ("{word.form}") is already '
-                + (f'the root of s{sentence.index}.' if head == 0
-                   else f'{deprel} of word {head} ("{head_word.form}").'))
+    if relabel and word.deprel == deprel:
+        return _restated_head(ws, doc, word, sentence, op, head, head_word)
     ws.add_op(op)
     if head == 0:
         return f'Planned {word_ref(sentence, word)} ("{word.form}") as the root of s{sentence.index}.'
     return (f'Planned {word_ref(sentence, word)} ("{word.form}") as {deprel} of '
             f'word {head} ("{head_word.form}").')
+
+
+def _restated_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, op: Dict[str, Any], head: int,
+                   head_word: Word) -> str:
+    """set_head to the head and relation the word already has. Planning it
+    would restate it and restamp its provenance as the plan's (Eline
+    2026-10-07). A change planned for its head is taken back, and where a
+    corpus-wide change in the plan would discard or relabel the relation,
+    a keep holds it out of that change without writing (core.keep, Luke
+    2026-10-16). Otherwise there is nothing to change."""
+    ref = word_ref(sentence, word)
+    stays = f'the root of s{sentence.index}' if head == 0 else f'{op["deprel"]} of word {head} ("{head_word.form}")'
+    at = ws.replacing(op)
+    if scope_taking(ws.ops, doc.id, sentence, word, 'deprel'):
+        if at is None or not is_keep(ws.ops[at]):
+            ws.add_op(keep.op(('head', word.id), f'{ref} stays ' + ('root' if head == 0 else
+                                                                   f'{op["deprel"]} of word {head}'),
+                              entity_key=('relation', word.relation_id), document_id=doc.id, ref=ref))
+            ws.step_label = f'Kept {ref} as {stays}'
+            return (f'Kept {ref} ("{word.form}") as {stays}: the corpus-wide change in the plan leaves it out, '
+                    'and approval writes nothing to it.')
+    elif at is not None:
+        ws.take_back([ws.ops[at]])
+        ws.step_label = f'Took back the planned change to the head of {ref}'
+        return f'Took back the planned change to the head of {ref} ("{word.form}"): it stays {stays}.'
+    return f'Nothing to change: {ref} ("{word.form}") is already {stays}.'
 
 
 def t_del_relation(ws: Workspace, document: str = None, refs=None) -> str:
@@ -1236,7 +1327,8 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
         if spared:
             return f'Nothing to discard: {spared} machine lemma(s) here anchor arcs a person drew.'
         return 'Nothing to discard: no unconfirmed machine values here.'
-    scope_note = '' if refs else f' That is one planned change covering the whole of "{doc.name}".'
+    from .bulk import KEEP_HINT
+    scope_note = '' if refs else f' That is one planned change covering the whole of "{doc.name}".' + KEEP_HINT
     return f'Planned discarding {n} unconfirmed machine value(s).{spared_note}{scope_note}'
 
 

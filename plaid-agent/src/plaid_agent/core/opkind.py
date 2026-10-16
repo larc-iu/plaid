@@ -473,12 +473,18 @@ def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], 
     change has nothing to do, or None. Each drop is noted in ``notes``, since
     the card counted the change and the applied message has to account for it
     going."""
+    from .keep import is_keep
     target = target or (lambda op: target_of(reg, op))
     named = [op for op in ops if not resolver(reg, op)]
     explicit = {target(op) for op in named} - {None}
+    # A value the plan keeps by name (core.keep) wins the same way, and is
+    # said as what it is: nothing is written to it.
+    kept = {target(op) for op in named if is_keep(op)} - {None}
     gone = removed_ids(reg, named, only_certain=True)
 
     def why(op: Dict[str, Any]) -> Optional[str]:
+        if target(op) in kept:
+            return 'the plan keeps that value as it is'
         if target(op) in explicit:
             return 'the plan already makes that change by name'
         clash = delete_clash(reg, named, op, gone)

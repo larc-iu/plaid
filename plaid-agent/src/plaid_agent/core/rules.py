@@ -112,16 +112,20 @@ def _plural(n: int, one: str, many: str) -> str:
     return f'{n:,} {one if n == 1 else many}'
 
 
-def check_matched(op: Dict[str, Any], now: List[list], name_of: Callable[[str], str]) -> None:
+def check_matched(op: Dict[str, Any], now: List[list], name_of: Callable[[str], str],
+                  label_of: Optional[Callable[[str], str]] = None) -> None:
     """Refuse the plan when a rule matches anything other than it did when
     it was staged: another document, another count, another value, or a value
     whose provenance changed. Raises :class:`PlanOutOfDate` with a sentence
-    naming the rule, what it matched then and now, and where."""
+    naming the rule, what it matched then and now, and where. ``label_of``,
+    when given, names a document as the sentence says it, quoted, with its id
+    beside a name another document shares (``"Text 1" (d2)``), in place of
+    the quoted ``name_of``."""
     then = {d: (n, digest) for d, n, digest in op.get('matched') or []}
     nowd = {d: (n, digest) for d, n, digest in now}
     if then == nowd:
         return
-    raise PlanOutOfDate([moved_reason(op, then, nowd, name_of)])
+    raise PlanOutOfDate([moved_reason(op, then, nowd, label_of or (lambda d: qv(name_of(d))))])
 
 
 def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tuple],
@@ -139,7 +143,7 @@ def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tupl
         a, b = then.get(d, (0, None)), now.get(d, (0, None))
         if a == b:
             continue
-        where = qv(name_of(d)) if d is not None else 'outside any document'
+        where = name_of(d) if d is not None else 'outside any document'
         if b[0] > a[0]:
             places.append(f'{b[0] - a[0]:,} more in {where}')
         elif b[0] < a[0]:

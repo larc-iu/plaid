@@ -83,7 +83,11 @@ def test_set_field_plans_create_update_clear_and_respects_scope():
     assert w.ops[0] == {'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-1', 'span_id': 'sp-g1', 'value': 'X',
                         'label': 'Text 1 s1.w1 "Ali-di": Gloss "Ali" → "X"', 'change_at': 23}
     assert w.ops[1]['span_id'] is None and w.ops[1]['token_id'] == 'w-2'
-    # unchanged value -> nothing planned
+    # back to the stored value: the planned change is taken back, nothing restates it (REV-AGENT2-4)
+    assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith(
+        'Took back the planned change to Gloss on s1.w1')
+    assert [o['token_id'] for o in w.ops] == ['w-2']
+    # the stored value with nothing planned: nothing to plan
     assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith('Planned 0')
     # clearing: replaces the earlier planned op on that span (last wins)
     call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': ''})
