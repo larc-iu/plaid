@@ -349,6 +349,20 @@ describe('the document details screen', () => {
     expect(copied).toEqual(['One (2)']);
   });
 
+  it('deletes only after the edits queued before it are sent', async () => {
+    const view = await mount();
+    let release;
+    editor.doc.whenSaved = () => new Promise((r) => (release = r));
+    await view.step(async () => {
+      click(button(view.container, 'Delete document'));
+    });
+    await flush();
+    expect(deleteDocument).not.toHaveBeenCalled();
+    await view.step(async () => release());
+    await flush();
+    expect(deleteDocument).toHaveBeenCalledWith('d1');
+  });
+
   it('deletes without a second question, and takes its history entry with it', async () => {
     const view = await mount();
     await typeAName(view);

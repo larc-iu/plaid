@@ -168,6 +168,9 @@ export const DocumentDetailsPage = ({
     });
     if (!ok) return;
     try {
+      // After every edit queued before it, so none lands on a document gone
+      // (or is refused and says so) once the delete has run.
+      await doc.whenSaved?.();
       await getClient().documents.delete(documentId);
       notifySuccess(`Deleted “${label}”`);
       // Nothing to ask: the document the name was typed for is gone. The extra
