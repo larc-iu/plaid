@@ -86,7 +86,7 @@ One row per reply or error (one per turn).
 | conversation_id, app, project_id, project, user | as above |
 | item_index | the item's place in the conversation |
 | turn | which user message it answers (1 is the first) |
-| end | `answered`, `stopped` (the user stopped it), `failed` (no answer), `lost` (no answer came back and the user retried it, since 2026-10-06), `stopped_repeat` (the same tool call failed or repeated three times), `step_limit`, `empty_reply`, `cut_at_length` |
+| end | `answered`, `stopped` (the user stopped it), `failed` (no answer), `lost` (no answer came back and the user retried it, since 2026-10-06), `stopped_repeat` (the same tool call failed or repeated three times), `step_limit`, `empty_reply`, `no_answer` (the call for the reply after a plan failed, and the plan was kept, since 2026-10-16), `cut_at_length` |
 | model, version, service | what answered |
 | asked_at | when the question it answers was written (since 2026-10-06) |
 | retry | the question is one the turn before it did not finish, sent again with Retry (since 2026-10-06) |

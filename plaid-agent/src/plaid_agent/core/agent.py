@@ -17,7 +17,7 @@ import threading
 from types import SimpleNamespace
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import litellm
 # What passes, what a timeout is and how a call is tried again are the model
@@ -512,6 +512,9 @@ class TurnFailed(Exception):
 
 
 EMPTY_REPLY = 'The model returned an empty reply.'
+#: The reply of a turn whose last call, for the words after a plan, failed:
+#: the plan is kept and its card shows it.
+NO_ANSWER = 'The model did not answer.'
 
 # How many times in a row the SAME call (same tool, same arguments) may fail
 # before the turn stops. A model that repeats a refused call does not learn
@@ -556,6 +559,45 @@ def claims_a_plan(text: Optional[str]) -> bool:
         if any(p.search(s) for p in _CLAIMED) or (_APPROVE.search(s) and not _OFFER.search(s)):
             return True
     return False
+
+
+# A reply that writes a tool call out as text instead of making it: small
+# local models do this often (52 of Gemma's 137 failed bench runs, BENCH-GEMMA),
+# as `set_head(...)`, `<apply_penman document=...>`, `<action>set_head</action>`
+# or a JSON object naming the tool. Only a tool this turn offers counts, and
+# only in call syntax, so a reply naming a tool in prose is not one.
+def _call_shapes(names: Iterable[str]) -> List[re.Pattern]:
+    n = '|'.join(re.escape(x) for x in sorted(set(names), key=len, reverse=True) if x)
+    if not n:
+        return []
+    return [re.compile(p) for p in (
+        rf'(?<![\w.])({n})\(',
+        rf'<\s*({n})(?=[\s>/])',
+        rf'<(?:action|tool|tool_name|function|name)>\s*({n})\s*</',
+        rf'"(?:name|tool|tool_name|function|action)"\s*:\s*"({n})"',
+        rf'(?m)^[ \t]*`?({n})`?[ \t]*\{{',
+    )]
+
+
+def written_call(text: Optional[str], names: Iterable[str]) -> Optional[str]:
+    """The tool ``text`` writes out as a call rather than calling it, or None.
+    ``names`` are the tools the turn offers."""
+    for p in _call_shapes(names):
+        m = p.search(text or '')
+        if m:
+            return m.group(1)
+    return None
+
+
+def written_call_note(name: str) -> str:
+    """What a reply that wrote ``name`` out as a call is sent back with, once."""
+    return (f'(system) Your reply wrote a {name} call as text, so it did not run: nothing was done. '
+            'Call the tool itself now, or reply to the user without the call.')
+
+
+#: The step that note is in the trace, and its line.
+WRITTEN_CALL_STEP = 'written_call'
+WRITTEN_CALL_LABEL = 'Told the assistant that a tool call written as text did not run'
 
 
 #: What a turn that claimed a plan it never made is sent back with, once.
@@ -934,8 +976,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     # line its tool gave, which the repeat is traced after.
     made: Dict[tuple, Optional[str]] = {}
     spend = Spend()
-    # Whether this turn's model was told it planned nothing (`claims_a_plan`).
+    # Whether this turn's model was told it planned nothing (`claims_a_plan`),
+    # and whether it was told a call it wrote as text did not run.
     nudged = False
+    wrote_once = False
 
     def claimed_nothing(text: str) -> bool:
         """The reply says it planned, and this turn planned nothing: no plan
@@ -953,8 +997,19 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
         live['n'] = rounds + 1
-        resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new
-                   + [{'role': 'user', 'content': nudge}])
+        try:
+            resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new
+                       + [{'role': 'user', 'content': nudge}])
+        except TurnCancelled:
+            raise
+        except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
+            if not getattr(ws, 'ops', None):
+                raise
+            # The plan is the substance of this turn, as for an empty reply
+            # below: a failure of the call for its words does not lose it.
+            print(f'{cfg.model}: the reply after a staged plan failed ({type(e).__name__}); keeping the plan')
+            live['text'] = ''
+            return f'({NO_ANSWER})', None
         spend.add(resp)
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
@@ -1059,17 +1114,27 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
                                                        'Reply now with your answer to the user.')
                 thinking = _joined(thinking, more)
-            if not nudged and claimed_nothing(text):
-                # Said it planned, and planned nothing: once, the model is
-                # told and gets its tools back. Its reply and the note stay
-                # in the transcript, and the trace has a step for them,
-                # whose round holds the reply and the note as sent.
+            # A tool call written out as text, which did not run, and a reply
+            # that says it planned when it planned nothing: once each, the
+            # model is told and gets its tools back. Its reply and the note
+            # stay in the transcript, and the trace has a step for them,
+            # whose round holds the reply and the note as sent.
+            wrote = None if wrote_once else written_call(
+                text, [t['function']['name'] for t in kwargs.get('tools') or [] if t.get('function')])
+            if wrote:
+                wrote_once = True
+                back = (WRITTEN_CALL_STEP, WRITTEN_CALL_LABEL, written_call_note(wrote))
+            elif not nudged and claimed_nothing(text):
                 nudged = True
+                back = (NOTHING_PLANNED_STEP, NOTHING_PLANNED_LABEL, NOTHING_PLANNED)
+            else:
+                back = None
+            if back is not None:
+                step_name, label, note = back
                 rnd['said'] = text
-                step_id = f'{NOTHING_PLANNED_STEP}-{rnd["id"]}'
-                rnd['calls'].append(call_record(step_id, NOTHING_PLANNED_STEP, '{}', NOTHING_PLANNED))
-                step = {'id': step_id, 'name': NOTHING_PLANNED_STEP, 'kind': META,
-                        'label': NOTHING_PLANNED_LABEL, 'said': text}
+                step_id = f'{step_name}-{rnd["id"]}'
+                rnd['calls'].append(call_record(step_id, step_name, '{}', note))
+                step = {'id': step_id, 'name': step_name, 'kind': META, 'label': label, 'said': text}
                 if keeper is not None:
                     step['round'] = rnd['id']
                     if rnd.get('thinking'):
@@ -1077,7 +1142,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     keeper.text = ''
                     keeper.thinking = ''
                 trace.append(step)
-                new.append({'role': 'user', 'content': NOTHING_PLANNED})
+                new.append({'role': 'user', 'content': note})
                 if keeper is not None and not keeper.store(rnd):
                     _unstored(trace, rnd)
                 rounds += 1

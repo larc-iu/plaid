@@ -105,6 +105,30 @@ def test_an_empty_reply_after_a_plan_keeps_the_plan(monkeypatch):
     assert turn.text == f'({EMPTY_REPLY})'
 
 
+def test_a_failed_call_for_the_reply_after_a_plan_keeps_the_plan(monkeypatch):
+    """A provider failure on the last call, for the words after a plan, lost
+    the turn and its plan (REV-ASSISTANT 2026-09-28). The plan stays, as for
+    an empty reply, and with nothing planned the failure is the turn's."""
+    def call_tool(ws, name, args):
+        ws.ops.append({'kind': 'x'})
+        return 'Planned.'
+
+    class Failing(Script):
+        def __call__(self, **kwargs):
+            if self.calls >= 1:
+                self.calls += 1
+                raise RuntimeError('the provider failed')
+            return super().__call__(**kwargs)
+
+    script = Failing(_resp(calls=[_call(1, 'plan_a', '{}')]), _resp(''))
+    turn = _turn(monkeypatch, script, call_tool, max_steps=1)
+    assert turn.text.startswith(f'({agent.NO_ANSWER})'), turn.text
+    script = Failing(_resp(''), _resp(''))
+    with pytest.raises(Exception) as e:
+        _turn(monkeypatch, script)
+    assert agent.NO_ANSWER not in str(e.value)
+
+
 def test_the_same_failing_call_three_times_ends_the_turn(monkeypatch):
     script = Script(*([_resp(calls=[_call(i, 'plan_a', '{"what": ')]) for i in range(3)]
                       + [_resp('I could not write that change.')]))

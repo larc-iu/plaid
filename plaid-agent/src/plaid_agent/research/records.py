@@ -47,6 +47,9 @@ CUT_AT_LENGTH = re.compile(r"\*\(The reply was cut off at the model's output lim
 # (agent.cut_line), which replaced the note above.
 CUT_AT_CAP = re.compile(r'^The model wrote (\S+ tokens )?without finishing, so this turn was stopped\.')
 EMPTY_REPLY = '(The model returned an empty reply.)'
+# The reply of a turn whose call for words after its plan failed
+# (agent.NO_ANSWER): the plan was kept.
+NO_ANSWER = '(The model did not answer.)'
 
 # A tool's refusal, by what it says. The first that matches wins, and the
 # order matters: a query the server refused also says "rejected".
@@ -167,6 +170,8 @@ def turn_end(item: Dict[str, Any]) -> str:
         return 'step_limit'
     if text.strip().startswith(EMPTY_REPLY):
         return 'empty_reply'
+    if text.strip().startswith(NO_ANSWER):
+        return 'no_answer'
     if CUT_AT_LENGTH.search(text):
         return 'cut_at_length'
     return 'answered'

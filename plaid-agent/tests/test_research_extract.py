@@ -51,6 +51,7 @@ def test_turn_ends():
         'stopped_repeat'
     assert turn_end({'kind': 'assistant', 'text': 'x\n\n*(Stopped at the step limit.)*'}) == 'step_limit'
     assert turn_end({'kind': 'assistant', 'text': '(The model returned an empty reply.)'}) == 'empty_reply'
+    assert turn_end({'kind': 'assistant', 'text': '(The model did not answer.)'}) == 'no_answer'
     assert turn_end({'kind': 'assistant', 'text': "x\n\n*(The reply was cut off at the model's output limit.)*"}) \
         == 'cut_at_length'
     assert turn_end({'kind': 'error', 'text': 'The model wrote 32,768 tokens without finishing, so this turn '
