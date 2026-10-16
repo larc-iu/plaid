@@ -408,21 +408,32 @@ describe('Add to tagset', () => {
     const declared = [];
     const client = {
       ...clientWith([[['1SG.ABL', 3]], [['Song', 4]]]),
-      projects: { get: vi.fn(async () => structuredClone(server)), setConfig: vi.fn() },
+      projects: {
+        get: vi.fn(async () => structuredClone(server)),
+        setConfig: vi.fn((_id, ns, key, value) => {
+          server.config[ns][key] = value;
+        }),
+      },
       spanLayers: {
         setConstraints: (id, _ns, constraints) => declared.push([id, constraints]),
         repairConstraints: vi.fn(),
+        refusedValues: vi.fn(async () => ({ count: 0, valueCount: 0, values: [] })),
+        checkConstraints: vi.fn(async () => ({ violations: [], violationCount: 0 })),
       },
+      withOperation: async (_m, fn) => fn(),
       batched: async (fn) => fn(client),
     };
     const { container, step, unmount } = await render(client);
     const add = all(container, 'button').find((b) => b.title === 'Add ABL to Leipzig');
     await step(async () => {
       add.click();
-      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
     });
     expect(client.projects.setConfig).toHaveBeenCalled();
+    // The field in force takes it in the save's batch, the one out of force
+    // (it holds no list) in the heal after it.
     expect(declared.map(([id]) => id)).toEqual(['msl-0', 'msl-1']);
+    expect(client.spanLayers.repairConstraints).not.toHaveBeenCalled();
     expect(declared[1][1]).toContainEqual({
       type: 'value-set',
       values: ['PL', '1SG', 'ABL'],
@@ -496,7 +507,7 @@ describe('a closed list not in force', () => {
       for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
     });
     expect(declared).toEqual([['msl-0', [{ type: 'single-span' }, leipzig]]]);
-    expect(notifySuccess).toHaveBeenCalledWith('The tagsets are in force');
+    expect(notifySuccess).toHaveBeenCalledWith('In force on Gloss');
     expect(notifyWarning).not.toHaveBeenCalled();
     await unmount();
   });
@@ -516,10 +527,133 @@ describe('a closed list not in force', () => {
     });
     expect(declared).toEqual([['msl-0', [{ type: 'single-span' }]]]);
     expect(notifyWarning).toHaveBeenCalledWith(
-      '“Leipzig” is not in force on Gloss: 1 annotation not in the list, QQ (1). Change these values, then choose Put in force under Validation.',
+      '“Leipzig” is not in force on Gloss: 1 annotation not in the list, QQ (1). Change these values, then choose Put in force.',
       'Not in force',
     );
     expect(notifySuccess).not.toHaveBeenCalled();
+    await unmount();
+  });
+});
+
+// REV4-WIRE-3: each state is named for what it is, with its own action, and
+// the toast says what happened. REV4-WIRE-2: Put in force changes no
+// annotation, so a field that would need its annotations joined is named.
+describe('rules not as the settings want, by state', () => {
+  const renderWith = (client, proj) =>
+    renderComponent(
+      <MemoryRouter>
+        <ProjectValidation
+          project={proj}
+          projectId="p-1"
+          client={client}
+          onProjectUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  const leipzig = { type: 'value-set', values: ['PL', '1SG'], delimiters: '.', parts: 'all' };
+  const withFields = (fields, tagsets = project.config.igt.tagsets) => {
+    const p = structuredClone(project);
+    p.config.igt.tagsets = structuredClone(tagsets);
+    p.textLayers[0].tokenLayers[0].spanLayers = fields;
+    return p;
+  };
+  const clientFor = (proj, doubled = 0) => {
+    const declared = [];
+    const client = {
+      ...clientWith([[['PL', 3]], [['Song', 4]]]),
+      projects: { get: vi.fn(async () => structuredClone(proj)) },
+      spanLayers: {
+        refusedValues: vi.fn(async () => ({ count: 0, valueCount: 0, values: [] })),
+        checkConstraints: vi.fn(async (_id, rules) =>
+          rules.some((r) => r.type === 'single-span') && doubled
+            ? { violations: [{ constraint: 'single-span' }], violationCount: doubled }
+            : { violations: [], violationCount: 0 },
+        ),
+        setConstraints: vi.fn(async (id, _ns, list) => declared.push([id, list])),
+        repairConstraints: vi.fn(),
+      },
+      withOperation: async (_m, fn) => fn(),
+      batched: async (fn) => fn(client),
+    };
+    return { client, declared };
+  };
+
+  it('a list no closed tagset names: Remove the list, and the toast says it is removed', async () => {
+    vi.clearAllMocks();
+    const proj = withFields(
+      [
+        {
+          id: 'msl-0',
+          name: 'Gloss',
+          config: { igt: { scope: 'Morpheme', tagset: 'Leipzig' } },
+          constraints: { igt: [{ type: 'single-span' }, leipzig] },
+        },
+      ],
+      { ...project.config.igt.tagsets, Leipzig: { ...LEIPZIG, mode: 'suggest' } },
+    );
+    const { client, declared } = clientFor(proj);
+    const { container, step, unmount } = await renderWith(client, proj);
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    expect(notice.textContent).toContain('In force with no closed tagset: the list on Gloss.');
+    expect(notice.textContent).not.toContain('Put in force');
+    await step(async () => {
+      byText(notice, 'button', 'Remove the list').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(declared).toEqual([['msl-0', [{ type: 'single-span' }]]]);
+    expect(notifySuccess).toHaveBeenCalledWith('The list on Gloss is removed');
+    await unmount();
+  });
+
+  it('a field holding no rules: one annotation a unit, named when its annotations would need joining', async () => {
+    vi.clearAllMocks();
+    const proj = withFields([
+      {
+        id: 'msl-0',
+        name: 'Gloss',
+        config: { igt: { scope: 'Morpheme', tagset: 'Leipzig' } },
+        constraints: { igt: [{ type: 'single-span' }, leipzig] },
+      },
+      {
+        id: 'msl-1',
+        name: 'Raw two',
+        config: { igt: { scope: 'Morpheme' } },
+        constraints: {},
+      },
+    ]);
+    const { client, declared } = clientFor(proj, 1);
+    const { container, step, unmount } = await renderWith(client, proj);
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    expect(notice.textContent).toContain('Not in force: one annotation a morpheme on Raw two.');
+    expect(notice.textContent).not.toContain('list');
+    await step(async () => {
+      byText(notice, 'button', 'Put in force').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.spanLayers.repairConstraints).not.toHaveBeenCalled();
+    expect(declared).toEqual([]);
+    expect(notifyWarning).toHaveBeenCalledWith(
+      'Raw two: 1 morpheme with more than one annotation. Leave one annotation on each, then choose Put in force.',
+      'Not in force',
+    );
+    expect(notifySuccess).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('a field holding no rules on clean data: Put in force declares them', async () => {
+    vi.clearAllMocks();
+    const proj = withFields([
+      { id: 'msl-1', name: 'Raw two', config: { igt: { scope: 'Morpheme' } }, constraints: {} },
+    ]);
+    const { client, declared } = clientFor(proj, 0);
+    const { container, step, unmount } = await renderWith(client, proj);
+    const notice = container.querySelector('[data-testid="rules-out-of-force"]');
+    await step(async () => {
+      byText(notice, 'button', 'Put in force').click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(declared).toEqual([['msl-1', [{ type: 'single-span' }]]]);
+    expect(notifySuccess).toHaveBeenCalledWith('In force on Raw two');
     await unmount();
   });
 });

@@ -20,59 +20,64 @@ vi.mock('@/utils/feedback', () => ({
 // holds no list (rules removed by another client, or a project made before
 // lists were declared), with values off it. `pointed`: a second field, Gloss,
 // that another maintainer has pointed at POS.
-const project = ({ bare = false, pointed = false } = {}) => ({
-  id: 'p-1',
-  config: {
-    igt: {
-      tagsets: {
-        POS: { mode: 'suggest', delimiters: '', values: [{ value: 'N' }, { value: 'V' }] },
-        ...(bare
-          ? { Leipzig: { mode: 'closed', delimiters: '.', values: [{ value: 'NOM' }] } }
-          : {}),
+// `held`: as `bare`, but Gloss holds one span a token and no list: Leipzig
+// is out of force on it, for the values off it.
+const project = ({ bare: bareOption = false, pointed = false, held = false } = {}) => {
+  const bare = bareOption || held;
+  return {
+    id: 'p-1',
+    config: {
+      igt: {
+        tagsets: {
+          POS: { mode: 'suggest', delimiters: '', values: [{ value: 'N' }, { value: 'V' }] },
+          ...(bare
+            ? { Leipzig: { mode: 'closed', delimiters: '.', values: [{ value: 'NOM' }] } }
+            : {}),
+        },
       },
     },
-  },
-  textLayers: [
-    {
-      id: 'tl',
-      config: { plaid: { role: 'baseline' } },
-      tokenLayers: [
-        {
-          id: 'wl',
-          config: { plaid: { role: 'word' } },
-          spanLayers: [
-            {
-              id: 'sl-pos',
-              name: 'POS',
-              config: { igt: { scope: 'Word', tagset: 'POS' } },
-              constraints: { igt: [{ type: 'single-span' }] },
-            },
-            ...(bare
-              ? [
-                  {
-                    id: 'sl-gloss',
-                    name: 'Gloss',
-                    config: { igt: { scope: 'Word', tagset: 'Leipzig' } },
-                    constraints: {},
-                  },
-                ]
-              : []),
-            ...(pointed
-              ? [
-                  {
-                    id: 'sl-gloss',
-                    name: 'Gloss',
-                    config: { igt: { scope: 'Word', tagset: 'POS' } },
-                    constraints: { igt: [{ type: 'single-span' }] },
-                  },
-                ]
-              : []),
-          ],
-        },
-      ],
-    },
-  ],
-});
+    textLayers: [
+      {
+        id: 'tl',
+        config: { plaid: { role: 'baseline' } },
+        tokenLayers: [
+          {
+            id: 'wl',
+            config: { plaid: { role: 'word' } },
+            spanLayers: [
+              {
+                id: 'sl-pos',
+                name: 'POS',
+                config: { igt: { scope: 'Word', tagset: 'POS' } },
+                constraints: { igt: [{ type: 'single-span' }] },
+              },
+              ...(bare
+                ? [
+                    {
+                      id: 'sl-gloss',
+                      name: 'Gloss',
+                      config: { igt: { scope: 'Word', tagset: 'Leipzig' } },
+                      constraints: held ? { igt: [{ type: 'single-span' }] } : {},
+                    },
+                  ]
+                : []),
+              ...(pointed
+                ? [
+                    {
+                      id: 'sl-gloss',
+                      name: 'Gloss',
+                      config: { igt: { scope: 'Word', tagset: 'POS' } },
+                      constraints: { igt: [{ type: 'single-span' }] },
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      },
+    ],
+  };
+};
 
 // `options` is the project the server holds, as `project` takes them.
 const makeClient = (answer, answers = {}, options = {}) => {
@@ -267,6 +272,51 @@ describe('a field whose layer holds no list', () => {
     expect(client.writes[1][1]).toBe('sl-pos');
     expect(client.writes[2]).toEqual(['setConstraints', 'sl-gloss', [{ type: 'single-span' }]]);
     expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
+    await view.unmount();
+  });
+});
+
+// REV4-WIRE-1, ruled by the parent: a change to a tagset already out of force
+// on a field goes through, the field stays out of force, and its values are
+// named.
+describe('a tagset out of force on a field', () => {
+  it('takes a new value, and the field stays out of force, named', async () => {
+    const client = makeClient(
+      { count: 0, valueCount: 0, values: [] },
+      {
+        'sl-gloss': {
+          count: 2,
+          valueCount: 2,
+          values: [
+            { value: 'QQ', parts: ['QQ'], count: 1 },
+            { value: 'ZZ', parts: ['ZZ'], count: 1 },
+          ],
+        },
+      },
+      { held: true },
+    );
+    const view = await mount(client, { held: true });
+    const expand = all(view.container, 'button').filter((b) => b.title === 'Expand');
+    await view.step(async () => expand[1].click());
+    const input = all(view.container, 'input').find((i) => i.placeholder === 'Add a value');
+    await view.step(async () => typeInto(input, 'NEW'));
+    await view.step(async () => {
+      all(view.container, 'button')
+        .find((b) => b.textContent.trim() === 'Add')
+        .click();
+      await settle();
+    });
+    expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
+    expect(client.writes.map((w) => w[0])).toEqual(['setConfig']);
+    expect(client.writes[0][2].Leipzig.values.map((v) => v.value)).toEqual(['NOM', 'NEW']);
+    // Asked once, by the heal after the save.
+    expect(client.asked.map((a) => a[0])).toEqual(['sl-gloss']);
+    expect(notifyWarning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '“Leipzig” is not in force on Gloss: 2 annotations not in the list, QQ (1), ZZ (1).',
+      ),
+      'Not in force',
+    );
     await view.unmount();
   });
 });

@@ -91,7 +91,10 @@ describe('the rules IGT wants', () => {
   // holds no rules yet repairs what core can repair first, in the same batch,
   // so only a violation with no remedy refuses it. A new field's layer
   // (`constraints: null`) has nothing to repair.
-  it('repairs a field whose layer holds no rules before declaring, and not a new one', () => {
+  // REV4-WIRE-1 and -2: a save declares in its batch only on a field that
+  // was in force, and never repairs. A field out of force before the save
+  // (here one whose layer holds no rules) is left to the heal after it.
+  it('declares only on a field in force before the save, and repairs nothing', () => {
     const info = getIgtLayerInfo(buildRawDoc());
     const [gloss] = Object.values(info.spanLayers).flat();
     const queued = [];
@@ -103,22 +106,34 @@ describe('the rules IGT wants', () => {
     };
     const config = { ...gloss.config, igt: { ...gloss.config?.igt, tagset: 'Leipzig' } };
     const bare = { ...gloss, config, constraints: {} };
-    expect(queueFieldDeclarations(b, [bare], tagsets('closed', ['N']), {})).toBe(1);
-    expect(queued.map((q) => q[0])).toEqual(['repair', 'set']);
-    expect(queued[0][1]).toBe(gloss.id);
-    expect(queued[0][2]).toEqual(queued[1][3]);
+    expect(queueFieldDeclarations(b, [bare], tagsets('closed', ['N']), {})).toBe(0);
+    expect(queued).toEqual([]);
+    const inForce = { ...bare, constraints: { igt: [{ type: 'single-span' }] } };
+    expect(queueFieldDeclarations(b, [inForce], tagsets('closed', ['N']), {})).toBe(1);
+    expect(queued.map((q) => q[0])).toEqual(['set']);
     queued.length = 0;
     queueFieldDeclarations(b, [{ ...gloss, constraints: null }], tagsets('closed', ['N']), {});
     expect(queued.map((q) => q[0])).toEqual(['set']);
-    // A save that does not change its rules leaves a bare layer as it is.
+    // A list held out of date is out of force too: no declaration.
     queued.length = 0;
+    const old = {
+      ...bare,
+      constraints: {
+        igt: [
+          { type: 'single-span' },
+          { type: 'value-set', values: ['N'], delimiters: '.', parts: 'all' },
+        ],
+      },
+    };
     expect(
-      queueFieldDeclarations(b, [bare], tagsets('closed', ['N']), tagsets('closed', ['N'])),
+      queueFieldDeclarations(
+        b,
+        [old],
+        tagsets('closed', ['N', 'V']),
+        tagsets('closed', ['N', 'X']),
+      ),
     ).toBe(0);
     expect(queued).toEqual([]);
-    queued.length = 0;
-    queueFieldDeclarations(b, [{ ...gloss, constraints: null }], tagsets('closed', ['N']), {});
-    expect(queued.map((q) => q[0])).toEqual(['set']);
   });
 });
 
@@ -301,11 +316,16 @@ describe('what a settings save would have the server refuse', () => {
     };
     expect(queueFieldDeclarations(b, [field('A', {})], other, closed)).toBe(0);
     expect(queued).toEqual([]);
-    // Its own tagset closing is its business.
-    expect(await refusedBySave(c, [field('A', {})], closed, tagsets('mixed'))).toHaveLength(1);
+    // Its own tagset closing is its business, when it was in force.
+    const span = { igt: [{ type: 'single-span' }] };
+    expect(await refusedBySave(c, [field('A', span)], closed, tagsets('mixed'))).toHaveLength(1);
     // So is pointing it at a closed list, read from its config before.
-    const repointed = { ...field('A', {}), configBefore: { igt: { scope: 'Word' } } };
+    const repointed = { ...field('A', span), configBefore: { igt: { scope: 'Word' } } };
     expect(await refusedBySave(c, [repointed], closed, closed)).toHaveLength(1);
+    // Not when it was out of force before the save (REV4-WIRE-1).
+    c.asked.length = 0;
+    expect(await refusedBySave(c, [field('A', {})], closed, tagsets('mixed'))).toEqual([]);
+    expect(c.asked).toEqual([]);
   });
 
   it('needs the config as stored', async () => {

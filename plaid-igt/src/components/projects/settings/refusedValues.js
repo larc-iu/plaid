@@ -41,19 +41,44 @@ export const NOT_IN_FORCE_TITLE = 'Not in force';
 export const NOT_IN_FORCE_ACTION =
   'Change these values, then choose Put in force under Validation.';
 
+const UNITS = { Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' };
+const unitWord = (scope, n) => `${UNITS[scope] ?? 'word'}${n === 1 ? '' : 's'}`;
+
 /**
  * A closed list left out of force because values in use are not in it, as
  * `declareIgtRules` (domain/igtConstraints.js) answers it, one line a field:
  * "“Leipzig” is not in force on Morph Gloss: 1 annotation not in the list,
- * QQ (1)." A rule refused for another reason has no values to name.
+ * QQ (1)." A field whose annotations would need joining to take its rules
+ * (`repair`): "Raw note: 1 word with more than one annotation." A rule
+ * refused for another reason has no values to name.
  */
 export const notInForceLines = (fields) =>
-  fields.map((f) =>
-    f.values?.length
-      ? `${f.tagset ? `“${f.tagset}”` : 'The closed list'} is not in force on ${f.field}: ${countWord(f.count)} not in the list, ${f.values.map(valueText).join(', ')}${moreText(f)}.`
-      : `The rules of ${f.field} are not in force: ${countWord(f.count)} break them.`,
-  );
+  fields.map((f) => {
+    const lines = [];
+    if (f.values?.length) {
+      lines.push(
+        `${f.tagset ? `“${f.tagset}”` : 'The closed list'} is not in force on ${f.field}: ${countWord(f.count)} not in the list, ${f.values.map(valueText).join(', ')}${moreText(f)}.`,
+      );
+    }
+    if (f.repair?.length) {
+      const n = f.repairCount ?? 0;
+      lines.push(`${f.field}: ${n} ${unitWord(f.scope, n)} with more than one annotation.`);
+    }
+    if (!lines.length) {
+      lines.push(`The rules of ${f.field} are not in force: ${countWord(f.count)} break them.`);
+    }
+    return lines.join(' ');
+  });
 
-/** The same as one text with what to do, for a toast. */
-export const notInForceText = (fields) =>
-  `${notInForceLines(fields).join(' ')} ${NOT_IN_FORCE_ACTION}`;
+/**
+ * The same as one text with what to do, for a toast. `here` when it shows
+ * on Validation itself.
+ */
+export const notInForceText = (fields, { here = false } = {}) => {
+  const steps = [];
+  if (fields.some((f) => f.values?.length || !f.repair?.length)) steps.push('change these values');
+  if (fields.some((f) => f.repair?.length)) steps.push('leave one annotation on each');
+  const what = steps.join(' and ');
+  const action = `${what[0].toUpperCase()}${what.slice(1)}, then choose Put in force${here ? '' : ' under Validation'}.`;
+  return `${notInForceLines(fields).join(' ')} ${action}`;
+};

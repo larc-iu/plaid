@@ -130,12 +130,27 @@ export const IGT_ASSISTANT = {
   // A plan of tagset changes is settings, which the assistant's delegated
   // token may not write: written here, with the user's session, before the
   // approval goes (domain/tagsetPlan.js). Then every field's rules are put
-  // in force as a settings save leaves them.
+  // in force as a settings save leaves them: the fields whose rules the plan
+  // changes inside the plan's own operation (its audit ref), as part of what
+  // it did, and any other field apart, under the heal's own operation, since
+  // that brings back a field the plan never touched.
   writesFirst: isTagsetPlan,
   writeFirst: async ({ client, projectId, plan, operation }) => {
     if (!isTagsetPlan(plan)) return false;
-    const wrote = await writeTagsetPlan(client, projectId, plan, operation);
-    if (wrote) await putRulesInForce(client, projectId);
+    let own = null;
+    let named = [];
+    const wrote = await writeTagsetPlan(client, projectId, plan, operation, {
+      afterWrite: async (fieldIds) => {
+        own = new Set(fieldIds);
+        if (!own.size) return;
+        named =
+          (await putRulesInForce(client, projectId, { layers: own.has.bind(own), quiet: true })) ??
+          [];
+      },
+    });
+    if (wrote) {
+      await putRulesInForce(client, projectId, { layers: (id) => !own?.has(id), named });
+    }
     return wrote;
   },
   examples: [

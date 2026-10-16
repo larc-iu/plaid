@@ -168,15 +168,22 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     [layerInfo, project?.config, domains],
   );
 
-  // The fields whose rules on the server are not what their tagsets say: a
-  // closed list an import, a script or a refused save left out of force.
+  // The fields whose rules on the server are not what their settings say: a
+  // closed list an import or a save left out of force, a list no closed
+  // tagset names any more, a field a script made without its rules.
   const outOfForce = useMemo(() => fieldsOutOfForce(project), [project]);
   const [forcing, setForcing] = useState(false);
-  const putInForce = async () => {
+  // Put the rules of `targets` (entries of `outOfForce`) in force, and say
+  // what changed: `done` names it when nothing was left out.
+  const putInForce = async (targets, done) => {
     setForcing(true);
     try {
-      const notInForce = await putRulesInForce(client, projectId);
-      if (notInForce && !notInForce.length) notifySuccess('The tagsets are in force');
+      const ids = new Set(targets.map((f) => f.layerId));
+      const notInForce = await putRulesInForce(client, projectId, {
+        layers: (id) => ids.has(id),
+        here: true,
+      });
+      if (notInForce && !notInForce.length) notifySuccess(done);
       await onProjectUpdate?.();
     } finally {
       setForcing(false);
@@ -318,7 +325,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       }
       if (!fresh.length) return;
       notifySuccess(`${fresh.map((f) => `“${f.value}”`).join(', ')} added to ${g.tagsetName}`);
-      await putRulesInForce(client, projectId);
+      await putRulesInForce(client, projectId, { here: true });
       // The scan reads the tagset from the project, so refresh it and re-check.
       await onProjectUpdate?.();
     } catch (err) {
@@ -418,8 +425,22 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   const totalBad = fields.reduce((a, f) => a + f.bad.length, 0);
   const zeroRows = zeros || [];
-  const missing = outOfForce.filter((f) => f.closed);
-  const stale = outOfForce.filter((f) => !f.closed);
+  // Fields to put in force: a closed list not held, one annotation a unit
+  // not held, or any other difference. Fields holding a list no closed
+  // tagset names: the list to remove.
+  const stale = outOfForce.filter((f) => f.stale);
+  const toForce = outOfForce.filter((f) => !f.stale);
+  const lists = toForce.filter((f) => f.list);
+  const singles = toForce.filter((f) => !f.list && f.single);
+  const others = toForce.filter((f) => !f.list && !f.single);
+  const unitOf = (f) =>
+    ({ Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' })[f.scope] ?? 'word';
+  const forceText = `Not in force: ${[
+    ...lists.map((f) => `${f.tagset} on ${f.field}`),
+    ...singles.map((f) => `one annotation a ${unitOf(f)} on ${f.field}`),
+    ...others.map((f) => `the rules of ${f.field}`),
+  ].join(', ')}.`;
+  const listNames = (fs) => fs.map((f) => f.field).join(', ');
 
   return (
     <div className="flex flex-col gap-4">
@@ -427,23 +448,35 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
       {outOfForce.length > 0 && (
         <Notice tone="warning" icon={AlertTriangle} data-testid="rules-out-of-force">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>
-              {missing.length > 0 &&
-                `Not in force: ${missing.map((f) => `${f.tagset} on ${f.field}`).join(', ')}.`}
-              {missing.length > 0 && stale.length > 0 && ' '}
-              {stale.length > 0 &&
-                `Still in force without a closed tagset: the list on ${stale.map((f) => f.field).join(', ')}.`}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              disabled={forcing}
-              onClick={putInForce}
-            >
-              Put in force
-            </Button>
+          <div className="flex flex-col gap-1">
+            {toForce.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{forceText}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
+                  disabled={forcing}
+                  onClick={() => putInForce(toForce, `In force on ${listNames(toForce)}`)}
+                >
+                  Put in force
+                </Button>
+              </div>
+            )}
+            {stale.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{`In force with no closed tagset: the list on ${listNames(stale)}.`}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
+                  disabled={forcing}
+                  onClick={() => putInForce(stale, `The list on ${listNames(stale)} is removed`)}
+                >
+                  Remove the list
+                </Button>
+              </div>
+            )}
           </div>
         </Notice>
       )}

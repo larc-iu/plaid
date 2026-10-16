@@ -19,7 +19,12 @@
 
 import { IGT_NAMESPACE } from './igtConfig.js';
 import { normalizeTagset } from './tagsets.js';
-import { igtFields, queueFieldDeclarations, tagsetRefusal } from './igtConstraints.js';
+import {
+  fieldsChangedBySave,
+  igtFields,
+  queueFieldDeclarations,
+  tagsetRefusal,
+} from './igtConstraints.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { CORE_VOCAB_FIELDS } from './vocabFields.js';
 
@@ -146,7 +151,8 @@ const readOwner = async (client, projectId, owner) => {
 
 /**
  * Queue on batch `b` the writes `ops` (one owner's) make over `live`, each
- * expecting what was read.
+ * expecting what was read. Returns the ids of the fields whose rules they
+ * change.
  */
 const queueOwner = (b, projectId, owner, ops, live) => {
   const igt = igtOf(live.config);
@@ -201,7 +207,7 @@ const queueOwner = (b, projectId, owner, ops, live) => {
         expected: igt.fields ?? null,
       });
     }
-    return;
+    return [];
   }
 
   const meta = igt.documentMetadata;
@@ -244,6 +250,7 @@ const queueOwner = (b, projectId, owner, ops, live) => {
   });
   const after = { ...live.config, [IGT_NAMESPACE]: { ...igt, tagsets: next } };
   queueFieldDeclarations(b, fields, after, live.config);
+  return fieldsChangedBySave(fields, after, live.config);
 };
 
 /**
@@ -254,8 +261,18 @@ const queueOwner = (b, projectId, owner, ops, live) => {
  * that already read as planned are left as they are. `operation`
  * ({message, kind, ref}, plaid-ui `planOperation`) is the plan's own
  * operation, as the service opens one for every other plan it applies.
+ * `afterWrite(fieldIds)`, given the ids of the fields whose rules the plan
+ * changes, runs in that operation once the settings landed, for the rules
+ * those fields take on the plan's behalf. It must not throw: the settings
+ * are written by then.
  */
-export const writeTagsetPlan = async (client, projectId, plan, operation = null) => {
+export const writeTagsetPlan = async (
+  client,
+  projectId,
+  plan,
+  operation = null,
+  { afterWrite = null } = {},
+) => {
   const ops = (plan?.ops || []).filter((op) => SETTINGS_KINDS.includes(op?.kind));
   if (!ops.length) return false;
   const owners = [...new Set(ops.map((op) => op.owner))];
@@ -271,18 +288,26 @@ export const writeTagsetPlan = async (client, projectId, plan, operation = null)
   // `client` is one of the page's own (plaid-ui `authService.clientApart`),
   // so the operation neither joins one open on the shared client nor is
   // joined by one.
-  const write = () =>
-    client.batched((b) => {
+  let written = false;
+  const changed = [];
+  const write = async () => {
+    changed.length = 0;
+    await client.batched((b) => {
       for (const owner of owners) {
-        queueOwner(
-          b,
-          projectId,
-          owner,
-          ops.filter((op) => op.owner === owner),
-          lives.get(owner),
+        changed.push(
+          ...queueOwner(
+            b,
+            projectId,
+            owner,
+            ops.filter((op) => op.owner === owner),
+            lives.get(owner),
+          ),
         );
       }
     });
+    written = true;
+    if (afterWrite) await afterWrite([...changed]);
+  };
   try {
     if (operation) {
       await client.withOperation(operation.message, write, {
@@ -293,6 +318,11 @@ export const writeTagsetPlan = async (client, projectId, plan, operation = null)
       await write();
     }
   } catch (error) {
+    // Only the settings write may refuse the plan. Past it, they stand.
+    if (written) {
+      console.warn('The plan was written, and what followed failed:', error);
+      return true;
+    }
     const words = tagsetRefusal(error);
     if (words) throw new Error(`${words} Nothing was written.`, { cause: error });
     throw error;

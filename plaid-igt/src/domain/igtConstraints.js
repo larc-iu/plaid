@@ -17,7 +17,6 @@ import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
 import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 import {
   ensureLayerConstraints,
-  queueRepairOfBareLayer,
   sameConstraints,
   storedConstraints,
 } from '../../../plaid-ui/src/lib/layerConstraints.js';
@@ -118,10 +117,9 @@ export const wantedConstraints = (layerInfo, projectConfig) => {
  * under `previousConfig` (the config as stored), the field read with its
  * config after the save (`sl.config`) and before it (`sl.configBefore`, else
  * the same). A field the save makes (`sl.constraints === null`) always
- * changes. A field whose layer holds other rules than its config asks for,
- * which the save does not change, is left as it is.
+ * changes.
  */
-const savedRules = (sl, projectConfig, previousConfig) => {
+const rulesChange = (sl, projectConfig, previousConfig) => {
   if (previousConfig === undefined) {
     throw new Error('The project config before the save is required');
   }
@@ -132,15 +130,40 @@ const savedRules = (sl, projectConfig, previousConfig) => {
 };
 
 /**
+ * The rules a settings save declares on field `sl` in its own batch: those
+ * of `rulesChange`, for a field whose layer holds what its settings asked
+ * for before the save (in force). A field out of force before the save (a
+ * closed list the stored values break, rules another client left) is not
+ * declared or asked about here: the save goes through and the heal after it
+ * (`declareIgtRules`) declares what the values allow and names the rest.
+ */
+const savedRules = (sl, projectConfig, previousConfig) => {
+  const wanted = rulesChange(sl, projectConfig, previousConfig);
+  if (!wanted || sl.constraints === null) return wanted;
+  const before = fieldConstraints(sl.configBefore ?? sl.config, previousConfig);
+  return sameConstraints(storedConstraints(sl, IGT_NAMESPACE), before) ? wanted : null;
+};
+
+/**
+ * The ids of the fields in `spanLayers` (as `queueFieldDeclarations` takes
+ * them) whose rules a settings save changes, in force or not: what the
+ * save's effect on the rules is, for a heal made on its behalf.
+ */
+export const fieldsChangedBySave = (spanLayers, projectConfig, previousConfig) =>
+  (spanLayers || [])
+    .filter((sl) => sl?.id && rulesChange(sl, projectConfig, previousConfig))
+    .map((sl) => sl.id);
+
+/**
  * Queue on batch `b` the declarations a settings save changes: every field
  * in `spanLayers` ({id, name, config, configBefore?, constraints}, each config
- * as it will be after the save) whose rules the save changes (`savedRules`,
- * `projectConfig` after the save and `previousConfig` as stored) and whose
- * layer does not already hold them. The declaration goes in the same batch
- * as the settings write, so a tagset the stored values break is refused with
- * them and stays as it was. A field whose layer holds no rules yet is
- * repaired first in the batch (`sl.constraints` given: the layer exists).
- * Returns how many declarations it queued.
+ * as it will be after the save) whose rules the save changes and that was in
+ * force (`savedRules`, `projectConfig` after the save and `previousConfig` as
+ * stored), and whose layer does not already hold them. The declaration goes
+ * in the same batch as the settings write, so a list in force that the
+ * stored values break is refused with them and stays as it was. Nothing is
+ * repaired: a field in force already holds one annotation a unit, and a
+ * field the save makes holds none. Returns how many declarations it queued.
  */
 export const queueFieldDeclarations = (b, spanLayers, projectConfig, previousConfig) => {
   let n = 0;
@@ -150,10 +173,6 @@ export const queueFieldDeclarations = (b, spanLayers, projectConfig, previousCon
     if (!wanted) continue;
     const stored = storedConstraints(sl, IGT_NAMESPACE);
     if (sameConstraints(wanted, stored)) continue;
-    // A layer that exists and holds no rules yet: what core can repair first.
-    if (sl.constraints != null) {
-      queueRepairOfBareLayer(b, { kind: 'span', layerId: sl.id, constraints: wanted, stored });
-    }
     b.spanLayers.setConstraints(sl.id, IGT_NAMESPACE, wanted, undefined, {
       expected: stored ?? null,
     });
@@ -168,7 +187,8 @@ export const queueFieldDeclarations = (b, spanLayers, projectConfig, previousCon
  * the server's answer to which stored values that list refuses
  * (`refusedValues`, with its exemptions), kept when it refuses any. Asked
  * before the save, so the screen can say what is in the way instead of only
- * reading the refusal. A field the save leaves alone is not asked about.
+ * reading the refusal. A field the save leaves alone, or one out of force
+ * before it, is not asked about.
  * Returns `[{layerId, field, count, valueCount, values: [{value, parts, count}]}]`.
  */
 export const refusedBySave = async (
@@ -202,7 +222,8 @@ export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {
  * here: every rule its settings want (`wantedConstraints`) that its layers do
  * not hold, declared through `ensureLayerConstraints`. With `fieldsOnly`,
  * only the fields' rules (what a settings save governs), else the word and
- * morpheme layers' too (what setup and an import declare).
+ * morpheme layers' too (what setup and an import declare). With `layers`
+ * (a test of a layer id), only the layers it passes.
  *
  * This is the one place a stored rule is brought back to the settings, so
  * every path that leaves the settings and the server apart calls it: setup,
@@ -214,18 +235,24 @@ export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {
  * exemptions) is not declared, and a list the field already holds stays, so
  * nothing is enforced less than before. Each such field is returned in
  * `notInForce` as `{layerId, field, tagset, count, valueCount, values}`, and
- * so is any other rule the server still refuses (`values` empty). Returns
- * `{changed, notInForce}`.
+ * so is any other rule the server still refuses (`values` empty). With
+ * `repair: false` (every heal but setup's and an import's) no annotation is
+ * changed: a rule the data breaks is left out even where the server could
+ * repair it, and its field is named with `repair` (the rule types),
+ * `repairCount` and `scope` (Word, Morpheme or Sentence). Returns `{changed, notInForce}`.
  */
 export const declareIgtRules = async (
   client,
   projectId,
-  { fieldsOnly = false, limit = 5 } = {},
+  { fieldsOnly = false, repair = true, layers = null, limit = 5 } = {},
 ) => {
   const project = await client.projects.get(projectId);
   const info = getIgtLayerInfo(project);
   const wanted = wantedConstraints(info, project?.config).filter(
-    (e) => (!fieldsOnly || e.kind === 'span') && !sameConstraints(e.stored, e.constraints),
+    (e) =>
+      (!fieldsOnly || e.kind === 'span') &&
+      (!layers || layers(e.layerId)) &&
+      !sameConstraints(e.stored, e.constraints),
   );
   if (!wanted.length) return { changed: false, notInForce: [] };
   const fields = new Map(igtFields(info).map((sl) => [sl.id, sl]));
@@ -254,9 +281,24 @@ export const declareIgtRules = async (
       };
     }),
   );
-  const { changed, pending } = await ensureLayerConstraints(client, entries, { canManage: true });
+  const { changed, pending } = await ensureLayerConstraints(client, entries, {
+    canManage: true,
+    repair,
+  });
   for (const p of pending) {
-    if (notInForce.some((n) => n.layerId === p.layerId)) continue;
+    const named = notInForce.find((n) => n.layerId === p.layerId);
+    const needs = p.repair?.length
+      ? {
+          repair: p.repair,
+          repairCount: p.repairCount ?? 0,
+          scope: fields.get(p.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
+        }
+      : {};
+    if (named) {
+      // Its list is named already: what else the data breaks goes with it.
+      Object.assign(named, needs);
+      continue;
+    }
     notInForce.push({
       layerId: p.layerId,
       field: names.get(p.layerId) ?? p.layerId,
@@ -264,28 +306,40 @@ export const declareIgtRules = async (
       count: p.violationCount ?? 0,
       valueCount: 0,
       values: [],
+      ...needs,
     });
   }
   return { changed, notInForce };
 };
 
 /**
- * The fields whose rules on the server differ from what their settings want
- * (a closed list not in force, or a list held that the settings no longer
- * name), read off a project: `[{layerId, field, tagset, closed}]`, `closed`
- * when the settings want a list. Reads only.
+ * The fields whose rules on the server differ from what their settings want,
+ * read off a project: `[{layerId, field, tagset, scope, closed, list, stale,
+ * single}]`. `closed` when the settings want a list, `list` when that list is
+ * not held as they want it, `stale` when a list is held and the settings
+ * want none, `single` when one annotation a unit is wanted and not held.
+ * Reads only.
  */
 export const fieldsOutOfForce = (project) => {
   const info = getIgtLayerInfo(project);
   const fields = new Map(igtFields(info).map((sl) => [sl.id, sl]));
+  const has = (list, type) => (list || []).some((c) => c.type === type);
+  const listOf = (list) => (list || []).filter((c) => c.type === 'value-set');
   return wantedConstraints(info, project?.config)
     .filter((e) => e.kind === 'span' && !sameConstraints(e.stored, e.constraints))
-    .map((e) => ({
-      layerId: e.layerId,
-      field: fields.get(e.layerId)?.name ?? e.layerId,
-      tagset: readTagsetName(fields.get(e.layerId)?.config),
-      closed: e.constraints.some((c) => c.type === 'value-set'),
-    }));
+    .map((e) => {
+      const closed = has(e.constraints, 'value-set');
+      return {
+        layerId: e.layerId,
+        field: fields.get(e.layerId)?.name ?? e.layerId,
+        tagset: readTagsetName(fields.get(e.layerId)?.config),
+        scope: fields.get(e.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
+        closed,
+        list: closed && !sameConstraints(listOf(e.stored), listOf(e.constraints)),
+        stale: !closed && has(e.stored, 'value-set'),
+        single: !has(e.stored, 'single-span'),
+      };
+    });
 };
 
 /**
