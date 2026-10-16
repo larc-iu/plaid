@@ -558,8 +558,6 @@ def renumbered_refusal(ws: Workspace, doc: UdDoc, s: Sentence, index: int, ref: 
     out = (f'{ref} is "{form}" now, but this plan\'s {_reshaper(ws, doc, s)} renumbers s{s.index}: once it is applied, '
            f'"{form}" is w{new}{then}. A plan names words by their numbers now, so add the form to say '
            f'which you mean: s{s.index}.w{index} "{form}".')
-    if index <= len(after) and after[index - 1][1] is None:
-        out += ' ' + PLANNED_WORDS_LATER
     return out
 
 

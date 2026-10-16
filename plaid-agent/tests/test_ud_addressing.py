@@ -236,8 +236,7 @@ def test_a_number_set_words_renumbers_is_refused_and_a_form_says_which(ws2):
     out = run(ws, 'set_field', document='Linea', refs=['s1.w2'], field='upos', value='ADP')
     assert out == ('Error: s1.w2 is "hoy" now, but this plan\'s set_words renumbers s1: once it is applied, '
                    '"hoy" is w5 and w2 is "a". A plan names words by their numbers now, so add the form to '
-                   'say which you mean: s1.w2 "hoy". A plan cannot write to words it is still making: once '
-                   'the user approves this plan they are ordinary words, so annotate them in the next plan.'), out
+                   'say which you mean: s1.w2 "hoy".'), out
     out = run(ws, 'set_head', document='Linea', ref='s1.w2 "hoy"', head=2, deprel='obl')
     assert out.startswith('Error: Head 2 is "hoy" now'), out
     # The planned number of a word that exists now names it as it is now.

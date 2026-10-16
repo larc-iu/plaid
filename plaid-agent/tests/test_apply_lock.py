@@ -316,4 +316,4 @@ def test_a_stopped_run_of_the_same_plan_says_when_to_apply_again(spec):
     client.documents.check_lock = lambda document_id: {
         'user_id': 'second@x.com', 'expires_at': int(time.time() * 1000) + 40900}
     helper = sbs._approve(spec, client, plan)
-    assert 'is locked by another run on it. Approve again once it has finished.' in helper.errors[-1]
+    assert 'is locked by another run. Try again in a minute.' in helper.errors[-1]

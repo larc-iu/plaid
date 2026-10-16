@@ -1675,7 +1675,7 @@ class BaseAssistantService(BaseService):
             if left is not None:
                 return (f'A previous run of this plan stopped and still holds {which}. Apply again in '
                         f'{left} second{"" if left == 1 else "s"}.')
-        return f'{which} is locked by another run on it. Approve again once it has finished.'
+        return f'{which} is locked by another run. Try again in a minute.'
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, remember, stamp_mode, contributor, store,

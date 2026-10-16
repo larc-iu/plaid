@@ -80,7 +80,7 @@ def test_ud_a_replacement_row_counts_without_its_kept_value():
     assert row['rule']['total'] == 1
     assert [d[2] for d in row['rule']['documents']] == [1]
     assert [(t['from'], t['to'], t['count']) for t in row['rule']['transitions']] == [('mar', 'maR', 1)]
-    assert 'on 1 value(s)' in row['label'], row['label']
+    assert 'on 1 value in' in row['label'], row['label']
     assert payload['summary'] == '1 field value'
     assert plan_changes(payload['ops']) == 1
     # The stored op keeps what the preview found, without the card.

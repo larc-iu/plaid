@@ -6,7 +6,7 @@ mechanics are all in :mod:`plaid_agent.core`. What is here is UD's half.
 
 from typing import Any, Dict, List
 
-from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
+from ..core.service import BaseAssistantService
 from ..core.plan import documents_to_lock
 from . import plan, prompt, toolkit
 from .citations import resolve_citations

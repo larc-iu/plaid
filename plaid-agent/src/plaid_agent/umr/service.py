@@ -5,7 +5,7 @@ mechanics are all in :mod:`plaid_agent.core`. What is here is UMR's half.
 """
 
 
-from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
+from ..core.service import BaseAssistantService
 from . import plan, prompt, toolkit
 from .citations import resolve_citations
 from .project import load_project

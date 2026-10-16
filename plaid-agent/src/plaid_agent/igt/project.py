@@ -761,6 +761,23 @@ def _word_by_form(s: 'Sentence', ref: str, r) -> 'Word':
                      + ', '.join(f's{s.index}.w{w.index}' for w in words) + '. Name one by its number.')
 
 
+def plain_ref(doc: IgtDoc, ref: str) -> str:
+    """``ref`` as the place it names, with no form beside it, for a label:
+    ``s15.w2`` for ``s15."do"`` and for ``s15.w2 "do"``. A reference that does
+    not resolve is given back as it came."""
+    r = read_ref(ref, 'wm')
+    if r is None:
+        return ref
+    if r.by_form:
+        try:
+            w = resolve(doc, ref)
+        except ValueError:
+            return ref
+        return f's{r.sentence}.w{w.index}'
+    wi, mi = r.parts
+    return f's{r.sentence}' + (f'.w{wi}' if wi is not None else '') + (f'.m{mi}' if mi is not None else '')
+
+
 def resolve(doc: IgtDoc, ref: str):
     """-> Sentence | Word | Morpheme for a positional reference into `doc`.
     A form given beside the number has to be the one there: a reference whose

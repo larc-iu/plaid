@@ -22,6 +22,7 @@ from ..core import rules, work
 from ..core.bidi import qrx, qv
 from ..core.history import doc_label
 from ..core.keep import is_keep
+from ..core.trace import plural
 from .plan import KIND, SCOPES, entity_of
 from .project import FEATURES
 from .review import counts_phrase
@@ -161,8 +162,8 @@ def replace_label(ws, op: Dict[str, Any], n: int, docs: int, accepted: int) -> s
     """A field-wide replacement's row."""
     shown = qrx(op['pattern']) if op.get('regex') else qv(op['pattern'])
     where = (f' in {doc_label(ws, op["document_id"], qv)}' if op.get('document_id')
-             else f' in {docs} document(s)')
-    return (f'{op["field"]}: replace {shown} with {qv(op.get("replacement") or "")} on {n} value(s){where}'
+             else f' in {plural(docs, "document")}')
+    return (f'{op["field"]}: replace {shown} with {qv(op.get("replacement") or "")} on {plural(n, "value")}{where}'
             + work.counted_phrase(accepted))
 
 

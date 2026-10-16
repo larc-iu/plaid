@@ -22,7 +22,7 @@ from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
-from .project import Sentence, Word, project_new_words, resolve, split_sentences, word_ref
+from .project import Sentence, Word, plain_ref, project_new_words, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
 from .workspace import Workspace, _need, _refs
 
@@ -173,7 +173,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     # before its sentence has moved it (core.fingerprint, `token_at`).
     ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n,
                'token_at': {'begin': w.begin, 'end': w.end}, 'morpheme_ids': morphs,
-               **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(w.surface)}', f'split into {qv(left)} + {qv(right)}{note}')})
+               **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(w.surface)}', f'split into {qv(left)} + {qv(right)}{note}')})
     return ws.planned_note(1)
 
 
@@ -271,7 +271,7 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
         before = upto
         staged.append({'kind': 'delete_word', 'word_id': w.id, 'morpheme_ids': [m.id for m in w.morphemes],
                        'link_ids': [l.id for l in dropped],
-                       **labelled(f'{ws.doc_label(doc.id)} {ref} {qv(w.surface)}', f'delete the word token{note}')})
+                       **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(w.surface)}', f'delete the word token{note}')})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -298,7 +298,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
                                                 s.id, w.begin)))
     ws.add_op({'kind': 'split_sentence', 'sentence_id': s.id, 'position': w.begin,
                'token_at': {'begin': s.begin, 'end': s.end},
-               **labelled(f'{ws.doc_label(doc.id)} {ref}',
+               **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
                           f'split before w{n} {qv(w.surface)} → {qv(left[:40])} | {qv(right[:40])}{note}')})
     return ws.planned_note(1)
 
@@ -397,7 +397,7 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
                'begin': b, 'end': e, 'old': old, 'new': text,
                'word_ids': word_ids, 'morpheme_ids': morpheme_ids,
-               **labelled(f'{ws.doc_label(doc.id)} {ref}',
+               **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
                           f'retype {qv(old[:40] + ("…" if len(old) > 40 else ""))} → '
                           f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
                           + f' ({_retype_effects(ws, s, b, old, text)})')})
