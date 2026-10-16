@@ -19,7 +19,10 @@
 // it through here for better script-specific segmentation (especially for
 // ja/zh/th which V8 segments with dictionary lookup when given the locale).
 import { cpLength, utf16ToCp } from '@larc-iu/plaid-client';
-import { shouldTokenizeCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
+import {
+  isTokenIgnored,
+  shouldTokenizeCharacter,
+} from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 
 // One segmenter per locale: building one is the costly part, and a gap fill
 // asks for one per stretch of untokenized text.
@@ -91,13 +94,16 @@ export function newlineSentenceRanges(text) {
  * leaves untokenized (ruling 28 and 29, 2026-10-16). With no tokens it is
  * `basicTokenize` of the whole text, cut at `sentenceRanges`.
  *
- * A new token never splits what IGT's own tokenizer would make one word, and
- * so never leaves a character the project calls letter-like (`ignoredTokens`
- * on the word layer) out of its word: tokens that fall in one such word are
- * joined into one, the word's whole extent. That way IGT reads a text whose
- * gaps this filled the same as it would have tokenized them itself. Only
- * where IGT has set the word layer up (`ignoredTokens` is its config there),
- * so a project of plaid-ud alone tokenizes as it always has.
+ * Where IGT has set the word layer up (`ignoredTokens` is its config there),
+ * the new tokens are exactly what IGT reads the stretch as: each of its words
+ * as IGT's tokenizer cuts it (`can't`, `3.14` and `10,000` in pieces where
+ * IGT breaks at `'`, `.` and `,`), and a token for each run of what is left
+ * that IGT ignores, split as Unicode segmentation splits it (`...` is three).
+ * A character IGT breaks a word at but does not ignore (`‼`, a soft hyphen)
+ * stays text, since a token of it would be a word to IGT. So IGT reads a text
+ * whose gaps this filled as it reads the same text untokenized (ruling 29,
+ * REV7-IGT-2, REV7-APPS-2). A project of plaid-ud alone tokenizes as it
+ * always has. No token begins or ends with whitespace.
  *
  * @param {string} text the document body
  * @param {[number, number][]} sentenceRanges in code points, in order
@@ -119,9 +125,7 @@ export function gapTokenize(text, sentenceRanges, tokens, locale = 'und', ignore
       begin + b,
       begin + e,
     ]);
-    out.push(
-      ...(ignoredTokens ? joinedOver(ranges, igtWords(cps, begin, end, ignoredTokens)) : ranges),
-    );
+    out.push(...(ignoredTokens ? asIgtReads(cps, begin, end, ranges, ignoredTokens) : ranges));
   };
   // Sentences in order, and a cursor over the tokens, which are in order too:
   // each token is looked at for the sentences it reaches, not for every one.
@@ -155,15 +159,29 @@ function igtWords(cps, begin, end, ignoredTokens) {
   return words;
 }
 
-// `ranges` with every group that overlaps one of `words` joined into one range
-// over the group and the word: in order, none overlapping.
-function joinedOver(ranges, words) {
-  const all = [...ranges, ...words].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const joined = [];
-  for (const [b, e] of all) {
-    const last = joined[joined.length - 1];
-    if (last && b < last[1]) last[1] = Math.max(last[1], e);
-    else joined.push([b, e]);
+// What IGT reads cps[begin, end) as, as tokens: its words, and each run of
+// the rest within one of `ranges` (Unicode segmentation's pieces) that IGT
+// ignores, cut at whitespace. A run IGT would read as a word whole is split
+// into its characters, and only those IGT ignores become tokens. In order.
+function asIgtReads(cps, begin, end, ranges, ignoredTokens) {
+  const words = igtWords(cps, begin, end, ignoredTokens);
+  const inWord = new Uint8Array(end - begin);
+  for (const [b, e] of words) inWord.fill(1, b - begin, e - begin);
+  const out = [...words];
+  const ignored = (b, e) => isTokenIgnored(cps.slice(b, e).join(''), ignoredTokens);
+  for (const [b, e] of ranges) {
+    let i = b;
+    while (i < e) {
+      if (inWord[i - begin] || /\s/.test(cps[i])) {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j < e && !inWord[j - begin] && !/\s/.test(cps[j])) j += 1;
+      if (ignored(i, j)) out.push([i, j]);
+      else for (let k = i; k < j; k += 1) if (ignored(k, k + 1)) out.push([k, k + 1]);
+      i = j;
+    }
   }
-  return joined;
+  return out.sort((a, b) => a[0] - b[0]);
 }
