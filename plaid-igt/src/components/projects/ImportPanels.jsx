@@ -9,12 +9,13 @@
 // progress bar and three did not, and the same failure was reported in four
 // wordings.
 
-import { useRef } from 'react';
 import { Square, Upload } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { FileDropzone } from '@ui/components/shared/FileDropzone.jsx';
+import { cn } from '@ui/lib/utils';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { notifySuccess } from '@/utils/feedback';
@@ -42,10 +43,11 @@ export const ImportHeader = ({ crumbs = NEW_PROJECT_CRUMBS, title, resume = null
 );
 
 /**
- * The dashed box a file is dropped on. `onFiles` is given the FileList. With
- * `onChoose` the box holds a button that opens the page's own file input
- * (which the page keeps, to add files later), otherwise the whole box is
- * clickable and holds its own input (`accept`, `multiple`).
+ * The dashed box a file is dropped on (plaid-ui's FileDropzone, which every
+ * app's import screens share). `onFiles` is given the files. With `onChoose`
+ * the box holds a button that opens the page's own file input (which the page
+ * keeps, to add files later), otherwise the whole box opens its own input
+ * (`accept`, `multiple`), by click or from the keyboard.
  */
 export const FileDropZone = ({
   onFiles,
@@ -55,47 +57,20 @@ export const FileDropZone = ({
   multiple = false,
   onChoose = null,
   chooseLabel,
-}) => {
-  const inputRef = useRef(null);
-  const drop = {
-    onDragOver: (e) => e.preventDefault(),
-    onDrop: (e) => {
-      e.preventDefault();
-      onFiles(e.dataTransfer.files);
-    },
-  };
-  if (onChoose) {
-    return (
-      <div
-        className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed p-10 text-center"
-        {...drop}
-      >
-        <Upload className="h-8 w-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">{hint}</p>
-        <Button onClick={onChoose}>{chooseLabel}</Button>
-      </div>
-    );
-  }
-  return (
-    <div
-      className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
-      onClick={() => inputRef.current?.click()}
-      {...drop}
-    >
-      <Upload className="h-8 w-8 text-muted-foreground" />
-      <p className="font-medium">{title}</p>
-      <p className="text-sm text-muted-foreground">{hint}</p>
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        multiple={multiple}
-        className="hidden"
-        onChange={(e) => onFiles(e.target.files)}
-      />
-    </div>
-  );
-};
+}) => (
+  <FileDropzone
+    onFiles={onFiles}
+    accept={accept}
+    multiple={multiple}
+    clickable={!onChoose}
+    className={cn('gap-3 rounded-lg', onChoose ? 'p-10' : 'p-12')}
+  >
+    <Upload className="h-8 w-8 text-muted-foreground" />
+    {!onChoose && <p className="font-medium">{title}</p>}
+    <p className="text-sm text-muted-foreground">{hint}</p>
+    {onChoose && <Button onClick={onChoose}>{chooseLabel}</Button>}
+  </FileDropzone>
+);
 
 /** What a page shows while it reads the file it was given. */
 export const ReadingPanel = ({ label }) => (

@@ -9,7 +9,6 @@ import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess, notifyWarning } from '../../lib/notify.js';
 import { decodeText, NotUtf8FileError, readTextFile } from '../../lib/textFile.js';
 import { appRoutes } from '../../lib/uiConfig.js';
-import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -28,68 +27,8 @@ import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { NotSetUpNotice } from './NotSetUpNotice.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
+import { FileDropzone } from './FileDropzone.jsx';
 import { countOf } from '../../lib/plural.js';
-
-// A drop target with a hidden file input behind it. `dragging` is counted
-// rather than set, because dragging over a child element fires dragleave on the
-// parent and a boolean would flicker. It is a button to the keyboard: a stop in
-// the tab order that Enter and Space open the file picker from.
-const Dropzone = ({ onFiles, disabled, accept, children }) => {
-  const [depth, setDepth] = useState(0);
-  const inputRef = useRef(null);
-
-  const take = (list) => {
-    const files = [...(list || [])];
-    if (files.length) onFiles(files);
-  };
-
-  return (
-    <div
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-disabled={disabled || undefined}
-      className={cn(
-        'flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        depth > 0 ? 'border-primary bg-primary/5' : 'hover:bg-muted/40',
-        disabled && 'pointer-events-none opacity-50',
-      )}
-      onClick={() => inputRef.current?.click()}
-      onKeyDown={(e) => {
-        if (disabled || e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          inputRef.current?.click();
-        }
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault();
-        setDepth((d) => d + 1);
-      }}
-      onDragOver={(e) => e.preventDefault()}
-      onDragLeave={() => setDepth((d) => Math.max(0, d - 1))}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDepth(0);
-        take(e.dataTransfer?.files);
-      }}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept={accept}
-        className="hidden"
-        disabled={disabled}
-        onChange={(e) => {
-          take(e.target.files);
-          // Let the same file be picked twice in a row.
-          e.target.value = '';
-        }}
-      />
-      {children}
-    </div>
-  );
-};
 
 const isZip = (file) => /\.zip$/i.test(file.name);
 
@@ -418,7 +357,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                 />
               ) : (
                 <div className="flex flex-col gap-4">
-                  <Dropzone
+                  <FileDropzone
                     disabled={importing}
                     accept={format.accept}
                     onFiles={(dropped) => setFiles((prev) => [...prev, ...dropped])}
@@ -428,7 +367,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                       Drop {code(format.extension)}
                       {format.unzip ? <> or {code('.zip')}</> : null} files here, or click to choose
                     </p>
-                  </Dropzone>
+                  </FileDropzone>
 
                   {files.length > 0 && (
                     <div className="rounded-md border bg-muted/40 p-3">

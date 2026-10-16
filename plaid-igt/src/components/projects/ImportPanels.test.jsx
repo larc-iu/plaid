@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
-import { Panel, WarningLog, ImportRunPanel } from './ImportPanels.jsx';
+import { FileDropZone, Panel, WarningLog, ImportRunPanel } from './ImportPanels.jsx';
 import { NewProjectChooser } from './NewProjectChooser.jsx';
 
 // The wizards' boxed notices wear the shared Notice tones, so a warning in an
@@ -55,6 +55,51 @@ describe('the new project chooser', () => {
     expect(all(nav, 'a').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Projects', '/projects'],
     ]);
+    await view.unmount();
+  });
+});
+
+// The wizards' drop box is the one every app's import screens share: a stop
+// in the tab order that Enter opens the picker from, given the dropped files.
+describe('the import wizards’ drop box', () => {
+  const dropOn = (el, files) => {
+    const e = new Event('drop', { bubbles: true, cancelable: true });
+    e.dataTransfer = { files };
+    el.dispatchEvent(e);
+  };
+
+  it('opens its own picker from the keyboard and takes a drop', async () => {
+    const onFiles = vi.fn();
+    const view = await renderComponent(
+      <FileDropZone onFiles={onFiles} title="Drop a .zip here" hint="hint" accept=".zip" />,
+    );
+    const zone = view.container.querySelector('[role="button"]');
+    expect(zone.tabIndex).toBe(0);
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input.accept).toBe('.zip');
+    const clicked = vi.spyOn(input, 'click').mockImplementation(() => {});
+    await view.step(() =>
+      zone.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+    );
+    expect(clicked).toHaveBeenCalledTimes(1);
+    const f = new File(['x'], 'a.zip');
+    await view.step(() => dropOn(zone, [f]));
+    expect(onFiles).toHaveBeenCalledWith([f]);
+    await view.unmount();
+  });
+
+  it('with the page’s own picker, holds its button and is no button itself', async () => {
+    const onChoose = vi.fn();
+    const view = await renderComponent(
+      <FileDropZone onFiles={() => {}} hint="hint" onChoose={onChoose} chooseLabel="Choose" />,
+    );
+    expect(view.container.querySelector('[role="button"]')).toBeNull();
+    expect(view.container.querySelector('input[type="file"]')).toBeNull();
+    const button = [...view.container.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Choose',
+    );
+    await view.step(() => button.click());
+    expect(onChoose).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 });
