@@ -77,13 +77,31 @@ const stillOut = (entry) => {
  * clean data is the rule). The rules an earlier call left out that have no
  * remedy are checked for `pending`.
  */
-const planOf = async (client, entry) => {
+const planOf = async (client, entry, mayRepair = true) => {
   const out = stillOut(entry);
   const check = (rules) => client[BUNDLE[entry.kind]].checkConstraints(entry.layerId, rules);
   const fixable = (out ?? entry.constraints).filter((c) => REMEDIABLE.has(c.type));
   // Every rule with a remedy is repaired when any is broken: the check lists
   // at most 100 violations, so their types do not say which are.
-  const repair = fixable.length && countOf(await check(fixable)) > 0 ? fixable : [];
+  const fixAnswer = fixable.length ? await check(fixable) : null;
+  const repair = countOf(fixAnswer) > 0 ? fixable : [];
+  if (repair.length && !mayRepair) {
+    // Not to be repaired here: the rules that need it stay out, pending,
+    // and the rest is declared as if they were not wanted.
+    const rest = { ...entry, constraints: entry.constraints.filter((c) => !repair.includes(c)) };
+    const plan = await planOf(client, rest, false);
+    const pending = plan.pending ?? { constraints: [], violationCount: 0 };
+    return {
+      ...plan,
+      entry,
+      pending: {
+        constraints: [...repair.map((c) => c.type), ...pending.constraints],
+        violationCount: countOf(fixAnswer) + pending.violationCount,
+        repair: repair.map((c) => c.type),
+        repairCount: countOf(fixAnswer),
+      },
+    };
+  }
   if (!out) return { entry, target: entry.constraints, repair, pending: null };
   const unfixable = out.filter((c) => !REMEDIABLE.has(c.type));
   let broken = [];
@@ -103,12 +121,13 @@ const planOf = async (client, entry) => {
   };
 };
 
-const pendingEntry = (entry, constraints, violationCount) => ({
+const pendingEntry = (entry, constraints, violationCount, needs) => ({
   layerId: entry.layerId,
   kind: entry.kind,
   namespace: entry.namespace,
   constraints,
   violationCount,
+  ...(needs?.repair?.length ? { repair: needs.repair, repairCount: needs.repairCount } : {}),
 });
 
 /**
@@ -117,13 +136,20 @@ const pendingEntry = (entry, constraints, violationCount) => ({
  * @param {object} client - a PlaidClient
  * @param {Array<{kind: 'token'|'span'|'relation', layerId: string, namespace: string,
  *   constraints: Array<object>, stored: Array<object>|null}>} wanted
- * @param {{canManage?: boolean}} options - only a maintainer declares.
+ * @param {{canManage?: boolean, repair?: boolean}} options - only a maintainer
+ *   declares. With `repair: false` no stored data is changed: a rule the data
+ *   breaks is left out even when it has a remedy, and is pending with its
+ *   types under `repair` and the number of violations under `repairCount`.
  * @returns {Promise<{changed: boolean, repaired: boolean, pending: Array<object>}>}
  *   `changed` when a list was declared, `repaired` when stored data was
  *   changed (the caller reloads), `pending` for each layer with rules left
  *   undeclared, naming them.
  */
-export async function ensureLayerConstraints(client, wanted, { canManage = false } = {}) {
+export async function ensureLayerConstraints(
+  client,
+  wanted,
+  { canManage = false, repair = true } = {},
+) {
   const result = { changed: false, repaired: false, pending: [] };
   if (!canManage) return result;
   const differs = wanted.filter((w) => !sameConstraints(w.stored, w.constraints));
@@ -133,7 +159,7 @@ export async function ensureLayerConstraints(client, wanted, { canManage = false
   // data is declared with no repair, and a layer the data still breaks costs
   // its checks.
   const plans = [];
-  for (const w of differs) plans.push(await planOf(client, w));
+  for (const w of differs) plans.push(await planOf(client, w, repair));
   const pendingOf = new Map();
   for (const p of plans) if (p.pending) pendingOf.set(p.entry.layerId, { ...p.pending });
   const toDeclare = plans.filter((p) => !sameConstraints(p.entry.stored, p.target));
@@ -206,7 +232,9 @@ export async function ensureLayerConstraints(client, wanted, { canManage = false
   }
   for (const p of plans) {
     const held = pendingOf.get(p.entry.layerId);
-    if (held) result.pending.push(pendingEntry(p.entry, held.constraints, held.violationCount));
+    if (held) {
+      result.pending.push(pendingEntry(p.entry, held.constraints, held.violationCount, p.pending));
+    }
   }
   return result;
 }

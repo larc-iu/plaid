@@ -190,6 +190,62 @@ describe('ensureLayerConstraints', () => {
     ]);
   });
 
+  // REV4-WIRE-2: a heal after a settings save changes no annotation.
+  it('with repair off, repairs nothing, leaves the broken rule pending and declares the rest', async () => {
+    const doubled = (rules) =>
+      rules.some((r) => r.type === 'single-span')
+        ? { violations: [{ constraint: 'single-span' }], violationCount: 2 }
+        : { violations: [], violationCount: 0 };
+    const c = fakeClient({ 'checkConstraints:L': doubled, 'checkConstraints:M': doubled });
+    const vs = { type: 'value-set', values: ['n'] };
+    const out = await ensureLayerConstraints(
+      c,
+      [entry('L', [{ type: 'single-span' }, vs]), entry('M', [{ type: 'single-span' }])],
+      { canManage: true, repair: false },
+    );
+    expect(c.calls.some((x) => x[0] === 'repairConstraints')).toBe(false);
+    expect(c.calls.filter((x) => x[0] === 'setConstraints').map((x) => [x[1], x[3]])).toEqual([
+      ['L', [vs]],
+    ]);
+    expect(out).toEqual({
+      changed: true,
+      repaired: false,
+      pending: [
+        {
+          layerId: 'L',
+          kind: 'span',
+          namespace: 'igt',
+          constraints: ['single-span'],
+          violationCount: 2,
+          repair: ['single-span'],
+          repairCount: 2,
+        },
+        {
+          layerId: 'M',
+          kind: 'span',
+          namespace: 'igt',
+          constraints: ['single-span'],
+          violationCount: 2,
+          repair: ['single-span'],
+          repairCount: 2,
+        },
+      ],
+    });
+    // A later call with the list part declared checks only what is out, and
+    // writes nothing while the data still breaks it.
+    const again = fakeClient({
+      'checkConstraints:L': { violations: [{ constraint: 'single-span' }], violationCount: 2 },
+    });
+    const next = await ensureLayerConstraints(
+      again,
+      [entry('L', [{ type: 'single-span' }, vs], [vs])],
+      { canManage: true, repair: false },
+    );
+    expect(again.calls.map((x) => x[0])).toEqual(['checkConstraints']);
+    expect(next.changed).toBe(false);
+    expect(next.pending[0].repair).toEqual(['single-span']);
+  });
+
   it('reads a layer another maintainer declared meanwhile once, and stops', async () => {
     const conflict = Object.assign(new Error('HTTP 409'), { status: 409, responseData: {} });
     const c = fakeClient({
