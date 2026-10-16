@@ -275,3 +275,37 @@ describe('merging segments', () => {
     expect(kinds(doc)).toEqual([]);
   });
 });
+
+describe('a split with punctuation tokens ud made', () => {
+  // igt reads a token the ignored-tokens rule excludes as text (ruling 29),
+  // so a split offers the same cuts with and without one.
+  const body = 'he saw... a fish';
+  const build = (punct) => {
+    const words = [
+      { id: 'w-1', begin: 0, end: 2 },
+      { id: 'w-2', begin: 3, end: 6 },
+      ...(punct ? [{ id: 'p-1', begin: 6, end: 9 }] : []),
+      { id: 'w-3', begin: 10, end: 11 },
+      { id: 'w-4', begin: 12, end: 16 },
+    ];
+    const raw = buildRawDoc({
+      body,
+      words,
+      alignmentTokens: [
+        { id: 'seg-1', text: 'text-1', begin: 0, end: 16, metadata: { timeBegin: 0, timeEnd: 16 } },
+      ],
+    });
+    const layer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
+    layer.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+    return makeIgtDoc({ raw });
+  };
+
+  it('cuts where it cuts untokenized punctuation', () => {
+    const plain = build(false);
+    const punct = build(true);
+    for (let time = 1; time < 16; time += 0.5) {
+      const at = (d) => d.segmentSplitPlan('seg-1', { time })?.at;
+      expect([time, at(punct)]).toEqual([time, at(plain)]);
+    }
+  });
+});

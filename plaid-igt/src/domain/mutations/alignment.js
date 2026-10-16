@@ -57,6 +57,7 @@ import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { newWordsOf, reshapeVocabLinks, wordsOverlap } from './document.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
+import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
 import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { countSplitLoss, countTextDeleteLoss, dropRelations } from '@ui/domain/annotationLoss.js';
@@ -998,8 +999,14 @@ export const alignmentMutations = {
     if (time < timeBegin + MIN_SEGMENT || time > timeEnd - MIN_SEGMENT) {
       return { error: 'Playback is too close to the edge of the segment.' };
     }
+    // Words only: a token the ignored-tokens rule excludes is text, so a split
+    // offers the same cuts with and without ud's punctuation tokens.
+    const ignored = readIgnoredTokens(info.primaryTokenLayer?.config);
     const words = (info.primaryTokenLayer?.tokens || []).filter(
-      (w) => w.end > segment.begin && w.begin < segment.end,
+      (w) =>
+        w.end > segment.begin &&
+        w.begin < segment.end &&
+        !isTokenIgnored(cpSlice(this.body, w.begin, w.end), ignored),
     );
     const cuts = segmentCuts(this.body, segment, words);
     if (!cuts.length) return { error: 'This segment has one word.' };
