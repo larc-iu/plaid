@@ -54,6 +54,8 @@ export function useElanBatch({
 } = {}) {
   const [files, setFiles] = useState(null); // parsed .eaf objects
   const [mediaFiles, setMediaFiles] = useState([]);
+  // The recording being converted to PCM WAV, by name, or null.
+  const [decoding, setDecoding] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [nearMissChoices, setNearMissChoices] = useState({});
   const [nearMissGroups, setNearMissGroups] = useState([]);
@@ -175,7 +177,14 @@ export function useElanBatch({
   const readFiles = async (fileList, given = null) => {
     const { eafs, media: chosen } = partitionPicked(fileList);
     // A recording no browser plays is refused here, an ADPCM WAV converted.
-    const picked = chosen.length ? await readyRecordings(chosen, prepareOptions) : [];
+    let picked = [];
+    if (chosen.length) {
+      try {
+        picked = await readyRecordings(chosen, { ...prepareOptions, onConvert: setDecoding });
+      } finally {
+        setDecoding(null);
+      }
+    }
     // Picking the same recording twice (choosing again, or dragging a folder
     // over one already staged) must not stage it twice: the second copy would
     // find its .eaf already claimed and sit there reading "no .eaf names this
@@ -254,6 +263,7 @@ export function useElanBatch({
     files,
     mediaFiles,
     setMediaFiles,
+    decoding,
     media,
     comparison,
     nodes,

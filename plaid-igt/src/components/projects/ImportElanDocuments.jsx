@@ -404,7 +404,16 @@ export const ImportElanDocuments = () => {
           />
         )}
 
-        {stage === 'parsing' && <p className="text-sm text-muted-foreground">Reading files…</p>}
+        {stage === 'parsing' && (
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {batch.decoding ? `Converting ${batch.decoding} to PCM WAV.` : 'Reading files…'}
+          </p>
+        )}
+        {stage !== 'parsing' && batch.decoding && (
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            Converting {batch.decoding} to PCM WAV.
+          </p>
+        )}
 
         {(stage === 'review' || stage === 'running') && batch.comparison && project && (
           <div className="flex flex-col gap-6">
