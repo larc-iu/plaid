@@ -158,16 +158,14 @@ def _trim_gaps(old: str, gaps) -> List[Tuple[int, int, str]]:
     return out
 
 
-def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored: Optional[dict],
-                   sentences: Sequence[Any] = ()) -> List[Tuple[int, int]]:
-    """The words to create with an edit of ``gaps`` over ``base``.
-
-    ``gaps`` are ``{start, end, value}`` (or ``(start, end, value)``) in code
-    points of ``base``, in order and not overlapping. ``words`` are the word
-    tokens on ``base`` (``{begin, end}`` or ``(begin, end)``). ``ignored`` is
-    the ignored-tokens rule. ``sentences`` are the sentences on ``base``: no
-    new word crosses one of their boundaries. Returns ``(begin, end)`` ranges
-    in code points of the body the edit makes, in order."""
+def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], sentences: Sequence[Any] = ()):
+    """Where an edit of ``gaps`` over ``base`` may make words, as
+    ``new_text_words`` takes them: ``(body, typed, covered, cut)``, the body
+    the edit makes (a list of code points), which of them the edit typed,
+    which an existing word may end up over, and where core puts a sentence
+    boundary (``cut``, 1 at each such position, held to core's by
+    ``tests/test_sentence_cut_cases.py`` on plaid-core's shared case table).
+    None when the edit types nothing."""
     old = base or ''
     srt = sorted(_trim_gaps(old, [_gap(g) for g in gaps or []]), key=lambda g: g[0])
     body: List[str] = []
@@ -190,7 +188,7 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
         typed.append(False)
     n = len(body)
     if not any(typed):
-        return []
+        return None
 
     def last_starting(p: int, strict: bool) -> int:
         lo, hi = 0, len(srt)
@@ -319,7 +317,24 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
     for x in range(n - 2, -1, -1):
         if not covered[x] and covered[x + 1] and joins(x):
             covered[x] = 1
+    return body, typed, covered, cut
 
+
+def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored: Optional[dict],
+                   sentences: Sequence[Any] = ()) -> List[Tuple[int, int]]:
+    """The words to create with an edit of ``gaps`` over ``base``.
+
+    ``gaps`` are ``{start, end, value}`` (or ``(start, end, value)``) in code
+    points of ``base``, in order and not overlapping. ``words`` are the word
+    tokens on ``base`` (``{begin, end}`` or ``(begin, end)``). ``ignored`` is
+    the ignored-tokens rule. ``sentences`` are the sentences on ``base``: no
+    new word crosses one of their boundaries. Returns ``(begin, end)`` ranges
+    in code points of the body the edit makes, in order."""
+    layout = new_text_layout(base, gaps, words, sentences)
+    if layout is None:
+        return []
+    body, typed, covered, cut = layout
+    n = len(body)
     text = ''.join(body)
     out: List[Tuple[int, int]] = []
     x = 0

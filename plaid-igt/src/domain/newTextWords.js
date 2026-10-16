@@ -67,19 +67,19 @@ function trimmed(old, gaps) {
 }
 
 /**
- * The words to create with a save of `gaps` over `base`.
- * @param {object} save
- * @param {string} save.base - the stored body the gaps are of
- * @param {Array<{start:number,end:number,value:string}>} save.gaps - code
- *   points of `base`, in order, not overlapping (plaid-ui's editLog shape)
- * @param {Array<{begin:number,end:number}>} save.words - the words on `base`
- * @param {object|null} save.ignored - the ignored-tokens rule
- * @param {Array<{begin:number,end:number}>} [save.sentences] - the sentences
- *   on `base`: no new word crosses one of their boundaries
- * @returns {Array<{begin:number,end:number}>} new words, in code points of
- *   the body the save makes, in order
+ * Where a save of `gaps` over `base` may make words: the body it makes, which
+ * of its code points the save typed, which an existing word may end up over
+ * (`covered`), and where core puts a sentence boundary in it (`cut`, 1 at
+ * each such position). `sentenceCutCases.test.js` holds `cut` to core's on
+ * plaid-core's shared case table. Null when the save types nothing.
+ * @param {object} save - as `newTextWords` takes it, less `ignored`
+ * @param {string} save.base
+ * @param {Array<{start:number,end:number,value:string}>} save.gaps
+ * @param {Array<{begin:number,end:number}>} save.words
+ * @param {Array<{begin:number,end:number}>} [save.sentences]
+ * @returns {{body: string[], typed: boolean[], covered: Uint8Array, cut: Uint8Array}|null}
  */
-export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
+export function newTextLayout({ base, gaps, words, sentences = [] }) {
   const old = Array.from(base ?? '');
   const sorted = trimmed(old, gaps).sort((a, b) => a.start - b.start);
   const body = [];
@@ -106,7 +106,7 @@ export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
     typed.push(false);
   }
   const n = body.length;
-  if (!typed.some(Boolean)) return [];
+  if (!typed.some(Boolean)) return null;
 
   // The last gap starting at or before `p` (or strictly before it), or -1.
   const lastStarting = (p, strict) => {
@@ -217,7 +217,27 @@ export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
   const joins = (x) => typed[x] && !isSpace(body[x]);
   for (let x = 1; x < n; x++) if (!covered[x] && covered[x - 1] && joins(x)) covered[x] = 1;
   for (let x = n - 2; x >= 0; x--) if (!covered[x] && covered[x + 1] && joins(x)) covered[x] = 1;
+  return { body, typed, covered, cut };
+}
 
+/**
+ * The words to create with a save of `gaps` over `base`.
+ * @param {object} save
+ * @param {string} save.base - the stored body the gaps are of
+ * @param {Array<{start:number,end:number,value:string}>} save.gaps - code
+ *   points of `base`, in order, not overlapping (plaid-ui's editLog shape)
+ * @param {Array<{begin:number,end:number}>} save.words - the words on `base`
+ * @param {object|null} save.ignored - the ignored-tokens rule
+ * @param {Array<{begin:number,end:number}>} [save.sentences] - the sentences
+ *   on `base`: no new word crosses one of their boundaries
+ * @returns {Array<{begin:number,end:number}>} new words, in code points of
+ *   the body the save makes, in order
+ */
+export function newTextWords({ base, gaps, words, ignored, sentences = [] }) {
+  const layout = newTextLayout({ base, gaps, words, sentences });
+  if (!layout) return [];
+  const { body, typed, covered, cut } = layout;
+  const n = body.length;
   const ranges = [];
   for (let x = 0; x < n; ) {
     if (covered[x]) {
