@@ -5,13 +5,8 @@ import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
-import {
-  isTokenIgnored,
-  readIgnoredTokens,
-  readInitialized,
-  readImportState,
-  importRouteFor,
-} from '@/domain/igtConfig';
+import { igtWordCount } from './igtWordCount.js';
+import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { announceLinkConflict } from '@ui/lib/cellConflict.js';
 import { DocumentEditorShell } from '@ui/components/shared/DocumentEditorShell.jsx';
@@ -71,17 +66,6 @@ const landing = (doc) => {
     // The derivation is not ready: stay on Baseline.
     return null;
   }
-};
-
-// The words the long-document notice weighs: a token the ignored-tokens rule
-// excludes is text, not a word.
-export const igtWordCount = (doc) => {
-  const layer = doc?.layerInfo?.primaryTokenLayer;
-  if (!layer?.tokens) return undefined;
-  const cfg = readIgnoredTokens(layer.config);
-  const body = [...(doc.body || '')];
-  return layer.tokens.filter((t) => !isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg))
-    .length;
 };
 
 const IGT_SHELL = {

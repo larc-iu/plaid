@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { igtWordCount } from './DocumentDetail.jsx';
+import { igtWordCount } from './igtWordCount.js';
 
 describe('igtWordCount', () => {
   const doc = (tokens) => ({

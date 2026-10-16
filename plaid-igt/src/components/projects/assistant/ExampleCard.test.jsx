@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
-import { ExampleCard, snapPastPinned } from './ExampleCard.jsx';
+import { ExampleCard } from './ExampleCard.jsx';
+import { snapPastPinned } from './snapPastPinned.js';
 
 // A long sentence scrolls inside the card to the cited words, and the row
 // labels (Gloss, POS…) scrolled off with the rest, so a reader saw values with
