@@ -246,8 +246,8 @@
                          (:project_id (psc/fetch-by-id db :span_layers layer)))
               :document (when-let [t (first tokens)]
                           (:document_id (psc/fetch-by-id db :tokens t)))
-              :description (str "Create span " new-id " with " (count tokens)
-                                " tokens in layer " layer)
+              :description (str "Create span " new-id " with " (psc/counted (count tokens) "token")
+                                " in layer " layer)
               :user user-id}]
       (first (create-spans! tx [(assoc attrs ::new-id new-id :metadata metadata)]))))))
 
@@ -458,7 +458,7 @@
              :project (project-id db eid)
              :document (:document_id pre)
              :description (str "Update tokens of span " eid
-                               " to " (count new-token-ids) " tokens")
+                               " to " (psc/counted (count new-token-ids) "token"))
              :user user-id}]
      (let [span-row (psc/fetch-by-id tx :spans eid)
            _ (when (nil? span-row)

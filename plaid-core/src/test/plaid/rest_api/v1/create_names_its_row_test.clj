@@ -31,7 +31,11 @@
         s2 (id (h/create-span admin-request sl [t2] "BARK"))
         r (id (h/create-relation admin-request rl s2 s1 "nsubj"))
         l (id (h/create-vocab-link admin-request item [t1]))
+        _ (h/update-span-tokens admin-request s2 [t1 t2])
         said (descriptions doc)]
+    (testing "a span's token count reads in plain words"
+      (is (some #(= % (str "Create span " s1 " with 1 token in layer " sl)) said) (pr-str said))
+      (is (some #(= % (str "Update tokens of span " s2 " to 2 tokens")) said) (pr-str said)))
     (doseq [[what said-as] [["span" (str "Create span " s1 " ")]
                             ["relation" (str "Create relation " r " ")]
                             ["vocab link" (str "Create vocab mapping " l)]]]
