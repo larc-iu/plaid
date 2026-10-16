@@ -121,14 +121,18 @@
     (testing "case does not tell names apart"
       (let [r (create! p "STORY")]
         (assert-status 422 r)
-        (is (= "STORY" (get-in r [:body :name-taken]))))
+        (is (= "Story" (get-in r [:body :name-taken])) "the name as the document holding it spells it")
+        (is (str/includes? (get-in r [:body :error]) "“Story”")))
       (assert-created (create! p "Straße"))
-      (assert-status 422 (create! p "STRASSE"))
+      (let [r (create! p "STRASSE")]
+        (assert-status 422 r)
+        (is (= "A document named “Straße” already exists in this project." (get-in r [:body :error])))
+        (is (= "Straße" (get-in r [:body :name-taken]))))
       (assert-status 422 (create! p "strasse")))
     (testing "a rename to a taken name is refused, and changes nothing"
       (let [r (rename! b "story")]
         (assert-status 422 r)
-        (is (= "story" (get-in r [:body :name-taken])))
+        (is (= "Story" (get-in r [:body :name-taken])))
         (is (= ["Other" "Story" "Straße"] (names-in p)))))
     (testing "a rename to its own name in another case, or a free one, goes through"
       (assert-ok (rename! a "STORY"))
@@ -149,7 +153,7 @@
         a (create-test-document admin-request p "Story")
         _ (create-test-document admin-request p "STORY (2)")]
     (testing "a copy under a taken name is refused, in any case"
-      (assert-status 422 (copy! a "story (2)"))
+      (is (= "STORY (2)" (get-in (copy! a "story (2)") [:body :name-taken])))
       (let [r (copy! a "Story")]
         (assert-status 422 r)
         (is (= "Story" (get-in r [:body :name-taken])))))

@@ -58,21 +58,28 @@
   [taken? name]
   (first (remove taken? (candidates name))))
 
+(defn- held
+  "The document of `project`, other than `except` (nil for none), whose name
+  folds as `name` does, as `{:id :name}`, or nil."
+  [tx project name except]
+  (psc/q1 tx {:select [:id :name]
+              :from [:documents]
+              :where (cond-> [:and [:= :project_id project] [:= :name_key (fold name)]]
+                       except (conj [:<> :id except]))
+              :limit 1}))
+
 (defn holder
   "The id of a document of `project` whose name folds as `name` does, other
   than `except` (nil for none), or nil."
   [tx project name except]
-  (:id (psc/q1 tx {:select [:id]
-                   :from [:documents]
-                   :where (cond-> [:and [:= :project_id project] [:= :name_key (fold name)]]
-                            except (conj [:<> :id except]))
-                   :limit 1})))
+  (:id (held tx project name except)))
 
 (defn taken
-  "The refusal for `name`: 422, with `name-taken` in the answer's body."
-  [name]
-  (ex-info (str "A document named “" name "” already exists in this project.")
-           {:code 422 :plaid/body {:name-taken name}}))
+  "The refusal of a name another document holds as `stored`: 422, naming the
+  name as that document spells it, also as `name-taken` in the answer's body."
+  [stored]
+  (ex-info (str "A document named “" stored "” already exists in this project.")
+           {:code 422 :plaid/body {:name-taken stored}}))
 
 (defn settle!
   "The name a write of `name` to a document of `project` stores, inside the
@@ -80,11 +87,11 @@
   create). With `free?` a taken name gives way to the first free one, else a
   taken name is refused."
   [tx project name {:keys [except free?]}]
-  (let [taken? #(some? (holder tx project % except))]
-    (cond
-      free? (free-name taken? name)
-      (taken? name) (throw (taken name))
-      :else name)))
+  (if free?
+    (free-name #(some? (holder tx project % except)) name)
+    (if-let [h (held tx project name except)]
+      (throw (taken (:name h)))
+      name)))
 
 ;; ============================================================
 ;; The migrations: 20261016120000-document-names-unique.edn made names
