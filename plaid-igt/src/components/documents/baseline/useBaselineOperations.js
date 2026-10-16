@@ -26,6 +26,28 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 // because the same passage was changed elsewhere: a save refused for it, or
 // text typed during a save that landed that cannot be moved onto it. It lasts
 // until the next save or Cancel.
+// Whether `gaps` (code points of `base`) take away any of its text. What a
+// gap gives back at its front or end is not taken: a paste over the whole
+// box that only adds to it is an insert.
+export function removesText(base, gaps) {
+  const cps = Array.from(base);
+  return gaps.some(({ start, end, value }) => {
+    const old = cps.slice(start, end);
+    const typed = Array.from(value);
+    let front = 0;
+    while (front < old.length && front < typed.length && old[front] === typed[front]) front += 1;
+    let back = 0;
+    while (
+      back < old.length - front &&
+      back < typed.length - front &&
+      old[old.length - 1 - back] === typed[typed.length - 1 - back]
+    ) {
+      back += 1;
+    }
+    return front + back < old.length;
+  });
+}
+
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useDocumentModel(doc);
@@ -85,14 +107,12 @@ export const useBaselineOperations = () => {
       handleCancel();
       return;
     }
-    // Editing the baseline of an already-tokenized doc can delete or mis-align
-    // existing tokens (and their annotations) in the changed/removed regions.
-    // Text added at the end of the body leaves existing tokens untouched, so
-    // only confirm otherwise. Read from the text, since a box filled whole
-    // (a paste over everything) is one edit over the whole body even when it
-    // only adds to the end.
+    // On a tokenized document, a save that deletes or replaces text can
+    // delete tokens and the annotations on them, so it asks first. One that
+    // only inserts, glued to a word or not, keeps every token (Luke,
+    // 2026-10-16).
     const tokenized = (doc.layerInfo?.primaryTokenLayer?.tokens || []).length > 0;
-    const risky = tokenized && editedText !== base && !editedText.startsWith(base);
+    const risky = tokenized && removesText(editLog.log.base, editLog.gaps());
     if (
       risky &&
       !(await confirm({
