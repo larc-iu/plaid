@@ -230,6 +230,10 @@ class Workspace(BaseWorkspace):
         # While a rule is resolved: the lexicon entries the plan's changes
         # before it remove (``bulk.resolve_rule``), or None for the plan's.
         self.rule_removed: Optional[frozenset] = None
+        # While a rule is resolved: its target (``core.rules.target``), so a
+        # rule of the plan found again is not refused for reaching where it
+        # reaches itself (``bulk.scope_reaches``).
+        self.finding_rule: Optional[tuple] = None
 
     # --- rules (core.rules) ---------------------------------------------------
 

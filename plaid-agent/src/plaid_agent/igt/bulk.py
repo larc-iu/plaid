@@ -1106,18 +1106,29 @@ def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier,
     if kept:
         earlier = [[o for o in found if op_target(o) not in kept] for found in earlier]
     was, ws.rule_removed = ws.rule_removed, removed
+    # A rule of the plan found again stands among the corpus-wide changes
+    # :func:`scope_reaches` reads: it reads only those before it, as when
+    # the rule was staged (REV7-PLAN-1).
+    was_at, ws.finding_rule = ws.finding_rule, ('rule', tool, rules.fingerprint_args(args))
     try:
         with ws.resolving_rules(earlier), ws.corpus.within(args.get('document')):
             return fn(ws, dict(args), CANDIDATE_MAX)
     finally:
         ws.rule_removed = was
+        ws.finding_rule = was_at
 
 
 def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
     """Whether a corpus-wide change already planned reaches this document (or
     might, when the document is not known). A rule that writes values only
     does not count (``values_rule``)."""
-    reach = {d for op in ws.ops if op.get('kind') in SCOPES and not values_rule(op)
+    ops = ws.ops
+    if ws.finding_rule is not None:
+        # While a rule of the plan is found again: the changes before it.
+        at = next((i for i, op in enumerate(ops) if rules.is_rule(op) and rules.target(op) == ws.finding_rule),
+                  None)
+        ops = ops if at is None else ops[:at]
+    reach = {d for op in ops if op.get('kind') in SCOPES and not values_rule(op)
              for d in (op.get('documents') or [])}
     return bool(reach) and (doc_id is None or doc_id in reach)
 
