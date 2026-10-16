@@ -419,7 +419,7 @@ export function makeFakeClient(opts = {}) {
 
 // An IgtDocument on `raw` in project proj-1, with no vocabularies and a fake
 // client unless the test passes its own. Anything else the constructor takes
-// (user, asOf, bareIgnored) passes through.
+// (user, asOf) passes through.
 export function makeIgtDoc({
   raw = buildRawDoc(),
   project = { id: 'proj-1', vocabs: [], config: { plaid: {} } },

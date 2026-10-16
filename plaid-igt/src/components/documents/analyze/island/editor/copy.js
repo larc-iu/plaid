@@ -2,7 +2,6 @@ import { html, nothing } from 'lit-html';
 import { SENTENCE_ACTION } from '@ui/components/shared/sentenceActions.js';
 import { notifyError } from '@/utils/feedback';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
-import { bareIgnoredSentence } from '@/domain/derive';
 
 // Copy as IGT: the format menu, the clipboard write, and a sentence's link.
 export const copy = {
@@ -41,8 +40,7 @@ export const copy = {
       wordFields: ctx.wordFields,
       sentFields: ctx.sentFields,
     };
-    // A copy shows the words as the grid does: an ignored word has no values.
-    const text = formatSentence(bareIgnoredSentence(sentence, ctx.ignoredCfg), fields, format);
+    const text = formatSentence(sentence, fields, format);
     const written = await this._writeClipboard(text);
     this._copyMenu = null;
     if (!written) {

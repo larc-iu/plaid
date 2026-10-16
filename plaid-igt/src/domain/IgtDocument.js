@@ -87,12 +87,8 @@ export class IgtDocument extends DocumentModel {
     projectId = null,
     asOf = null,
     user = null,
-    // The view an export reads: a word the ignored-tokens rule excludes
-    // carries no values, as the Analyze grid shows it (deriveSentences).
-    bareIgnored = false,
   }) {
     super({ raw, client, projectId, project, user, asOf });
-    this._bareIgnored = bareIgnored;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
     // separately-loaded vocabularies: `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
@@ -320,9 +316,7 @@ export class IgtDocument extends DocumentModel {
   // ergonomic consumer access.
   _sentencesBundle() {
     return this._derived('sentences', () =>
-      deriveSentences(this._raw, this.layerInfo, this._vocabularies, {
-        bareIgnored: this._bareIgnored,
-      }),
+      deriveSentences(this._raw, this.layerInfo, this._vocabularies),
     );
   }
   get sentences() {

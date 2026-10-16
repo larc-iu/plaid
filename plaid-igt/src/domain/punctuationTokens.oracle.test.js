@@ -11,7 +11,6 @@ import { runExport } from '../export/runExport.js';
 import { discoverExportLayers } from '../export/exportLayers.js';
 import { EXPORT_FORMATS, newPreset } from '../export/presets.js';
 import { IgtDocument } from './IgtDocument.js';
-import { bareIgnoredSentence } from './derive.js';
 import { COPY_FORMATS, formatSentence } from './igtExport.js';
 import { readIgnoredTokens } from './igtConfig.js';
 import { tokenizeText, findUntokenizedRanges } from '../utils/tokenizationUtils.js';
@@ -240,8 +239,7 @@ describe('a punctuation token ud made reads as untokenized punctuation', () => {
       const fields = { morphFields: ['Gloss'], wordFields: ['Gloss'], sentFields: ['Translation'] };
       const copies = (raw) => {
         const doc = open(raw);
-        const cfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer.config);
-        return doc.sentences.map((s) => formatSentence(bareIgnoredSentence(s, cfg), fields, id));
+        return doc.sentences.map((s) => formatSentence(s, fields, id));
       };
       expect(copies(WITH_PUNCT)).toEqual(copies(PLAIN));
     });

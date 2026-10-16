@@ -4,9 +4,7 @@ import { runExport } from './runExport.js';
 import { discoverExportLayers } from './exportLayers.js';
 import { EXPORT_FORMATS, newPreset } from './presets.js';
 import { IgtDocument } from '../domain/IgtDocument.js';
-import { bareIgnoredSentence } from '../domain/derive.js';
 import { COPY_FORMATS, formatSentence } from '../domain/igtExport.js';
-import { readIgnoredTokens } from '../domain/igtConfig.js';
 
 // Exports and copies follow the Analyze grid (ruling, 2026-10-03): a word the
 // ignored-tokens rule excludes is drawn with no values, so no export or copy
@@ -147,12 +145,11 @@ describe('an ignored word in exports', () => {
 describe('an ignored word in a copy', () => {
   const doc = new IgtDocument({ raw: JSON.parse(JSON.stringify(RAW)), project: PROJECT });
   const [sentence] = doc.sentences;
-  const cfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer.config);
   const fields = { morphFields: ['Gloss'], wordFields: ['Gloss'], sentFields: [] };
 
   for (const { id } of COPY_FORMATS) {
     it(`${id} carries none of its values`, () => {
-      const text = formatSentence(bareIgnoredSentence(sentence, cfg), fields, id);
+      const text = formatSentence(sentence, fields, id);
       expect(text).not.toMatch(/FILLER/i);
       expect(text).toMatch(/uh/);
       expect(text).toMatch(/DOGWORD|DOGMORPH/i);
