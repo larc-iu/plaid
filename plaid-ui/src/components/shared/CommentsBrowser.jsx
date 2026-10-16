@@ -48,11 +48,17 @@ const AnchorDetail = ({ detail, excerpt }) => {
       </span>
     );
   }
+  // The quote marks round a right-to-left excerpt go inside its isolate, so
+  // they stand at its two ends as it reads, not as the line around it does.
+  const quoted =
+    dir === 'rtl' && detail[at - 1] === '“' && detail[at + excerpt.length] === '”' ? 1 : 0;
+  const from = at - quoted;
+  const to = at + excerpt.length + quoted;
   return (
     <span dir="auto" className={className}>
-      {detail.slice(0, at)}
-      <bdi dir={dir}>{excerpt}</bdi>
-      {detail.slice(at + excerpt.length)}
+      {detail.slice(0, from)}
+      <bdi dir={dir}>{detail.slice(from, to)}</bdi>
+      {detail.slice(to)}
     </span>
   );
 };

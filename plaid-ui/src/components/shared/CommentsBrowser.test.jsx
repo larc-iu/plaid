@@ -192,8 +192,9 @@ describe('a thread header', () => {
     expect(detail.textContent).toBe('Sentence 5 · “قرأ الولد.”');
     // The words around the quote are the app's and read left to right.
     expect(detail.getAttribute('dir')).toBe('auto');
+    // The quote marks stand at the excerpt's own ends, inside its isolate.
     const quoted = detail.querySelector('bdi');
-    expect(quoted?.textContent).toBe('قرأ الولد.');
+    expect(quoted?.textContent).toBe('“قرأ الولد.”');
     expect(quoted?.getAttribute('dir')).toBe('rtl');
     await view.unmount();
   });
@@ -205,7 +206,7 @@ describe('a thread header', () => {
     });
     expect(detail.getAttribute('dir')).toBe('auto');
     expect(detail.querySelector('bdi')?.getAttribute('dir')).toBe('rtl');
-    expect(detail.firstChild.textContent).toBe('Sentence 2 · “');
+    expect(detail.firstChild.textContent).toBe('Sentence 2 · ');
     await view.unmount();
   });
 
