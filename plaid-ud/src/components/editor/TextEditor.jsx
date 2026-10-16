@@ -370,7 +370,7 @@ export const TextEditor = () => {
   // Typed over a body that has changed since, and not put onto it: the two
   // changed the same passage.
   const behind = !sending && rawText !== log.base && Boolean(serverText) && log.base !== serverText;
-  const hasText = Boolean(layerInfo.textLayer?.text?.body);
+  const hasText = Boolean(layerInfo.textLayer?.text?.body?.trim());
   const saving = doc.isSaving;
 
   // Viewer-access users get the text editor read-only: the textarea is locked,

@@ -474,7 +474,8 @@ export const AnnotationEditor = () => {
     revealSentence,
   });
 
-  const hasText = !isViewingHistorical && Boolean(activeDocument?.textLayers?.[0]?.text);
+  // Saved text with a letter in it: Parse has nothing to do with none.
+  const hasText = !isViewingHistorical && Boolean(layerInfo?.textLayer?.text?.body?.trim());
 
   // The run controls, in the RunBar every annotation tab shares: Parse at the
   // start, the sentence count or pager after it, the gestures and marks at the
