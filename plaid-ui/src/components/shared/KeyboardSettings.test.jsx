@@ -74,9 +74,12 @@ describe('KeyboardSettings', () => {
     await press({ key: 'Alt', altKey: true });
     await press({ key: 'a', code: 'KeyA', altKey: true });
     expect(keymap.chords('accept')).toEqual(['Alt+a']);
-    expect(userData.put).toHaveBeenCalledWith('u@x', 'igt:keymap', {
-      metadata: { accept: ['Alt+a'] },
-    });
+    expect(userData.put).toHaveBeenCalledWith(
+      'u@x',
+      'igt:keymap',
+      { metadata: { accept: ['Alt+a'] } },
+      { version: 0 },
+    );
     expect(view.container.textContent).toContain('Reset all');
   });
 
@@ -133,9 +136,12 @@ describe('KeyboardSettings', () => {
     stored.map = { discard: ['Alt+z'] };
     await change('Accept the word');
     await press({ key: 'F9' });
-    expect(userData.put).toHaveBeenCalledWith('u@x', 'igt:keymap', {
-      metadata: { discard: ['Alt+z'], accept: ['F9'] },
-    });
+    expect(userData.put).toHaveBeenCalledWith(
+      'u@x',
+      'igt:keymap',
+      { metadata: { discard: ['Alt+z'], accept: ['F9'] } },
+      { version: 0 },
+    );
     // And this screen learns the other tab's binding from the answer.
     expect(keymap.chords('discard')).toEqual(['Alt+z']);
   });

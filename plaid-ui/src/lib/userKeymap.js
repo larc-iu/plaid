@@ -17,15 +17,23 @@ const keymapDataKey = () => `${configNamespace()}:keymap`;
  * empty page.
  */
 export async function loadUserKeymap(client, userId) {
+  return (await readUserKeymap(client, userId)).map;
+}
+
+// The account's map and the version it is stored at (0 when there is none).
+async function readUserKeymap(client, userId) {
   const key = keymapDataKey();
   const { entries } = await client.userData.listPage(userId, {
     prefix: key,
     includeValues: true,
     limit: 10,
   });
-  const map = entries.find((e) => e.key === key)?.value?.metadata;
-  return map && typeof map === 'object' ? map : {};
+  const entry = entries.find((e) => e.key === key);
+  const map = entry?.value?.metadata;
+  return { map: map && typeof map === 'object' ? map : {}, version: entry?.version ?? 0 };
 }
+
+const isVersionMismatch = (e) => e?.status === 409 && e?.responseData?.error === 'version-mismatch';
 
 // The actions whose binding differs between `before` and `next`.
 const changedIds = (before, next) =>
@@ -99,15 +107,29 @@ export async function saveUserKeymap(
   { before = {}, next = {}, replace = false, keymap = null },
 ) {
   let merged;
-  if (replace) merged = { ...next };
-  else {
-    const stored = await loadUserKeymap(client, userId);
-    merged = withChange(stored, before, next);
-    if (keymap) merged = checked(keymap, merged, stored, before, next);
-  }
-  if (Object.keys(merged).length) {
-    await client.userData.put(userId, keymapDataKey(), { metadata: merged });
-    return merged;
+  let version;
+  // The change is laid over the map as read, and written only over that
+  // version of it: one another tab saved in between is read again, once.
+  for (let attempt = 0; ; attempt += 1) {
+    if (replace) merged = { ...next };
+    else {
+      const read = await readUserKeymap(client, userId);
+      ({ version } = read);
+      merged = withChange(read.map, before, next);
+      if (keymap) merged = checked(keymap, merged, read.map, before, next);
+    }
+    if (!Object.keys(merged).length) break;
+    try {
+      await client.userData.put(
+        userId,
+        keymapDataKey(),
+        { metadata: merged },
+        version == null ? {} : { version },
+      );
+      return merged;
+    } catch (e) {
+      if (attempt > 0 || !isVersionMismatch(e)) throw e;
+    }
   }
   try {
     await client.userData.delete(userId, keymapDataKey());

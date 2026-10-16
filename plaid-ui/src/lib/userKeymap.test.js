@@ -33,9 +33,18 @@ describe('loadUserKeymap', () => {
   });
 });
 
-// A client that holds one map, so a save can be read back.
+// A client that holds one map, so a save can be read back. Its versions work
+// as the server's do: every write raises it, and a put naming another one is
+// refused with 409. `between` runs once, after the next read and before the
+// put that follows it: another tab's save landing in between.
 const accountWith = (initial) => {
-  const state = { map: initial ? { ...initial } : null, puts: 0, deletes: 0 };
+  const state = {
+    map: initial ? { ...initial } : null,
+    version: initial ? 1 : 0,
+    puts: 0,
+    deletes: 0,
+    between: null,
+  };
   return {
     state,
     client: {
@@ -43,12 +52,24 @@ const accountWith = (initial) => {
         get: () => {
           throw new Error('read by listing, not by get');
         },
-        listPage: async () => ({
-          entries: state.map ? [{ key: 'plaid:keymap', value: { metadata: state.map } }] : [],
-          nextCursor: null,
-        }),
-        put: async (userId, key, value) => {
+        listPage: async () => {
+          const entries = state.map
+            ? [{ key: 'plaid:keymap', version: state.version, value: { metadata: state.map } }]
+            : [];
+          const between = state.between;
+          state.between = null;
+          between?.();
+          return { entries, nextCursor: null };
+        },
+        put: async (userId, key, value, { version } = {}) => {
+          if (version != null && version !== state.version) {
+            throw Object.assign(new Error('HTTP 409'), {
+              status: 409,
+              responseData: { error: 'version-mismatch', version: state.version },
+            });
+          }
           state.map = { ...value.metadata };
+          state.version += 1;
           state.puts += 1;
         },
         delete: async () => {
@@ -61,6 +82,25 @@ const accountWith = (initial) => {
 };
 
 describe('saveUserKeymap', () => {
+  it('reads again once when another tab saved between its read and its write', async () => {
+    const { client, state } = accountWith({ 'node.child': ['KeyN'] });
+    state.between = () => {
+      state.map = { ...state.map, 'node.parent': ['KeyP'] };
+      state.version += 1;
+    };
+    const stored = await saveUserKeymap(client, 'a@b.com', {
+      before: {},
+      next: { 'morph.zero': ['Alt+0'] },
+    });
+    expect(stored).toEqual({
+      'node.child': ['KeyN'],
+      'node.parent': ['KeyP'],
+      'morph.zero': ['Alt+0'],
+    });
+    expect(state.map).toEqual(stored);
+    expect(state.puts).toBe(1);
+  });
+
   it('writes the actions that changed, over what the account holds', async () => {
     const { client, state } = accountWith({ 'node.child': ['KeyN'] });
     // A screen that has not read that binding saves one of its own.
