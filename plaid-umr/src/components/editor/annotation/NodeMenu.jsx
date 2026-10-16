@@ -5,6 +5,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@ui/components/ui/dropdown-menu';
+import { stickyChromeBottom } from '@ui/lib/stickyChrome.js';
 import { keys } from '../../../lib/keymap.js';
 import { ITEMS } from './nodeMenuItems.js';
 import { wordsInDirection } from '../../../lib/siblingMoves.js';
@@ -38,7 +39,13 @@ export function NodeMenu({ at, direction, disabled, labels, onAction, onClose, o
         // height it says is going spare, so the menu always fits and scrolls
         // inside itself instead.
         className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-96 overflow-y-auto"
-        collisionPadding={8}
+        // Below the pinned header and tab row, not over them.
+        collisionPadding={{
+          top: (at ? stickyChromeBottom() : 0) + 8,
+          right: 8,
+          bottom: 8,
+          left: 8,
+        }}
         // Where focus goes when the menu closes, which Radix would
         // otherwise decide: back to that invisible anchor, blurring whatever
         // the action just opened. An inline editor COMMITS on blur, so that
