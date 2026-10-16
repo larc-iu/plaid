@@ -151,9 +151,9 @@ describe('a tab strip that does not fit', () => {
       const [, two] = list.querySelectorAll('[role="tab"]');
       two.getBoundingClientRect = () => rect(460 - list.scrollLeft, 100);
     };
-    const onTwo = () => (
+    const onTwo = (value = 'two') => (
       <MemoryRouter>
-        <Tabs value="two" onValueChange={() => {}}>
+        <Tabs value={value} onValueChange={() => {}}>
           <TabsList>
             <TabsTrigger value="one" to="/x?tab=one">
               One
@@ -171,16 +171,32 @@ describe('a tab strip that does not fit', () => {
     });
 
     it('is scrolled clear of the fade at the end', async () => {
-      const view = await renderComponent(onTwo());
+      const view = await renderComponent(onTwo('one'));
       const list = view.container.querySelector('[role="tablist"]');
       await view.step(() => {
         list.scrollLeft = 0;
         layout(list, 500);
-        // A change of the current tab is what reveals it.
-        list.querySelector('[role="tab"]').setAttribute('data-state', 'inactive');
       });
+      // A change of the current tab is what reveals it.
+      await view.rerender(onTwo('two'));
       // Its right edge (560) at 500 - 32, the start of the fade.
       expect(list.scrollLeft).toBe(92);
+      await view.unmount();
+    });
+
+    it('stays where the reader scrolled the strip when a tab is added', async () => {
+      const view = await renderComponent(onTwo());
+      const list = view.container.querySelector('[role="tablist"]');
+      await view.step(() => {
+        layout(list, 500);
+        list.scrollLeft = 0;
+      });
+      const added = document.createElement('button');
+      added.setAttribute('role', 'tab');
+      await view.step(() => {
+        list.appendChild(added);
+      });
+      expect(list.scrollLeft).toBe(0);
       await view.unmount();
     });
 

@@ -107,7 +107,16 @@ const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref
     // mutation alone leaves the first paint scrolled to the left.
     const frame = requestAnimationFrame(reveal);
     reveal();
-    const changed = new MutationObserver(reveal);
+    // A tab added or taken away is measured only, so a strip the reader
+    // scrolled stays where they left it. Only a change of the current tab
+    // brings it into sight.
+    let shown = list.querySelector('[data-state="active"]');
+    const changed = new MutationObserver(() => {
+      const active = list.querySelector('[data-state="active"]');
+      if (active === shown) return measure();
+      shown = active;
+      reveal();
+    });
     changed.observe(list, {
       subtree: true,
       childList: true,
