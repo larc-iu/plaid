@@ -274,25 +274,28 @@ export const ProjectSetup = () => {
                     isNewProject={isNewProject}
                     projectId={projectId}
                     client={client}
+                    onPrevious={handlePrevious}
                   />
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-4">
-                  <Button variant="outline" onClick={handlePrevious} disabled={currentStep === 0}>
-                    Previous
-                  </Button>
+                {/* The last step draws Previous itself, beside its own
+                    commit button, so the two sit on one row. */}
+                {currentStep < steps.length - 1 && (
+                  <div className="flex items-center justify-between gap-2 pt-4">
+                    <Button variant="outline" onClick={handlePrevious} disabled={currentStep === 0}>
+                      Previous
+                    </Button>
 
-                  {/* No Next on the last step. It used to render there,
+                    {/* No Next on the last step. It used to render there,
                     permanently greyed, in the bottom-right corner five steps
                     had trained the eye on, while the real commit button sat in
                     its own row above the footer. The first read of that is
                     that the wizard is stuck. */}
-                  {currentStep < steps.length - 1 && (
                     <Button onClick={handleNext} disabled={!isCurrentStepValid()}>
                       Next
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

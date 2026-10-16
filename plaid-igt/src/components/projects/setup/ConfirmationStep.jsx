@@ -11,7 +11,7 @@ import { IGNORED_TOKEN_MODES } from '@/domain/igtConfig';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { countOf } from '@ui/lib/plural.js';
 
-export const ConfirmationStep = ({ setupData, isNewProject, projectId, client }) => {
+export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, onPrevious }) => {
   const navigate = useNavigate();
   const [isExecuting, setIsExecuting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -200,7 +200,11 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
         <ul className="list-disc pl-5 text-sm">
           {orthographiesData.orthographies.map((orth) => (
             <li key={orth.name}>
-              {orth.name} {orth.isBaseline && <Badge variant="secondary">Baseline</Badge>}
+              {orth.name}{' '}
+              {/* Named Baseline already, it says so: "Baseline Baseline" said it twice. */}
+              {orth.isBaseline && orth.name !== 'Baseline' && (
+                <Badge variant="secondary">Baseline</Badge>
+              )}
             </li>
           ))}
         </ul>
@@ -250,10 +254,10 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
   };
 
   const VocabularyReview = () => {
-    const vocabData = setupData.vocabulary;
-    if (!vocabData?.vocabularies?.length) return null;
-
-    const enabledVocabs = vocabData.vocabularies.filter((vocab) => vocab.enabled);
+    // A Vocabulary step left as it came links nothing, and says so here too.
+    const enabledVocabs = (setupData.vocabulary?.vocabularies || []).filter(
+      (vocab) => vocab.enabled,
+    );
     // Say "none" rather than disappearing. This section used to render nothing
     // when nothing was linked, which is the one outcome worth reviewing: the
     // step's on/off column is a bare check mark that toggles on a row click, so
@@ -392,15 +396,20 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-2">
-        {errors.length > 0 && (
-          <Button variant="outline" onClick={executeSetup} disabled={isExecuting}>
-            <RefreshCw className="h-4 w-4" /> Retry setup
-          </Button>
-        )}
-        <Button onClick={executeSetup} disabled={isExecuting}>
-          {isNewProject ? 'Create project' : 'Set up project'}
+      <div className="flex items-center justify-between gap-2 pt-4">
+        <Button variant="outline" onClick={onPrevious} disabled={isExecuting || !onPrevious}>
+          Previous
         </Button>
+        <div className="flex items-center gap-2">
+          {errors.length > 0 && (
+            <Button variant="outline" onClick={executeSetup} disabled={isExecuting}>
+              <RefreshCw className="h-4 w-4" /> Retry setup
+            </Button>
+          )}
+          <Button onClick={executeSetup} disabled={isExecuting}>
+            {isNewProject ? 'Create project' : 'Set up project'}
+          </Button>
+        </div>
       </div>
     </div>
   );
