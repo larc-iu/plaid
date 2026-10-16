@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
+from ..core.bidi import plain_quote
 from ..core.history import doc_label
 from .grew_syntax import grew_string
 from .project import FEATURES, Sentence, UdDoc, Word, feats_order, kwic, word_ref
@@ -28,9 +29,9 @@ def _value(w: Word, field: str) -> str:
 
 
 def _named(ws, doc_id: str) -> str:
-    """A document as these answers name it: quoted, with its id beside a
-    name another document shares (``"Viaje" (ud2)``), as the headings do."""
-    return doc_label(ws, doc_id, lambda name: f'"{name}"')
+    """A document as these answers name it: quoted, an inner quote
+    escaped, as the headings do."""
+    return doc_label(ws, doc_id, plain_quote)
 
 
 def _hit_line(doc: UdDoc, s: Sentence, w: Word, value: str) -> str:

@@ -3991,7 +3991,7 @@ class PlaidClient:
             return
         group['frames'] = [f for f in group['frames'] if f is not frame]
 
-    def batch(self, *, timeout: float | None = _UNSET) -> 'PlaidBatch':
+    def batch(self) -> 'PlaidBatch':
         """Open a batch: a view of this client with the same resources, on
         which every write of project data queues instead of going out.
         ``submit()`` sends the queued operations as ONE atomic request (larger
@@ -4015,15 +4015,11 @@ class PlaidClient:
         sees parents created earlier in the same batch, and any op's failure
         rolls the whole batch back. A batch is not nestable. Prefer
         :meth:`batched`, which submits or aborts for you.
-
-        ``timeout`` (seconds, or None for none) is how long each of this
-        batch's requests may wait for its answer, in place of the client's
-        ``batch_timeout``, for this batch alone.
         """
-        return PlaidBatch(self, timeout=timeout)
+        return PlaidBatch(self)
 
     def _post_batch(self, ops: list[dict], stamped_documents: list | None = None,
-                    stamped_groups: list | None = None, *, timeout: float | None = _UNSET) -> list[Any]:
+                    stamped_groups: list | None = None) -> list[Any]:
         """POST queued operations (see PlaidBatch.submit) and return one
         ``{'status', 'headers', 'body'}`` per operation, in order, with only
         the body recased: the headers keep the server's spelling.
@@ -4038,10 +4034,8 @@ class PlaidClient:
         504) is sent again under it, and answered from the first send if that
         landed. Inside an operation opened with ``keys``, a request whose ops
         joined it takes the operation's next key and claims the version its
-        first run claimed. ``timeout`` is each request's, in place of
-        ``batch_timeout`` when given."""
+        first run claimed."""
         url = f'{self.base_url}/api/v1/batch'
-        budget = self.batch_timeout if timeout is _UNSET else timeout
         # Each request is atomic, the whole is not: a failure leaves the
         # requests before it saved. The error says so, as ``committed`` (how
         # many operations were saved) and ``committed_results`` (their
@@ -4118,7 +4112,7 @@ class PlaidClient:
                 def attempt(data=data, request_headers=request_headers):
                     try:
                         resp = self.session.post(url, headers=request_headers, data=data,
-                                                 timeout=wire_timeout(budget))
+                                                 timeout=wire_timeout(self.batch_timeout))
                     except PlaidAPIError:
                         raise
                     except Exception as e:
@@ -4191,7 +4185,7 @@ class PlaidClient:
             raise error
 
     @contextmanager
-    def batched(self, *, timeout: float | None = _UNSET):
+    def batched(self):
         """Run the block with a batch, then submit all queued ops as
         :meth:`PlaidBatch.submit` does (ONE atomic request up to MAX_BATCH_OPS
         operations, consecutive requests past it), or abort the batch if the
@@ -4206,10 +4200,9 @@ class PlaidClient:
 
         An empty block submits nothing and leaves ``.results == []``. A write
         made on ``client`` inside the block is not part of the batch: it goes
-        over the wire at once, as it would anywhere else. See :meth:`batch`,
-        which also says what ``timeout`` does.
+        over the wire at once, as it would anywhere else. See :meth:`batch`.
         """
-        batch = self.batch(timeout=timeout)
+        batch = self.batch()
         try:
             yield batch
         except BaseException:
@@ -4386,11 +4379,8 @@ class PlaidBatch:
     and resolves to it.
     """
 
-    def __init__(self, client: PlaidClient, *, timeout: float | None = _UNSET):
+    def __init__(self, client: PlaidClient):
         self.client = client
-        #: this batch's own timeout per request, in place of the client's
-        #: ``batch_timeout`` (unset: the client's)
-        self.timeout = timeout
         self.operations: list[dict] = []
         #: the document each queued op's strict-mode stamp is for (None for
         #: none), index for index with ``operations``
@@ -4429,7 +4419,7 @@ class PlaidBatch:
         ops, self.operations = self.operations, []
         stamps, self.stamped_documents = self.stamped_documents, []
         groups, self.stamped_groups = self.stamped_groups, []
-        self.results = self.client._post_batch(ops, stamps, groups, timeout=self.timeout) if ops else []
+        self.results = self.client._post_batch(ops, stamps, groups) if ops else []
         return self.results
 
     def abort(self) -> None:

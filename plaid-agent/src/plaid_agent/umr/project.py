@@ -27,6 +27,7 @@ from plaid_client.workflows.umr import (
 from plaid_client.workflows.umr import Node as GNode, Sentence, UmrDocument as UmrDoc
 from plaid_client.workflows.umr import layers as umr_layers
 
+from ..core.bidi import plain_quote
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer  # noqa: F401  (re-exported for the tools)
 
@@ -112,8 +113,8 @@ def numbering(doc: UmrDoc) -> str:
     """How the document's sentences are numbered, for a refusal to say."""
     numbers = [s.number for s in doc.sentences]
     if numbers == list(range(1, len(numbers) + 1)):
-        return f'document "{doc.name}" has {len(numbers)} sentences'
-    return (f'document "{doc.name}" numbers its sentences as its file does: '
+        return f'document {plain_quote(doc.name)} has {len(numbers)} sentences'
+    return (f'document {plain_quote(doc.name)} numbers its sentences as its file does: '
             + ', '.join(f's{n}' for n in numbers[:12]) + (', …' if len(numbers) > 12 else ''))
 
 
@@ -317,7 +318,7 @@ def render_document(doc: UmrDoc, project: UmrProject, values: Dict[str, Dict[str
     sentence numbers. Sentences are rendered until the character budget is
     spent, and the header says which were shown and where to continue."""
     sentences = doc.sentences
-    out = [f'Document "{doc.name}" ({len(sentences)} sentences, {doc.node_count} nodes)']
+    out = [f'Document {plain_quote(doc.name)} ({len(sentences)} sentences, {doc.node_count} nodes)']
     for k in sorted(doc.metadata):
         if isinstance(doc.metadata[k], str) and doc.metadata[k]:
             out.append(f'# {k} = {doc.metadata[k]}')
@@ -386,7 +387,7 @@ def render_document_graph(doc: UmrDoc) -> str:
                 continue
             seen.add(t.id)
             by_group.setdefault(t.group, []).append(t)
-    out = [f'Document "{doc.name}": the document-level graph']
+    out = [f'Document {plain_quote(doc.name)}: the document-level graph']
     total = sum(len(v) for v in by_group.values())
     if not total:
         out.append('No temporal, modal or coreference triples yet.')

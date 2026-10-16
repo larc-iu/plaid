@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.project import declares, find_layer, join_with, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
+from ..core.bidi import plain_quote
 from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Any, Dict, List, Optional, Tuple
@@ -522,14 +523,14 @@ class IgtDoc:
     media_url: Optional[str] = None
     media_duration: Optional[float] = None
     segments: List['Segment'] = field(default_factory=list)
-    #: How a sentence names the document: quoted, with its id where another
-    #: document shares the name (``"Viaje" (01a1...)``, core.history.doc_label),
-    #: which document= reads back. Set by the workspace that loads it.
+    #: How a sentence names the document: quoted, an inner quote escaped
+    #: (core.bidi.qname), which document= reads back. Set by the workspace
+    #: that loads it.
     label: Optional[str] = field(default=None, repr=False, compare=False)
 
     @property
     def quoted(self) -> str:
-        return self.label or f'"{self.name}"'
+        return self.label or plain_quote(self.name)
 
     def sentence_time(self, s: 'Sentence') -> Optional[Tuple[float, float]]:
         """(start, end) seconds of a sentence: over the segments wholly
@@ -998,15 +999,13 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     ``indexes``, in that order. ``legend`` False points at the legend an
     earlier read printed instead of printing it again, and None, for a
     document after the first in one read, says nothing of it. ``view`` is
-    what ``fields=`` named, None for everything. ``ref_name`` is how a reference to this
-    document must name it (its id where another document shares its name):
-    shown so what is read back is unambiguous. ``budget`` is the most
+    what ``fields=`` named, None for everything. ``ref_name`` is unused (a
+    document's name is its own in the project, ruling 5). ``budget`` is the most
     characters the result may hold: sentences are rendered until it is spent
     and the header names the ones shown, so the model is never told it got
     forty and handed nine."""
     n = len(doc.sentences)
-    head = f'Document "{doc.name}"' + (f' ({doc.id})' if ref_name and ref_name != doc.name else '') \
-        + f': {n} sentences, {doc.word_count()} words'
+    head = f'Document {plain_quote(doc.name)}: {n} sentences, {doc.word_count()} words'
     shown = {k: v for k, v in doc.metadata.items() if k in project.document_metadata and v not in (None, '')}
     if shown:
         head += ' | ' + ', '.join(f'{k}={v}' for k, v in shown.items())
@@ -1146,13 +1145,12 @@ def _filled(f, scope: str, fill: Optional[Dict[str, Any]]) -> str:
 
 
 def document_lines(documents: List[dict]) -> List[str]:
-    """Each document named with its id, as a read names one whose name
-    another shares (``"Text 1" (d2)``, core.history.doc_label), the form
-    document= reads back."""
+    """Each document named as document= reads it back: its name, quoted,
+    its own in the project (ruling 5), or its id when it has none."""
     out = []
     for d in documents:
         mod = (d.get('time_modified') or '')[:10]
-        out.append(f'  "{d.get("name") or "(unnamed)"}" ({d["id"]})' + (f'  modified={mod}' if mod else ''))
+        out.append(f'  {plain_quote(d["name"]) if d.get("name") else d["id"]}' + (f'  modified={mod}' if mod else ''))
     return out
 
 

@@ -560,36 +560,6 @@ def test_citations_do_not_fetch_more_documents_than_the_budget():
     assert len(resolve_citations(w2, text)) == CITE_DOC_BUDGET + 1
 
 
-def test_documents_sharing_a_name_are_printed_and_cited_by_id():
-    from fixtures import document_raw
-    from plaid_agent.igt.citations import resolve_citations
-    docs = {}
-    for i, name in enumerate(['Text 1', 'Text 1', 'Text 2'], 1):
-        raw = document_raw()
-        raw['id'], raw['name'] = f'd{i}', name
-        docs[raw['id']] = raw
-    w = fake_ws(FakeClient(documents=docs))
-    # Nothing forbids two documents with one name, so a reference to either
-    # names it by id; the unique name still prints as itself.
-    assert (w.corpus.ref_name('d1'), w.corpus.ref_name('d2'), w.corpus.ref_name('d3')) == ('d1', 'd2', 'Text 2')
-    out = call_tool(w, 'search', {'pattern': 'gam'})
-    assert '"d1" s1.w2 gam' in out and '"d2" s1.w2 gam' in out and '"Text 2" s1.w2 gam' in out
-    assert 'Document "Text 1" (d2):' in call_tool(w, 'read_document', {'document': 'd2'})
-    assert 'Document "Text 2": ' in call_tool(w, 'read_document', {'document': 'd3'})
-    # Naming the shared name is refused, with the ids to pick from.
-    assert 'Several documents are named "Text 1"; use an id: d1, d2' in call_tool(
-        w, 'read_document', {'document': 'Text 1'})
-    # A citation by that id resolves and still shows the reader the name.
-    cites = resolve_citations(w, 'see <cite doc="d2" ref="s1"/>, not <cite doc="Text 1" ref="s1"/>')
-    assert [(c['key'], c['document_id'], c['document_name']) for c in cites] == [
-        ('<cite doc="d2" ref="s1"/>', 'd2', 'Text 1')]
-    # The person approving a plan sees the id too, but only where it is needed.
-    call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
-    assert w.ops[-1]['label'] == 'Text 1 (d1) s1.w2: respell "gam" → "gham"'
-    call_tool(w, 'respell', {'document': 'd3', 'ref': 's2.w1', 'new_text': 'Gham-ar'})
-    assert w.ops[-1]['label'] == 'Text 2 s2.w1: respell "Gam-ar" → "Gham-ar"'
-
-
 def test_bare_references_are_citations_when_one_document_was_read():
     from plaid_agent.igt.citations import resolve_citations
     w = ws()
@@ -644,7 +614,7 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     # A pattern finds a metadata value too, and says which (2026-10-12 survey).
     out = call_tool(w, 'list_documents', {'pattern': '202', 'limit': 1})
     from plaid_agent.core.bidi import for_model
-    assert for_model(out).startswith('105 documents matching, showing 1-1:\n  "Text 000" (d0)') and '(Date=2021)' in out, out
+    assert for_model(out).startswith('105 documents matching, showing 1-1:\n  "Text 000"  (Date=2021)'), out
     assert '(Date=' not in call_tool(w, 'list_documents', {'pattern': 'Text 10'})
 
 

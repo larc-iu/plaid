@@ -77,16 +77,14 @@ def test_the_base_places_a_document_and_nothing_else():
     the base answers it; a screen only one app docks beside is that app's, and
     the base says nothing about it.
 
-    The name has to be one a tool will take back, so a document sharing its
-    name with another is named by id: `resolve_document_id` refuses an
-    ambiguous name.
+    The name has to be one a tool will take back: a document's name is its
+    own in the project (ruling 5), so it is named by name.
     """
     from plaid_agent.core.service import BaseAssistantService
 
     class _Ws:
         def documents(self):
-            return [{'id': 'd1', 'name': 'Story'}, {'id': 'd2', 'name': 'Notes'},
-                    {'id': 'd3', 'name': 'notes'}]
+            return [{'id': 'd1', 'name': 'Story'}, {'id': 'd2', 'name': 'Notes'}, {'id': 'd3', 'name': ''}]
 
     class _Service(BaseAssistantService):
         APP, APP_LABEL, DESCRIPTION, SUMMARY = 'x', 'X', 'x', 'x'
@@ -96,8 +94,9 @@ def test_the_base_places_a_document_and_nothing_else():
 
     place, ws = BaseAssistantService.place, _Ws()
     assert place(_Service(), ws, {'kind': 'document', 'id': 'd1'})[:2] == ('document', 'Story')
-    # Two documents called "Notes": named by id, which a tool takes back.
-    assert place(_Service(), ws, {'kind': 'document', 'id': 'd2'})[:2] == ('document', 'd2')
+    assert place(_Service(), ws, {'kind': 'document', 'id': 'd2'})[:2] == ('document', 'Notes')
+    # A document with no name is named by its id.
+    assert place(_Service(), ws, {'kind': 'document', 'id': 'd3'})[:2] == ('document', 'd3')
     assert place(_Service(), ws, {'kind': 'document', 'id': 'gone'}) is None
     assert place(_Service(), ws, {'kind': 'vocabulary', 'id': 'v1'}) is None
     assert place(_Service(), ws, None) is None

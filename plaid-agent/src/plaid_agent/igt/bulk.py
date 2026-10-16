@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional
 from plaid_client.workflows.igt import precedence
 
 from ..core import keep as _keep, rules, work
-from ..core.bidi import qv
+from ..core.bidi import plain_quote, qv
+from ..core.workspace import name_fold
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
 from ..core.replace import replacer as _replacer
@@ -1747,10 +1748,11 @@ def t_rename_document(ws: Workspace, document: str, new_name: str) -> str:
     doc = ws.doc(document)
     if doc.name == new_name:
         return ws.planned_note(0)
-    clash = [d for d in ws.documents() if d['id'] != doc.id and (d.get('name') or '').casefold() == new_name.casefold()]
+    # Core keeps names apart ignoring case (ruling 5): refused here first,
+    # naming the name as the other document spells it.
+    clash = [d for d in ws.documents() if d['id'] != doc.id and name_fold(d.get('name') or '') == name_fold(new_name)]
     if clash:
-        raise ToolError(f'Another document is already named "{new_name}"; two documents with one name can only be '
-                        'told apart by id. Pick a different name.')
+        raise ToolError(f'Another document is already named {plain_quote(clash[0].get("name"))}. Pick a different name.')
     ws.add_op({'kind': 'rename_document', 'document_id': doc.id, 'name': new_name,
                'label': f'Rename document {ws.doc_label(doc.id, quote=True)} → {qv(new_name)}'})
     return ws.planned_note(1)

@@ -33,6 +33,26 @@ def qv(v: Any) -> str:
     return f'"{iso(v)}"'
 
 
+def escape_name(name: Any) -> str:
+    """A document name to put between straight quotes: an inner ``"``
+    written ``\\"`` (``French "3"`` is ``French \\"3\\"``), as
+    core.workspace's resolver reads a quoted name back."""
+    return ('' if name is None else str(name)).replace('"', '\\"')
+
+
+def qname(name: Any) -> str:
+    """A document name in straight quotes, isolated, an inner quote escaped:
+    ``"French \\"3\\""``."""
+    return qv(escape_name(name))
+
+
+def plain_quote(name: Any) -> str:
+    """A document name in straight quotes, an inner quote escaped, not
+    isolated: for a list that goes into the prompt as it is (the overview),
+    where no isolate is taken out."""
+    return f'"{escape_name(name)}"'
+
+
 def qrx(pattern: Any) -> str:
     """A regular expression in quotes, isolated left to right whatever its
     letters: it is a format, read from its ``^`` on the left."""

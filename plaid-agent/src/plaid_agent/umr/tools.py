@@ -15,7 +15,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, fingerprint as fp, opkind
-from ..core.bidi import qv
+from ..core.bidi import plain_quote, qv
 from ..core.args import sentence_number
 from plaid_client import uuid7
 from plaid_client.workflows.umr import (concept_problem, is_variable,
@@ -342,7 +342,7 @@ class Workspace(BaseWorkspace):
     def _where(self, op: Dict[str, Any]) -> str:
         """A planned change's sentence, as the user would name it."""
         doc = self._docs.get(op.get('document_id'))
-        name = f' in "{doc.name}"' if doc is not None else ''
+        name = f' in {plain_quote(doc.name)}' if doc is not None else ''
         return f's{op.get("sentence")}{name}'
 
     def plan_payload(self) -> Optional[Dict[str, Any]]:
@@ -443,7 +443,7 @@ def _no_graph_planned(ws: Workspace, doc: UmrDoc, s: Sentence) -> None:
     """
     key = f'{doc.id}:{s.index}'
     if any(op.get('graph_of') == key for op in ws.ops):
-        raise ToolError(f'This plan already replaces the graph of s{s.number} in "{doc.name}", and '
+        raise ToolError(f'This plan already replaces the graph of s{s.number} in {plain_quote(doc.name)}, and '
                         f'this change was worked out against the graph it replaces. Keep one of '
                         f'the two (plan_status, drop_planned), or plan them in separate turns.')
 
@@ -479,7 +479,7 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
     for op in diff.ops:
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
-    return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.number} in "{doc.name}" '
+    return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.number} in {plain_quote(doc.name)} '
             f'({what}).' + _additions(diff.ops) + _removals(diff.ops) + kept
             + _named_roles_missing(getattr(ws, 'asked', ''), text))
 
@@ -691,14 +691,14 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
                      + (', …' if len(kept) > SAMPLE_LINES else '')
                      + '). Pass overwrite=true only if the user asked to replace existing values.')
     if not targets:
-        return (f'Nothing to change: no node in "{doc.name}" with a concept matching "{concept}" '
+        return (f'Nothing to change: no node in {plain_quote(doc.name)} with a concept matching "{concept}" '
                 f'would end up different ({what}).' + (f' {kept_note}' if kept_note else ''))
     replacing = replacing_phrase(targets, rel) if value else ''
     op['count'] = len(targets)
     op['label'] = (f'{what} on {len(targets)} node(s) with concept {qv(concept)} in {qv(doc.name)}'
                    + (f', replacing {replacing}' if replacing else ''))
     ws.add_ops(_staged([op]))
-    out = [f'Planned {what} on {len(targets)} node(s) in "{doc.name}"'
+    out = [f'Planned {what} on {len(targets)} node(s) in {plain_quote(doc.name)}'
            + (f', replacing {replacing}' if replacing else '') + ', read again when you approve it:']
     for s, node, _placed in targets[:SAMPLE_LINES]:
         was = ' '.join(holds(node, rel))
@@ -726,7 +726,7 @@ def _end(ws: Workspace, doc: UmrDoc, name: str, side: str) -> Dict[str, Any]:
         return {'var': name, 'span_id': node.id, 'node': node, 'constant': constant}
     if constant:
         return {'var': name, 'span_id': None, 'node': None, 'constant': True}
-    raise ToolError(f'No node "{name}" in "{doc.name}", and it is not one of the constants '
+    raise ToolError(f'No node "{name}" in {plain_quote(doc.name)}, and it is not one of the constants '
                     + ', '.join(DOC_CONSTANTS) + '.')
 
 
@@ -847,7 +847,7 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     # the sentence.
     if source.get('constant') and target.get('constant'):
         if not doc.sentences:
-            raise ToolError(f'"{doc.name}" has no sentences to write the triple in.')
+            raise ToolError(f'{plain_quote(doc.name)} has no sentences to write the triple in.')
         s = _sentence(ws, doc, sentence) if sentence is not None else doc.sentences[0]
         op['record_id'] = s.record_token
         op['record_triples'] = list(s.record_triples)
@@ -873,7 +873,7 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
         reading = (f' It says {target["var"]} happened {rel[1:]} {source["var"]}. If the user meant '
                    f'the opposite, write ({target["var"]} {rel} {source["var"]}) instead.')
     return (f'Planned the document-level relation ({source["var"]} {rel} {target["var"]}) '
-            f'[{group}] in "{doc.name}".' + reading)
+            f'[{group}] in {plain_quote(doc.name)}.' + reading)
 
 
 def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str = None,
@@ -888,7 +888,7 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
                   if t.target == target['node'].id and (not rel or t.rel == rel)), None)
     if found is None:
         raise ToolError(f'No triple ({source["var"]} {rel or "…"} {target["var"]}) in '
-                        f'"{doc.name}". document_graph lists what is there.')
+                        f'{plain_quote(doc.name)}. document_graph lists what is there.')
     op: Dict[str, Any] = {
         'kind': 'delete_triple', 'document_id': doc.id, 'relation_id': found.id,
         'label': f'remove ({source["var"]} {found.rel} {target["var"]})'}
@@ -898,7 +898,7 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
         op['sentence_id'] = doc.sentences[anchor.sentence - 1].id
         op['ref'] = f's{anchor.sentence}.{anchor.var}'
     ws.add_ops(_staged([op]))
-    return (f'Planned removing ({source["var"]} {found.rel} {target["var"]}) from "{doc.name}".'
+    return (f'Planned removing ({source["var"]} {found.rel} {target["var"]}) from {plain_quote(doc.name)}.'
            )
 
 

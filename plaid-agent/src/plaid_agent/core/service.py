@@ -73,6 +73,7 @@ from plaid_client.service import requester_message
 from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
 
 from . import filetools
+from .bidi import escape_name
 from . import prompt as shared_prompt
 from .guidelines import in_reading_order
 from .limits import MAX_PROJECTS, TRANSCRIPT_WINDOW_SHARE
@@ -285,9 +286,8 @@ class BaseAssistantService(BaseService):
         the stamp nor the note appears.
 
         The default answers for the case every app has, a document, and names
-        it the way the tools take it back: two documents may share a name and
-        ``resolve_document_id`` refuses an ambiguous one, so those are named by
-        id instead. An app that docks its assistant beside anything else
+        it the way the tools take it back: by its name, its own in the project
+        (ruling 5). An app that docks its assistant beside anything else
         answers for that too and falls back here.
         """
         where = where or {}
@@ -297,9 +297,7 @@ class BaseAssistantService(BaseService):
         names = [d.get('name') or '' for d in ws.documents() if d['id'] == document_id]
         if not names:
             return None
-        name = names[0]
-        clashes = sum(1 for d in ws.documents() if (d.get('name') or '').lower() == name.lower())
-        return self.document_place(name if clashes == 1 else document_id)
+        return self.document_place(names[0] or document_id)
 
     def document_place(self, name: Optional[str]) -> Optional[tuple]:
         """The triple for a document, given what the app calls it. The name is
@@ -2387,7 +2385,7 @@ def _stamp_on(content) -> Optional[tuple]:
     if not isinstance(content, str):
         return None
     found = _STAMP_RE.match(content)
-    return (found.group(1).strip(), found.group(2)) if found else None
+    return (found.group(1).strip(), found.group(2).replace('\\"', '"')) if found else None
 
 
 def stamped(transcript: List[Dict[str, Any]], place: Optional[tuple]) -> List[Dict[str, Any]]:
@@ -2406,7 +2404,7 @@ def stamped(transcript: List[Dict[str, Any]], place: Optional[tuple]) -> List[Di
                 return transcript
             break
     last = transcript[-1]
-    note = _STAMP.format(noun=place[0], name=place[1])
+    note = _STAMP.format(noun=place[0], name=escape_name(place[1]))
     return transcript[:-1] + [{**last, 'content': f'{note}\n\n{last.get("content") or ""}'}]
 
 
@@ -2460,6 +2458,7 @@ def focus_note(name: str, refs: str = 'a bare reference') -> str:
     it, so the app states it. One app's shape was hardcoded here, in a file
     whose whole point is to name no app.
     """
+    name = escape_name(name)
     return (f'The user has "{name}" open and is asking about what is in front of them. Unless they '
             f'name another document, this question is about "{name}": read it first, and take '
             f'{refs} as a place in it. Look at other documents only when the question is '

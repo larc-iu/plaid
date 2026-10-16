@@ -13,7 +13,7 @@ import functools
 import inspect
 from typing import Callable, List
 
-from .bidi import qv
+from .bidi import qname
 from .history import doc_label
 from .tools import ToolError
 
@@ -55,7 +55,7 @@ def among_documents(fn: Callable) -> Callable:
             return fn(*bound.args, **bound.kwargs)
         with ws.corpus.among(ids):
             out = fn(*bound.args, **bound.kwargs)
-        names = ', '.join(doc_label(ws, i, qv) for i in ids)
+        names = ', '.join(doc_label(ws, i, qname) for i in ids)
         return f'In {len(ids)} documents: {names}.\n{out}'
 
     params = list(sig.parameters.values())

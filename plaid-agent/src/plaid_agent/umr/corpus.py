@@ -17,6 +17,7 @@ displayed rather than the size of the corpus.
 
 from typing import Dict, List
 
+from ..core.bidi import plain_quote
 from ..core.corpus import Corpus as BaseCorpus, rx, spread
 from ..core.java_regex import PatternError, matcher
 from ..core.limits import READ_LIMITS
@@ -162,7 +163,7 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
                                                         case_sensitive))
                 elif attribute and node.attrs:
                     extra = ' ' + node.attr_line()
-                line = f'"{doc.name}" s{s.number}.{node.var}  ({node.concept}){extra}'
+                line = f'{plain_quote(doc.name)} s{s.number}.{node.var}  ({node.concept}){extra}'
                 shown.append((not is_it[node.id], line))
     shown = [line for _later, line in sorted(shown, key=lambda x: x[0])]
     total = sum(totals.values()) if totals else found
@@ -239,7 +240,7 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
             found += 1
             if len(shown) < limit and here < quota:
                 here += 1
-                shown.append(f'"{doc.name}" s{s.number}  {s.text}\n      {", ".join(hit)}')
+                shown.append(f'{plain_quote(doc.name)} s{s.number}  {s.text}\n      {", ".join(hit)}')
     # Sentences, which is what it shows: the corpus-wide total counts words
     # or concepts, so it is said in the text and not here.
     ws.note_read(len(shown), 'sentence', of=found)
@@ -309,7 +310,7 @@ def t_worklist(ws: Workspace, kind: str = None, document: str = None, limit: int
     ws.note_read(sum(min(sum(1 for r in rows if r[2] == k), limit) for k in kinds), 'sentence',
                  of=len(rows))
     if not rows:
-        where = f' in "{ws.doc(doc_ids[0]).name}"' if document else f' in {len(doc_ids)} document(s)'
+        where = f' in {plain_quote(ws.doc(doc_ids[0]).name)}' if document else f' in {len(doc_ids)} document(s)'
         return f'Nothing is unfinished{where} ({", ".join(kinds)}).'
     out: List[str] = []
     for k in kinds:
@@ -318,7 +319,7 @@ def t_worklist(ws: Workspace, kind: str = None, document: str = None, limit: int
             continue
         out.append(f'{k}: {len(mine)} sentence(s)')
         for doc, s, _k, what in mine[:limit]:
-            out.append(f'  "{doc.name}" s{s.number}  {what}')
+            out.append(f'  {plain_quote(doc.name)} s{s.number}  {what}')
         if len(mine) > limit:
             out.append(f'  … and {len(mine) - limit} more (raise limit)')
     if capped:
@@ -349,7 +350,7 @@ def t_frequency_list(ws: Workspace, what: str = 'concept', document: str = None,
         return f'No {what} values found.'
     total = sum(r[-1] for r in rows)
     out = [f'{len(rows)} distinct {what}(s), {total} in all'
-           + (f' in "{ws.doc(document).name}"' if document else '') + ':']
+           + (f' in {plain_quote(ws.doc(document).name)}' if document else '') + ':']
     for value, count in rows[:limit]:
         out.append(f'  {count:>6}  {value}')
     if len(rows) > limit:

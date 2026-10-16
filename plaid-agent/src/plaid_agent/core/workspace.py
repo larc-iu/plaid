@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 
 from . import docload, fingerprint as fp, garble, opkind, work
+from .bidi import plain_quote
 from .java_regex import matcher
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .keep import is_keep
@@ -58,6 +59,12 @@ def name_key(name: str) -> str:
     quotes and dashes as typed, whitespace collapsed."""
     folded = unicodedata.normalize('NFC', name).casefold().translate(_NAME_FOLDS)
     return ' '.join(folded.split())
+
+
+def name_fold(name: str) -> str:
+    """A document name as core keeps names apart (ruling 5): NFC, then
+    casefolded. Two names that fold alike cannot both be in a project."""
+    return unicodedata.normalize('NFC', name).casefold()
 
 
 def loose_name_key(name: str) -> str:
@@ -107,9 +114,10 @@ def _quoted(text: str) -> bool:
     return len(text) >= 2 and (text[0], text[-1]) in (('"', '"'), ('\u201c', '\u201d'))
 
 
-#: A document named with its id after the name, as a read names one whose
-#: name another document shares: the id is group 1.
-_LABELLED = re.compile(r'.*\(\s*([^()\s]+)\s*\)\s*', re.S)
+def _unquoted(text: str) -> str:
+    """A quoted name without its quotes, an escaped inner quote read back
+    (core.bidi.escape_name)."""
+    return text[1:-1].strip().replace('\\"', '"')
 
 
 class BaseWorkspace:
@@ -392,24 +400,19 @@ class BaseWorkspace:
         for d in docs:
             if d['id'] == document:
                 return d['id']
-        # A name another document shares, as every read prints it: the name
-        # and its id, '"Viaje" (01a1...)' (core.history.doc_label).
-        labelled = _LABELLED.fullmatch(document)
-        if labelled:
-            hit = next((d for d in docs if d['id'] == labelled.group(1)), None)
-            if hit is not None:
-                return hit['id']
         # Without the quotes every read and refusal prints a name in first,
+        # an inner quote unescaped ('"French \\"3\\""', core.bidi.qname),
         # then as given ('"Cuento"', REV4-AGENT-6): a quoted label is the
         # document whose name it quotes, never one whose name holds the
         # quotes while another matches it exactly (REV5-AGENT-6).
-        names = ([document[1:-1].strip()] if _quoted(document) else []) + [document]
+        names = ([_unquoted(document)] if _quoted(document) else []) + [document]
         by_name: List[dict] = []
-        # Exactly, then as the names would be typed: a model wrote
-        # "children's" for a name with ’ and "COMPLETE:Pear_Story_01" for
-        # "COMPLETE: Pear_Story_01" and was refused eight times (2026-10-12
-        # survey).
-        for key in (str.lower, name_key, loose_name_key):
+        # Exactly, then ignoring case as core keeps names apart (one
+        # document at most, ruling 5), then as the names would be typed: a
+        # model wrote "children's" for a name with ’ and
+        # "COMPLETE:Pear_Story_01" for "COMPLETE: Pear_Story_01" and was
+        # refused eight times (2026-10-12 survey).
+        for key in (str, name_fold, name_key, loose_name_key):
             for name in names:
                 by_name = [d for d in docs if key(d.get('name') or '') == key(name)]
                 if by_name:
@@ -419,17 +422,18 @@ class BaseWorkspace:
         if len(by_name) == 1:
             return by_name[0]['id']
         if len(by_name) > 1:
-            raise ToolError(f'Several documents are named "{document}"; use an id: '
-                            + ', '.join(d['id'] for d in by_name))
+            raise ToolError(f'Several documents match {plain_quote(document)}: '
+                            + ', '.join(plain_quote(d.get('name') or '') for d in by_name)
+                            + '. Name one exactly.')
         starts = [d for d in docs if name_key(d.get('name') or '').startswith(name_key(document))]
         if len(starts) == 1:
             return starts[0]['id']
         keys = {}
         for d in docs:
             keys.setdefault(name_key(d.get('name') or ''), d.get('name'))
-        close = ', '.join(f'"{keys[k]}"' for k in
+        from .history import doc_labels
+        close = ', '.join(plain_quote(keys[k]) for k in
                           difflib.get_close_matches(name_key(document), list(keys), n=5, cutoff=0.5))
-        from .history import doc_labels, plain_quote
         labels = doc_labels(self, plain_quote)
         raise ToolError(f'No document "{document}".' + (f' Closest: {close}.' if close else '') + ' Documents: '
                         + ', '.join(labels[d['id']] for d in docs[:50]))

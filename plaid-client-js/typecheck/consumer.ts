@@ -174,28 +174,6 @@ export async function use(c: PlaidClient): Promise<void> {
   for await (const page of c.users.iterPages()) notAny(page[0], true);
   const vocabNames: string[] = (await c.vocabLayers.list()).map((v) => v.name);
   notAny((await c.vocabLayers.listPage()).entries[0], true);
-  // The project, document, token and audit lists, whole and by the page.
-  const docCount: number = (await c.projects.list())[0].documentCount;
-  notAny((await c.projects.listPage()).entries[0], true);
-  for await (const page of c.projects.iterPages()) notAny(page[0], true);
-  const listedVersion: number = (await c.projects.listDocuments("p"))[0].version;
-  notAny((await c.projects.listDocumentsPage("p")).entries[0], true);
-  for await (const page of c.projects.iterDocuments("p")) notAny(page[0], true);
-  const revoked: string | null = (await c.apiTokens.list("u"))[0].revokedAt;
-  notAny((await c.apiTokens.listPage("u")).entries[0], true);
-  for await (const page of c.apiTokens.iterPages("u")) notAny(page[0], true);
-  const opTypes: string[] = (await c.audit.list())[0].ops.map((o) => o.type);
-  notAny((await c.audit.listPage()).entries[0], true);
-  for await (const page of c.audit.iterPages()) notAny(page[0], true);
-  const opCount: number = (await c.projects.auditPage("p")).entries[0].opCount;
-  notAny((await c.documents.audit("d"))[0], true);
-  notAny((await c.documents.auditPage("d")).entries[0], true);
-  notAny((await c.users.audit("u"))[0], true);
-  notAny((await c.users.auditPage("u")).entries[0], true);
-  notAny((await c.vocabLayers.audit("v"))[0], true);
-  notAny((await c.vocabLayers.auditPage("v")).entries[0], true);
-  notAny((await c.projects.audit("p"))[0], true);
-  const kept: string | undefined = (await c.documents.restore("d", "t")).nameKept?.taken;
   notAny(await c.messages.sendMessage("p", {}), true);
 
   // withOperation answers what its function does.

@@ -17,7 +17,7 @@ from plaid_client import uuid7
 
 from ..core import docload, keep, opkind
 from ..core.keep import is_keep
-from ..core.bidi import qv
+from ..core.bidi import qname, qv
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label, doc_labels, plain_quote
@@ -75,7 +75,7 @@ class Workspace(BaseWorkspace):
     NOT_CONTENT_KEYS = ('text_id',)
 
     def render(self, doc, **kw) -> str:
-        return render_document(doc, label=doc_label(self, doc.id, lambda name: f'"{name}"'), **kw)
+        return render_document(doc, label=doc_label(self, doc.id, plain_quote), **kw)
 
     def sentence_position(self, doc, item) -> Optional[int]:
         return by_stored_sent_id(doc, item)
@@ -132,7 +132,7 @@ class Workspace(BaseWorkspace):
             self._docs[did] = self.reader.get(did, self._version_of(entry),
                                               entry.get('name') or document)
         doc = self._docs[did]
-        doc.label = doc_label(self, did, qv)
+        doc.label = doc_label(self, did, qname)
         return doc
 
     def word(self, document: str, ref: str):
@@ -432,7 +432,7 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
     write to one document and parse another."""
     for op in ws.ops:
         if op.get('kind') in REWRITES_DOCUMENT and doc.id in docs_of_op(op):
-            raise ToolError(f'This plan already parses {doc_label(ws, doc.id, qv)}, and a parse rewrites the '
+            raise ToolError(f'This plan already parses {doc_label(ws, doc.id, qname)}, and a parse rewrites the '
                             f'document from scratch, so this change would be thrown away. Plan '
                             f'the parse on its own, or drop it first (plan_status, drop_planned).')
 
@@ -452,7 +452,7 @@ def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
     nothing else to the document."""
     for op in ws.ops:
         if op.get('kind') in RESHAPES_DOCUMENT and op.get('document_id') == doc.id:
-            raise ToolError(f'This plan already moves a sentence boundary in {doc_label(ws, doc.id, qv)}, and '
+            raise ToolError(f'This plan already moves a sentence boundary in {doc_label(ws, doc.id, qname)}, and '
                             f'that renumbers the sentences every other reference names. Apply it '
                             f'on its own, then plan the rest against the new numbering '
                             f'(plan_status, drop_planned).')
@@ -465,7 +465,7 @@ def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
     card said the sentences would renumber, and `validate_ops` refused the
     whole thing only once the user had approved it."""
     if any(doc.id in docs_of_op(op) for op in ws.ops):
-        raise ToolError(f'This plan already changes {doc_label(ws, doc.id, qv)}, and moving a sentence boundary '
+        raise ToolError(f'This plan already changes {doc_label(ws, doc.id, qname)}, and moving a sentence boundary '
                         f'renumbers the sentences every other reference names, so it has to be a '
                         f'plan of its own. Apply what is planned, then move the boundary '
                         f'(plan_status, drop_planned).')
@@ -1240,7 +1240,6 @@ def _many(ws: Workspace, documents, field: str, one) -> str:
                 n = ws.ops[-1].get('count') or 0
                 theirs += ws.ops[-1].get('contributed_count') or 0
                 planned += n
-                # By label, not by name: two documents may share a name.
                 per_doc += [doc_label(ws, did)] * n
     if not per_doc:
         return f'Nothing is waiting for review in the {len(ids)} document(s) named.'
@@ -1283,15 +1282,15 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
     fields = _scope_fields(ws, 'confirm_scope', doc, fields)
     targets, left = confirm_targets(_whole_document(ws, doc), fields, ws.project)
     if not targets:
-        return (f'{left_phrase(left)} Nothing else in {doc_label(ws, doc.id, qv)} is waiting for review.' if left
-                else f'Nothing in {doc_label(ws, doc.id, qv)} is waiting for review.')
+        return (f'{left_phrase(left)} Nothing else in {doc_label(ws, doc.id, qname)} is waiting for review.' if left
+                else f'Nothing in {doc_label(ws, doc.id, qname)} is waiting for review.')
     counts = per_field(targets)
     off = f', {len(left)} off the list left unconfirmed' if left else ''
     ws.add_op({'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
                'count': len(targets), 'per_field': counts, 'ref': None,
                **({'contributed_count': k} if (k := sum(1 for t in targets if t[5] == 'contributed')) else {}),
-               'label': f'confirm {len(targets)} values in {doc_label(ws, doc.id, qv)} ({counts_phrase(counts)}{off})'})
-    return (f'Planned confirming {len(targets)} value(s) in {doc_label(ws, doc.id, qv)}: {counts_phrase(counts)}. '
+               'label': f'confirm {len(targets)} values in {doc_label(ws, doc.id, qname)} ({counts_phrase(counts)}{off})'})
+    return (f'Planned confirming {len(targets)} value(s) in {doc_label(ws, doc.id, qname)}: {counts_phrase(counts)}. '
             f'That is one planned change covering the whole document.' + _reviewed_phrase(ws, targets)
             + (f' {left_phrase(left)}' if left else ''))
 
@@ -1354,7 +1353,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
             return f'Nothing to discard: {spared} machine lemma(s) here anchor arcs a person drew.'
         return 'Nothing to discard: no unconfirmed machine values here.'
     from .bulk import KEEP_HINT
-    scope_note = '' if refs else f' That is one planned change covering the whole of {doc_label(ws, doc.id, qv)}.' + KEEP_HINT
+    scope_note = '' if refs else f' That is one planned change covering the whole of {doc_label(ws, doc.id, qname)}.' + KEEP_HINT
     return f'Planned discarding {n} unconfirmed machine value(s).{spared_note}{scope_note}'
 
 
@@ -1410,7 +1409,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     # Names come from the document LIST, which is already in hand: reading
     # every named document just to write its name into a label cost a full
     # fetch per document, which on a corpus-sized parse is most of the call.
-    listed = doc_labels(ws, qv)
+    listed = doc_labels(ws, qname)
     # A parse deletes and recreates a document's tokens, spans and relations.
     # Anything else this plan writes into the same document would be thrown
     # away by it, so the two cannot travel together.

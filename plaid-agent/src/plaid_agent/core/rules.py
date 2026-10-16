@@ -36,7 +36,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 from . import fingerprint as fp
 from . import opkind
-from .bidi import qrx, qv
+from .bidi import qname, qrx, qv
 from .limits import PLAN_MAX_CHANGES, PLAN_MAX_DOCUMENTS, SAMPLE_LINES
 from .plan import PlanOutOfDate, change_of
 
@@ -118,14 +118,13 @@ def check_matched(op: Dict[str, Any], now: List[list], name_of: Callable[[str], 
     it was staged: another document, another count, another value, or a value
     whose provenance changed. Raises :class:`PlanOutOfDate` with a sentence
     naming the rule, what it matched then and now, and where. ``label_of``,
-    when given, names a document as the sentence says it, quoted, with its id
-    beside a name another document shares (``"Text 1" (d2)``), in place of
-    the quoted ``name_of``."""
+    when given, names a document as the sentence says it, in place of the
+    quoted ``name_of``."""
     then = {d: (n, digest) for d, n, digest in op.get('matched') or []}
     nowd = {d: (n, digest) for d, n, digest in now}
     if then == nowd:
         return
-    raise PlanOutOfDate([moved_reason(op, then, nowd, label_of or (lambda d: qv(name_of(d))))])
+    raise PlanOutOfDate([moved_reason(op, then, nowd, label_of or (lambda d: qname(name_of(d))))])
 
 
 def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tuple],

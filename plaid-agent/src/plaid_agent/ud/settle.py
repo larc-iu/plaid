@@ -19,7 +19,7 @@ import copy
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import rules, work
-from ..core.bidi import qrx, qv
+from ..core.bidi import qname, qrx, qv
 from ..core.history import doc_label
 from ..core.keep import is_keep
 from ..core.trace import plural
@@ -152,7 +152,7 @@ def _discard(ws, op, found, taken) -> Dict[str, Any]:
 
 def discard_label(ws, document_id: str, n: int, per: Dict[str, int]) -> str:
     """A whole-document discard's row."""
-    where = doc_label(ws, document_id, qv)
+    where = doc_label(ws, document_id, qname)
     if not n:
         return f'discard nothing in {where}: the plan names every unconfirmed machine value it found'
     return f'discard {n} unconfirmed machine values in {where} ({counts_phrase(per)})'
@@ -161,7 +161,7 @@ def discard_label(ws, document_id: str, n: int, per: Dict[str, int]) -> str:
 def replace_label(ws, op: Dict[str, Any], n: int, docs: int, accepted: int) -> str:
     """A field-wide replacement's row."""
     shown = qrx(op['pattern']) if op.get('regex') else qv(op['pattern'])
-    where = (f' in {doc_label(ws, op["document_id"], qv)}' if op.get('document_id')
+    where = (f' in {doc_label(ws, op["document_id"], qname)}' if op.get('document_id')
              else f' in {plural(docs, "document")}')
     return (f'{op["field"]}: replace {shown} with {qv(op.get("replacement") or "")} on {plural(n, "value")}{where}'
             + work.counted_phrase(accepted))

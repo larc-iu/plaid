@@ -35,6 +35,7 @@ from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import stamp_inferred
 from plaid_client.workflows.messages import setup_incomplete
 
+from ..core.bidi import plain_quote
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
@@ -437,14 +438,14 @@ class UdDoc:
     #: have no number and are not in ``sentences``, as the app shows no row
     #: for them. A merge across one takes it in.
     wordless: List[Tuple[str, int, int]] = dc_field(default_factory=list)
-    #: How a sentence names the document: quoted, with its id where another
-    #: document shares the name (``"Viaje" (01a1...)``, core.history.doc_label),
-    #: which document= reads back. Set by the workspace that loads it.
+    #: How a sentence names the document: quoted, an inner quote escaped
+    #: (core.bidi.qname), which document= reads back. Set by the workspace
+    #: that loads it.
     label: Optional[str] = dc_field(default=None, repr=False, compare=False)
 
     @property
     def quoted(self) -> str:
-        return self.label or f'"{self.name}"'
+        return self.label or plain_quote(self.name)
 
     def suppressor_over(self, source_span_id: str, target_span_id: str) -> Optional[str]:
         """The suppressor over this pair of lemma spans, if there is one: the

@@ -17,7 +17,7 @@ from collections import Counter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind, rules, work
-from ..core.bidi import qrx, qv
+from ..core.bidi import qname, qrx, qv
 from ..core.limits import SAMPLE_LINES
 from ..core.provenance import unmark
 from ..core.history import doc_label
@@ -181,9 +181,9 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     _clear_of_reshapes(ws, docs)
     ws.note_staged_versions({d: versions.get(d) for d in docs})
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
-    sample = [f'{doc_label(ws, ch["document_id"], qv)}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
+    sample = [f'{doc_label(ws, ch["document_id"], qname)}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
               for ch in found[:SAMPLE_LINES]]
-    where = f' in {doc_label(ws, document_id, qv)}' if document_id else f' in {len(docs)} document(s)'
+    where = f' in {doc_label(ws, document_id, qname)}' if document_id else f' in {len(docs)} document(s)'
     # What it replaces is found again only when it is approved, so the values
     # a person made or accepted are counted now, from what the query returned.
     accepted = sum(1 for ch in found if work.protected(ch.get('metadata')))

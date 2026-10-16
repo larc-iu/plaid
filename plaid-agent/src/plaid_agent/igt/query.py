@@ -12,6 +12,7 @@ return nothing, so the help says it in as many words.
 import json
 from typing import Any, Dict, List
 
+from ..core.bidi import plain_quote
 from ..core.query import HELP, display, layer_index, query_tool
 from .project import word_ref
 from .workspace import Workspace
@@ -98,7 +99,7 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
             doc = ws.doc(did)
         except Exception:  # noqa: BLE001 - a document we cannot load simply has no refs
             continue
-        tag = f'"{ws.corpus.ref_name(did)}" '
+        tag = f'{plain_quote(ws.corpus.ref_name(did))} '
         for s in doc.sentences:
             refs[s.id] = f'{tag}s{s.index}'
             for f, sp in s.fields.items():

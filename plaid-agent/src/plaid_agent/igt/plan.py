@@ -1414,8 +1414,7 @@ def rule_keep(ws, ops: List[Dict[str, Any]], notes: Optional[List[str]] = None):
 
 
 def _doc_name(ws, doc_id: str) -> str:
-    """A document as a refusal names it: quoted, with its id beside a name
-    another document shares (``"Text 1" (d2)``), as check_integrity does."""
+    """A document as a refusal names it: quoted, an inner quote escaped."""
     try:
         return ws.doc_label(doc_id, quote=True)
     except Exception:  # noqa: BLE001 - a name is for the sentence; the id still says which

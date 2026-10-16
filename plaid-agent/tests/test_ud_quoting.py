@@ -77,18 +77,3 @@ def test_grew_search_quotes_a_document_name_holding_quotation_marks(treebank, mo
     assert '"French \\"3\\"" (1 match in 1 sentence)' in out.splitlines(), out
     none = t_grew_search(treebank, 'pattern { X [upos=PRON] }', document=doc.id)
     assert none.endswith('No matches in "French \\"3\\"".'), none
-
-
-def test_grew_search_and_check_consistency_name_a_shared_name_with_its_id(treebank, monkeypatch):
-    """Two documents called the same are told apart by id in a heading, as
-    the plan's lines do (REV-AGENT2-7)."""
-    from plaid_agent.ud.stats import t_check_consistency
-    doc = treebank.doc(treebank.resolve_document_id('Viaje dos'))
-    listed = [{**d, 'name': 'Viaje'} for d in treebank.documents()]
-    monkeypatch.setattr(treebank, 'documents', lambda *a, **k: listed)
-    out = t_grew_search(treebank, 'pattern { V [upos=VERB]; V -[obl]-> N }')
-    assert f'"Viaje" ({doc.id}) (1 match in 1 sentence)' in out.splitlines(), out
-    none = t_grew_search(treebank, 'pattern { X [upos=PRON] }', document=doc.id)
-    assert none.endswith(f'No matches in "Viaje" ({doc.id}).'), none
-    held = t_check_consistency(treebank, kind='form-upos', document=doc.id)
-    assert held.startswith(f'In "Viaje" ({doc.id}):'), held

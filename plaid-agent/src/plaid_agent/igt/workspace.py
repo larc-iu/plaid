@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from plaid_client import uuid7
 
 from ..core import docload, opkind
-from ..core.bidi import qv
+from ..core.bidi import plain_quote, qname, qv
 from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
 from ..core.keep import is_keep
@@ -330,16 +330,15 @@ class Workspace(BaseWorkspace):
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's
-        name, or its id where another document shares that name."""
-        return f'"{self.corpus.ref_name(doc.id)}" ' if show else ''
+        name, quoted."""
+        return f'{plain_quote(self.corpus.ref_name(doc.id))} ' if show else ''
 
     def doc_label(self, doc_id: str, quote: bool = False) -> str:
         """How a plan's lines name a document to the person approving them:
-        its name, and its id too where another document shares that name.
-        ``quote`` puts the name in quotes (for prose), the id outside them."""
+        its name, its own in the project (ruling 5). ``quote`` puts it in
+        quotes, an inner quote escaped (for prose)."""
         name = self.corpus.doc_name(doc_id)
-        head = qv(name) if quote else name
-        return head if self.corpus.ref_name(doc_id) == name else f'{head} ({doc_id})'
+        return qname(name) if quote else name
 
     def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,
                indexes: Optional[List[int]] = None, budget: Optional[int] = None,

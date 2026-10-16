@@ -11,6 +11,7 @@ nothing, so the help says it in as many words.
 
 from typing import Any, Dict, List
 
+from ..core.bidi import plain_quote
 from ..core.history import ref_name
 from ..core.query import HELP, display, layer_index, query_tool
 from .project import word_ref
@@ -88,9 +89,8 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
             doc = ws.doc(did)
         except Exception:  # noqa: BLE001 - a document we cannot load simply has no refs
             continue
-        # By id where another document shares the name, as igt's refs do:
-        # the model passes it back as `document`, which takes either.
-        tag = f'"{ref_name(ws, did)}" '
+        # The model passes the name back as `document`.
+        tag = f'{plain_quote(ref_name(ws, did))} '
         for s in doc.sentences:
             refs[s.id] = f'{tag}s{s.index}'
             for t in s.tokens:

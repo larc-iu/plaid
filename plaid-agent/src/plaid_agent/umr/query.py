@@ -11,6 +11,7 @@ help says it in as many words.
 
 from typing import Any, Dict, List
 
+from ..core.bidi import plain_quote
 from ..core.query import HELP, display, layer_index, query_tool
 from .project import node_ref
 from .tools import Workspace
@@ -74,7 +75,7 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
             doc = ws.doc(did)
         except Exception:  # noqa: BLE001 - a document we cannot load simply has no refs
             continue
-        tag = f'"{doc.name}" '
+        tag = f'{plain_quote(doc.name)} '
         for c in doc.constants:
             refs[c.id] = f'{tag}{c.var}'
         for s in doc.sentences:

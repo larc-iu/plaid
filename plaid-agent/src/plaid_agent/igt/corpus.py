@@ -12,6 +12,7 @@ are in ``queries.py``.
 from collections import Counter
 from typing import Any, Dict, Iterable, List, Optional
 
+from ..core.bidi import plain_quote
 from ..core.corpus import Corpus as BaseCorpus
 from ..core.limits import ROW_LIMIT
 from .project import is_token_ignored
@@ -31,7 +32,6 @@ class Corpus(BaseCorpus):
     def __init__(self, ws: Workspace):
         super().__init__(ws)
         self.W, self.M, self.S = self.p.word_layer_id, self.p.morpheme_layer_id, self.p.sentence_layer_id
-        self._ref_names: Optional[Dict[str, str]] = None
 
     # --- clause builders -------------------------------------------------------
 
@@ -162,7 +162,7 @@ class Corpus(BaseCorpus):
             if s is not None:
                 ref = f's{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
                 return f'{label} {ref}'
-        return f'"{label}"'
+        return self.ws.doc_label(doc_id, quote=True)
 
     def may_load(self, doc_id: str, loaded: set) -> bool:
         """Whether rendering may fetch this document: already fetched this
@@ -177,18 +177,13 @@ class Corpus(BaseCorpus):
 
     def ref_name(self, doc_id: str) -> str:
         """How a printed reference names a document so that it can be read
-        back: its name, or its id where another document shares that name
-        (nothing forbids it, and imports produce it). resolve_document_id
-        matches names case-insensitively, so collisions are judged that way."""
-        if self._ref_names is None:
-            names = self.doc_names()
-            taken = Counter(n.casefold() for n in names.values())
-            self._ref_names = {i: (i if taken[n.casefold()] > 1 else n) for i, n in names.items()}
-        return self._ref_names.get(doc_id, doc_id)
+        back: its name, its own in the project (ruling 5), or its id when it
+        has none."""
+        return self.doc_name(doc_id)
 
     def tag(self, doc_id: str) -> str:
         """The document prefix on a reference. None in a one-document project."""
-        return f'"{self.ref_name(doc_id)}" ' if len(self.doc_names()) > 1 else ''
+        return f'{plain_quote(self.ref_name(doc_id))} ' if len(self.doc_names()) > 1 else ''
 
 
 # --- unanalyzed words ---------------------------------------------------------------

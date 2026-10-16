@@ -17,7 +17,8 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, MACHINE
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
-from ..core.bidi import qv
+from ..core.bidi import plain_quote, qv
+from ..core.workspace import name_fold
 from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, confirm_preview, held_changes, labelled
 from ..core.provenance import unmark
@@ -843,8 +844,9 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
     name = (name or '').strip()
     if not name:
         raise ToolError('name must not be empty')
-    if any((d.get('name') or '').casefold() == name.casefold() for d in ws.documents()):
-        raise ToolError(f'A document named "{name}" already exists.')
+    clash = next((d for d in ws.documents() if name_fold(d.get('name') or '') == name_fold(name)), None)
+    if clash is not None:
+        raise ToolError(f'A document named {plain_quote(clash.get("name"))} already exists. Pick a different name.')
     text = (text or '').replace('\r\n', '\n')
     if not text.strip():
         raise ToolError('text must not be empty')

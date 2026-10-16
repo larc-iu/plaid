@@ -774,7 +774,7 @@ Orthographies: IPA
 Lexicons: Lexicon (entry fields: morphType, gloss)
 Document metadata fields: Date
 Documents (1):
-  "Text 1" (d1)
+  "Text 1"
 ```
 
 `read_document` on "Text 1":

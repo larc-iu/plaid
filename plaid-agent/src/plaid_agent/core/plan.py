@@ -1120,7 +1120,8 @@ def by_document(names: List[str], limit: int = 0) -> str:
     if not counts:
         return ''
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    shown = ', '.join(f'"{name}" {n}' for name, n in ranked[:limit])
+    from .bidi import plain_quote
+    shown = ', '.join(f'{plain_quote(name)} {n}' for name, n in ranked[:limit])
     rest = ranked[limit:]
     more = ''
     if rest:
@@ -1707,6 +1708,6 @@ def _matching(ws, field, document) -> tuple:
 
 
 def _doc_name(ws, doc_id: str) -> str:
-    from .bidi import qv
+    from .bidi import qname
     from .history import doc_label
-    return doc_label(ws, doc_id, qv)
+    return doc_label(ws, doc_id, qname)

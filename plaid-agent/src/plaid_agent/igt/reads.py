@@ -17,6 +17,7 @@ from ..core.args import clamp_limit, read_int
 from ..core.limits import MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
 from ..core.tools import ToolError, document_page, documents_page, named_sentences, truncate
 from ..core.trace import ranges
+from ..core.bidi import plain_quote
 from ..core.workspace import name_matcher
 
 from .project import (Word, Morpheme, document_lines, joiner_between, read_view, render_overview, word_ref)
@@ -134,7 +135,7 @@ def t_read_sentences(ws: Workspace, items=None, fields=None) -> str:
 def _named_left(ws: Workspace, doc_id: str, named: list) -> str:
     """A document left for another call, and its sentences as they were
     asked for."""
-    return f'"{ws.corpus.ref_name(doc_id)}" ' + ', '.join(str(n) for n in named)
+    return f'{plain_quote(ws.corpus.ref_name(doc_id))} ' + ', '.join(str(n) for n in named)
 
 
 #: What a model writes for each kind of ``where`` a read takes besides a
