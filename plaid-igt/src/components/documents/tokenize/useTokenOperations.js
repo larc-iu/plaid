@@ -75,7 +75,12 @@ export const useTokenOperations = () => {
   // `overwrite` is granted only after the user confirms a destructive
   // re-tokenize (see handleTokenize / pendingTokenize): it lets the run discard
   // the existing annotations the sentence-partition reset cascade-deletes.
-  const runServiceTokenize = (overwrite) => service.start(overwrite ? { overwrite: true } : {});
+  // The leave is for what was counted, at the version it was counted on: the
+  // service refuses a document changed since.
+  const runServiceTokenize = (overwrite, version = null) =>
+    service.start(
+      overwrite ? { overwrite: true, ...(version != null ? { expectVersion: version } : {}) } : {},
+    );
 
   // --- Structural ops (delegate to the domain model) ---
   // splitToken / mergeTokens are defined below — both gated by an annotation-loss
@@ -231,7 +236,7 @@ export const useTokenOperations = () => {
   // cascade-deleting existing word/morpheme/sentence annotations. Surface that as
   // a confirm (pendingTokenize drives the dialog in DocumentTokenize); on approval
   // we re-run granting overwrite. null = nothing destructive / not pending.
-  const [pendingTokenize, setPendingTokenize] = useState(null); // {annotations, links, cut}
+  const [pendingTokenize, setPendingTokenize] = useState(null); // {annotations, links, cut, version}
   const handleTokenize = async () => {
     if (spot.service) {
       // Block on unmet required service arguments before doing any work.
@@ -245,7 +250,7 @@ export const useTokenOperations = () => {
       // one sentence, which the reset itself leaves (REV-N5-CORE F3).
       const cut = countReTokenizeCut(doc.layerInfo).annotations;
       if (loss.annotations + loss.links + cut > 0) {
-        setPendingTokenize({ ...loss, cut });
+        setPendingTokenize({ ...loss, cut, version: doc.version });
         return; // the dialog decides
       }
       return runServiceTokenize(false);
@@ -276,12 +281,12 @@ export const useTokenOperations = () => {
   };
   const confirmPendingTokenize = async () => {
     if (!pendingTokenize) return;
-    const { annotations, links, cut } = pendingTokenize;
+    const { annotations, links, cut, version } = pendingTokenize;
     setPendingTokenize(null);
     // Overwrite is the service's leave to delete a person's work: what is on
     // the old tokens, and the relations the new breaks cut, which the service
     // refuses to cut without it. The question counted both.
-    return runServiceTokenize(annotations + links + (cut || 0) > 0);
+    return runServiceTokenize(annotations + links + (cut || 0) > 0, version);
   };
   const cancelPendingTokenize = () => setPendingTokenize(null);
 

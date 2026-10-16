@@ -48,6 +48,7 @@ vi.mock('@/utils/feedback', () => ({
 const mount = async () => {
   const doc = {
     id: 'd1',
+    version: 41,
     document: { id: 'd1' },
     project: { id: 'p1' },
     layerInfo: {
@@ -120,6 +121,9 @@ describe('a Tokenize run whose new breaks can cut relations', () => {
     await view.step(() => ops().confirmPendingTokenize());
     expect(requestService).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(requestService.mock.calls[0])).toContain('"overwrite":true');
+    // The leave is for the document as counted: the service refuses one
+    // changed since.
+    expect(JSON.stringify(requestService.mock.calls[0])).toContain('"expectVersion":41');
     cut.annotations = 0;
     await view.unmount();
   });
