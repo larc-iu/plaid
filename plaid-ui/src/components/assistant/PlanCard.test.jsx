@@ -338,6 +338,35 @@ describe('a kept value', () => {
   });
 });
 
+// REV3-AGENT-4: a corpus-wide change its keeps and named changes left with
+// nothing to write stays on the card, and no count counts it.
+describe('a corpus-wide change settled to none', () => {
+  const settled = (changes) =>
+    plan([
+      { label: 'discard nothing in "Viaje"', writesNothing: true },
+      ...Array.from({ length: changes }, (_, i) => ({ label: `upos "NOUN" → "N${i}"` })),
+      { label: 'upos stays "NOUN"', kept: true },
+    ]);
+  const header = (root) => root.querySelector('th span');
+
+  it('is listed, and a group of it and keeps shows no count', async () => {
+    const view = await mount(settled(0));
+    expect(texts(view.container, 'td').join(' ')).toContain('discard nothing in "Viaje"');
+    expect(header(view.container)).toBeNull();
+    await view.unmount();
+  });
+
+  it('is left out of its group header beside a change', async () => {
+    const view = await mount(settled(1));
+    expect(header(view.container).textContent).toBe('1');
+    await view.unmount();
+  });
+
+  it('is read off the service row', () => {
+    expect(planRows(settled(1)).map((r) => r.writesNothing)).toEqual([true, false, false]);
+  });
+});
+
 // REV-FX3-AGENT-4: a reviewed contributor's confirmation verifies nothing,
 // and what it did is on the card, not only in the model's record.
 describe('an applied plan recorded as human-made', () => {

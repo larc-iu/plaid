@@ -114,7 +114,8 @@ export const staleLine = (reason) =>
 // How many rows a settled plan's record no longer holds (planRecord.js).
 export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
 
-// How many of those rows were changes: a kept value is not one.
+// How many of those rows were changes: a row that writes nothing (a kept
+// value, a corpus-wide change settled to none) is not one.
 export const changesOmitted = (plan) =>
   Math.max(0, rowsOmitted(plan) - (Number(plan?.omitted?.kept) || 0));
 
@@ -153,6 +154,9 @@ export const planRows = (plan) => {
       // A value the plan keeps out of a corpus-wide change: listed, and
       // written nothing, so no count of changes counts it.
       kept: !!c.kept,
+      // A corpus-wide change the plan's keeps and named changes left with
+      // nothing to write: listed, and counted as no change.
+      writesNothing: !!c.writesNothing,
     }));
   }
   return changes.map((c, i) => ({
@@ -164,11 +168,12 @@ export const planRows = (plan) => {
     replacesWork: 0,
     rule: null,
     kept: false,
+    writesNothing: false,
   }));
 };
 
-/** How many of these rows are changes: a kept value is not one. */
-export const changeCount = (rows) => (rows || []).filter((r) => !r.kept).length;
+/** How many of these rows are changes: a row that writes nothing is not one. */
+export const changeCount = (rows) => (rows || []).filter((r) => !r.kept && !r.writesNothing).length;
 
 // Rows grouped by the place they change, groups in order of first appearance,
 // rows in plan order within each.

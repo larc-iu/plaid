@@ -209,3 +209,33 @@ def test_a_settled_plan_cut_short_counts_the_kept_rows_it_leaves_out():
                                                                        {'label': 'k', 'kept': True}]
     item = compact_plan({'status': 'applied', 'plan': {'ops': [{}] * len(changes), 'changes': changes}})
     assert item['plan']['omitted'] == {'count': 2, 'writes_text': 0, 'replaces_work': 0, 'kept': 1}
+
+
+# --- REV3-AGENT-4: a corpus-wide change settled to none counts as nothing ------------
+
+def test_a_corpus_wide_change_settled_to_none_stays_on_the_card_and_counts_as_nothing():
+    ws = _ud()
+    _keep_ud(ws)
+    rows = ws.plan_payload()['changes']
+    assert [r.get('writes_nothing', False) for r in rows] == [True, False]
+    assert rows[0]['label'].startswith('discard nothing in')
+    # Beaten by one change by name: the discard row writes nothing, the change counts.
+    ws = _ud()
+    ud_call(ws, 'discard_predictions', {'document': 'Viaje', 'field': 'upos'})
+    ud_call(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'upos', 'value': 'PROPN'})
+    p = ws.plan_payload()
+    assert [r.get('writes_nothing', False) for r in p['changes']] == [True, False]
+    assert plan_changes(p['ops']) == 1
+    # igt: a rule whose every value a later rule changes again.
+    client, w = R._ws({'sp-g1': 'Ali', 'sp-x2': 'Ali'})
+    R._replace(w, 'Ali', 'Bob', whole=True)
+    R._replace(w, 'Bob', 'Cy', whole=True)
+    assert [r.get('writes_nothing', False) for r in w.plan_payload()['changes']] == [True, False]
+
+
+def test_a_settled_plan_cut_short_counts_no_row_that_writes_nothing():
+    from plaid_agent.core.conversation import SETTLED_ROWS_MAX, compact_plan
+    changes = [{'label': f'c{i}'} for i in range(SETTLED_ROWS_MAX)] + [
+        {'label': 'x'}, {'label': 'k', 'kept': True}, {'label': 'd', 'writes_nothing': True}]
+    item = compact_plan({'status': 'applied', 'plan': {'ops': [{}] * len(changes), 'changes': changes}})
+    assert item['plan']['omitted'] == {'count': 3, 'writes_text': 0, 'replaces_work': 0, 'kept': 2}

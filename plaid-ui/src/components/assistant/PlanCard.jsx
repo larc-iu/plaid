@@ -281,7 +281,8 @@ export const PlanCard = ({
                       {/* A settled plan cut to its first rows does not know
                           how many of the rest were here: it says how many it
                           shows, above "and n more changes". */}
-                      {/* Changes only: a kept value writes nothing. */}
+                      {/* Changes only: a kept value, or a corpus-wide change
+                          settled to none, writes nothing. */}
                       {changeCount(g.rows) > 0 && (
                         <span className="ml-1.5 font-normal text-muted-foreground">
                           {omitted > 0 ? `${changeCount(g.rows)} shown` : changeCount(g.rows)}

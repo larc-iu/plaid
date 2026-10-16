@@ -33,12 +33,20 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
                  if len(docs) == 1 else None)
         return {'label': op.get('label') or '', 'where': where, 'change': op.get('change'),
                 'writes_text': False, 'replaces_work': int(op.get(work.COUNTED) or 0),
-                'rule': op['card']}
+                'rule': op['card'], **writes_nothing(op)}
     return {'label': op.get('label') or '', 'where': locate(ws, op),
             'writes_text': op.get('kind') in _PROSE_KINDS,
             'replaces_work': int(op.get(work.FLAG) or 0),
             # A value kept out of a corpus-wide change: a row, not a change.
-            **({'kept': True} if is_keep(op) else {})}
+            **({'kept': True} if is_keep(op) else {}), **writes_nothing(op)}
+
+
+def writes_nothing(op: Dict[str, Any]) -> Dict[str, Any]:
+    """The flag on the row of a corpus-wide change that settled to no
+    value (``ud.settle``): it stays on the card, so its keeps hold, and no
+    count of changes counts it."""
+    from .settle import SETTLED
+    return {'writes_nothing': True} if op.get('kind') in SETTLED and op.get('count') == 0 else {}
 
 
 def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:

@@ -766,9 +766,9 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
             'writes_text': sum(1 for c in dropped if c.get('writes_text')),
             'replaces_work': sum(int(c.get('replaces_work') or 0) for c in dropped),
         }
-        # Rows that keep a value write nothing: the card's "and n more
-        # changes" leaves them out.
-        held = sum(1 for c in dropped if c.get('kept'))
+        # Rows that keep a value, or a corpus-wide change settled to none,
+        # write nothing: the card's "and n more changes" leaves them out.
+        held = sum(1 for c in dropped if c.get('kept') or c.get('writes_nothing'))
         if held:
             kept['omitted']['kept'] = held
     return {**item, 'plan': kept}

@@ -57,7 +57,9 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
                  if len(docs) == 1 else None)
         return {'label': label, 'where': where, 'change': op.get('change'),
                 'writes_text': writes_text(op), 'replaces_work': int(op.get(work.COUNTED) or 0),
-                'rule': op['card']}
+                'rule': op['card'],
+                # Settled to no value (bulk.settle_rules): no count counts it.
+                **({'writes_nothing': True} if op.get('count') == 0 else {})}
     where = locate(ws, op)
     # An op built by `labelled` says where its change starts. Nothing to place
     # it at shows the label whole, as a label with no place does.
