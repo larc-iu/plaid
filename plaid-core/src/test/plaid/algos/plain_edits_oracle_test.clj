@@ -1167,15 +1167,27 @@
             :when (and want got (not= want got))]
       (conj! out (str id " at " got ", its sentence at " want)))
     ;; rows over sentences with their whitespace (REV2-TEXT-1): each on its
-    ;; sentence as the gap-fill leaves it, off the whitespace it had none of
-    (let [nw (cps nb)]
-      (doseq [{:token/keys [id begin end]} tokens :when (= :rw (first id))
-              :let [st (some #(when (= [begin end] [(:token/begin %) (:token/end %)]) %) sents)
-                    want (when-let [[b e] (some-> st :token/id filled)]
-                           (let [b (if (ws? (aget o begin)) b (loop [x b] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x)))
-                                 e (if (ws? (aget o (dec end))) e (loop [x e] (if (and (> x b) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
-                             (when (< b e) [b e])))
-                    got (some-> (by-id id) ((juxt :token/begin :token/end)))]
+    ;; sentence as the gap-fill leaves it, off the whitespace it had none of,
+    ;; but holding to its last old character when text was typed strictly
+    ;; inside it (FX-D-TEXT), and the next row begins where it ends
+    (let [nw (cps nb)
+          vlen #(cp/cp-count (:value %))
+          pm (fn [x] (+ x (reduce + 0 (map #(- (vlen %) (- (:end %) (:start %))) (filter #(<= (:end %) x) server)))))
+          gone? (fn [x] (some #(and (<= (:start %) x) (< x (:end %))) server))
+          inside? (fn [b e] (some (fn [{a :start z :end :as g}] (and (< b a) (if (= a z) (< a e) (< z e)) (pos? (vlen g)))) server))
+          rws (sort-by :token/begin (filter #(= :rw (first (:token/id %))) tokens))
+          wants (reduce (fn [acc {:token/keys [id begin end]}]
+                          (let [st (some #(when (= [begin end] [(:token/begin %) (:token/end %)]) %) sents)
+                                want (when-let [[b e] (some-> st :token/id filled)]
+                                       (let [b (if (ws? (aget o begin)) b (loop [x b] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x)))
+                                             e (if (ws? (aget o (dec end))) e (loop [x e] (if (and (> x b) (ws? (aget nw (dec x)))) (recur (dec x)) x)))
+                                             e (if (and (inside? begin end) (not (gone? (dec end)))) (max e (inc (pm (dec end)))) e)
+                                             b (if-let [pe (:end (peek acc))] (max b pe) b)]
+                                         (when (< b e) [b e])))]
+                            (conj acc {:id id :want want :end (second want)})))
+                        [] rws)]
+      (doseq [{:keys [id want]} wants
+              :let [got (some-> (by-id id) ((juxt :token/begin :token/end)))]
               :when (and want got (not= want got))]
         (conj! out (str id " at " got ", its sentence at " want))))
     ;; nodes over several words, not over a sentence, keep to their words

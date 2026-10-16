@@ -291,7 +291,9 @@
   ;; REV2-TEXT-1 and -2: rows of a layer that forbids overlap whose edges are
   ;; the sentences' edges, whitespace included (a script's or an import's
   ;; rows), move with the sentence boundary they share, so two rows never
-  ;; overlap and the text a sentence takes is in its row
+  ;; overlap and the text a sentence takes at a row's edge is in its row.
+  ;; FX-D-TEXT: text typed strictly inside a row stays in it, wherever the
+  ;; sentence boundary goes
   (let [rows (fn [s extents ops]
                (let [{:keys [body tokens]} (doc s)
                      rs (map-indexed (fn [i [b e]] {:token/id [:r i] :token/layer :r :token/begin b :token/end e}) extents)
@@ -301,11 +303,14 @@
                      rr (at :r)]
                  (is (every? (fn [[[_ e] [b _]]] (<= e b)) (partition 2 1 rr)) (str "rows overlap: " (pr-str rr)))
                  (mapv (fn [[b e]] (cp/cp-subs nb b e)) rr)))]
-    (testing "REV2-TEXT-1: text typed inside the whitespace between two rows"
-      (is (= ["Hi. " "X  The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 4 "X")])))
-      (is (= ["Hi. " "X Y The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 4 "X") (ins 6 "Y")])))
-      (testing "a row over two sentences ends where the second one now ends"
-        (is (= ["A. B.  " "X C."] (rows "|A.| /|B.|   /|C.|" [[0 8] [8 10]] [(ins 7 "X")]))))
+    (testing "REV2-TEXT-1: text typed inside the whitespace a row holds stays in it"
+      (is (= ["Hi. X  " "The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 4 "X")])))
+      (is (= ["Hi. X Y " "The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 4 "X") (ins 6 "Y")])))
+      (testing "and at the row's edge goes with the sentence that takes it"
+        (is (= ["Hi.   " "X The end."] (rows "|Hi.|   /|The| |end.|" [[0 6] [6 14]] [(ins 6 "X ")]))))
+      (testing "a row over two sentences keeps what is typed inside it"
+        (is (= ["A. B.  X " "C."] (rows "|A.| /|B.|   /|C.|" [[0 8] [8 10]] [(ins 7 "X")])))
+        (is (= ["A. B.   " "X C."] (rows "|A.| /|B.|   /|C.|" [[0 8] [8 10]] [(ins 8 "X ")]))))
       (testing "rows that leave the whitespace out keep it out"
         (is (= ["Hi." "X  The end."] (rows "|Hi.|   /|The| |end.|" [[0 3] [6 14]] [(ins 4 "X")])))))
     (testing "REV2-TEXT-2: a row over a sentence of only whitespace takes the text that sentence takes"

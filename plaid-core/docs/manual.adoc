@@ -891,7 +891,17 @@ Text typed between two tokens of a `partitioning` layer, such as two sentences, 
 * Text holding a line break, or with a line break between it and the second sentence's first letter, leaves the boundary where it was. A line typed there can then be split off as a sentence of its own without moving the second sentence or what is on it.
 * At the start of the text it joins the first sentence, and a line typed there becomes a sentence of its own. At the end it joins the last.
 
-An insert's `side` decides over these where it applies. A token of a layer that forbids overlap, other than the words and the layers under them, that covers a whole sentence, with or without the whitespace at its edges, follows its sentence, such as a time-alignment row. An edge of such a token on the whitespace where two sentences meet, such as the end of a row over several sentences, moves with that boundary. A whole `body` save reads its change from the difference between the two bodies and places it by the same rules. Where the difference can be read at more than one place, it is read where it changes the fewest tokens, and among those, as text typed at a sentence's start after whitespace. The reading can still differ from what was typed (`Then` typed before `The` can read as `The` typed over), so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
+An insert's `side` decides over these where it applies.
+
+A row, a token of a layer that forbids overlap other than the words and the layers under them, such as a time-alignment segment, keeps to the sentences this way:
+
+* Text typed inside a row stays in it, wherever the sentence boundary near it goes.
+* A row over whole sentences, with or without the whitespace at its edges, follows them. An edge at a sentence's start or end, or at its first or last letter, goes where that sentence's start or end goes, and keeps the whitespace it held there and no other. Text typed at that edge is in the row when that sentence takes it.
+* A row over part of a sentence takes the text typed right at an edge it shares with that sentence when the sentence takes it, and no other text of the sentence.
+* Any other edge of a row stays where it was.
+* Rows that did not overlap before a save do not overlap after it.
+
+A whole `body` save reads its change from the difference between the two bodies and places it by the same rules. Where the difference can be read at more than one place, it is read where it changes the fewest tokens, and among those, as text typed at a sentence's start after whitespace. The reading can still differ from what was typed (`Then` typed before `The` can read as `The` typed over), so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
 
 The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
 An editor can update its own copy of the document from it instead of reading the document again.

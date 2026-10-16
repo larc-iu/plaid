@@ -2303,24 +2303,37 @@
           points)))
 
 (defn follow-sentences
-  "`kept` (tokens as a text edit left them) with each follower (`follower?`)
-  whose old extent was a sentence's (a token of a layer in `partitioning`),
-  with or without the whitespace at the sentence's edges, set to that
-  sentence's extent as the partition's gap-fill will leave it (see
-  `compensate-partition-layers!`), less the whitespace at an edge where the
-  follower had none, whatever text the sentence took. A time-alignment
-  segment over its sentence keeps covering it. A follower's edge on
-  whitespace at a sentence's boundary (a row over several sentences and
-  their whitespace) goes where that boundary goes, so two such rows never
-  overlap and the text a sentence takes there is in a row. `heads` are the
-  sentences to be made at the start of the text (see `apply-plain-gaps`),
-  `nw` the new text's code points."
-  [^ints o old-tokens kept heads ^ints nw partitioning follower?]
+  "`kept` (tokens as a text edit left them) with each follower's
+  (`follower?`, a row: a token of a layer that forbids overlap beside the
+  words) edges placed by one rule, edge by edge (FX-D-TEXT):
+  - An edge on a sentence boundary (a token of a layer in `partitioning`),
+    a begin at a sentence's begin or first letter, an end at its end or
+    after its last letter, of a row over that whole sentence goes where
+    that edge of the sentence goes after the partition's gap-fill (see
+    `compensate-partition-layers!`). An edge on whitespace keeps the
+    sentence's whitespace there, an edge on a letter is moved off
+    whitespace onto the sentence's letters. So text typed where such an
+    edge meets the boundary goes with the sentence the partition rule
+    chooses, and the row holds it when it is on that sentence's side.
+  - Such an edge of a row over part of the sentence takes only the text
+    typed right at it (`typed-at`) that the sentence took, where the plain
+    rule left the edge beside that text.
+  - Any other edge stays where the plain rule placed it.
+  - A followed edge never leaves out what the row holds as its own (`held`,
+    of its old extent: its old text left and the text typed strictly inside
+    it), so text typed inside a row stays in it.
+  - Two rows of a layer that did not overlap do not: where two edges cross,
+    they meet at the one that stayed put, else at the one that keeps what
+    each row holds, else every row of the layer keeps the plain placement.
+  `heads` are the sentences to be made at the start of the text (see
+  `apply-plain-gaps`), `nw` the new text's code points, `held` a function
+  of an old extent `[b e]` giving the new extent of what it holds, or nil,
+  and `typed-at` one of an old position giving the new extent of the text
+  inserted there, or nil."
+  [^ints o old-tokens kept heads ^ints nw partitioning follower? held typed-at]
   (let [n (alength nw)
-        trim (fn [^ints cs [b e]]
-               (let [b (loop [x b] (if (and (< x e) (space? (aget cs x))) (recur (inc x)) x))
-                     e (loop [x e] (if (and (> x b) (space? (aget cs (dec x)))) (recur (dec x)) x))]
-                 [b e]))
+        lead (fn [^ints cs b e] (loop [x b] (if (and (< x e) (space? (aget cs x))) (recur (inc x)) x)))
+        tail (fn [^ints cs b e] (loop [x e] (if (and (> x b) (space? (aget cs (dec x)))) (recur (dec x)) x)))
         was (into {} (map (juxt :token/id identity)) old-tokens)
         now (into {} (map (juxt :token/id identity)) kept)
         parts (filter #(partitioning (:token/layer %)) old-tokens)
@@ -2336,43 +2349,92 @@
                                                   (if (= i (dec c)) n (:token/begin (live (inc i))))]])
                                               live))))
                      (group-by :token/layer parts))
-        by-extent (group-by #(trim o [(:token/begin %) (:token/end %)]) parts)
-        by-full (group-by (juxt :token/begin :token/end) parts)
-        ;; each boundary of the partitions, whitespace included, to where the
-        ;; gap-fill leaves it, where every partition agrees
-        edge (fn [f i]
-               (into {}
-                     (keep (fn [[x ys]] (when (= 1 (count ys)) [x (first ys)])))
-                     (reduce (fn [m t]
-                               (if-let [ext (filled (:token/id t))]
-                                 (update m (f t) (fnil conj #{}) (nth ext i))
-                                 m))
-                             {} parts)))
-        begins (edge :token/begin 0)
-        ends (edge :token/end 1)]
+        ;; old edge position -> where an edge there goes, from each
+        ;; sentence's old edges (with and without its whitespace) to its new
+        ;; ones, kept where every partition agrees: `:to`, the sentences'
+        ;; text `:over` (its letters, or all of it when it has none) and
+        ;; their new extents `:now`
+        agreed (fn [pairs]
+                 (into {}
+                       (keep (fn [[x ys]] (let [ms (map second ys)]
+                                            (when (= 1 (count (into #{} (map :to) ms)))
+                                              [x {:to (:to (first ms)) :over (map :over ms) :now (map :now ms)}]))))
+                       (group-by first pairs)))
+        edges (for [{:token/keys [id begin end]} parts
+                    :let [[nb ne] (filled id)]
+                    :when nb]
+                (let [ob (lead o begin end) oe (tail o begin end)
+                      lb (lead nw nb ne) le (tail nw nb ne)
+                      letters? (< ob oe)
+                      new-letters? (< lb le)
+                      e (fn [x to] [x {:to to :over (if letters? [ob oe] [begin end])
+                                       :now ((juxt :token/begin :token/end) (now id))}])]
+                  {:begins (cond-> [(e begin (if (or (space? (aget o begin)) (not new-letters?)) nb lb))]
+                             (and letters? (not= ob begin)) (conj (e ob (if new-letters? lb nb))))
+                   :ends (cond-> [(e end (if (or (space? (aget o (dec end))) (not new-letters?)) ne le))]
+                           (and letters? (not= oe end)) (conj (e oe (if new-letters? le ne))))}))
+        begin-at (agreed (mapcat :begins edges))
+        end-at (agreed (mapcat :ends edges))
+        ;; where an edge goes: a row over the whole of the sentence there
+        ;; follows the sentence's edge, a row over part of it takes the text
+        ;; typed right at its edge that the sentence took, where the plain
+        ;; rule left the edge beside it, and nothing else
+        place (fn [{:keys [to over now]} begin end begin? plain]
+                (if (every? (fn [[x y]] (and (<= begin x) (<= y end))) over)
+                  to
+                  (when-let [[x y] (typed-at (if begin? begin end))]
+                    (let [[x y] (reduce (fn [[x y] [nb ne]] [(max x nb) (min y ne)]) [x y] now)
+                          [x y] (if begin?
+                                  [(if (space? (aget o begin)) x (lead nw x y)) y]
+                                  [x (if (space? (aget o (dec end))) y (tail nw x y))])]
+                      (when (and (< x y) (<= x plain y))
+                        (if begin? (min x plain) (max y plain)))))))
+        ;; each follower, where its edges go: `:b` `:e`, what it holds,
+        ;; `:hb` `:he`, and whether each edge followed a sentence
+        rows (keep (fn [{:token/keys [id] :as t}]
+                     (let [{:token/keys [begin end]} (was id)]
+                       (when (and begin (< begin end) (follower? t))
+                         (let [fb (some-> (begin-at begin) (place begin end true (:token/begin t)))
+                               fe (some-> (end-at end) (place begin end false (:token/end t)))
+                               [hb he] (held [begin end])
+                               b (if fb (cond-> fb hb (min hb)) (:token/begin t))
+                               e (if fe (cond-> fe he (max he)) (:token/end t))]
+                           (if (and (or fb fe) (< b e))
+                             {:id id :layer (:token/layer t) :old begin :b b :e e :hb hb :he he
+                              :fb (and fb (= b fb)) :fe (and fe (= e fe))}
+                             {:id id :layer (:token/layer t) :old begin :b (:token/begin t) :e (:token/end t)
+                              :hb hb :he he})))))
+                   kept)
+        ;; where two rows of a layer now cross, one cut between them
+        placed (into {}
+                     (mapcat (fn [[_ rs]]
+                               (let [rs (vec (sort-by :old rs))
+                                     out (reduce
+                                          (fn [out r]
+                                            (let [p (peek out)]
+                                              (if (and p (> (:e p) (:b r)))
+                                                (let [lo (or (:he p) (inc (:b p)))
+                                                      hi (or (:hb r) (dec (:e r)))
+                                                      in? #(<= lo % hi)
+                                                      c1 (:e p) c2 (:b r)
+                                                      cut (cond (and (in? c2) (not (:fb r))) c2
+                                                                (and (in? c1) (not (:fe p))) c1
+                                                                (in? c2) c2
+                                                                (in? c1) c1
+                                                                (<= lo hi) (max lo (min hi c2)))]
+                                                  (if cut
+                                                    (conj (pop out) (assoc p :e cut) (assoc r :b cut))
+                                                    (reduced nil)))
+                                                (conj out r))))
+                                          [] rs)]
+                                 ;; nothing keeps both: the plain placement
+                                 (map (juxt :id identity)
+                                      (or out (map #(let [t (now (:id %))] (assoc % :b (:token/begin t) :e (:token/end t))) rs)))))
+                             (group-by :layer rows)))]
     (mapv (fn [{:token/keys [id] :as t}]
-            (let [{:token/keys [begin end]} (was id)
-                  follows? (and begin (< begin end) (follower? t))
-                  [tb te] (when follows? (trim o [begin end]))
-                  sentence (when follows?
-                             (or (some #(filled (:token/id %)) (by-full [begin end]))
-                                 (when (< tb te) (some #(filled (:token/id %)) (by-extent [tb te])))))
-                  ;; an edge on whitespace keeps the sentence's whitespace
-                  ;; there, an edge on a letter is moved off it
-                  fit (fn [[b e]]
-                        (let [b (if (space? (aget o begin)) b (loop [x b] (if (and (< x e) (space? (aget nw x))) (recur (inc x)) x)))
-                              e (if (space? (aget o (dec end))) e (loop [x e] (if (and (> x b) (space? (aget nw (dec x)))) (recur (dec x)) x)))]
-                          (when (< b e) [b e])))]
-              (if sentence
-                (if-let [[b e] (fit sentence)] (assoc t :token/begin b :token/end e) t)
-                ;; an edge on the whitespace at a boundary of the
-                ;; partition, a row holding its sentences' whitespace, goes
-                ;; where that boundary goes
-                (let [nb (when (and follows? (space? (aget o begin))) (begins begin))
-                      ne (when (and follows? (space? (aget o (dec end)))) (ends end))
-                      b (or nb (:token/begin t))
-                      e (or ne (:token/end t))]
-                  (if (and (or nb ne) (< b e)) (assoc t :token/begin b :token/end e) t)))))
+            (if-let [{:keys [b e]} (placed id)]
+              (assoc t :token/begin b :token/end e)
+              t))
           kept)))
 
 (defn- split-spaced-words
@@ -2890,11 +2952,41 @@
          heads (when head-end
                  (mapv (fn [{:token/keys [layer]}] {:token/layer layer :token/begin 0 :token/end head-end})
                        (filter #(some (fn [f] (= (:token/id f) (:token/id %))) firsts) kept)))
+        ;; the new extent of what old [b, e) holds as its own: its old text
+        ;; left and the text typed strictly inside it, or nil
+         held (fn [[b e]]
+                (let [cut? (fn [g x] (and (>= g 0) (let [{a :a z :b} (info g)] (and (<= a x) (< x z)))))
+                      at (fn [x] (let [g (at-or-before x)] (+ x (if (neg? g) 0 (aget shift (inc g))))))
+                      first-left (loop [x b] (when (< x e) (let [g (at-or-before x)] (if (cut? g x) (recur (:b (info g))) x))))
+                      last-left (loop [x (dec e)] (when (>= x b) (let [g (at-or-before x)] (if (cut? g x) (recur (dec (:a (info g)))) x))))
+                      typed (loop [g (inc (at-or-before b)) out []]
+                              (if (and (< g k) (< (:a (info g)) e))
+                                (recur (inc g) (let [{a :a z :b m :n} (info g)]
+                                                 (if (and (< b a) (if (= a z) (< a e) (< z e)) (pos? m))
+                                                   (conj out [(new-at g) (+ (new-at g) m)])
+                                                   out)))
+                                out))
+                      xs (cond-> typed first-left (conj [(at first-left) (inc (at last-left))]))]
+                  (when (seq xs)
+                    ;; off whitespace at an edge that had none
+                    (let [x (reduce min (map first xs)) y (reduce max (map second xs))
+                          ;; and past a line made a sentence of its own, as
+                          ;; every token reaching over it
+                          x (if head-end (max x (loop [x head-end] (if (and (< x (alength nw)) (ws? (aget nw x))) (recur (inc x)) x))) x)
+                          x (if (ws? (aget o b)) x (loop [x x] (if (and (< x y) (ws? (aget nw x))) (recur (inc x)) x)))
+                          y (if (ws? (aget o (dec e))) y (loop [y y] (if (and (> y x) (ws? (aget nw (dec y)))) (recur (dec y)) y)))]
+                      (when (< x y) [x y])))))
          kept (follow-sentences o wide kept heads nw partitioning
                                 (fn [t] (not (or (not (contains? exclusive (:token/layer t)))
                                                  (partitioning (:token/layer t))
                                                  (decider-layers (:token/layer t))
-                                                 (contains? children (:token/layer t))))))]
+                                                 (contains? children (:token/layer t)))))
+                                held
+                                ;; the new text of an insert at old x
+                                (fn [x] (let [g (at-or-before x)]
+                                          (when (>= g 0)
+                                            (let [{a :a z :b m :n} (info g)]
+                                              (when (and (= a z x) (pos? m)) [(new-at g) (+ (new-at g) m)]))))))]
      (cond-> {:text {:text/body new-body}
               ;; a point at the edge of a token of its layer that grew over it
               ;; stays at that edge, so nothing ends up inside another

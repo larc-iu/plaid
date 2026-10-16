@@ -486,11 +486,14 @@
   ;; sentence with its whitespace. Text typed inside the whitespace between
   ;; two of them answered 409 (the next row took it with its sentence, the
   ;; row before kept its end past it), and a row over a sentence of only
-  ;; whitespace left the text that sentence took in no row.
+  ;; whitespace left the text that sentence took in no row. Text typed
+  ;; inside a row stays in it (FX-D-TEXT), and at its edge goes with the
+  ;; sentence that takes it.
   (doseq [[label change want-body want-rows]
-          [["one insert" {:edits [(ins 4 "X")]} "Hi. X  The end." [[0 4] [4 15]]]
-           ["two inserts" {:edits [(ins 4 "X") (ins 6 "Y")]} "Hi. X Y The end." [[0 4] [4 16]]]
-           ["a whole-body save" {:body "Hi. X  The end."} "Hi. X  The end." [[0 4] [4 15]]]]]
+          [["one insert" {:edits [(ins 4 "X")]} "Hi. X  The end." [[0 7] [7 15]]]
+           ["two inserts" {:edits [(ins 4 "X") (ins 6 "Y")]} "Hi. X Y The end." [[0 8] [8 16]]]
+           ["a whole-body save" {:body "Hi. X  The end."} "Hi. X  The end." [[0 7] [7 15]]]
+           ["at the row's edge" {:edits [(ins 6 "So ")]} "Hi.   So The end." [[0 6] [6 17]]]]]
     (testing label
       (let [{:keys [text rows]} (rows-setup "Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 6] [6 14]] [])
             r (edit-text text change)]
@@ -501,6 +504,22 @@
         r (edit-text text {:edits [(ins 4 "X")]})]
     (is (= 200 (:status r)) (pr-str (:body r)))
     (is (= [[0 4 "Hi. "] [4 6 "X "] [6 14 "The end."]] (map extent rows)))))
+
+(deftest a-row-edge-in-the-whitespace-saves-any-edit
+  ;; REV3-TEXT-1: a row ending in the middle of the whitespace after its
+  ;; sentence, beside a row beginning there that is not one sentence, made
+  ;; every save of the text a 409, an edit anywhere. A row edge off a
+  ;; sentence boundary stays where it is.
+  (doseq [[label rows change want-rows]
+          [["a letter typed in another word" [[0 4] [4 7]] {:edits [(ins 10 "X")]} [[0 4] [4 7]]]
+           ["a row over two sentences" [[0 4] [4 11]] {:edits [(ins 10 "X")]} [[0 4] [4 12]]]
+           ["a whole-body save" [[0 4] [4 11]] {:body "Ab.\n Cd. EXf."} [[0 4] [4 12]]]
+           ["a letter typed in the first row" [[0 4] [4 7]] {:edits [(ins 1 "X")]} [[0 5] [5 8]]]]]
+    (testing label
+      (let [{:keys [text rows]} (rows-setup "Ab.\n Cd. Ef." [[0 5] [5 9] [9 12]] [[0 2] [5 7] [9 11]] rows [])
+            r (edit-text text change)]
+        (is (= 200 (:status r)) (pr-str (:body r)))
+        (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
 
 (deftest an-overlap-refusal-names-the-layer
   ;; REV5 L3: should a rule ever leave two rows over the same text (here the
