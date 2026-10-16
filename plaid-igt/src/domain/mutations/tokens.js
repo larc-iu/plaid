@@ -286,10 +286,17 @@ export const tokenMutations = {
   },
 
   // Delete all word tokens. The server cascades to morphemes (and their
-  // spans + vocab links); the cascade is mirrored locally.
+  // spans + vocab links); the cascade is mirrored locally. A token the
+  // ignored-tokens rule excludes (punctuation ud's Tokenize made, say) reads
+  // as text here and stays, so Clear deletes the words it counts and the
+  // document reads as it does where that punctuation has no token.
   async clearTokens() {
     const info = this.layerInfo;
-    const wordTokens = info.primaryTokenLayer?.tokens || [];
+    const cfg = readIgnoredTokens(info.primaryTokenLayer?.config);
+    const body = this.body;
+    const wordTokens = (info.primaryTokenLayer?.tokens || []).filter(
+      (t) => !isTokenIgnored(cpSlice(body, t.begin, t.end), cfg),
+    );
     if (wordTokens.length === 0) return true;
     const label = 'Failed to clear tokens';
     if (!this._canWrite(label)) return false;

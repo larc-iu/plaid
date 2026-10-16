@@ -110,3 +110,21 @@ describe("a merge across ud's punctuation token", () => {
     expect(lossOf(punct).annotations).toBe(1);
   });
 });
+
+// Clear tokens deletes the words igt counts in its question, and leaves a
+// punctuation token another app made, which igt reads as text (REV7-IGT-5).
+describe("Clear tokens beside ud's punctuation token", () => {
+  it('deletes the words it shows, and igt reads the document as without the token', async () => {
+    const plain = buildMerge(false);
+    const punct = buildMerge(true);
+    expect(await plain.clearTokens()).not.toBe(false);
+    expect(await punct.clearTokens()).not.toBe(false);
+    await settle();
+    const deleted = punct.client.calls.find((c) => c.kind === 'tokens.bulkDelete').args[0];
+    expect(deleted).toEqual(['w-1', 'w-3']);
+    expect(words(punct)).toEqual([[2, 3]]);
+    const shown = (doc) => doc.sentences.flatMap((s) => s.tokens || []).length;
+    expect(shown(punct)).toBe(shown(plain));
+    expect(shown(punct)).toBe(0);
+  });
+});
