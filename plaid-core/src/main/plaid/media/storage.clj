@@ -439,6 +439,20 @@
               (catch Exception cleanup-error
                 (log/warn cleanup-error "Failed to remove staged media copy" path)))))))))
 
+(declare delete-media-file!)
+
+(defn delete-media-file-version!
+  "Delete the media file of `doc-id` only while it is still the recording
+  `version` names (`media-version`), under the upload lock, so a recording
+  uploaded after the delete that checked `version` is never the one removed.
+  Returns as `delete-media-file!` does, with `:error-kind :changed` when
+  another recording is there."
+  [doc-id version]
+  (locking (upload-lock-for doc-id)
+    (if (= version (media-version doc-id))
+      (delete-media-file! doc-id)
+      {:success false :error-kind :changed :error "Another recording is stored now."})))
+
 (defn delete-media-file!
   "Delete a media file for a document. Returns {:success true} or
   {:success false :error-kind <kind> :error <msg>}."

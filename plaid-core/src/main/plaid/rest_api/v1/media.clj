@@ -97,7 +97,10 @@
   page is refused as `:exists` already."
   ([db document-id user-id] (delete! db document-id user-id nil))
   ([db document-id user-id media-version]
-   (let [result (op/submit-operation!
+   (let [;; The recording the operation checked and deleted. Only that file
+         ;; goes after the commit, never one uploaded since.
+         deleted (volatile! nil)
+         result (op/submit-operation!
                  [tx db {:type :media/delete
                          :project (doc/project-id db document-id)
                          :document document-id
@@ -112,10 +115,11 @@
                                    {:code 409
                                     :plaid/body {:media-changed true
                                                  :media-url (media/media-url document-id)}})))
+                 (vreset! deleted (media/media-version document-id))
                  (duration/store! tx document-id nil)
                  nil)]
      (when (:success result)
-       (op/after-commit! (with-meta (fn [] (media/delete-media-file! document-id))
+       (op/after-commit! (with-meta (fn [] (media/delete-media-file-version! document-id @deleted))
                            {::deletes document-id})))
      result)))
 

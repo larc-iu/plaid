@@ -11,6 +11,7 @@
                                     admin-request api-call
                                     with-clean-db parse-response-body]]
             [plaid.server.config :as config]
+            [plaid.sql.operation]
             [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
   (:import [java.io File]
            [java.nio.file FileVisitOption Files]
@@ -87,3 +88,27 @@
         (is (nil? (media-url did)))
         (testing "with nothing stored, a delete naming a version is 404"
           (is (= 404 (:status (delete! did "1-1")))))))))
+
+(deftest a-delete-removes-only-the-recording-it-checked
+  ;; The file goes after the commit. If, in between, someone else deletes the
+  ;; recording and uploads another, the first delete's file removal must leave
+  ;; the new one alone.
+  (with-media-dir
+    (fn []
+      (let [pid (create-test-project admin-request "Media delete after commit")
+            did (create-test-document admin-request pid "Story")
+            real-after-commit plaid.sql.operation/after-commit!
+            intercepted (atom false)]
+        (is (= 201 (:status (upload! did "first"))))
+        (with-redefs [plaid.sql.operation/after-commit!
+                      (fn [f]
+                        (if (compare-and-set! intercepted false true)
+                          (do
+                            ;; Between this delete's commit and its file removal.
+                            (is (= 204 (:status (delete! did nil))))
+                            (is (= 201 (:status (upload! did "second, and longer"))))
+                            (f))
+                          (real-after-commit f)))]
+          (is (= 204 (:status (delete! did nil)))))
+        (is @intercepted)
+        (is (some? (media-url did)) "the recording uploaded since is still there")))))
