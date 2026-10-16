@@ -156,9 +156,11 @@ export const PlanCard = ({
         (status === 'discarded' || stale || superseded) && 'opacity-60',
       )}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">Proposed changes</span>
-        <span className="text-muted-foreground">{plan.summary}</span>
+      {/* The summary wraps in its own column, so a badge keeps to the first
+          line beside it rather than wrapping onto a line of its own. */}
+      <div className="flex items-start gap-2 [&>.ml-auto]:shrink-0">
+        <span className="shrink-0 font-medium">Proposed changes</span>
+        <span className="min-w-0 flex-1 text-muted-foreground">{plan.summary}</span>
         {status === 'applied' && (
           <Badge variant="secondary" className="ml-auto">
             <Check className="mr-1 h-3 w-3" /> Applied
