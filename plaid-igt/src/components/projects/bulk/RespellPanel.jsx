@@ -56,7 +56,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [matchType, setMatchType] = useState('contains');
   const [repl, setRepl] = useState('');
   const [includeMorphemes, setIncludeMorphemes] = useState(true);
-  const [includeLexicon, setIncludeLexicon] = useState(true);
+  const [includeLexicon, setIncludeLexicon] = useState(false);
   const r = useRun();
   // Respelling an entry renames it, which only its vocabulary's maintainers
   // may do (core refuses anyone else). The others are listed, not ticked.
