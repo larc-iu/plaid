@@ -588,7 +588,7 @@ def test_a_sentence_changed_while_the_model_ran_is_skipped_and_named():
     assert (result['drafted'], result['changed']) == (1, 1)
     assert result['sentences_changed'] == [2]
     assert result['notice'] == {
-        'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
+        'level': 'warning', 'title': 'Drafted 1 sentence', 'sticky': True,
         'message': 'Sentence 2 changed during the run and was not drafted.'}
     assert service.client.operations == ['UMR draft of sentence 1']
     concepts = [n['value'] for n in _ops(service.client, 'spans.bulk_create')]
@@ -707,7 +707,7 @@ def test_one_bad_sentence_does_not_throw_away_the_good_ones():
 
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (1, 1)
-    assert result['notice']['level'] == 'success'
+    assert result['notice']['level'] == 'warning'
     assert result['notice']['title'] == 'Drafted 1 sentence'
     assert result['notice']['message'] == (
         "Failed to draft sentence 1: The reply is not a readable graph.")
@@ -743,7 +743,7 @@ def test_the_notice_names_every_failed_sentence_with_its_own_reason_and_stays():
     assert (result['drafted'], result['failed']) == (1, 3)
     assert [f['sentence'] for f in result['sentences_failed']] == [2, 3, 4]
     assert result['notice'] == {
-        'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
+        'level': 'warning', 'title': 'Drafted 1 sentence', 'sticky': True,
         'message': ("Failed to draft 3 sentences. Sentences 2 and 4: The reply is not a "
                     "readable graph. Sentence 3: dog (\"dog\") :size takes a node, not the "
                     "value small.")}
@@ -1096,7 +1096,7 @@ def test_a_run_ends_after_two_sentences_in_a_row_get_no_answer():
     assert [f['sentence'] for f in result['sentences_failed']] == [2, 3]
     assert result['sentences_not_drafted'] == [4, 5, 6]
     assert result['notice'] == {
-        'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
+        'level': 'warning', 'title': 'Drafted 1 sentence', 'sticky': True,
         'message': ('Failed to draft 2 sentences. Sentences 2 and 3: The model did not answer '
                     'within 120 seconds. The model did not answer 2 sentences in a row, so the '
                     'run stopped. 3 sentences were not drafted.')}

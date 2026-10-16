@@ -174,7 +174,8 @@ def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
     if drafted:
         skipped_line = ([f'Skipped {skipped} sentence{s(skipped)} that already had a graph.']
                         if skipped else [])
-        return notice('success', f'Drafted {drafted} sentence{s(drafted)}',
+        # A run some sentences of which failed is not a success to tick off.
+        return notice('warning' if failed else 'success', f'Drafted {drafted} sentence{s(drafted)}',
                       skipped_line + held + failed)
     if skipped:
         if skipped == 1:
