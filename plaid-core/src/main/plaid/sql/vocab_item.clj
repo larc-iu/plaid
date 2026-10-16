@@ -7,6 +7,7 @@
             [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
+            [plaid.sql.document-rows :as drows]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
             [plaid.util.storable-text :as storable])
@@ -75,10 +76,11 @@
                         :from [:vocab_items]
                         :where [:= :vocab_layer_id layer-id]
                         :order-by [:rowid]})]
+    ;; One chunked metadata read for the whole list, not one per entry.
     (mapv (fn [r]
-            (let [item (row->vocab-item r)]
-              (metadata/add-metadata-to-response db item "vocab-item" (:id r))))
-          rows)))
+            (cond-> (row->vocab-item r)
+              (:metadata r) (assoc :metadata (:metadata r))))
+          (drows/with-metadata db "vocab-item" rows))))
 
 ;; ============================================================
 ;; Writes: create / merge

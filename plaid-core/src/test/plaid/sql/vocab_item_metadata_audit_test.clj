@@ -11,6 +11,8 @@
   one `:insert` audit row whose post_image carries `:metadata`."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.sql.common :as psc]
+            [plaid.sql.metadata :as metadata]
+            [plaid.sql.vocab-item :as vocab-item]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db]]
             [plaid.test-helpers :refer [create-vocab-layer
@@ -83,3 +85,21 @@
       (let [post (psc/read-json (:post_image (first writes)))]
         (is (nil? (:metadata post))
             "no :metadata folded when none was supplied")))))
+
+(deftest the-entry-list-reads-metadata-once-and-as-each-entry-does
+  ;; A vocabulary's entry list read each entry's metadata with its own query.
+  ;; It reads them together now, and every entry is what its own read gives.
+  (let [vocab (-> (create-vocab-layer admin-request "ListMetaVocab") :body :id)
+        ids (vec (for [i (range 12)]
+                   (-> (if (even? i)
+                         (create-vocab-item admin-request vocab (str "w" i) {:gloss (str "g" i) :n i})
+                         (create-vocab-item admin-request vocab (str "w" i)))
+                       :body :id)))
+        per-entry-reads (atom 0)
+        listed (let [real metadata/get-metadata]
+                 (with-redefs [metadata/get-metadata (fn [& args] (swap! per-entry-reads inc) (apply real args))]
+                   (vocab-item/get-all-in-layer db vocab)))]
+    (is (= 0 @per-entry-reads))
+    (is (= (mapv #(vocab-item/get db %) ids) listed))
+    (is (= {"gloss" "g2" "n" 2} (:metadata (nth listed 2))))
+    (is (not (contains? (nth listed 1) :metadata)))))

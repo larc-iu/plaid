@@ -40,9 +40,10 @@
 (def ^:private pause-ms
   "How long to stand off the database between two documents, in the
   background. A writer that arrived while one document's transaction held the
-  write lock is parked in its busy_timeout retry loop, and this is the window
-  in which it is certain to find the lock free."
-  50)
+  write lock is parked in its busy_timeout retry loop, which sleeps up to 100
+  ms between polls, so a pause above that is the window in which it is certain
+  to poll while the lock is free."
+  150)
 
 (def ^:private purge-pause-ms
   "The least the history purge stands off the database after each of its
