@@ -331,10 +331,15 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
         raise ToolError(f'The restore was refused: {" ".join(str(e).split())[:400]}')
     summary = summary if isinstance(summary, dict) else {}
     total = summary.get('total') or 0
+    kept = summary.get('name_kept') or None
+    kept_note = (f' The name stays {qv(kept.get("name"))}: another document has {qv(kept.get("taken"))}.'
+                 if isinstance(kept, dict) else '')
     if not total:
+        if kept_note:
+            return f'Nothing to restore but the name, and it cannot come back.{kept_note}'
         return f'Nothing to restore: {doc_label(ws, doc.id, qv)} is as it was at {as_of}.'
     said = lines(summary)
     ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, **(extra(doc) if extra else {}),
                **labelled(doc_label(ws, doc.id), f'restore to {as_of} ({total} change{"s" if total != 1 else ""}: '
                           + ', '.join(said) + ')')})
-    return ws.planned_note(1) + '\nWhat changes (from the server\'s dry run): ' + ', '.join(said) + '.'
+    return ws.planned_note(1) + '\nWhat changes (from the server\'s dry run): ' + ', '.join(said) + '.' + kept_note

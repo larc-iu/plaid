@@ -172,12 +172,20 @@
         t (latest-op-ts)
         _ (assert-ok (rename! a "Story later"))
         b (create-test-document admin-request p "STORY RENAMED")]
+    (testing "the summary names the name kept and the document holding the old one (REV7-CORE-3)"
+      (let [r (api-call admin-request {:method :post
+                                       :path (str "/api/v1/documents/" a "/restore?dry-run=true&as-of="
+                                                  (java.net.URLEncoder/encode (str t) "UTF-8"))})]
+        (is (= {:name "Story later" :taken "STORY RENAMED"} (get-in r [:body :name-kept])))
+        (is (false? (get-in r [:body :name])))))
     (assert-ok (restore! a t))
     (is (= "Story later" (:name (jdbc/execute-one! db ["SELECT name FROM documents WHERE id = ?" a]
                                                    {:builder-fn rs/as-unqualified-maps}))))
     (testing "with the name free again, a restore takes it back"
       (api-call admin-request {:method :delete :path (str "/api/v1/documents/" b)})
-      (assert-ok (restore! a t))
+      (let [r (restore! a t)]
+        (assert-ok r)
+        (is (nil? (get-in r [:body :name-kept]))))
       (is (= ["Story renamed"] (names-in p))))
     (is (unique? p))))
 

@@ -7,6 +7,7 @@ import {
   latestState,
   recordingNote,
   restoreError,
+  nameKeptLine,
   skippedLines,
 } from './restoreSummary.js';
 
@@ -215,6 +216,16 @@ describe('skippedLines', () => {
       ]),
     ).toEqual(['1 annotation cannot come back.', '4 tokens cannot come back.']);
     expect(skippedLines(undefined)).toEqual([]);
+  });
+});
+
+describe('nameKeptLine', () => {
+  it('names the name kept and the document holding the old one', () => {
+    expect(nameKeptLine({ nameKept: { name: 'Fable', taken: 'TALE' } })).toBe(
+      'The name stays “Fable”: another document has “TALE”.',
+    );
+    expect(nameKeptLine({ name: true })).toBe(null);
+    expect(nameKeptLine(null)).toBe(null);
   });
 });
 

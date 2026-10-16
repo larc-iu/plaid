@@ -197,4 +197,18 @@ describe('RestoreDialog', () => {
     expect(error.mock.calls.flat().join(' ')).not.toMatch(/same key/);
     error.mockRestore();
   });
+
+  it('says the name stays when another document holds the old one, in place of "Nothing differs"', async () => {
+    const restore = vi.fn().mockResolvedValue({
+      name: false,
+      total: 0,
+      nameKept: { name: 'Fable', taken: 'TALE' },
+    });
+    view = await mount({ documents: { restore, audit: async () => [] } }, vi.fn(), {});
+    await settle(view);
+    expect(
+      byText(document.body, 'p', 'The name stays “Fable”: another document has “TALE”.'),
+    ).not.toBeNull();
+    expect(byText(document.body, 'p', 'Nothing differs from the current state.')).toBeNull();
+  });
 });

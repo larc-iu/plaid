@@ -232,7 +232,9 @@
                            "as one operation: what was deleted since then comes back under its original id, "
                            "what was added since is removed, and what changed is set back, across every layer. "
                            "A layer deleted since then, or a vocabulary entry that no longer exists, is skipped and "
-                           "reported under <body>skipped</body>. The response is a summary of the changes. "
+                           "reported under <body>skipped</body>. A name another document holds now stays with it, and the document "
+                           "keeps its current name, reported under <body>name-kept</body> ({name, taken}: the name kept and "
+                           "the other document's name). The response is a summary of the changes. "
                            "With <query>dry-run</query> true nothing is written and the summary says what would change. "
                            "Requires maintainer privileges.")
              :middleware [[pra/wrap-maintainer-required get-project-id]

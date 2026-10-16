@@ -2919,7 +2919,9 @@ class PlaidClient {
        * operation: what was deleted since then comes back under its original
        * id, what was added since is removed, and what changed is set back,
        * across every layer. A layer deleted since then, or a vocabulary entry
-       * that no longer exists, is skipped and reported under `skipped`.
+       * that no longer exists, is skipped and reported under `skipped`. A name
+       * another document holds now stays with it, and the document keeps its
+       * current name, reported under `nameKept` (`{name, taken}`).
        * Resolves to a summary of the changes. Maintainers only.
        * @param {string} documentId - The document ID
        * @param {string} asOf - The moment to go back to (ISO-8601 instant),

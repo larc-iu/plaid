@@ -25,6 +25,7 @@ import {
   historyMessage,
   indexLayers,
   latestState,
+  nameKeptLine,
   recordingNote,
   restoreError,
   skippedLines,
@@ -118,6 +119,7 @@ export const RestoreDialog = ({
   const groups = changeGroups(preview, layers, roleWords);
   const recording = preview ? recordingNote(mediaEntries, asOf, !!raw?.mediaUrl) : null;
   const gaps = [...skippedLines(preview?.skipped), ...(recording?.gap ? [recording.gap] : [])];
+  const nameKept = nameKeptLine(preview);
 
   const close = () => {
     if (busy) return;
@@ -173,9 +175,14 @@ export const RestoreDialog = ({
         historyMessage(asOf, entry?.label),
       );
       await settle();
-      const message = res?.skipped?.length
-        ? skippedLines(res.skipped).join(' ')
-        : `Restored to ${fullTimestamp(asOf)}.`;
+      const message = [
+        res?.skipped?.length
+          ? skippedLines(res.skipped).join(' ')
+          : `Restored to ${fullTimestamp(asOf)}.`,
+        nameKeptLine(res),
+      ]
+        .filter(Boolean)
+        .join(' ');
       const title = res?.skipped?.length ? 'Restored, with gaps' : 'Restored';
       const kind = res?.skipped?.length ? 'warning' : 'success';
       if (before) {
@@ -218,9 +225,11 @@ export const RestoreDialog = ({
 
           {!error && !preview && <Loading label="Comparing…" className="p-0" />}
 
-          {preview && groups.length === 0 && (
+          {preview && groups.length === 0 && !nameKept && (
             <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
           )}
+
+          {nameKept && <p className="text-sm text-muted-foreground">{nameKept}</p>}
 
           {groups.map((g) => (
             <div key={g.heading}>

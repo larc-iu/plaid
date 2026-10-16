@@ -58,7 +58,7 @@
   [taken? name]
   (first (remove taken? (candidates name))))
 
-(defn- held
+(defn held
   "The document of `project`, other than `except` (nil for none), whose name
   folds as `name` does, as `{:id :name}`, or nil."
   [tx project name except]

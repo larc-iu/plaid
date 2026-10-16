@@ -228,6 +228,14 @@ def test_restore_document_plans_from_the_dry_run_and_stands_alone():
     # Nothing to do, and no access.
     w3 = fake_ws(FakeClient(restore_summary={**SUMMARY, 'total': 0}))
     assert call_tool(w3, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}).startswith('Nothing to restore')
+    # A name another document holds now stays, and the answer says so (REV7-CORE-3).
+    kept = {'name': 'Fable', 'taken': 'TALE'}
+    w5 = fake_ws(FakeClient(restore_summary={**SUMMARY, 'total': 0, 'name_kept': kept}))
+    assert call_tool(w5, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}) == \
+        'Nothing to restore but the name, and it cannot come back. The name stays "Fable": another document has "TALE".'
+    w6 = fake_ws(FakeClient(restore_summary={**SUMMARY, 'name_kept': kept}))
+    assert call_tool(w6, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}).endswith(
+        '(item-gone). The name stays "Fable": another document has "TALE".')
     w4 = fake_ws(FakeClient(fails={'documents.restore': PlaidAPIError('HTTP 403 Forbidden', status=403)}))
     assert 'maintainer access' in call_tool(w4, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'})
     # Approval runs the server's restore once, as the plan's one write.

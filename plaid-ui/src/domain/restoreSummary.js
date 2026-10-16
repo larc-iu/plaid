@@ -177,6 +177,13 @@ export const skippedLines = (skipped) =>
     (k) => `${countOf(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
   );
 
+// A restore keeps the document's current name when the name it had then
+// belongs to another document now. Core says which (`nameKept`).
+export const nameKeptLine = (summary) => {
+  const k = summary?.nameKept;
+  return k ? `The name stays “${k.name}”: another document has “${k.taken}”.` : null;
+};
+
 // The audit message a restore is written under.
 export const historyMessage = (asOf, label) =>
   `Restore to ${fullTimestamp(asOf)}` + (label ? ` (after “${label}”)` : '');

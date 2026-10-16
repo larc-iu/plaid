@@ -2312,8 +2312,10 @@ class DocumentsResource(_MetadataMethods, _Resource):
         What was deleted since then comes back under its original id, what
         was added since is removed, and what changed is set back, across
         every layer. A layer deleted since then, or a vocabulary entry that
-        no longer exists, is skipped and reported under ``skipped``. Returns
-        a summary of the changes. Maintainers only.
+        no longer exists, is skipped and reported under ``skipped``. A name
+        another document holds now stays with it, and the document keeps its
+        current name, reported under ``name_kept`` (``{name, taken}``).
+        Returns a summary of the changes. Maintainers only.
 
         Args:
             document_id: The document ID
