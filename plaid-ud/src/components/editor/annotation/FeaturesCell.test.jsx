@@ -196,3 +196,35 @@ describe('FeaturesCell and Alt+Down', () => {
     await unmount();
   });
 });
+
+describe('FeaturesCell and a refused add', () => {
+  it('puts the typed pair back when the write is refused', async () => {
+    const { container, step, unmount } = await mount(
+      {},
+      { onAnnotationUpdate: vi.fn(() => Promise.resolve({ landed: false, status: 422 })) },
+    );
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Fem'));
+    await step(async () => press(input, 'Enter'));
+    await step(async () => {});
+    expect(input.value).toBe('Gender=Fem');
+    await unmount();
+  });
+
+  it('leaves the input empty when the write lands', async () => {
+    const { container, step, unmount } = await mount(
+      {},
+      { onAnnotationUpdate: vi.fn(() => Promise.resolve({ landed: true })) },
+    );
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Fem'));
+    await step(async () => press(input, 'Enter'));
+    await step(async () => {});
+    expect(input.value).toBe('');
+    await unmount();
+  });
+});

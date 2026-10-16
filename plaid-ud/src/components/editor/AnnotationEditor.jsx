@@ -407,8 +407,8 @@ export const AnnotationEditor = () => {
       onConfirmTokens: readOnly ? null : handleConfirmTokens,
       onDiscardTokens: readOnly ? null : handleDiscardTokens,
       onSentenceMetadata: readOnly ? null : handleSentenceMetadata,
-      onEditText: isViewingHistorical ? null : handleEditText,
-      editTextHref: isViewingHistorical ? null : editTextHref,
+      onEditText: isViewingHistorical || !canEdit ? null : handleEditText,
+      editTextHref: isViewingHistorical || !canEdit ? null : editTextHref,
       onPrecedent: readOnly ? undefined : handlePrecedent,
       onAskAssistant:
         isViewingHistorical || !assistantAvailable || !roomToDock ? undefined : askAssistant,
@@ -444,6 +444,7 @@ export const AnnotationEditor = () => {
       handleDiscardTokens,
       handleSentenceMetadata,
       isViewingHistorical,
+      canEdit,
       handleEditText,
       editTextHref,
       handlePrecedent,

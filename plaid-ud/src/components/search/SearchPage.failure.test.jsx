@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 
 // H35-CORE polish: a search that failed ("Illegal repetition") showed its
@@ -44,9 +44,16 @@ const { GrewParseError } = await import('../../grew/errors.js');
 
 const HIT = { docId: 'd1', sentenceId: 's1', text: 'The dog barked.', highlights: [] };
 
-const mount = () =>
+const seen = { search: '' };
+const Probe = () => {
+  seen.search = useLocation().search;
+  return null;
+};
+
+const mount = (entry = '/projects/p1/search') =>
   renderComponent(
-    <MemoryRouter initialEntries={['/projects/p1/search']}>
+    <MemoryRouter initialEntries={[entry]}>
+      <Probe />
       <Routes>
         <Route path="/projects/:projectId/search" element={<SearchPage />} />
       </Routes>
@@ -100,6 +107,27 @@ describe('a failed search', () => {
     await search(view, 'pattern { X');
     expect(view.container.textContent).toContain('Syntax error');
     expect(view.container.textContent).not.toContain('The dog barked.');
+    await view.unmount();
+  });
+});
+
+describe('the request in the URL', () => {
+  it('writes the request it runs', async () => {
+    const view = await searchedOnce();
+    expect(new URLSearchParams(seen.search).get('q')).toBe('pattern { X [upos=NOUN] }');
+    await view.unmount();
+  });
+
+  it('runs a linked request on arrival', async () => {
+    compiled.fn = () => ({ query: {}, warnings: [], nodes: [], edges: [] });
+    query.fn = vi.fn(async () => ({ results: [HIT], count: 1 }));
+    const q = encodeURIComponent('pattern { X [upos=NOUN] }');
+    const view = await mount(`/projects/p1/search?q=${q}`);
+    await view.step(async () => {});
+    await view.step(async () => {});
+    expect(view.container.querySelector('#grew-query').value).toBe('pattern { X [upos=NOUN] }');
+    expect(query.fn).toHaveBeenCalledTimes(1);
+    expect(view.container.textContent).toContain('The dog barked.');
     await view.unmount();
   });
 });

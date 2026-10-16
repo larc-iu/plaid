@@ -251,7 +251,7 @@ describe('the Text Editor asking before the sentences go', () => {
       done = clearButton().click();
     });
     expect(dialog().textContent).toContain(
-      'Deletes 2 sentences, 12 tokens and 13 words, with 25 annotations and 9 vocabulary links. This cannot be undone.',
+      'Deletes 2 sentences, 12 tokens and 13 words, with 25 annotations and 9 vocabulary links.',
     );
     await press('Cancel');
     await act(async () => done);
@@ -266,9 +266,7 @@ describe('the Text Editor asking before the sentences go', () => {
     );
     const view = await mount();
     await act(async () => clearButton().click());
-    expect(dialog().textContent).toContain(
-      'Deletes 1 sentence and 1 token. This cannot be undone.',
-    );
+    expect(dialog().textContent).toContain('Deletes 1 sentence and 1 token.');
     await press('Clear');
     expect(doc.clearTokens).toHaveBeenCalled();
     await view.unmount();

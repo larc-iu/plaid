@@ -93,9 +93,19 @@ export const FeaturesCell = React.memo(
         return 'refused';
       }
       setText('');
-      onAnnotationUpdate(tokenId, 'features', feature.pair).catch((error) => {
-        console.error('Failed to add feature:', error);
-      });
+      // A write the server refused puts the pair back in the input, unless
+      // something else has been typed there since, so it can be corrected.
+      // The document has said why.
+      const putBack = () => {
+        const input = inputRef.current;
+        if (!input || !input.isConnected || input.value !== '') return;
+        setText(feature.pair);
+        const active = input.ownerDocument.activeElement;
+        if (!active || active === input.ownerDocument.body) input.focus();
+      };
+      Promise.resolve(onAnnotationUpdate(tokenId, 'features', feature.pair)).then((answer) => {
+        if (answer === false || answer?.landed === false) putBack();
+      }, putBack);
       return true;
     };
 

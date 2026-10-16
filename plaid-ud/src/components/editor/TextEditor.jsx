@@ -220,9 +220,7 @@ export const TextEditor = () => {
     const on = lossPhrase(loss);
     const ok = await confirm({
       title: 'Clear all tokens?',
-      description: what
-        ? `Deletes ${what}${on ? `, with ${on}` : ''}. This cannot be undone.`
-        : 'This cannot be undone.',
+      description: what ? `Deletes ${what}${on ? `, with ${on}` : ''}.` : undefined,
       confirmLabel: 'Clear',
       destructive: true,
     });

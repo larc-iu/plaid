@@ -384,6 +384,23 @@ test('confirmTokens: a contributor takes machine proposals as contributions and 
   );
 });
 
+test('clearTokens names its operation, so History reads Clear tokens', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  client.tokens = {
+    bulkDelete: (ids) => {
+      client.calls.push(['tokens.bulkDelete', ids]);
+    },
+  };
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  assert.equal(await doc.clearTokens(), true);
+  assert.deepEqual(
+    client.operations.map((o) => o.message),
+    ['Clear tokens'],
+  );
+  assert.equal(client.calls.filter((c) => c[0] === 'tokens.bulkDelete').length, 1);
+});
+
 test('discardTokens deletes the machine proposal and leaves everything else', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();

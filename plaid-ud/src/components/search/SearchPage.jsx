@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
@@ -48,7 +49,12 @@ export const SearchPage = () => {
   const loadError = readError ? humanizeError(readError, 'Failed to load the project.') : '';
   useDocumentTitle('Search', project?.name);
 
-  const [queryText, setQueryText] = useState('');
+  // The request last run lives in the URL (`?q=`, written with replace), so a
+  // reload, a bookmark or a shared link runs it again. A rewrite is the same
+  // box's text, so it travels the same way and opens on its preview.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linked = useRef(searchParams.get('q') || '');
+  const [queryText, setQueryText] = useState(linked.current);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState(false);
@@ -155,6 +161,16 @@ export const SearchPage = () => {
 
   const run = useCallback(async () => {
     if (!queryText.trim() || running) return;
+    if (searchParams.get('q') !== queryText) {
+      setSearchParams(
+        (params) => {
+          const next = new URLSearchParams(params);
+          next.set('q', queryText);
+          return next;
+        },
+        { replace: true },
+      );
+    }
     setRunning(true);
     setError(null);
     setPlan(null);
@@ -176,7 +192,16 @@ export const SearchPage = () => {
       setProgress('');
       setRunning(false);
     }
-  }, [queryText, running, isRewrite, runPreview, runSearch, reportError]);
+  }, [
+    queryText,
+    running,
+    isRewrite,
+    runPreview,
+    runSearch,
+    reportError,
+    searchParams,
+    setSearchParams,
+  ]);
 
   // Clicking a count row narrows the search to that value: the clause goes
   // into the pattern the user can see and edit, and the search re-runs the way
@@ -199,6 +224,14 @@ export const SearchPage = () => {
     // should fire; depending on it would re-run on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingRun]);
+
+  // A linked request runs once the project it names is read.
+  const configured = layerInfo.isConfigured;
+  useEffect(() => {
+    if (loading || !configured || !linked.current) return;
+    linked.current = '';
+    setPendingRun(true);
+  }, [loading, configured]);
 
   const apply = useCallback(async () => {
     if (!plan || applying) return;
