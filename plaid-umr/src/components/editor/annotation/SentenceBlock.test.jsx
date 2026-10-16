@@ -280,11 +280,16 @@ describe('SentenceBlock text mode', () => {
     await r.step(() => button(r.container, 'Text').click());
     const typed = '(s1l / leave-02\n    :ARG0 (s1z / zebra))';
     await r.step(() => type(r.container.querySelector('textarea'), typed));
+    const typedIn = r.container.querySelector('textarea');
     await r.step(() => button(r.container, 'Apply').click());
-    expect(r.container.querySelector('textarea')).toBeNull();
+    // Out of sight while the apply is on its way, and kept, so a refusal
+    // brings back the same box with its undo history (L1-TEXT).
+    expect(typedIn.closest('[hidden]')).not.toBeNull();
     await r.step(() => settle(outcome));
     const box = r.container.querySelector('textarea');
     if (outcome === false) {
+      expect(box).toBe(typedIn);
+      expect(box.closest('[hidden]')).toBeNull();
       expect(box.value).toBe(typed);
       // Still typed and not applied, so Apply is offered again.
       expect(button(r.container, 'Apply').disabled).toBe(false);

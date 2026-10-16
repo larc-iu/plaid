@@ -185,6 +185,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // Text typed and applied, back in text mode because the apply did not
   // land: refused, or after a conflict refused unsent.
   const [unapplied, setUnapplied] = useState(null);
+  // An apply on its way: the editor stays mounted, out of sight, so one that
+  // does not land brings back the same box, its undo history with it.
+  const [parked, setParked] = useState(false);
   // Out of text mode, focus goes to the graph: the node focused before, else
   // the root, else the block. The textarea it was in is gone. The node is
   // read from the DOCUMENT, which already holds what the apply made, and not
@@ -1749,26 +1752,35 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           ))}
         </ul>
       )}
-      {textMode && !readOnly && (
-        <PenmanEditor
-          initial={doc.penmanOf(sentence.index)}
-          typed={unapplied}
-          plan={(text) => doc.planPenman(sentence.index, text)}
-          onApply={(text) => {
-            // The editor applies only a text whose plan has no problem, and
-            // the plan is on the canvas as soon as this returns. When the
-            // write does not land, the reload takes the plan off the canvas
-            // again, and text mode comes back with the text as typed.
-            doc.applyPenman(sentence.index, text).then((ok) => {
-              if (ok !== false || textModeRef.current) return;
-              setUnapplied(text);
-              setTextMode(true);
-            });
-            leaveTextMode();
-          }}
-          onCancel={askLeaveTextMode}
-          dirtyRef={penmanDirtyRef}
-        />
+      {(textMode || parked) && !readOnly && (
+        <div hidden={!textMode}>
+          <PenmanEditor
+            initial={doc.penmanOf(sentence.index)}
+            typed={unapplied}
+            plan={(text) => doc.planPenman(sentence.index, text)}
+            onApply={(text) => {
+              // The editor applies only a text whose plan has no problem, and
+              // the plan is on the canvas as soon as this returns. When the
+              // write does not land, the reload takes the plan off the canvas
+              // again, and text mode comes back with the text as typed, in
+              // the box it was typed in.
+              setParked(true);
+              doc.applyPenman(sentence.index, text).then((ok) => {
+                setParked(false);
+                if (ok !== false || textModeRef.current) return;
+                setUnapplied(text);
+                setTextMode(true);
+                requestAnimationFrame(() =>
+                  sectionRef.current?.querySelector('.umr-penman-text')?.focus(),
+                );
+              });
+              leaveTextMode();
+            }}
+            onCancel={askLeaveTextMode}
+            dirtyRef={penmanDirtyRef}
+            frozen={parked}
+          />
+        </div>
       )}
       <div
         className="umr-canvas"

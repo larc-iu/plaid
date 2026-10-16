@@ -18,7 +18,8 @@ import { countOf } from '@ui/lib/plural.js';
 // text cannot show, a node's anchor and document-level relations. `typed` is
 // a text to open with in place of the stored graph, one typed before and not
 // applied. `dirtyRef.current` says whether the text differs from the stored
-// graph, for a control outside the editor that closes it.
+// graph, for a control outside the editor that closes it. `frozen` keeps the
+// text as typed whatever the stored graph does.
 export function PenmanEditor({
   initial,
   typed = null,
@@ -27,6 +28,7 @@ export function PenmanEditor({
   plan,
   applying = false,
   dirtyRef = null,
+  frozen = false,
 }) {
   const [text, setText] = useState(typed ?? initial);
   // What the text is compared against. When the stored graph changes under an
@@ -46,9 +48,12 @@ export function PenmanEditor({
       dirtyRef.current = false;
     };
   }, [dirty, dirtyRef]);
+  // `frozen` while an apply of the text is on its way: the stored graph moves
+  // to the text and, if the apply does not land, back, and the text stays as
+  // typed throughout, in the same box, so its undo history is kept.
   useEffect(() => {
     if (initial === base) return;
-    if (!dirty) setText(initial);
+    if (!dirty && !frozen) setText(initial);
     setBase(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
