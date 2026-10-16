@@ -2035,6 +2035,12 @@ class DocumentsResource(_MetadataMethods, _Resource):
         - A lost lock is recorded on the CLIENT, like strict mode, so it stops
           every write the client makes (on any batch of it too) and not only
           the ones this block makes.
+        - A core restart drops every lock, and until the next renewal finds it
+          gone (up to half the lock window) this block's writes still pass,
+          since writes carry no lock id. A script whose writes must not land
+          past that point uses :func:`plaid_client.service.locked_for_writes`,
+          which also holds the document in strict mode, so such a write is
+          refused with a 409.
         """
         minted = str(uuid.uuid4())
         info = self._take_lock(document_id, minted)
@@ -2145,9 +2151,9 @@ class DocumentsResource(_MetadataMethods, _Resource):
         """
         # No flag: the upload above is multipart and cannot be batched, but a
         # DELETE carries no blob, so the batch transport takes it. It is a
-        # write of the document's own data and queues like any other. Note that
-        # the file removal happens outside the server's transaction, so a batch
-        # that aborts after this op does not bring the file back.
+        # write of the document's own data and queues like any other. The
+        # server removes the file only after the write commits, so a batch that
+        # aborts after this op leaves the recording in place.
         return self._request('DELETE', f'/api/v1/documents/{document_id}/media',
                              query_params={'media-version': media_version},
                              audit_message=audit_message)

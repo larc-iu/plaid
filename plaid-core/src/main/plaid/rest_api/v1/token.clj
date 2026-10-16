@@ -220,8 +220,9 @@
 
     ["/split"
      {:post {:summary (str "Split a token at <body>position</body>, a 0-based Unicode code-point offset into the text "
-                           "body. The original token becomes the left half (keeps ID, "
-                           "spans, vocab-links). Returns the new right token's ID. If the layer has child token "
+                           "body. A new token is made for one half and its ID is returned: by default the original "
+                           "token becomes the left half (keeps ID, spans, vocab-links) and the new one the right "
+                           "half, and <body>keep</body> below swaps them. If the layer has child token "
                            "layers, every descendant token that straddles the split position is split there too, so "
                            "nesting is preserved at every level (a split aligned to an existing child boundary needs "
                            "no child split). A relation layer's same-ancestor constraint deletes, in the same "

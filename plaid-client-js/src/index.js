@@ -1235,6 +1235,7 @@ class PlaidClient {
       /**
        * List all vocab layers accessible to user. Transparently follows
        * pagination cursors and returns the full flat array.
+       * @returns {Promise<VocabLayer[]>}
        */
       list: () => listAll(this, "/api/v1/vocab-layers"),
       /**
@@ -1242,7 +1243,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<VocabLayer>>}
        */
       listPage: ({ limit, cursor } = {}) =>
         listPage(this, "/api/v1/vocab-layers", {
@@ -1253,7 +1254,7 @@ class PlaidClient {
        * Async-iterate vocab layers page by page; yields each page's entries array.
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<VocabLayer[]>}
        */
       iterPages: ({ pageSize } = {}) =>
         iterPages(this, "/api/v1/vocab-layers", {
@@ -1728,6 +1729,7 @@ class PlaidClient {
        * returns the full flat array. Admin-or-maintainer only.
        * @param {object} [opts]
        * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text holds an at sign), case-insensitive
+       * @returns {Promise<User[]>}
        */
       list: ({ q } = {}) =>
         listAll(this, "/api/v1/users", { query: { q } }),
@@ -1737,7 +1739,7 @@ class PlaidClient {
        * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text holds an at sign), case-insensitive
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<User>>}
        */
       listPage: ({ q, limit, cursor } = {}) =>
         listPage(this, "/api/v1/users", {
@@ -1750,7 +1752,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text holds an at sign), case-insensitive
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<User[]>}
        */
       iterPages: ({ q, pageSize } = {}) =>
         iterPages(this, "/api/v1/users", {
@@ -2740,6 +2742,12 @@ class PlaidClient {
        * lost lock is recorded on the CLIENT, like strict mode, so it stops
        * every write the client makes (on any batch of it too) and not only the
        * ones this block makes.
+       *
+       * A core restart drops every lock, and until the next renewal finds it
+       * gone (up to half the lock window) this block's writes still pass, since
+       * writes carry no lock id. When a write must not land past that point,
+       * hold the document in strict mode too (`enterStrictMode`), so such a
+       * write is refused with a 409.
        * @template T
        * @param {string} documentId - The document ID
        * @param {(lock: import("./documentLock.js").DocumentLock) => T | Promise<T>} fn - The work to run while holding it
@@ -2817,9 +2825,9 @@ class PlaidClient {
        */
       // The upload above is multipart and cannot be batched, but a DELETE
       // carries no blob, so the batch transport takes it. It is a write
-      // of the document's own data and queues like any other. Note that the
-      // file removal happens outside the server's transaction, so a batch that
-      // aborts after this op does not bring the file back.
+      // of the document's own data and queues like any other. The server
+      // removes the file only after the write commits, so a batch that aborts
+      // after this op leaves the recording in place.
       deleteMedia: (documentId, auditMessage, { mediaVersion } = {}) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/media`, {
           auditMessage,
@@ -3561,8 +3569,9 @@ class PlaidClient {
           body,
         }),
       /**
-       * Split a token at a Unicode code-point offset. The original token becomes the
-       * left half (keeps its ID, spans, vocab-links); the new right token's ID is returned.
+       * Split a token at a Unicode code-point offset. A new token is made for one
+       * half and its ID is returned. The original token keeps its ID, spans and
+       * vocab-links on the left half, or on the right half with `keep: "right"`.
        * @param {string} tokenId - The token ID
        * @param {number} position - Code-point offset to split at (strictly between begin and end)
        * @param {string} [auditMessage] - Audit message for this write

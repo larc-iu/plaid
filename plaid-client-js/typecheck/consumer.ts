@@ -167,6 +167,13 @@ export async function use(c: PlaidClient): Promise<void> {
   notAny(await c.projects.addWriter("p", "u"), true);
   notAny(await c.textLayers.shift("L", "up"), true);
   notAny(await c.users.getAvatar("u"), true);
+  // The user and vocabulary lists, whole and by the page.
+  const userNames: string[] = (await c.users.list()).map((u) => u.displayName);
+  const pageCursor: string | null = (await c.users.listPage()).nextCursor;
+  notAny((await c.users.listPage()).entries[0], true);
+  for await (const page of c.users.iterPages()) notAny(page[0], true);
+  const vocabNames: string[] = (await c.vocabLayers.list()).map((v) => v.name);
+  notAny((await c.vocabLayers.listPage()).entries[0], true);
   notAny(await c.messages.sendMessage("p", {}), true);
 
   // withOperation answers what its function does.
