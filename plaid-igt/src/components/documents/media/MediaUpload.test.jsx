@@ -6,6 +6,20 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The screen as the decode found it: the decode holds the tab, so what it
+// sees is what the person sees while it runs.
+const decode = vi.hoisted(() => ({ screen: null, bar: null, container: null }));
+vi.mock('@/domain/media/wavAdpcm.js', async (orig) => {
+  const real = await orig();
+  return {
+    ...real,
+    adpcmWavToPcm: (...args) => {
+      decode.screen = decode.container?.textContent ?? null;
+      decode.bar = decode.container?.querySelector('[role="progressbar"]') ?? null;
+      return real.adpcmWavToPcm(...args);
+    },
+  };
+});
 vi.mock('@/utils/feedback', () => ({
   notifyError: vi.fn(),
   notifyInfo: vi.fn(),
@@ -147,12 +161,14 @@ describe('MediaUpload', () => {
   it('shows the conversion running before the tab is held by it', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
+    decode.container = r.container;
+    decode.screen = null;
     await choose(r, fixtureFile('ima-mono.wav', 'story.wav'));
-    await until(r, () => r.container.textContent.includes('Converting to PCM WAV.'));
-    expect(onUpload).not.toHaveBeenCalled();
-    expect(r.container.textContent).toContain('story.wav');
-    expect(bar(r.container).getAttribute('aria-valuenow')).toBeNull();
     await until(r, () => onUpload.mock.calls.length > 0);
+    expect(decode.screen).toContain('Converting to PCM WAV.');
+    expect(decode.screen).toContain('story.wav');
+    expect(decode.bar).toBeTruthy();
+    expect(decode.bar.hasAttribute('aria-valuenow')).toBe(false);
     expect(r.container.textContent).not.toContain('Converting to PCM WAV.');
     await r.unmount();
   });
