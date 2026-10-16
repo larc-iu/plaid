@@ -2337,7 +2337,10 @@
     letter (a row over part of the sentence before, or ending inside that
     whitespace) and the next row's begin follows that sentence, text typed
     in that whitespace that the sentence takes goes to the next row: the
-    sentence wins the crossing (FX-F-TEXT, REV5-TEXT-1).
+    sentence wins the crossing (FX-F-TEXT, REV5-TEXT-1). Likewise where a
+    row's begin sits in the whitespace after a sentence's last letter and
+    the row before's end follows that sentence, text typed in that
+    whitespace that the sentence takes goes to the row before (REV6-TEXT-2).
   - Two rows of a layer that did not overlap do not: where two edges cross,
     they meet at the one that stayed put, else at the one that keeps what
     each row holds, else every row of the layer keeps the plain placement.
@@ -2401,6 +2404,16 @@
                           (let [x (lead o end (alength o))]
                             (when (first-letters x) x))))
         end-at (agreed (mapcat :ends edges))
+        ;; each sentence's last letter's end, in the old text
+        last-letters (into #{} (keep (fn [{:token/keys [begin end]}]
+                                       (let [y (tail o begin end)] (when (< begin y) y))))
+                           parts)
+        ;; where a begin on whitespace sits in the whitespace after a
+        ;; sentence's last letter: that letter's old end, or nil
+        after-letter (fn [begin]
+                       (when (and (< begin (alength o)) (space? (aget o begin)))
+                         (let [y (tail o 0 begin)]
+                           (when (last-letters y) y))))
         ;; where an edge goes: a row over the whole of the sentence there
         ;; follows the sentence's edge, a row over part of it takes the text
         ;; typed right at its edge that the sentence took, where the plain
@@ -2434,6 +2447,10 @@
                                ;; the end of the letters the row holds
                                wx (before-letter end)
                                hl (when wx (let [y (tail o hb* he*)] (when (< hb* y) (second (held [hb* y])))))
+                               ;; a begin in the whitespace after a sentence:
+                               ;; the begin of the letters the row holds
+                               wy (after-letter begin)
+                               hf (when wy (let [x (lead o hb* he*)] (when (< x he*) (first (held [x he*])))))
                                ;; every edge keeps what the row holds
                                pb (cond-> (:token/begin t) hb (min hb))
                                pe (cond-> (:token/end t) he (max he))
@@ -2442,9 +2459,9 @@
                                b (cond-> (or fb pb) hb (min hb))
                                e (cond-> (or fe pe) he (max he))]
                            (if (< b e)
-                             {:id id :layer (:token/layer t) :old begin :b b :e e :hb hb :he he
-                              :fb (and fb (= b fb)) :fe (and fe (= e fe)) :wx wx :hl hl}
-                             {:id id :layer (:token/layer t) :old begin :b (:token/begin t) :e (:token/end t)
+                             {:id id :layer (:token/layer t) :old begin :olde end :b b :e e :hb hb :he he
+                              :fb (and fb (= b fb)) :fe (and fe (= e fe)) :wx wx :hl hl :wy wy :hf hf}
+                             {:id id :layer (:token/layer t) :old begin :olde end :b (:token/begin t) :e (:token/end t)
                               :hb hb :he he})))))
                    kept)
         ;; where two rows of a layer now cross, one cut between them
@@ -2462,6 +2479,14 @@
                                                       cut (cond (and (:wx p) (:fb r) (<= (:old r) (:wx p))
                                                                      (if (:hl p) (<= (:hl p) c2) (< (:b p) c2)) (<= c2 hi))
                                                                 c2
+                                                                ;; the mirror: the sentence before wins
+                                                                ;; text typed in the whitespace a row
+                                                                ;; begins in after it (REV6-TEXT-2)
+                                                                (and (:wy r) (:fe p) (<= (:wy r) (:olde p))
+                                                                     ;; (a row with no letter keeps the
+                                                                     ;; text typed in it)
+                                                                     (:hf r) (<= c1 (:hf r)) (<= lo c1))
+                                                                c1
                                                                 (and (in? c2) (not (:fb r))) c2
                                                                 (and (in? c1) (not (:fe p))) c1
                                                                 (in? c2) c2

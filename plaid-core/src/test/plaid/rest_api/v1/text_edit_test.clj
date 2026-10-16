@@ -552,6 +552,27 @@
         (is (= want-body (:text/body (:body r))))
         (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
 
+(deftest the-sentence-before-wins-text-typed-in-a-rows-leading-whitespace
+  ;; REV6-TEXT-2, the mirror of REV5-TEXT-1: a row beginning in the
+  ;; whitespace after a sentence kept text typed there that the sentence
+  ;; before takes, so the row over that sentence lost it and FLEx lost the
+  ;; sentence's time. The row before follows its sentence and takes it.
+  (doseq [[label body sents words rows change want-body want-rows]
+          [["a row holding the line break after a sentence" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
+            [[0 3] [3 13]] {:edits [(ins 4 "So")]} "Hi. So\nThe end." [[0 6] [6 15]]]
+           ["a whole-body save" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
+            [[0 3] [3 13]] {:body "Hi. So\nThe end."} "Hi. So\nThe end." [[0 6] [6 15]]]
+           ["a row over part of the next sentence" "Ab cd.  \nEf gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]]
+            [[0 6] [7 11]] {:edits [(ins 8 "So")]} "Ab cd.  So\nEf gh." [[0 10] [10 13]]]
+           ["text the next sentence takes stays" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
+            [[0 3] [3 13]] {:edits [(ins 5 "So ")]} "Hi. \nSo The end." [[0 3] [3 16]]]]]
+    (testing label
+      (let [{:keys [text rows]} (rows-setup body sents words rows [])
+            r (edit-text text change)]
+        (is (= 200 (:status r)) (pr-str (:body r)))
+        (is (= want-body (:text/body (:body r))))
+        (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
+
 (deftest a-space-typed-in-a-row-of-a-text-with-no-words-saves
   ;; REV6-TEXT-1: with ud's splitOnSpace on the word layer and no word token
   ;; yet (a transcript typed on the Media tab with Tokenize new text off, or

@@ -22,7 +22,12 @@
      follows that sentence (begins on its boundary and holds it whole),
      text typed in that whitespace that the sentence takes is in the next
      row, not this one: the sentence wins the crossing (FX-F-TEXT,
-     REV5-TEXT-1), unless no letter of the row is left,
+     REV5-TEXT-1), unless no letter of the row is left. The mirror: where
+     a row's begin sits in the whitespace after a sentence's last letter and
+     the row before follows that sentence (ends on its boundary and holds it
+     whole), text typed in that whitespace that the sentence takes is in the
+     row before (FX-G-TEXT, REV6-TEXT-2), unless no letter of the row is
+     left,
   3. text typed where a row's edge meets a sentence boundary (a sentence's
      begin or first letter, its end or the end of its last letter) goes
      with the sentence the partition rule chooses, and the row on that
@@ -30,7 +35,8 @@
   4. a row edge not on a sentence boundary stays where it was, among the
      text a gap typed there, or moved off whitespace onto the row's text,
      or, at an end the sentence after it wins in (2), where the next row
-     now begins,
+     now begins, and at a begin the sentence before wins in (2), where the
+     row before now ends,
   5. an old letter left stays in the row it was in, and in no other."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
@@ -151,6 +157,26 @@
                              (and (crossing i) (< a e)
                                   (every? #(ws? (aget oc %)) (range a e))
                                   (some #(and (not (ws? (aget oc %))) (not (gone? %))) (range b e)))))
+            ;; the mirror: where row i's begin sits in the whitespace after
+            ;; a sentence's last letter and the row before follows that
+            ;; sentence (ends on its boundary and holds it whole):
+            ;; `[row-before sentence]`
+            mirror (fn [i]
+                     (let [[b e] (rows i)
+                           y (loop [y b] (if (and (pos? y) (ws? (aget oc (dec y)))) (recur (dec y)) y))
+                           j (some (fn [k] (let [[x z] (trim-ws oc (sents k))] (when (and (< x z) (= y z)) k))) (range (count sents)))
+                           pv (last (sort-by (comp second rows) (filter #(<= y (second (rows %)) b) (range (count rows)))))]
+                       (when (and (< b e) (< b (alength oc)) (ws? (aget oc b)) j pv
+                                  (= j (se (second (rows pv))))
+                                  (some #{j} (whole pv)))
+                         [pv j])))
+            mirror-ws? (fn [i a]
+                         (let [[b e] (rows i)]
+                           ;; (a row with no letter left keeps what is
+                           ;; typed in it)
+                           (and (mirror i) (< b a)
+                                (every? #(ws? (aget oc %)) (range b a))
+                                (some #(and (not (ws? (aget oc %))) (not (gone? %))) (range b e)))))
             out (transient [])
             v! (fn [k msg] (conj! out [k msg]))]
         ;; 1. no overlap
@@ -172,14 +198,18 @@
                   :when (not (boundary-ws? i a z))
                   :let [x (new-at gi)
                         [nx j] (when (crossing-ws? i a) (crossing i))
+                        [pv pj] (when (mirror-ws? i a) (mirror i))
                         ;; whitespace at an edge on a letter before is moved off
                         ;; (and a line made a sentence of its own at the
                         ;; start, which every token reaching over it leaves)
-                        out (remove (fn [p] (or (if nx
-                                                  (if (= j (sentence-at p))
-                                                    (or (ws? (aget nc p)) (let [[x y] (new-rows nx)] (and x (<= x p) (< p y))))
-                                                    (<= nb* p (dec ne*)))
-                                                  (<= nb* p (dec ne*)))
+                        out (remove (fn [p] (or (cond
+                                                  nx (if (= j (sentence-at p))
+                                                       (or (ws? (aget nc p)) (let [[x y] (new-rows nx)] (and x (<= x p) (< p y))))
+                                                       (<= nb* p (dec ne*)))
+                                                  pv (if (= pj (sentence-at p))
+                                                       (or (ws? (aget nc p)) (let [[x y] (new-rows pv)] (and x (<= x p) (< p y))))
+                                                       (<= nb* p (dec ne*)))
+                                                  :else (<= nb* p (dec ne*)))
                                                 (= -1 (sentence-at p))
                                                 (and (< p nb*) (not (ws? (aget oc b))) (every? #(ws? (aget nc %)) (range p nb*)))
                                                 (and (>= p ne*) (not (ws? (aget oc (dec e)))) (every? #(ws? (aget nc %)) (range ne* (inc p))))))
@@ -215,6 +245,7 @@
                         hi (if (seq at) (reduce max (map second at)) (pm p))
                         ok? (or (<= lo q hi)
                                 (and (= edge :end) (crossing i) (= q (first (new-rows (first (crossing i))))))
+                                (and (= edge :begin) (mirror i) (= q (second (new-rows (first (mirror i))))))
                                 (and (= edge :begin) (> q hi) (every? #(ws? (aget nc %)) (range hi q)))
                                 (and (= edge :end) (< q lo) (every? #(ws? (aget nc %)) (range q lo))))]
                   :when (not ok?)]
@@ -234,7 +265,7 @@
 (def ^:private seps [" " "  " "   " "\n" "\n " "\t\n" " \n" "\n\n" "　　" "\r\n" "  \n  " " \t " "  \n"])
 (def ^:private last-seps ["" "" " " "  " "\n"])
 (def ^:private typed-vals ["X" "X " "So " "Y Z" "Q." "Q.\n" "\nX" "X\n" " X" "XY"])
-(def shapes [:full :trim :mixed :midws :span :span-trim :short :midws-begin :random :part-ws])
+(def shapes [:full :trim :mixed :midws :span :span-trim :short :midws-begin :random :part-ws :ws-begin])
 
 (defn gen-case
   "A case as REV3-TEXT's generator made them: two to four sentences, with
@@ -305,6 +336,19 @@
                                          [(first (ws (.nextInt rng (count ws)))) se]
                                          s)))
                                    sents))
+;; rows beginning in the whitespace after the sentence before,
+               ;; over all or part of their sentence, beside rows over whole
+               ;; sentences (REV6-TEXT-2)
+               :ws-begin (let [rs (mapv tr real)]
+                           (vec (map-indexed (fn [i [tb te :as r]]
+                                               (if (and (pos? i) (< (.nextDouble rng) 0.6))
+                                                 (let [[_ pte] (rs (dec i))
+                                                       ws (filterv (fn [[b e]] (and (<= tb b) (<= e te))) words)
+                                                       b (if (< (inc pte) tb) (rint (inc pte) (dec tb)) tb)
+                                                       e (if (and (seq ws) (< (.nextDouble rng) 0.5)) (second (ws (.nextInt rng (count ws)))) te)]
+                                                   [b e])
+                                                 r))
+                                             rs)))
                :random (let [cuts (vec (sort (distinct (repeatedly (rint 2 6) #(.nextInt rng (inc (count body)))))))]
                          (vec (keep (fn [[a b]] (when (< (.nextDouble rng) 0.7) [a b])) (partition 2 1 cuts)))))
         rows (filterv (fn [[b e]] (< b e)) rows)
