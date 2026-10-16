@@ -63,15 +63,27 @@ export function useSentenceDeepLink({
     }
     answeredRef.current = asked;
     let flashTimer = null;
+    let faded = false;
     const raf = requestAnimationFrame(() => {
       const selector = `[data-sentence-row="${CSS.escape(sentId)}"]`;
       document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setFlashSentId(sentId);
-      flashTimer = setTimeout(() => setFlashSentId(null), FLASH_MS);
+      flashTimer = setTimeout(() => {
+        faded = true;
+        setFlashSentId(null);
+      }, FLASH_MS);
     });
     return () => {
       cancelAnimationFrame(raf);
       if (flashTimer) clearTimeout(flashTimer);
+      // A cleanup before the flash faded (StrictMode's second run on mount, or
+      // the rows read again) leaves the link unanswered, so the next run
+      // scrolls and flashes with a timer of its own. Kept answered, the flash
+      // was lost before it showed, or stayed for good once it had.
+      if (!faded) {
+        answeredRef.current = null;
+        setFlashSentId(null);
+      }
     };
   }, [ready, sentParam, focusNonce, indexById, pageSize, page, setPage]);
 

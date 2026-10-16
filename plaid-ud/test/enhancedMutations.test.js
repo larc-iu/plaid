@@ -125,10 +125,16 @@ test('an enhanced edge over a basic relation relabels it in the graph', async ()
   assert.equal(doc.toConllu().includes('\t2\tconj\t2:conj:and\t'), true);
 });
 
-test('an unlabelled enhanced edge over a basic relation starts from its label', async () => {
-  const { doc, log, lemma } = open();
-  await doc.createEnhancedRelation(lemma('come'), lemma('leave'));
-  assert.equal(log.at(-1).value, 'conj');
+// The tree's own edge under its own label is in the enhanced graph already,
+// so it writes nothing (not a suppressor and its twin), labelled or not, as a
+// Grew rewrite settles it (grew/rewrite/diff.js).
+test('an enhanced edge with the tree label over a basic relation writes nothing', async () => {
+  const { doc, log, lemma, rows, graph } = open();
+  assert.equal(await doc.createEnhancedRelation(lemma('come'), lemma('leave')), null);
+  assert.equal(await doc.createEnhancedRelation(lemma('come'), lemma('leave'), 'conj'), null);
+  assert.deepEqual(log, []);
+  assert.equal(rows().length, 0);
+  assert.ok(graph().includes('come>leave:conj'));
 });
 
 test('setRelationSuppressed takes a basic relation out of the graph and puts it back', async () => {
@@ -301,7 +307,7 @@ test('the bin and a Grew del_edge leave the same enhanced graph', async () => {
 
 test('the band relabels an extra without touching the tree', async () => {
   const { doc, log, lemma, basic, rows, graph } = open();
-  const id = await doc.createEnhancedRelation(lemma('come'), lemma('she'), 'nsubj');
+  const id = await doc.createEnhancedRelation(lemma('come'), lemma('she'), 'nsubj:xsubj');
 
   assert.equal(await doc.updateRelation(id, 'nsubj:pass'), true);
   assert.equal(rows().find((r) => r.id === id).value, 'nsubj:pass');

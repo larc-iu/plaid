@@ -78,3 +78,33 @@ test('a repair whose write fails is still labeled as interrupted', async () => {
   assert.equal(result.refreshError, undefined);
   assert.deepEqual(labels, ['Repair on open', 'Repair on open (interrupted)']);
 });
+
+// A conflict is the open's to recover from: it reads again and repairs, so
+// the console says nothing, while any other failure is still logged.
+test('a repair refused by a conflict logs nothing', async () => {
+  const logged = [];
+  const log = console.error;
+  console.error = (...args) => logged.push(args);
+  try {
+    const { doc } = bare(async () => {
+      throw new Error('not reached');
+    });
+    doc._client.tokens.bulkCreate = async () => {
+      throw Object.assign(new Error('HTTP 409 Document version mismatch'), { status: 409 });
+    };
+    const result = await doc.reconcileOnOpen();
+    assert.equal(result.error.status, 409);
+    assert.deepEqual(logged, []);
+
+    const again = bare(async () => {
+      throw new Error('not reached');
+    });
+    again.doc._client.tokens.bulkCreate = async () => {
+      throw Object.assign(new Error('refused'), { status: 500 });
+    };
+    await again.doc.reconcileOnOpen();
+    assert.equal(logged.length, 1);
+  } finally {
+    console.error = log;
+  }
+});

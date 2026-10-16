@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { StrictMode } from 'react';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useSentenceDeepLink, resolveSentenceParam } from './useSentenceDeepLink.js';
 
@@ -194,6 +195,36 @@ describe('the ?sent= deep link', () => {
     expect(setPage).not.toHaveBeenCalled();
     await view.rerender(<Probe {...base} sentParam="s30" setPage={setPage} />);
     expect(setPage).toHaveBeenCalledWith(1, { replace: true });
+    await view.unmount();
+  });
+
+  // The app renders under StrictMode, which runs the effect, cleans it up and
+  // runs it again on mount. The first run's frame never comes, and the
+  // second must still scroll, flash and fade.
+  it('scrolls, flashes and fades under StrictMode', async () => {
+    const row = putRow('s2');
+    const view = await renderComponent(
+      <StrictMode>
+        <Probe {...base} sentParam="s2" />
+      </StrictMode>,
+    );
+    await runFrame(view);
+    expect(row.scrollIntoView).toHaveBeenCalled();
+    expect(flashOf(view)).toBe('s2');
+    await view.step(() => vi.advanceTimersByTime(2000));
+    expect(flashOf(view)).toBe('');
+    await view.unmount();
+  });
+
+  it('keeps the link when the rows are read again before its frame', async () => {
+    const row = putRow('s2');
+    const view = await renderComponent(<Probe {...base} sentParam="s2" />);
+    await view.rerender(<Probe {...base} sentParam="s2" indexById={indexOf(60)} />);
+    await runFrame(view);
+    expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(flashOf(view)).toBe('s2');
+    await view.step(() => vi.advanceTimersByTime(2000));
+    expect(flashOf(view)).toBe('');
     await view.unmount();
   });
 });

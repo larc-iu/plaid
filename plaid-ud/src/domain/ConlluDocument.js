@@ -26,7 +26,7 @@ import {
 import { SUPPRESS_KEY, isSuppressor, suppressorFor, suppressorIdsOver } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
-import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
+import { isUnknownOutcome, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 import { sendTextPlan } from '../../../plaid-ui/src/lib/textSave.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
@@ -827,7 +827,9 @@ export class ConlluDocument extends DocumentModel {
         return { ...tally, findings: [], refreshError };
       }
     } catch (err) {
-      console.error('reconcileOnOpen failed:', err);
+      // A conflict is the open's to recover from (it reads again and
+      // repairs), so it is not an error worth a log.
+      if (statusOf(err) !== 409) console.error('reconcileOnOpen failed:', err);
       return { ...ZERO, error: err };
     } finally {
       this._reconciling = false;
@@ -1677,6 +1679,9 @@ export class ConlluDocument extends DocumentModel {
     const value = deprel || basicOverPair?.value || (source === target ? 'root' : 'dep');
     const sameEdge = (r) => r.source === source && r.target === target;
     if (rows.some((r) => sameEdge(r) && !isSuppressor(r) && r.value === value)) return null;
+    // The tree's own edge, under its own label, is in the enhanced graph
+    // already: nothing to write, rather than a suppressor and its twin.
+    if (basicOverPair?.value === value && !rows.some(sameEdge)) return null;
 
     const suppress = Boolean(basicOverPair) && !rows.some(sameEdge);
     const stamp = this.writer.createStamp;
