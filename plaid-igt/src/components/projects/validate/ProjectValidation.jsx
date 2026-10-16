@@ -23,6 +23,7 @@ import { distinctValues, loadAttested } from './attested.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { scopeBadgeClass } from '@/domain/scopeColors';
+import { countOf, plural } from '@ui/lib/plural.js';
 
 // Values in the project that its own tagsets say are wrong.
 //
@@ -141,8 +142,8 @@ const Occurrences = ({ res, projectId }) => (
     {res && !res.failed && res.remainingDocs > 0 && (
       <p className="text-xs text-muted-foreground">
         {res.remainingHits == null
-          ? `${res.remainingDocs} more document${res.remainingDocs === 1 ? '' : 's'} with this value not shown.`
-          : `${res.remainingHits} more in ${res.remainingDocs} document${res.remainingDocs === 1 ? '' : 's'} not shown.`}
+          ? `${res.remainingDocs.toLocaleString()} more ${plural(res.remainingDocs, 'document')} with this value not shown.`
+          : `${res.remainingHits.toLocaleString()} more in ${countOf(res.remainingDocs, 'document')} not shown.`}
       </p>
     )}
   </div>
@@ -483,7 +484,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             {row.value}
           </code>
           <span className="text-xs text-muted-foreground">
-            {count} occurrence{count === 1 ? '' : 's'} · {reasonText(row.violations)}
+            {countOf(count, 'occurrence')} · {reasonText(row.violations)}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {addable && unknownParts.length > 0 && (
@@ -554,7 +555,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
               const { count, rows } = doubles[f.layerId];
               return (
                 <div key={f.layerId} data-testid="doubled-units" className="mt-1">
-                  <p>{`${f.field}: ${count} ${unitOf(f)}${count === 1 ? '' : 's'} with more than one annotation`}</p>
+                  <p>{`${f.field}: ${countOf(count, unitOf(f))} with more than one annotation`}</p>
                   <ul className="mt-1 flex flex-col">
                     {rows.map((r, i) => (
                       <li key={`${r.docId}:${r.begin}:${i}`}>
@@ -605,8 +606,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
       {totalBad === 0 && governed.length > 0 && (
         <Notice tone="success" icon={Check} className="items-center px-4 py-3">
-          Every value in {fields.length} governed field{fields.length === 1 ? '' : 's'} is in its
-          tagset.
+          Every value in {countOf(fields.length, 'governed field')} is in its tagset.
         </Notice>
       )}
 
@@ -629,7 +629,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             </span>
             <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
               <AlertTriangle className="h-4 w-4" />
-              {zeroRows.length} form{zeroRows.length === 1 ? '' : 's'} to check
+              {countOf(zeroRows.length, 'form')} to check
             </span>
           </div>
           {zeroRows.map((row) => {
@@ -656,7 +656,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                     {row.value}
                   </code>
                   <span className="text-xs text-muted-foreground">
-                    {row.count} occurrence{row.count === 1 ? '' : 's'} · did you mean{' '}
+                    {countOf(row.count, 'occurrence')} · did you mean{' '}
                     <code className="text-foreground">{ZERO_MORPH}</code>? Only {ZERO_MORPH} is read
                     as a zero on export.
                   </span>
@@ -683,8 +683,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             </Badge>
             <span className="font-medium">{g.field}</span>
             <span className="text-xs text-muted-foreground">
-              {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} · {distinctValues(g.attested)} distinct
-              value{distinctValues(g.attested) === 1 ? '' : 's'}
+              {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} ·{' '}
+              {countOf(distinctValues(g.attested), 'distinct value')}
             </span>
             <FieldCount bad={g.bad} />
           </div>

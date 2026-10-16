@@ -4,6 +4,8 @@
 // not in the list. RefusedValuesNotice shows them in a panel, and a toast
 // says them where no panel can.
 
+import { plural } from '@ui/lib/plural.js';
+
 export const REFUSED_TITLE = 'Not saved';
 export const REFUSED_LEAD = 'These values are in use and not in the list:';
 
@@ -40,7 +42,7 @@ export const refusedValuesText = (fields) =>
 export const NOT_IN_FORCE_TITLE = 'Not in force';
 
 const UNITS = { Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' };
-const unitWord = (scope, n) => `${UNITS[scope] ?? 'word'}${n === 1 ? '' : 's'}`;
+const unitWord = (scope, n) => plural(n, UNITS[scope] ?? 'word');
 
 /**
  * A closed list left out of force because values in use are not in it, as
