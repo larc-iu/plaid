@@ -16,7 +16,8 @@ import re
 import pytest
 
 from live import live_client, seed  # noqa: F401
-from rule_plan_model import DOCS, FIELDS, LET, VALS, approve, make_doc, parse_int_sum, project, resumed, values_of
+from rule_plan_model import (DOCS, FIELDS, LET, VALS, approve, as_applied, make_doc, parse_int_sum, project,
+                             resumed, values_of)
 from fixtures import lexicon_raw, VOCAB
 from plaid_agent.core.conversation import proposed_changes
 from plaid_agent.core import rules as core_rules
@@ -311,6 +312,7 @@ def run_case(c, case):
         _rows, total = proposed_changes(p['ops'], *AssistantService.proposed_keys)
         res['research'] = total
         _p, h, _ = approve(c, s.project_id, ws)
+        as_applied(h)
         res['errors'] = h.errors
         res['done'] = [(d.get('applied'), d.get('message')) for d in h.done]
         after = values_of(Workspace(c, load_project(c, s.project_id)))

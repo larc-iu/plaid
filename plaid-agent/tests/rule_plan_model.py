@@ -184,6 +184,20 @@ def values_of(ws):
     return out
 
 
+#: What the service answers to an approval of a plan with nothing to write,
+#: which it settles as discarded (Luke 2026-10-16).
+NOTHING_TO_WRITE = 'Nothing to write. The plan was discarded.'
+
+
+def as_applied(h):
+    """A sweep's reading of an approval: a plan with nothing to write, settled
+    as discarded, counts as applied with nothing written."""
+    if h is not None and h.errors == [NOTHING_TO_WRITE] and not h.done:
+        h.errors = []
+        h.done = [{'kind': 'applied', 'applied': 0, 'message': NOTHING_TO_WRITE}]
+    return h
+
+
 def approve(c, project_id, ws, tag='x'):
     p = ws.plan_payload()
     if p is None:

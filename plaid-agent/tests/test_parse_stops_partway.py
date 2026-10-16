@@ -59,12 +59,15 @@ def test_a_parse_that_stops_partway_is_partly_applied_in_the_parsers_words(monke
     assert not helper.errors, helper.errors
     [done] = helper.done
     assert done['partial'] is True
-    assert done['message'] == ('Partly applied: 1 of 1 changes written in part. The parser stopped '
+    assert done['message'] == ('Partly applied. Written in part: 230 of 300 sentences. The parser stopped '
                                f'partway through "Viaje": {PARSER_SAID}'), done['message']
     assert 'Nothing was written' not in done['message']
+    # The parser's count is kept on the record, and the card reads it (Luke
+    # 2026-10-16, sweep ruling 15).
     item = _stored(spec, client)
     assert item['status'] == 'partial'
-    assert item['outcome'] == '1 of 1 changes written in part.'
+    assert item['outcome'] == 'Written in part: 230 of 300 sentences.'
+    assert item['in_part'] == [230, 300, 'sentences']
     # History names it as partly applied, not as the whole plan. Only the
     # parser wrote under the operation, and a client relabels on its own only
     # an operation it wrote under, so the relabel is sent here.
@@ -75,6 +78,23 @@ def test_a_parse_that_stops_partway_is_partly_applied_in_the_parsers_words(monke
     assert '230 of 300 sentences were parsed' in note
     assert '1 of 1 changes were written in part.' in note
     assert '(written in part)' in note
+
+
+def test_a_parse_that_stops_partway_without_a_count_says_the_row_was_written_in_part(monkeypatch):
+    spec = sbs.APPS['ud']()
+    client = spec['client']()
+    plan = _parse_plan(monkeypatch, client, spec)
+    _parser(monkeypatch, client, writes=True, error=RuntimeError('Stanza parser: HTTP 500 boom.'))
+
+    class Groups:
+        def update(self, group_id, message):
+            pass
+    client.operation_groups = Groups()
+    helper = sbs._approve(spec, client, plan)
+    [done] = helper.done
+    assert done['message'].startswith('Partly applied: 1 of 1 changes written in part. '), done['message']
+    item = _stored(spec, client)
+    assert item['outcome'] == '1 of 1 changes written in part.' and 'in_part' not in item
 
 
 def test_a_parse_refused_before_writing_still_says_nothing_was_written(monkeypatch):

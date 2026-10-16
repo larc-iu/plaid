@@ -137,7 +137,9 @@ def test_ud_a_kept_value_someone_changes_refuses_the_approval():
     _span(client, 'sp-u3')['value'] = 'PROPN'
     client._documents['ud1']['version'] += 1
     helper = _approve(APPS['ud'](), client, plan)
-    assert helper.errors and 'changed since the plan was made' in helper.errors[0], helper.errors
+    # The plan only keeps that value: approved, it writes nothing and settles
+    # as discarded before anything is read (Luke 2026-10-16).
+    assert helper.errors == ['Nothing to write. The plan was discarded.'], helper.errors
     assert 'sp-u3' not in str(client.writes)
     assert _span(client, 'sp-u3')['value'] == 'PROPN'
 

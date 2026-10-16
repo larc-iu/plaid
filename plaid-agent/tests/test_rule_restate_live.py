@@ -65,8 +65,9 @@ def test_a_form_rule_rewrites_a_named_value_whose_stored_value_is_already_its_ow
         assert 'no occurrences' not in out, out
         assert 'rewritten by this one back to the value stored' in out, out
         assert plan_changes(ws.plan_payload()['ops']) == 0
+        # Nothing to write: approved, it settles as discarded (Luke 2026-10-16).
         _p, h, _ = approve(c, s.project_id, ws)
-        assert not h.errors and h.done[0].get('applied') == 0, (h.errors, h.done)
+        assert h.errors == ['Nothing to write. The plan was discarded.'] and not h.done, (h.errors, h.done)
         assert _glosses(c, s.project_id) == before
     finally:
         s.delete()
@@ -80,8 +81,9 @@ def test_a_cleared_value_a_fill_rule_sets_back_is_no_change(live_client):
         call_tool(ws, 'set_field', {'document': 'Doc A', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': ''})
         call_tool(ws, 'set_field_for_form', {'form': 'ka', 'field': 'Gloss', 'value': 'A', 'only_empty': False})
         assert ws.ops[0]['kind'] == 'keep', ws.ops
+        # Nothing to write: approved, it settles as discarded (Luke 2026-10-16).
         _p, h, _ = approve(c, s.project_id, ws)
-        assert not h.errors and h.done[0].get('applied') == 0, (h.errors, h.done)
+        assert h.errors == ['Nothing to write. The plan was discarded.'] and not h.done, (h.errors, h.done)
         assert _glosses(c, s.project_id) == before
     finally:
         s.delete()

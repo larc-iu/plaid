@@ -22,7 +22,7 @@ import unicodedata
 import uuid
 import zlib
 from contextlib import ExitStack, contextmanager
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 # created_id is plaid_client's reader of a create response, kept here for a plan that reads one.
 from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops, uuid7  # noqa: F401
@@ -856,7 +856,7 @@ class PlanError(Exception):
 
     def __init__(self, message: str, applied: int, total: int, unknown: bool = False,
                  written: Optional[List[Any]] = None, members: Optional[Dict[Any, int]] = None,
-                 partly: Optional[List[Any]] = None):
+                 partly: Optional[List[Any]] = None, partly_count: Optional[Tuple[int, int, str]] = None):
         super().__init__(message)
         self.applied = applied
         self.total = total
@@ -871,6 +871,9 @@ class PlanError(Exception):
         #: that stopped partway), which no batch of the plan's counts. The
         #: message says how much, in that service's words.
         self.partly = list(partly or [])
+        #: How much of such a row the other service says it wrote: (written,
+        #: of, unit), "234 of 300 sentences", or None when it did not say.
+        self.partly_count = partly_count
 
     @property
     def wrote(self) -> bool:

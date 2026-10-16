@@ -91,7 +91,10 @@ def test_rules_that_end_on_the_stored_value_count_and_write_nothing():
     assert plan_changes(payload['ops']) == 0
     assert [r['rule']['total'] for r in payload['changes']] == [0, 0]
     assert call_tool(w, 'plan_status', {}).startswith('0 planned changes in 2 numbered entries')
-    assert _approve(client, w) == {}
+    # Nothing to write: approved, it settles as discarded (Luke 2026-10-16).
+    _plan, helper = _approved(client, w)
+    assert helper.errors == ['Nothing to write. The plan was discarded.'], helper.errors
+    assert dict(client.updates('spans')) == {}
 
 
 def test_a_named_change_a_rule_sets_back_to_the_stored_value_is_kept_and_comes_back_when_the_rule_goes():

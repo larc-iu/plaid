@@ -695,6 +695,7 @@ Applying a plan needs Writer access, and changing a lexicon's entries beyond cre
 A plan is refused when a sentence it changes has been edited since it was made, and the card then reads **Out of date**.
 Ask again to have it planned on the current text.
 A plan that stops partway reads **Partly applied**, and the assistant can finish it.
+A plan that only keeps values as they are reads **Nothing to write**, and can only be discarded.
 
 Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
 When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.

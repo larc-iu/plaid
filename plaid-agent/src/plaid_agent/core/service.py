@@ -95,10 +95,14 @@ from . import rules
 from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
                    PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, expanding,
-                   forget_held, holding, may_have_written, nothing_landed, outcome_unknown, stamp_of, waiting_plan,
-                   writing)
+                   forget_held, holding, may_have_written, nothing_landed, outcome_unknown, plan_changes, stamp_of,
+                   waiting_plan, writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
+
+#: What the model is told of a plan approved with nothing to write.
+NOTHING_TO_WRITE_NOTE = ('(note) The plan only kept values as they are, so it was settled as discarded: nothing '
+                         'was changed.')
 
 
 def _agent_release() -> str:
@@ -1587,6 +1591,12 @@ class BaseAssistantService(BaseService):
             settled()
             response_helper.error('Nothing to apply')
             return
+        if not plan_changes(ops):
+            # Only values kept as they are: approving it writes nothing, so
+            # it settles as discarded, as its card offers (Luke 2026-10-16).
+            settled('discarded', NOTHING_TO_WRITE_NOTE)
+            response_helper.error('Nothing to write. The plan was discarded.')
+            return
         # The limits a plan is held to when it is staged, asked again: a plan
         # staged under other limits must not lock or write more than these.
         big = rules.too_big(ops, self.documents_to_lock(ops, plan.get('documents') or []))
@@ -1841,8 +1851,17 @@ class BaseAssistantService(BaseService):
                 # The count as the card says it, kept on the record for
                 # whatever shows the plan later (an exported conversation).
                 outcome = f'{partial_tally(written_n, sum(sizes), len(partly))}.'
-                fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {})}
-                said = (f'Partly applied: {outcome} '
+                # A row another service wrote in part and counted (a parse
+                # that stopped partway) is said in its count, kept on the
+                # record too (Luke 2026-10-16).
+                count = e.partly_count if len(partly) == 1 else None
+                if count:
+                    n, of, unit = count
+                    outcome = (f'Written in part: {n} of {of} {unit}.' if not written_n
+                               else f'{partial_tally(written_n, sum(sizes), 1)} ({n} of {of} {unit}).')
+                fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {}),
+                          **({'in_part': list(count)} if count else {})}
+                said = (f'Partly applied{". " if count and not written_n else ": "}{outcome} '
                         + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
                 self._remember_applied(plan_id, 'partial', note, fields)
                 if not settled('partial', note, **fields):

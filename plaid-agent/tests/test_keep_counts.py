@@ -6,7 +6,7 @@ values the plan keeps or changes by name from its count, as igt's rules do.
 Dropping a corpus-wide change drops the keeps made against it, and a plan
 holding only keeps reads as no changes."""
 
-from plaid_agent.core.conversation import proposed_changes
+from plaid_agent.core.conversation import ConversationStore, proposed_changes
 from plaid_agent.core.plan import plan_changes
 from plaid_agent.core.trace import summarize_steps
 from plaid_agent.ud.project import load_project
@@ -45,14 +45,17 @@ def test_igt_an_empty_value_is_kept_out_of_a_rule_that_fills_empty_values():
     assert out.startswith('Kept Gloss empty on s1.w2'), out
     assert [o['kind'] for o in w.ops] == ['bulk_scope', 'keep']
     assert plan_changes(w.plan_payload()['ops']) == 0
+    # Nothing to write: approved, it settles as discarded (Luke 2026-10-16).
     _plan, helper = R._approved(w.client, w)
-    assert not helper.errors, helper.errors
+    assert helper.errors == ['Nothing to write. The plan was discarded.'], helper.errors
     assert w.client.payloads('spans.create') == []
+    conv, meta = ConversationStore(w.client, 'u@x', R.igt_fx.PID, 'igt').load('c1')
+    assert conv['display'][1]['status'] == 'discarded' and meta['pending'] is None
 
 
 # --- REV2-AGENT-2: ud rows, the summary and the applied message ----------------------
 
-def test_ud_a_discard_counts_without_the_value_it_keeps_and_applies_as_no_changes():
+def test_ud_a_discard_counts_without_the_value_it_keeps_and_approved_settles_as_discarded():
     from test_replaced_work_corpus import _store
     from test_stale_by_sentence import APPS, _approve
     ws = _ud()
@@ -64,9 +67,10 @@ def test_ud_a_discard_counts_without_the_value_it_keeps_and_applies_as_no_change
     assert payload['changes'][1] == {**payload['changes'][1], 'label': 'upos stays "NOUN"', 'kept': True}
     plan = _store(ws, ws.client, PID, 'ud')
     helper = _approve(APPS['ud'](), ws.client, plan)
-    assert not helper.errors, helper.errors
-    assert helper.done[-1]['message'] == 'Applied no changes.', helper.done
+    assert helper.errors == ['Nothing to write. The plan was discarded.'], helper.errors
     assert ws.client.writes == []
+    conv, meta = ConversationStore(ws.client, 'u@x', PID, 'ud').load('c1')
+    assert conv['display'][1]['status'] == 'discarded' and meta['pending'] is None
 
 
 def test_ud_a_replacement_row_counts_without_its_kept_value():

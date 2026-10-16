@@ -22,6 +22,7 @@ import re
 
 from fixtures import GLOSS, project_raw, document_raw, lexicon_raw, VOCAB
 from live import live_client, seed, _Session  # noqa: F401
+from rule_plan_model import as_applied
 from test_service_flow import Helper
 
 from plaid_agent.core import rules
@@ -154,7 +155,7 @@ def run_case(c, seed_no):
         assert _card_count(payload) == len(want), f'card {_card_count(payload)} != {len(want)}\n{where}'
         assert plan_changes(payload['ops']) == len(want), f'plan_changes != {len(want)}\n{where}'
         assert _status_count(status) == len(want), f'plan_status {status!r} != {len(want)}\n{where}'
-        h = _approve(c, s.project_id, payload)
+        h = as_applied(_approve(c, s.project_id, payload))
         assert not h.errors, f'approval refused: {h.errors}\n{where}'
         [done] = h.done
         assert done.get('applied') == len(want), f'applied {done.get("applied")} != {len(want)}\n{where}'

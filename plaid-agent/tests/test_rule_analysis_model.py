@@ -12,7 +12,7 @@ import random
 import pytest
 
 from live import live_client, seed  # noqa: F401
-from rule_plan_model import approve, make_doc, project, values_of
+from rule_plan_model import approve, as_applied, make_doc, project, values_of
 from fixtures import lexicon_raw, VOCAB
 from plaid_agent.core import rules as core_rules
 from plaid_agent.igt.project import load_project
@@ -137,6 +137,7 @@ def run_case(c, case):
         p = ws.plan_payload()
         if p:
             _p, h, _ = approve(c, s.project_id, ws)
+            as_applied(h)
             res['errors'] = h.errors
         after = {k[1]: v for k, v in values_of(Workspace(c, load_project(c, s.project_id))).items()
                  if k[2] == 'Morph Gloss'}
