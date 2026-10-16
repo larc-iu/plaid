@@ -53,8 +53,17 @@ export function bodyCodePoints(body) {
   return lastPoints;
 }
 
+const OP_KEYS = ['type', 'index', 'length', 'value', 'side'];
+
+// The op as JSON in the one form core and the Python client print it in a
+// refusal: its keys in the order type, index, length, value, side, then any
+// others as sent, with no spaces.
 function opName(op) {
-  return JSON.stringify(op);
+  if (!op || typeof op !== 'object' || Array.isArray(op)) return String(JSON.stringify(op));
+  const ordered = {};
+  for (const k of OP_KEYS) if (Object.hasOwn(op, k)) ordered[k] = op[k];
+  for (const k of Object.keys(op)) if (!OP_KEYS.includes(k)) ordered[k] = op[k];
+  return JSON.stringify(ordered);
 }
 
 /**

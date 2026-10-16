@@ -50,6 +50,18 @@ test('a malformed op throws', () => {
   }
 });
 
+test('a refused op is named in the one JSON form core prints', () => {
+  // keys type, index, length, value, side, then others, with no spaces
+  assert.throws(
+    () => composeTextEdits('abc', [{ value: 'é\u2028\n', x: 1, index: -1, type: 'insert' }]),
+    {
+      message:
+        'Text edit operation out of bounds: {"type":"insert","index":-1,"value":"é\u2028\\n","x":1} (text length is 3 code points)',
+    },
+  );
+  assert.throws(() => applyTextOps('abc', [null]), /^Error: Malformed text edit operation: null\. /);
+});
+
 test('an op out of bounds throws, counting code points', () => {
   for (const op of [
     { type: 'insert', index: 3, value: 'a' },

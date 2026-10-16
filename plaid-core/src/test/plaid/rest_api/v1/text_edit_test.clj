@@ -105,11 +105,24 @@
     (assert-bad-request (edit-text text {:edits [] :base 7}))
     (assert-bad-request (edit-text text {:edits [{:type "insert" :index 0 :value "x" :side "left"}]}))
     (is (= "a b" (-> (get-text admin-request text) :body :text/body)))
-    ;; the message names the op as the client sent it, in JSON
+    ;; the message names the op in JSON, in the one form both clients print
+    ;; it in: keys type, index, length, value, side, then others, no spaces
     (doseq [[op want] [[(ins 9 "x") "Text edit operation out of bounds: {\"type\":\"insert\",\"index\":9,\"value\":\"x\"} (text length is 3 code points)"]
+                       [(array-map :value "é\u2028\n" :x 1 :index -1 :type "insert") "Text edit operation out of bounds: {\"type\":\"insert\",\"index\":-1,\"value\":\"é\u2028\\n\",\"x\":1} (text length is 3 code points)"]
+                       [nil "Malformed text edit operation: null. Expected"]
                        [{:type "insert" :index 0} "Malformed text edit operation: {\"type\":\"insert\",\"index\":0}. Expected"]
                        [{:type "insert" :index 0 :value "x" :side "left"} "A text edit's side is \"before\" or \"after\": {\"type\":\"insert\",\"index\":0,\"value\":\"x\",\"side\":\"left\"}"]]]
       (is (str/starts-with? (str (:error (:body (edit-text text {:edits [op]})))) want) (pr-str op)))))
+
+(deftest a-null-among-the-edits-is-refused
+  ;; it ended the list, so every edit after it was dropped and the save
+  ;; answered 200 (REV7-TEXT, seen)
+  (let [{:keys [text]} (setup "a b")]
+    (doseq [edits [[(ins 0 "A") nil (ins 0 "B")] [nil] [(ins 0 "A") nil]]]
+      (let [res (edit-text text {:edits edits})]
+        (assert-bad-request res)
+        (is (str/starts-with? (str (:error (:body res))) "Malformed text edit operation: null.") (pr-str edits))))
+    (is (= "a b" (-> (get-text admin-request text) :body :text/body)))))
 
 (deftest a-restating-edit-bumps-the-version-and-reads-as-a-body-save
   (let [{:keys [text doc]} (setup "a b")

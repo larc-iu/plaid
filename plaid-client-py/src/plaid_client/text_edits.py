@@ -26,6 +26,19 @@ def _is_int(x):
     return isinstance(x, int) and not isinstance(x, bool)
 
 
+_OP_KEYS = ('type', 'index', 'length', 'value', 'side')
+
+
+def _op_json(op):
+    """The op as JSON in the one form core and the JavaScript client print it
+    in a refusal: its keys in the order type, index, length, value, side,
+    then any others as sent, with no spaces."""
+    if isinstance(op, dict):
+        op = {**{k: op[k] for k in _OP_KEYS if k in op},
+              **{k: v for k, v in op.items() if k not in _OP_KEYS}}
+    return json.dumps(op, ensure_ascii=False, separators=(',', ':'))
+
+
 def _check_op(op, length):
     """The op's type after checking its shape and bounds against a body of
     ``length`` code points, as the server checks it. Raises ValueError."""
@@ -40,7 +53,7 @@ def _check_op(op, length):
     )
     if not well_formed:
         raise ValueError(
-            f'Malformed text edit operation: {json.dumps(op, ensure_ascii=False)}. '
+            f'Malformed text edit operation: {_op_json(op)}. '
             'Expected {type: "insert", index: int, value: string}, '
             '{type: "delete", index: int, value: int} or '
             '{type: "replace", index: int, length: int, value: string}')
@@ -52,7 +65,7 @@ def _check_op(op, length):
         in_bounds = index >= 0 and size >= 0 and index + size <= length
     if not in_bounds:
         raise ValueError(
-            f'Text edit operation out of bounds: {json.dumps(op, ensure_ascii=False)} '
+            f'Text edit operation out of bounds: {_op_json(op)} '
             f'(text length is {length} code points)')
     return op_type
 

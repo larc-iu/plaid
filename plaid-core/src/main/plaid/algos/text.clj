@@ -492,14 +492,17 @@
       type))
 
 (defn- op-json
-  "`op` as the JSON a client sends it, type first, for a refusal's message."
+  "`op` as JSON in the one form both clients print it in their own refusals
+  (plaid-client-js `opName`, plaid-client-py `_op_json`): its keys in the
+  order type, index, length, value, side, then any others as sent, with no
+  spaces and every character but a control one as itself."
   [op]
   (let [ks [:type :index :length :value :side]
         m (if (map? op)
             (apply array-map (concat (mapcat #(when (contains? op %) [% (get op %)]) ks)
                                      (mapcat identity (apply dissoc op ks))))
             op)]
-    (json/write-str m :escape-unicode false :escape-slash false)))
+    (json/write-str m :escape-unicode false :escape-slash false :escape-js-separators false)))
 
 (defn- check-op!
   "The 400s `apply-text-edit` throws, for `op` applied to a text of `len`
@@ -1828,8 +1831,10 @@
         buf (int-array cap)]
     (System/arraycopy o 0 buf (- cap n) n)
     (loop [ops (seq ops) gs 0 ge (- cap n)]
-      (if-let [{:keys [index value length] :as op} (first ops)]
-        (let [type (op-type (:type op))
+      ;; (a nil op is one that does not fit, never the end of the list)
+      (if ops
+        (let [{:keys [index value length] :as op} (first ops)
+              type (op-type (:type op))
               len (+ gs (- cap ge))
               cut (case type :delete value :replace length :insert 0 nil)
               typed (when (#{:insert :replace} type) value)]
@@ -2062,8 +2067,11 @@
                     right (if (pos? n) (list [:old 0 n]) ())
                     pos 0
                     len n]
-               (if-let [op (first ops)]
-                 (let [type (check-op! op len)
+               ;; every op is checked: a nil one is refused, never read as
+               ;; the end of the list, which dropped every op after it
+               (if ops
+                 (let [op (first ops)
+                       type (check-op! op len)
                        {:keys [index value length]} op
                        k (case type :insert 0 :delete value :replace length)
                        v (if (= type :delete) "" value)

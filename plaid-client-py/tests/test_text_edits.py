@@ -54,6 +54,16 @@ def test_a_malformed_op_raises(op):
         apply_text_ops('abc', [op])
 
 
+def test_a_refused_op_is_named_in_the_one_json_form_core_prints():
+    # keys type, index, length, value, side, then others, with no spaces
+    with pytest.raises(ValueError) as e:
+        compose_text_edits('abc', [{'value': 'é\u2028\n', 'x': 1, 'index': -1, 'type': 'insert'}])
+    assert str(e.value) == ('Text edit operation out of bounds: '
+                            '{"type":"insert","index":-1,"value":"é\u2028\\n","x":1} (text length is 3 code points)')
+    with pytest.raises(ValueError, match=r'^Malformed text edit operation: null\. '):
+        apply_text_ops('abc', [None])
+
+
 @pytest.mark.parametrize('op', [
     {'type': 'insert', 'index': 3, 'value': 'a'},
     {'type': 'insert', 'index': -1, 'value': 'a'},
