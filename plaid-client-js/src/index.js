@@ -4802,6 +4802,7 @@ class PlaidClient {
  * neither body is re-cased.
  */
 function configRequest(auditMessage, value, options, isDelete = false) {
+  // The answer is a 204 with no body, so there is nothing to keep un-recased.
   if (!options || !Object.hasOwn(options, "expected")) {
     return isDelete ? { auditMessage } : { auditMessage, rawBody: value };
   }
@@ -4818,7 +4819,6 @@ function configRequest(auditMessage, value, options, isDelete = false) {
  * `/api/v1/<kind>/<id>/metadata`. Metadata is opaque, so no body is re-cased.
  * Each answers the entity as its GET does.
  * @template {keyof MetadataRecords} K
-  // The answer is a 204 with no body, so there is nothing to keep un-recased.
  * @param {PlaidClient} client
  * @param {K} kind
  */
@@ -5092,6 +5092,9 @@ export {
 // request, and `critical()` holds that off around writes. See ./services.js
 // and the manual, "Stopping a request".
 export { ServiceCancelled, createCancelScope } from "./services.js";
+// The two messages a write that got no answer is reported with: one the
+// server may have saved, one never sent. See ./services.js.
+export { UNKNOWN_OUTCOME, UNREACHABLE } from "./services.js";
 // Who asked for a service run, named in its History label and in what it
 // stores. See ./requester.js.
 export { REQUESTED_BY, makeRequester, requesterOf } from "./requester.js";
@@ -5111,9 +5114,6 @@ export {
   confirmedInferred,
   stampContributed,
   provState,
-// The two messages a write that got no answer is reported with: one the
-// server may have saved, one never sent. See ./services.js.
-export { UNKNOWN_OUTCOME, UNREACHABLE } from "./services.js";
   provOrigin,
   isMachine,
   isProtected,
