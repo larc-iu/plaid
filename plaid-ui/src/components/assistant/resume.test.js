@@ -29,8 +29,8 @@ describe('retryNote', () => {
   const stop = { kind: 'error', stopped: true, text: 'Stopped.' };
 
   it('says the reader stopped a stopped turn, after a reload too, and draws the stop once', () => {
-    expect(retryNote([user, stop], null)).toBe('You stopped this turn.');
-    expect(retryNote([user], { convId: 'c1', steps: [] })).toBe('You stopped this turn.');
+    expect(retryNote([user, stop], null)).toBe('Stopped.');
+    expect(retryNote([user], { convId: 'c1', steps: [] })).toBe('Stopped.');
     expect(hidesStopped([user, stop], 1)).toBe(true);
     expect(hidesStopped([user, stop], 0)).toBe(false);
   });

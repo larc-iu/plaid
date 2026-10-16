@@ -22,6 +22,7 @@ from plaid_agent.core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from plaid_agent.core.conversation import (ConversationStore, assistant_item, error_item, prune, user_item,
                                            conversation_bytes)
 from plaid_agent.core.rounds import RoundKeeper, round_prefix
+from plaid_agent.core.tools import refused
 from plaid_agent.core.tools import MAX_RESULT_CHARS
 from plaid_agent.core.trace import READ, Tracer, summarize_steps
 
@@ -79,7 +80,7 @@ def test_a_failed_turn_carries_the_calls_it_made(monkeypatch):
         RuntimeError('provider down'),
     ]))
     with pytest.raises(RuntimeError) as e:
-        run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': '3 words', 'nope': 'Error: No word nope.'}),
+        run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': '3 words', 'nope': refused('No word nope.')}),
                  _ws(client), 'system', [{'role': 'user', 'content': 'hi'}])
     steps, partial = turn_trace(e.value)
     assert [s['id'] for s in steps] == ['c1', 'c2']

@@ -207,6 +207,34 @@ def test_a_round_over_the_cap_is_cut_to_fit():
     assert fit(rnd, 100_000) is rnd
 
 
+def test_a_round_whose_text_or_arguments_pass_the_cap_is_cut_not_refused():
+    """`fit` cut reasoning and results only, so a round whose text or code
+    alone passed the cap was refused and drawn unstored (H13-TRACE)."""
+    from plaid_agent.core.conversation import _bytes
+    rnd = {'id': 'r', 'n': 2, 'said': 'y' * 5000,
+           'calls': [{'id': 'c1', 'name': 'run_code', 'arguments': '{"code": "' + 'z' * 5000 + '"}',
+                      'result': 'ok', 'chars': 2}]}
+    out = fit(rnd, 3000)
+    assert _bytes(out) <= 3000 and out['fitted'] is True
+    assert 'characters cut to fit the store' in out['said']
+    assert 'characters cut to fit the store' in out['calls'][0]['arguments']
+    assert out['calls'][0]['result'] == 'ok'
+
+
+def test_a_progress_event_carries_a_steps_text_cut():
+    """Every progress event carries every step, and one 400 KB text went out
+    whole in 23 events (H13-TRACE). The record keeps it whole."""
+    from plaid_agent.core.rounds import LIVE_SAID_CHARS
+    keeper = RoundKeeper(store=None, conv_id='c')
+    long = 'w' * (LIVE_SAID_CHARS + 10)
+    keeper.follow([{'id': 's1', 'said': long, 'round': 'r1'}, {'id': 's2', 'said': 'short'}])
+    keeper.stored.add('r1')
+    first, second = keeper.live_trace()
+    assert first['said'] == 'w' * LIVE_SAID_CHARS + '…' and first['stored'] is True
+    assert second == {'id': 's2', 'said': 'short'}
+    assert keeper.trace[0]['said'] == long
+
+
 def test_the_instructions_are_stored_once_per_distinct_prompt(monkeypatch):
     client = FakeClient()
     monkeypatch.setattr(RoundKeeper, '_prompts_known', set())

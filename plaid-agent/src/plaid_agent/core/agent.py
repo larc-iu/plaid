@@ -16,6 +16,7 @@ import re
 import threading
 from types import SimpleNamespace
 import time
+import traceback
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
@@ -30,6 +31,7 @@ from .bidi import for_model
 from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
+from .tools import Refusal, refused
 from .plan import held_changes
 from .trace import META, META_TOOLS, PLAN, Tracer, again_label, summarize_steps, trace_step
 
@@ -1007,7 +1009,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 raise
             # The plan is the substance of this turn, as for an empty reply
             # below: a failure of the call for its words does not lose it.
-            print(f'{cfg.model}: the reply after a staged plan failed ({type(e).__name__}); keeping the plan')
+            print(f'{cfg.model}: the reply after a staged plan failed, and the plan is kept:')
+            traceback.print_exception(e)
             live['text'] = ''
             return f'({NO_ANSWER})', None
         spend.add(resp)
@@ -1178,12 +1181,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             told = None
             cut = False
             saw = None
+            # Whether the tool refused the call, by the type of its answer
+            # (core.tools.Refusal), never by how the text begins: a read whose
+            # output starts with "Error" went through.
+            failed = False
             try:
                 args = json.loads(raw)
                 if not isinstance(args, dict):
                     args = {}
             except json.JSONDecodeError as e:
-                args, result = {}, f'Error: arguments were not valid JSON ({e})'
+                args, result, failed = {}, refused(f'arguments were not valid JSON ({e})'), True
                 # Sent back as they came, they are the next request's: a
                 # server that reads a call's arguments (llama-server) refuses
                 # the whole conversation, every retry, and the turn is lost.
@@ -1210,7 +1217,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 ws.step_label = None
                 cuts_before = cuts()
                 try:
-                    result = f'Error: {why}' if why else kit.call_tool(ws, name, args)
+                    result = refused(why) if why else kit.call_tool(ws, name, args)
+                    failed = isinstance(result, Refusal)
                 finally:
                     saw, ws.reads, ws.announced = ws.reads, None, None
                     told, ws.step_label = getattr(ws, 'step_label', None), None
@@ -1232,7 +1240,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 planned = held - planned_before
                 if planned:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(held))
-                if plan_call and not str(result).startswith('Error'):
+                if plan_call and not failed:
                     unchanged = _plan_snapshot(ws) == before
                     if key in made and unchanged:
                         result, repeated = ALREADY_PLANNED, True
@@ -1244,7 +1252,6 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         # it was planned nothing, and its step says so.
                         nothing = unchanged
                         made[key] = told
-            failed = str(result).startswith('Error')
             saved = (getattr(getattr(ws, 'keeper', None), 'saved', None) or [])[saved_before:]
             first = not rnd['calls']
             # A read held to documents is traced by the documents it resolved

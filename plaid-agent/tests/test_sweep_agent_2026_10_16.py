@@ -121,3 +121,39 @@ def test_feature_bundles_past_the_group_limit_are_read_by_document(monkeypatch):
     out = ud_call(ws, 'frequency_list', {'what': 'feature-bundles'})
     assert '2  Mood=Ind|Number=Plur' in out and '1  Number=Sing' in out, out
     assert '1  Mood=Ind\n' not in out + '\n' and 'engine returned as many rows' not in out, out
+
+
+def test_a_failure_while_the_turn_is_set_up_writes_the_record(monkeypatch):
+    """The turn's setup (its workspace, the reach into other projects, the
+    prompt) ran outside the turn's try, so a failure there ended the request
+    with no record written and the question left pending (REV-MULTI)."""
+    from fixtures import FakeClient
+    from test_service_flow import Helper, _request, _seed, _service
+    client = FakeClient()
+    store = _seed(client, text='Gloss s1.')
+    svc = _service()
+
+    def broken(*a, **k):
+        raise RuntimeError('the prompt hook broke')
+    monkeypatch.setattr(svc, 'system_prompt', broken)
+    helper = Helper()
+    svc.process_request(_request(client), helper)
+    conv, meta = store.load('c1')
+    assert [d['kind'] for d in conv['display']] == ['user', 'error']
+    assert conv['display'][-1]['text'].startswith('The assistant could not answer')
+    assert not meta.get('pending') and helper.errors
+
+
+def test_a_conversations_lock_goes_once_nothing_holds_it():
+    """The service's lock table kept a lock for every conversation it ever
+    touched (REV-SW-1). A lock goes once nothing holds or waits on it, and
+    while one does, every caller gets that same lock."""
+    from test_service_flow import _service
+    svc = _service()
+    key = ('u@x', 'p1', 'c1')
+    with svc._conv_lock(key) as _held:
+        lock = svc._conv_lock(key)
+        assert len(svc._locks) == 1 and svc._conv_lock(key) is lock
+        del lock
+    assert len(svc._locks) == 0
+

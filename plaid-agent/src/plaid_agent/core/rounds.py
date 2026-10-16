@@ -32,6 +32,9 @@ from plaid_client import PlaidAPIError, uuid7
 from .conversation import _bytes, _patiently, now_iso
 from .files import value_budget
 
+#: How much of a step's text a progress event carries.
+LIVE_SAID_CHARS = 4000
+
 #: The kinds of value stored beside a conversation besides its files.
 ROUND = 'round'
 PROMPT = 'prompt'
@@ -91,6 +94,22 @@ def fit(rnd: Dict[str, Any], budget: int) -> Dict[str, Any]:
             continue
         c['result'] = _middle_cut(text, over)
         over -= size - _bytes(c['result'])
+    # Then the text written beside the calls and the arguments, longest
+    # first: a round whose text or code alone passes the budget is kept cut
+    # rather than refused (H13-TRACE).
+    said = out.get('said')
+    if over > 0 and isinstance(said, str) and _bytes(said) > 200:
+        out['said'] = _middle_cut(said, over)
+        over -= _bytes(said) - _bytes(out['said'])
+    for c in sorted(calls, key=lambda c: -_bytes(c.get('arguments') or '')):
+        if over <= 0:
+            break
+        text = c.get('arguments') or ''
+        size = _bytes(text)
+        if size <= 200:
+            continue
+        c['arguments'] = _middle_cut(text, over)
+        over -= size - _bytes(c['arguments'])
     out.update(calls=calls, fitted=True)
     if over > 0 and out.get('asked'):
         out['asked'] = out['asked'][:max(0, len(out['asked']) - over)]
@@ -162,8 +181,19 @@ class RoundKeeper:
 
     def live_trace(self) -> List[Dict[str, Any]]:
         """The steps so far as a progress event carries them: as they will be
-        stored, plus ``stored`` on those whose round is written."""
-        return [{**s, 'stored': True} if s.get('round') in self.stored else s for s in self.trace]
+        stored, plus ``stored`` on those whose round is written, and a step's
+        text cut to `LIVE_SAID_CHARS`. Every event carries every step, so one
+        long text went out whole with each (23 events of 400 KB, H13-TRACE).
+        The record and the round keep it whole."""
+        out = []
+        for s in self.trace:
+            if s.get('round') in self.stored:
+                s = {**s, 'stored': True}
+            said = s.get('said')
+            if isinstance(said, str) and len(said) > LIVE_SAID_CHARS:
+                s = {**s, 'said': said[:LIVE_SAID_CHARS] + '…'}
+            out.append(s)
+        return out
 
     def key(self, round_id: str) -> str:
         s = self.store_

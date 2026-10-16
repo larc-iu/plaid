@@ -356,6 +356,10 @@ class ConversationStore:
         for _ in range(WRITE_TRIES):
             try:
                 entry = meta_of(new, meta)
+                # Made again on an entry another request marked since: written
+                # only when it keeps that marker, never over it (REV-SW-1).
+                if not _owns(meta, request_id) and _marker(entry) != _marker(meta):
+                    return False
                 if wrote:
                     entry = with_size(entry, new, cap)
                 self._put(mkey, entry, guarded=True)
@@ -433,6 +437,12 @@ def _record(conv: Dict[str, Any]) -> Dict[str, Any]:
     keeps the value as stored, which a change made in place must not touch
     (an approval writes the versions it holds onto its plan's documents)."""
     return copy.deepcopy({'messages': conv.get('messages') or [], 'display': conv.get('display') or []})
+
+
+def _marker(meta: Dict[str, Any]) -> Optional[str]:
+    """The request a sidebar entry's pending marker names, or None."""
+    pending = meta.get('pending') if isinstance(meta, dict) else None
+    return pending.get('request_id') if isinstance(pending, dict) else None
 
 
 def _owns(meta: Optional[Dict[str, Any]], request_id: Optional[str]) -> bool:

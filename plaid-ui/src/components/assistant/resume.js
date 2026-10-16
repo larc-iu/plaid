@@ -16,11 +16,11 @@ export const stoppedIn = (stopped, convId) =>
 
 // The line beside Retry under a turn that has no answer. A stop is recorded
 // as an `error` item marked `stopped` ("Stopped."), which this line stands in
-// for, so it is asked before the error and the item is not drawn as well
-// (`hidesStopped`).
+// for with the same words, live and after a reload, so it is asked before the
+// error and the item is not drawn as well (`hidesStopped`).
 export const retryNote = (display, stoppedHere) => {
   const last = display.at(-1);
-  if (last?.stopped || stoppedHere) return 'You stopped this turn.';
+  if (last?.stopped || stoppedHere) return 'Stopped.';
   return last?.kind === 'error'
     ? 'That turn did not finish.'
     : 'No answer came back for this message.';

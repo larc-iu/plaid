@@ -52,6 +52,7 @@ working assistant service.
 import argparse
 import contextlib
 import threading
+import weakref
 import hashlib
 import importlib.metadata
 import json
@@ -198,7 +199,10 @@ class BaseAssistantService(BaseService):
         # One conversation, one thing at a time (see `_conv_lock`): a lock per
         # conversation, keyed (user, project, conversation), and what runs
         # there in this process, {request_id, kind, plan_id, cancel}.
-        self._locks: Dict[tuple, threading.RLock] = {}
+        # Held weakly: a lock goes from the table once nothing holds or waits
+        # on it, so the table does not grow with every conversation ever
+        # touched, and never while a thread could still be using it.
+        self._locks: 'weakref.WeakValueDictionary[tuple, Any]' = weakref.WeakValueDictionary()
         self._locks_guard = threading.Lock()
         self._busy: Dict[tuple, Dict[str, Any]] = {}
         # Answers whose write the server never answered, written again later.
@@ -1273,58 +1277,76 @@ class BaseAssistantService(BaseService):
         # lines sent while a document or another project loads are the
         # client's cancellation checkpoints) takes effect at the turn's first
         # check, where it is recorded with everything else a stop records.
-        with _held(response_helper):
-            ws = self.make_workspace(client, project, send)
-            ws.requester_id = store.user_id
-            # What the user attached to this conversation, and the note in front of
-            # the message it came on. The note is written BEFORE the place stamp,
-            # because that one has to stay at the very start of the message: it is
-            # found again by matching there (see `stamped`).
-            ws.files = Attachments.of(store, conv_id, conv['display'])
-            # What read_url fetches is stored beside the conversation as a file.
-            ws.keeper = FileKeeper(store, conv_id)
-            last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
-            ws.asked = str((last_user or {}).get('text') or '')
-            # The plan an earlier message staged that still waits on its card,
-            # which this turn's own plan replaces (see `turn_ending`).
-            ws.waiting = waiting_plan(conv['display'])
-            ws.load_plan_state = lambda plan_id: store.plan_state(conv_id, plan_id)
-            transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []),
-                                         ws.FILE_ROUTES)
-            # The other projects the user added to the conversation, read from their
-            # own message and nowhere else, and only those the requester's token
-            # reaches (the server scoped it to them). Stamped onto the question when the set
-            # changed, after the files note and before the place stamp, which has to
-            # stay first on the line.
-            reach = self.open_reach(client, ws, (last_user or {}).get('projects'),
-                                    (request_data or {}).get('delegated_projects') or ())
-            transcript = projects_stamped(transcript, reach.labels() if reach else [project.name])
-            # Where this question was asked from, stamped onto the question itself.
-            # The panel outlives the screen it was opened from, so one thread can
-            # hold questions asked from several places, and the system note below
-            # only ever describes the LAST of them. Without the stamp the model
-            # reads turn 1's "this sentence" as being about turn 5's document.
-            where = self.place(ws, (request_data or {}).get('where'))
-            transcript = stamped(transcript, where[:2] if where else None)
-            if self.web_cfg is not None:
-                ws.web = session_for(self.web_cfg, transcript)
-            system = self.system_prompt(project, web=ws.web is not None)
-            if reach is not None:
-                system = f'{system}\n\n{self.other_projects_note(reach)}'
-            # Asked from inside a screen that is about one thing: say which, so an
-            # unqualified question is about it. Nothing is taken away.
-            if where and where[2]:
-                system = f'{system}\n\n{where[2]}'
-            # What every call of the next turn sends besides the transcript, taken
-            # off the window before the transcript is held to its share of it.
-            overhead = (system, self.kit.tools_for(ws))
-            # Each model call's input and output, stored beside the
-            # conversation as it finishes, with the instructions it was given.
-            keeper.system, keeper.tools = overhead
-            ws.rounds = keeper
-            # What the turn was given is text a value can be copied from (see
-            # core.garble).
-            seed(ws.seen, system, transcript, lambda tool, args: filetools.vouches(ws, tool, args))
+        # The setup is inside a try of its own: a failure there (a project
+        # another reach cannot open, a prompt hook) writes the record and
+        # answers the request, as a failure of the turn does (REV-MULTI).
+        ws = None
+        try:
+            with _held(response_helper):
+                ws = self.make_workspace(client, project, send)
+                ws.requester_id = store.user_id
+                # What the user attached to this conversation, and the note in front of
+                # the message it came on. The note is written BEFORE the place stamp,
+                # because that one has to stay at the very start of the message: it is
+                # found again by matching there (see `stamped`).
+                ws.files = Attachments.of(store, conv_id, conv['display'])
+                # What read_url fetches is stored beside the conversation as a file.
+                ws.keeper = FileKeeper(store, conv_id)
+                last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
+                ws.asked = str((last_user or {}).get('text') or '')
+                # The plan an earlier message staged that still waits on its card,
+                # which this turn's own plan replaces (see `turn_ending`).
+                ws.waiting = waiting_plan(conv['display'])
+                ws.load_plan_state = lambda plan_id: store.plan_state(conv_id, plan_id)
+                transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []),
+                                             ws.FILE_ROUTES)
+                # The other projects the user added to the conversation, read from their
+                # own message and nowhere else, and only those the requester's token
+                # reaches (the server scoped it to them). Stamped onto the question when the set
+                # changed, after the files note and before the place stamp, which has to
+                # stay first on the line.
+                reach = self.open_reach(client, ws, (last_user or {}).get('projects'),
+                                        (request_data or {}).get('delegated_projects') or ())
+                transcript = projects_stamped(transcript, reach.labels() if reach else [project.name])
+                # Where this question was asked from, stamped onto the question itself.
+                # The panel outlives the screen it was opened from, so one thread can
+                # hold questions asked from several places, and the system note below
+                # only ever describes the LAST of them. Without the stamp the model
+                # reads turn 1's "this sentence" as being about turn 5's document.
+                where = self.place(ws, (request_data or {}).get('where'))
+                transcript = stamped(transcript, where[:2] if where else None)
+                if self.web_cfg is not None:
+                    ws.web = session_for(self.web_cfg, transcript)
+                system = self.system_prompt(project, web=ws.web is not None)
+                if reach is not None:
+                    system = f'{system}\n\n{self.other_projects_note(reach)}'
+                # Asked from inside a screen that is about one thing: say which, so an
+                # unqualified question is about it. Nothing is taken away.
+                if where and where[2]:
+                    system = f'{system}\n\n{where[2]}'
+                # What every call of the next turn sends besides the transcript, taken
+                # off the window before the transcript is held to its share of it.
+                overhead = (system, self.kit.tools_for(ws))
+                # Each model call's input and output, stored beside the
+                # conversation as it finishes, with the instructions it was given.
+                keeper.system, keeper.tools = overhead
+                ws.rounds = keeper
+                # What the turn was given is text a value can be copied from (see
+                # core.garble).
+                seed(ws.seen, system, transcript, lambda tool, args: filetools.vouches(ws, tool, args))
+        except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
+            if ws is not None:
+                self._release(ws)
+                if getattr(ws, 'keeper', None) is not None:
+                    ws.keeper.discard()
+            traceback.print_exc()
+            line = self.turn_failure_line(e)
+            self._write(store, conv_id,
+                        turn_ending(conv, conv['messages'],
+                                    error_item(line, model=model, version=self.version, service=self.service_id)),
+                        request_id, model)
+            response_helper.error(line)
+            return
 
         def fit(record):
             """The record held to its budget (`prune`)."""

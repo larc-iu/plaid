@@ -191,6 +191,32 @@ def test_a_newer_request_marked_while_the_answer_was_written_keeps_its_marker():
     assert meta['turns'] == 2
 
 
+def test_a_marker_made_again_over_another_requests_marker_is_not_written():
+    """Two assistant processes on one conversation: r1's write that marks it
+    was refused at the entry, and meanwhile r2 marked it. Made again, r1's
+    entry would put its own marker over r2's, so it is not written
+    (REV-SW-1)."""
+    client = FakeClient()
+    store = _seed(client)
+    store.load('c1')
+    real = client.user_data.put
+    raced = {'n': 1}
+
+    def put(user_id, key, value, version=None):
+        if key == META and raced['n']:
+            raced['n'] -= 1
+            meta = client.user_data.get('u@x', META)['value']
+            real('u@x', META, {**meta, 'pending': {'kind': 'turn', 'request_id': 'r2'}})
+        return real(user_id, key, value, version=version)
+
+    client.user_data.put = put
+    marked = lambda conv, prev: {**prev, 'pending': {'kind': 'turn', 'request_id': 'r1'}}  # noqa: E731
+    assert store.write('c1', lambda conv: {**conv, 'display': conv['display'] + [user_item('q')]}, marked,
+                       'r1') is False
+    _conv, meta = _stored(client)
+    assert meta['pending']['request_id'] == 'r2'
+
+
 def test_a_record_that_keeps_moving_gives_up_with_record_moved(monkeypatch):
     client = FakeClient()
     store = _seed(client)

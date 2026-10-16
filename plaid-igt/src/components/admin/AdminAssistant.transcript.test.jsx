@@ -265,9 +265,8 @@ describe('the admin transcript of an igt conversation', () => {
     const { container, unmount } = await open('Glossing gam');
     expect(texts(container, '[role="alert"]')).toEqual(['The assistant stopped responding.']);
     expect(container.textContent).toContain('Done.');
-    expect(container.textContent).toContain('You stopped this turn.');
-    // The line stands in for the stop record, as in the chat.
-    expect(container.textContent).not.toContain('Stopped.');
+    // The line stands in for the stop record, as in the chat: drawn once.
+    expect(container.textContent.split('Stopped.').length - 1).toBe(1);
     expect(buttons(container)).not.toContain('Retry');
     await unmount();
   });

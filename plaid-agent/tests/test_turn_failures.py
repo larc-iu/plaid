@@ -16,6 +16,7 @@ from plaid_agent.core import service as service_mod
 from plaid_client.workflows import llm
 from plaid_agent.core.agent import (EMPTY_REPLY, ModelConfig, Toolkit, TurnFailed, model_failure_line,
                                     run_turn)
+from plaid_agent.core.tools import refused
 from plaid_agent.core.trace import PLAN, READ, Tracer, summarize_steps, trace_step
 
 
@@ -63,7 +64,7 @@ def _turn(monkeypatch, script, call_tool=lambda ws, n, a: 'ok', ws=None, **cfg):
 def test_a_refused_plan_call_is_marked_failed_and_left_out_of_the_count(monkeypatch):
     def call_tool(ws, name, args):
         if args.get('what') == 'bad':
-            return 'Error: s99: document "d" has 12 sentences'
+            return refused('s99: document "d" has 12 sentences')
         ws.ops.append({'kind': 'x'})
         return 'Planned.'
 
@@ -75,6 +76,19 @@ def test_a_refused_plan_call_is_marked_failed_and_left_out_of_the_count(monkeypa
     assert bad == {'id': 'c1', 'name': 'plan_a', 'kind': PLAN, 'label': 'Could not plan bad', 'failed': True}
     assert good['label'] == 'Planned good' and 'failed' not in good
     assert turn.summary == '1 planned change · 2 steps'
+
+
+def test_a_read_whose_answer_starts_with_error_went_through(monkeypatch):
+    """A run_code that printed "Error ..." was traced as a failed step
+    (REV-ASSISTANT 2026-09-28). A refusal is known by its type."""
+    def call_tool(ws, name, args):
+        return 'Errors found: 3' if args.get('what') == 'print' else refused('No word nope.')
+
+    script = Script(_resp(calls=[_call(1, 'read_a', '{"what": "print"}'), _call(2, 'read_a', '{"what": "x"}')]),
+                    _resp('Done.'))
+    turn = _turn(monkeypatch, script, call_tool)
+    printed, refusal = turn.steps
+    assert 'failed' not in printed and refusal['failed'] is True
 
 
 def test_a_failed_step_keeps_a_reads_own_line_and_is_not_counted():
@@ -141,7 +155,7 @@ def test_the_same_failing_call_three_times_ends_the_turn(monkeypatch):
 
 def test_a_failing_call_that_changes_its_arguments_is_not_a_repeat(monkeypatch):
     def call_tool(ws, name, args):
-        return 'Error: no such node'
+        return refused('no such node')
 
     script = Script(*([_resp(calls=[_call(i, 'plan_a', f'{{"what": "v{i}"}}')]) for i in range(4)]
                       + [_resp('Gave up.')]))

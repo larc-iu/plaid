@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional
 from . import filetools, guidelines, sandbox, webtools
 from .plan import resume_plan
 from .reach import route
-from .tools import ToolError, fn, limit_arg, run_tool, tools_for as offered_tools
+from .tools import ToolError, fn, limit_arg, refused, run_tool, tools_for as offered_tools
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
 
@@ -126,13 +126,13 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
         """Run one tool. Every failure comes back as text for the model."""
         f = impl.get(name)
         if not f:
-            return f'Error: there is no tool named {name}.'
+            return refused(f'there is no tool named {name}.')
         # The project the call names, in a turn that may read several: its own
         # workspace, and the arguments without the name (see core/reach.py).
         try:
             ws, args = route(ws, name, args)
         except ToolError as e:
-            return f'Error: {e}'
+            return refused(str(e))
         # A change this turn planned over one an earlier call planned is worth
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.

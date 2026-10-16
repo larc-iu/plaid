@@ -24,6 +24,17 @@ class ToolError(Exception):
     """
 
 
+class Refusal(str):
+    """A tool's answer that says it did not do what was asked: "Error: ...",
+    marked by its type, so a successful answer whose text happens to start
+    with "Error" (a run_code that printed it) is not traced as a failed step."""
+
+
+def refused(reason: str) -> Refusal:
+    """The answer for a call refused for ``reason``."""
+    return Refusal(f'Error: {reason}')
+
+
 def truncate(s: str) -> str:
     """One tool result, cut to what a turn can carry, saying what was cut and
     what to do about it. Every tool answer goes through this."""
@@ -64,17 +75,16 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
         bound = inspect.signature(fn_).bind(ws, **(args or {}))
     except TypeError:
         params = [p for p in inspect.signature(fn_).parameters if p != 'ws']
-        return (f'Error: {name} cannot be called with those arguments. It takes: '
-                + ', '.join(params) + '.')
+        return refused(f'{name} cannot be called with those arguments. It takes: ' + ', '.join(params) + '.')
     try:
         out = truncate(fn_(*bound.args, **bound.kwargs))
         return planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
-        return f'Error: {e}'
+        return refused(str(e))
     except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
         traceback.print_exc()
-        return (f'Error: {name} failed, which is a fault in the tool rather than in the request. '
-                'Tell the user, and try another way of asking rather than the same call again.')
+        return refused(f'{name} failed, which is a fault in the tool rather than in the request. '
+                       'Tell the user, and try another way of asking rather than the same call again.')
 
 
 def fn(name: str, description: str, properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
