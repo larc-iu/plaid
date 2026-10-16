@@ -1032,7 +1032,12 @@
   :relation_layers / :vocab_layers). `acting-user-id` attributes the op
   (a maintainer-level action). `check`, when given, is `{:expected v}`:
   the write happens only while the cell still holds `v` (see
-  `assert-config-unchanged!`)."
+  `assert-config-unchanged!`).
+
+  A cell that already holds `config-value` is not written and the operation
+  leaves no audit row. So a write of the value read, expecting it, states
+  what the writer read and changes nothing: inside a batch it refuses the
+  batch (409) when the cell changed since."
   ([db table layer-id editor-name config-key config-value acting-user-id]
    (assoc-editor-config-pair db table layer-id editor-name config-key config-value acting-user-id nil))
   ([db table layer-id editor-name config-key config-value acting-user-id check]
@@ -1041,14 +1046,18 @@
                               :document nil
                               :description (str "Set editor config " editor-name "/" config-key
                                                 " on layer " layer-id)
-                              :user acting-user-id}]
+                              :user acting-user-id
+                              :unrecorded-if-empty? true}]
                       (let [row (config-row! tx table layer-id)
                             current (psc/parse-config (:config row))
                             cell (config-cell-keys editor-name config-key)
                             _ (assert-config-unchanged! current cell (some-> check (assoc :value config-value)))
                             new-config (assoc-in current cell config-value)]
-                        (crud/update-by-id! tx table layer-id
-                                            (config-update-attrs table new-config))))))
+                        (when-not (and (contains? (clojure.core/get current (first cell)) (second cell))
+                                       (same-json? (json/read-str (json/write-str config-value))
+                                                   (get-in current cell)))
+                          (crud/update-by-id! tx table layer-id
+                                              (config-update-attrs table new-config)))))))
 
 (defn dissoc-editor-config-pair
   "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
