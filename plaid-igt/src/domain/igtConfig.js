@@ -15,7 +15,7 @@
 // under the shared word layer).
 
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
-import { isZeroMorph } from './zeroMorph.js';
+import { ZERO_MORPH, isZeroMorph } from './zeroMorph.js';
 import { isPictograph, isPunctOrSymbol } from './punctuationClasses.js';
 
 /** plaid-igt's private config namespace (distinct from the reserved `plaid`). */
@@ -166,6 +166,27 @@ export const isTokenIgnored = (content, cfg) => {
   }
   if (cfg.type === 'blacklist') return (cfg.blacklist || []).includes(content);
   return false;
+};
+
+/**
+ * A query value spec (`{regex}`) that a word token's surface matches and an
+ * ignored token's does not (`isTokenIgnored`), for core's queries, or null when
+ * the rule ignores nothing. Core compiles it with Java's Unicode tables, which
+ * can trail the generated one here by a version for characters new in it.
+ */
+export const wordValueSpec = (cfg) => {
+  const cp = (c) => `\\x{${c.codePointAt(0).toString(16)}}`;
+  if (cfg?.type === 'unicodePunctuation') {
+    const letters = [ZERO_MORPH, ...(cfg.whitelist || [])].filter((c) => [...c].length === 1);
+    return {
+      regex: `[^\\p{P}\\p{S}]|[\\p{IsExtended_Pictographic}${letters.map(cp).join('')}]`,
+    };
+  }
+  if (cfg?.type === 'blacklist' && (cfg.blacklist || []).length) {
+    const listed = cfg.blacklist.map((w) => [...w].map(cp).join(''));
+    return { regex: `^(?!(?:${listed.join('|')})\\z)` };
+  }
+  return null;
 };
 
 /**

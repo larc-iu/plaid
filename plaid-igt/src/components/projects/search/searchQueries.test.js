@@ -120,3 +120,22 @@ describe('query shapes', () => {
     expect(q.return.group).toEqual(['?val']);
   });
 });
+
+describe('a words search under the ignored-tokens rule', () => {
+  const info = {
+    ...LAYER_INFO,
+    primaryTokenLayer: {
+      id: 'wordL',
+      config: { igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } },
+    },
+  };
+  const words = searchDomains(info, []).find((d) => d.id === 'words');
+  const keep = ['token', '?t', { value: words.wordValue }];
+
+  it('finds and counts words only, never a token the rule ignores', () => {
+    expect(words.wordValue.regex).toMatch(/^\[\^\\p\{P\}\\p\{S\}\]/);
+    expect(hitsQueries(words, 'x', 'd1')[0].where).toContainEqual(keep);
+    expect(hitsByDocQueries(words, 'x')[0].where).toContainEqual(keep);
+    expect(freqQueries(words, 'x')[0].where).toContainEqual(keep);
+  });
+});

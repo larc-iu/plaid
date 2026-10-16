@@ -13,6 +13,7 @@ import {
   readInitialized,
   readVocabFields,
   isTokenIgnored,
+  wordValueSpec,
   trimIgnoredEdges,
   readLanguages,
   hasLanguageIdentity,
@@ -362,5 +363,64 @@ describe('the ignored-tokens rule in its two shapes', () => {
   it('falls to the punctuation rule for a mode it does not know', () => {
     expect(storedIgnoredTokens({ mode: 'explicit' }).type).toBe('unicodePunctuation');
     expect(storedIgnoredTokens(null).type).toBe('unicodePunctuation');
+  });
+});
+
+describe('wordValueSpec', () => {
+  // The Java pattern read as a JS one: the same classes under JS spellings.
+  const asJs = (spec) =>
+    new RegExp(
+      spec.regex
+        .replace(/\\x\{([0-9a-f]+)\}/g, '\\u{$1}')
+        .replace('IsExtended_Pictographic', 'Extended_Pictographic')
+        .replace('\\z', '$'),
+      'u',
+    );
+  const SAMPLES = [
+    '.',
+    '...',
+    '?!',
+    '«',
+    '»',
+    ',',
+    '—',
+    '(',
+    '=',
+    '+',
+    '→',
+    '©',
+    '😀',
+    '∅',
+    "'",
+    'ʼ',
+    'a',
+    "k'a",
+    'a.',
+    '¿Qué',
+    '1',
+    '٣',
+    'Ӏ',
+    'uh',
+    '',
+    '-',
+    '*',
+    '%',
+    '§',
+  ];
+  for (const cfg of [
+    { type: 'unicodePunctuation', whitelist: [] },
+    { type: 'unicodePunctuation', whitelist: ["'", '-'] },
+    { type: 'blacklist', blacklist: ['uh', '.', '?!'] },
+  ]) {
+    it(`matches every word and no ignored token under ${JSON.stringify(cfg)}`, () => {
+      const re = asJs(wordValueSpec(cfg));
+      for (const s of SAMPLES.filter(Boolean)) {
+        expect([s, re.test(s)]).toEqual([s, !isTokenIgnored(s, cfg)]);
+      }
+    });
+  }
+  it('is null when nothing is ignored', () => {
+    expect(wordValueSpec(null)).toBe(null);
+    expect(wordValueSpec({ type: 'blacklist', blacklist: [] })).toBe(null);
   });
 });

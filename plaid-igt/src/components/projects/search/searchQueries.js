@@ -18,6 +18,7 @@
 // Edit's rows (planned in the browser) are the values Search finds.
 
 import { PatternError, translatePattern } from '@ui/domain/javaRegex.js';
+import { readIgnoredTokens, wordValueSpec } from '@/domain/igtConfig.js';
 
 // The case behaviour differs between these and it changes what comes back, so
 // the label says it rather than leaving it to be discovered: `contains` folds
@@ -59,6 +60,9 @@ export function searchDomains(layerInfo, vocabs) {
       label: 'Words',
       kind: 'token',
       layerId: layerInfo.primaryTokenLayer.id,
+      // A token the ignored-tokens rule excludes is no word (punctuation ud's
+      // Tokenize made, say), so no search finds or counts it.
+      wordValue: wordValueSpec(readIgnoredTokens(layerInfo.primaryTokenLayer.config)),
     });
   }
   if (layerInfo.morphemeTokenLayer) {
@@ -92,6 +96,10 @@ export function searchDomains(layerInfo, vocabs) {
   return domains;
 }
 
+// The clause that keeps a word search to words, or none.
+const wordsOnly = (domain) =>
+  domain.wordValue ? [['token', '?t', { value: domain.wordValue }]] : [];
+
 const HIT_LIMIT = 500;
 
 // Hit-id queries FOR ONE DOCUMENT. Lexicon returns ONE QUERY PER VOCAB (merge
@@ -110,7 +118,10 @@ export function hitsQueries(domain, spec, docId) {
     return [
       {
         find: ['?t'],
-        where: [['token', '?t', { layer: domain.layerId, value: spec, doc: docId }]],
+        where: [
+          ['token', '?t', { layer: domain.layerId, value: spec, doc: docId }],
+          ...wordsOnly(domain),
+        ],
         limit: HIT_LIMIT,
       },
     ];
@@ -159,7 +170,10 @@ export function hitsByDocQueries(domain, spec) {
   if (domain.kind === 'token') {
     return [
       {
-        where: [['token', '?t', { layer: domain.layerId, value: spec, doc: { var: '?d' } }]],
+        where: [
+          ['token', '?t', { layer: domain.layerId, value: spec, doc: { var: '?d' } }],
+          ...wordsOnly(domain),
+        ],
         return: agg,
       },
     ];
@@ -208,6 +222,7 @@ export function freqQueries(domain, spec) {
       {
         where: [
           ['token', '?t', { layer: domain.layerId, value: spec }],
+          ...wordsOnly(domain),
           ['token', '?t', { value: { var: '?val' } }],
         ],
         return: { ...agg, group: ['?val'] },
