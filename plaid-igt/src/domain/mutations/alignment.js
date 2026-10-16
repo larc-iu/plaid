@@ -831,9 +831,11 @@ export const alignmentMutations = {
             show: () => this._showRead(updated, show(segment.id, ops)),
           };
         },
-        // A delete whose key was sent before with another request: it
-        // landed when the segment is gone.
+        // A delete whose key was sent before with another request, or
+        // refused after the client sent it again: it landed when the segment
+        // is gone.
         landed: (fresh) => !segmentIds(fresh).has(settledId(alignmentId)),
+        readOnRefusal: true,
       });
       this._heardText(textId, results?.[1]?.body);
       // A replayed answer (this send run again, or the client's own resend)

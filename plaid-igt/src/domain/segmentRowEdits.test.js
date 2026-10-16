@@ -287,6 +287,22 @@ describe('a row edit whose resend inside the client is refused (G1-gap)', () => 
     });
   }
 
+  it('a delete with its text stored by the first send is found stored, with no error', async () => {
+    const server = segmentServer(RAW());
+    const doc = open(server);
+    const errors = [];
+    doc.onError = (message, err, title) => errors.push(title);
+    server.storeThenRefuse(500);
+    const ok = await doc.deleteAlignment('a-2', { deleteText: true });
+    await idle(doc);
+    expect(ok).toBe(true);
+    expect(errors).toEqual([]);
+    expect(server.answers()).toEqual(['stored, then 500 in the client']);
+    expect(server.segments().map((t) => t.id)).toEqual(['a-1', 'a-3']);
+    expect(doc.body).toBe(server.body);
+    expect(doc.layerInfo.alignmentTokenLayer.tokens.map((t) => t.id)).toEqual(['a-1', 'a-3']);
+  });
+
   it('an edit that was not stored is still refused', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);
