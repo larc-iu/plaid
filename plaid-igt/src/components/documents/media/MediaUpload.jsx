@@ -29,6 +29,8 @@ export const MediaUpload = ({
   // Its length, read from the header, so the choice can name the size it would
   // produce rather than a rate to do arithmetic on.
   const [seconds, setSeconds] = useState(null);
+  // The name of a recording being converted to PCM WAV before anything else.
+  const [decoding, setDecoding] = useState(null);
 
   useEffect(() => {
     if (!pending) return undefined;
@@ -56,7 +58,12 @@ export const MediaUpload = ({
   // swapped for its PCM decoding, before anything below sees its size.
   const choose = async (picked) => {
     if (!picked) return;
-    const [file] = await readyRecordings([picked], prepareOptions);
+    let file;
+    try {
+      [file] = await readyRecordings([picked], { ...prepareOptions, onConvert: setDecoding });
+    } finally {
+      setDecoding(null);
+    }
     if (!file) return;
     if (conversionNeed(file.size, maxBytes)) setPending(file);
     else onUpload(file);
@@ -90,7 +97,13 @@ export const MediaUpload = ({
               e.target.value = '';
             }}
           />
-          {convertProgress ? (
+          {decoding ? (
+            <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
+              <span className="truncate text-sm font-medium">{decoding}</span>
+              <Progress label="Conversion progress" />
+              <p className="text-xs text-muted-foreground">Converting to PCM WAV.</p>
+            </div>
+          ) : convertProgress ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="truncate font-medium">{convertProgress.name}</span>

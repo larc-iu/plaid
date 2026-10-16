@@ -28,6 +28,17 @@ describe('prepareRecording', () => {
     expect(ready.file.size).toBe(fixture('ima-stereo.ref.wav').size);
   });
 
+  it('says it is converting before it converts, and only then', async () => {
+    const told = [];
+    const ready = await prepareRecording(fixture('ima-stereo-ext.wav', 'talk.WAV'), {
+      onConvert: (name) => told.push(name),
+    });
+    expect(told).toEqual(['talk.WAV']);
+    expect(ready.convertedFrom).toBe('IMA ADPCM');
+    await prepareRecording(fixture('pcm.wav'), { onConvert: (name) => told.push(name) });
+    expect(told).toEqual(['talk.WAV']);
+  });
+
   it('refuses a WAV coding it cannot decode, by file name and coding', async () => {
     expect(await prepareRecording(fixture('gsm.wav', 'call.wav'))).toEqual({
       refused: 'call.wav cannot be played in a browser (GSM 6.10 WAV).',

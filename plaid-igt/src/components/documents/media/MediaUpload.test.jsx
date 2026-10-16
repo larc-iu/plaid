@@ -45,6 +45,12 @@ const fileOf = (size, name = 'rec.mp4', type = 'video/mp4') => {
   return file;
 };
 const MB = 1000 * 1000;
+// A conversion lets the screen paint before it starts, so its outcome comes a
+// frame or more after the choice.
+const until = (r, done) =>
+  r.step(async () => {
+    for (let i = 0; i < 100 && !done(); i += 1) await new Promise((ok) => setTimeout(ok, 5));
+  });
 
 describe('MediaUpload', () => {
   it('offers the file picker when nothing is uploading', async () => {
@@ -126,6 +132,7 @@ describe('MediaUpload', () => {
     const onUpload = vi.fn();
     const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
     await choose(r, fixtureFile('ima-mono.wav', 'story.wav'));
+    await until(r, () => onUpload.mock.calls.length > 0);
     expect(onUpload).toHaveBeenCalledTimes(1);
     const sent = onUpload.mock.calls[0][0];
     expect(sent.name).toBe('story.wav');
@@ -137,6 +144,19 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  it('shows the conversion running before the tab is held by it', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
+    await choose(r, fixtureFile('ima-mono.wav', 'story.wav'));
+    await until(r, () => r.container.textContent.includes('Converting to PCM WAV.'));
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(r.container.textContent).toContain('story.wav');
+    expect(bar(r.container).getAttribute('aria-valuenow')).toBeNull();
+    await until(r, () => onUpload.mock.calls.length > 0);
+    expect(r.container.textContent).not.toContain('Converting to PCM WAV.');
+    await r.unmount();
+  });
+
   it('weighs the converted file against the limit, not the original', async () => {
     const onUpload = vi.fn();
     const original = fixtureFile('ms-mono.wav');
@@ -144,6 +164,7 @@ describe('MediaUpload', () => {
       <MediaUpload onUpload={onUpload} isUploading={false} maxBytes={original.size + 100} />,
     );
     await choose(r, original);
+    await until(r, () => buttonSaying(r.container, 'Upload as it is'));
     expect(onUpload).not.toHaveBeenCalled();
     expect(buttonSaying(r.container, 'Upload as it is').disabled).toBe(true);
     await r.unmount();

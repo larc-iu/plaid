@@ -58,6 +58,20 @@ async function browserCanPlay(file, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
   }
 }
 
+// Resolves once the screen has had a chance to paint: after the next frame,
+// or after a tenth of a second where frames do not come (a hidden tab).
+const nextPaint = () =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, 100);
+    if (typeof requestAnimationFrame !== 'function') return;
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        clearTimeout(timer);
+        resolve();
+      }, 0),
+    );
+  });
+
 /**
  * `file` (a File or Blob with a name) ready to upload:
  *   `{ file, convertedFrom: null }`   — it plays as it is
@@ -65,8 +79,10 @@ async function browserCanPlay(file, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
  *   `{ refused: '<message naming the file>' }`
  *
  * `canPlay` decides a file that is not a WAV (browserCanPlay unless given).
+ * `onConvert(name)` is told before a conversion, which holds the tab for
+ * about 30 ms a MB, and the screen paints once before it starts.
  */
-export async function prepareRecording(file, { canPlay = browserCanPlay } = {}) {
+export async function prepareRecording(file, { canPlay = browserCanPlay, onConvert } = {}) {
   const name = file.name || 'recording';
   const info = await readWavInfo(fileReader(file), file.size).catch(() => null);
   if (info) {
@@ -77,7 +93,12 @@ export async function prepareRecording(file, { canPlay = browserCanPlay } = {}) 
       // memory, is refused like one that cannot be decoded at all, so the
       // person is told instead of the choice coming to nothing.
       try {
-        const pcm = adpcmWavToPcm(info, new Uint8Array(await file.arrayBuffer()));
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (onConvert) {
+          onConvert(name);
+          await nextPaint();
+        }
+        const pcm = adpcmWavToPcm(info, bytes);
         return {
           file: new File([pcm], name, { type: 'audio/wav', lastModified: file.lastModified }),
           convertedFrom: wavCodingName(info.tag, info.bitsPerSample),
