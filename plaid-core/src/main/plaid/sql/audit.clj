@@ -42,13 +42,26 @@
             [plaid.sql.pagination :as pagination]))
 
 (defn- batch-fetch-by-ids
-  "Returns a map of id → row for the given table + ids (distinct, non-nil)."
-  [db table ids]
-  (let [ids (->> ids (filter some?) distinct vec)]
-    (if (empty? ids)
-      {}
-      (->> (psc/q db {:select [:*] :from [table] :where [:in :id ids]})
-           (into {} (map (juxt :id identity)))))))
+  "Returns a map of id → row for the given table + ids (distinct, non-nil),
+  narrowed by `where` when given."
+  ([db table ids] (batch-fetch-by-ids db table ids nil))
+  ([db table ids where]
+   (let [ids (->> ids (filter some?) distinct vec)]
+     (if (empty? ids)
+       {}
+       (->> (psc/q db {:select [:*] :from [table]
+                       :where (if where [:and [:in :id ids] where] [:in :id ids])})
+            (into {} (map (juxt :id identity))))))))
+
+(def ^:private live-project
+  "A project not deleted. A deleted project's rows stay until its removal
+  finishes in the background, and until then the log names it, and its
+  documents, as it does once they are gone: not at all."
+  [:= :deleted_at nil])
+
+(def ^:private in-live-project
+  [:not [:exists {:select [1] :from [[:projects :p]]
+                  :where [:and [:= :p.id :documents.project_id] [:<> :p.deleted_at nil]]}]])
 
 ;; The avatar hash rides along with the name because a screen that shows a
 ;; face needs it to know there is no face: without it, every person here who
@@ -131,8 +144,8 @@
   [db units member-rows ops-limit]
   (let [by-unit   (group-by row-unit member-rows)
         users     (batch-fetch-by-ids db :users (mapv :user_id member-rows))
-        projects  (batch-fetch-by-ids db :projects (mapv :project_id member-rows))
-        documents (batch-fetch-by-ids db :documents (mapv :document_id member-rows))
+        projects  (batch-fetch-by-ids db :projects (mapv :project_id member-rows) live-project)
+        documents (batch-fetch-by-ids db :documents (mapv :document_id member-rows) in-live-project)
         tokens    (batch-fetch-by-ids db :api_tokens (mapv :token_id member-rows))
         groups    (batch-fetch-by-ids db :operation_groups (mapv :group_id member-rows))
         batch-end (batch-ends db (keep :batch_id member-rows))

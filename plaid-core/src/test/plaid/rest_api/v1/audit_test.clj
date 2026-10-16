@@ -291,6 +291,29 @@
         (is (some (fn [e] (some #(= :document/delete (:op/type %)) (:audit/ops e)))
                   entries))))))
 
+(deftest a-project-being-removed-is-not-named-in-the-log
+  ;; A deleted project's rows stay until its removal finishes in the
+  ;; background. Meanwhile the log names neither it nor its documents, as
+  ;; after the removal.
+  (let [proj (create-test-project admin-request "Being removed")
+        doc (create-test-document admin-request proj "Its doc")
+        other (create-test-project admin-request "Still here")
+        _ (create-test-document admin-request other "Other doc")
+        _ (plaid.sql.common/execute! plaid.fixtures/db {:update :projects :set {:deleted_at "2026-10-16T00:00:00Z"}
+                                                        :where [:= :id proj]})
+        r (api-call admin-request {:method :get :path "/api/v1/users/admin@example.com/audit?limit=200"})
+        entries (:entries (:body r))
+        named (fn [k] (set (mapcat #(map k (% (case k :project/id :audit/projects :document/id :audit/documents))) entries)))
+        op-named (fn [k] (set (keep #(get-in % [k (case k :op/project :project/id :op/document :document/id)])
+                                    (mapcat :audit/ops entries))))]
+    (assert-ok r)
+    (is (seq entries))
+    (is (contains? (named :project/id) other))
+    (is (not (contains? (named :project/id) proj)))
+    (is (not (contains? (named :document/id) doc)))
+    (is (not (contains? (op-named :op/project) proj)))
+    (is (not (contains? (op-named :op/document) doc)))))
+
 (deftest audit-window-bounds-include-an-entry-given-its-own-time
   ;; An entry's time has nanosecond digits, the route's coercion keeps
   ;; milliseconds. Resuming a read from an entry's time must include that
