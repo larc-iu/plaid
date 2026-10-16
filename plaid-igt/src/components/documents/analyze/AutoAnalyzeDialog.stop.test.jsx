@@ -100,3 +100,25 @@ describe('an Auto-analyze step that was stopped', () => {
     await view.unmount();
   });
 });
+
+describe('an Auto-analyze run the model stopped answering', () => {
+  it('says the run stopped early and why', async () => {
+    const { notifyWarning } = await import('@/utils/feedback');
+    requestService.mockResolvedValue({
+      sentencesWritten: 0,
+      sentencesFailed: [
+        { sentenceId: 's1', reason: 'the model timed out' },
+        { sentenceId: 's2', reason: 'the model timed out' },
+        { sentenceId: 's3', reason: 'not asked: the model did not answer 2 sentences in a row' },
+      ],
+    });
+    const { view } = await mount();
+    await view.step(() => view.container.querySelector('[data-run]').click());
+    await view.step(async () => {});
+    expect(notifyWarning).toHaveBeenCalledWith(
+      'Could not translate 3 sentences (stopped early: the model did not answer).',
+      'Auto-analyze',
+    );
+    await view.unmount();
+  });
+});

@@ -213,9 +213,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     // What a service could not do. Services report per-sentence failures in the
     // result rather than failing the request, so this is the only place it can
     // be said.
+    // A run the model stopped answering ends early, and its sentences not
+    // asked say so (`not asked:`, plaid-client-py's NOT_ASKED).
     const noteFailures = (result, verb) => {
-      const failed = result?.sentencesFailed?.length ?? 0;
-      if (failed) parts.push(`could not ${verb} ${countOf(failed, 'sentence')}`);
+      const failures = result?.sentencesFailed ?? [];
+      if (!failures.length) return;
+      const quit = failures.some((f) => String(f?.reason ?? '').startsWith('not asked:'));
+      parts.push(
+        `could not ${verb} ${countOf(failures.length, 'sentence')}` +
+          (quit ? ' (stopped early: the model did not answer)' : ''),
+      );
     };
     // A field a service reads only for context, and went on without.
     const noteMissing = (name, scope, what) => {
