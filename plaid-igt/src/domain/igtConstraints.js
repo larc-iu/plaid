@@ -111,20 +111,41 @@ export const wantedConstraints = (layerInfo, projectConfig) => {
 };
 
 /**
+ * Whether a settings save changes the rules of field `sl`: its rules under
+ * `projectConfig` (the project's config after the save) differ from its rules
+ * under `previousConfig` (the config as stored), the field read with its
+ * config after the save (`sl.config`) and before it (`sl.configBefore`, else
+ * the same). A field the save makes (`sl.constraints === null`) always
+ * changes. A field whose layer holds other rules than its config asks for,
+ * which the save does not change, is left as it is.
+ */
+const savedRules = (sl, projectConfig, previousConfig) => {
+  if (previousConfig === undefined) {
+    throw new Error('The project config before the save is required');
+  }
+  const wanted = fieldConstraints(sl.config, projectConfig);
+  if (sl.constraints === null) return wanted;
+  const before = fieldConstraints(sl.configBefore ?? sl.config, previousConfig);
+  return sameConstraints(wanted, before) ? null : wanted;
+};
+
+/**
  * Queue on batch `b` the declarations a settings save changes: every field
- * in `spanLayers` ({id, config, constraints}, each config as it will be after
- * the save) whose rules under `projectConfig` (the project's config after the
- * save) differ from what its layer holds. The declaration goes in the same
- * batch as the settings write, so a tagset the stored values break is refused
- * with them and stays as it was. A field whose layer holds no rules yet is
+ * in `spanLayers` ({id, name, config, configBefore?, constraints}, each config
+ * as it will be after the save) whose rules the save changes (`savedRules`,
+ * `projectConfig` after the save and `previousConfig` as stored) and whose
+ * layer does not already hold them. The declaration goes in the same batch
+ * as the settings write, so a tagset the stored values break is refused with
+ * them and stays as it was. A field whose layer holds no rules yet is
  * repaired first in the batch (`sl.constraints` given: the layer exists).
  * Returns how many declarations it queued.
  */
-export const queueFieldDeclarations = (b, spanLayers, projectConfig) => {
+export const queueFieldDeclarations = (b, spanLayers, projectConfig, previousConfig) => {
   let n = 0;
   for (const sl of spanLayers || []) {
     if (!sl?.id) continue;
-    const wanted = fieldConstraints(sl.config, projectConfig);
+    const wanted = savedRules(sl, projectConfig, previousConfig);
+    if (!wanted) continue;
     const stored = storedConstraints(sl, IGT_NAMESPACE);
     if (sameConstraints(wanted, stored)) continue;
     // A layer that exists and holds no rules yet: what core can repair first.
@@ -140,20 +161,26 @@ export const queueFieldDeclarations = (b, spanLayers, projectConfig) => {
 };
 
 /**
- * What a settings save would have the server refuse: for every field in
- * `spanLayers` (as `queueFieldDeclarations` takes them) whose rules under
- * `projectConfig` change to a closed list, the server's answer to which
- * stored values that list refuses (`refusedValues`, with its exemptions),
- * kept when it refuses any. Asked before the save, so the screen can say
- * what is in the way instead of only reading the refusal. Returns
- * `[{layerId, field, count, valueCount, values: [{value, parts, count}]}]`.
+ * What a settings save would have the server refuse: for every field the
+ * save declares a closed list on (as `queueFieldDeclarations` takes them),
+ * the server's answer to which stored values that list refuses
+ * (`refusedValues`, with its exemptions), kept when it refuses any. Asked
+ * before the save, so the screen can say what is in the way instead of only
+ * reading the refusal. A field the save leaves alone is not asked about.
+ * Returns `[{layerId, field, count, valueCount, values: [{value, parts, count}]}]`.
  */
-export const refusedBySave = async (client, spanLayers, projectConfig, limit = 5) => {
+export const refusedBySave = async (
+  client,
+  spanLayers,
+  projectConfig,
+  previousConfig,
+  limit = 5,
+) => {
   const asks = [];
   for (const sl of spanLayers || []) {
     if (!sl?.id) continue;
-    const wanted = fieldConstraints(sl.config, projectConfig);
-    if (sameConstraints(wanted, storedConstraints(sl, IGT_NAMESPACE))) continue;
+    const wanted = savedRules(sl, projectConfig, previousConfig);
+    if (!wanted || sameConstraints(wanted, storedConstraints(sl, IGT_NAMESPACE))) continue;
     const rule = wanted.find((c) => c.type === 'value-set');
     if (!rule) continue;
     asks.push(

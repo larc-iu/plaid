@@ -77,7 +77,8 @@ const extractFields = (project) => {
 };
 
 // The fields `fields` (whose tagset a save sets) as `queueFieldDeclarations`
-// takes them: each with its layer's config as it will be after the save.
+// takes them: each with its layer's config as it will be after the save, and
+// as it is now.
 // `layerOf` maps a field's key to its layer, absent for one the save makes,
 // and `idOf` a key to the layer id.
 const declarationsOf = (fields, layerOf, idOf) =>
@@ -91,6 +92,7 @@ const declarationsOf = (fields, layerOf, idOf) =>
       id: idOf(key),
       name: field.name,
       config: { ...layer?.config, [IGT_NAMESPACE]: igt },
+      configBefore: layer?.config,
       // A new field's layer holds nothing to repair.
       constraints: layer ? (layer.constraints ?? {}) : null,
     };
@@ -170,6 +172,7 @@ export const FieldsSettings = ({
         layerOf,
         (key) => layerOf.get(key).id,
       ),
+      fresh?.config,
       fresh?.config,
     );
     if (asked.length) {
@@ -304,6 +307,7 @@ export const FieldsSettings = ({
     queueFieldDeclarations(
       b,
       declarationsOf(change.tagset, layerOf, (key) => layerIds.get(key)),
+      projectConfig,
       projectConfig,
     );
   };

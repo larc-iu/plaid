@@ -238,11 +238,12 @@ const queueOwner = (b, projectId, owner, ops, live) => {
     }
     return {
       ...sl,
+      configBefore: sl.config,
       config: { ...sl.config, [IGT_NAMESPACE]: { ...igtOf(sl.config), tagset: name } },
     };
   });
   const after = { ...live.config, [IGT_NAMESPACE]: { ...igt, tagsets: next } };
-  queueFieldDeclarations(b, fields, after);
+  queueFieldDeclarations(b, fields, after, live.config);
 };
 
 /**

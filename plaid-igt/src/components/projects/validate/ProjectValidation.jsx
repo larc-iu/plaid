@@ -272,10 +272,15 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
           undefined,
           expectStored(p, IGT_NAMESPACE, 'tagsets'),
         );
-        queueFieldDeclarations(b, igtFields(getIgtLayerInfo(p)), {
-          ...p?.config,
-          [IGT_NAMESPACE]: { ...p?.config?.[IGT_NAMESPACE], tagsets: next },
-        });
+        queueFieldDeclarations(
+          b,
+          igtFields(getIgtLayerInfo(p)),
+          {
+            ...p?.config,
+            [IGT_NAMESPACE]: { ...p?.config?.[IGT_NAMESPACE], tagsets: next },
+          },
+          p?.config,
+        );
       });
       return fresh;
     };

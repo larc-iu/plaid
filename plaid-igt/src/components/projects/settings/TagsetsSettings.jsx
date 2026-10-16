@@ -81,6 +81,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         renamed && readTagsetName(sl.config) === renamed.from
           ? {
               ...sl,
+              configBefore: sl.config,
               config: {
                 ...sl.config,
                 [IGT_NAMESPACE]: { ...sl.config?.[IGT_NAMESPACE], tagset: renamed.to },
@@ -94,7 +95,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       };
       // A closed list the stored values break would be refused whole: ask
       // first, and the editor says which values are in the way.
-      const refused = await refusedBySave(client, fields, after);
+      const refused = await refusedBySave(client, fields, after, project?.config);
       if (refused.length) {
         throw Object.assign(new Error('Values in use are not in the list'), {
           refusedValues: refused,
@@ -105,7 +106,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
           b.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
             expected,
           });
-          queueFieldDeclarations(b, fields, after);
+          queueFieldDeclarations(b, fields, after, project?.config);
         });
         return next;
       });

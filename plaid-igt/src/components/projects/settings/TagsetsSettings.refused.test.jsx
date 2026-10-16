@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { TagsetsSettings } from './TagsetsSettings.jsx';
-import { notifyError } from '@/utils/feedback';
+import { TagsetsManager } from './TagsetsManager.jsx';
+import { notifyError, notifySuccess } from '@/utils/feedback';
 
 // Closing a list the stored values break: the server is asked first which
 // values it would refuse, and the tagset's panel names them, with nothing
@@ -14,12 +15,18 @@ vi.mock('@/utils/feedback', () => ({
   humanizeError: (e) => String(e),
 }));
 
-const project = () => ({
+// `bare`: a second field, Gloss, governed by a closed Leipzig whose layer
+// holds no list (rules removed by another client, or a project made before
+// lists were declared), with values off it.
+const project = ({ bare = false } = {}) => ({
   id: 'p-1',
   config: {
     igt: {
       tagsets: {
         POS: { mode: 'suggest', delimiters: '', values: [{ value: 'N' }, { value: 'V' }] },
+        ...(bare
+          ? { Leipzig: { mode: 'closed', delimiters: '.', values: [{ value: 'NOM' }] } }
+          : {}),
       },
     },
   },
@@ -38,6 +45,16 @@ const project = () => ({
               config: { igt: { scope: 'Word', tagset: 'POS' } },
               constraints: { igt: [{ type: 'single-span' }] },
             },
+            ...(bare
+              ? [
+                  {
+                    id: 'sl-gloss',
+                    name: 'Gloss',
+                    config: { igt: { scope: 'Word', tagset: 'Leipzig' } },
+                    constraints: {},
+                  },
+                ]
+              : []),
           ],
         },
       ],
@@ -45,7 +62,7 @@ const project = () => ({
   ],
 });
 
-const makeClient = (answer) => {
+const makeClient = (answer, answers = {}) => {
   const client = {
     asked: [],
     writes: [],
@@ -58,7 +75,7 @@ const makeClient = (answer) => {
         client.writes.push(['setConstraints', id, constraints]),
       refusedValues: async (id, rule, options) => {
         client.asked.push([id, rule, options]);
-        return answer;
+        return answers[id] ?? answer;
       },
     },
     async batched(fn) {
@@ -85,10 +102,26 @@ const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-const close = async (client) => {
+const typeInto = (input, value) => {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
+const mount = (client, options) =>
+  renderComponent(
+    <TagsetsSettings
+      project={project(options)}
+      projectId="p-1"
+      client={client}
+      onProjectUpdate={async () => {}}
+    />,
+  );
+
+const close = async (client, options) => {
   const view = await renderComponent(
     <TagsetsSettings
-      project={project()}
+      project={project(options)}
       projectId="p-1"
       client={client}
       onProjectUpdate={async () => {}}
@@ -155,6 +188,113 @@ describe('closing a tagset', () => {
       parts: 'all',
     });
     expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
+    await view.unmount();
+  });
+});
+
+describe('a field whose layer holds no list', () => {
+  const glossRefused = {
+    count: 2,
+    valueCount: 1,
+    values: [{ value: 'QQ', parts: ['QQ'], count: 2 }],
+  };
+
+  // REV-WIRE-1: Gloss's missing list blocked every other tagset save, and an
+  // add or a rename said nothing.
+  it('does not hold up adding a tagset', async () => {
+    const client = makeClient(
+      { count: 0, valueCount: 0, values: [] },
+      { 'sl-gloss': glossRefused },
+    );
+    const view = await mount(client, { bare: true });
+    const input = all(view.container, 'input').find((i) => /New tagset name/.test(i.placeholder));
+    await view.step(async () => typeInto(input, 'Genre'));
+    await view.step(async () => {
+      all(view.container, 'button')
+        .find((b) => /Add tagset/.test(b.textContent))
+        .click();
+      await settle();
+    });
+    expect(client.asked).toEqual([]);
+    expect(client.writes.map((w) => w[0])).toEqual(['setConfig']);
+    expect(Object.keys(client.writes[0][2])).toEqual(['POS', 'Leipzig', 'Genre']);
+    expect(notifySuccess).toHaveBeenCalled();
+    expect(notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('does not hold up closing another tagset, and is not asked about', async () => {
+    const client = makeClient(
+      { count: 0, valueCount: 0, values: [] },
+      { 'sl-gloss': glossRefused },
+    );
+    const view = await close(client, { bare: true });
+    expect(client.asked.map((a) => a[0])).toEqual(['sl-pos']);
+    expect(client.writes.map((w) => w[0])).toEqual(['setConfig', 'setConstraints']);
+    expect(client.writes[1][1]).toBe('sl-pos');
+    expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
+    await view.unmount();
+  });
+});
+
+describe('a refused composite value', () => {
+  // REV-WIRE-3: the part not in the list is named, not only the whole value.
+  it('names the parts not in the list', async () => {
+    const client = makeClient({
+      count: 3,
+      valueCount: 2,
+      values: [
+        { value: 'N.X', parts: ['X'], count: 2 },
+        { value: 'Q', parts: ['Q'], count: 1 },
+      ],
+    });
+    const view = await close(client);
+    const notice = view.container.querySelector('[data-testid="tagset-refused"]');
+    expect(notice?.textContent).toBe(
+      'Not saved. These values are in use and not in the list:POS: 3 annotations, N.X (2, X not listed), Q (1)',
+    );
+    await view.unmount();
+  });
+});
+
+describe('a refusal of a change made outside a tagset panel', () => {
+  // An add, a rename or a delete has no panel to show the values in, so a
+  // toast names them.
+  it('is a toast naming the values', async () => {
+    const refusedValues = [
+      {
+        layerId: 'sl-gloss',
+        field: 'Gloss',
+        count: 2,
+        valueCount: 1,
+        values: [{ value: '1SG.NOM', parts: ['1SG'], count: 2 }],
+      },
+    ];
+    const onSaveChanges = vi.fn(async () => {
+      throw Object.assign(new Error('Values in use are not in the list'), { refusedValues });
+    });
+    const view = await renderComponent(
+      <TagsetsManager
+        tagsets={{ POS: { mode: 'suggest', delimiters: '', values: [] } }}
+        usage={{}}
+        onSaveChanges={onSaveChanges}
+        onLoadAttested={async () => []}
+      />,
+    );
+    const input = all(view.container, 'input').find((i) => /New tagset name/.test(i.placeholder));
+    await view.step(async () => typeInto(input, 'Genre'));
+    await view.step(async () => {
+      all(view.container, 'button')
+        .find((b) => /Add tagset/.test(b.textContent))
+        .click();
+      await settle();
+    });
+    expect(onSaveChanges).toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith(
+      'These values are in use and not in the list: Gloss: 2 annotations, 1SG.NOM (2, 1SG not listed).',
+      'Not saved',
+    );
+    expect(notifySuccess).not.toHaveBeenCalled();
     await view.unmount();
   });
 });

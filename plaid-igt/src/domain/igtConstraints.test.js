@@ -62,7 +62,7 @@ describe('the rules IGT wants', () => {
     gloss.config = { ...gloss.config, igt: { ...gloss.config?.igt, tagset: 'Leipzig' } };
     const queued = [];
     const b = { spanLayers: { setConstraints: (...args) => queued.push(args) } };
-    expect(queueFieldDeclarations(b, igtFields(info), tagsets('closed', ['N']))).toBe(1);
+    expect(queueFieldDeclarations(b, igtFields(info), tagsets('closed', ['N']), {})).toBe(1);
     expect(queued[0]).toEqual([
       gloss.id,
       'igt',
@@ -82,9 +82,9 @@ describe('the rules IGT wants', () => {
         { parts: 'all', delimiters: '.', values: ['N'], type: 'value-set' },
       ],
     };
-    expect(queueFieldDeclarations(b, [gloss], tagsets('closed', ['N']))).toBe(0);
+    expect(queueFieldDeclarations(b, [gloss], tagsets('closed', ['N']), {})).toBe(0);
     gloss.constraints = { igt: [{ type: 'single-span' }] };
-    expect(queueFieldDeclarations(b, igtFields(info), tagsets('suggest'))).toBe(0);
+    expect(queueFieldDeclarations(b, igtFields(info), tagsets('suggest'), {})).toBe(0);
   });
 
   // Ruling on FX-UI's question (2026-10-02): a settings save on a layer that
@@ -101,13 +101,23 @@ describe('the rules IGT wants', () => {
         setConstraints: (...args) => queued.push(['set', ...args]),
       },
     };
-    const bare = { ...gloss, constraints: {} };
-    expect(queueFieldDeclarations(b, [bare], tagsets('closed', ['N']))).toBe(1);
+    const config = { ...gloss.config, igt: { ...gloss.config?.igt, tagset: 'Leipzig' } };
+    const bare = { ...gloss, config, constraints: {} };
+    expect(queueFieldDeclarations(b, [bare], tagsets('closed', ['N']), {})).toBe(1);
     expect(queued.map((q) => q[0])).toEqual(['repair', 'set']);
     expect(queued[0][1]).toBe(gloss.id);
     expect(queued[0][2]).toEqual(queued[1][3]);
     queued.length = 0;
-    queueFieldDeclarations(b, [{ ...gloss, constraints: null }], tagsets('closed', ['N']));
+    queueFieldDeclarations(b, [{ ...gloss, constraints: null }], tagsets('closed', ['N']), {});
+    expect(queued.map((q) => q[0])).toEqual(['set']);
+    // A save that does not change its rules leaves a bare layer as it is.
+    queued.length = 0;
+    expect(
+      queueFieldDeclarations(b, [bare], tagsets('closed', ['N']), tagsets('closed', ['N'])),
+    ).toBe(0);
+    expect(queued).toEqual([]);
+    queued.length = 0;
+    queueFieldDeclarations(b, [{ ...gloss, constraints: null }], tagsets('closed', ['N']), {});
     expect(queued.map((q) => q[0])).toEqual(['set']);
   });
 });
@@ -259,7 +269,7 @@ describe('what a settings save would have the server refuse', () => {
       // Already holds the list: its stored values keep to it.
       field('C', { igt: [{ type: 'single-span' }, closedRule] }),
     ];
-    expect(await refusedBySave(c, fields, tagsets('closed'))).toEqual([
+    expect(await refusedBySave(c, fields, tagsets('closed'), tagsets('suggest'))).toEqual([
       {
         layerId: 'A',
         field: 'A',
@@ -272,9 +282,42 @@ describe('what a settings save would have the server refuse', () => {
     expect(c.asked[0].slice(1)).toEqual([closedRule, { limit: 5 }]);
   });
 
+  // REV-WIRE-1: a field whose layer lost its list (or never held it) is not
+  // the save's business unless the save changes that field's rules.
+  it('asks nothing of a field the save leaves alone, a bare one included', async () => {
+    const c = client({ A: { count: 2, valueCount: 1, values: [{ value: 'QQ', count: 2 }] } });
+    const closed = tagsets('closed');
+    const other = {
+      igt: { tagsets: { ...closed.igt.tagsets, POS: { mode: 'closed', values: [] } } },
+    };
+    expect(await refusedBySave(c, [field('A', {})], other, closed)).toEqual([]);
+    expect(c.asked).toEqual([]);
+    const queued = [];
+    const b = {
+      spanLayers: {
+        repairConstraints: (...args) => queued.push(args),
+        setConstraints: (...args) => queued.push(args),
+      },
+    };
+    expect(queueFieldDeclarations(b, [field('A', {})], other, closed)).toBe(0);
+    expect(queued).toEqual([]);
+    // Its own tagset closing is its business.
+    expect(await refusedBySave(c, [field('A', {})], closed, tagsets('mixed'))).toHaveLength(1);
+    // So is pointing it at a closed list, read from its config before.
+    const repointed = { ...field('A', {}), configBefore: { igt: { scope: 'Word' } } };
+    expect(await refusedBySave(c, [repointed], closed, closed)).toHaveLength(1);
+  });
+
+  it('needs the config as stored', async () => {
+    await expect(
+      refusedBySave(client({}), [field('A', null)], tagsets('closed')),
+    ).rejects.toThrow();
+    expect(() => queueFieldDeclarations({}, [field('A', null)], tagsets('closed'))).toThrow();
+  });
+
   it('asks nothing when no list is closed', async () => {
     const c = client({});
-    expect(await refusedBySave(c, [field('A', null)], tagsets('mixed'))).toEqual([]);
+    expect(await refusedBySave(c, [field('A', null)], tagsets('mixed'), {})).toEqual([]);
     expect(c.asked).toEqual([]);
   });
 });

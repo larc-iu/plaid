@@ -10,6 +10,7 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { RefusedValuesNotice } from './RefusedValuesNotice.jsx';
+import { REFUSED_TITLE, refusedValuesText } from './refusedValues.js';
 import {
   MODES,
   RESERVED_VALUE_KEYS,
@@ -127,9 +128,16 @@ export const TagsetsManager = ({
     } catch (error) {
       // The settings wrapper reports it; roll the draft back so what's on
       // screen is what the server has. Values in the way of a closed list
-      // are shown in the tagset's panel.
+      // are shown in the panel of the tagset changed, and as a toast when
+      // the change was made outside one (an add, a rename, a delete).
       setDraft(tagsets);
-      if (error?.refusedValues) setRefused({ name, fields: error.refusedValues });
+      if (error?.refusedValues) {
+        if (name) setRefused({ name, fields: error.refusedValues });
+        else {
+          setRefused(null);
+          notifyError(refusedValuesText(error.refusedValues), REFUSED_TITLE);
+        }
+      }
       return false;
     }
   };
