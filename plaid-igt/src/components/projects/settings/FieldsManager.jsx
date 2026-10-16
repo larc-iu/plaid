@@ -41,6 +41,10 @@ const NO_TAGSET = '__none__';
 // Default annotation fields: the set a FieldWorks import produces (see
 // import/flex/importEngine.js deriveImportConfig). Keep in sync with the
 // setup wizard's seed in setup/FieldsStep.jsx.
+// Where a scope's fields stand in the Analyze grid, which the list follows.
+const SCOPE_RANK = { Word: 0, Morpheme: 1, Sentence: 2 };
+const scopeRank = (scope) => SCOPE_RANK[scope] ?? 3;
+
 const DEFAULT_FIELDS = [
   { name: 'Gloss', scope: 'Word', isCustom: false },
   { name: 'POS', scope: 'Word', isCustom: false },
@@ -422,12 +426,17 @@ export const FieldsManager = ({
 
   // A field only ever moves among the fields of its own scope: the grid shows
   // each scope's fields as a group, so crossing into another scope's rows
-  // would reorder nothing on screen.
+  // would reorder nothing on screen. Its neighbor is the next field of its
+  // scope that way, past any of another scope stored between them, which
+  // left a field that could not be moved at all.
   const neighborInScope = (key, direction) => {
     const i = fields.findIndex((field) => fieldKey(field) === key);
     if (i === -1) return -1;
-    const j = direction === 'up' ? i - 1 : i + 1;
-    return j >= 0 && j < fields.length && fields[j].scope === fields[i].scope ? j : -1;
+    const step = direction === 'up' ? -1 : 1;
+    for (let j = i + step; j >= 0 && j < fields.length; j += step) {
+      if (fields[j].scope === fields[i].scope) return j;
+    }
+    return -1;
   };
 
   const handleMoveField = async (key, direction) => {
@@ -570,12 +579,15 @@ export const FieldsManager = ({
     return <Loading />;
   }
 
-  // Prepare data for the table
-  const tableData = fields.map((field, index) => ({
-    ...field,
-    id: `${fieldKey(field)}-${index}`, // Unique ID for table
-    key: fieldKey(field),
-  }));
+  // Prepare data for the table: grouped by scope in the grid's order (word,
+  // morpheme, sentence), each scope's fields in their own order.
+  const tableData = fields
+    .map((field, index) => ({
+      ...field,
+      id: `${fieldKey(field)}-${index}`, // Unique ID for table
+      key: fieldKey(field),
+    }))
+    .sort((a, b) => scopeRank(a.scope) - scopeRank(b.scope));
 
   return (
     <div className="flex flex-col gap-8">
