@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { fakeDocument, mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
-import { useBaselineOperations } from './useBaselineOperations.js';
+import { removesText, useBaselineOperations } from './useBaselineOperations.js';
 
 // Luke (2026-10-16): on a tokenized document, Baseline asks before a save
 // only when the save deletes or replaces text. An insert, glued to a word or
@@ -93,5 +93,22 @@ describe('useBaselineOperations, the confirm before a save', () => {
     expect(asks()).toBe(true);
     expect(doc.editBaselineText).not.toHaveBeenCalled();
     await h.unmount();
+  });
+});
+
+describe('removesText', () => {
+  it('is false for inserts and for what a replace gives back at its ends', () => {
+    expect(removesText('ab cd', [{ start: 2, end: 2, value: ' x' }])).toBe(false);
+    expect(removesText('ab cd', [{ start: 0, end: 5, value: 'ab cd ef' }])).toBe(false);
+    expect(removesText('ab cd', [{ start: 0, end: 5, value: 'x ab cd' }])).toBe(false);
+    expect(removesText('a\u{1F600}b', [{ start: 1, end: 2, value: '\u{1F600}\u{1F600}' }])).toBe(
+      false,
+    );
+  });
+
+  it('is true for a delete or a letter typed over', () => {
+    expect(removesText('ab cd', [{ start: 2, end: 3, value: '' }])).toBe(true);
+    expect(removesText('ab cd', [{ start: 3, end: 4, value: 'x' }])).toBe(true);
+    expect(removesText('a\u{1F600}b', [{ start: 1, end: 2, value: '\u{1F601}' }])).toBe(true);
   });
 });
