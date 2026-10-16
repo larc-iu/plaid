@@ -102,6 +102,11 @@ def _ids_in(value: Any, key: Optional[str] = None):
         yield value
 
 
+#: A document named with its id after the name, as a read names one whose
+#: name another document shares: the id is group 1.
+_LABELLED = re.compile(r'.*\(\s*([^()\s]+)\s*\)\s*', re.S)
+
+
 class BaseWorkspace:
     """What one turn holds while its tools run.
 
@@ -382,6 +387,13 @@ class BaseWorkspace:
         for d in docs:
             if d['id'] == document:
                 return d['id']
+        # A name another document shares, as every read prints it: the name
+        # and its id, '"Viaje" (01a1...)' (core.history.doc_label).
+        labelled = _LABELLED.fullmatch(document)
+        if labelled:
+            hit = next((d for d in docs if d['id'] == labelled.group(1)), None)
+            if hit is not None:
+                return hit['id']
         by_name = [d for d in docs if (d.get('name') or '').lower() == document.lower()]
         # Then as the names would be typed: a model wrote "children's" for a
         # name with ’ and "COMPLETE:Pear_Story_01" for "COMPLETE: Pear_Story_01"
@@ -403,8 +415,10 @@ class BaseWorkspace:
             keys.setdefault(name_key(d.get('name') or ''), d.get('name'))
         close = ', '.join(f'"{keys[k]}"' for k in
                           difflib.get_close_matches(name_key(document), list(keys), n=5, cutoff=0.5))
+        from .history import doc_labels, plain_quote
+        labels = doc_labels(self, plain_quote)
         raise ToolError(f'No document "{document}".' + (f' Closest: {close}.' if close else '') + ' Documents: '
-                        + ', '.join(f'"{d.get("name")}"' for d in docs[:50]))
+                        + ', '.join(labels[d['id']] for d in docs[:50]))
 
     # --- the plan ---------------------------------------------------------
 

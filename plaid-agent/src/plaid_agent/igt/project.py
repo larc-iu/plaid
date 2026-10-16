@@ -519,6 +519,14 @@ class IgtDoc:
     media_url: Optional[str] = None
     media_duration: Optional[float] = None
     segments: List['Segment'] = field(default_factory=list)
+    #: How a sentence names the document: quoted, with its id where another
+    #: document shares the name (``"Viaje" (01a1...)``, core.history.doc_label),
+    #: which document= reads back. Set by the workspace that loads it.
+    label: Optional[str] = field(default=None, repr=False, compare=False)
+
+    @property
+    def quoted(self) -> str:
+        return self.label or f'"{self.name}"'
 
     def sentence_time(self, s: 'Sentence') -> Optional[Tuple[float, float]]:
         """(start, end) seconds of a sentence: over the segments wholly
@@ -734,7 +742,7 @@ def _has_words(s: 'Sentence', lead: str) -> str:
 def _example(doc: 'IgtDoc') -> str:
     for s in doc.sentences:
         for w in s.words[1:2] or s.words[:1]:
-            return f' In "{doc.name}", s{s.index}.w{w.index} is "{clip(w.surface)}".'
+            return f' In {doc.quoted}, s{s.index}.w{w.index} is "{clip(w.surface)}".'
     return ''
 
 
@@ -762,7 +770,7 @@ def resolve(doc: IgtDoc, ref: str):
         raise ValueError(f'Bad reference "{ref}": {BAD_REF}.' + _example(doc))
     si, (wi, mi) = r.sentence, r.parts
     if not 1 <= si <= len(doc.sentences):
-        raise ValueError(f'{ref}: document "{doc.name}" has {len(doc.sentences)} sentences')
+        raise ValueError(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences')
     s = doc.sentences[si - 1]
     if r.by_form:
         return _word_by_form(s, ref, r)
@@ -977,7 +985,7 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     and the header names the ones shown, so the model is never told it got
     forty and handed nine."""
     n = len(doc.sentences)
-    head = f'Document "{doc.name}"' + (f' id={doc.id}' if ref_name and ref_name != doc.name else '') \
+    head = f'Document "{doc.name}"' + (f' ({doc.id})' if ref_name and ref_name != doc.name else '') \
         + f': {n} sentences, {doc.word_count()} words'
     shown = {k: v for k, v in doc.metadata.items() if k in project.document_metadata and v not in (None, '')}
     if shown:
@@ -1118,10 +1126,13 @@ def _filled(f, scope: str, fill: Optional[Dict[str, Any]]) -> str:
 
 
 def document_lines(documents: List[dict]) -> List[str]:
+    """Each document named with its id, as a read names one whose name
+    another shares (``"Text 1" (d2)``, core.history.doc_label), the form
+    document= reads back."""
     out = []
     for d in documents:
         mod = (d.get('time_modified') or '')[:10]
-        out.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}' + (f'  modified={mod}' if mod else ''))
+        out.append(f'  "{d.get("name") or "(unnamed)"}" ({d["id"]})' + (f'  modified={mod}' if mod else ''))
     return out
 
 

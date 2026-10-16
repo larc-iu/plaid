@@ -20,6 +20,7 @@ from collections import Counter
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit
+from .bidi import qv
 from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, COMMENT_MAX_CHARS, READ_LIMITS
 from .plan import labelled
 from .tools import ToolError, server_refused, truncate
@@ -78,9 +79,12 @@ def recent_changes(ws, document: Optional[str] = None, limit: Optional[int] = No
     restore = getattr(ws, 'RESTORE_TOOL', None)
     out = [f'{len(entries)} change(s), newest first. as_of= is the moment right AFTER that change'
            + (f', which is what {restore} takes.' if restore else '.')]
+    labels = doc_labels(ws, qv)
     for e in entries:
         who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
-        docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])) or 'the project'
+        # A document gone since is named as the audit names it.
+        docs = ', '.join(labels.get(d.get('id')) or qv(d.get('name') or d.get('id') or '?')
+                         for d in (e.get('documents') or [])) or 'the project'
         what = e.get('message') or ', '.join(
             sorted({(o.get('type') or '').split('/')[0] for o in (e.get('ops') or [])})) or 'changes'
         # The END of the operation, not its start. A change is a whole operation
@@ -224,6 +228,20 @@ def ref_name(ws, doc_id: str) -> str:
     return _ref_names(ws).get(doc_id, doc_id)
 
 
+def plain_quote(name: str) -> str:
+    """A name in straight quotes, for a list that goes into the prompt as
+    it is (the overview), where no isolate is taken out."""
+    return f'"{name}"'
+
+
+def doc_labels(ws, quote: Optional[Callable[[str], str]] = None) -> Dict[str, str]:
+    """:func:`doc_label` of every document, worked out once: for a list."""
+    q = quote or (lambda name: name)
+    names = {d['id']: d.get('name') or '' for d in ws.documents()}
+    taken = Counter(n.casefold() for n in names.values())
+    return {i: (i if not n else f'{q(n)} ({i})' if taken[n.casefold()] > 1 else q(n)) for i, n in names.items()}
+
+
 def doc_label(ws, doc_id: str, quote: Optional[Callable[[str], str]] = None) -> str:
     """A document as a sentence names it: its name, with its id beside it
     where another document shares that name. ``quote`` quotes the name (for
@@ -304,7 +322,7 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
     # Of the OP, so a second restore of the same document is the supersession
     # the registry declares rather than a refusal this tool alone made.
     ws.refuse_exclusive_early({'kind': 'restore_document', 'document_id': doc.id})
-    ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
+    ws.on_progress(f'Checking what a restore of {doc_label(ws, doc.id, qv)} would change…')
     try:
         summary = ws.client.documents.restore(doc.id, as_of, dry_run=True)
     except Exception as e:  # noqa: BLE001 - the server's reason is the model's answer
@@ -314,7 +332,7 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
     summary = summary if isinstance(summary, dict) else {}
     total = summary.get('total') or 0
     if not total:
-        return f'Nothing to restore: "{doc.name}" is as it was at {as_of}.'
+        return f'Nothing to restore: {doc_label(ws, doc.id, qv)} is as it was at {as_of}.'
     said = lines(summary)
     ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, **(extra(doc) if extra else {}),
                **labelled(doc_label(ws, doc.id), f'restore to {as_of} ({total} change{"s" if total != 1 else ""}: '

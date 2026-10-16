@@ -50,5 +50,26 @@ def test_list_documents_folds_the_pattern_as_a_name_resolves(typed, names):
     """"Man's hunting story" listed nothing in 3 of 3 runs (2026-10-13 survey)."""
     from plaid_agent.igt.toolkit import call_tool
     out = call_tool(_ws(), 'list_documents', {'pattern': typed})
-    assert [line.split('  id=')[0].strip() for line in out.splitlines()[1:]] == names, out
+    from plaid_agent.core.bidi import for_model
+    assert [for_model(line).rsplit(' (', 1)[0].strip()[1:-1] for line in out.splitlines()[1:]] == names, out
     assert call_tool(_ws(), 'list_documents', {'pattern': 'zzz'}) == 'No documents matched.'
+
+
+def test_igt_names_a_shared_name_with_its_id_in_the_form_document_reads_back():
+    """REV3-AGENT-5 in igt: the list, a read's header, the unknown-document
+    refusal, a reference error and recent_changes print '"Text 1" (d2)', and
+    document= takes it back."""
+    from test_igt_rules import _ws
+    from plaid_agent.core.bidi import for_model
+    from plaid_agent.igt.toolkit import call_tool
+    client, w = _ws({'sp-g1': 'Ali'})
+    client._documents['d2']['name'] = 'Text 1'
+    w._documents = None
+    run = lambda name, args: for_model(str(call_tool(w, name, args)))  # noqa: E731
+    assert run('list_documents', {}).splitlines()[1:] == ['  "Text 1" (d1)', '  "Text 1" (d2)']
+    assert run('read_document', {'document': '"Text 1" (d2)'}).startswith('Document "Text 1" (d2):')
+    assert run('read_document', {'document': 'Text 1 (d2)'}).startswith('Document "Text 1" (d2):')
+    assert run('read_document', {'document': 'Nada'}).endswith('Documents: "Text 1" (d1), "Text 1" (d2)')
+    out = run('set_field', {'document': 'd2', 'refs': ['s9.w1'], 'field': 'Gloss', 'value': 'x'})
+    assert 'document "Text 1" (d2) has 2 sentences' in out, out
+    assert '"Text 1" (d1): ' in run('recent_changes', {})

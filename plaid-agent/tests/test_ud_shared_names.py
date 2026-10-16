@@ -25,3 +25,41 @@ def test_ud_reads_name_a_shared_document_name_with_its_id(monkeypatch):
     assert ws.render(ws.doc('ud1')).startswith('Document "Viaje" (ud1) (')
     out = t_search(ws, field='lemma', pattern='zzz', document='ud1')
     assert out == 'No lemma matches "zzz" in "Viaje" (ud1).', out
+
+
+def test_every_read_and_refusal_prints_a_shared_name_with_its_id_in_the_form_document_reads_back(monkeypatch):
+    """REV3-AGENT-5: list_documents, project_overview, the unknown-document
+    refusal, confirm, discard_predictions and a reference error print
+    '"Viaje" (ud1)', and document= takes that form back."""
+    from plaid_agent.ud.toolkit import call_tool
+    ws = _ud()
+    listed = ws.documents() + [{'id': 'ud9', 'name': 'Viaje'}]
+    monkeypatch.setattr(ws, 'documents', lambda *a, **k: listed)
+    out = call_tool(ws, 'list_documents', {})
+    assert out.splitlines()[1:] == ['  "Viaje" (ud1)', '  "Viaje" (ud9)'], out
+    assert '  "Viaje" (ud1)\n  "Viaje" (ud9)' in call_tool(ws, 'project_overview', {})
+    for form in ('"Viaje" (ud1)', 'Viaje (ud1)', 'ud1'):
+        assert ws.resolve_document_id(form) == 'ud1'
+    out = call_tool(ws, 'read_document', {'document': 'Nada'})
+    assert out.endswith('Documents: "Viaje" (ud1), "Viaje" (ud9)'), out
+    out = call_tool(ws, 'set_field', {'document': 'ud1', 'refs': ['s9.w1'], 'field': 'upos', 'value': 'X'})
+    assert 'document "Viaje" (ud1) has' in out, out
+    out = call_tool(ws, 'confirm', {'document': '"Viaje" (ud1)'})
+    assert 'in "Viaje" (ud1):' in out, out
+    assert ' in "Viaje" (ud1) (' in ws.ops[-1]['label']
+    ws.ops.clear()
+    out = call_tool(ws, 'discard_predictions', {'document': 'ud1'})
+    assert 'the whole of "Viaje" (ud1).' in out, out
+
+
+def test_a_scoped_read_names_its_documents_in_the_form_document_reads_back(monkeypatch):
+    from plaid_agent.core.scope import among_documents as scoped
+    ws = _ud()
+    listed = ws.documents() + [{'id': 'ud9', 'name': 'Viaje'}]
+    monkeypatch.setattr(ws, 'documents', lambda *a, **k: listed)
+
+    @scoped
+    def read(ws, document=None):
+        return 'body'
+    out = read(ws, documents=['ud1', 'ud9'])
+    assert out.startswith('In 2 documents: "Viaje" (ud1), "Viaje" (ud9).'), out

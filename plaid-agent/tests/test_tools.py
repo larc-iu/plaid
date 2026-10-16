@@ -574,7 +574,7 @@ def test_documents_sharing_a_name_are_printed_and_cited_by_id():
     assert (w.corpus.ref_name('d1'), w.corpus.ref_name('d2'), w.corpus.ref_name('d3')) == ('d1', 'd2', 'Text 2')
     out = call_tool(w, 'search', {'pattern': 'gam'})
     assert '"d1" s1.w2 gam' in out and '"d2" s1.w2 gam' in out and '"Text 2" s1.w2 gam' in out
-    assert 'Document "Text 1" id=d2:' in call_tool(w, 'read_document', {'document': 'd2'})
+    assert 'Document "Text 1" (d2):' in call_tool(w, 'read_document', {'document': 'd2'})
     assert 'Document "Text 2": ' in call_tool(w, 'read_document', {'document': 'd3'})
     # Naming the shared name is refused, with the ids to pick from.
     assert 'Several documents are named "Text 1"; use an id: d1, d2' in call_tool(
@@ -643,7 +643,8 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     assert 'No document metadata field "Genre"' in call_tool(w, 'list_documents', {'metadata_field': 'Genre', 'value': 'x'})
     # A pattern finds a metadata value too, and says which (2026-10-12 survey).
     out = call_tool(w, 'list_documents', {'pattern': '202', 'limit': 1})
-    assert out.startswith('105 documents matching, showing 1-1:\n  Text 000  id=d0') and '(Date=2021)' in out, out
+    from plaid_agent.core.bidi import for_model
+    assert for_model(out).startswith('105 documents matching, showing 1-1:\n  "Text 000" (d0)') and '(Date=2021)' in out, out
     assert '(Date=' not in call_tool(w, 'list_documents', {'pattern': 'Text 10'})
 
 

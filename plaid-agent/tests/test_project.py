@@ -85,7 +85,8 @@ def test_overview_lists_shape_and_documents():
     out = render_overview(p, [{'id': 'd1', 'name': 'Text 1'}])
     assert 'Word fields: Gloss' in out and 'Morpheme fields: Morph Gloss' in out and 'Sentence fields: Translation' in out
     assert 'Orthographies: IPA' in out and 'Lexicons: Lexicon' in out
-    assert '  Text 1  id=d1' in out
+    from plaid_agent.core.bidi import for_model
+    assert '  "Text 1" (d1)' in for_model(out)
 
 
 def test_project_without_morpheme_layer():

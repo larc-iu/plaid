@@ -202,7 +202,14 @@ def documents_page(ws, pattern: str = None, limit: int = None, offset: int = 0, 
     ws.note_read(len(page), 'document', of=len(docs))
     out = [f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or narrowed else '')
            + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':']
-    out += lines(page) if lines else [f'  "{d.get("name")}"' for d in page]
+    if lines:
+        out += lines(page)
+    else:
+        # A name another document shares is followed by the id, which
+        # document= reads back, as the label whole does.
+        from .history import doc_labels, plain_quote
+        labels = doc_labels(ws, plain_quote)
+        out += [f'  {labels.get(d["id"]) or plain_quote(d.get("name") or "")}' for d in page]
     if offset + len(page) < len(docs):
         out.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
     return truncate('\n'.join(out))

@@ -437,6 +437,14 @@ class UdDoc:
     #: have no number and are not in ``sentences``, as the app shows no row
     #: for them. A merge across one takes it in.
     wordless: List[Tuple[str, int, int]] = dc_field(default_factory=list)
+    #: How a sentence names the document: quoted, with its id where another
+    #: document shares the name (``"Viaje" (01a1...)``, core.history.doc_label),
+    #: which document= reads back. Set by the workspace that loads it.
+    label: Optional[str] = dc_field(default=None, repr=False, compare=False)
+
+    @property
+    def quoted(self) -> str:
+        return self.label or f'"{self.name}"'
 
     def suppressor_over(self, source_span_id: str, target_span_id: str) -> Optional[str]:
         """The suppressor over this pair of lemma spans, if there is one: the
@@ -724,7 +732,7 @@ def example_ref(doc: 'UdDoc') -> str:
     """A reference into ``doc`` that names a real word, for a refusal to show."""
     for s in doc.sentences:
         for w in s.words[1:2] or s.words[:1]:
-            return f' In "{doc.name}", s{s.index}.w{w.index} is "{clip(w.form)}".'
+            return f' In {doc.quoted}, s{s.index}.w{w.index} is "{clip(w.form)}".'
     return ''
 
 
@@ -773,7 +781,7 @@ def resolve(doc: UdDoc, ref: str):
         raise ValueError(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2).' + example_ref(doc))
     si, a, b = r.sentence, r.parts[0], r.until
     if not 1 <= si <= len(doc.sentences):
-        raise ValueError(f'{ref}: document "{doc.name}" has {len(doc.sentences)} sentences')
+        raise ValueError(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences')
     s = doc.sentences[si - 1]
     if r.by_form:
         return _by_form(s, ref, r)
@@ -874,9 +882,9 @@ def by_stored_sent_id(doc: 'UdDoc', item: Any) -> Optional[int]:
     if len(found) == 1:
         return found[0]
     if found:
-        raise ValueError(f'"{text}" is the stored sent_id of {len(found)} sentences in "{doc.name}": '
+        raise ValueError(f'"{text}" is the stored sent_id of {len(found)} sentences in {doc.quoted}: '
                          + ', '.join(f's{n}' for n in found) + '. Read them by those refs.')
-    raise ValueError(f'No sentence in "{doc.name}" has the stored sent_id "{text}". A read prints it as '
+    raise ValueError(f'No sentence in {doc.quoted} has the stored sent_id "{text}". A read prints it as '
                      f'"# {STORED_SENT_ID} = ...", beside the ref (s3) that every tool takes.')
 
 
@@ -924,7 +932,7 @@ def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int =
     where another document shares the name), or its quoted name.
     """
     sentences = doc.sentences
-    head = label or f'"{doc.name}"'
+    head = label or doc.quoted
     out = [f'Document {head} ({len(sentences)} sentences, {doc.word_count} words)']
     for k in sorted(doc.metadata):
         if isinstance(doc.metadata[k], str) and doc.metadata[k]:

@@ -415,7 +415,9 @@ class Workspace(BaseWorkspace):
             entry = next((d for d in self.documents() if d['id'] == did), {})
             self._docs[did] = self.reader.get(did, self._version_of(entry),
                                               entry.get('name') or '')
-        return self._docs[did]
+        doc = self._docs[did]
+        doc.label = self.doc_label(did, quote=True)
+        return doc
 
     def all_docs(self) -> List[IgtDoc]:
         docs = self.documents()

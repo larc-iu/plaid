@@ -387,7 +387,9 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
         res = run(ws.client, q, ws.project.id)
     except QueryRefused as e:
         raise ToolError(str(e))
-    doc_names = {d['id']: d.get('name') for d in ws.documents()}
+    # A name another document shares carries its id, which document= reads back.
+    from .history import doc_labels
+    doc_names = doc_labels(ws)
     rows = res.get('results') or [] if isinstance(res, dict) else []
     refs = ref_index(ws, documents_in(rows, limit))
     if entry_refs is not None:

@@ -126,7 +126,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
     ws.note_read(n_docs, 'document')
     if by is None:
-        describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document "{names[next(iter(names))]}"')
+        describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document {ws.doc_label(next(iter(names)), quote=True)}')
         return truncate(_with_note(lines, clipped))
 
     if by.lower() == 'document':
@@ -139,7 +139,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         lines.append('\t'.join(h for h in head if h))
         for did in sorted(rows, key=lambda i: (names.get(i) or '').lower()):
             n = rows[did]
-            cells = [names.get(did, did), str(n['sentences']), str(n['words']), _pct(n['analyzed'], n['words']),
+            cells = [ws.doc_label(did), str(n['sentences']), str(n['words']), _pct(n['analyzed'], n['words']),
                      _pct(n['linked'], n['words']) if project.vocabs else None,
                      _pct(*n[f'field:{first_m}']) if first_m else None,
                      _pct(*n[f'field:{first_s}']) if first_s else None,
@@ -536,7 +536,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         # and the model looked up "he" as the entry (2026-10-12 survey).
         names = ws.corpus.doc_names() if stale else {}
         shown = [f'text "{form}" linked to entry "{entry}"' + (f' ×{n}' if n > 1 else '')
-                 + (f' (e.g. in "{names.get(stale_docs[(form, entry)], stale_docs[(form, entry)])}")'
+                 + (f' (e.g. in {ws.doc_label(stale_docs[(form, entry)], quote=True)})'
                     if stale_docs.get((form, entry)) and len(names) > 1 else '')
                  for (form, entry), n in sorted(stale.items(), key=lambda kv: (-kv[1], kv[0]))]
         lines.append(f'{sum(stale.values())} links whose form no longer contains the entry form'

@@ -1687,7 +1687,7 @@ def _matching(ws, field, document) -> tuple:
         drop.add(i)
     if not drop and not kept:
         what = ' and'.join(([f' writes {field}'] if field is not None else [])
-                           + ([f' is in "{_doc_name(ws, doc_id)}"'] if doc_id is not None else []))
+                           + ([f' is in {_doc_name(ws, doc_id)}'] if doc_id is not None else []))
         fields = sorted({f for op in ws.ops for f in ws.op_fields(op)}, key=str.casefold)
         raise ToolError(f'No planned change{what}.'
                         + (f' The plan writes {", ".join(fields)}.' if field is not None and fields else '')
@@ -1696,4 +1696,6 @@ def _matching(ws, field, document) -> tuple:
 
 
 def _doc_name(ws, doc_id: str) -> str:
-    return next((d.get('name') or doc_id for d in ws.documents() if d['id'] == doc_id), doc_id)
+    from .bidi import qv
+    from .history import doc_label
+    return doc_label(ws, doc_id, qv)
