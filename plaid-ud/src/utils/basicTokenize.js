@@ -66,3 +66,39 @@ export function newlineSentenceRanges(text) {
   if (ranges.length === 0) ranges.push([0, len]);
   return ranges;
 }
+
+/**
+ * The tokens Tokenize adds to a text that already has some: `basicTokenize`
+ * over each stretch no token covers, cut at the sentence breaks, so a new
+ * token sits inside one sentence and beside the tokens there are. This is
+ * how a text tokenized in another app gets its punctuation, which that app
+ * leaves untokenized (ruling 28 and 29, 2026-10-16). With no tokens it is
+ * `basicTokenize` of the whole text, cut at `sentenceRanges`.
+ *
+ * @param {string} text the document body
+ * @param {[number, number][]} sentenceRanges in code points, in order
+ * @param {{begin: number, end: number}[]} tokens the tokens there are
+ * @param {string} locale
+ * @returns {[number, number][]} the new tokens' ranges in document order
+ */
+export function gapTokenize(text, sentenceRanges, tokens, locale = 'und') {
+  const taken = [...tokens].sort((a, b) => a.begin - b.begin);
+  const cps = Array.from(text);
+  const out = [];
+  const fill = (begin, end) => {
+    if (end <= begin) return;
+    for (const [b, e] of basicTokenize(cps.slice(begin, end).join(''), locale)) {
+      out.push([begin + b, begin + e]);
+    }
+  };
+  for (const [sBegin, sEnd] of sentenceRanges) {
+    let at = sBegin;
+    for (const t of taken) {
+      if (t.end <= at || t.begin >= sEnd) continue;
+      fill(at, Math.min(t.begin, sEnd));
+      at = Math.max(at, t.end);
+    }
+    fill(at, sEnd);
+  }
+  return out;
+}

@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { basicTokenize, newlineSentenceRanges } from '../src/utils/basicTokenize.js';
+import { basicTokenize, gapTokenize, newlineSentenceRanges } from '../src/utils/basicTokenize.js';
 
 test('basicTokenize emits code-point ranges across an astral char', () => {
   assert.deepEqual(basicTokenize('😀 cat'), [
@@ -74,5 +74,34 @@ test('a run of CRLF line breaks is one break, and no sentence holds only a line 
   assert.deepEqual(newlineSentenceRanges('😀 one\r\n\r\n\r\ntwo'), [
     [0, 11],
     [11, 14],
+  ]);
+});
+
+test('gapTokenize tokenizes only what no token covers, inside each sentence', () => {
+  const text = 'Tu viens ?\nOui !';
+  const sentences = [
+    [0, 11],
+    [11, 16],
+  ];
+  const tokens = [
+    { begin: 0, end: 2 },
+    { begin: 3, end: 8 },
+    { begin: 11, end: 14 },
+  ];
+  assert.deepEqual(gapTokenize(text, sentences, tokens), [
+    [9, 10],
+    [15, 16],
+  ]);
+  assert.deepEqual(gapTokenize(text, sentences, []), [
+    [0, 2],
+    [3, 8],
+    [9, 10],
+    [11, 14],
+    [15, 16],
+  ]);
+  // Code points: an astral character counts once.
+  assert.deepEqual(gapTokenize('😀 a .', [[0, 5]], [{ begin: 2, end: 3 }]), [
+    [0, 1],
+    [4, 5],
   ]);
 });

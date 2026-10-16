@@ -132,8 +132,8 @@ There are two ways to turn saved text into tokens:
 * **Parse** does the whole job at once. Where your project has a parsing service connected, such as the bundled Stanza parser, it fills in sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand.
 
 Each button opens a dialog naming the method it will use and its options (see <<_services>>).
-A document that already has tokens cannot be tokenized again until **Clear tokens** removes them, along with every annotation on them.
-Clearing asks first, with counts, and cannot be undone.
+On a document that already has tokens, **Tokenize** keeps its sentences and tokens and adds tokens only for the text no token covers, such as punctuation left untokenized in another app.
+**Clear tokens** removes every token, along with every annotation on them. It asks first, with counts.
 Tokenize and Parse also ask first when their sentence breaks would delete annotations that cross them.
 
 Tokens follow later edits to the text.
@@ -284,6 +284,7 @@ Other conflicting edits are refused with a message, and the page shows the lates
 
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
 A token followed by no space is marked `SpaceAfter=No` in the MISC column, the only value written there.
+Text that no token covers, such as punctuation in a text tokenized in another app, is in `# text` but has no row. **Tokenize** in the Text Editor gives it its tokens.
 To export a whole project, use its **Import and export** tab, which packages every document into one ZIP of `.conllu` files.
 
 = Guidelines

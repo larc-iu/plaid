@@ -481,8 +481,8 @@ export const TextEditor = () => {
                     ? 'There is no text to tokenize.'
                     : isTextDirty
                       ? 'Save the text first.'
-                      : hasTokens
-                        ? 'Clear tokens before re-tokenizing.'
+                      : hasTokens && doc.tokenizeGaps?.(serverText) === 0
+                        ? 'No untokenized text.'
                         : null
                 }
               />

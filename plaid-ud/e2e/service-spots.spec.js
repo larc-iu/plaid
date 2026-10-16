@@ -74,11 +74,12 @@ test('running it tokenizes the document, and the dialog then refuses to run agai
   // is a change worth being told about.
   await expect(counts(page)).toHaveText('8 tokens, 1 sentence', { timeout: 20000 });
 
-  // Re-tokenizing would replace what is there, so the dialog says why it will
-  // not, rather than offering a button that does nothing.
+  // Tokenize only adds tokens where there are none, and here there are none
+  // to add, so the dialog says so rather than offering a button that does
+  // nothing.
   await page.getByRole('button', { name: 'Tokenize', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText('Clear tokens before re-tokenizing.')).toBeVisible();
+  await expect(dialog.getByText('No untokenized text.')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Tokenize', exact: true })).toBeDisabled();
 });
 

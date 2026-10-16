@@ -424,3 +424,42 @@ test('a relation to a word with no lemma span goes with the span in one batch', 
   const rel = calls.find((c) => c.call === 'relations.create');
   assert.equal(rel.args[2], span.args[5].id);
 });
+
+// Ruling 28 and 29 (2026-10-16): Tokenize on a tokenized text adds a token for
+// what no token covers, such as the punctuation another app leaves
+// untokenized, and keeps the sentences, tokens and everything on them.
+test('tokenizing a tokenized text adds tokens only where there are none', async () => {
+  const raw = rawDocFromConllu(INPUT.split('\n').slice(0, 6).join('\n'), 'g');
+  const { client, release, calls } = heldClient({ raw });
+  const doc = new ConlluDocument({ raw: structuredClone(raw), client });
+  release();
+  const body = doc.layerInfo.textLayer.text.body;
+  assert.equal(body, 'she came and left home .');
+  const before = {
+    sentences: doc.layerInfo.sentenceTokenLayer.tokens.map((t) => t.id),
+    words: doc.layerInfo.wordTokenLayer.tokens.map((t) => t.id),
+    lemmas: doc.layerInfo.lemmaLayer.spans.length,
+  };
+  assert.equal(doc.tokenizeGaps(body), 1);
+  assert.equal(await doc.tokenize(body), true);
+  const creates = calls.filter((c) => c.call === 'tokens.bulkCreate');
+  assert.deepEqual(
+    creates.map((c) => c.args[0].map((r) => [r.begin, r.end])),
+    [[[23, 24]], [[23, 24]]],
+  );
+  assert.equal(calls.filter((c) => c.call.endsWith('Delete')).length, 0);
+  assert.deepEqual(
+    doc.layerInfo.sentenceTokenLayer.tokens.map((t) => t.id),
+    before.sentences,
+  );
+  const words = doc.layerInfo.wordTokenLayer.tokens;
+  assert.equal(words.length, before.words.length + 1);
+  assert.ok(before.words.every((id) => words.some((w) => w.id === id)));
+  assert.equal(doc.layerInfo.lemmaLayer.spans.length, before.lemmas + 1);
+  assert.equal(doc.tokenizeGaps(body), 0);
+  // Nothing left to add is said, and nothing is sent.
+  const sent = calls.length;
+  assert.equal(await doc.tokenize(body), false);
+  assert.equal(doc.error, 'No untokenized text.');
+  assert.equal(calls.length, sent);
+});

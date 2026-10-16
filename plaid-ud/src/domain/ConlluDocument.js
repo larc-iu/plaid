@@ -49,7 +49,7 @@ import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows, isVirtualWordId, sentenceHoldsWords } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
-import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
+import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 
 // The lemma a new word starts with is a copy of its form, made by a rule and
@@ -363,7 +363,6 @@ export class ConlluDocument extends DocumentModel {
     const { sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer, lemmaLayer } = info;
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
     const wordTokens = wordTokenLayer?.tokens || [];
-    const morphemeTokens = morphemeTokenLayer?.tokens || [];
 
     if (!textContent.trim()) {
       this.setError('No text to tokenize.');
@@ -377,17 +376,19 @@ export class ConlluDocument extends DocumentModel {
       this.setError(notSetUp('UD token layers missing'));
       return false;
     }
-    if (sentenceTokens.length || wordTokens.length || morphemeTokens.length) {
-      this.setError('Tokens already exist. Use "Clear tokens" before re-tokenizing.');
-      return false;
-    }
     const label = 'Failed to create tokens';
     if (!this._canWrite(label)) return false;
 
     const body = textContent;
 
-    // Sentences: a gap-free partition of [0, len), broken at runs of newlines.
-    const sentenceRanges = newlineSentenceRanges(body);
+    // Sentences: the ones there are, else a gap-free partition of [0, len),
+    // broken at runs of newlines. Tokenize only adds: a tokenized text keeps
+    // its sentences and tokens, and only what no token covers is tokenized,
+    // as in IGT (ruling 28, 2026-10-16).
+    const keepSentences = sentenceTokens.length > 0;
+    const sentenceRanges = keepSentences
+      ? [...sentenceTokens].sort((a, b) => a.begin - b.begin).map((s) => [s.begin, s.end])
+      : newlineSentenceRanges(body);
 
     // Words: Unicode-aware basic tokenization. Punctuation flanked by
     // letters/digits on both sides stays in the word (contractions,
@@ -399,9 +400,15 @@ export class ConlluDocument extends DocumentModel {
     // (zh-Hans); otherwise the project's language stands in, and 'und' last.
     const tokenizerLocale =
       info.textLayer?.config?.ud?.tokenizerLocale || readProjectLanguage(this._project) || 'und';
-    const wordRanges = basicTokenize(body, tokenizerLocale);
+    const wordRanges = gapTokenize(body, sentenceRanges, wordTokens, tokenizerLocale);
+    if (keepSentences && wordRanges.length === 0) {
+      this.setError('No untokenized text.');
+      return false;
+    }
 
-    const sentences = sentenceRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
+    const sentences = keepSentences
+      ? []
+      : sentenceRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     const words = wordRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     const morphemes = wordRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     // One code-point spread of the body for every word, not one per word.
@@ -414,19 +421,31 @@ export class ConlluDocument extends DocumentModel {
           metadata: LEMMA_FROM_FORM,
         }))
       : [];
+    const byBegin = (a, b) => a.begin - b.begin;
     this._applyRawPatch((next, infoNext) => {
-      // Relations another layer keeps inside one sentence that the new
-      // sentences cut go in the same transaction (REV-N5-APPS R3).
-      const layers = infoNext.textLayer?.tokenLayers || [];
-      dropRelations(
-        layers,
-        countPartitionLoss(layers, infoNext.sentenceTokenLayer.id, sentenceRanges).relationIds,
-      );
-      infoNext.sentenceTokenLayer.tokens = sentences.map((t) => ({ ...t }));
-      infoNext.wordTokenLayer.tokens = words.map((t) => ({ ...t }));
-      infoNext.morphemeTokenLayer.tokens = morphemes.map((t) => ({ ...t }));
+      if (!keepSentences) {
+        // Relations another layer keeps inside one sentence that the new
+        // sentences cut go in the same transaction (REV-N5-APPS R3).
+        const layers = infoNext.textLayer?.tokenLayers || [];
+        dropRelations(
+          layers,
+          countPartitionLoss(layers, infoNext.sentenceTokenLayer.id, sentenceRanges).relationIds,
+        );
+        infoNext.sentenceTokenLayer.tokens = sentences.map((t) => ({ ...t }));
+      }
+      infoNext.wordTokenLayer.tokens = [
+        ...(infoNext.wordTokenLayer.tokens || []),
+        ...words.map((t) => ({ ...t })),
+      ].sort(byBegin);
+      infoNext.morphemeTokenLayer.tokens = [
+        ...(infoNext.morphemeTokenLayer.tokens || []),
+        ...morphemes.map((t) => ({ ...t })),
+      ].sort(byBegin);
       if (lemmas.length && infoNext.lemmaLayer) {
-        infoNext.lemmaLayer.spans = lemmas.map((span) => ({ ...span, tokens: [...span.tokens] }));
+        infoNext.lemmaLayer.spans = [
+          ...(infoNext.lemmaLayer.spans || []),
+          ...lemmas.map((span) => ({ ...span, tokens: [...span.tokens] })),
+        ];
       }
     });
 
@@ -445,7 +464,7 @@ export class ConlluDocument extends DocumentModel {
           end,
         }));
       await this._client.batched(async (b) => {
-        b.tokens.bulkCreate(bulk(sentenceTokenLayer, sentences));
+        if (sentences.length > 0) b.tokens.bulkCreate(bulk(sentenceTokenLayer, sentences));
         if (words.length > 0) {
           b.tokens.bulkCreate(bulk(wordTokenLayer, words));
           b.tokens.bulkCreate(bulk(morphemeTokenLayer, morphemes));
@@ -534,9 +553,25 @@ export class ConlluDocument extends DocumentModel {
   // built-in breaks `body` at newlines, so its count is exact. A service
   // decides its own breaks, so for one (`body` null) it is the most they can
   // take. `{ annotations, links }`.
+  // How many tokens Tokenize would add to `body` (its saved text): every
+  // token for an untokenized text, else one for each stretch no token covers.
+  tokenizeGaps(body) {
+    const { sentenceTokenLayer, wordTokenLayer, textLayer } = this.layerInfo;
+    const sentences = sentenceTokenLayer?.tokens || [];
+    const ranges = sentences.length
+      ? [...sentences].sort((a, b) => a.begin - b.begin).map((s) => [s.begin, s.end])
+      : newlineSentenceRanges(body || '');
+    const locale =
+      textLayer?.config?.ud?.tokenizerLocale || readProjectLanguage(this._project) || 'und';
+    return gapTokenize(body || '', ranges, wordTokenLayer?.tokens || [], locale).length;
+  }
+
   tokenizeLoss(body) {
     const { textLayer, sentenceTokenLayer } = this.layerInfo;
-    if (!sentenceTokenLayer) return { annotations: 0, links: 0 };
+    // A text with sentences keeps them: Tokenize only adds tokens.
+    if (!sentenceTokenLayer || (body != null && sentenceTokenLayer.tokens?.length)) {
+      return { annotations: 0, links: 0 };
+    }
     const loss = countPartitionLoss(
       textLayer?.tokenLayers || [],
       sentenceTokenLayer.id,
