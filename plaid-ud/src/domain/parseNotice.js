@@ -11,6 +11,8 @@
 // fallback for a service predating that contract.
 //
 // Pure, so `test/parseNotice.test.js` can drive every shape.
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+
 export const parseNotice = (summary) => {
   const notice = summary?.notice;
   if (notice) {
@@ -25,7 +27,7 @@ export const parseNotice = (summary) => {
     return {
       level: 'success',
       title: undefined,
-      message: `Parsed ${parsed} sentence${parsed === 1 ? '' : 's'}.`,
+      message: `Parsed ${countOf(parsed, 'sentence')}.`,
     };
   }
   return {

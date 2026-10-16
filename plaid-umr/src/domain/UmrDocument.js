@@ -66,6 +66,7 @@ import {
   unknownDocRelationProblem,
   valueGrammarProblem,
 } from './format/validate.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
 // What the export calls a sentence's document-level block.
@@ -2913,7 +2914,7 @@ export class UmrDocument extends DocumentModel {
         }
         this._settle(ids);
       },
-      `Apply text to sentence ${sentence?.number ?? sentenceIndex} (${plan.changes} change${plan.changes === 1 ? '' : 's'})`,
+      `Apply text to sentence ${sentence?.number ?? sentenceIndex} (${countOf(plan.changes, 'change')})`,
       {
         // The text is the whole sentence: sent again on a later version, it
         // goes only while nobody else changed the sentence's graph (a node

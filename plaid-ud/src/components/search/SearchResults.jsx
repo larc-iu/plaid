@@ -6,6 +6,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/shared/list-search';
 import { detectDirection } from '@ui/domain/textDirection.js';
+import { countOf } from '@ui/lib/plural.js';
 
 // Renders grouped sentence matches. `groups` come from groupResults():
 // [{ docId, sentenceId, text, highlights }]. Each sentence is a real link to
@@ -58,7 +59,7 @@ export const SearchResults = ({
         <p className="text-sm text-muted-foreground">
           {groups.length === 0
             ? 'No matching sentences.'
-            : `${groups.length} matching sentence${groups.length === 1 ? '' : 's'}` +
+            : `${countOf(groups.length, 'matching sentence')}` +
               (truncated ? ` (capped at ${count}, refine the query for more)` : '')}
         </p>
       )}

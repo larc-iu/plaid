@@ -8,6 +8,7 @@ import { makeValidators } from '../utils/udVocabMode.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -118,7 +119,7 @@ export async function importConlluDocument(
   }
   if (miscTokens > 0) {
     importWarnings.push(
-      `MISC values on ${miscTokens} token row${miscTokens === 1 ? '' : 's'} ` +
+      `MISC values on ${countOf(miscTokens, 'token row')} ` +
         'dropped: Plaid UD does not store the MISC column.',
     );
   }
@@ -200,7 +201,7 @@ export async function importConlluDocument(
     const { syntheticOffsetSentences = 0 } = hierarchy.dropped || {};
     if (syntheticOffsetSentences > 0) {
       importWarnings.push(
-        `${syntheticOffsetSentences} sentence${syntheticOffsetSentences === 1 ? '' : 's'} used synthetic offsets ` +
+        `${countOf(syntheticOffsetSentences, 'sentence')} used synthetic offsets ` +
           "(their tokens couldn't be located in the sentence text, so positions won't match the original).",
       );
     }

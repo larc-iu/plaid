@@ -333,7 +333,7 @@ export function describeUmrReconcile({
   recordsFitted = 0,
   wordSplits = 0,
 } = {}) {
-  const nodes = (n) => `${n} unaligned node${n === 1 ? '' : 's'}`;
+  const nodes = (n) => countOf(n, 'unaligned node');
   const parts = [];
   if (unanchored.length) {
     const names = unanchored.slice(0, 5).join(' ');

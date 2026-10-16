@@ -42,6 +42,7 @@ import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -676,7 +677,7 @@ export const unreachedByRoot = (graph) => {
         });
       }
       const n = part.size - 1;
-      const what = n ? `${r.var} and ${n} node${n === 1 ? '' : 's'} under it are` : `${r.var} is`;
+      const what = n ? `${r.var} and ${countOf(n, 'node')} under it are` : `${r.var} is`;
       out.push({
         level: 'error',
         code: 'unreached-by-root',

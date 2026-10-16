@@ -3,6 +3,7 @@ import { Button } from '@ui/components/ui/button';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { chordText } from '@ui/lib/chords.js';
 import { parsePenman } from '../../../domain/format/penman.js';
+import { countOf } from '@ui/lib/plural.js';
 
 // The text mode of one sentence: its graph as PENMAN in a textarea, applied
 // as one operation on Apply. Every node of the sentence is in the text: the
@@ -208,7 +209,7 @@ function lossNote(losses) {
   const one = ({ var: v, anchored, relations }) => {
     const what = [
       anchored && 'its anchor',
-      relations && `${relations} document-level relation${relations === 1 ? '' : 's'}`,
+      relations && countOf(relations, 'document-level relation'),
     ].filter(Boolean);
     return `${v} with ${what.join(' and ')}`;
   };

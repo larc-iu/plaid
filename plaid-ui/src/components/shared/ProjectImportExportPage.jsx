@@ -28,6 +28,7 @@ import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { NotSetUpNotice } from './NotSetUpNotice.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
+import { countOf } from '../../lib/plural.js';
 
 // A drop target with a hidden file input behind it. `dragging` is counted
 // rather than set, because dragging over a child element fires dragleave on the
@@ -286,7 +287,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
     const rejected = acc.length - imported;
     if (imported > 0) {
       notifySuccess(
-        `Imported ${imported} document${imported === 1 ? '' : 's'}${rejected ? `, ${rejected} rejected` : ''}.`,
+        `Imported ${countOf(imported, 'document')}${rejected ? `, ${rejected} rejected` : ''}.`,
       );
     } else {
       notifyError(`No documents imported (${rejected} rejected).`);
@@ -331,7 +332,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       if (skippedAcc.length > 0) {
         notifyWarning(`Exported ${count}. ${skippedAcc.length} skipped (empty).`);
       } else {
-        notifySuccess(`Exported ${count} document${count === 1 ? '' : 's'}.`);
+        notifySuccess(`Exported ${countOf(count, 'document')}.`);
       }
     } catch (err) {
       const shown = format.exportFailure?.(err);
@@ -433,7 +434,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                     <div className="rounded-md border bg-muted/40 p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-sm font-medium">
-                          {files.length} file{files.length === 1 ? '' : 's'} queued
+                          {countOf(files.length, 'file')} queued
                         </p>
                         <Button
                           size="sm"
@@ -585,9 +586,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
 
             {skipped.length > 0 && (
               <Notice tone="warning">
-                <p className="font-medium">
-                  {skipped.length} document{skipped.length === 1 ? '' : 's'} skipped
-                </p>
+                <p className="font-medium">{countOf(skipped.length, 'document')} skipped</p>
                 <ul className="ms-5 list-disc space-y-0.5 text-xs">
                   {skipped.map((s, i) => (
                     <li key={i}>

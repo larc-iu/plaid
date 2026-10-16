@@ -45,6 +45,7 @@ import { Parentheses } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { CATEGORICAL } from '@ui/domain/dyes.js';
 import './canvas.css';
+import { countOf } from '@ui/lib/plural.js';
 
 // The margin to the left of every graph, where the document graph's
 // constants are pinned, and how the constants stack in it.
@@ -886,9 +887,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (doomed.length > 1) {
       const n = doomed.length;
       const ok = await confirm({
-        title: edge
-          ? `Delete ${edge.role} and ${n} node${n === 1 ? '' : 's'}?`
-          : `Delete ${n} nodes?`,
+        title: edge ? `Delete ${edge.role} and ${countOf(n, 'node')}?` : `Delete ${n} nodes?`,
         description: `${doomed.map((d) => d.concept).join(', ')}. Restorable from History.`,
         confirmLabel: 'Delete',
         destructive: true,
@@ -947,7 +946,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const discardDraft = async () => {
     const { nodes, relations, otherRelations } = doc.discardPlan(sentence.index);
     if (!nodes.length && !relations.length) return;
-    const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    const count = (n, one) => countOf(n, one);
     // The sentence's own relations first, then what other sentences lose
     // with the nodes that go (their drafted coreference onto them).
     const ownRelations = relations.length - otherRelations;
