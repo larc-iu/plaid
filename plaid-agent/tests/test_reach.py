@@ -415,3 +415,23 @@ def test_the_codes_plan_for_another_project_gets_the_same_refusal(app):
     out = api['plan']('add_guideline', title='New', body='a note')
     assert out.startswith(f'Project "{ws.project.name}"'), out
     assert len(ws.ops) == 1 and _staged(ws, r) == 1
+
+
+# --- a document named here that is another project's (H8-ASSISTANT) ---------------
+
+@pytest.mark.parametrize('app', APPS)
+def test_a_document_of_another_project_named_at_home_is_said_to_be_there(app):
+    import copy as _copy
+    from multi_fixtures import _app
+    f, docs, _, _ = _app(app)
+    renamed = {k: {**_copy.deepcopy(v), 'name': 'Elsewhere Story'} for k, v in docs.items()}
+    others = {OTHER_ID: other_project(f.project_raw(), renamed, OTHER_ID, OTHER_NAME)}
+    svc, c, ws, r = reached(app, others=others)
+    with pytest.raises(ToolError) as refused:
+        ws.resolve_document_id('elsewhere story')
+    assert str(refused.value) == (
+        '"Elsewhere Story" is in "Second", which this conversation reads but does not change. '
+        'Pass project to read it there.')
+    # A name no project has is refused as before, with this project's documents.
+    with pytest.raises(ToolError, match=r'^No document "Nowhere"\.'):
+        ws.resolve_document_id('Nowhere')

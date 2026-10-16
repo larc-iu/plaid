@@ -434,9 +434,38 @@ class BaseWorkspace:
         from .history import doc_labels
         close = ', '.join(plain_quote(keys[k]) for k in
                           difflib.get_close_matches(name_key(document), list(keys), n=5, cutoff=0.5))
+        elsewhere = self._document_elsewhere(names)
+        if elsewhere is not None:
+            raise ToolError(elsewhere)
         labels = doc_labels(self, plain_quote)
         raise ToolError(f'No document "{document}".' + (f' Closest: {close}.' if close else '') + ' Documents: '
                         + ', '.join(labels[d['id']] for d in docs[:50]))
+
+    def _document_elsewhere(self, names: List[str]) -> Optional[str]:
+        """Where a document this project does not have is, among the other
+        projects this turn reads: the refusal says so, rather than listing this
+        project's documents, which sent a model looking here for one that is
+        there (H8-ASSISTANT). None where no other project has it."""
+        reach = self.reach
+        if reach is None:
+            return None
+        here = self.project.id
+        for project in [reach.home_project, *reach.others]:
+            if project.id == here:
+                continue
+            try:
+                docs = reach.workspace(project.id).documents()
+            except Exception:  # noqa: BLE001 - a project that cannot be listed has nothing to say here
+                continue
+            for d in docs:
+                stored = d.get('name') or ''
+                if any(name_fold(stored) == name_fold(name) for name in names) or d.get('id') in names:
+                    where = plain_quote(project.name or project.id)
+                    if self.writable and project.id != reach.home_project.id:
+                        return (f'{plain_quote(stored)} is in {where}, which this conversation reads '
+                                'but does not change. Pass project to read it there.')
+                    return f'{plain_quote(stored)} is in {where}. Pass project to read it there.'
+        return None
 
     # --- the plan ---------------------------------------------------------
 
