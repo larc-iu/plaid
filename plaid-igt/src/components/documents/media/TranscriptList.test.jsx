@@ -494,6 +494,14 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
+  it('the new-segment row with no segments asks for playback, not for a time past 0', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: [] });
+    const r = await renderComponent(element(doc, makeOps({ currentTime: 0 })));
+    expect(r.container.textContent).toContain('Play the recording or drag on the timeline.');
+    expect(r.container.textContent).not.toContain('Playback must be past');
+    await r.unmount();
+  });
+
   it('the new-segment row waits for playback to pass the last segment, then creates from its end', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, makeOps({ currentTime: 1.0 })));

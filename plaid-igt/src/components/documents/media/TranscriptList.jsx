@@ -861,7 +861,9 @@ const NewSegmentRow = memo(function NewSegmentRow({
         <p className="text-xs text-muted-foreground">
           {ready
             ? `${formatTime(prevEnd)} to ${formatTime(currentTime)} (playback). Enter to save.`
-            : `Playback must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`}
+            : prevEnd > 0
+              ? `Playback must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`
+              : 'Play the recording or drag on the timeline.'}
         </p>
       </div>
       <div className={cn(ROW_BUTTONS, 'h-8 w-8')} />
