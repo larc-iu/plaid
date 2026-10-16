@@ -43,9 +43,16 @@
    wide), so they unambiguously belong to the sentence above. */
 .sentence-confirm {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
   margin-inline-start: 80px;
+  /* In the sentence's sideways scroller, but never wider than the window
+     and held at its start edge, so on a phone the buttons wrap where they
+     can be reached instead of running off past the right edge. */
+  position: sticky;
+  inset-inline-start: 0;
+  max-width: calc(100vw - 80px - 2rem);
 }
 
 /* Accept and Discard wear plaid-ui's review pair (`plaid-review--accept`,
