@@ -52,14 +52,21 @@ export const CatalogProvider = ({ children }) => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await client.query({
-          where: [['vocab', '?v', { layer: '?l' }]],
-          return: { group: ['?l'], aggregates: [['count']] },
-        });
-        // Only the layers the query answered for. It reaches a vocabulary
-        // through the projects that link it, so an unlinked one has no row,
-        // and no row is "not counted", never 0.
+        const [res, projects] = await Promise.all([
+          client.query({
+            where: [['vocab', '?v', { layer: '?l' }]],
+            return: { group: ['?l'], aggregates: [['count']] },
+          }),
+          client.projects.list(),
+        ]);
+        // The query reaches a vocabulary through the projects that link it,
+        // and gives no row for one with no entries. So a vocabulary a listed
+        // project links counts 0 until the query says otherwise, and one no
+        // listed project links is not counted at all.
         const byLayer = {};
+        for (const project of projects) {
+          for (const v of project.vocabs || []) byLayer[v.id] = 0;
+        }
         for (const [layerId, n] of res?.results || []) byLayer[layerId] = n;
         if (!cancelled) setItemCounts(byLayer);
       } catch (err) {

@@ -14,6 +14,7 @@ describe('the catalog entry counts', () => {
     const client = {
       vocabLayers: { list: async () => [{ id: 'linked' }, { id: 'unlinked' }] },
       query: async () => ({ results: [['linked', 12]] }),
+      projects: { list: async () => [{ id: 'p1', vocabs: [{ id: 'linked' }] }] },
     };
     auth.current = { client, logout: () => {} };
     let seen = null;
@@ -29,6 +30,30 @@ describe('the catalog entry counts', () => {
     await view.step(() => new Promise((r) => setTimeout(r, 0)));
     expect(seen).toEqual({ linked: 12 });
     expect('unlinked' in seen).toBe(false);
+    await view.unmount();
+  });
+
+  it('counts 0 for a linked vocabulary with no entries, which the query gives no row', async () => {
+    const client = {
+      vocabLayers: { list: async () => [{ id: 'linked' }, { id: 'empty' }, { id: 'unlinked' }] },
+      query: async () => ({ results: [['linked', 12]] }),
+      projects: {
+        list: async () => [{ id: 'p1', vocabs: [{ id: 'linked' }, { id: 'empty' }] }],
+      },
+    };
+    auth.current = { client, logout: () => {} };
+    let seen = null;
+    const Probe = () => {
+      seen = useCatalog().itemCounts;
+      return null;
+    };
+    const view = await renderComponent(
+      <CatalogProvider>
+        <Probe />
+      </CatalogProvider>,
+    );
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(seen).toEqual({ linked: 12, empty: 0 });
     await view.unmount();
   });
 });
