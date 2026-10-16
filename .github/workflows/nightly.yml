@@ -29,7 +29,7 @@ permissions:
 jobs:
   # Cheap gate: skip the suite on nights where master hasn't moved.
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       recent: ${{ steps.check.outputs.recent }}
     steps:
@@ -51,7 +51,7 @@ jobs:
   test:
     needs: check
     if: needs.check.outputs.recent == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
