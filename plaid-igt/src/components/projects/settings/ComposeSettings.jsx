@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -35,6 +35,10 @@ const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase()
 let nextUid = 0;
 const withUid = (row) => ({ ...row, uid: `row-${nextUid++}` });
 
+// What a list of rows says, without the row identities or the order rows
+// were added in, so two lists that would store the same thing compare equal.
+const rowsKey = (rows) => JSON.stringify(rows.map(({ uid: _uid, ...row }) => row).sort(byCode));
+
 /**
  * Settings → Text and vocab → Special characters. Every code is an entry here:
  * the built-in ones can be pointed somewhere else or taken out, and a project
@@ -50,11 +54,19 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
 
+  // Re-sync when the project reloads, unless the list holds edits not saved
+  // yet: those stay.
+  const prevSaved = useRef(saved);
   useEffect(() => {
-    setDraft(saved);
+    const prev = rowsKey(prevSaved.current);
+    prevSaved.current = saved;
+    setDraft((d) => {
+      const key = rowsKey(d);
+      return key === prev || key === rowsKey(saved) ? saved : d;
+    });
   }, [saved]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const dirty = rowsKey(draft) !== rowsKey(saved);
   const problemsByCode = useMemo(() => {
     const m = new Map();
     for (const row of draft) m.set(row, validateCode(row, draft));

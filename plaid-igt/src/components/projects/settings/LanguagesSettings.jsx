@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -114,9 +114,13 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   const [draft, setDraft] = useState(saved);
   const [saving, setSaving] = useState(false);
 
-  // Re-sync when the project reloads, so the form shows what the server has.
+  // Re-sync when the project reloads, so the form shows what the server has,
+  // unless the form holds edits not saved yet: those stay.
+  const prevSaved = useRef(saved);
   useEffect(() => {
-    setDraft(saved);
+    const prev = JSON.stringify(prevSaved.current);
+    prevSaved.current = saved;
+    setDraft((d) => (JSON.stringify(d) === prev ? saved : d));
   }, [saved]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
