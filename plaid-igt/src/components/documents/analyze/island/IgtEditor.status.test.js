@@ -128,6 +128,23 @@ describe('the save-status pill', () => {
     }
   });
 
+  // PL-UI-CORE: a write waiting out another writer's lock is not "Saving…".
+  it("says the document is in use elsewhere while a write waits out another's lock", () => {
+    const doc = mount();
+    saving(doc, true);
+    doc._writes._setLocked(true);
+    expect(pill().dataset.state).toBe('locked');
+    expect(pill().textContent).toBe('In use elsewhere, waiting');
+    editor._render(true);
+    expect(pill().textContent).toBe('In use elsewhere, waiting');
+
+    doc._writes._setLocked(false);
+    expect(pill().dataset.state).toBe('saving');
+    saving(doc, false);
+    editor._syncStatus();
+    expect(pill().dataset.state).toBe('saved');
+  });
+
   it('follows the queue into the offline state through the document', async () => {
     const doc = mount();
     saving(doc, true);

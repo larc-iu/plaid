@@ -54,10 +54,12 @@ const NEXT = svg`<path d="m9 18 6-6-6-6" />`;
 const LAST = svg`<path d="m7 18 6-6-6-6" /><path d="M17 6v12" />`;
 
 // What the save-status pill says in each state. `offline`: a write or a
-// refetch is being sent again until the server answers.
+// refetch is being sent again until the server answers. `locked`: a write
+// waits for another writer's lock on the document to go (SaveStatus's words).
 const STATUS_TEXT = {
   saving: () => 'Saving…',
   offline: retryingText,
+  locked: () => 'In use elsewhere, waiting',
   saved: () => 'Saved ✓',
 };
 

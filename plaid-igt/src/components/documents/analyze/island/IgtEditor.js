@@ -458,13 +458,15 @@ export class IgtEditor {
     this._render();
   }
 
-  // Drive the save-status pill from doc.isSaving and doc.isOffline (no grid
-  // re-render). Offline is a save still on its way, waiting for the server.
+  // Drive the save-status pill from doc.isSaving, doc.isOffline and
+  // doc.isLocked (no grid re-render). Offline is a save still on its way,
+  // waiting for the server. Locked is one waiting for another writer's lock on
+  // the document to go, which plaid-ui's SaveStatus says in ud and umr.
   _syncStatus() {
     if (this.doc.isSaving) {
-      this._statusState = this.doc.isOffline ? 'offline' : 'saving';
+      this._statusState = this.doc.isOffline ? 'offline' : this.doc.isLocked ? 'locked' : 'saving';
       clearTimeout(this._savedTimer);
-    } else if (this._statusState === 'saving' || this._statusState === 'offline') {
+    } else if (['saving', 'offline', 'locked'].includes(this._statusState)) {
       // Save just finished: flash "Saved" briefly unless it failed (the error
       // banner/toast covers failures), a conflict the cell shows included
       // (`errorCause` without `error`).

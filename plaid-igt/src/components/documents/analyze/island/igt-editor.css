@@ -141,7 +141,8 @@
   color: hsl(var(--primary));
   background: hsl(var(--primary) / 0.08);
 }
-.igt-status[data-state='offline'] {
+.igt-status[data-state='offline'],
+.igt-status[data-state='locked'] {
   color: var(--igt-gray-600);
   background: var(--igt-gray-100);
 }
