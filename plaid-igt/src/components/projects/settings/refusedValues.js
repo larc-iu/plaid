@@ -38,8 +38,6 @@ export const refusedValuesText = (fields) =>
     .join(' ')}`;
 
 export const NOT_IN_FORCE_TITLE = 'Not in force';
-export const NOT_IN_FORCE_ACTION =
-  'Change these values, then choose Put in force under Validation.';
 
 const UNITS = { Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' };
 const unitWord = (scope, n) => `${UNITS[scope] ?? 'word'}${n === 1 ? '' : 's'}`;
@@ -52,7 +50,7 @@ const unitWord = (scope, n) => `${UNITS[scope] ?? 'word'}${n === 1 ? '' : 's'}`;
  * (`repair`): "Raw note: 1 word with more than one annotation." A rule
  * refused for another reason has no values to name.
  */
-export const notInForceLines = (fields) =>
+const notInForceLines = (fields) =>
   fields.map((f) => {
     const lines = [];
     if (f.values?.length) {
