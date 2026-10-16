@@ -307,8 +307,13 @@ let appConfirm = null;
 export const useUnsavedGuard = () => {
   const confirm = useConfirm();
   // The latest one mounted, for a draft held outside React to ask with.
+  // Cleared when it goes, unless a later one has taken its place, so a confirm
+  // whose provider has unmounted is never asked.
   useEffect(() => {
     appConfirm = confirm;
+    return () => {
+      if (appConfirm === confirm) appConfirm = null;
+    };
   }, [confirm]);
   return useCallback(() => askToLeave(confirm), [confirm]);
 };

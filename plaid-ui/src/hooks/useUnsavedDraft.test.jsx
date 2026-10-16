@@ -8,7 +8,9 @@ import { renderComponent } from '../test/renderComponent.jsx';
 const { confirm } = vi.hoisted(() => ({ confirm: vi.fn(async () => false) }));
 vi.mock('../components/shared/ConfirmProvider.jsx', () => ({ useConfirm: () => confirm }));
 
-const { useUnsavedDraft, hasUnsavedDraft } = await import('./useUnsavedDraft.js');
+const { useUnsavedDraft, hasUnsavedDraft, useUnsavedGuard, setUnsavedDraft } = await import(
+  './useUnsavedDraft.js'
+);
 
 let followed = 0;
 
@@ -410,5 +412,49 @@ describe('an unsaved draft', () => {
     const second = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(second);
     expect(second.defaultPrevented).toBe(false);
+  });
+});
+
+// A draft held outside React (a lit-html island) asks with the confirm of the
+// last guard mounted, and never with one whose screen has gone.
+describe('a draft held outside React', () => {
+  const Guarded = () => {
+    useUnsavedGuard();
+    return (
+      <a
+        href="#/projects/p1/documents"
+        id="away"
+        onClick={(e) => {
+          e.preventDefault();
+          followed += 1;
+        }}
+      >
+        Documents
+      </a>
+    );
+  };
+
+  it('asks with the confirm of the guard mounted, and not one that has unmounted', async () => {
+    const token = {};
+    view = await renderComponent(<Guarded />);
+    setUnsavedDraft(token, 'The text you have typed');
+    clickOn('away');
+    await flush();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    setUnsavedDraft(token, null);
+    await tick();
+
+    await view.unmount();
+    view = null;
+    confirm.mockClear();
+    setUnsavedDraft(token, 'The text you have typed');
+    const link = document.createElement('a');
+    link.href = '#/projects/p1/documents';
+    document.body.appendChild(link);
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(confirm).not.toHaveBeenCalled();
+    link.remove();
+    setUnsavedDraft(token, null);
   });
 });
